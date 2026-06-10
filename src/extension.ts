@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
+import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import {
@@ -10,6 +11,8 @@ import {
   openResumeTerminal
 } from "./terminal/resumeTerminal";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
+
+type NewSessionTarget = AgentProvider | "codexApp";
 
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
@@ -51,6 +54,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.newClaudeSession", (node?: unknown) =>
       openNewSession(tree, node, "claude", context)
+    ),
+    vscode.commands.registerCommand("agentResume.newCodexAppSession", (node?: unknown) =>
+      openNewCodexAppSession(tree, node)
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("agentResume")) {
@@ -111,8 +117,8 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
 }
 
 async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext): Promise<void> {
-  const provider = await pickNewSessionProvider();
-  if (!provider) {
+  const target = await pickNewSessionTarget();
+  if (!target) {
     return;
   }
 
@@ -121,10 +127,15 @@ async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext): P
     return;
   }
 
-  openNewSessionTerminal(provider, projectPath, context);
+  if (target === "codexApp") {
+    openCodexAppProject(projectPath);
+    return;
+  }
+
+  openNewSessionTerminal(target, projectPath, context);
 }
 
-async function pickNewSessionProvider(): Promise<AgentProvider | undefined> {
+async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
   const picked = await vscode.window.showQuickPick(
     [
       { label: "$(hubot) Codex", description: "Start a new Codex session", provider: "codex" as const },
@@ -132,6 +143,11 @@ async function pickNewSessionProvider(): Promise<AgentProvider | undefined> {
         label: "$(comment-discussion) Claude",
         description: "Start a new Claude session",
         provider: "claude" as const
+      },
+      {
+        label: "$(window) Codex App",
+        description: "Start a new Codex App session",
+        provider: "codexApp" as const
       }
     ],
     {
@@ -218,6 +234,15 @@ function openNewSession(
   }
 
   openNewSessionTerminal(provider, projectPath, context);
+}
+
+function openNewCodexAppSession(tree: SessionTreeProvider, node: unknown): void {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  openCodexAppProject(projectPath);
 }
 
 async function resolveOpenFolderSession(

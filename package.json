@@ -23,7 +23,8 @@
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.newCodexSession",
-    "onCommand:agentResume.newClaudeSession"
+    "onCommand:agentResume.newClaudeSession",
+    "onCommand:agentResume.newCodexAppSession"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -163,6 +164,11 @@
         "command": "agentResume.newClaudeSession",
         "title": "New Claude Session",
         "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newCodexAppSession",
+        "title": "New Codex App Session",
+        "category": "Agent Resume"
       }
     ],
     "viewsContainers": {
@@ -211,6 +217,10 @@
         },
         {
           "command": "agentResume.newClaudeSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
           "when": "false"
         }
       ],
@@ -276,6 +286,11 @@
           "command": "agentResume.newClaudeSession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@5"
         }
       ]
     }

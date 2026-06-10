@@ -9,8 +9,8 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 - Shows recent sessions and project groups in a VS Code side bar.
 - Shows project names in the recent session list, so mixed-project history is easier to scan.
 - Opens each resumed session in its own integrated terminal, shown in the editor area beside the current editor by default.
-- Starts a new Codex or Claude session in the current workspace from the Sessions title bar.
-- Starts new Codex or Claude sessions from a project group's right-click menu.
+- Starts a new Codex, Claude, or Codex App session in the current workspace from the Sessions title bar.
+- Starts new Codex, Claude, or Codex App sessions from a project group's right-click menu.
 - Opens sessions in Ghostty when you need Ghostty image workflows.
 - Resumes Codex sessions in Codex App from the session right-click menu.
 
@@ -31,6 +31,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
   - `Open in Ghostty`
   - `New Codex Session`
   - `New Claude Session`
+  - `New Codex App Session`
 
 ## Settings
 
