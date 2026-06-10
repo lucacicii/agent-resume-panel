@@ -84,7 +84,13 @@ async function showImageSupportHint(context?: vscode.ExtensionContext): Promise<
 }
 
 function providerLabel(provider: AgentSession["provider"]): string {
-  return provider === "codex" ? "Codex" : "Claude";
+  if (provider === "codex") {
+    return "Codex";
+  }
+  if (provider === "agy") {
+    return "agy";
+  }
+  return "Claude";
 }
 
 function truncate(value: string, maxLength: number): string {

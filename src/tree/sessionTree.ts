@@ -166,8 +166,8 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
   ]
     .filter(Boolean)
     .join("\n");
-  item.iconPath = new vscode.ThemeIcon(session.provider === "codex" ? "hubot" : "comment-discussion");
-  item.contextValue = session.provider === "codex" ? "agentResume.session.codex" : "agentResume.session.claude";
+  item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
+  item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
     command: "agentResume.openSession",
     title: "Resume Session",
@@ -207,7 +207,23 @@ function latest(sessions: AgentSession[]): number {
 }
 
 function providerLabel(provider: AgentSession["provider"]): string {
-  return provider === "codex" ? "codex" : "claude";
+  if (provider === "codex") {
+    return "codex";
+  }
+  if (provider === "agy") {
+    return "agy";
+  }
+  return "claude";
+}
+
+function providerIcon(provider: AgentSession["provider"]): string {
+  if (provider === "codex") {
+    return "hubot";
+  }
+  if (provider === "agy") {
+    return "sparkle";
+  }
+  return "comment-discussion";
 }
 
 function relativeTime(timestamp: number): string {
@@ -236,7 +252,7 @@ function relativeTime(timestamp: number): string {
 
 export function sessionQuickPickLabel(session: AgentSession): vscode.QuickPickItem & { session: AgentSession } {
   return {
-    label: `$(comment-discussion) ${session.title}`,
+    label: `$(${providerIcon(session.provider)}) ${session.title}`,
     description: providerLabel(session.provider),
     detail: `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`,
     session

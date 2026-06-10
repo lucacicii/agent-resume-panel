@@ -2,8 +2,8 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Unified VS Code resume panel for Codex and Claude Code sessions.",
-  "version": "1.0.0",
+  "description": "Unified VS Code resume panel for Codex, Claude Code, and Antigravity CLI sessions.",
+  "version": "1.1.0",
   "private": true,
   "author": "thunder-luc",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.newCodexSession",
     "onCommand:agentResume.newClaudeSession",
+    "onCommand:agentResume.newAgySession",
     "onCommand:agentResume.newCodexAppSession"
   ],
   "main": "./out/extension.js",
@@ -52,6 +53,11 @@
           "type": "string",
           "default": "~/.claude",
           "description": "Claude Code home directory containing history.jsonl and projects."
+        },
+        "agentResume.antigravityHome": {
+          "type": "string",
+          "default": "~/.gemini",
+          "description": "Antigravity data root. The extension scans antigravity-cli and antigravity subdirectories for sessions."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -166,6 +172,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.newAgySession",
+        "title": "New Antigravity Session",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.newCodexAppSession",
         "title": "New Codex App Session",
         "category": "Agent Resume"
@@ -217,6 +228,10 @@
         },
         {
           "command": "agentResume.newClaudeSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newAgySession",
           "when": "false"
         },
         {
@@ -288,9 +303,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "agentResume.newCodexAppSession",
+          "command": "agentResume.newAgySession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@6"
         }
       ]
     }

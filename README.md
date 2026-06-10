@@ -1,16 +1,17 @@
 # Agent Resume Panel
 
-Local VS Code extension for browsing and resuming Codex and Claude Code sessions from one sidebar.
+Local VS Code extension for browsing and resuming Codex, Claude Code, and Antigravity CLI sessions from one sidebar.
 
 ## Features
 
 - Reads Codex history from `~/.codex/state_*.sqlite`, with `session_index.jsonl` fallback.
 - Reads Claude Code history from `~/.claude/history.jsonl` and `~/.claude/projects/**/*.jsonl`.
+- Reads Antigravity CLI history from `~/.gemini/antigravity-cli/history.jsonl` and falls back to Antigravity conversation files under `~/.gemini/antigravity`.
 - Shows recent sessions and project groups in a VS Code side bar.
 - Shows project names in the recent session list, so mixed-project history is easier to scan.
 - Opens each resumed session in its own integrated terminal, shown in the editor area beside the current editor by default.
-- Starts a new Codex, Claude, or Codex App session in the current workspace from the Sessions title bar.
-- Starts new Codex, Claude, or Codex App sessions from a project group's right-click menu.
+- Starts a new Codex, Claude, Antigravity CLI, or Codex App session in the current workspace from the Sessions title bar.
+- Starts new Codex, Claude, Antigravity CLI, or Codex App sessions from a project group's right-click menu.
 - Opens sessions in Ghostty when you need Ghostty image workflows.
 - Resumes Codex sessions in Codex App from the session right-click menu.
 
@@ -18,7 +19,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 
 - Command Palette:
   - `Agent Resume: New Session`
-    - Choose `Codex`, `Claude`, or `Codex App`.
+    - Choose `Codex`, `Claude`, `Antigravity CLI`, or `Codex App`.
   - `Agent Resume: Search Sessions`
   - `Agent Resume: Refresh`
 - Session right-click menu:
@@ -32,6 +33,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
   - `Open in Ghostty`
   - `New Codex Session`
   - `New Claude Session`
+  - `New Antigravity Session`
   - `New Codex App Session`
 
 ## Codex App
@@ -43,6 +45,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 
 - `agentResume.codexHome`: defaults to `~/.codex`
 - `agentResume.claudeHome`: defaults to `~/.claude`
+- `agentResume.antigravityHome`: defaults to `~/.gemini`; scans `antigravity-cli` and `antigravity` subdirectories
 - `agentResume.maxItems`: defaults to `500`
 - `agentResume.terminalLocation`: defaults to `editorBeside`; set to `panel` for the bottom terminal panel
 - `agentResume.enableVsCodeTerminalImagesHint`: defaults to `true`
