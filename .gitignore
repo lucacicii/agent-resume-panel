@@ -1,0 +1,11 @@
+node_modules/
+
+# Build output
+out/
+dist/
+
+# Packaged VS Code extension artifacts
+*.vsix
+
+# Local VS Code extension test/cache output
+.vscode-test/

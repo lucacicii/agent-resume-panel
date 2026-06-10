@@ -1,0 +1,201 @@
+{
+  "name": "agent-resume-panel",
+  "displayName": "Agent Resume Panel",
+  "publisher": "thunder-luc",
+  "description": "Unified VS Code resume panel for Codex and Claude Code sessions.",
+  "version": "0.0.1",
+  "private": true,
+  "author": "thunder-luc",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:agentResume.sessions",
+    "onCommand:agentResume.refresh",
+    "onCommand:agentResume.search",
+    "onCommand:agentResume.openProject",
+    "onCommand:agentResume.openInGhostty"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "@types/vscode": "1.92.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.9.3"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Agent Resume Panel",
+      "properties": {
+        "agentResume.codexHome": {
+          "type": "string",
+          "default": "~/.codex",
+          "description": "Codex home directory containing state_*.sqlite, session_index.jsonl, and history.jsonl."
+        },
+        "agentResume.claudeHome": {
+          "type": "string",
+          "default": "~/.claude",
+          "description": "Claude Code home directory containing history.jsonl and projects."
+        },
+        "agentResume.maxItems": {
+          "type": "number",
+          "default": 500,
+          "minimum": 20,
+          "maximum": 5000,
+          "description": "Maximum number of sessions to load into the panel."
+        },
+        "agentResume.terminalMode": {
+          "type": "string",
+          "enum": [
+            "newPerSession"
+          ],
+          "default": "newPerSession",
+          "description": "Terminal launch behavior. The first version opens one terminal per resumed session."
+        },
+        "agentResume.terminalLocation": {
+          "type": "string",
+          "enum": [
+            "editorBeside",
+            "panel"
+          ],
+          "default": "editorBeside",
+          "description": "Where VS Code integrated resume terminals should open."
+        },
+        "agentResume.enableVsCodeTerminalImagesHint": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time hint about VS Code terminal image support and the Ghostty fallback."
+        },
+        "agentResume.ghosttyExecutable": {
+          "type": "string",
+          "default": "Ghostty",
+          "description": "Ghostty app name on macOS or ghostty CLI executable/path used by Open in Ghostty."
+        },
+        "agentResume.ghosttyLaunchMode": {
+          "type": "string",
+          "enum": [
+            "pasteCommand",
+            "copyCommand",
+            "executeCommand"
+          ],
+          "default": "pasteCommand",
+          "description": "How Open in Ghostty starts a session. pasteCommand opens Ghostty, pastes the copied resume command, and presses Enter without using Ghostty's execute-command path."
+        },
+        "agentResume.ghosttyAutoPasteDelayMs": {
+          "type": "number",
+          "default": 900,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
+        },
+        "agentResume.showArchivedCodex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived Codex threads."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "agentResume.refresh",
+        "title": "Agent Resume: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.search",
+        "title": "Agent Resume: Search Sessions",
+        "icon": "$(search)"
+      },
+      {
+        "command": "agentResume.openSession",
+        "title": "Agent Resume: Resume Session"
+      },
+      {
+        "command": "agentResume.copyResumeCommand",
+        "title": "Agent Resume: Copy Resume Command"
+      },
+      {
+        "command": "agentResume.openProject",
+        "title": "Agent Resume: Open Folder and Resume"
+      },
+      {
+        "command": "agentResume.openInGhostty",
+        "title": "Agent Resume: Open in Ghostty"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentResume",
+          "title": "Agent Resume",
+          "icon": "resources/agent-resume.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentResume": [
+        {
+          "id": "agentResume.sessions",
+          "name": "Sessions",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentResume.search",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.refresh",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agentResume.openSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.copyResumeCommand",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  }
+}
