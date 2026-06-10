@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Unified VS Code resume panel for Codex and Claude Code sessions.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "author": "thunder-luc",
   "license": "MIT",
@@ -18,6 +18,7 @@
     "onView:agentResume.sessions",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
+    "onCommand:agentResume.newSession",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.newCodexSession",
@@ -122,6 +123,12 @@
         "icon": "$(search)"
       },
       {
+        "command": "agentResume.newSession",
+        "title": "New Session",
+        "category": "Agent Resume",
+        "icon": "$(plus)"
+      },
+      {
         "command": "agentResume.openSession",
         "title": "Resume Session",
         "category": "Agent Resume"
@@ -171,7 +178,38 @@
       ]
     },
     "menus": {
+      "commandPalette": [
+        {
+          "command": "agentResume.openSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.copyResumeCommand",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "false"
+        }
+      ],
       "view/title": [
+        {
+          "command": "agentResume.newSession",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@0"
+        },
         {
           "command": "agentResume.search",
           "when": "view == agentResume.sessions",

@@ -7,17 +7,28 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 - Reads Codex history from `~/.codex/state_*.sqlite`, with `session_index.jsonl` fallback.
 - Reads Claude Code history from `~/.claude/history.jsonl` and `~/.claude/projects/**/*.jsonl`.
 - Shows recent sessions and project groups in a VS Code side bar.
+- Shows project names in the recent session list, so mixed-project history is easier to scan.
 - Opens each resumed session in its own integrated terminal, shown in the editor area beside the current editor by default.
+- Starts a new Codex or Claude session in the current workspace from the Sessions title bar.
+- Starts new Codex or Claude sessions from a project group's right-click menu.
 - Opens sessions in Ghostty when you need Ghostty image workflows.
 
 ## Commands
 
-- `Agent Resume: Refresh`
-- `Agent Resume: Search Sessions`
-- `Agent Resume: Resume Session`
-- `Agent Resume: Copy Resume Command`
-- `Agent Resume: Open Folder and Resume`
-- `Agent Resume: Open in Ghostty`
+- Command Palette:
+  - `Agent Resume: New Session`
+  - `Agent Resume: Search Sessions`
+  - `Agent Resume: Refresh`
+- Session right-click menu:
+  - `Resume Session`
+  - `Copy Resume Command`
+  - `Open Folder and Resume`
+  - `Open in Ghostty`
+- Project right-click menu:
+  - `Open Folder and Resume`
+  - `Open in Ghostty`
+  - `New Codex Session`
+  - `New Claude Session`
 
 ## Settings
 
@@ -49,6 +60,14 @@ Open this folder in VS Code and run the extension host launch target, or package
 ```sh
 npm run package
 ```
+
+For local install testing after extension changes:
+
+```sh
+npm run install:local
+```
+
+Reload VS Code after local install with `Developer: Reload Window`; the extension's own refresh command only reloads session data.
 
 ## License
 

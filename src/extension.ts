@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
-import { expandHome } from "./history/pathUtils";
+import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { openInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import { buildResumeCommand, openNewSessionTerminal, openResumeTerminal } from "./terminal/resumeTerminal";
@@ -17,6 +17,7 @@ export function activate(context: vscode.ExtensionContext): void {
     treeView,
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree)),
+    vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context)),
     vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
@@ -99,6 +100,65 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
   if (picked) {
     openResumeTerminal(picked.session, undefined);
   }
+}
+
+async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext): Promise<void> {
+  const provider = await pickNewSessionProvider();
+  if (!provider) {
+    return;
+  }
+
+  const projectPath = await pickWorkspaceProject();
+  if (!projectPath) {
+    return;
+  }
+
+  openNewSessionTerminal(provider, projectPath, context);
+}
+
+async function pickNewSessionProvider(): Promise<AgentProvider | undefined> {
+  const picked = await vscode.window.showQuickPick(
+    [
+      { label: "$(hubot) Codex", description: "Start a new Codex session", provider: "codex" as const },
+      {
+        label: "$(comment-discussion) Claude",
+        description: "Start a new Claude session",
+        provider: "claude" as const
+      }
+    ],
+    {
+      title: "New Session",
+      placeHolder: "Choose agent"
+    }
+  );
+
+  return picked?.provider;
+}
+
+async function pickWorkspaceProject(): Promise<string | undefined> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (!folders.length) {
+    vscode.window.showWarningMessage("Open a workspace folder before starting a new agent session.");
+    return undefined;
+  }
+
+  if (folders.length === 1) {
+    return folders[0].uri.fsPath;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    folders.map((folder) => ({
+      label: basenameOrPath(folder.uri.fsPath),
+      description: compactPath(folder.uri.fsPath),
+      projectPath: folder.uri.fsPath
+    })),
+    {
+      title: "New Session",
+      placeHolder: "Choose workspace folder"
+    }
+  );
+
+  return picked?.projectPath;
 }
 
 async function openSessionInGhostty(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {

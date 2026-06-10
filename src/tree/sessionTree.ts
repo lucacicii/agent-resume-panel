@@ -31,6 +31,7 @@ interface ProjectNode {
 export interface SessionNode {
   kind: "session";
   session: AgentSession;
+  showProjectName?: boolean;
 }
 
 export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
@@ -102,7 +103,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         return item;
       }
       case "session":
-        return sessionItem(element.session);
+        return sessionItem(element.session, element.showProjectName);
     }
   }
 
@@ -121,7 +122,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "recentRoot") {
-      return this.sessions.slice(0, 50).map((session) => ({ kind: "session", session }));
+      return this.sessions.slice(0, 50).map((session) => ({ kind: "session", session, showProjectName: true }));
     }
 
     if (element.kind === "projectsRoot") {
@@ -151,8 +152,8 @@ function rootItem(label: string, icon: string, description?: string): vscode.Tre
   return item;
 }
 
-function sessionItem(session: AgentSession): vscode.TreeItem {
-  const item = new vscode.TreeItem(session.title, vscode.TreeItemCollapsibleState.None);
+function sessionItem(session: AgentSession, showProjectName = false): vscode.TreeItem {
+  const item = new vscode.TreeItem(sessionLabel(session, showProjectName), vscode.TreeItemCollapsibleState.None);
   item.description = `${providerLabel(session.provider)} · ${relativeTime(session.updatedAt)}`;
   item.tooltip = [
     session.title,
@@ -173,6 +174,14 @@ function sessionItem(session: AgentSession): vscode.TreeItem {
     arguments: [{ kind: "session", session } satisfies SessionNode]
   };
   return item;
+}
+
+function sessionLabel(session: AgentSession, showProjectName: boolean): string {
+  if (!showProjectName) {
+    return session.title;
+  }
+
+  return `${basenameOrPath(session.projectPath)} · ${session.title}`;
 }
 
 function groupByProject(sessions: AgentSession[]): ProjectNode[] {
