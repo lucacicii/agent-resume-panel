@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { AgentSession } from "../history";
-import { buildResumeCommand } from "./commandBuilder";
+import { AgentProvider, AgentSession } from "../history";
+import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
 
-export { buildResumeCommand };
+export { buildNewSessionCommand, buildResumeCommand };
 
 export function openResumeTerminal(session: AgentSession, context?: vscode.ExtensionContext): void {
   void showImageSupportHint(context);
@@ -16,6 +16,20 @@ export function openResumeTerminal(session: AgentSession, context?: vscode.Exten
 
   terminal.show();
   terminal.sendText(buildResumeCommand(session), true);
+}
+
+export function openNewSessionTerminal(provider: AgentProvider, projectPath: string, context?: vscode.ExtensionContext): void {
+  void showImageSupportHint(context);
+
+  const terminal = vscode.window.createTerminal({
+    name: `${providerLabel(provider)}: New Session`,
+    cwd: projectPath || undefined,
+    location: terminalLocation(),
+    isTransient: false
+  });
+
+  terminal.show();
+  terminal.sendText(buildNewSessionCommand(provider, projectPath), true);
 }
 
 function terminalLocation(): vscode.TerminalOptions["location"] {

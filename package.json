@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Unified VS Code resume panel for Codex and Claude Code sessions.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "author": "thunder-luc",
   "license": "MIT",
@@ -18,14 +18,19 @@
     "onView:agentResume.sessions",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
+    "onCommand:agentResume.filterSessions",
+    "onCommand:agentResume.clearSessionFilters",
     "onCommand:agentResume.openProject",
-    "onCommand:agentResume.openInGhostty"
+    "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.newCodexSession",
+    "onCommand:agentResume.newClaudeSession"
   ],
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && vsce package --no-dependencies"
+    "package": "npm run compile && vsce package --no-dependencies",
+    "install:local": "npm run package && node scripts/install-local.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
@@ -117,6 +122,16 @@
         "icon": "$(search)"
       },
       {
+        "command": "agentResume.filterSessions",
+        "title": "Agent Resume: Filter Sessions",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentResume.clearSessionFilters",
+        "title": "Agent Resume: Clear Session Filters",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "agentResume.openSession",
         "title": "Agent Resume: Resume Session"
       },
@@ -131,6 +146,14 @@
       {
         "command": "agentResume.openInGhostty",
         "title": "Agent Resume: Open in Ghostty"
+      },
+      {
+        "command": "agentResume.newCodexSession",
+        "title": "Agent Resume: New Codex Session"
+      },
+      {
+        "command": "agentResume.newClaudeSession",
+        "title": "Agent Resume: New Claude Session"
       }
     ],
     "viewsContainers": {
@@ -159,9 +182,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.refresh",
+          "command": "agentResume.filterSessions",
           "when": "view == agentResume.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.clearSessionFilters",
+          "when": "view == agentResume.sessions && agentResume.hasSessionFilters",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.refresh",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -194,6 +227,16 @@
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@4"
         }
       ]
     }

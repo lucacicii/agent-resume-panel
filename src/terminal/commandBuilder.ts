@@ -1,4 +1,4 @@
-import { AgentSession } from "../history";
+import { AgentProvider, AgentSession } from "../history";
 
 export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "codex") {
@@ -6,6 +6,14 @@ export function buildResumeCommand(session: AgentSession): string {
   }
 
   return `claude --resume ${shellQuote(session.id)}`;
+}
+
+export function buildNewSessionCommand(provider: AgentProvider, projectPath: string): string {
+  if (provider === "codex") {
+    return `codex --cd ${shellQuote(projectPath)}`;
+  }
+
+  return "claude";
 }
 
 function shellQuote(value: string): string {
