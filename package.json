@@ -18,8 +18,6 @@
     "onView:agentResume.sessions",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
-    "onCommand:agentResume.filterSessions",
-    "onCommand:agentResume.clearSessionFilters",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.newCodexSession",
@@ -113,47 +111,45 @@
     "commands": [
       {
         "command": "agentResume.refresh",
-        "title": "Agent Resume: Refresh",
+        "title": "Refresh",
+        "category": "Agent Resume",
         "icon": "$(refresh)"
       },
       {
         "command": "agentResume.search",
-        "title": "Agent Resume: Search Sessions",
+        "title": "Search Sessions",
+        "category": "Agent Resume",
         "icon": "$(search)"
       },
       {
-        "command": "agentResume.filterSessions",
-        "title": "Agent Resume: Filter Sessions",
-        "icon": "$(filter)"
-      },
-      {
-        "command": "agentResume.clearSessionFilters",
-        "title": "Agent Resume: Clear Session Filters",
-        "icon": "$(clear-all)"
-      },
-      {
         "command": "agentResume.openSession",
-        "title": "Agent Resume: Resume Session"
+        "title": "Resume Session",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.copyResumeCommand",
-        "title": "Agent Resume: Copy Resume Command"
+        "title": "Copy Resume Command",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.openProject",
-        "title": "Agent Resume: Open Folder and Resume"
+        "title": "Open Folder and Resume",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.openInGhostty",
-        "title": "Agent Resume: Open in Ghostty"
+        "title": "Open in Ghostty",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.newCodexSession",
-        "title": "Agent Resume: New Codex Session"
+        "title": "New Codex Session",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.newClaudeSession",
-        "title": "Agent Resume: New Claude Session"
+        "title": "New Claude Session",
+        "category": "Agent Resume"
       }
     ],
     "viewsContainers": {
@@ -182,19 +178,9 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.filterSessions",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@2"
-        },
-        {
-          "command": "agentResume.clearSessionFilters",
-          "when": "view == agentResume.sessions && agentResume.hasSessionFilters",
-          "group": "navigation@3"
-        },
-        {
           "command": "agentResume.refresh",
           "when": "view == agentResume.sessions",
-          "group": "navigation@4"
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

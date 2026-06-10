@@ -2,22 +2,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 
-type RootNode = ActionNode | RecentRootNode | ProjectsRootNode | WarningNode | EmptyNode;
+type RootNode = RecentRootNode | ProjectsRootNode | WarningNode | EmptyNode;
 type TreeNode = RootNode | ProjectNode | SessionNode;
-export type ProviderFilter = "all" | "codex" | "claude";
-export type TimeFilter = "all" | "today" | "7d" | "30d" | "90d";
-
-export interface SessionFilters {
-  provider: ProviderFilter;
-  time: TimeFilter;
-  projectPath?: string;
-  text: string;
-}
-
-interface ActionNode {
-  kind: "action";
-  action: "filter" | "clearFilters";
-}
 
 interface RecentRootNode {
   kind: "recentRoot";
@@ -34,7 +20,6 @@ interface WarningNode {
 
 interface EmptyNode {
   kind: "empty";
-  filtered: boolean;
 }
 
 interface ProjectNode {
@@ -54,29 +39,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private sessions: AgentSession[] = [];
   private warnings: string[] = [];
-  private filters: SessionFilters = defaultFilters();
 
   setData(sessions: AgentSession[], warnings: string[]): void {
     this.sessions = sessions;
     this.warnings = warnings;
     this.onDidChangeTreeDataEmitter.fire();
-  }
-
-  setFilters(filters: SessionFilters): void {
-    this.filters = normalizeFilters(filters);
-    this.onDidChangeTreeDataEmitter.fire();
-  }
-
-  clearFilters(): void {
-    this.setFilters(defaultFilters());
-  }
-
-  getFilters(): SessionFilters {
-    return { ...this.filters };
-  }
-
-  hasActiveFilters(): boolean {
-    return hasActiveFilters(this.filters);
   }
 
   getSessionFromNode(node: unknown): AgentSession | undefined {
@@ -108,30 +75,19 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   getTreeItem(element: TreeNode): vscode.TreeItem {
     switch (element.kind) {
-      case "action":
-        return actionItem(element.action, this.filterSummaryLabel());
       case "recentRoot":
-        return rootItem("Recent Sessions", "clock", this.filteredDescription());
+        return rootItem("Recent Sessions", "clock");
       case "projectsRoot":
-        return rootItem("Projects", "folder-library", this.filteredDescription());
+        return rootItem("Projects", "folder-library");
       case "warning": {
         const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
         item.iconPath = new vscode.ThemeIcon("warning");
         return item;
       }
       case "empty": {
-        const item = new vscode.TreeItem(
-          element.filtered ? "No sessions match filters" : "No sessions found",
-          vscode.TreeItemCollapsibleState.None
-        );
-        item.description = element.filtered ? "Clear filters" : "Check settings";
+        const item = new vscode.TreeItem("No sessions found", vscode.TreeItemCollapsibleState.None);
+        item.description = "Check settings";
         item.iconPath = new vscode.ThemeIcon("info");
-        if (element.filtered) {
-          item.command = {
-            command: "agentResume.clearSessionFilters",
-            title: "Clear Session Filters"
-          };
-        }
         return item;
       }
       case "project": {
@@ -151,19 +107,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
-    const filteredSessions = this.getFilteredSessions();
-
     if (!element) {
       const roots: TreeNode[] = [];
       if (this.warnings.length) {
         roots.push(...this.warnings.map((message) => ({ kind: "warning" as const, message })));
       }
-      roots.push({ kind: "action", action: "filter" });
-      if (this.hasActiveFilters()) {
-        roots.push({ kind: "action", action: "clearFilters" });
-      }
-      if (!this.sessions.length || !filteredSessions.length) {
-        roots.push({ kind: "empty", filtered: this.sessions.length > 0 });
+      if (!this.sessions.length) {
+        roots.push({ kind: "empty" });
         return roots;
       }
       roots.push({ kind: "recentRoot" }, { kind: "projectsRoot" });
@@ -171,11 +121,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "recentRoot") {
-      return filteredSessions.slice(0, 50).map((session) => ({ kind: "session", session }));
+      return this.sessions.slice(0, 50).map((session) => ({ kind: "session", session }));
     }
 
     if (element.kind === "projectsRoot") {
-      return groupByProject(filteredSessions);
+      return groupByProject(this.sessions);
     }
 
     if (element.kind === "project") {
@@ -192,53 +142,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   getSessions(): AgentSession[] {
     return this.sessions;
   }
-
-  getFilteredSessions(): AgentSession[] {
-    return filterSessions(this.sessions, this.filters);
-  }
-
-  getProjects(): string[] {
-    return groupByProject(this.sessions).map((project) => project.projectPath);
-  }
-
-  private filteredDescription(): string | undefined {
-    if (!this.hasActiveFilters()) {
-      return undefined;
-    }
-
-    return `${this.getFilteredSessions().length}/${this.sessions.length}`;
-  }
-
-  private filterSummaryLabel(): string {
-    if (!this.hasActiveFilters()) {
-      return "All sessions";
-    }
-
-    return `${filterSummary(this.filters)} · ${this.getFilteredSessions().length}/${this.sessions.length}`;
-  }
-}
-
-function actionItem(action: ActionNode["action"], description: string): vscode.TreeItem {
-  if (action === "filter") {
-    const item = new vscode.TreeItem("Filter Sessions", vscode.TreeItemCollapsibleState.None);
-    item.description = description;
-    item.iconPath = new vscode.ThemeIcon("filter");
-    item.contextValue = "agentResume.action";
-    item.command = {
-      command: "agentResume.filterSessions",
-      title: "Filter Sessions"
-    };
-    return item;
-  }
-
-  const item = new vscode.TreeItem("Clear Session Filters", vscode.TreeItemCollapsibleState.None);
-  item.iconPath = new vscode.ThemeIcon("clear-all");
-  item.contextValue = "agentResume.action";
-  item.command = {
-    command: "agentResume.clearSessionFilters",
-    title: "Clear Session Filters"
-  };
-  return item;
 }
 
 function rootItem(label: string, icon: string, description?: string): vscode.TreeItem {
@@ -331,32 +234,6 @@ export function sessionQuickPickLabel(session: AgentSession): vscode.QuickPickIt
   };
 }
 
-export function defaultFilters(): SessionFilters {
-  return {
-    provider: "all",
-    time: "all",
-    text: ""
-  };
-}
-
-export function filterSummary(filters: SessionFilters): string {
-  const parts: string[] = [];
-  if (filters.provider !== "all") {
-    parts.push(providerLabel(filters.provider));
-  }
-  if (filters.time !== "all") {
-    parts.push(timeLabel(filters.time));
-  }
-  if (filters.projectPath) {
-    parts.push(compactPath(filters.projectPath));
-  }
-  if (filters.text.trim()) {
-    parts.push(`"${filters.text.trim()}"`);
-  }
-
-  return parts.length ? parts.join(" · ") : "All sessions";
-}
-
 export function projectUri(projectPath: string): vscode.Uri {
   return vscode.Uri.file(path.resolve(projectPath));
 }
@@ -367,79 +244,4 @@ function isSessionNode(node: unknown): node is SessionNode {
 
 function isProjectNode(node: unknown): node is ProjectNode {
   return Boolean(node && typeof node === "object" && "kind" in node && node.kind === "project");
-}
-
-function filterSessions(sessions: AgentSession[], filters: SessionFilters): AgentSession[] {
-  const normalizedText = filters.text.trim().toLowerCase();
-  const minTimestamp = minTimestampFor(filters.time);
-
-  return sessions.filter((session) => {
-    if (filters.provider !== "all" && session.provider !== filters.provider) {
-      return false;
-    }
-    if (filters.projectPath && session.projectPath !== filters.projectPath) {
-      return false;
-    }
-    if (minTimestamp && session.updatedAt < minTimestamp) {
-      return false;
-    }
-    if (normalizedText && !sessionMatchesText(session, normalizedText)) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-function sessionMatchesText(session: AgentSession, text: string): boolean {
-  return [session.title, session.projectPath, session.branch, session.id]
-    .filter(Boolean)
-    .some((value) => value?.toLowerCase().includes(text));
-}
-
-function minTimestampFor(time: TimeFilter): number | undefined {
-  if (time === "all") {
-    return undefined;
-  }
-  if (time === "today") {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return start.getTime();
-  }
-
-  const days = Number(time.replace("d", ""));
-  return Date.now() - days * 24 * 60 * 60 * 1000;
-}
-
-function normalizeFilters(filters: SessionFilters): SessionFilters {
-  return {
-    provider: filters.provider,
-    time: filters.time,
-    projectPath: filters.projectPath || undefined,
-    text: filters.text.trim()
-  };
-}
-
-function hasActiveFilters(filters: SessionFilters): boolean {
-  return (
-    filters.provider !== "all" ||
-    filters.time !== "all" ||
-    Boolean(filters.projectPath) ||
-    Boolean(filters.text.trim())
-  );
-}
-
-function timeLabel(time: TimeFilter): string {
-  switch (time) {
-    case "today":
-      return "today";
-    case "7d":
-      return "7d";
-    case "30d":
-      return "30d";
-    case "90d":
-      return "90d";
-    case "all":
-      return "all";
-  }
 }
