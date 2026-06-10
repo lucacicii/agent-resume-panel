@@ -18,6 +18,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 
 - Command Palette:
   - `Agent Resume: New Session`
+    - Choose `Codex`, `Claude`, or `Codex App`.
   - `Agent Resume: Search Sessions`
   - `Agent Resume: Refresh`
 - Session right-click menu:
@@ -32,6 +33,11 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
   - `New Codex Session`
   - `New Claude Session`
   - `New Codex App Session`
+
+## Codex App
+
+- `New Codex App Session` opens the selected project with `codex app <projectPath>`.
+- `Resume in Codex App` is shown only for Codex sessions. It first resumes the session in a VS Code terminal, then sends `/app` to hand the active session to Codex App.
 
 ## Settings
 
