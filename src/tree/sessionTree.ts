@@ -167,7 +167,7 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
     .filter(Boolean)
     .join("\n");
   item.iconPath = new vscode.ThemeIcon(session.provider === "codex" ? "hubot" : "comment-discussion");
-  item.contextValue = "agentResume.session";
+  item.contextValue = session.provider === "codex" ? "agentResume.session.codex" : "agentResume.session.claude";
   item.command = {
     command: "agentResume.openSession",
     title: "Resume Session",

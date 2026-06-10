@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Unified VS Code resume panel for Codex and Claude Code sessions.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "author": "thunder-luc",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.newCodexSession",
     "onCommand:agentResume.newClaudeSession"
   ],
@@ -149,6 +150,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.openInCodexApp",
+        "title": "Resume in Codex App",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.newCodexSession",
         "title": "New Codex Session",
         "category": "Agent Resume"
@@ -196,6 +202,10 @@
           "when": "false"
         },
         {
+          "command": "agentResume.openInCodexApp",
+          "when": "false"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "false"
         },
@@ -224,23 +234,28 @@
       "view/item/context": [
         {
           "command": "agentResume.openSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "inline@1"
         },
         {
           "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openInCodexApp",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session.codex",
+          "group": "navigation@4"
         },
         {
           "command": "agentResume.openProject",

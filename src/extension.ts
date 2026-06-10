@@ -3,7 +3,12 @@ import { loadAllSessions, AgentProvider, AgentSession } from "./history";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { openInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
-import { buildResumeCommand, openNewSessionTerminal, openResumeTerminal } from "./terminal/resumeTerminal";
+import {
+  buildResumeCommand,
+  openCodexAppResumeTerminal,
+  openNewSessionTerminal,
+  openResumeTerminal
+} from "./terminal/resumeTerminal";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -37,6 +42,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.openInGhostty", (nodeOrSession?: unknown) =>
       openSessionInGhostty(tree, nodeOrSession)
+    ),
+    vscode.commands.registerCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
+      openSessionInCodexApp(tree, nodeOrSession)
     ),
     vscode.commands.registerCommand("agentResume.newCodexSession", (node?: unknown) =>
       openNewSession(tree, node, "codex", context)
@@ -168,6 +176,20 @@ async function openSessionInGhostty(tree: SessionTreeProvider, nodeOrSession: un
   }
 
   await openInGhostty(session);
+}
+
+function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown): void {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  if (session.provider !== "codex") {
+    vscode.window.showWarningMessage("Open in Codex App is only available for Codex sessions.");
+    return;
+  }
+
+  openCodexAppResumeTerminal(session);
 }
 
 async function openFolderAndResume(

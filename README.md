@@ -12,6 +12,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
 - Starts a new Codex or Claude session in the current workspace from the Sessions title bar.
 - Starts new Codex or Claude sessions from a project group's right-click menu.
 - Opens sessions in Ghostty when you need Ghostty image workflows.
+- Resumes Codex sessions in Codex App from the session right-click menu.
 
 ## Commands
 
@@ -24,6 +25,7 @@ Local VS Code extension for browsing and resuming Codex and Claude Code sessions
   - `Copy Resume Command`
   - `Open Folder and Resume`
   - `Open in Ghostty`
+  - `Resume in Codex App` for Codex sessions
 - Project right-click menu:
   - `Open Folder and Resume`
   - `Open in Ghostty`
