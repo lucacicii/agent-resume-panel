@@ -1,85 +1,128 @@
 # Agent Resume Panel
 
-Local VS Code extension for browsing and resuming Codex, Claude Code, and Antigravity CLI sessions from one sidebar.
+Languages: [简体中文](#简体中文) | [English](#english)
 
-## Features
+## 简体中文
 
-- Reads Codex history from `~/.codex/state_*.sqlite`, with `session_index.jsonl` fallback.
-- Reads Claude Code history from `~/.claude/history.jsonl` and `~/.claude/projects/**/*.jsonl`.
-- Reads Antigravity CLI history from `~/.gemini/antigravity-cli/history.jsonl` and falls back to Antigravity conversation files under `~/.gemini/antigravity`.
-- Shows recent sessions and project groups in a VS Code side bar.
-- Shows project names in the recent session list, so mixed-project history is easier to scan.
-- Opens each resumed session in its own integrated terminal, shown in the editor area beside the current editor by default.
-- Starts a new Codex, Claude, Antigravity CLI, or Codex App session in the current workspace from the Sessions title bar.
-- Starts new Codex, Claude, Antigravity CLI, or Codex App sessions from a project group's right-click menu.
-- Opens sessions in Ghostty when you need Ghostty image workflows.
-- Resumes Codex sessions in Codex App from the session right-click menu.
+Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢复 Codex、Claude Code、Antigravity CLI 的历史会话。
 
-## Commands
+适合这些场景：
 
-- Command Palette:
-  - `Agent Resume: New Session`
-    - Choose `Codex`, `Claude`, `Antigravity CLI`, or `Codex App`.
-  - `Agent Resume: Search Sessions`
-  - `Agent Resume: Refresh`
-- Session right-click menu:
-  - `Resume Session`
-  - `Copy Resume Command`
-  - `Open Folder and Resume`
-  - `Open in Ghostty`
-  - `Resume in Codex App` for Codex sessions
-- Project right-click menu:
-  - `Open Folder and Resume`
-  - `Open in Ghostty`
-  - `New Codex Session`
-  - `New Claude Session`
-  - `New Antigravity Session`
-  - `New Codex App Session`
+- 快速回到最近一次 AI 编程会话。
+- 同时使用多个 CLI Agent，并希望统一管理。
+- 按项目查看历史会话，并直接在对应项目里继续工作。
+- 需要用 Ghostty 或 Codex App 接着打开已有会话。
 
-## Codex App
+### 快速开始
 
-- `New Codex App Session` opens the selected project with `codex app <projectPath>`.
-- `Resume in Codex App` is shown only for Codex sessions. It first resumes the session in a VS Code terminal, then sends `/app` to hand the active session to Codex App.
+1. 在 VS Code 左侧活动栏打开 **Agent Resume**。
+2. 在 **Sessions** 视图里浏览最近会话或项目分组。
+3. 点击某个会话即可在 VS Code 终端中恢复。
+4. 如果列表没有更新，点击刷新按钮，或运行 **Agent Resume: Refresh**。
 
-## Settings
+默认情况下，恢复的会话会在当前编辑器旁边打开一个新的集成终端，方便一边看代码一边继续对话。
 
-- `agentResume.codexHome`: defaults to `~/.codex`
-- `agentResume.claudeHome`: defaults to `~/.claude`
-- `agentResume.antigravityHome`: defaults to `~/.gemini`; scans `antigravity-cli` and `antigravity` subdirectories
-- `agentResume.maxItems`: defaults to `500`
-- `agentResume.terminalLocation`: defaults to `editorBeside`; set to `panel` for the bottom terminal panel
-- `agentResume.enableVsCodeTerminalImagesHint`: defaults to `true`
-- `agentResume.ghosttyExecutable`: defaults to `Ghostty`
-- `agentResume.ghosttyLaunchMode`: defaults to `pasteCommand`; set to `copyCommand` for manual paste, or `executeCommand` if you accept Ghostty's macOS execution confirmation
-- `agentResume.ghosttyAutoPasteDelayMs`: defaults to `900`
-- `agentResume.showArchivedCodex`: defaults to `false`
+### 常用操作
 
-## Images
+在 **Sessions** 列表中点击会话，或右键会话选择：
 
-VS Code's integrated terminal can render Sixel and iTerm inline images when `terminal.integrated.enableImages` is enabled, but it is not a full replacement for Ghostty's image workflow. Use `Agent Resume: Open in Ghostty` for sessions where you need Ghostty-specific image upload or display behavior.
+- **Resume Session**：在 VS Code 终端恢复会话。
+- **Copy Resume Command**：复制恢复命令。
+- **Open Folder and Resume**：打开会话所属项目，并在新窗口中恢复。
+- **Open in Ghostty**：用 Ghostty 打开并恢复会话。
+- **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 
-On macOS, Ghostty shows a security confirmation when another app asks it to execute `/bin/zsh` directly. To avoid that dialog, the default `Open in Ghostty` behavior opens Ghostty in the project folder, copies the resume command to your clipboard, pastes it into Ghostty, and presses Enter. This uses macOS automation, so the first run may require granting Accessibility or Automation permission. Set `agentResume.ghosttyLaunchMode` to `copyCommand` for manual paste or `executeCommand` if you prefer Ghostty's direct execution path.
+项目分组支持右键操作：
 
-## Development
+- **Open Folder and Resume**：选择该项目下的历史会话并恢复。
+- **Open in Ghostty**：选择会话后在 Ghostty 中恢复。
+- **New Codex Session**、**New Claude Session**、**New Antigravity Session**：在该项目中新建对应 Agent 会话。
+- **New Codex App Session**：用 Codex App 打开该项目。
 
-```sh
-npm install
-npm run compile
-```
+### 新建和搜索
 
-Open this folder in VS Code and run the extension host launch target, or package it with:
+在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI 或 Codex App 会话。
 
-```sh
-npm run package
-```
+运行 **Agent Resume: Search Sessions**，可以从所有已加载会话中快速搜索并恢复。
 
-For local install testing after extension changes:
+### Ghostty
 
-```sh
-npm run install:local
-```
+当你需要 Ghostty 的图片上传、图片显示或其他终端能力时，可以使用 **Open in Ghostty**。
 
-Reload VS Code after local install with `Developer: Reload Window`; the extension's own refresh command only reloads session data.
+macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code 自动化或辅助功能权限。默认行为是打开 Ghostty、复制恢复命令、自动粘贴并回车。如果你更喜欢手动操作，可以把 `agentResume.ghosttyLaunchMode` 设置为 `copyCommand`。
+
+### 常用设置
+
+在 VS Code Settings 中搜索 `Agent Resume` 可以调整：
+
+- `agentResume.maxItems`：列表最多加载多少条会话。
+- `agentResume.terminalLocation`：终端打开在编辑器旁边还是底部面板。
+- `agentResume.showArchivedCodex`：是否显示已归档的 Codex 会话。
+- `agentResume.ghosttyLaunchMode`：Ghostty 打开会话时的命令处理方式。
+- `agentResume.ghosttyExecutable`：Ghostty 应用名或可执行文件路径。
+
+如果你的 Codex、Claude Code 或 Antigravity 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
+
+## English
+
+Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, and Antigravity CLI sessions in one place.
+
+Best for:
+
+- Jumping back into a recent AI coding session.
+- Managing sessions from multiple CLI agents in one list.
+- Browsing sessions by project and continuing in the right workspace.
+- Continuing an existing session in Ghostty or Codex App when needed.
+
+### Quick Start
+
+1. Open **Agent Resume** from the VS Code Activity Bar.
+2. Browse recent sessions or project groups in the **Sessions** view.
+3. Click a session to resume it in a VS Code terminal.
+4. If the list is stale, click refresh or run **Agent Resume: Refresh**.
+
+By default, resumed sessions open in a new integrated terminal beside the current editor, so you can keep code and conversation side by side.
+
+### Common Actions
+
+Click a session in **Sessions**, or right-click it and choose:
+
+- **Resume Session**: Resume in a VS Code terminal.
+- **Copy Resume Command**: Copy the resume command.
+- **Open Folder and Resume**: Open the session's project and resume in a new window.
+- **Open in Ghostty**: Open and resume in Ghostty.
+- **Resume in Codex App**: Continue a Codex session in Codex App.
+
+Project groups support these right-click actions:
+
+- **Open Folder and Resume**: Pick a session from the project and resume it.
+- **Open in Ghostty**: Pick a session and resume it in Ghostty.
+- **New Codex Session**, **New Claude Session**, **New Antigravity Session**: Start a new agent session in that project.
+- **New Codex App Session**: Open the project with Codex App.
+
+### New and Search
+
+Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, or Codex App session from the current VS Code workspace.
+
+Run **Agent Resume: Search Sessions** to quickly find and resume any loaded session.
+
+### Ghostty
+
+Use **Open in Ghostty** when you need Ghostty-specific image upload, image display, or terminal behavior.
+
+On macOS, the first automatic paste may require granting VS Code Automation or Accessibility permission. By default, the extension opens Ghostty, copies the resume command, pastes it, and presses Enter. If you prefer manual control, set `agentResume.ghosttyLaunchMode` to `copyCommand`.
+
+### Settings
+
+Search `Agent Resume` in VS Code Settings to adjust:
+
+- `agentResume.maxItems`: Maximum number of sessions to load.
+- `agentResume.terminalLocation`: Open terminals beside the editor or in the bottom panel.
+- `agentResume.showArchivedCodex`: Show or hide archived Codex sessions.
+- `agentResume.ghosttyLaunchMode`: How Ghostty receives the resume command.
+- `agentResume.ghosttyExecutable`: Ghostty app name or executable path.
+
+If your Codex, Claude Code, or Antigravity data directory is not in the default location, adjust the matching home path in Settings.
 
 ## License
 
