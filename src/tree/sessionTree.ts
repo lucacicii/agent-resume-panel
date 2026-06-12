@@ -3,7 +3,10 @@ import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 
 type RootNode = RecentRootNode | ProjectsRootNode | WarningNode | EmptyNode;
-type TreeNode = RootNode | ProjectNode | SessionNode;
+type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
+
+const recentInitialLimit = 10;
+const recentLimitStep = 10;
 
 interface RecentRootNode {
   kind: "recentRoot";
@@ -20,6 +23,11 @@ interface WarningNode {
 
 interface EmptyNode {
   kind: "empty";
+}
+
+interface ShowMoreRecentNode {
+  kind: "showMoreRecent";
+  remaining: number;
 }
 
 interface ProjectNode {
@@ -40,10 +48,12 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private sessions: AgentSession[] = [];
   private warnings: string[] = [];
+  private recentVisibleCount = recentInitialLimit;
 
   setData(sessions: AgentSession[], warnings: string[]): void {
     this.sessions = sessions;
     this.warnings = warnings;
+    this.recentVisibleCount = recentInitialLimit;
     this.onDidChangeTreeDataEmitter.fire();
   }
 
@@ -104,6 +114,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       }
       case "session":
         return sessionItem(element.session, element.showProjectName);
+      case "showMoreRecent":
+        return showMoreRecentItem(element.remaining);
     }
   }
 
@@ -122,7 +134,14 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "recentRoot") {
-      return this.sessions.slice(0, 50).map((session) => ({ kind: "session", session, showProjectName: true }));
+      const visibleSessions: TreeNode[] = this.sessions
+        .slice(0, this.recentVisibleCount)
+        .map((session) => ({ kind: "session" as const, session, showProjectName: true }));
+      const remaining = Math.max(0, this.sessions.length - visibleSessions.length);
+      if (remaining > 0) {
+        visibleSessions.push({ kind: "showMoreRecent", remaining });
+      }
+      return visibleSessions;
     }
 
     if (element.kind === "projectsRoot") {
@@ -137,6 +156,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 
   refresh(): void {
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  showMoreRecent(): void {
+    this.recentVisibleCount = Math.min(this.sessions.length, this.recentVisibleCount + recentLimitStep);
     this.onDidChangeTreeDataEmitter.fire();
   }
 
@@ -172,6 +196,18 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
     command: "agentResume.openSession",
     title: "Resume Session",
     arguments: [{ kind: "session", session } satisfies SessionNode]
+  };
+  return item;
+}
+
+function showMoreRecentItem(remaining: number): vscode.TreeItem {
+  const item = new vscode.TreeItem("Show More", vscode.TreeItemCollapsibleState.None);
+  item.description = `${remaining} remaining`;
+  item.tooltip = "Show 10 more recent sessions";
+  item.iconPath = new vscode.ThemeIcon("add");
+  item.command = {
+    command: "agentResume.showMoreRecent",
+    title: "Show More Recent Sessions"
   };
   return item;
 }

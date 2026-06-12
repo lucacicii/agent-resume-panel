@@ -3,6 +3,17 @@ import * as vscode from "vscode";
 import { AgentSession } from "../history";
 import { buildResumeCommand } from "./commandBuilder";
 
+export async function openProjectInGhostty(projectPath: string): Promise<void> {
+  const config = vscode.workspace.getConfiguration("agentResume");
+  const ghosttyExecutable = config.get<string>("ghosttyExecutable", "Ghostty");
+
+  try {
+    await launchGhosttyShell(ghosttyExecutable, projectPath);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to open Ghostty: ${formatError(error)}`);
+  }
+}
+
 export async function openInGhostty(session: AgentSession): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");
   const ghosttyExecutable = config.get<string>("ghosttyExecutable", "Ghostty");

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { openCodexAppProject } from "./terminal/codexApp";
-import { openInGhostty } from "./terminal/ghosttyTerminal";
+import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import {
   buildResumeCommand,
@@ -12,7 +12,7 @@ import {
 } from "./terminal/resumeTerminal";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
-type NewSessionTarget = AgentProvider | "codexApp";
+type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
@@ -25,6 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
     treeView,
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree)),
+    vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context)),
     vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
@@ -137,6 +138,11 @@ async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext): P
     return;
   }
 
+  if (target === "ghostty") {
+    await openProjectInGhostty(projectPath);
+    return;
+  }
+
   openNewSessionTerminal(target, projectPath, context);
 }
 
@@ -158,6 +164,11 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         label: "$(window) Codex App",
         description: "Start a new Codex App session",
         provider: "codexApp" as const
+      },
+      {
+        label: "$(terminal) Ghostty",
+        description: "Open this workspace in Ghostty",
+        provider: "ghostty" as const
       }
     ],
     {
