@@ -7,6 +7,7 @@ type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
 
 const recentInitialLimit = 10;
 const recentLimitStep = 10;
+const MESSAGE_COUNT_THRESHOLD = 10;
 
 interface RecentRootNode {
   kind: "recentRoot";
@@ -180,7 +181,7 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
   const item = new vscode.TreeItem(sessionLabel(session, showProjectName), vscode.TreeItemCollapsibleState.None);
   item.description = `${providerLabel(session.provider)} · ${relativeTime(session.updatedAt)}`;
   item.tooltip = [
-    session.title,
+    formatTitleWithMessageCount(session),
     `Provider: ${providerLabel(session.provider)}`,
     `Project: ${session.projectPath}`,
     session.model ? `Model: ${session.model}` : undefined,
@@ -213,11 +214,24 @@ function showMoreRecentItem(remaining: number): vscode.TreeItem {
 }
 
 function sessionLabel(session: AgentSession, showProjectName: boolean): string {
+  const title = formatTitleWithMessageCount(session);
   if (!showProjectName) {
-    return session.title;
+    return title;
   }
 
-  return `${basenameOrPath(session.projectPath)} · ${session.title}`;
+  return `${basenameOrPath(session.projectPath)} · ${title}`;
+}
+
+function formatTitleWithMessageCount(session: AgentSession): string {
+  const title = session.title;
+  if (
+    session.provider === "grok" &&
+    session.messageCount != null &&
+    session.messageCount > MESSAGE_COUNT_THRESHOLD
+  ) {
+    return `${title}(${session.messageCount}msg)`;
+  }
+  return title;
 }
 
 function groupByProject(sessions: AgentSession[]): ProjectNode[] {
@@ -249,6 +263,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "agy") {
     return "agy";
   }
+  if (provider === "grok") {
+    return "grok";
+  }
   return "claude";
 }
 
@@ -258,6 +275,9 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "agy") {
     return "sparkle";
+  }
+  if (provider === "grok") {
+    return "rocket";
   }
   return "comment-discussion";
 }
@@ -288,7 +308,7 @@ function relativeTime(timestamp: number): string {
 
 export function sessionQuickPickLabel(session: AgentSession): vscode.QuickPickItem & { session: AgentSession } {
   return {
-    label: `$(${providerIcon(session.provider)}) ${session.title}`,
+    label: `$(${providerIcon(session.provider)}) ${formatTitleWithMessageCount(session)}`,
     description: providerLabel(session.provider),
     detail: `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`,
     session

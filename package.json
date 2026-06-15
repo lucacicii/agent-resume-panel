@@ -2,7 +2,7 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Unified VS Code resume panel for Codex, Claude Code, and Antigravity CLI sessions.",
+  "description": "Unified VS Code resume panel for Codex, Claude Code, Antigravity CLI, and Grok Build sessions.",
   "version": "1.1.4",
   "icon": "resources/icon.png",
   "private": true,
@@ -27,6 +27,7 @@
     "onCommand:agentResume.newCodexSession",
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
+    "onCommand:agentResume.newGrokSession",
     "onCommand:agentResume.newCodexAppSession"
   ],
   "main": "./out/extension.js",
@@ -60,6 +61,11 @@
           "type": "string",
           "default": "~/.gemini",
           "description": "Antigravity data root. The extension scans antigravity-cli and antigravity subdirectories for sessions."
+        },
+        "agentResume.grokHome": {
+          "type": "string",
+          "default": "~/.grok",
+          "description": "Grok Build home directory containing sessions."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -116,6 +122,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show archived Codex threads."
+        },
+        "agentResume.showSubagentGrok": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Grok Build subagent sessions in the panel."
         }
       }
     },
@@ -184,6 +195,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.newGrokSession",
+        "title": "New Grok Session",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.newCodexAppSession",
         "title": "New Codex App Session",
         "category": "Agent Resume"
@@ -243,6 +259,10 @@
         },
         {
           "command": "agentResume.newAgySession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newGrokSession",
           "when": "false"
         },
         {
@@ -324,9 +344,14 @@
           "group": "navigation@6"
         },
         {
-          "command": "agentResume.newCodexAppSession",
+          "command": "agentResume.newGrokSession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@8"
         }
       ]
     }

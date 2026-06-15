@@ -7,6 +7,9 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "agy") {
     return `agy --conversation ${shellQuote(session.id)}`;
   }
+  if (session.provider === "grok") {
+    return `grok --cwd ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
+  }
 
   return `claude --resume ${shellQuote(session.id)}`;
 }
@@ -17,6 +20,9 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "agy") {
     return "agy";
+  }
+  if (provider === "grok") {
+    return `grok --cwd ${shellQuote(projectPath)}`;
   }
 
   return "claude";

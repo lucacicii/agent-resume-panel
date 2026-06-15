@@ -60,6 +60,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.newAgySession", (node?: unknown) =>
       openNewSession(tree, node, "agy", context)
     ),
+    vscode.commands.registerCommand("agentResume.newGrokSession", (node?: unknown) =>
+      openNewSession(tree, node, "grok", context)
+    ),
     vscode.commands.registerCommand("agentResume.newCodexAppSession", (node?: unknown) =>
       openNewCodexAppSession(tree, node)
     ),
@@ -83,16 +86,20 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   const codexHome = expandHome(config.get<string>("codexHome", "~/.codex"));
   const claudeHome = expandHome(config.get<string>("claudeHome", "~/.claude"));
   const antigravityHome = expandHome(config.get<string>("antigravityHome", "~/.gemini"));
+  const grokHome = expandHome(config.get<string>("grokHome", "~/.grok"));
   const maxItems = config.get<number>("maxItems", 500);
   const showArchivedCodex = config.get<boolean>("showArchivedCodex", false);
+  const showSubagentGrok = config.get<boolean>("showSubagentGrok", false);
 
   try {
     const result = await loadAllSessions({
       codexHome,
       claudeHome,
       antigravityHome,
+      grokHome,
       maxItems,
-      showArchivedCodex
+      showArchivedCodex,
+      showSubagentGrok
     });
     tree.setData(result.sessions, result.warnings);
     if (showToast) {
@@ -112,7 +119,7 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
   }
 
   const picked = await vscode.window.showQuickPick(sessions.map(sessionQuickPickLabel), {
-    title: "Resume Codex or Claude Session",
+    title: "Resume Agent Session",
     matchOnDescription: true,
     matchOnDetail: true,
     placeHolder: "Search title, provider, project, or branch"
@@ -160,6 +167,11 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         label: "$(sparkle) Antigravity CLI",
         description: "Start a new agy session",
         provider: "agy" as const
+      },
+      {
+        label: "$(rocket) Grok Build",
+        description: "Start a new Grok session",
+        provider: "grok" as const
       },
       {
         label: "$(window) Codex App",
@@ -318,7 +330,10 @@ function isAgentSession(value: unknown): value is AgentSession {
     value &&
       typeof value === "object" &&
       "provider" in value &&
-      (value.provider === "codex" || value.provider === "claude" || value.provider === "agy") &&
+      (value.provider === "codex" ||
+        value.provider === "claude" ||
+        value.provider === "agy" ||
+        value.provider === "grok") &&
       "id" in value
   );
 }

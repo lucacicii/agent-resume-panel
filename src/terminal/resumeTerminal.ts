@@ -90,6 +90,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "agy") {
     return "agy";
   }
+  if (provider === "grok") {
+    return "Grok Build";
+  }
   return "Claude";
 }
 
