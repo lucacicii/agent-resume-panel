@@ -41,6 +41,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.env.clipboard.writeText(buildResumeCommand(session));
       vscode.window.showInformationMessage("Resume command copied.");
     }),
+    vscode.commands.registerCommand("agentResume.openFolder", (node?: unknown) => openFolder(tree, node)),
     vscode.commands.registerCommand("agentResume.openProject", (nodeOrSession?: unknown) =>
       openFolderAndResume(context, tree, nodeOrSession)
     ),
@@ -227,6 +228,15 @@ function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown
   }
 
   openCodexAppResumeTerminal(session);
+}
+
+async function openFolder(tree: SessionTreeProvider, node: unknown): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  await vscode.commands.executeCommand("vscode.openFolder", projectUri(projectPath), true);
 }
 
 async function openFolderAndResume(

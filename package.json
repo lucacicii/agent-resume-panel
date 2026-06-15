@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Unified VS Code resume panel for Codex, Claude Code, and Antigravity CLI sessions.",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -20,6 +20,7 @@
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
     "onCommand:agentResume.newSession",
+    "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.openInCodexApp",
@@ -148,6 +149,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.openFolder",
+        "title": "Open Folder",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.openProject",
         "title": "Open Folder and Resume",
         "category": "Agent Resume"
@@ -209,6 +215,10 @@
         },
         {
           "command": "agentResume.copyResumeCommand",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openFolder",
           "when": "false"
         },
         {
@@ -284,34 +294,39 @@
           "group": "navigation@4"
         },
         {
-          "command": "agentResume.openProject",
+          "command": "agentResume.openFolder",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.openInGhostty",
+          "command": "agentResume.openProject",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.newCodexSession",
+          "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.newClaudeSession",
+          "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@4"
         },
         {
-          "command": "agentResume.newAgySession",
+          "command": "agentResume.newClaudeSession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@5"
         },
         {
-          "command": "agentResume.newCodexAppSession",
+          "command": "agentResume.newAgySession",
           "when": "view == agentResume.sessions && viewItem == agentResume.project",
           "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "group": "navigation@7"
         }
       ]
     }
