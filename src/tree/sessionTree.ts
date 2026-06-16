@@ -1,9 +1,11 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
+import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
 
 type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
-type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
+export type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
+export type SectionRootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode;
 
 const recentInitialLimit = 10;
 const recentLimitStep = 10;
@@ -55,6 +57,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private sessions: AgentSession[] = [];
   private warnings: string[] = [];
   private favoriteProjects: string[] = [];
+  private sectionOrder: SectionKind[] = [...DEFAULT_SECTION_ORDER];
   private recentVisibleCount = recentInitialLimit;
 
   setData(sessions: AgentSession[], warnings: string[]): void {
@@ -71,6 +74,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   getFavoriteProjects(): string[] {
     return this.favoriteProjects;
+  }
+
+  setSectionOrder(order: SectionKind[]): void {
+    this.sectionOrder = order;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getSectionOrder(): SectionKind[] {
+    return this.sectionOrder;
   }
 
   getSessionFromNode(node: unknown): AgentSession | undefined {
@@ -103,11 +115,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   getTreeItem(element: TreeNode): vscode.TreeItem {
     switch (element.kind) {
       case "recentRoot":
-        return rootItem("Recent Sessions", "clock");
+        return rootItem("Recent Sessions", "clock", element.kind);
       case "favoritesRoot":
-        return rootItem("Favorite Projects", "star-full");
+        return rootItem("Favorite Projects", "star-full", element.kind);
       case "projectsRoot":
-        return rootItem("Projects", "folder-library");
+        return rootItem("Projects", "folder-library", element.kind);
       case "warning": {
         const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
         item.iconPath = new vscode.ThemeIcon("warning");
@@ -143,15 +155,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       if (this.warnings.length) {
         roots.push(...this.warnings.map((message) => ({ kind: "warning" as const, message })));
       }
-      if (!this.sessions.length && !this.favoriteProjects.length) {
-        roots.push({ kind: "empty" });
-        return roots;
-      }
-      roots.push({ kind: "recentRoot" });
-      if (this.favoriteProjects.length) {
-        roots.push({ kind: "favoritesRoot" });
-      }
-      roots.push({ kind: "projectsRoot" });
+      roots.push(...this.sectionOrder.map((kind) => ({ kind })));
       return roots;
     }
 
@@ -195,11 +199,16 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   }
 }
 
-function rootItem(label: string, icon: string, description?: string): vscode.TreeItem {
+function rootItem(label: string, icon: string, id: string, description?: string): vscode.TreeItem {
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
+  item.id = id;
   item.description = description;
   item.iconPath = new vscode.ThemeIcon(icon);
   return item;
+}
+
+export function isSectionRoot(node: TreeNode): node is SectionRootNode {
+  return node.kind === "recentRoot" || node.kind === "favoritesRoot" || node.kind === "projectsRoot";
 }
 
 function sessionItem(session: AgentSession, showProjectName = false): vscode.TreeItem {

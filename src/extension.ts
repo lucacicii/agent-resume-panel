@@ -15,6 +15,8 @@ import {
   loadFavoriteProjects,
   removeFavoriteProject
 } from "./favorites/projectFavorites";
+import { loadSectionOrder } from "./tree/sectionOrder";
+import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
@@ -22,9 +24,11 @@ type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
   tree.setFavoriteProjects(loadFavoriteProjects(context));
+  tree.setSectionOrder(loadSectionOrder(context));
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
-    showCollapseAll: true
+    showCollapseAll: true,
+    dragAndDropController: new SessionTreeDragDrop(tree, context)
   });
 
   context.subscriptions.push(
