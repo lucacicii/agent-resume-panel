@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 
-type RootNode = RecentRootNode | ProjectsRootNode | WarningNode | EmptyNode;
+type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
 type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
 
 const recentInitialLimit = 10;
@@ -11,6 +11,10 @@ const MESSAGE_COUNT_THRESHOLD = 10;
 
 interface RecentRootNode {
   kind: "recentRoot";
+}
+
+interface FavoritesRootNode {
+  kind: "favoritesRoot";
 }
 
 interface ProjectsRootNode {
@@ -35,6 +39,7 @@ interface ProjectNode {
   kind: "project";
   projectPath: string;
   sessions: AgentSession[];
+  favorited?: boolean;
 }
 
 export interface SessionNode {
@@ -49,6 +54,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   private sessions: AgentSession[] = [];
   private warnings: string[] = [];
+  private favoriteProjects: string[] = [];
   private recentVisibleCount = recentInitialLimit;
 
   setData(sessions: AgentSession[], warnings: string[]): void {
@@ -56,6 +62,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.warnings = warnings;
     this.recentVisibleCount = recentInitialLimit;
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setFavoriteProjects(projectPaths: string[]): void {
+    this.favoriteProjects = projectPaths;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getFavoriteProjects(): string[] {
+    return this.favoriteProjects;
   }
 
   getSessionFromNode(node: unknown): AgentSession | undefined {
@@ -89,6 +104,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     switch (element.kind) {
       case "recentRoot":
         return rootItem("Recent Sessions", "clock");
+      case "favoritesRoot":
+        return rootItem("Favorite Projects", "star-full");
       case "projectsRoot":
         return rootItem("Projects", "folder-library");
       case "warning": {
@@ -109,8 +126,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         );
         item.description = `${element.sessions.length}`;
         item.tooltip = element.projectPath;
-        item.iconPath = new vscode.ThemeIcon("folder");
-        item.contextValue = "agentResume.project";
+        item.iconPath = new vscode.ThemeIcon(element.favorited ? "star-full" : "folder");
+        item.contextValue = element.favorited ? "agentResume.project.favorited" : "agentResume.project";
         return item;
       }
       case "session":
@@ -126,11 +143,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       if (this.warnings.length) {
         roots.push(...this.warnings.map((message) => ({ kind: "warning" as const, message })));
       }
-      if (!this.sessions.length) {
+      if (!this.sessions.length && !this.favoriteProjects.length) {
         roots.push({ kind: "empty" });
         return roots;
       }
-      roots.push({ kind: "recentRoot" }, { kind: "projectsRoot" });
+      roots.push({ kind: "recentRoot" });
+      if (this.favoriteProjects.length) {
+        roots.push({ kind: "favoritesRoot" });
+      }
+      roots.push({ kind: "projectsRoot" });
       return roots;
     }
 
@@ -145,8 +166,12 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       return visibleSessions;
     }
 
+    if (element.kind === "favoritesRoot") {
+      return buildFavoriteProjectNodes(this.favoriteProjects, this.sessions);
+    }
+
     if (element.kind === "projectsRoot") {
-      return groupByProject(this.sessions);
+      return groupByProject(this.sessions, new Set(this.favoriteProjects));
     }
 
     if (element.kind === "project") {
@@ -234,16 +259,32 @@ function formatTitleWithMessageCount(session: AgentSession): string {
   return title;
 }
 
-function groupByProject(sessions: AgentSession[]): ProjectNode[] {
+function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession[]> {
   const byPath = new Map<string, AgentSession[]>();
   for (const session of sessions) {
-    const projectPath = session.projectPath || process.env.HOME || "";
+    const projectPath = path.resolve(session.projectPath || process.env.HOME || "");
     const bucket = byPath.get(projectPath) ?? [];
     bucket.push(session);
     byPath.set(projectPath, bucket);
   }
+  return byPath;
+}
+
+function buildFavoriteProjectNodes(favoritePaths: string[], sessions: AgentSession[]): ProjectNode[] {
+  const byPath = groupSessionsByPath(sessions);
+  return favoritePaths.map((projectPath) => ({
+    kind: "project" as const,
+    projectPath,
+    sessions: (byPath.get(projectPath) ?? []).sort((a, b) => b.updatedAt - a.updatedAt),
+    favorited: true
+  }));
+}
+
+function groupByProject(sessions: AgentSession[], excludePaths = new Set<string>()): ProjectNode[] {
+  const byPath = groupSessionsByPath(sessions);
 
   return [...byPath.entries()]
+    .filter(([projectPath]) => !excludePaths.has(projectPath))
     .map(([projectPath, projectSessions]) => ({
       kind: "project" as const,
       projectPath,

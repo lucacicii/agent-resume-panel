@@ -28,7 +28,9 @@
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
     "onCommand:agentResume.newGrokSession",
-    "onCommand:agentResume.newCodexAppSession"
+    "onCommand:agentResume.newCodexAppSession",
+    "onCommand:agentResume.favoriteProject",
+    "onCommand:agentResume.unfavoriteProject"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -203,6 +205,18 @@
         "command": "agentResume.newCodexAppSession",
         "title": "New Codex App Session",
         "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.favoriteProject",
+        "title": "Add to Favorites",
+        "category": "Agent Resume",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "agentResume.unfavoriteProject",
+        "title": "Remove from Favorites",
+        "category": "Agent Resume",
+        "icon": "$(star-full)"
       }
     ],
     "viewsContainers": {
@@ -268,6 +282,14 @@
         {
           "command": "agentResume.newCodexAppSession",
           "when": "false"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -288,6 +310,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem == agentResume.project.favorited",
+          "group": "navigation@0"
+        },
         {
           "command": "agentResume.openSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
@@ -315,42 +347,42 @@
         },
         {
           "command": "agentResume.openFolder",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.newCodexSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@4"
         },
         {
           "command": "agentResume.newClaudeSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@5"
         },
         {
           "command": "agentResume.newAgySession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@6"
         },
         {
           "command": "agentResume.newGrokSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@7"
         },
         {
           "command": "agentResume.newCodexAppSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@8"
         }
       ]

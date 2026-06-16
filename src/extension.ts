@@ -10,12 +10,18 @@ import {
   openNewSessionTerminal,
   openResumeTerminal
 } from "./terminal/resumeTerminal";
+import {
+  addFavoriteProject,
+  loadFavoriteProjects,
+  removeFavoriteProject
+} from "./favorites/projectFavorites";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
+  tree.setFavoriteProjects(loadFavoriteProjects(context));
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
     showCollapseAll: true
@@ -65,6 +71,12 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.newCodexAppSession", (node?: unknown) =>
       openNewCodexAppSession(tree, node)
+    ),
+    vscode.commands.registerCommand("agentResume.favoriteProject", (node?: unknown) =>
+      favoriteProject(context, tree, node)
+    ),
+    vscode.commands.registerCommand("agentResume.unfavoriteProject", (node?: unknown) =>
+      unfavoriteProject(context, tree, node)
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("agentResume")) {
@@ -336,6 +348,36 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "grok") &&
       "id" in value
   );
+}
+
+async function favoriteProject(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  node: unknown
+): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  const favorites = await addFavoriteProject(context, projectPath);
+  tree.setFavoriteProjects(favorites);
+  vscode.window.showInformationMessage("Project added to favorites.");
+}
+
+async function unfavoriteProject(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  node: unknown
+): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  const favorites = await removeFavoriteProject(context, projectPath);
+  tree.setFavoriteProjects(favorites);
+  vscode.window.showInformationMessage("Project removed from favorites.");
 }
 
 function formatError(error: unknown): string {
