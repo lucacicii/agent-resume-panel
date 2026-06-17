@@ -2,8 +2,8 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Unified VS Code resume panel for Codex, Claude Code, Antigravity CLI, and Grok Build sessions.",
-  "version": "1.1.7",
+  "description": "Unified VS Code resume panel for Codex, Claude Code, Antigravity CLI, Grok Build, and Alma sessions.",
+  "version": "1.1.8",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -28,6 +28,7 @@
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
     "onCommand:agentResume.newGrokSession",
+    "onCommand:agentResume.newAlmaSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject"
@@ -68,6 +69,11 @@
           "type": "string",
           "default": "~/.grok",
           "description": "Grok Build home directory containing sessions."
+        },
+        "agentResume.almaDataDir": {
+          "type": "string",
+          "default": "~/Library/Application Support/alma",
+          "description": "Alma data directory containing chat_threads.db. On macOS this is usually ~/Library/Application Support/alma."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -129,6 +135,21 @@
           "type": "boolean",
           "default": false,
           "description": "Show Grok Build subagent sessions in the panel."
+        },
+        "agentResume.hideCronAlma": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide Alma cron threads (titles starting with ⏰ Cron:)."
+        },
+        "agentResume.hideChannelAlma": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide Alma channel threads (WeChat, Telegram, Discord, Slack)."
+        },
+        "agentResume.showIncognitoAlma": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Alma incognito threads in the panel."
         }
       }
     },
@@ -199,6 +220,11 @@
       {
         "command": "agentResume.newGrokSession",
         "title": "New Grok Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAlmaSession",
+        "title": "New Alma Thread",
         "category": "Agent Resume"
       },
       {
@@ -280,6 +306,10 @@
           "when": "false"
         },
         {
+          "command": "agentResume.newAlmaSession",
+          "when": "false"
+        },
+        {
           "command": "agentResume.newCodexAppSession",
           "when": "false"
         },
@@ -322,22 +352,22 @@
         },
         {
           "command": "agentResume.openSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
           "group": "inline@1"
         },
         {
           "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
           "group": "navigation@3"
         },
         {
@@ -381,9 +411,14 @@
           "group": "navigation@7"
         },
         {
-          "command": "agentResume.newCodexAppSession",
+          "command": "agentResume.newAlmaSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
+          "group": "navigation@9"
         }
       ]
     }

@@ -1,8 +1,18 @@
 import * as vscode from "vscode";
 import { AgentProvider, AgentSession } from "../history";
+import { openAlmaThread } from "./almaApp";
 import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
 
 export { buildNewSessionCommand, buildResumeCommand };
+
+export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
+  if (session.provider === "alma") {
+    void openAlmaThread(session);
+    return;
+  }
+
+  openResumeTerminal(session, context);
+}
 
 export function openResumeTerminal(session: AgentSession, context?: vscode.ExtensionContext): void {
   void showImageSupportHint(context);
@@ -92,6 +102,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   }
   if (provider === "grok") {
     return "Grok Build";
+  }
+  if (provider === "alma") {
+    return "Alma";
   }
   return "Claude";
 }

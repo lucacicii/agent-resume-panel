@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
-import { openResumeTerminal } from "./resumeTerminal";
+import { openSessionResume } from "./resumeTerminal";
 
 const pendingResumeKey = "agentResume.pendingResume";
 const pendingTtlMs = 5 * 60 * 1000;
@@ -36,7 +36,7 @@ export async function consumePendingResumeForWorkspace(context: vscode.Extension
   await context.globalState.update(pendingResumeKey, undefined);
 
   setTimeout(() => {
-    openResumeTerminal(pending.session, context);
+    openSessionResume(pending.session, context);
   }, 750);
 }
 

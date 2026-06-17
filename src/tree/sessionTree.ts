@@ -316,6 +316,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "grok") {
     return "grok";
   }
+  if (provider === "alma") {
+    return "alma";
+  }
   return "claude";
 }
 
@@ -328,6 +331,9 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "grok") {
     return "rocket";
+  }
+  if (provider === "alma") {
+    return "sparkle";
   }
   return "comment-discussion";
 }

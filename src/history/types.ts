@@ -1,4 +1,4 @@
-export type AgentProvider = "codex" | "claude" | "agy" | "grok";
+export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma";
 
 export interface AgentSession {
   provider: AgentProvider;
@@ -18,9 +18,13 @@ export interface HistoryLoadOptions {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
+  almaDataDir: string;
   maxItems: number;
   showArchivedCodex: boolean;
   showSubagentGrok: boolean;
+  hideCronAlma: boolean;
+  hideChannelAlma: boolean;
+  showIncognitoAlma: boolean;
 }
 
 export interface HistoryLoadResult {

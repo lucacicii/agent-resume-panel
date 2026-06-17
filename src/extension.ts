@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
+import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
+import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
@@ -8,7 +10,7 @@ import {
   buildResumeCommand,
   openCodexAppResumeTerminal,
   openNewSessionTerminal,
-  openResumeTerminal
+  openSessionResume
 } from "./terminal/resumeTerminal";
 import {
   addFavoriteProject,
@@ -40,7 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
-        openResumeTerminal(session, context);
+        openSessionResume(session, context);
       }
     }),
     vscode.commands.registerCommand("agentResume.copyResumeCommand", async (nodeOrSession?: unknown) => {
@@ -73,6 +75,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.newGrokSession", (node?: unknown) =>
       openNewSession(tree, node, "grok", context)
     ),
+    vscode.commands.registerCommand("agentResume.newAlmaSession", (node?: unknown) =>
+      openNewAlmaSessionFromTree(tree, node)
+    ),
     vscode.commands.registerCommand("agentResume.newCodexAppSession", (node?: unknown) =>
       openNewCodexAppSession(tree, node)
     ),
@@ -103,9 +108,13 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   const claudeHome = expandHome(config.get<string>("claudeHome", "~/.claude"));
   const antigravityHome = expandHome(config.get<string>("antigravityHome", "~/.gemini"));
   const grokHome = expandHome(config.get<string>("grokHome", "~/.grok"));
+  const almaDataDir = expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir()));
   const maxItems = config.get<number>("maxItems", 500);
   const showArchivedCodex = config.get<boolean>("showArchivedCodex", false);
   const showSubagentGrok = config.get<boolean>("showSubagentGrok", false);
+  const hideCronAlma = config.get<boolean>("hideCronAlma", true);
+  const hideChannelAlma = config.get<boolean>("hideChannelAlma", true);
+  const showIncognitoAlma = config.get<boolean>("showIncognitoAlma", false);
 
   try {
     const result = await loadAllSessions({
@@ -113,9 +122,13 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
       claudeHome,
       antigravityHome,
       grokHome,
+      almaDataDir,
       maxItems,
       showArchivedCodex,
-      showSubagentGrok
+      showSubagentGrok,
+      hideCronAlma,
+      hideChannelAlma,
+      showIncognitoAlma
     });
     tree.setData(result.sessions, result.warnings);
     if (showToast) {
@@ -142,7 +155,7 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
   });
 
   if (picked) {
-    openResumeTerminal(picked.session, undefined);
+    openSessionResume(picked.session, undefined);
   }
 }
 
@@ -295,6 +308,18 @@ function openNewSession(
   openNewSessionTerminal(provider, projectPath, context);
 }
 
+async function openNewAlmaSessionFromTree(tree: SessionTreeProvider, node: unknown): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  const almaDataDir = expandHome(
+    vscode.workspace.getConfiguration("agentResume").get<string>("almaDataDir", defaultAlmaDataDir())
+  );
+  await openNewAlmaSession(projectPath, almaDataDir);
+}
+
 function openNewCodexAppSession(tree: SessionTreeProvider, node: unknown): void {
   const projectPath = tree.getProjectFromNode(node);
   if (!projectPath) {
@@ -349,7 +374,8 @@ function isAgentSession(value: unknown): value is AgentSession {
       (value.provider === "codex" ||
         value.provider === "claude" ||
         value.provider === "agy" ||
-        value.provider === "grok") &&
+        value.provider === "grok" ||
+        value.provider === "alma") &&
       "id" in value
   );
 }
