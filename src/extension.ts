@@ -17,6 +17,11 @@ import {
   loadFavoriteProjects,
   removeFavoriteProject
 } from "./favorites/projectFavorites";
+import {
+  applyProjectMenuContext,
+  configureProjectMenu,
+  loadMainActions
+} from "./menu/projectContextMenu";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
@@ -27,6 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
+  void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
     showCollapseAll: true,
@@ -87,7 +93,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.unfavoriteProject", (node?: unknown) =>
       unfavoriteProject(context, tree, node)
     ),
+    vscode.commands.registerCommand("agentResume.configureProjectMenu", () => configureProjectMenu()),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("agentResume.projectMenu.mainActions")) {
+        void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
+      }
       if (event.affectsConfiguration("agentResume")) {
         void refresh(tree, false);
       }
