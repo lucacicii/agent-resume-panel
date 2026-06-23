@@ -81,6 +81,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.newGrokSession", (node?: unknown) =>
       openNewSession(tree, node, "grok", context)
     ),
+    vscode.commands.registerCommand("agentResume.newOpenCodeSession", (node?: unknown) =>
+      openNewSession(tree, node, "opencode", context)
+    ),
+    vscode.commands.registerCommand("agentResume.newPiSession", (node?: unknown) =>
+      openNewSession(tree, node, "pi", context)
+    ),
     vscode.commands.registerCommand("agentResume.newAlmaSession", (node?: unknown) =>
       openNewAlmaSessionFromTree(tree, node)
     ),
@@ -119,8 +125,11 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   const antigravityHome = expandHome(config.get<string>("antigravityHome", "~/.gemini"));
   const grokHome = expandHome(config.get<string>("grokHome", "~/.grok"));
   const almaDataDir = expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir()));
+  const opencodeHome = expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode"));
+  const piHome = expandHome(config.get<string>("piHome", "~/.pi/agent"));
   const maxItems = config.get<number>("maxItems", 500);
   const showArchivedCodex = config.get<boolean>("showArchivedCodex", false);
+  const showArchivedOpenCode = config.get<boolean>("showArchivedOpenCode", false);
   const showSubagentGrok = config.get<boolean>("showSubagentGrok", false);
   const hideCronAlma = config.get<boolean>("hideCronAlma", true);
   const hideChannelAlma = config.get<boolean>("hideChannelAlma", true);
@@ -133,8 +142,11 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
       antigravityHome,
       grokHome,
       almaDataDir,
+      opencodeHome,
+      piHome,
       maxItems,
       showArchivedCodex,
+      showArchivedOpenCode,
       showSubagentGrok,
       hideCronAlma,
       hideChannelAlma,
@@ -211,6 +223,16 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         label: "$(rocket) Grok Build",
         description: "Start a new Grok session",
         provider: "grok" as const
+      },
+      {
+        label: "$(terminal) OpenCode",
+        description: "Start a new OpenCode session",
+        provider: "opencode" as const
+      },
+      {
+        label: "$(symbol-method) Pi",
+        description: "Start a new Pi session",
+        provider: "pi" as const
       },
       {
         label: "$(window) Codex App",
@@ -385,7 +407,9 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "claude" ||
         value.provider === "agy" ||
         value.provider === "grok" ||
-        value.provider === "alma") &&
+        value.provider === "alma" ||
+        value.provider === "opencode" ||
+        value.provider === "pi") &&
       "id" in value
   );
 }

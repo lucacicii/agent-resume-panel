@@ -319,6 +319,12 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "alma") {
     return "alma";
   }
+  if (provider === "opencode") {
+    return "opencode";
+  }
+  if (provider === "pi") {
+    return "pi";
+  }
   return "claude";
 }
 
@@ -334,6 +340,12 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "alma") {
     return "sparkle";
+  }
+  if (provider === "opencode") {
+    return "terminal";
+  }
+  if (provider === "pi") {
+    return "symbol-method";
   }
   return "comment-discussion";
 }

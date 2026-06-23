@@ -14,6 +14,12 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "alma") {
     return buildAlmaActivateCommand(session.id, session.title);
   }
+  if (session.provider === "opencode") {
+    return `opencode --session ${shellQuote(session.id)}`;
+  }
+  if (session.provider === "pi") {
+    return `pi --session ${shellQuote(session.id)}`;
+  }
 
   return `claude --resume ${shellQuote(session.id)}`;
 }
@@ -30,6 +36,12 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "alma") {
     return "# Alma new threads require a workspace id; use New Alma Thread from the Agent Resume panel.";
+  }
+  if (provider === "opencode") {
+    return `opencode ${shellQuote(projectPath)}`;
+  }
+  if (provider === "pi") {
+    return "pi";
   }
 
   return "claude";

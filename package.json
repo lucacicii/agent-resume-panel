@@ -28,6 +28,8 @@
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
     "onCommand:agentResume.newGrokSession",
+    "onCommand:agentResume.newOpenCodeSession",
+    "onCommand:agentResume.newPiSession",
     "onCommand:agentResume.newAlmaSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
@@ -76,6 +78,16 @@
           "type": "string",
           "default": "~/Library/Application Support/alma",
           "description": "Alma data directory containing chat_threads.db. On macOS this is usually ~/Library/Application Support/alma."
+        },
+        "agentResume.opencodeHome": {
+          "type": "string",
+          "default": "~/.local/share/opencode",
+          "description": "OpenCode data directory containing opencode.db."
+        },
+        "agentResume.piHome": {
+          "type": "string",
+          "default": "~/.pi/agent",
+          "description": "Pi agent home directory containing sessions."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -133,6 +145,11 @@
           "default": false,
           "description": "Show archived Codex threads."
         },
+        "agentResume.showArchivedOpenCode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived OpenCode sessions."
+        },
         "agentResume.showSubagentGrok": {
           "type": "boolean",
           "default": false,
@@ -165,6 +182,8 @@
               "newClaudeSession",
               "newAgySession",
               "newGrokSession",
+              "newOpenCodeSession",
+              "newPiSession",
               "newAlmaSession",
               "newCodexAppSession"
             ]
@@ -244,6 +263,16 @@
       {
         "command": "agentResume.newGrokSession",
         "title": "New Grok Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newOpenCodeSession",
+        "title": "New OpenCode Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newPiSession",
+        "title": "New Pi Session",
         "category": "Agent Resume"
       },
       {
@@ -342,6 +371,14 @@
           "when": "false"
         },
         {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "false"
+        },
+        {
           "command": "agentResume.newAlmaSession",
           "when": "false"
         },
@@ -392,22 +429,22 @@
         },
         {
           "command": "agentResume.openSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "inline@1"
         },
         {
           "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok)/",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "navigation@3"
         },
         {
@@ -451,14 +488,24 @@
           "group": "navigation@7"
         },
         {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession",
+          "group": "navigation@9"
+        },
+        {
           "command": "agentResume.newAlmaSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession",
-          "group": "navigation@8"
+          "group": "navigation@10"
         },
         {
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession",
-          "group": "navigation@9"
+          "group": "navigation@11"
         },
         {
           "submenu": "agentResume.projectMore",
@@ -508,14 +555,24 @@
           "group": "navigation@7"
         },
         {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession",
+          "group": "navigation@9"
+        },
+        {
           "command": "agentResume.newAlmaSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession",
-          "group": "navigation@8"
+          "group": "navigation@10"
         },
         {
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession",
-          "group": "navigation@9"
+          "group": "navigation@11"
         },
         {
           "command": "agentResume.configureProjectMenu",

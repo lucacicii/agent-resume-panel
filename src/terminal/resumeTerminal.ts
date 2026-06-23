@@ -106,6 +106,12 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "alma") {
     return "Alma";
   }
+  if (provider === "opencode") {
+    return "OpenCode";
+  }
+  if (provider === "pi") {
+    return "Pi";
+  }
   return "Claude";
 }
 

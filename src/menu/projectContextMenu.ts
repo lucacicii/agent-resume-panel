@@ -8,6 +8,8 @@ export type ProjectMenuAction =
   | "newClaudeSession"
   | "newAgySession"
   | "newGrokSession"
+  | "newOpenCodeSession"
+  | "newPiSession"
   | "newAlmaSession"
   | "newCodexAppSession";
 
@@ -19,6 +21,8 @@ export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "newClaudeSession",
   "newAgySession",
   "newGrokSession",
+  "newOpenCodeSession",
+  "newPiSession",
   "newAlmaSession",
   "newCodexAppSession"
 ];
@@ -35,6 +39,8 @@ const ACTION_LABELS: Record<ProjectMenuAction, string> = {
   newClaudeSession: "New Claude Session",
   newAgySession: "New Antigravity Session",
   newGrokSession: "New Grok Session",
+  newOpenCodeSession: "New OpenCode Session",
+  newPiSession: "New Pi Session",
   newAlmaSession: "New Alma Thread",
   newCodexAppSession: "New Codex App Session"
 };
