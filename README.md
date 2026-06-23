@@ -4,7 +4,7 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 ## 简体中文
 
-Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、Alma 的历史会话。
+Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
 
 适合这些场景：
 
@@ -39,13 +39,13 @@ Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试�
 
 - **Open Folder and Resume**：选择该项目下的历史会话并恢复。
 - **Open in Ghostty**：选择会话后在 Ghostty 中恢复。
-- **New Codex Session**、**New Claude Session**、**New Antigravity Session**、**New Grok Session**：在该项目中新建对应 Agent 会话。
+- **New Codex Session**、**New Claude Session**、**New Antigravity Session**、**New Grok Session**、**New OpenCode Session**、**New Pi Session**：在该项目中新建对应 Agent 会话。
 - **New Codex App Session**：用 Codex App 打开该项目。
 - **New Alma Thread**：在 Alma 中打开新对话，并将工作区目录设为该项目（见下方 Alma 说明）。
 
 ### 新建和搜索
 
-在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI、Grok Build 或 Codex App 会话。Alma 不在全局新建列表中，请通过项目右键 **New Alma Thread** 创建。
+在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi 或 Codex App 会话。Alma 不在全局新建列表中，请通过项目右键 **New Alma Thread** 创建。
 
 运行 **Agent Resume: Search Sessions**，可以从所有已加载会话中快速搜索并恢复。
 
@@ -95,16 +95,19 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.ghosttyExecutable`：Ghostty 应用名或可执行文件路径。
 - `agentResume.grokHome`：Grok Build 数据目录（默认 `~/.grok`）。
 - `agentResume.showSubagentGrok`：是否显示 Grok 子 Agent 会话。
+- `agentResume.opencodeHome`：OpenCode 数据目录（默认 `~/.local/share/opencode`）。
+- `agentResume.showArchivedOpenCode`：是否显示已归档的 OpenCode 会话。
+- `agentResume.piHome`：Pi 数据目录（默认 `~/.pi/agent`）。
 - `agentResume.almaDataDir`：Alma 数据目录（macOS 默认 `~/Library/Application Support/alma`）。
 - `agentResume.hideCronAlma`：隐藏 Alma Cron 会话。
 - `agentResume.hideChannelAlma`：隐藏 Alma 频道会话。
 - `agentResume.showIncognitoAlma`：显示 Alma 隐身模式会话。
 
-如果你的 Codex、Claude Code 或 Antigravity 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
+如果你的 Codex、Claude Code、Antigravity、OpenCode 或 Pi 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
 
 ## English
 
-Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, Antigravity CLI, Grok Build, and Alma sessions in one place.
+Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
 
 Best for:
 
@@ -139,13 +142,13 @@ Project groups support these right-click actions:
 
 - **Open Folder and Resume**: Pick a session from the project and resume it.
 - **Open in Ghostty**: Pick a session and resume it in Ghostty.
-- **New Codex Session**, **New Claude Session**, **New Antigravity Session**, **New Grok Session**: Start a new agent session in that project.
+- **New Codex Session**, **New Claude Session**, **New Antigravity Session**, **New Grok Session**, **New OpenCode Session**, **New Pi Session**: Start a new agent session in that project.
 - **New Codex App Session**: Open the project with Codex App.
 - **New Alma Thread**: Open a new Alma chat with the project workspace directory (see Alma below).
 
 ### New and Search
 
-Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, Grok Build, or Codex App session from the current VS Code workspace. Alma is not in the global new-session picker; use **New Alma Thread** on a project instead.
+Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, Grok Build, OpenCode, Pi, or Codex App session from the current VS Code workspace. Alma is not in the global new-session picker; use **New Alma Thread** on a project instead.
 
 Run **Agent Resume: Search Sessions** to quickly find and resume any loaded session.
 
@@ -195,12 +198,15 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.ghosttyExecutable`: Ghostty app name or executable path.
 - `agentResume.grokHome`: Grok Build data directory (default `~/.grok`).
 - `agentResume.showSubagentGrok`: Show Grok subagent sessions.
+- `agentResume.opencodeHome`: OpenCode data directory (default `~/.local/share/opencode`).
+- `agentResume.showArchivedOpenCode`: Show or hide archived OpenCode sessions.
+- `agentResume.piHome`: Pi data directory (default `~/.pi/agent`).
 - `agentResume.almaDataDir`: Alma data directory (default `~/Library/Application Support/alma` on macOS).
 - `agentResume.hideCronAlma`: Hide Alma cron threads.
 - `agentResume.hideChannelAlma`: Hide Alma channel threads.
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
 
-If your Codex, Claude Code, or Antigravity data directory is not in the default location, adjust the matching home path in Settings.
+If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not in the default location, adjust the matching home path in Settings.
 
 ## License
 
