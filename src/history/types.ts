@@ -1,4 +1,14 @@
-export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma" | "opencode" | "pi";
+import { TerminalAgentProvider } from "../chat/types";
+
+export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma" | "opencode" | "pi" | "chat";
+
+export interface ChatLinkInfo {
+  chatId: string;
+  provider: TerminalAgentProvider;
+  sessionId?: string;
+  handoffCount?: number;
+  lastAgentSummaryAt?: number;
+}
 
 export interface AgentSession {
   provider: AgentProvider;
@@ -11,9 +21,11 @@ export interface AgentSession {
   source?: string;
   archived?: boolean;
   messageCount?: number;
+  chatLink?: ChatLinkInfo;
 }
 
 export interface HistoryLoadOptions {
+  panelHome: string;
   codexHome: string;
   claudeHome: string;
   antigravityHome: string;
@@ -32,5 +44,6 @@ export interface HistoryLoadOptions {
 
 export interface HistoryLoadResult {
   sessions: AgentSession[];
+  linkedAgentKeys: Set<string>;
   warnings: string[];
 }

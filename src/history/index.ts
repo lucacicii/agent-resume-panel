@@ -1,5 +1,6 @@
 import { loadAlmaSessions } from "./alma";
 import { loadAntigravitySessions } from "./antigravity";
+import { collectLinkedAgentKeys, loadChatSessions } from "./chat";
 import { loadClaudeSessions } from "./claude";
 import { loadCodexSessions } from "./codex";
 import { loadGrokSessions } from "./grok";
@@ -9,7 +10,7 @@ import { HistoryLoadOptions, HistoryLoadResult } from "./types";
 
 export async function loadAllSessions(options: HistoryLoadOptions): Promise<HistoryLoadResult> {
   const warnings: string[] = [];
-  const [codex, claude, agy, grok, alma, opencode, pi] = await Promise.all([
+  const [codex, claude, agy, grok, alma, opencode, pi, chat] = await Promise.all([
     loadCodexSessions(options.codexHome, options.maxItems, options.showArchivedCodex),
     loadClaudeSessions(options.claudeHome, options.maxItems),
     loadAntigravitySessions(options.antigravityHome, options.maxItems),
@@ -20,7 +21,8 @@ export async function loadAllSessions(options: HistoryLoadOptions): Promise<Hist
       showIncognito: options.showIncognitoAlma
     }),
     loadOpenCodeSessions(options.opencodeHome, options.maxItems, options.showArchivedOpenCode),
-    loadPiSessions(options.piHome, options.maxItems)
+    loadPiSessions(options.piHome, options.maxItems),
+    loadChatSessions(options.panelHome, options.maxItems)
   ]);
 
   if (codex.warning) {
@@ -33,10 +35,13 @@ export async function loadAllSessions(options: HistoryLoadOptions): Promise<Hist
     warnings.push(opencode.warning);
   }
 
+  const sessions = [...codex.sessions, ...claude, ...agy, ...grok, ...alma.sessions, ...opencode.sessions, ...pi, ...chat]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, options.maxItems);
+
   return {
-    sessions: [...codex.sessions, ...claude, ...agy, ...grok, ...alma.sessions, ...opencode.sessions, ...pi]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, options.maxItems),
+    sessions,
+    linkedAgentKeys: collectLinkedAgentKeys(sessions),
     warnings
   };
 }

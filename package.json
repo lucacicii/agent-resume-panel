@@ -35,7 +35,11 @@
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
     "onCommand:agentResume.configureProjectMenu",
-    "onCommand:agentResume.newSessionFromEditor"
+    "onCommand:agentResume.newSessionFromEditor",
+    "onCommand:agentResume.newChatSession",
+    "onCommand:agentResume.openChatSession",
+    "onCommand:agentResume.setChatApiKey",
+    "onCommand:agentResume.handoffChat"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -89,6 +93,82 @@
           "type": "string",
           "default": "~/.pi/agent",
           "description": "Pi agent home directory containing sessions."
+        },
+        "agentResume.panelHome": {
+          "type": "string",
+          "default": "~/.agent-resume-panel",
+          "description": "Agent Resume Panel data directory for chat sessions and handoff files."
+        },
+        "agentResume.chatBaseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "markdownDescription": "OpenAI-compatible API base URL for Chat Panel.\n\nExamples:\n- OpenAI: `https://api.openai.com/v1`\n- DeepSeek: `https://api.deepseek.com/v1`\n- Local proxy (OneAPI/New API): `http://127.0.0.1:3000/v1`"
+        },
+        "agentResume.chatApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API key for Chat Panel. Use the same key format as your `chatBaseUrl` provider.\n\nYou can also run **Agent Resume: Set Chat API Key** to save it here."
+        },
+        "agentResume.chatModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Fallback models when the /models API request fails."
+        },
+        "agentResume.chatDefaultModel": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Default model for new chat sessions."
+        },
+        "agentResume.chatSystemPrompt": {
+          "type": "string",
+          "default": "You are a helpful coding assistant for the current VS Code workspace. Use the workspace context below when answering project questions.",
+          "description": "System prompt used by Chat Panel."
+        },
+        "agentResume.chatIncludeProjectContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically attach project tree and key config files to each Chat request."
+        },
+        "agentResume.chatHandoffMode": {
+          "type": "string",
+          "enum": [
+            "background",
+            "visible"
+          ],
+          "default": "background",
+          "description": "How Chat handoff runs terminal agents. background keeps terminals hidden and reuses one terminal per chat. visible opens and focuses the terminal."
+        },
+        "agentResume.chatHandoffBootstrapDelayMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "maximum": 15000,
+          "description": "Delay after starting the agent terminal before sending the handoff prompt."
+        },
+        "agentResume.chatAutoHandoff": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically hand off to the linked agent after each assistant reply. When false, use Handoff to Agent manually."
+        },
+        "agentResume.chatAutoSyncAgentSummary": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync structured agent execution summaries back into the chat after handoff."
+        },
+        "agentResume.chatSummaryPollIntervalMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 5000,
+          "maximum": 120000,
+          "description": "Polling interval in milliseconds for agent summary sync after handoff."
+        },
+        "agentResume.chatSummarizeAgentReturn": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the Chat LLM to generate a short bullet summary from agent session metadata."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -179,7 +259,8 @@
             "agy",
             "grok",
             "opencode",
-            "pi"
+            "pi",
+            "chat"
           ],
           "default": "codex",
           "description": "Agent provider started by the editor title bar New Session button."
@@ -192,6 +273,7 @@
               "favorite",
               "openProject",
               "openInGhostty",
+              "newChatSession",
               "newCodexSession",
               "newClaudeSession",
               "newAgySession",
@@ -325,6 +407,27 @@
         "title": "Customize Project Menu",
         "category": "Agent Resume",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.newChatSession",
+        "title": "New Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openChatSession",
+        "title": "Open Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setChatApiKey",
+        "title": "Set Chat API Key",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffChat",
+        "title": "Handoff to Agent",
+        "category": "Agent Resume",
+        "icon": "$(arrow-right)"
       }
     ],
     "submenus": [
@@ -426,6 +529,18 @@
         {
           "command": "agentResume.configureProjectMenu",
           "when": "false"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openChatSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.handoffChat",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -457,8 +572,23 @@
           "group": "navigation@0"
         },
         {
+          "command": "agentResume.openChatSession",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session.chat",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.handoffChat",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session.chat",
+          "group": "navigation@0"
+        },
+        {
           "command": "agentResume.openSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.openSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.linkedAgent\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "inline@1"
         },
         {
@@ -497,44 +627,49 @@
           "group": "navigation@3"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession",
+          "group": "navigation@4"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.newClaudeSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession",
-          "group": "navigation@5"
+          "group": "navigation@6"
         },
         {
           "command": "agentResume.newAgySession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession",
-          "group": "navigation@6"
+          "group": "navigation@7"
         },
         {
           "command": "agentResume.newGrokSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession",
-          "group": "navigation@7"
+          "group": "navigation@8"
         },
         {
           "command": "agentResume.newOpenCodeSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession",
-          "group": "navigation@8"
+          "group": "navigation@9"
         },
         {
           "command": "agentResume.newPiSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession",
-          "group": "navigation@9"
+          "group": "navigation@10"
         },
         {
           "command": "agentResume.newAlmaSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession",
-          "group": "navigation@10"
+          "group": "navigation@11"
         },
         {
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession",
-          "group": "navigation@11"
+          "group": "navigation@12"
         },
         {
           "submenu": "agentResume.projectMore",
@@ -564,44 +699,49 @@
           "group": "navigation@3"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession",
+          "group": "navigation@4"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.newClaudeSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession",
-          "group": "navigation@5"
+          "group": "navigation@6"
         },
         {
           "command": "agentResume.newAgySession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession",
-          "group": "navigation@6"
+          "group": "navigation@7"
         },
         {
           "command": "agentResume.newGrokSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession",
-          "group": "navigation@7"
+          "group": "navigation@8"
         },
         {
           "command": "agentResume.newOpenCodeSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession",
-          "group": "navigation@8"
+          "group": "navigation@9"
         },
         {
           "command": "agentResume.newPiSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession",
-          "group": "navigation@9"
+          "group": "navigation@10"
         },
         {
           "command": "agentResume.newAlmaSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession",
-          "group": "navigation@10"
+          "group": "navigation@11"
         },
         {
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession",
-          "group": "navigation@11"
+          "group": "navigation@12"
         },
         {
           "command": "agentResume.configureProjectMenu",
