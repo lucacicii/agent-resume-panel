@@ -116,6 +116,10 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 如果你的 Codex、Claude Code、Antigravity、OpenCode 或 Pi 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
 
+### 联系
+
+如有问题或建议，请联系：[lucas.zeus.ai@gmail.com](mailto:lucas.zeus.ai@gmail.com)
+
 ## English
 
 Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
@@ -229,6 +233,10 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
 
 If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not in the default location, adjust the matching home path in Settings.
+
+### Contact
+
+Questions or feedback: [lucas.zeus.ai@gmail.com](mailto:lucas.zeus.ai@gmail.com)
 
 ## License
 
