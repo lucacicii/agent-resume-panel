@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Unified VS Code resume panel for Codex, Claude Code, Antigravity CLI, Grok Build, and Alma sessions.",
-  "version": "1.1.10",
+  "version": "1.1.12",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -34,7 +34,8 @@
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
-    "onCommand:agentResume.configureProjectMenu"
+    "onCommand:agentResume.configureProjectMenu",
+    "onCommand:agentResume.newSessionFromEditor"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -170,6 +171,19 @@
           "default": false,
           "description": "Show Alma incognito threads in the panel."
         },
+        "agentResume.editorNewSessionProvider": {
+          "type": "string",
+          "enum": [
+            "codex",
+            "claude",
+            "agy",
+            "grok",
+            "opencode",
+            "pi"
+          ],
+          "default": "codex",
+          "description": "Agent provider started by the editor title bar New Session button."
+        },
         "agentResume.projectMenu.mainActions": {
           "type": "array",
           "items": {
@@ -214,6 +228,15 @@
         "title": "New Session",
         "category": "Agent Resume",
         "icon": "$(plus)"
+      },
+      {
+        "command": "agentResume.newSessionFromEditor",
+        "title": "New Session",
+        "category": "Agent Resume",
+        "icon": {
+          "light": "resources/icon.png",
+          "dark": "resources/icon.png"
+        }
       },
       {
         "command": "agentResume.openSession",
@@ -329,6 +352,12 @@
       ]
     },
     "menus": {
+      "editor/title": [
+        {
+          "command": "agentResume.newSessionFromEditor",
+          "group": "navigation"
+        }
+      ],
       "commandPalette": [
         {
           "command": "agentResume.openSession",

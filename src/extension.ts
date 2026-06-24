@@ -27,6 +27,10 @@ import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
+type EditorNewSessionProvider = Extract<
+  AgentProvider,
+  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi"
+>;
 
 export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
@@ -45,6 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree)),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context)),
+    vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context)),
     vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
@@ -179,6 +184,29 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
   if (picked) {
     openSessionResume(picked.session, undefined);
   }
+}
+
+async function newSessionFromEditor(context: vscode.ExtensionContext): Promise<void> {
+  const config = vscode.workspace.getConfiguration("agentResume");
+  const provider = config.get<EditorNewSessionProvider>("editorNewSessionProvider", "codex");
+  const projectPath = await resolveProjectForNewSession();
+  if (!projectPath) {
+    return;
+  }
+
+  openNewSessionTerminal(provider, projectPath, context);
+}
+
+async function resolveProjectForNewSession(): Promise<string | undefined> {
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (folder) {
+      return folder.uri.fsPath;
+    }
+  }
+
+  return pickWorkspaceProject();
 }
 
 async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext): Promise<void> {

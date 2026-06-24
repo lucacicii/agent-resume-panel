@@ -13,6 +13,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢�
 - 按项目查看历史会话，并直接在对应项目里继续工作。
 - 需要用 Ghostty 或 Codex App 接着打开已有会话。
 - 在 Alma 桌面客户端中按项目打开新对话。
+- 在编辑器右上角一键新建预设类型的 Agent 会话。
 
 ### 快速开始
 
@@ -48,6 +49,15 @@ Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试�
 在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi 或 Codex App 会话。Alma 不在全局新建列表中，请通过项目右键 **New Alma Thread** 创建。
 
 运行 **Agent Resume: Search Sessions**，可以从所有已加载会话中快速搜索并恢复。
+
+### 编辑器标题栏快捷新建
+
+打开任意编辑器标签页时，编辑器右上角工具栏（Split Editor 旁）会常驻显示 **Agent Resume** 图标，行为类似 Claude Code 的 Spark 按钮。
+
+- 点击图标即可一键新建会话，无需每次选择 Agent 类型。
+- 使用哪种 Agent 由设置项 `agentResume.editorNewSessionProvider` 决定，可选 Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi（默认 Codex）。
+- 项目目录优先取当前打开文件所在的 workspace 根目录；若没有可用的活动文件，则回退到工作区选择逻辑（单根工作区直接使用，多根工作区弹出选择）。
+- 新建会话会在 `agentResume.terminalLocation` 配置的位置打开集成终端（默认在编辑器旁边）。
 
 ### Alma
 
@@ -89,6 +99,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 在 VS Code Settings 中搜索 `Agent Resume` 可以调整：
 
 - `agentResume.maxItems`：列表最多加载多少条会话。
+- `agentResume.editorNewSessionProvider`：编辑器标题栏快捷新建按钮使用的 Agent 类型。
 - `agentResume.terminalLocation`：终端打开在编辑器旁边还是底部面板。
 - `agentResume.showArchivedCodex`：是否显示已归档的 Codex 会话。
 - `agentResume.ghosttyLaunchMode`：Ghostty 打开会话时的命令处理方式。
@@ -116,6 +127,7 @@ Best for:
 - Browsing sessions by project and continuing in the right workspace.
 - Continuing an existing session in Ghostty or Codex App when needed.
 - Starting a new Alma chat scoped to a project directory.
+- Starting a preset agent session from the editor title bar in one click.
 
 ### Quick Start
 
@@ -151,6 +163,15 @@ Project groups support these right-click actions:
 Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, Grok Build, OpenCode, Pi, or Codex App session from the current VS Code workspace. Alma is not in the global new-session picker; use **New Alma Thread** on a project instead.
 
 Run **Agent Resume: Search Sessions** to quickly find and resume any loaded session.
+
+### Editor Title Bar Shortcut
+
+When any editor tab is open, an **Agent Resume** icon stays visible in the editor toolbar (next to Split Editor), similar to the Claude Code Spark button.
+
+- Click the icon to start a new session in one step without choosing the agent type each time.
+- The agent is controlled by `agentResume.editorNewSessionProvider`: Codex, Claude, Antigravity CLI, Grok Build, OpenCode, or Pi (default: Codex).
+- The project directory prefers the workspace root of the currently open file. If no suitable active file is available, it falls back to workspace selection (single-root workspaces are used directly; multi-root workspaces show a picker).
+- The new session opens in the integrated terminal location from `agentResume.terminalLocation` (default: beside the editor).
 
 ### Alma
 
@@ -192,6 +213,7 @@ On macOS, the first automatic paste may require granting VS Code Automation or A
 Search `Agent Resume` in VS Code Settings to adjust:
 
 - `agentResume.maxItems`: Maximum number of sessions to load.
+- `agentResume.editorNewSessionProvider`: Agent type used by the editor title bar new-session button.
 - `agentResume.terminalLocation`: Open terminals beside the editor or in the bottom panel.
 - `agentResume.showArchivedCodex`: Show or hide archived Codex sessions.
 - `agentResume.ghosttyLaunchMode`: How Ghostty receives the resume command.
