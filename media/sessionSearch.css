@@ -215,8 +215,14 @@ body {
   white-space: nowrap;
 }
 
-.preview-close {
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.preview-action {
   padding: 4px 10px;
   border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
   border-radius: 4px;
@@ -225,8 +231,13 @@ body {
   cursor: pointer;
 }
 
-.preview-close:hover {
+.preview-action:hover:not(:disabled) {
   background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.preview-action:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .preview-notice {

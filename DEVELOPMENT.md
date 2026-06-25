@@ -40,6 +40,23 @@ Package a local VSIX:
 npm run package
 ```
 
+Build both Open VSX and VS Code Marketplace VSIX files into `dist/`:
+
+```sh
+npm run build:all
+```
+
+## Open VSX
+
+Release notes live in [`CHANGELOG.md`](CHANGELOG.md). Update that file before each Open VSX publish.
+
+Publish (requires an [Open VSX access token](https://github.com/eclipse/openvsx/wiki/Deploying-Extensions)):
+
+```sh
+export OVSX_PAT=<your-token>
+npm run publish:openvsx
+```
+
 ## Change Checklist
 
 - Run `npm run compile` after code changes.

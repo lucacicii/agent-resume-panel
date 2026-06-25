@@ -6,6 +6,8 @@
   let selectedProjectPath = null;
   let query = "";
   let previewLoadingKey = null;
+  /** @type {{ provider: string, id: string } | null} */
+  let activePreviewSession = null;
 
   const searchInput = document.getElementById("search");
   const chipsEl = document.getElementById("chips");
@@ -14,11 +16,24 @@
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewMessages = document.getElementById("preview-messages");
+  const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
     renderSessions();
+  });
+
+  previewRename.addEventListener("click", () => {
+    if (!activePreviewSession) {
+      return;
+    }
+    previewRename.disabled = true;
+    vscode.postMessage({
+      type: "rename",
+      provider: activePreviewSession.provider,
+      id: activePreviewSession.id
+    });
   });
 
   previewClose.addEventListener("click", closePreview);
@@ -39,6 +54,8 @@
       query = searchInput.value;
       renderChips();
       renderSessions();
+      syncPreviewTitle();
+      previewRename.disabled = false;
       return;
     }
 
@@ -55,6 +72,11 @@
         return;
       }
       showPreview(message);
+      return;
+    }
+
+    if (message.type === "renameDone") {
+      previewRename.disabled = false;
     }
   });
 
@@ -200,6 +222,8 @@
   }
 
   function showPreview(message) {
+    activePreviewSession = { provider: message.provider, id: message.id };
+    previewRename.disabled = false;
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
 
@@ -241,8 +265,24 @@
   }
 
   function closePreview() {
+    activePreviewSession = null;
+    previewRename.disabled = false;
     previewOverlay.classList.add("hidden");
     previewOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function syncPreviewTitle() {
+    if (!activePreviewSession || previewOverlay.classList.contains("hidden")) {
+      return;
+    }
+
+    const session = state.sessions.find(
+      (entry) =>
+        entry.provider === activePreviewSession.provider && entry.id === activePreviewSession.id
+    );
+    if (session) {
+      previewTitle.textContent = session.title || "Session Preview";
+    }
   }
 
   function sessionKey(provider, id) {

@@ -24,6 +24,7 @@ import {
   configureProjectMenu,
   loadMainActions
 } from "./menu/projectContextMenu";
+import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
@@ -53,6 +54,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession)
     ),
+    vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
+      const session = resolveSession(tree, nodeOrSession);
+      if (session) {
+        void openSessionPreviewPanel(session, tree, () => refresh(tree, false));
+      }
+    }),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context)),
     vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context)),

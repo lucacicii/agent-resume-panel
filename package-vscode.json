@@ -2,8 +2,8 @@
   "name": "agent-resume-panel-v2",
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, and native session rename.",
-  "version": "1.1.14",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
+  "version": "1.1.15",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -330,6 +330,11 @@
         "command": "agentResume.renameSession",
         "title": "Rename Session",
         "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.previewSession",
+        "title": "Preview Session",
+        "category": "Agent Resume"
       }
     ],
     "submenus": [
@@ -435,6 +440,10 @@
         {
           "command": "agentResume.renameSession",
           "when": "false"
+        },
+        {
+          "command": "agentResume.previewSession",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -466,11 +475,6 @@
           "group": "navigation@0"
         },
         {
-          "command": "agentResume.renameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
-          "group": "navigation@0"
-        },
-        {
           "command": "agentResume.openSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "inline@1"
@@ -478,22 +482,32 @@
         {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
-          "group": "navigation@1"
+          "group": "navigation@0"
         },
         {
           "command": "agentResume.openProject",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.previewSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.renameSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "group": "navigation@4"
         },
         {
           "command": "agentResume.openInCodexApp",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.codex",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.openFolder",

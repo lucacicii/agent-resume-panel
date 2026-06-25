@@ -129,6 +129,7 @@ async function handleRenameMessage(
 ): Promise<void> {
   const session = findSession(tree, provider, id);
   if (!session) {
+    webview.postMessage({ type: "renameDone" });
     return;
   }
 
@@ -140,6 +141,7 @@ async function handleRenameMessage(
   });
 
   if (!newTitle) {
+    webview.postMessage({ type: "renameDone" });
     return;
   }
 
@@ -149,6 +151,7 @@ async function handleRenameMessage(
     postInitMessage(webview, tree);
     vscode.window.showInformationMessage("Session renamed.");
   } catch (error) {
+    webview.postMessage({ type: "renameDone" });
     vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
   }
 }

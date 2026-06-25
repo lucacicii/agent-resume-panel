@@ -30,6 +30,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 
 在 **Sessions** 列表中点击会话，或右键会话选择：
 
+- **Preview Session**：只读浏览 User/Assistant 对话，不恢复会话。
 - **Rename Session**：重命名会话标题，并写入对应 Agent 的原生存储（Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 均支持）。
 - **Resume Session**：在 VS Code 终端恢复会话（Alma 除外）。
 - **Copy Resume Command**：复制恢复命令。
@@ -157,6 +158,7 @@ By default, terminal agent sessions open in a new integrated terminal beside the
 
 Click a session in **Sessions**, or right-click it and choose:
 
+- **Preview Session**: Read User/Assistant messages without resuming the session.
 - **Rename Session**: Rename the title and write it back to the agent's native storage (Codex, Claude, Antigravity, Grok, OpenCode, Pi, and Alma).
 - **Resume Session**: Resume in a VS Code terminal (not Alma).
 - **Copy Resume Command**: Copy the resume command.

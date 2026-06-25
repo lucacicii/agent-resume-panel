@@ -49,3 +49,8 @@ try {
 console.log("\nBuild complete:");
 console.log(`  Open VSX:             ${openvsxOut}`);
 console.log(`  VS Code Marketplace:  ${vscodeOut}`);
+console.log(`  Changelog:            ${join(root, "CHANGELOG.md")} (v${pkg.version})`);
+console.log("\nPublish to Open VSX:");
+console.log("  export OVSX_PAT=<your-token>");
+console.log(`  npx ovsx publish ${openvsxOut}`);
+console.log("  # or: npm run publish:openvsx");
