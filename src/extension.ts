@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
-import { renameSession, RenameHomes } from "./history/rename";
+import { renameSession } from "./history/rename";
+import { loadRenameHomes } from "./history/rename/homes";
 import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { openNewAlmaSession } from "./terminal/almaApp";
@@ -48,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     treeView,
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
-    vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree)),
+    vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree, () => refresh(tree, false))),
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession)
     ),
@@ -172,7 +173,10 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   }
 }
 
-async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
+async function searchAndOpen(
+  tree: SessionTreeProvider,
+  refreshTree: () => Promise<void>
+): Promise<void> {
   let sessions = tree.getSessions();
   if (!sessions.length) {
     await refresh(tree, false);
@@ -184,7 +188,7 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
     return;
   }
 
-  await searchAndOpenSessions(tree);
+  await searchAndOpenSessions(tree, refreshTree);
 }
 
 async function renameSessionCommand(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {
@@ -213,18 +217,7 @@ async function renameSessionCommand(tree: SessionTreeProvider, nodeOrSession: un
   }
 }
 
-function loadRenameHomes(): RenameHomes {
-  const config = vscode.workspace.getConfiguration("agentResume");
-  return {
-    codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
-    claudeHome: expandHome(config.get<string>("claudeHome", "~/.claude")),
-    antigravityHome: expandHome(config.get<string>("antigravityHome", "~/.gemini")),
-    grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
-    almaDataDir: expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir())),
-    opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
-    piHome: expandHome(config.get<string>("piHome", "~/.pi/agent"))
-  };
-}
+
 
 async function newSessionFromEditor(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");

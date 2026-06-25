@@ -55,7 +55,7 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 
 - 顶部是 **Projects** 按钮区：点击 `All Projects` 或某个项目，先按项目做初步筛选；收藏项目会带星标。
 - 下方是独立的 **Sessions** 列表：在已选项目范围内继续输入关键字，按标题、provider、分支（未选项目时也匹配路径）过滤。
-- 点击某条会话即可恢复。
+- 点击某条会话即可恢复；行尾的 **Preview** 可只读浏览 User/Assistant 对话，**Rename** 可直接重命名，面板保持打开。
 
 侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
 
@@ -182,7 +182,7 @@ Run **Agent Resume: Search Sessions** to open a dedicated search panel:
 
 - **Projects** chip buttons at the top: click **All Projects** or a project to filter first; favorited projects show a star.
 - A separate **Sessions** list below: type to filter by title, provider, branch, or path (when no project is selected).
-- Click a session row to resume.
+- Click a session row to resume; use **Preview** to read User/Assistant messages without resuming, or **Rename** to rename without closing the panel.
 
 The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
 
