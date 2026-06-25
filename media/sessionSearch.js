@@ -16,12 +16,36 @@
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewMessages = document.getElementById("preview-messages");
+  const previewResume = document.getElementById("preview-resume");
+  const previewResumeWith = document.getElementById("preview-resume-with");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
     renderSessions();
+  });
+
+  previewResume.addEventListener("click", () => {
+    if (!activePreviewSession) {
+      return;
+    }
+    vscode.postMessage({
+      type: "previewResume",
+      provider: activePreviewSession.provider,
+      id: activePreviewSession.id
+    });
+  });
+
+  previewResumeWith.addEventListener("click", () => {
+    if (!activePreviewSession) {
+      return;
+    }
+    vscode.postMessage({
+      type: "previewResumeWith",
+      provider: activePreviewSession.provider,
+      id: activePreviewSession.id
+    });
   });
 
   previewRename.addEventListener("click", () => {
@@ -224,6 +248,7 @@
   function showPreview(message) {
     activePreviewSession = { provider: message.provider, id: message.id };
     previewRename.disabled = false;
+    applyResumeActions(message.showResumeWith !== false);
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
 
@@ -267,8 +292,13 @@
   function closePreview() {
     activePreviewSession = null;
     previewRename.disabled = false;
+    applyResumeActions(true);
     previewOverlay.classList.add("hidden");
     previewOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function applyResumeActions(showResumeWith) {
+    previewResumeWith.classList.toggle("hidden", !showResumeWith);
   }
 
   function syncPreviewTitle() {

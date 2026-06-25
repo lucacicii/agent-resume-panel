@@ -5,17 +5,20 @@ import { AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
 import { renameSession } from "../history/rename";
 import { loadRenameHomes } from "../history/rename/homes";
+import { pickResumeTarget, resumeSession } from "./resumeActions";
 import { SessionTreeProvider } from "../tree/sessionTree";
 
 let previewPanel: vscode.WebviewPanel | undefined;
 let activeSessionKey: string | undefined;
 let activeTree: SessionTreeProvider | undefined;
 let activeRefreshTree: (() => Promise<void>) | undefined;
+let activeContext: vscode.ExtensionContext | undefined;
 
 export async function openSessionPreviewPanel(
   session: AgentSession,
   tree: SessionTreeProvider,
-  refreshTree: () => Promise<void>
+  refreshTree: () => Promise<void>,
+  context: vscode.ExtensionContext
 ): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Beside;
   const sessionKey = `${session.provider}:${session.id}`;
@@ -23,6 +26,7 @@ export async function openSessionPreviewPanel(
   if (previewPanel && activeSessionKey === sessionKey) {
     activeTree = tree;
     activeRefreshTree = refreshTree;
+    activeContext = context;
     previewPanel.reveal(column);
     return;
   }
@@ -47,12 +51,23 @@ export async function openSessionPreviewPanel(
   activeSessionKey = sessionKey;
   activeTree = tree;
   activeRefreshTree = refreshTree;
+  activeContext = context;
   previewPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   previewPanel.webview.html = getWebviewHtml(previewPanel.webview);
 
   previewPanel.webview.onDidReceiveMessage(async (message: { type?: string }) => {
     if (message.type === "ready") {
       await sendPreviewData(previewPanel!.webview, session);
+      return;
+    }
+
+    if (message.type === "resume") {
+      await handleResume();
+      return;
+    }
+
+    if (message.type === "resumeWith") {
+      await handleResumeWith();
       return;
     }
 
@@ -71,7 +86,31 @@ export async function openSessionPreviewPanel(
     activeSessionKey = undefined;
     activeTree = undefined;
     activeRefreshTree = undefined;
+    activeContext = undefined;
   });
+}
+
+async function handleResume(): Promise<void> {
+  const session = findActiveSession();
+  if (!session) {
+    return;
+  }
+
+  await resumeSession(session, "vscode", activeContext);
+}
+
+async function handleResumeWith(): Promise<void> {
+  const session = findActiveSession();
+  if (!session) {
+    return;
+  }
+
+  const target = await pickResumeTarget(session);
+  if (!target) {
+    return;
+  }
+
+  await resumeSession(session, target, activeContext);
 }
 
 async function handleRename(panel: vscode.WebviewPanel): Promise<void> {
@@ -127,6 +166,8 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
     const preview = await loadSessionPreview(session, loadRenameHomes());
     webview.postMessage({
       type: "init",
+      provider: session.provider,
+      showResumeWith: session.provider !== "alma",
       title: preview.title,
       messages: preview.messages,
       truncated: preview.truncated,

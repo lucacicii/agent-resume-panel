@@ -8,6 +8,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [1.1.16] - 2026-06-25
+
+#### 新增
+
+- Preview Session 面板右上角新增 **Resume** 与 **Resume with…** 按钮（树预览面板与 Search Sessions 预览 overlay 均支持）。
+  - **Resume**：在 VS Code 集成终端恢复（Alma 走 Alma 客户端恢复）。
+  - **Resume with…**：可选择 VS Code 集成终端、Ghostty；Codex 会话还可选 Codex App。
+- Sessions 树右键菜单顺序调整：Copy Resume Command → Open Folder and Resume → Open in Ghostty → Preview Session → Rename Session。
+
+#### 变更
+
+- 从预览面板恢复会话后，预览面板保持打开，可继续浏览对话。
+
 ### [1.1.15] - 2026-06-25
 
 #### 新增
@@ -35,6 +48,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.1.16] - 2026-06-25
+
+#### Added
+
+- **Resume** and **Resume with…** buttons in the Preview Session panel header (tree preview panel and Search Sessions preview overlay).
+  - **Resume**: Resume in a VS Code integrated terminal (Alma sessions open in the Alma desktop app).
+  - **Resume with…**: Choose VS Code integrated terminal or Ghostty; Codex sessions also support Codex App.
+- Reordered Sessions tree context menu: Copy Resume Command → Open Folder and Resume → Open in Ghostty → Preview Session → Rename Session.
+
+#### Changed
+
+- Preview panels stay open after resuming, so you can keep reading the conversation.
 
 ### [1.1.15] - 2026-06-25
 

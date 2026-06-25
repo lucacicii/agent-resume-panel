@@ -49,8 +49,11 @@ body {
 .preview-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
+  max-width: 60%;
 }
 
 .preview-action {
@@ -69,6 +72,16 @@ body {
 .preview-action:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.preview-action-primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+
+.preview-action-primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
 }
 
 .preview-notice {

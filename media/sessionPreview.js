@@ -4,8 +4,18 @@
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
   const previewMessages = document.getElementById("preview-messages");
+  const previewResume = document.getElementById("preview-resume");
+  const previewResumeWith = document.getElementById("preview-resume-with");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
+
+  previewResume.addEventListener("click", () => {
+    vscode.postMessage({ type: "resume" });
+  });
+
+  previewResumeWith.addEventListener("click", () => {
+    vscode.postMessage({ type: "resumeWith" });
+  });
 
   previewRename.addEventListener("click", () => {
     previewRename.disabled = true;
@@ -49,6 +59,7 @@
   function renderPreview(message) {
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
+    applyResumeActions(message.showResumeWith !== false);
 
     const notices = [];
     if (message.truncated) {
@@ -82,6 +93,10 @@
       block.appendChild(text);
       previewMessages.appendChild(block);
     }
+  }
+
+  function applyResumeActions(showResumeWith) {
+    previewResumeWith.classList.toggle("hidden", !showResumeWith);
   }
 
   vscode.postMessage({ type: "ready" });

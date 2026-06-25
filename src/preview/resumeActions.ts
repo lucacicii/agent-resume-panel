@@ -1,0 +1,72 @@
+import * as vscode from "vscode";
+import { AgentSession } from "../history";
+import { openInGhostty } from "../terminal/ghosttyTerminal";
+import { openCodexAppResumeTerminal, openSessionResume } from "../terminal/resumeTerminal";
+
+export type ResumeTarget = "vscode" | "ghostty" | "codexApp";
+
+interface ResumeTargetOption extends vscode.QuickPickItem {
+  target: ResumeTarget;
+}
+
+export async function resumeSession(
+  session: AgentSession,
+  target: ResumeTarget,
+  context?: vscode.ExtensionContext
+): Promise<void> {
+  if (target === "vscode") {
+    openSessionResume(session, context);
+    return;
+  }
+
+  if (target === "ghostty") {
+    if (session.provider === "alma") {
+      vscode.window.showWarningMessage("Ghostty resume is not available for Alma sessions.");
+      return;
+    }
+
+    await openInGhostty(session);
+    return;
+  }
+
+  if (session.provider !== "codex") {
+    vscode.window.showWarningMessage("Codex App resume is only available for Codex sessions.");
+    return;
+  }
+
+  openCodexAppResumeTerminal(session, context);
+}
+
+export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
+  if (session.provider === "alma") {
+    return undefined;
+  }
+
+  const options: ResumeTargetOption[] = [
+    {
+      label: "VS Code Integrated Terminal",
+      description: "Resume in a VS Code integrated terminal",
+      target: "vscode"
+    },
+    {
+      label: "Ghostty",
+      description: "Open the session in Ghostty",
+      target: "ghostty"
+    }
+  ];
+
+  if (session.provider === "codex") {
+    options.push({
+      label: "Codex App",
+      description: "Resume in Codex App via integrated terminal",
+      target: "codexApp"
+    });
+  }
+
+  const picked = await vscode.window.showQuickPick(options, {
+    title: "Resume With",
+    placeHolder: "Choose where to resume this session"
+  });
+
+  return picked?.target;
+}

@@ -50,14 +50,16 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     treeView,
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
-    vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree, () => refresh(tree, false))),
+    vscode.commands.registerCommand("agentResume.search", () =>
+      searchAndOpen(context, tree, () => refresh(tree, false))
+    ),
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession)
     ),
     vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
-        void openSessionPreviewPanel(session, tree, () => refresh(tree, false));
+        void openSessionPreviewPanel(session, tree, () => refresh(tree, false), context);
       }
     }),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
@@ -181,6 +183,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
 }
 
 async function searchAndOpen(
+  context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
   refreshTree: () => Promise<void>
 ): Promise<void> {
@@ -195,7 +198,7 @@ async function searchAndOpen(
     return;
   }
 
-  await searchAndOpenSessions(tree, refreshTree);
+  await searchAndOpenSessions(context, tree, refreshTree);
 }
 
 async function renameSessionCommand(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {

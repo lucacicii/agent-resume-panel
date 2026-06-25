@@ -6,6 +6,7 @@ import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
 import { renameSession } from "../history/rename";
 import { loadSessionPreview } from "../history/preview";
+import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
   buildProjectList,
@@ -30,6 +31,7 @@ interface WebviewMessage {
 let searchPanel: vscode.WebviewPanel | undefined;
 
 export async function searchAndOpenSessions(
+  context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
   refreshTree: () => Promise<void>
 ): Promise<void> {
@@ -77,6 +79,27 @@ export async function searchAndOpenSessions(
 
     if (message.type === "preview" && message.provider && message.id) {
       await handlePreviewMessage(tree, searchPanel!.webview, message.provider, message.id);
+      return;
+    }
+
+    if (message.type === "previewResume" && message.provider && message.id) {
+      const session = findSession(tree, message.provider, message.id);
+      if (session) {
+        await resumeSession(session, "vscode", context);
+      }
+      return;
+    }
+
+    if (message.type === "previewResumeWith" && message.provider && message.id) {
+      const session = findSession(tree, message.provider, message.id);
+      if (!session) {
+        return;
+      }
+
+      const target = await pickResumeTarget(session);
+      if (target) {
+        await resumeSession(session, target, context);
+      }
     }
   });
 
@@ -104,6 +127,7 @@ async function handlePreviewMessage(
       type: "previewResult",
       provider,
       id,
+      showResumeWith: session.provider !== "alma",
       title: preview.title,
       messages: preview.messages,
       truncated: preview.truncated,
