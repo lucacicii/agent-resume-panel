@@ -325,6 +325,11 @@
         "title": "Customize Project Menu",
         "category": "Agent Resume",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.renameSession",
+        "title": "Rename Session",
+        "category": "Agent Resume"
       }
     ],
     "submenus": [
@@ -426,6 +431,10 @@
         {
           "command": "agentResume.configureProjectMenu",
           "when": "false"
+        },
+        {
+          "command": "agentResume.renameSession",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -454,6 +463,11 @@
         {
           "command": "agentResume.unfavoriteProject",
           "when": "view == agentResume.sessions && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.renameSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@0"
         },
         {

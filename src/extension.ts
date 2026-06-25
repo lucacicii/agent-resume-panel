@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { loadAllSessions, AgentProvider, AgentSession } from "./history";
+import { renameSession, RenameHomes } from "./history/rename";
 import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { openNewAlmaSession } from "./terminal/almaApp";
@@ -22,6 +23,7 @@ import {
   configureProjectMenu,
   loadMainActions
 } from "./menu/projectContextMenu";
+import { searchAndOpenSessions } from "./search/sessionSearch";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
@@ -47,6 +49,9 @@ export function activate(context: vscode.ExtensionContext): void {
     treeView,
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.search", () => searchAndOpen(tree)),
+    vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
+      renameSessionCommand(tree, nodeOrSession)
+    ),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context)),
     vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context)),
@@ -174,16 +179,51 @@ async function searchAndOpen(tree: SessionTreeProvider): Promise<void> {
     sessions = tree.getSessions();
   }
 
-  const picked = await vscode.window.showQuickPick(sessions.map(sessionQuickPickLabel), {
-    title: "Resume Agent Session",
-    matchOnDescription: true,
-    matchOnDetail: true,
-    placeHolder: "Search title, provider, project, or branch"
+  if (!sessions.length) {
+    vscode.window.showInformationMessage("No agent sessions found.");
+    return;
+  }
+
+  await searchAndOpenSessions(tree);
+}
+
+async function renameSessionCommand(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  const newTitle = await vscode.window.showInputBox({
+    title: "Rename Session",
+    prompt: "Enter a new session title",
+    value: session.title,
+    validateInput: (value) => (value.trim() ? undefined : "Title cannot be empty.")
   });
 
-  if (picked) {
-    openSessionResume(picked.session, undefined);
+  if (!newTitle) {
+    return;
   }
+
+  try {
+    await renameSession(session, newTitle, loadRenameHomes());
+    await refresh(tree, false);
+    vscode.window.showInformationMessage("Session renamed.");
+  } catch (error) {
+    vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
+  }
+}
+
+function loadRenameHomes(): RenameHomes {
+  const config = vscode.workspace.getConfiguration("agentResume");
+  return {
+    codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
+    claudeHome: expandHome(config.get<string>("claudeHome", "~/.claude")),
+    antigravityHome: expandHome(config.get<string>("antigravityHome", "~/.gemini")),
+    grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
+    almaDataDir: expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir())),
+    opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
+    piHome: expandHome(config.get<string>("piHome", "~/.pi/agent"))
+  };
 }
 
 async function newSessionFromEditor(context: vscode.ExtensionContext): Promise<void> {
@@ -403,7 +443,9 @@ async function resolveOpenFolderSession(
     return undefined;
   }
 
-  const picked = await vscode.window.showQuickPick(projectSessions.map(sessionQuickPickLabel), {
+  const picked = await vscode.window.showQuickPick(
+    projectSessions.map((session) => sessionQuickPickLabel(session)),
+    {
     title: "Select Session to Resume",
     matchOnDescription: true,
     matchOnDetail: true,

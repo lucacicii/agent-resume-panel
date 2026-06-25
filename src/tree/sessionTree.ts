@@ -268,6 +268,25 @@ function formatTitleWithMessageCount(session: AgentSession): string {
   return title;
 }
 
+export interface ProjectGroup {
+  projectPath: string;
+  sessions: AgentSession[];
+  favorited?: boolean;
+}
+
+export function buildProjectList(sessions: AgentSession[], favoriteProjects: string[] = []): ProjectGroup[] {
+  const favoriteSet = new Set(favoriteProjects.map((projectPath) => path.resolve(projectPath)));
+  const byPath = groupSessionsByPath(sessions);
+
+  return [...byPath.entries()]
+    .map(([projectPath, projectSessions]) => ({
+      projectPath,
+      sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
+      favorited: favoriteSet.has(projectPath)
+    }))
+    .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
+}
+
 function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession[]> {
   const byPath = new Map<string, AgentSession[]>();
   for (const session of sessions) {
@@ -374,11 +393,18 @@ function relativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-export function sessionQuickPickLabel(session: AgentSession): vscode.QuickPickItem & { session: AgentSession } {
+export function sessionQuickPickLabel(
+  session: AgentSession,
+  options?: { omitProjectPath?: boolean }
+): vscode.QuickPickItem & { session: AgentSession } {
+  const detail = options?.omitProjectPath
+    ? session.branch || undefined
+    : `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`;
+
   return {
     label: `$(${providerIcon(session.provider)}) ${formatTitleWithMessageCount(session)}`,
     description: providerLabel(session.provider),
-    detail: `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`,
+    detail,
     session
   };
 }
