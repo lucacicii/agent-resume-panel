@@ -4,13 +4,15 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 ## 简体中文
 
-Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
+Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜索和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
 
 适合这些场景：
 
 - 快速回到最近一次 AI 编程会话。
 - 同时使用多个 CLI / 桌面 Agent，并希望统一管理。
-- 按项目查看历史会话，并直接在对应项目里继续工作。
+- 按项目查看历史会话，收藏常用项目，并直接在对应项目里继续工作。
+- 在搜索面板里按项目筛选，再快速定位某个会话。
+- 重命名会话标题，并写回各 Agent 的原生存储（其他终端 resume 时也会看到新名称）。
 - 需要用 Ghostty 或 Codex App 接着打开已有会话。
 - 在 Alma 桌面客户端中按项目打开新对话。
 - 在编辑器右上角一键新建预设类型的 Agent 会话。
@@ -28,13 +30,14 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢�
 
 在 **Sessions** 列表中点击会话，或右键会话选择：
 
+- **Rename Session**：重命名会话标题，并写入对应 Agent 的原生存储（Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 均支持）。
 - **Resume Session**：在 VS Code 终端恢复会话（Alma 除外）。
 - **Copy Resume Command**：复制恢复命令。
 - **Open Folder and Resume**：打开会话所属项目，并在新窗口中恢复。
 - **Open in Ghostty**：用 Ghostty 打开并恢复会话。
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 
-Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试切换到对应对话（通过标题搜索，可能不完全精准）。
+Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会话。点击 Alma 会话会在 Alma 客户端中尝试切换到对应对话（通过标题搜索，可能不完全精准）。若 Agent 正在运行并锁住数据库，重命名可能失败，请先关闭对应 Agent 后重试。
 
 项目分组支持右键操作：
 
@@ -48,7 +51,13 @@ Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试�
 
 在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi 或 Codex App 会话。Alma 不在全局新建列表中，请通过项目右键 **New Alma Thread** 创建。
 
-运行 **Agent Resume: Search Sessions**，可以从所有已加载会话中快速搜索并恢复。
+运行 **Agent Resume: Search Sessions** 会打开专用搜索面板：
+
+- 顶部是 **Projects** 按钮区：点击 `All Projects` 或某个项目，先按项目做初步筛选；收藏项目会带星标。
+- 下方是独立的 **Sessions** 列表：在已选项目范围内继续输入关键字，按标题、provider、分支（未选项目时也匹配路径）过滤。
+- 点击某条会话即可恢复。
+
+侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
 
 ### 编辑器标题栏快捷新建
 
@@ -122,13 +131,15 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 ## English
 
-Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
+Agent Resume Panel is a VS Code sidebar extension for browsing, searching, and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
 
 Best for:
 
 - Jumping back into a recent AI coding session.
 - Managing sessions from multiple CLI and desktop agents in one list.
-- Browsing sessions by project and continuing in the right workspace.
+- Browsing sessions by project, favoriting frequent projects, and continuing in the right workspace.
+- Filtering by project in the search panel, then narrowing down to a specific session.
+- Renaming session titles in each agent's native storage so other terminals see the new name too.
 - Continuing an existing session in Ghostty or Codex App when needed.
 - Starting a new Alma chat scoped to a project directory.
 - Starting a preset agent session from the editor title bar in one click.
@@ -146,13 +157,14 @@ By default, terminal agent sessions open in a new integrated terminal beside the
 
 Click a session in **Sessions**, or right-click it and choose:
 
+- **Rename Session**: Rename the title and write it back to the agent's native storage (Codex, Claude, Antigravity, Grok, OpenCode, Pi, and Alma).
 - **Resume Session**: Resume in a VS Code terminal (not Alma).
 - **Copy Resume Command**: Copy the resume command.
 - **Open Folder and Resume**: Open the session's project and resume in a new window.
 - **Open in Ghostty**: Open and resume in Ghostty.
 - **Resume in Codex App**: Continue a Codex session in Codex App.
 
-Alma sessions have **no context menu**. Clicking a session tries to switch Alma to that thread via title search, which may not be exact.
+Alma sessions support **Rename Session**; use a click to resume in the Alma app. Clicking an Alma session tries to switch Alma to that thread via title search, which may not be exact. Rename can fail if the agent holds a database lock—close the agent and try again.
 
 Project groups support these right-click actions:
 
@@ -166,7 +178,13 @@ Project groups support these right-click actions:
 
 Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, Grok Build, OpenCode, Pi, or Codex App session from the current VS Code workspace. Alma is not in the global new-session picker; use **New Alma Thread** on a project instead.
 
-Run **Agent Resume: Search Sessions** to quickly find and resume any loaded session.
+Run **Agent Resume: Search Sessions** to open a dedicated search panel:
+
+- **Projects** chip buttons at the top: click **All Projects** or a project to filter first; favorited projects show a star.
+- A separate **Sessions** list below: type to filter by title, provider, branch, or path (when no project is selected).
+- Click a session row to resume.
+
+The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
 
 ### Editor Title Bar Shortcut
 
