@@ -256,7 +256,7 @@ function sessionLabel(session: AgentSession, showProjectName: boolean): string {
   return `${basenameOrPath(session.projectPath)} · ${title}`;
 }
 
-function formatTitleWithMessageCount(session: AgentSession): string {
+export function formatTitleWithMessageCount(session: AgentSession): string {
   const title = session.title;
   if (
     session.provider === "grok" &&
@@ -325,7 +325,7 @@ function latest(sessions: AgentSession[]): number {
   return sessions[0]?.updatedAt ?? 0;
 }
 
-function providerLabel(provider: AgentSession["provider"]): string {
+export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "codex") {
     return "codex";
   }
@@ -369,7 +369,7 @@ function providerIcon(provider: AgentSession["provider"]): string {
   return "comment-discussion";
 }
 
-function relativeTime(timestamp: number): string {
+export function relativeTime(timestamp: number): string {
   if (!timestamp) {
     return "unknown";
   }
@@ -391,6 +391,28 @@ function relativeTime(timestamp: number): string {
   }
 
   return new Date(timestamp).toLocaleDateString();
+}
+
+export interface SearchSessionItem {
+  provider: AgentSession["provider"];
+  id: string;
+  title: string;
+  projectPath: string;
+  projectName: string;
+  branch?: string;
+  updatedAtLabel: string;
+}
+
+export function serializeSessionForSearch(session: AgentSession): SearchSessionItem {
+  return {
+    provider: session.provider,
+    id: session.id,
+    title: formatTitleWithMessageCount(session),
+    projectPath: session.projectPath,
+    projectName: basenameOrPath(session.projectPath),
+    branch: session.branch,
+    updatedAtLabel: relativeTime(session.updatedAt)
+  };
 }
 
 export function sessionQuickPickLabel(

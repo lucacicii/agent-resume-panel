@@ -1,180 +1,121 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { AgentSession, basenameOrPath, compactPath } from "../history";
-import { isFavoriteProject } from "../favorites/projectFavorites";
+import { basenameOrPath, compactPath } from "../history";
 import { openSessionResume } from "../terminal/resumeTerminal";
-import { buildProjectList, sessionQuickPickLabel, SessionTreeProvider } from "../tree/sessionTree";
+import {
+  buildProjectList,
+  serializeSessionForSearch,
+  SessionTreeProvider
+} from "../tree/sessionTree";
 
-type SearchPickItem = vscode.QuickPickItem & {
-  pickKind: "project" | "session" | "empty" | "separator";
-  projectPath?: string;
-  session?: AgentSession;
-};
+interface SearchProjectPayload {
+  projectPath: string;
+  name: string;
+  sessionCount: number;
+  favorited: boolean;
+  compactPath: string;
+}
+
+let searchPanel: vscode.WebviewPanel | undefined;
 
 export async function searchAndOpenSessions(tree: SessionTreeProvider): Promise<void> {
+  const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+
+  if (searchPanel) {
+    searchPanel.reveal(column);
+    postInitMessage(searchPanel.webview, tree);
+    return;
+  }
+
+  searchPanel = vscode.window.createWebviewPanel(
+    "agentResume.searchSessions",
+    "Search Sessions",
+    column,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [vscode.Uri.joinPath(getExtensionUri(), "media")]
+    }
+  );
+
+  searchPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
+  searchPanel.webview.html = getWebviewHtml(searchPanel.webview);
+
+  searchPanel.webview.onDidReceiveMessage(async (message: { type?: string; provider?: string; id?: string }) => {
+    if (message.type === "ready") {
+      postInitMessage(searchPanel!.webview, tree);
+      return;
+    }
+
+    if (message.type === "resume" && message.provider && message.id) {
+      const session = tree
+        .getSessions()
+        .find((entry) => entry.provider === message.provider && entry.id === message.id);
+      if (session) {
+        searchPanel?.dispose();
+        openSessionResume(session, undefined);
+      }
+    }
+  });
+
+  searchPanel.onDidDispose(() => {
+    searchPanel = undefined;
+  });
+}
+
+function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): void {
   const sessions = tree.getSessions();
   const favoriteProjects = tree.getFavoriteProjects();
   const projects = buildProjectList(sessions, favoriteProjects);
 
-  const quickPick = vscode.window.createQuickPick<SearchPickItem>();
-  let selectedProjectPath: string | undefined;
-  let query = "";
-
-  quickPick.title = "Resume Agent Session";
-  quickPick.placeholder = "Select a project shortcut, then search sessions";
-  quickPick.matchOnDescription = false;
-  quickPick.matchOnDetail = false;
-
-  const updateView = (): void => {
-    quickPick.title = selectedProjectPath
-      ? `Resume Agent Session — ${basenameOrPath(selectedProjectPath)}`
-      : "Resume Agent Session";
-    quickPick.buttons = selectedProjectPath
-      ? [{ iconPath: new vscode.ThemeIcon("close"), tooltip: "Clear project filter" }]
-      : [];
-    quickPick.placeholder = selectedProjectPath
-      ? `Search sessions in ${basenameOrPath(selectedProjectPath)}`
-      : "Select a project shortcut, then search sessions";
-    quickPick.items = buildItems(sessions, projects, favoriteProjects, selectedProjectPath, query);
+  const payload = {
+    type: "init",
+    projects: projects.map(
+      (project): SearchProjectPayload => ({
+        projectPath: path.resolve(project.projectPath),
+        name: basenameOrPath(project.projectPath),
+        sessionCount: project.sessions.length,
+        favorited: Boolean(project.favorited),
+        compactPath: compactPath(project.projectPath)
+      })
+    ),
+    sessions: sessions.map(serializeSessionForSearch)
   };
 
-  quickPick.onDidChangeValue((value) => {
-    query = value;
-    updateView();
-  });
-
-  quickPick.onDidTriggerButton(() => {
-    selectedProjectPath = undefined;
-    query = quickPick.value;
-    updateView();
-  });
-
-  quickPick.onDidAccept(() => {
-    const picked = quickPick.selectedItems[0];
-    if (!picked) {
-      return;
-    }
-
-    if (picked.pickKind === "empty" || picked.pickKind === "separator") {
-      return;
-    }
-
-    if (picked.pickKind === "project") {
-      selectedProjectPath = picked.projectPath;
-      query = quickPick.value;
-      updateView();
-      return;
-    }
-
-    if (!picked.session) {
-      return;
-    }
-
-    quickPick.hide();
-    openSessionResume(picked.session, undefined);
-  });
-
-  quickPick.onDidHide(() => quickPick.dispose());
-
-  updateView();
-  quickPick.show();
+  webview.postMessage(payload);
 }
 
-function buildItems(
-  sessions: AgentSession[],
-  projects: ReturnType<typeof buildProjectList>,
-  favoriteProjects: string[],
-  selectedProjectPath: string | undefined,
-  query: string
-): SearchPickItem[] {
-  const items: SearchPickItem[] = [
-    {
-      label: "Projects",
-      kind: vscode.QuickPickItemKind.Separator,
-      pickKind: "separator"
-    },
-    projectItem("All Projects", undefined, sessions.length, !selectedProjectPath)
-  ];
+function getWebviewHtml(webview: vscode.Webview): string {
+  const extensionUri = getExtensionUri();
+  const htmlUri = vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.html");
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.css"));
+  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.js"));
+  const nonce = getNonce();
 
-  for (const project of projects) {
-    const starred = isFavoriteProject(favoriteProjects, project.projectPath);
-    const label = starred
-      ? `$(star-full) ${basenameOrPath(project.projectPath)}`
-      : `$(folder) ${basenameOrPath(project.projectPath)}`;
-    items.push(
-      projectItem(
-        label,
-        project.projectPath,
-        project.sessions.length,
-        selectedProjectPath === project.projectPath,
-        compactPath(project.projectPath)
-      )
-    );
-  }
+  let html = readMediaFile(htmlUri.fsPath);
+  html = html
+    .replaceAll("{{cspSource}}", webview.cspSource)
+    .replaceAll("{{nonce}}", nonce)
+    .replaceAll("{{styleUri}}", styleUri.toString())
+    .replaceAll("{{scriptUri}}", scriptUri.toString());
 
-  const filteredSessions = sessions.filter((session) => matchesSession(session, query, selectedProjectPath));
-
-  items.push({
-    label: selectedProjectPath ? "Sessions in project" : "Sessions",
-    kind: vscode.QuickPickItemKind.Separator,
-    pickKind: "separator"
-  });
-
-  if (!filteredSessions.length) {
-    items.push({
-      label: selectedProjectPath ? "No sessions match in this project" : "No sessions match",
-      pickKind: "empty",
-      alwaysShow: true,
-      description: query ? "Try a different search" : undefined
-    });
-    return items;
-  }
-
-  for (const session of filteredSessions) {
-    const pick = sessionQuickPickLabel(session, { omitProjectPath: Boolean(selectedProjectPath) });
-    items.push({
-      ...pick,
-      pickKind: "session",
-      session
-    });
-  }
-
-  return items;
+  return html;
 }
 
-function projectItem(
-  label: string,
-  projectPath: string | undefined,
-  sessionCount: number,
-  selected: boolean,
-  detail?: string
-): SearchPickItem {
-  const prefix = selected ? "$(check) " : "";
-  return {
-    label: `${prefix}${label}`,
-    description: `${sessionCount}`,
-    detail,
-    pickKind: "project",
-    projectPath,
-    alwaysShow: true
-  };
+function getExtensionUri(): vscode.Uri {
+  return vscode.Uri.file(path.join(__dirname, "..", ".."));
 }
 
-function matchesSession(session: AgentSession, query: string, selectedProjectPath?: string): boolean {
-  const normalizedProject = path.resolve(session.projectPath || process.env.HOME || "");
-  if (selectedProjectPath && normalizedProject !== selectedProjectPath) {
-    return false;
-  }
+function readMediaFile(filePath: string): string {
+  return fs.readFileSync(filePath, "utf8");
+}
 
-  const trimmed = query.trim().toLowerCase();
-  if (!trimmed) {
-    return true;
+function getNonce(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let text = "";
+  for (let i = 0; i < 32; i++) {
+    text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-
-  return (
-    session.title.toLowerCase().includes(trimmed) ||
-    session.provider.toLowerCase().includes(trimmed) ||
-    (session.branch?.toLowerCase().includes(trimmed) ?? false) ||
-    (!selectedProjectPath && compactPath(session.projectPath).toLowerCase().includes(trimmed))
-  );
+  return text;
 }
