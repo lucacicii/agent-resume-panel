@@ -8,12 +8,14 @@ const pendingTtlMs = 5 * 60 * 1000;
 
 export interface PendingResumeOptions {
   claudePanel?: boolean;
+  codexPanel?: boolean;
 }
 
 interface PendingResume {
   session: AgentSession;
   createdAt: number;
   claudePanel?: boolean;
+  codexPanel?: boolean;
 }
 
 export async function storePendingResume(
@@ -24,7 +26,8 @@ export async function storePendingResume(
   await context.globalState.update(pendingResumeKey, {
     session,
     createdAt: Date.now(),
-    claudePanel: options?.claudePanel
+    claudePanel: options?.claudePanel,
+    codexPanel: options?.codexPanel
   } satisfies PendingResume);
 }
 
@@ -54,6 +57,12 @@ async function resumePendingSession(pending: PendingResume, context: vscode.Exte
   if (pending.claudePanel && pending.session.provider === "claude") {
     const { openClaudeCodePanelResumeFlow } = await import("./claudeCodePanel.js");
     await openClaudeCodePanelResumeFlow(pending.session, context);
+    return;
+  }
+
+  if (pending.codexPanel && pending.session.provider === "codex") {
+    const { openCodexIdePanelResumeFlow } = await import("./codexIdePanel.js");
+    await openCodexIdePanelResumeFlow(pending.session, context);
     return;
   }
 

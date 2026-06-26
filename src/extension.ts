@@ -10,6 +10,11 @@ import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal"
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./terminal/claudeCodePanel";
 import {
+  applyCodexIdePanelContext,
+  openCodexIdePanelResumeFlow,
+  shouldResumeCodexInIdePanel
+} from "./terminal/codexIdePanel";
+import {
   buildResumeCommand,
   openCodexAppResumeTerminal,
   openNewSessionTerminal,
@@ -93,6 +98,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.openInClaudeCodePanel", (nodeOrSession?: unknown) =>
       openSessionInClaudeCodePanel(context, tree, nodeOrSession)
     ),
+    vscode.commands.registerCommand("agentResume.openInCodexIdePanel", (nodeOrSession?: unknown) =>
+      openSessionInCodexIdePanel(context, tree, nodeOrSession)
+    ),
     vscode.commands.registerCommand("agentResume.newCodexSession", (node?: unknown) =>
       openNewSession(tree, node, "codex", context)
     ),
@@ -128,12 +136,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration("agentResume.projectMenu.mainActions")) {
         void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
       }
+      if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
+        void applyCodexIdePanelContext();
+      }
       if (event.affectsConfiguration("agentResume")) {
         void refresh(tree, false);
       }
     })
   );
 
+  void applyCodexIdePanelContext();
   void refresh(tree, false);
   void consumePendingResumeForWorkspace(context);
 }
@@ -396,6 +408,24 @@ async function openSessionInClaudeCodePanel(
   await openClaudeCodePanelResumeFlow(session, context);
 }
 
+async function openSessionInCodexIdePanel(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown
+): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  if (session.provider !== "codex") {
+    vscode.window.showWarningMessage("Resume in Codex IDE Panel is only available for Codex sessions.");
+    return;
+  }
+
+  await openCodexIdePanelResumeFlow(session, context);
+}
+
 async function openFolder(tree: SessionTreeProvider, node: unknown): Promise<void> {
   const projectPath = tree.getProjectFromNode(node);
   if (!projectPath) {
@@ -415,11 +445,14 @@ async function openFolderAndResume(
     return;
   }
 
-  await storePendingResume(
-    context,
-    session,
-    session.provider === "claude" && shouldResumeClaudeInPanel() ? { claudePanel: true } : undefined
-  );
+  let pendingOptions: { claudePanel?: boolean; codexPanel?: boolean } | undefined;
+  if (session.provider === "claude" && shouldResumeClaudeInPanel()) {
+    pendingOptions = { claudePanel: true };
+  } else if (session.provider === "codex" && shouldResumeCodexInIdePanel()) {
+    pendingOptions = { codexPanel: true };
+  }
+
+  await storePendingResume(context, session, pendingOptions);
   await vscode.commands.executeCommand("vscode.openFolder", projectUri(session.projectPath), true);
 }
 

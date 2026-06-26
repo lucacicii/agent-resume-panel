@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
 import { openClaudeCodePanelResumeFlow } from "../terminal/claudeCodePanel";
+import { isCodexIdePanelResumeAvailable, openCodexIdePanelResumeFlow } from "../terminal/codexIdePanel";
 import { openInGhostty } from "../terminal/ghosttyTerminal";
 import { openCodexAppResumeTerminal, openResumeTerminal } from "../terminal/resumeTerminal";
 
-export type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "claudePanel";
+export type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "codexIdePanel" | "claudePanel";
 
 interface ResumeTargetOption extends vscode.QuickPickItem {
   target: ResumeTarget;
@@ -40,12 +41,27 @@ export async function resumeSession(
     return;
   }
 
-  if (session.provider !== "codex") {
-    vscode.window.showWarningMessage("Codex App resume is only available for Codex sessions.");
+  if (target === "codexIdePanel") {
+    if (session.provider !== "codex") {
+      vscode.window.showWarningMessage("Codex IDE panel resume is only available for Codex sessions.");
+      return;
+    }
+
+    await openCodexIdePanelResumeFlow(session, context);
     return;
   }
 
-  openCodexAppResumeTerminal(session, context);
+  if (target === "codexApp") {
+    if (session.provider !== "codex") {
+      vscode.window.showWarningMessage("Codex App resume is only available for Codex sessions.");
+      return;
+    }
+
+    openCodexAppResumeTerminal(session, context);
+    return;
+  }
+
+  vscode.window.showWarningMessage("Unsupported resume target.");
 }
 
 export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
@@ -75,6 +91,14 @@ export async function pickResumeTarget(session: AgentSession): Promise<ResumeTar
   }
 
   if (session.provider === "codex") {
+    if (isCodexIdePanelResumeAvailable()) {
+      options.push({
+        label: "Codex IDE Panel (Experimental)",
+        description: "Resume in the Codex VS Code extension panel",
+        target: "codexIdePanel"
+      });
+    }
+
     options.push({
       label: "Codex App",
       description: "Resume in Codex App via integrated terminal",

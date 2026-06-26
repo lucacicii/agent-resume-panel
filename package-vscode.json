@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "1.1.17",
+  "version": "1.1.18",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -25,6 +25,7 @@
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.openInCodexApp",
     "onCommand:agentResume.openInClaudeCodePanel",
+    "onCommand:agentResume.openInCodexIdePanel",
     "onCommand:agentResume.newCodexSession",
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
@@ -194,6 +195,28 @@
           "default": "panel",
           "description": "How Claude sessions resume from a click or Open Folder and Resume. panel opens the Claude Code VS Code extension; terminal uses the integrated terminal CLI (claude --resume)."
         },
+        "agentResume.codexResumeMode": {
+          "type": "string",
+          "enum": [
+            "terminal",
+            "panel",
+            "app"
+          ],
+          "default": "terminal",
+          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app uses Codex App."
+        },
+        "agentResume.codexIdePanelResume.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "[Experimental] Enable Resume in Codex IDE Panel. Set to false to disable immediately if a Codex extension update breaks panel resume."
+        },
+        "agentResume.codexIdePanelResume.implementationVersion": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 99,
+          "description": "[Experimental] Must match the Codex IDE panel integration version built into Agent Resume Panel (currently 1). Lower this only after updating the extension code for a new Codex routing scheme."
+        },
         "agentResume.projectMenu.mainActions": {
           "type": "array",
           "items": {
@@ -281,6 +304,11 @@
       {
         "command": "agentResume.openInClaudeCodePanel",
         "title": "Resume in Claude Code Panel",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInCodexIdePanel",
+        "title": "Resume in Codex IDE Panel (Experimental)",
         "category": "Agent Resume"
       },
       {
@@ -413,6 +441,10 @@
           "when": "false"
         },
         {
+          "command": "agentResume.openInCodexIdePanel",
+          "when": "false"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "false"
         },
@@ -531,6 +563,11 @@
         {
           "command": "agentResume.openInClaudeCodePanel",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.claude",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openInCodexIdePanel",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session.codex && agentResume.codexIdePanelResume.enabled",
           "group": "navigation@5"
         },
         {

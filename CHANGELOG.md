@@ -8,6 +8,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [1.1.18] - 2026-06-26
+
+#### 新增
+
+- **Resume in Codex IDE Panel (Experimental)**：尝试在 Codex VS Code 插件面板中恢复会话。
+- 设置项 `agentResume.codexResumeMode`：`terminal`（默认）/ `panel` / `app`。
+- 实验性开关 `agentResume.codexIdePanelResume.enabled`：可一键禁用面板恢复。
+- 实现版本号 `agentResume.codexIdePanelResume.implementationVersion`：与内置集成版本不一致时自动阻止面板恢复，便于 Codex 更新后快速修复。
+- **Resume with…** 在开关开启时为 Codex 会话提供 **Codex IDE Panel (Experimental)** 选项。
+
 ### [1.1.17] - 2026-06-26
 
 #### 新增
@@ -56,6 +66,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.1.18] - 2026-06-26
+
+#### Added
+
+- **Resume in Codex IDE Panel (Experimental)**: Attempt to resume Codex sessions in the Codex VS Code extension panel.
+- Setting `agentResume.codexResumeMode`: `terminal` (default), `panel`, or `app`.
+- Experimental kill switch `agentResume.codexIdePanelResume.enabled` to disable panel resume immediately.
+- Implementation version `agentResume.codexIdePanelResume.implementationVersion` blocks panel resume when it no longer matches the built-in integration, making post-update fixes safer.
+- **Resume with…** adds **Codex IDE Panel (Experimental)** for Codex sessions when the switch is on.
 
 ### [1.1.17] - 2026-06-26
 
