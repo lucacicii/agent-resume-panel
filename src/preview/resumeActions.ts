@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { openClaudeCodePanelResumeFlow } from "../terminal/claudeCodePanel";
 import { openInGhostty } from "../terminal/ghosttyTerminal";
-import { openCodexAppResumeTerminal, openSessionResume } from "../terminal/resumeTerminal";
+import { openCodexAppResumeTerminal, openResumeTerminal } from "../terminal/resumeTerminal";
 
-export type ResumeTarget = "vscode" | "ghostty" | "codexApp";
+export type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "claudePanel";
 
 interface ResumeTargetOption extends vscode.QuickPickItem {
   target: ResumeTarget;
@@ -15,7 +16,7 @@ export async function resumeSession(
   context?: vscode.ExtensionContext
 ): Promise<void> {
   if (target === "vscode") {
-    openSessionResume(session, context);
+    openResumeTerminal(session, context);
     return;
   }
 
@@ -26,6 +27,16 @@ export async function resumeSession(
     }
 
     await openInGhostty(session);
+    return;
+  }
+
+  if (target === "claudePanel") {
+    if (session.provider !== "claude") {
+      vscode.window.showWarningMessage("Claude Code panel resume is only available for Claude sessions.");
+      return;
+    }
+
+    await openClaudeCodePanelResumeFlow(session, context);
     return;
   }
 
@@ -54,6 +65,14 @@ export async function pickResumeTarget(session: AgentSession): Promise<ResumeTar
       target: "ghostty"
     }
   ];
+
+  if (session.provider === "claude") {
+    options.push({
+      label: "Claude Code Panel",
+      description: "Resume in the Claude Code VS Code extension panel",
+      target: "claudePanel"
+    });
+  }
 
   if (session.provider === "codex") {
     options.push({

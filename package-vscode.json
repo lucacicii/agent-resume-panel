@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "1.1.16",
+  "version": "1.1.17",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -24,6 +24,7 @@
     "onCommand:agentResume.openProject",
     "onCommand:agentResume.openInGhostty",
     "onCommand:agentResume.openInCodexApp",
+    "onCommand:agentResume.openInClaudeCodePanel",
     "onCommand:agentResume.newCodexSession",
     "onCommand:agentResume.newClaudeSession",
     "onCommand:agentResume.newAgySession",
@@ -184,6 +185,15 @@
           "default": "codex",
           "description": "Agent provider started by the editor title bar New Session button."
         },
+        "agentResume.claudeResumeMode": {
+          "type": "string",
+          "enum": [
+            "terminal",
+            "panel"
+          ],
+          "default": "panel",
+          "description": "How Claude sessions resume from a click or Open Folder and Resume. panel opens the Claude Code VS Code extension; terminal uses the integrated terminal CLI (claude --resume)."
+        },
         "agentResume.projectMenu.mainActions": {
           "type": "array",
           "items": {
@@ -266,6 +276,11 @@
       {
         "command": "agentResume.openInCodexApp",
         "title": "Resume in Codex App",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInClaudeCodePanel",
+        "title": "Resume in Claude Code Panel",
         "category": "Agent Resume"
       },
       {
@@ -394,6 +409,10 @@
           "when": "false"
         },
         {
+          "command": "agentResume.openInClaudeCodePanel",
+          "when": "false"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "false"
         },
@@ -507,6 +526,11 @@
         {
           "command": "agentResume.openInCodexApp",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.codex",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openInClaudeCodePanel",
+          "when": "view == agentResume.sessions && viewItem == agentResume.session.claude",
           "group": "navigation@5"
         },
         {

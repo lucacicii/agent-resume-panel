@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [1.1.17] - 2026-06-26
+
+#### 新增
+
+- **Resume in Claude Code Panel**：Claude 会话可在 Claude Code 插件面板中恢复，而不只是集成终端。
+- 可在设置中选择 Claude 默认恢复方式：插件面板或集成终端（默认面板）。
+- **Resume with…** 中 Claude 会话新增 **Claude Code Panel** 选项。
+
 ### [1.1.16] - 2026-06-25
 
 #### 新增
@@ -48,6 +56,15 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.1.17] - 2026-06-26
+
+#### Added
+
+- **Resume in Claude Code Panel**: Resume Claude sessions in the Claude Code extension panel, not only in the integrated terminal.
+- Choose Claude's default resume target in Settings: extension panel or integrated terminal (panel is the default).
+- **Resume with…** adds **Claude Code Panel** for Claude sessions.
+
 
 ### [1.1.16] - 2026-06-25
 

@@ -8,6 +8,7 @@ import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
+import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./terminal/claudeCodePanel";
 import {
   buildResumeCommand,
   openCodexAppResumeTerminal,
@@ -88,6 +89,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
       openSessionInCodexApp(tree, nodeOrSession)
+    ),
+    vscode.commands.registerCommand("agentResume.openInClaudeCodePanel", (nodeOrSession?: unknown) =>
+      openSessionInClaudeCodePanel(context, tree, nodeOrSession)
     ),
     vscode.commands.registerCommand("agentResume.newCodexSession", (node?: unknown) =>
       openNewSession(tree, node, "codex", context)
@@ -374,6 +378,24 @@ function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown
   openCodexAppResumeTerminal(session);
 }
 
+async function openSessionInClaudeCodePanel(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown
+): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  if (session.provider !== "claude") {
+    vscode.window.showWarningMessage("Resume in Claude Code Panel is only available for Claude sessions.");
+    return;
+  }
+
+  await openClaudeCodePanelResumeFlow(session, context);
+}
+
 async function openFolder(tree: SessionTreeProvider, node: unknown): Promise<void> {
   const projectPath = tree.getProjectFromNode(node);
   if (!projectPath) {
@@ -393,7 +415,11 @@ async function openFolderAndResume(
     return;
   }
 
-  await storePendingResume(context, session);
+  await storePendingResume(
+    context,
+    session,
+    session.provider === "claude" && shouldResumeClaudeInPanel() ? { claudePanel: true } : undefined
+  );
   await vscode.commands.executeCommand("vscode.openFolder", projectUri(session.projectPath), true);
 }
 
