@@ -15,6 +15,7 @@ interface ClaudeProjectRow {
   sessionId?: string;
   cwd?: string;
   timestamp?: string;
+  aiTitle?: string;
   message?: {
     role?: string;
     content?: unknown;
@@ -81,6 +82,9 @@ function summarizeProjectFile(rows: ClaudeProjectRow[], file: string): AgentSess
     }
     if (!title && row.type === "user") {
       title = contentToTitle(row.message?.content);
+    }
+    if (!title && row.type === "ai-title") {
+      title = cleanTitle(row.aiTitle);
     }
   }
 

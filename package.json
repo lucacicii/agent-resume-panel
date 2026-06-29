@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "1.1.19",
+  "version": "1.1.20",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -157,6 +157,11 @@
           "default": false,
           "description": "Show archived Codex threads."
         },
+        "agentResume.showSubagentCodex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Codex subagent threads in the panel (threads whose source field contains subagent)."
+        },
         "agentResume.showArchivedOpenCode": {
           "type": "boolean",
           "default": false,
@@ -165,7 +170,7 @@
         "agentResume.showSubagentGrok": {
           "type": "boolean",
           "default": false,
-          "description": "Show Grok Build subagent sessions in the panel."
+          "description": "Show Grok Build subagent sessions (session_kind: subagent) in the panel. Ephemeral subagent shells with no title and at most one message are always hidden."
         },
         "agentResume.hideCronAlma": {
           "type": "boolean",

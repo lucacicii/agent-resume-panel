@@ -8,6 +8,24 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+
+### [1.1.20] - 2026-06-29
+
+#### 新增
+
+- 设置项 `agentResume.showSubagentCodex`（默认 `false`）：控制是否在面板中显示 Codex subagent 会话（`source` 字段含 `subagent`）。
+
+#### 变更
+
+- **Grok Build**：默认隐藏无标题且最多 1 条消息的空壳子进程会话，避免大量 subagent 占满 `maxItems` 显示配额；`session_kind: subagent` 仍由 `agentResume.showSubagentGrok` 控制。
+- **Grok Build**：刷新时按文件 mtime 缓存 `summary.json` 并并行读取，二次刷新明显更快。
+- **Codex**：默认过滤 subagent 线程（`source` 含 `subagent`），可通过 `agentResume.showSubagentCodex` 开启显示。
+- **Claude Code**：无首条 user 消息标题时，从 `ai-title` 条目的 `aiTitle` 字段提取会话标题。
+
+### [1.1.90] - 2026-06-29
+
+无更新。
+
 ### [1.1.18] - 2026-06-26
 
 #### 新增
@@ -66,6 +84,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.1.90] - 2026-06-29
+
+No changes.
+
+### [1.1.20] - 2026-06-29
+
+#### Added
+
+- Setting `agentResume.showSubagentCodex` (default `false`): show or hide Codex subagent threads whose `source` field contains `subagent`.
+
+#### Changed
+
+- **Grok Build**: Ephemeral subagent shells with no title and at most one message are always hidden by default, so they no longer crowd out the `maxItems` display quota; `session_kind: subagent` sessions remain controlled by `agentResume.showSubagentGrok`.
+- **Grok Build**: `summary.json` files are cached by mtime and read in parallel on refresh, making repeat refreshes noticeably faster.
+- **Codex**: Subagent threads (`source` contains `subagent`) are filtered by default; enable `agentResume.showSubagentCodex` to show them.
+- **Claude Code**: When a session has no first user-message title, the panel now uses the `aiTitle` field from `ai-title` rows.
 
 ### [1.1.18] - 2026-06-26
 

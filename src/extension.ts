@@ -166,6 +166,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   const maxItems = config.get<number>("maxItems", 500);
   const showArchivedCodex = config.get<boolean>("showArchivedCodex", false);
   const showArchivedOpenCode = config.get<boolean>("showArchivedOpenCode", false);
+  const showSubagentCodex = config.get<boolean>("showSubagentCodex", false);
   const showSubagentGrok = config.get<boolean>("showSubagentGrok", false);
   const hideCronAlma = config.get<boolean>("hideCronAlma", true);
   const hideChannelAlma = config.get<boolean>("hideChannelAlma", true);
@@ -183,6 +184,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
       maxItems,
       showArchivedCodex,
       showArchivedOpenCode,
+      showSubagentCodex,
       showSubagentGrok,
       hideCronAlma,
       hideChannelAlma,

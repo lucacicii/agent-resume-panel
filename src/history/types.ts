@@ -24,6 +24,7 @@ export interface HistoryLoadOptions {
   maxItems: number;
   showArchivedCodex: boolean;
   showArchivedOpenCode: boolean;
+  showSubagentCodex: boolean;
   showSubagentGrok: boolean;
   hideCronAlma: boolean;
   hideChannelAlma: boolean;
