@@ -9,6 +9,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 ## 简体中文
 
 
+### [1.2.0] - 2026-06-30
+
+#### 新增
+
+- **Agent Resume Settings** Webview：Sessions 标题栏齿轮入口，分区管理扩展设置（Data Paths、Resume、Terminal、LLM Assist 等）。
+- **LLM Assist**：接入 OpenAI 兼容 API（Base URL、Model、API Key），API Key 在设置页内联输入并安全存储。
+  - Preview Session：**Summarize** 总结当前会话（显示在对话上方；按 session 与输出语言缓存）。
+  - Preview Session：**Auto Rename** 由 AI 生成标题并写回原生存储。
+  - Sessions 树右键：**Auto Rename Session**（无需手动输入）。
+  - Search Sessions 预览 overlay 同步支持 Summarize / Auto Rename。
+- 设置项 `agentResume.llm.outputLanguage`（默认 English）：Summarize 与 Auto Rename 输出语言，支持 Chinese、Japanese、Korean 等 10 种语言。
+- **Test Connection** 使用表单当前值测试连通性（无需先 Save）；失败时错误信息包含实际请求 endpoint。
+
+#### 变更
+
+- LLM Assist 设置页增加提示：请尽可能使用快速、便宜的模型（如 gpt-4o-mini、deepseek-chat）。
+
 ### [1.1.20] - 2026-06-29
 
 #### 新增
@@ -84,6 +101,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.2.0] - 2026-06-30
+
+#### Added
+
+- **Agent Resume Settings** webview: gear icon on the Sessions view title bar; grouped settings for data paths, resume behavior, terminal, LLM Assist, and more.
+- **LLM Assist**: OpenAI-compatible API (base URL, model, API key) with inline API key field in settings (stored in VS Code Secret Storage).
+  - Preview Session: **Summarize** the current session (shown above messages; cached per session and output language).
+  - Preview Session: **Auto Rename** generates a title and writes it back to native storage.
+  - Sessions tree context menu: **Auto Rename Session** (no manual input).
+  - Search Sessions preview overlay supports Summarize and Auto Rename as well.
+- Setting `agentResume.llm.outputLanguage` (default English): output language for Summarize and Auto Rename (Chinese, Japanese, Korean, and 7 more).
+- **Test Connection** uses the current form values (Save not required); errors include the actual request endpoint.
+
+#### Changed
+
+- LLM Assist settings include a tip to prefer fast, low-cost models (e.g. gpt-4o-mini, deepseek-chat).
 
 ### [1.1.90] - 2026-06-29
 

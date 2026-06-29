@@ -30,8 +30,10 @@ import {
   configureProjectMenu,
   loadMainActions
 } from "./menu/projectContextMenu";
+import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
+import { openSettingsPanel } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
@@ -132,6 +134,10 @@ export function activate(context: vscode.ExtensionContext): void {
       unfavoriteProject(context, tree, node)
     ),
     vscode.commands.registerCommand("agentResume.configureProjectMenu", () => configureProjectMenu()),
+    vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
+    vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
+      autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
+    ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("agentResume.projectMenu.mainActions")) {
         void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
@@ -217,6 +223,29 @@ async function searchAndOpen(
   }
 
   await searchAndOpenSessions(context, tree, refreshTree);
+}
+
+async function autoRenameSessionCommand(
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown,
+  context: vscode.ExtensionContext,
+  refreshTree: () => Promise<void>
+): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Auto renaming session...",
+      cancellable: false
+    },
+    async () => {
+      await runAutoRename(session, tree, refreshTree, context);
+    }
+  );
 }
 
 async function renameSessionCommand(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {

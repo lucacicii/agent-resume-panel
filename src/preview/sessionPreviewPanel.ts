@@ -5,7 +5,11 @@ import { AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
 import { renameSession } from "../history/rename";
 import { loadRenameHomes } from "../history/rename/homes";
+import { getLlmConfig, isLlmConfigured } from "../llm/config";
+
+import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "./resumeActions";
+import { runAutoRename, runSummarize } from "./sessionAssistActions";
 import { SessionTreeProvider } from "../tree/sessionTree";
 
 let previewPanel: vscode.WebviewPanel | undefined;
@@ -73,6 +77,25 @@ export async function openSessionPreviewPanel(
 
     if (message.type === "rename") {
       await handleRename(previewPanel!);
+      return;
+    }
+
+    if (message.type === "summarize") {
+      const activeSession = findActiveSession();
+      if (activeSession && activeContext) {
+        await runSummarize(activeSession, activeContext, previewPanel!.webview);
+      }
+      return;
+    }
+
+    if (message.type === "autoRename") {
+      const activeSession = findActiveSession();
+      if (activeSession && activeContext && activeTree && activeRefreshTree) {
+        await runAutoRename(activeSession, activeTree, activeRefreshTree, activeContext, {
+          webview: previewPanel!.webview,
+          panel: previewPanel!
+        });
+      }
       return;
     }
 
@@ -164,10 +187,18 @@ function findActiveSession(): AgentSession | undefined {
 async function sendPreviewData(webview: vscode.Webview, session: AgentSession): Promise<void> {
   try {
     const preview = await loadSessionPreview(session, loadRenameHomes());
+    const llmConfigured = activeContext ? await isLlmConfigured(activeContext) : false;
+    const llmConfig = activeContext ? await getLlmConfig(activeContext) : undefined;
+    const cachedSummary =
+      activeContext && llmConfig
+        ? await getCachedSummary(activeContext, session, llmConfig.outputLanguage)
+        : undefined;
     webview.postMessage({
       type: "init",
       provider: session.provider,
       showResumeWith: session.provider !== "alma",
+      llmConfigured,
+      cachedSummary,
       title: preview.title,
       messages: preview.messages,
       truncated: preview.truncated,

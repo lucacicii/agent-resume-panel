@@ -6,7 +6,10 @@ import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
 import { renameSession } from "../history/rename";
 import { loadSessionPreview } from "../history/preview";
+import { getLlmConfig, isLlmConfigured } from "../llm/config";
+import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
+import { runAutoRename, runSummarize } from "../preview/sessionAssistActions";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
   buildProjectList,
@@ -78,7 +81,7 @@ export async function searchAndOpenSessions(
     }
 
     if (message.type === "preview" && message.provider && message.id) {
-      await handlePreviewMessage(tree, searchPanel!.webview, message.provider, message.id);
+      await handlePreviewMessage(context, tree, searchPanel!.webview, message.provider, message.id);
       return;
     }
 
@@ -100,6 +103,24 @@ export async function searchAndOpenSessions(
       if (target) {
         await resumeSession(session, target, context);
       }
+      return;
+    }
+
+    if (message.type === "summarize" && message.provider && message.id) {
+      const session = findSession(tree, message.provider, message.id);
+      if (session) {
+        await runSummarize(session, context, searchPanel!.webview);
+      }
+      return;
+    }
+
+    if (message.type === "autoRename" && message.provider && message.id) {
+      const session = findSession(tree, message.provider, message.id);
+      if (session) {
+        await runAutoRename(session, tree, refreshTree, context, {
+          webview: searchPanel!.webview
+        });
+      }
     }
   });
 
@@ -109,6 +130,7 @@ export async function searchAndOpenSessions(
 }
 
 async function handlePreviewMessage(
+  context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
   webview: vscode.Webview,
   provider: AgentProvider,
@@ -123,11 +145,18 @@ async function handlePreviewMessage(
 
   try {
     const preview = await loadSessionPreview(session, loadRenameHomes());
+    const llmConfigured = await isLlmConfigured(context);
+    const llmConfig = await getLlmConfig(context);
+    const cachedSummary = llmConfig
+      ? await getCachedSummary(context, session, llmConfig.outputLanguage)
+      : undefined;
     webview.postMessage({
       type: "previewResult",
       provider,
       id,
       showResumeWith: session.provider !== "alma",
+      llmConfigured,
+      cachedSummary,
       title: preview.title,
       messages: preview.messages,
       truncated: preview.truncated,

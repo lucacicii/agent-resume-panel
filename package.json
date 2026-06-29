@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "1.1.20",
+  "version": "1.2.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -45,7 +45,9 @@
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
     "onCommand:agentResume.configureProjectMenu",
-    "onCommand:agentResume.newSessionFromEditor"
+    "onCommand:agentResume.newSessionFromEditor",
+    "onCommand:agentResume.openSettings",
+    "onCommand:agentResume.autoRenameSession"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -231,6 +233,40 @@
           "maximum": 99,
           "description": "[Experimental] Must match the Codex IDE panel integration version built into Agent Resume Panel (currently 1). Lower this only after updating the extension code for a new Codex routing scheme."
         },
+        "agentResume.llm.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "OpenAI-compatible API base URL for session summarize and auto-rename."
+        },
+        "agentResume.llm.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model name for session summarize and auto-rename. Prefer a fast, inexpensive model when possible (e.g. gpt-4o-mini, deepseek-chat)."
+        },
+        "agentResume.llm.outputLanguage": {
+          "type": "string",
+          "enum": [
+            "English",
+            "Chinese",
+            "Japanese",
+            "Korean",
+            "Spanish",
+            "French",
+            "German",
+            "Portuguese",
+            "Italian",
+            "Russian"
+          ],
+          "default": "English",
+          "description": "Language used for Summarize and Auto Rename results."
+        },
+        "agentResume.llm.maxContextChars": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "maximum": 500000,
+          "description": "Maximum characters of conversation sent to the LLM."
+        },
         "agentResume.projectMenu.mainActions": {
           "type": "array",
           "items": {
@@ -392,6 +428,17 @@
         "command": "agentResume.previewSession",
         "title": "Preview Session",
         "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openSettings",
+        "title": "Agent Resume Settings",
+        "category": "Agent Resume",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.autoRenameSession",
+        "title": "Auto Rename Session",
+        "category": "Agent Resume"
       }
     ],
     "submenus": [
@@ -509,6 +556,14 @@
         {
           "command": "agentResume.previewSession",
           "when": "false"
+        },
+        {
+          "command": "agentResume.openSettings",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.autoRenameSession",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -526,6 +581,11 @@
           "command": "agentResume.refresh",
           "when": "view == agentResume.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.openSettings",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -568,6 +628,11 @@
           "command": "agentResume.renameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.autoRenameSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "group": "navigation@4.5"
         },
         {
           "command": "agentResume.openInCodexApp",

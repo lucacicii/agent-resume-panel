@@ -3,9 +3,12 @@
 
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
+  const previewSummary = document.getElementById("preview-summary");
   const previewMessages = document.getElementById("preview-messages");
   const previewResume = document.getElementById("preview-resume");
   const previewResumeWith = document.getElementById("preview-resume-with");
+  const previewSummarize = document.getElementById("preview-summarize");
+  const previewAutoRename = document.getElementById("preview-auto-rename");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
 
@@ -15,6 +18,16 @@
 
   previewResumeWith.addEventListener("click", () => {
     vscode.postMessage({ type: "resumeWith" });
+  });
+
+  previewSummarize.addEventListener("click", () => {
+    setAiButtonsDisabled(true);
+    vscode.postMessage({ type: "summarize" });
+  });
+
+  previewAutoRename.addEventListener("click", () => {
+    setAiButtonsDisabled(true);
+    vscode.postMessage({ type: "autoRename" });
   });
 
   previewRename.addEventListener("click", () => {
@@ -36,11 +49,13 @@
     if (message.type === "error") {
       previewTitle.textContent = "Preview failed";
       previewNotice.classList.add("hidden");
+      previewSummary.classList.add("hidden");
       previewMessages.innerHTML = "";
       const error = document.createElement("div");
       error.className = "preview-error";
       error.textContent = message.error || "Failed to load session preview.";
       previewMessages.appendChild(error);
+      setAiButtonsDisabled(false);
       previewRename.disabled = false;
       return;
     }
@@ -48,11 +63,38 @@
     if (message.type === "titleUpdated") {
       previewTitle.textContent = message.title || "Session Preview";
       previewRename.disabled = false;
+      setAiButtonsDisabled(false);
       return;
     }
 
     if (message.type === "renameDone") {
       previewRename.disabled = false;
+      return;
+    }
+
+    if (message.type === "summaryLoading") {
+      renderSummary("Summarizing session...");
+      return;
+    }
+
+    if (message.type === "summaryResult") {
+      renderSummary(message.summary || "");
+      setAiButtonsDisabled(false);
+      return;
+    }
+
+    if (message.type === "summaryError") {
+      renderSummary(message.error || "Summarize failed.", true);
+      setAiButtonsDisabled(false);
+      return;
+    }
+
+    if (message.type === "autoRenameLoading") {
+      return;
+    }
+
+    if (message.type === "autoRenameDone") {
+      setAiButtonsDisabled(false);
     }
   });
 
@@ -60,6 +102,14 @@
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
     applyResumeActions(message.showResumeWith !== false);
+    applyLlmActions(message.llmConfigured === true);
+
+    if (message.cachedSummary) {
+      renderSummary(message.cachedSummary);
+    } else {
+      previewSummary.classList.add("hidden");
+      previewSummary.textContent = "";
+    }
 
     const notices = [];
     if (message.truncated) {
@@ -95,8 +145,24 @@
     }
   }
 
+  function renderSummary(text, isError) {
+    previewSummary.textContent = text;
+    previewSummary.classList.remove("hidden");
+    previewSummary.classList.toggle("preview-summary-error", Boolean(isError));
+  }
+
   function applyResumeActions(showResumeWith) {
     previewResumeWith.classList.toggle("hidden", !showResumeWith);
+  }
+
+  function applyLlmActions(show) {
+    previewSummarize.classList.toggle("hidden", !show);
+    previewAutoRename.classList.toggle("hidden", !show);
+  }
+
+  function setAiButtonsDisabled(disabled) {
+    previewSummarize.disabled = disabled;
+    previewAutoRename.disabled = disabled;
   }
 
   vscode.postMessage({ type: "ready" });
