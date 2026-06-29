@@ -9,6 +9,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 ## 简体中文
 
 
+### [1.2.1] - 2026-06-30
+
+#### 新增
+
+- **Project Menu** 设置分区：在 **Agent Resume Settings** 中勾选主菜单项，并通过**拖动**调整顺序；保存后项目右键菜单按该顺序显示。
+- 设置项 `agentResume.projectMenu.itemOrder`：保存全部可配置项的显示顺序（含 **Show More** 子菜单中的未勾选项）。
+
+#### 变更
+
+- **Customize Project Menu** 命令改为打开 **Agent Resume Settings → Project Menu**，不再使用 QuickPick 弹窗。
+- 项目右键主菜单与 **Show More** 子菜单顺序与 Settings 中保存的配置一致（**Open Folder** 始终固定在顶部）。
+
+#### 修复
+
+- 恢复 **Session** 右键菜单（Preview、Rename、Resume 等）；项目菜单排序改动不再影响会话项。
+- 项目菜单 `when` 条件增加 `viewItem =~ /agentResume\.project/`，避免项目操作出现在 Session 右键菜单中。
+
 ### [1.2.0] - 2026-06-30
 
 #### 新增
@@ -101,6 +118,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [1.2.1] - 2026-06-30
+
+#### Added
+
+- **Project Menu** section in **Agent Resume Settings**: choose which actions appear on the main project context menu and **drag** to reorder; the right-click menu follows the saved order.
+- Setting `agentResume.projectMenu.itemOrder`: stores the full display order for all configurable actions (including unchecked items under **Show More**).
+
+#### Changed
+
+- **Customize Project Menu** now opens **Agent Resume Settings → Project Menu** instead of a QuickPick dialog.
+- Project right-click menu and **Show More** submenu order match the saved Settings configuration (**Open Folder** stays fixed at the top).
+
+#### Fixed
+
+- Restored the **session** context menu (Preview, Rename, Resume, etc.); project menu ordering no longer affects session items.
+- Project menu `when` clauses now require `viewItem =~ /agentResume\.project/`, so project actions no longer appear on session right-clicks.
 
 ### [1.2.0] - 2026-06-30
 

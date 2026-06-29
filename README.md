@@ -52,6 +52,9 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 - **New Codex Session**、**New Claude Session**、**New Antigravity Session**、**New Grok Session**、**New OpenCode Session**、**New Pi Session**：在该项目中新建对应 Agent 会话。
 - **New Codex App Session**：用 Codex App 打开该项目。
 - **New Alma Thread**：在 Alma 中打开新对话，并将工作区目录设为该项目（见下方 Alma 说明）。
+- **Show More**：未勾选为主菜单的项会收纳在此子菜单中。
+
+可通过 **Agent Resume Settings → Project Menu**（或运行 **Customize Project Menu** / 在 **Show More** 中点击 **Customize Project Menu**）自定义项目右键菜单：勾选要在主菜单显示的项，**拖动**调整顺序，然后点击 **Save**。**Open Folder** 始终显示在顶部。
 
 ### 新建和搜索
 
@@ -130,6 +133,10 @@ Codex 面板恢复依赖未公开的内部路由，**可能随 Codex 插件更�
 
 macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code 自动化或辅助功能权限。默认行为是打开 Ghostty、复制恢复命令、自动粘贴并回车。如果你更喜欢手动操作，可以把 `agentResume.ghosttyLaunchMode` 设置为 `copyCommand`。
 
+### Agent Resume Settings
+
+点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist 等常规项外，左侧导航还有 **Project Menu** 分区，用于配置项目右键菜单的显示项与顺序。
+
 ### 常用设置
 
 在 VS Code Settings 中搜索 `Agent Resume` 可以调整：
@@ -153,6 +160,8 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.hideCronAlma`：隐藏 Alma Cron 会话。
 - `agentResume.hideChannelAlma`：隐藏 Alma 频道会话。
 - `agentResume.showIncognitoAlma`：显示 Alma 隐身模式会话。
+- `agentResume.projectMenu.mainActions`：显示在项目右键主菜单中的操作（数组顺序即显示顺序）。
+- `agentResume.projectMenu.itemOrder`：全部可配置项目菜单项的完整顺序（含 **Show More** 中的项）。推荐在 **Agent Resume Settings → Project Menu** 中拖动排序，无需手改 JSON。
 
 如果你的 Codex、Claude Code、Antigravity、OpenCode 或 Pi 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
 
@@ -210,6 +219,9 @@ Project groups support these right-click actions:
 - **New Codex Session**, **New Claude Session**, **New Antigravity Session**, **New Grok Session**, **New OpenCode Session**, **New Pi Session**: Start a new agent session in that project.
 - **New Codex App Session**: Open the project with Codex App.
 - **New Alma Thread**: Open a new Alma chat with the project workspace directory (see Alma below).
+- **Show More**: Actions not pinned to the main menu appear in this submenu.
+
+Customize the project context menu in **Agent Resume Settings → Project Menu** (or run **Customize Project Menu** / use **Customize Project Menu** under **Show More**): check items for the main menu, **drag** to reorder, then click **Save**. **Open Folder** always stays at the top.
 
 ### New and Search
 
@@ -288,6 +300,10 @@ Use **Open in Ghostty** when you need Ghostty-specific image upload, image displ
 
 On macOS, the first automatic paste may require granting VS Code Automation or Accessibility permission. By default, the extension opens Ghostty, copies the resume command, pastes it, and presses Enter. If you prefer manual control, set `agentResume.ghosttyLaunchMode` to `copyCommand`.
 
+### Agent Resume Settings
+
+Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, and LLM Assist, the left nav includes **Project Menu** for configuring project right-click actions and their order.
+
 ### Settings
 
 Search `Agent Resume` in VS Code Settings to adjust:
@@ -311,6 +327,8 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.hideCronAlma`: Hide Alma cron threads.
 - `agentResume.hideChannelAlma`: Hide Alma channel threads.
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
+- `agentResume.projectMenu.mainActions`: Actions shown on the main project context menu (array order is display order).
+- `agentResume.projectMenu.itemOrder`: Full order of all configurable project menu actions (including items under **Show More**). Prefer dragging in **Agent Resume Settings → Project Menu** instead of editing JSON by hand.
 
 If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not in the default location, adjust the matching home path in Settings.
 

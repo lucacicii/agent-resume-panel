@@ -9,23 +9,42 @@
   let llmApiKeyConfigured = false;
   let apiKeyInput = "";
 
+  /** @type {string[]} */
+  let projectMenuOrder = [];
+  /** @type {Set<string>} */
+  let projectMenuChecked = new Set();
+  /** @type {Record<string, string>} */
+  let projectMenuLabels = {};
+  /** @type {string[]} */
+  let projectMenuDefaultMainActions = [];
+  /** @type {number | null} */
+  let draggedProjectMenuIndex = null;
+  let projectMenuDirty = false;
+
   const navList = document.getElementById("settings-nav-list");
   const sectionTitle = document.getElementById("section-title");
   const sectionDescription = document.getElementById("section-description");
   const fieldsEl = document.getElementById("settings-fields");
   const llmActions = document.getElementById("llm-actions");
   const projectMenuActions = document.getElementById("project-menu-actions");
+  const projectMenuList = document.getElementById("project-menu-list");
+  const resetProjectMenuBtn = document.getElementById("reset-project-menu");
   const testResult = document.getElementById("test-result");
   const statusBanner = document.getElementById("status-banner");
   const saveBtn = document.getElementById("save-settings");
   const testLlmBtn = document.getElementById("test-llm");
-  const configureProjectMenuBtn = document.getElementById("configure-project-menu");
 
   saveBtn.addEventListener("click", () => {
     saveBtn.disabled = true;
     const patch = { ...values };
     if (apiKeyInput.trim()) {
       patch["llm.apiKey"] = apiKeyInput.trim();
+    }
+    if (projectMenuDirty) {
+      patch["projectMenu.mainActions"] = {
+        order: [...projectMenuOrder],
+        checked: [...projectMenuChecked]
+      };
     }
     vscode.postMessage({ type: "save", patch });
   });
@@ -40,8 +59,10 @@
     vscode.postMessage({ type: "testLlm", draft });
   });
 
-  configureProjectMenuBtn.addEventListener("click", () => {
-    vscode.postMessage({ type: "configureProjectMenu" });
+  resetProjectMenuBtn.addEventListener("click", () => {
+    applyProjectMenuDefaults();
+    projectMenuDirty = true;
+    renderProjectMenuList();
   });
 
   window.addEventListener("message", (event) => {
@@ -53,6 +74,10 @@
       llmApiKeyConfigured = Boolean(message.llmApiKeyConfigured);
       apiKeyInput = "";
       saveBtn.disabled = false;
+      loadProjectMenuState(message.projectMenu);
+      if (message.activeSection) {
+        activeSectionId = message.activeSection;
+      }
       renderNav();
       renderSection(activeSectionId);
       return;
@@ -60,6 +85,7 @@
 
     if (message.type === "saved") {
       apiKeyInput = "";
+      projectMenuDirty = false;
       saveBtn.disabled = false;
       showStatus("Settings saved.", "success");
       renderSection(activeSectionId);
@@ -79,6 +105,43 @@
       testResult.classList.toggle("error", !message.success);
     }
   });
+
+  function loadProjectMenuState(projectMenu) {
+    projectMenuDirty = false;
+
+    if (!projectMenu) {
+      projectMenuOrder = [];
+      projectMenuChecked = new Set();
+      projectMenuLabels = {};
+      projectMenuDefaultMainActions = [];
+      return;
+    }
+
+    projectMenuOrder = Array.isArray(projectMenu.order) ? [...projectMenu.order] : [];
+    projectMenuChecked = new Set(Array.isArray(projectMenu.mainActions) ? projectMenu.mainActions : []);
+    projectMenuLabels = projectMenu.labels || {};
+    projectMenuDefaultMainActions = Array.isArray(projectMenu.defaultMainActions)
+      ? [...projectMenu.defaultMainActions]
+      : [];
+  }
+
+  function applyProjectMenuDefaults() {
+    const defaultSet = new Set(projectMenuDefaultMainActions);
+    const order = [];
+
+    for (const action of projectMenuDefaultMainActions) {
+      order.push(action);
+    }
+
+    for (const action of projectMenuOrder.length ? projectMenuOrder : Object.keys(projectMenuLabels)) {
+      if (!defaultSet.has(action)) {
+        order.push(action);
+      }
+    }
+
+    projectMenuOrder = order;
+    projectMenuChecked = new Set(projectMenuDefaultMainActions);
+  }
 
   function renderNav() {
     navList.innerHTML = "";
@@ -115,8 +178,9 @@
 
     if (sectionId === "projectMenu") {
       sectionTitle.textContent = "Project Menu";
-      sectionDescription.textContent = "Configure project context menu actions.";
+      sectionDescription.textContent = "Configure and drag to reorder project context menu actions.";
       projectMenuActions.classList.remove("hidden");
+      renderProjectMenuList();
       return;
     }
 
@@ -142,6 +206,110 @@
     if (sectionId === "llm") {
       llmActions.classList.remove("hidden");
     }
+  }
+
+  function renderProjectMenuList() {
+    if (!projectMenuList) {
+      return;
+    }
+
+    projectMenuList.innerHTML = "";
+
+    projectMenuOrder.forEach((actionId, index) => {
+      const row = document.createElement("div");
+      row.className = "project-menu-row";
+      row.dataset.index = String(index);
+
+      const handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "project-menu-drag-handle";
+      handle.title = "Drag to reorder";
+      handle.setAttribute("aria-label", "Drag to reorder");
+      handle.draggable = true;
+      handle.textContent = "⋮⋮";
+
+      handle.addEventListener("dragstart", (event) => {
+        draggedProjectMenuIndex = index;
+        row.classList.add("is-dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        }
+      });
+
+      handle.addEventListener("dragend", () => {
+        draggedProjectMenuIndex = null;
+        clearProjectMenuDragState();
+      });
+
+      row.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        row.classList.add("drag-over");
+      });
+
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drag-over");
+      });
+
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const fromIndex =
+          draggedProjectMenuIndex ?? Number(event.dataTransfer?.getData("text/plain") ?? Number.NaN);
+        reorderProjectMenuItem(fromIndex, index);
+        clearProjectMenuDragState();
+      });
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = projectMenuChecked.has(actionId);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          projectMenuChecked.add(actionId);
+        } else {
+          projectMenuChecked.delete(actionId);
+        }
+        projectMenuDirty = true;
+      });
+
+      const label = document.createElement("span");
+      label.className = "project-menu-label";
+      label.textContent = projectMenuLabels[actionId] || actionId;
+
+      row.appendChild(handle);
+      row.appendChild(checkbox);
+      row.appendChild(label);
+      projectMenuList.appendChild(row);
+    });
+  }
+
+  function clearProjectMenuDragState() {
+    projectMenuList.querySelectorAll(".project-menu-row").forEach((row) => {
+      row.classList.remove("is-dragging", "drag-over");
+    });
+  }
+
+  function reorderProjectMenuItem(fromIndex, toIndex) {
+    if (
+      !Number.isInteger(fromIndex) ||
+      !Number.isInteger(toIndex) ||
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= projectMenuOrder.length ||
+      toIndex >= projectMenuOrder.length
+    ) {
+      return;
+    }
+
+    const next = [...projectMenuOrder];
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    projectMenuOrder = next;
+    projectMenuDirty = true;
+    renderProjectMenuList();
   }
 
   function renderLlmTip() {

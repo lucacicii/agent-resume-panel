@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -280,7 +280,40 @@
             "newCodexSession",
             "newClaudeSession"
           ],
-          "description": "Project context menu items shown outside Show More. Open Folder is always visible."
+          "description": "Project context menu items shown outside Show More. Array order is the preferred sequence. Open Folder is always visible."
+        },
+        "agentResume.projectMenu.itemOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "favorite",
+              "openProject",
+              "openInGhostty",
+              "newCodexSession",
+              "newClaudeSession",
+              "newAgySession",
+              "newGrokSession",
+              "newOpenCodeSession",
+              "newPiSession",
+              "newAlmaSession",
+              "newCodexAppSession"
+            ]
+          },
+          "default": [
+            "favorite",
+            "openProject",
+            "openInGhostty",
+            "newCodexSession",
+            "newClaudeSession",
+            "newAgySession",
+            "newGrokSession",
+            "newOpenCodeSession",
+            "newPiSession",
+            "newAlmaSession",
+            "newCodexAppSession"
+          ],
+          "description": "Preferred display order for all configurable project context menu actions."
         }
       }
     },
@@ -581,16 +614,6 @@
       ],
       "view/item/context": [
         {
-          "command": "agentResume.favoriteProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.favorite",
-          "group": "navigation@0"
-        },
-        {
-          "command": "agentResume.unfavoriteProject",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite",
-          "group": "navigation@0"
-        },
-        {
           "command": "agentResume.openSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
           "group": "inline@1"
@@ -643,56 +666,666 @@
         {
           "command": "agentResume.openFolder",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at1 == favorite",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at1 == favorite",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at1 == openProject",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at1 == openInGhostty",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at1 == newCodexSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at1 == newClaudeSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at1 == newAgySession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at1 == newGrokSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at1 == newOpenCodeSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at1 == newPiSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at1 == newAlmaSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at1 == newCodexAppSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at2 == favorite",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at2 == favorite",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at2 == openProject",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at2 == openInGhostty",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at2 == newCodexSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at2 == newClaudeSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at2 == newAgySession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at2 == newGrokSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at2 == newOpenCodeSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at2 == newPiSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at2 == newAlmaSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at2 == newCodexAppSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at3 == favorite",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at3 == favorite",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at3 == openProject",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at3 == openInGhostty",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.newCodexSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at3 == newCodexSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at3 == newClaudeSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at3 == newAgySession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at3 == newGrokSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at3 == newOpenCodeSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at3 == newPiSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at3 == newAlmaSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at3 == newCodexAppSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at4 == favorite",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at4 == favorite",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at4 == openProject",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at4 == openInGhostty",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at4 == newCodexSession",
           "group": "navigation@4"
         },
         {
           "command": "agentResume.newClaudeSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at4 == newClaudeSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at4 == newAgySession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at4 == newGrokSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at4 == newOpenCodeSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at4 == newPiSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at4 == newAlmaSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at4 == newCodexAppSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at5 == favorite",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at5 == favorite",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at5 == openProject",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at5 == openInGhostty",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at5 == newCodexSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at5 == newClaudeSession",
           "group": "navigation@5"
         },
         {
           "command": "agentResume.newAgySession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at5 == newAgySession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at5 == newGrokSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at5 == newOpenCodeSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at5 == newPiSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at5 == newAlmaSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at5 == newCodexAppSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at6 == favorite",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at6 == favorite",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at6 == openProject",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at6 == openInGhostty",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at6 == newCodexSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at6 == newClaudeSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at6 == newAgySession",
           "group": "navigation@6"
         },
         {
           "command": "agentResume.newGrokSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at6 == newGrokSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at6 == newOpenCodeSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at6 == newPiSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at6 == newAlmaSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at6 == newCodexAppSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at7 == favorite",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at7 == favorite",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at7 == openProject",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at7 == openInGhostty",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at7 == newCodexSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at7 == newClaudeSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at7 == newAgySession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at7 == newGrokSession",
           "group": "navigation@7"
         },
         {
           "command": "agentResume.newOpenCodeSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at7 == newOpenCodeSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at7 == newPiSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at7 == newAlmaSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at7 == newCodexAppSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at8 == favorite",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at8 == favorite",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at8 == openProject",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at8 == openInGhostty",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at8 == newCodexSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at8 == newClaudeSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at8 == newAgySession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at8 == newGrokSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at8 == newOpenCodeSession",
           "group": "navigation@8"
         },
         {
           "command": "agentResume.newPiSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at8 == newPiSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at8 == newAlmaSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at8 == newCodexAppSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at9 == favorite",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at9 == favorite",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at9 == openProject",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at9 == openInGhostty",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at9 == newCodexSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at9 == newClaudeSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at9 == newAgySession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at9 == newGrokSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at9 == newOpenCodeSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at9 == newPiSession",
           "group": "navigation@9"
         },
         {
           "command": "agentResume.newAlmaSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at9 == newAlmaSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at9 == newCodexAppSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at10 == favorite",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at10 == favorite",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at10 == openProject",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at10 == openInGhostty",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at10 == newCodexSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at10 == newClaudeSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at10 == newAgySession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at10 == newGrokSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at10 == newOpenCodeSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at10 == newPiSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at10 == newAlmaSession",
           "group": "navigation@10"
         },
         {
           "command": "agentResume.newCodexAppSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at10 == newCodexAppSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at11 == favorite",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at11 == favorite",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at11 == openProject",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at11 == openInGhostty",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at11 == newCodexSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at11 == newClaudeSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at11 == newAgySession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at11 == newGrokSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at11 == newOpenCodeSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at11 == newPiSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at11 == newAlmaSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at11 == newCodexAppSession",
           "group": "navigation@11"
         },
         {
@@ -704,63 +1337,663 @@
       "agentResume.projectMore": [
         {
           "command": "agentResume.favoriteProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.favorite",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt0 == favorite",
           "group": "navigation@0"
         },
         {
           "command": "agentResume.unfavoriteProject",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt0 == favorite",
           "group": "navigation@0"
         },
         {
           "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt0 == openProject",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt0 == openInGhostty",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt0 == newCodexSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt0 == newClaudeSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt0 == newAgySession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt0 == newGrokSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt0 == newOpenCodeSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt0 == newPiSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt0 == newAlmaSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt0 == newCodexAppSession",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt1 == favorite",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt1 == favorite",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt1 == openProject",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt1 == openInGhostty",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt1 == newCodexSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt1 == newClaudeSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt1 == newAgySession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt1 == newGrokSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt1 == newOpenCodeSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt1 == newPiSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt1 == newAlmaSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt1 == newCodexAppSession",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt2 == favorite",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt2 == favorite",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt2 == openProject",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt2 == openInGhostty",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt2 == newCodexSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt2 == newClaudeSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt2 == newAgySession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt2 == newGrokSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt2 == newOpenCodeSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt2 == newPiSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt2 == newAlmaSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt2 == newCodexAppSession",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt3 == favorite",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt3 == favorite",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt3 == openProject",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt3 == openInGhostty",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.newCodexSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt3 == newCodexSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt3 == newClaudeSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt3 == newAgySession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt3 == newGrokSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt3 == newOpenCodeSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt3 == newPiSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt3 == newAlmaSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt3 == newCodexAppSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt4 == favorite",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt4 == favorite",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt4 == openProject",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt4 == openInGhostty",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt4 == newCodexSession",
           "group": "navigation@4"
         },
         {
           "command": "agentResume.newClaudeSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt4 == newClaudeSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt4 == newAgySession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt4 == newGrokSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt4 == newOpenCodeSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt4 == newPiSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt4 == newAlmaSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt4 == newCodexAppSession",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt5 == favorite",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt5 == favorite",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt5 == openProject",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt5 == openInGhostty",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt5 == newCodexSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt5 == newClaudeSession",
           "group": "navigation@5"
         },
         {
           "command": "agentResume.newAgySession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt5 == newAgySession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt5 == newGrokSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt5 == newOpenCodeSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt5 == newPiSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt5 == newAlmaSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt5 == newCodexAppSession",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt6 == favorite",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt6 == favorite",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt6 == openProject",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt6 == openInGhostty",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt6 == newCodexSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt6 == newClaudeSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt6 == newAgySession",
           "group": "navigation@6"
         },
         {
           "command": "agentResume.newGrokSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt6 == newGrokSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt6 == newOpenCodeSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt6 == newPiSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt6 == newAlmaSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt6 == newCodexAppSession",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt7 == favorite",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt7 == favorite",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt7 == openProject",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt7 == openInGhostty",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt7 == newCodexSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt7 == newClaudeSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt7 == newAgySession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt7 == newGrokSession",
           "group": "navigation@7"
         },
         {
           "command": "agentResume.newOpenCodeSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt7 == newOpenCodeSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt7 == newPiSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt7 == newAlmaSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt7 == newCodexAppSession",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt8 == favorite",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt8 == favorite",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt8 == openProject",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt8 == openInGhostty",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt8 == newCodexSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt8 == newClaudeSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt8 == newAgySession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt8 == newGrokSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt8 == newOpenCodeSession",
           "group": "navigation@8"
         },
         {
           "command": "agentResume.newPiSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt8 == newPiSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt8 == newAlmaSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt8 == newCodexAppSession",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt9 == favorite",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt9 == favorite",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt9 == openProject",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt9 == openInGhostty",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt9 == newCodexSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt9 == newClaudeSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt9 == newAgySession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt9 == newGrokSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt9 == newOpenCodeSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt9 == newPiSession",
           "group": "navigation@9"
         },
         {
           "command": "agentResume.newAlmaSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt9 == newAlmaSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt9 == newCodexAppSession",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt10 == favorite",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt10 == favorite",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt10 == openProject",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt10 == openInGhostty",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt10 == newCodexSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt10 == newClaudeSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt10 == newAgySession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt10 == newGrokSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt10 == newOpenCodeSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt10 == newPiSession",
+          "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt10 == newAlmaSession",
           "group": "navigation@10"
         },
         {
           "command": "agentResume.newCodexAppSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession",
-          "group": "navigation@11"
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt10 == newCodexAppSession",
+          "group": "navigation@10"
         },
         {
           "command": "agentResume.configureProjectMenu",

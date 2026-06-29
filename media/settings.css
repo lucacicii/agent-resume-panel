@@ -211,3 +211,62 @@ body {
 .hidden {
   display: none !important;
 }
+
+.project-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.project-menu-row.is-dragging {
+  opacity: 0.55;
+}
+
+.project-menu-row.drag-over {
+  border-color: var(--vscode-focusBorder, var(--vscode-charts-blue, #3794ff));
+  background: var(--vscode-list-hoverBackground);
+}
+
+.project-menu-drag-handle {
+  width: 22px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: grab;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: -2px;
+  flex-shrink: 0;
+}
+
+.project-menu-drag-handle:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-foreground);
+}
+
+.project-menu-drag-handle:active {
+  cursor: grabbing;
+}
+
+.project-menu-label {
+  flex: 1;
+  font-size: 12px;
+}
+
+.project-menu-footer {
+  margin-top: 12px;
+}

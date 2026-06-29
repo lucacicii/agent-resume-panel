@@ -3,11 +3,11 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { llmOverridesFromDraft } from "../llm/config";
 import { testLlmConnection } from "../llm/sessionAssist";
-import { configureProjectMenu } from "../menu/projectContextMenu";
 import { applySettingsPatch, loadSettingsSnapshot } from "./settingsIO";
 
 let settingsPanel: vscode.WebviewPanel | undefined;
 let activeContext: vscode.ExtensionContext | undefined;
+let pendingActiveSection: string | undefined;
 
 interface WebviewMessage {
   type?: string;
@@ -16,6 +16,15 @@ interface WebviewMessage {
 }
 
 export async function openSettingsPanel(context: vscode.ExtensionContext): Promise<void> {
+  await revealSettingsPanel(context);
+}
+
+export async function openSettingsPanelToProjectMenu(context: vscode.ExtensionContext): Promise<void> {
+  pendingActiveSection = "projectMenu";
+  await revealSettingsPanel(context);
+}
+
+async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
   if (settingsPanel) {
@@ -78,26 +87,29 @@ export async function openSettingsPanel(context: vscode.ExtensionContext): Promi
       }
       return;
     }
-
-    if (message.type === "configureProjectMenu") {
-      await configureProjectMenu();
-      return;
-    }
   });
 
   settingsPanel.onDidDispose(() => {
     settingsPanel = undefined;
     activeContext = undefined;
+    pendingActiveSection = undefined;
   });
+
+  await sendInit(settingsPanel.webview, context);
 }
 
 async function sendInit(webview: vscode.Webview, context: vscode.ExtensionContext): Promise<void> {
   const snapshot = await loadSettingsSnapshot(context);
+  const activeSection = pendingActiveSection;
+  pendingActiveSection = undefined;
+
   webview.postMessage({
     type: "init",
     sections: snapshot.sections,
     values: snapshot.values,
-    llmApiKeyConfigured: snapshot.llmApiKeyConfigured
+    llmApiKeyConfigured: snapshot.llmApiKeyConfigured,
+    projectMenu: snapshot.projectMenu,
+    activeSection
   });
 }
 

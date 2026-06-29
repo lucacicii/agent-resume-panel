@@ -25,15 +25,11 @@ import {
   loadFavoriteProjects,
   removeFavoriteProject
 } from "./favorites/projectFavorites";
-import {
-  applyProjectMenuContext,
-  configureProjectMenu,
-  loadMainActions
-} from "./menu/projectContextMenu";
+import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
-import { openSettingsPanel } from "./settings/settingsPanel";
+import { openSettingsPanel, openSettingsPanelToProjectMenu } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
@@ -48,7 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const tree = new SessionTreeProvider();
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
-  void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
+  void applyProjectMenuContextFromConfig();
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
     showCollapseAll: true,
@@ -133,14 +129,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.unfavoriteProject", (node?: unknown) =>
       unfavoriteProject(context, tree, node)
     ),
-    vscode.commands.registerCommand("agentResume.configureProjectMenu", () => configureProjectMenu()),
+    vscode.commands.registerCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
       autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("agentResume.projectMenu.mainActions")) {
-        void applyProjectMenuContext(loadMainActions(vscode.workspace.getConfiguration("agentResume")));
+      if (
+        event.affectsConfiguration("agentResume.projectMenu.mainActions") ||
+        event.affectsConfiguration("agentResume.projectMenu.itemOrder")
+      ) {
+        void applyProjectMenuContextFromConfig();
       }
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
@@ -609,4 +608,9 @@ async function unfavoriteProject(
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function applyProjectMenuContextFromConfig(): void {
+  const config = vscode.workspace.getConfiguration("agentResume");
+  void applyProjectMenuContext(loadMainActions(config), loadItemOrder(config));
 }

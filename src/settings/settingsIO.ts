@@ -1,11 +1,24 @@
 import * as vscode from "vscode";
 import { readAgentResumeSetting } from "../llm/config";
+import {
+  applyProjectMenuContext,
+  buildProjectMenuEditorState,
+  loadItemOrder,
+  loadMainActions,
+  itemOrderFromEditorState,
+  mainActionsFromEditorState,
+  normalizeMainActions,
+  ProjectMenuEditorState,
+  saveItemOrder,
+  saveMainActions
+} from "../menu/projectContextMenu";
 import { getAllSettingKeys, LLM_API_KEY_SECRET, SETTING_SECTIONS, SettingField } from "./settingsSchema";
 
 export interface SettingsSnapshot {
   sections: typeof SETTING_SECTIONS;
   values: Record<string, unknown>;
   llmApiKeyConfigured: boolean;
+  projectMenu: ProjectMenuEditorState;
 }
 
 function getFieldDefault(field: SettingField): unknown {
@@ -29,11 +42,14 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
 
   const apiKey = await context.secrets.get(LLM_API_KEY_SECRET);
   const envKey = process.env.AGENT_RESUME_LLM_API_KEY?.trim();
+  const mainActions = loadMainActions(config);
+  const itemOrder = loadItemOrder(config);
 
   return {
     sections: SETTING_SECTIONS,
     values,
-    llmApiKeyConfigured: Boolean(apiKey?.trim() || envKey)
+    llmApiKeyConfigured: Boolean(apiKey?.trim() || envKey),
+    projectMenu: buildProjectMenuEditorState(mainActions, itemOrder)
   };
 }
 
@@ -51,8 +67,34 @@ export async function applySettingsPatch(
     }
   }
 
+  if ("projectMenu.mainActions" in patch) {
+    const raw = patch["projectMenu.mainActions"];
+    let nextMainActions;
+    let nextItemOrder;
+
+    if (Array.isArray(raw) && raw.every((entry) => typeof entry === "string")) {
+      nextMainActions = normalizeMainActions(raw);
+      nextItemOrder = loadItemOrder(config);
+    } else if (
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as { order?: unknown }).order) &&
+      Array.isArray((raw as { checked?: unknown }).checked)
+    ) {
+      const editor = raw as { order: string[]; checked: string[] };
+      nextMainActions = mainActionsFromEditorState(editor.order, editor.checked);
+      nextItemOrder = itemOrderFromEditorState(editor.order);
+    } else {
+      throw new Error("Invalid project menu configuration.");
+    }
+
+    await saveMainActions(config, nextMainActions);
+    await saveItemOrder(config, nextItemOrder);
+    await applyProjectMenuContext(nextMainActions, nextItemOrder);
+  }
+
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "llm.apiKey" || !allowedKeys.has(key)) {
+    if (key === "llm.apiKey" || key === "projectMenu.mainActions" || !allowedKeys.has(key)) {
       continue;
     }
 
