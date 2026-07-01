@@ -521,7 +521,8 @@ export class AcpChatPanel {
         modes: this.availableModes,
         modeId: this.currentModeId,
         isRunning: this.isRunning,
-        isConnecting: this.isConnecting
+        isConnecting: this.isConnecting,
+        status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready"
       }
     });
     this.panel.title = this.title();
@@ -566,16 +567,28 @@ export class AcpChatPanel {
   <link rel="stylesheet" href="${styleUri}">
   <title>ACP Chat</title>
 </head>
-<body>
-  <header id="header"></header>
-  <main id="messages"></main>
+<body class="chat-shell">
+  <header id="header">
+    <div class="header-main">
+      <span id="status-dot" class="status-dot connecting" aria-hidden="true"></span>
+      <div class="header-text">
+        <div id="header-title">ACP Chat</div>
+        <div id="header-meta"></div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <select id="mode" hidden aria-label="Agent mode"></select>
+      <button id="reconnect" type="button" title="Reconnect">↻</button>
+      <button id="stop" type="button" disabled title="Stop">■</button>
+    </div>
+  </header>
+  <main id="messages" class="chat-messages"></main>
   <footer id="composer">
-    <textarea id="input" rows="4" placeholder="Message the agent about this project."></textarea>
-    <div class="actions">
-      <select id="mode" hidden></select>
-      <button id="reconnect" type="button">Reconnect</button>
-      <button id="stop" type="button" disabled>Stop</button>
-      <button id="send" type="button">Send</button>
+    <div class="composer-bar">
+      <textarea id="input" rows="1" placeholder="Message the agent…" aria-label="Message"></textarea>
+      <button id="send" type="button" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
     </div>
   </footer>
   <script nonce="${nonce}" src="${markedUri}"></script>

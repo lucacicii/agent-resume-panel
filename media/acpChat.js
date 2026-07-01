@@ -1,6 +1,8 @@
 (function () {
   const vscode = acquireVsCodeApi();
-  const header = document.getElementById("header");
+  const headerTitle = document.getElementById("header-title");
+  const headerMeta = document.getElementById("header-meta");
+  const statusDot = document.getElementById("status-dot");
   const messagesEl = document.getElementById("messages");
   const input = document.getElementById("input");
   const modeSelect = document.getElementById("mode");
@@ -8,8 +10,9 @@
   const stopBtn = document.getElementById("stop");
   const reconnectBtn = document.getElementById("reconnect");
 
-  let streamingNode = null;
+  let streamingRow = null;
   let streamingMessageId = null;
+  let lastInit = null;
 
   if (typeof marked !== "undefined") {
     marked.setOptions({ breaks: true, gfm: true });
@@ -19,19 +22,44 @@
     if (!init) {
       return;
     }
-    const mode = init.modeId ? ` · mode ${init.modeId}` : "";
-    const session = init.acpSessionId ? `session ${init.acpSessionId}` : "connecting";
-    header.textContent = `${init.title} · ${init.projectPath} · ${init.provider}${mode} · ${session}`;
+    lastInit = init;
+    headerTitle.textContent = init.title || "ACP Chat";
+    const parts = [init.provider, init.projectPath].filter(Boolean);
+    if (init.modeId) {
+      parts.push(init.modeId);
+    }
+    headerMeta.textContent = parts.join(" · ");
+    updateStatusDot(init);
   }
 
-  function roleLabel(role) {
-    if (role === "plan") {
-      return "Plan";
+  function updateStatusDot(state) {
+    if (!statusDot) {
+      return;
     }
-    if (role === "tool") {
-      return "Tool";
+    statusDot.className = "status-dot";
+    if (state.isConnecting) {
+      statusDot.classList.add("connecting");
+      return;
     }
-    return role;
+    if (state.isRunning) {
+      statusDot.classList.add("running");
+      return;
+    }
+    if (state.status === "error") {
+      statusDot.classList.add("error");
+      return;
+    }
+    statusDot.classList.add("ready");
+  }
+
+  function bubbleRowClass(role) {
+    if (role === "user") {
+      return "outgoing";
+    }
+    if (role === "assistant") {
+      return "incoming";
+    }
+    return "system";
   }
 
   function escapeHtml(value) {
@@ -83,8 +111,15 @@
     return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
   }
 
-  function setMessageText(node, message) {
-    const textEl = node.querySelector(".text");
+  function getBubble(row) {
+    return row?.querySelector(".bubble") ?? null;
+  }
+
+  function setMessageText(bubble, message) {
+    if (!bubble) {
+      return;
+    }
+    const textEl = bubble.querySelector(".text");
     const useMarkdown = message.role === "assistant" || message.role === "plan";
     const html = useMarkdown ? renderMarkdown(message.text) : null;
 
@@ -97,9 +132,9 @@
     }
   }
 
-  function renderToolCalls(node, toolCalls) {
+  function renderToolCalls(bubble, toolCalls) {
     const calls = toolCalls ?? [];
-    let group = node.querySelector(".tool-calls-group");
+    let group = bubble.querySelector(".tool-calls-group");
 
     if (!calls.length) {
       group?.remove();
@@ -117,8 +152,8 @@
     if (!group) {
       group = document.createElement("details");
       group.className = "tool-calls-group";
-      const textEl = node.querySelector(".text");
-      node.insertBefore(group, textEl);
+      const textEl = bubble.querySelector(".text");
+      bubble.insertBefore(group, textEl);
     }
 
     const completed = calls.filter((entry) => entry.status === "completed" || entry.status === "failed").length;
@@ -203,15 +238,29 @@
     group.appendChild(list);
   }
 
-  function findMessageNode(id) {
-    return messagesEl.querySelector(`.message[data-id="${id}"]`);
+  function findMessageRow(id) {
+    return messagesEl.querySelector(`.bubble-row[data-id="${id}"]`);
   }
 
-  function setStreamingState(node, active) {
-    if (!node) {
-      return;
-    }
-    node.classList.toggle("streaming", active);
+  function createMessageRow(message) {
+    const row = document.createElement("div");
+    row.className = `bubble-row ${bubbleRowClass(message.role)}`;
+    row.dataset.id = message.id;
+
+    const bubble = document.createElement("div");
+    bubble.className = `bubble ${message.role}`;
+    bubble.innerHTML = '<div class="text"></div>';
+    row.appendChild(bubble);
+    return row;
+  }
+
+  function setStreamingState(row, active) {
+    const bubble = getBubble(row);
+    bubble?.classList.toggle("streaming", active);
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
   function appendMessage(message) {
@@ -219,17 +268,15 @@
       return null;
     }
 
-    const node = document.createElement("div");
-    node.className = `message ${message.role}`;
-    node.dataset.id = message.id;
-    node.innerHTML = `<div class="role">${roleLabel(message.role)}</div><div class="text"></div>`;
-    setMessageText(node, message);
+    const row = createMessageRow(message);
+    const bubble = getBubble(row);
+    setMessageText(bubble, message);
     if (message.role === "assistant") {
-      renderToolCalls(node, message.toolCalls);
+      renderToolCalls(bubble, message.toolCalls);
     }
-    messagesEl.appendChild(node);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return node;
+    messagesEl.appendChild(row);
+    scrollToBottom();
+    return row;
   }
 
   function updateMessage(message, options = {}) {
@@ -237,47 +284,65 @@
       return null;
     }
 
-    const node = findMessageNode(message.id) ?? appendMessage(message);
-    if (!node) {
+    let row = findMessageRow(message.id);
+    if (!row) {
+      row = appendMessage(message);
+    }
+    if (!row) {
       return null;
     }
 
-    setMessageText(node, message);
+    const bubble = getBubble(row);
+    setMessageText(bubble, message);
     if (message.role === "assistant") {
-      renderToolCalls(node, message.toolCalls);
+      renderToolCalls(bubble, message.toolCalls);
     }
     if (options.streaming != null) {
-      setStreamingState(node, options.streaming);
+      setStreamingState(row, options.streaming);
     }
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return node;
+    scrollToBottom();
+    return row;
   }
 
-  function ensureStreamingNode(id) {
-    if (streamingNode && streamingMessageId === id) {
-      return streamingNode;
+  function ensureStreamingRow(id) {
+    if (streamingRow && streamingMessageId === id) {
+      return getBubble(streamingRow);
     }
 
-    const existing = findMessageNode(id);
+    const existing = findMessageRow(id);
     if (existing) {
-      streamingNode = existing;
+      streamingRow = existing;
       streamingMessageId = id;
-      setStreamingState(streamingNode, true);
-      return streamingNode;
+      setStreamingState(streamingRow, true);
+      return getBubble(streamingRow);
     }
 
-    streamingNode = appendMessage({ id, role: "assistant", text: "", toolCalls: [] });
+    streamingRow = appendMessage({ id, role: "assistant", text: "", toolCalls: [] });
     streamingMessageId = id;
-    setStreamingState(streamingNode, true);
-    return streamingNode;
+    setStreamingState(streamingRow, true);
+    return getBubble(streamingRow);
   }
 
-  function clearStreamingNode() {
-    if (streamingNode) {
-      setStreamingState(streamingNode, false);
+  function clearStreamingRow() {
+    if (streamingRow) {
+      setStreamingState(streamingRow, false);
     }
-    streamingNode = null;
+    streamingRow = null;
     streamingMessageId = null;
+  }
+
+  function appendSystemMessage(text, className = "") {
+    const row = document.createElement("div");
+    row.className = "bubble-row system";
+
+    const bubble = document.createElement("div");
+    bubble.className = `bubble system${className ? ` ${className}` : ""}`;
+    bubble.innerHTML = `<div class="text"></div>`;
+    bubble.querySelector(".text").textContent = text;
+
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollToBottom();
   }
 
   function renderModes(init) {
@@ -298,14 +363,20 @@
     }
   }
 
+  function resizeInput() {
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+  }
+
   function setComposerState(status) {
     const busy = Boolean(status.isRunning || status.isConnecting);
     stopBtn.disabled = !status.isRunning;
     sendBtn.disabled = busy;
     modeSelect.disabled = busy;
     reconnectBtn.disabled = status.isRunning;
+    updateStatusDot({ ...lastInit, ...status });
     if (!status.isRunning) {
-      clearStreamingNode();
+      clearStreamingRow();
     }
   }
 
@@ -328,7 +399,7 @@
         break;
       case "history":
         messagesEl.innerHTML = "";
-        clearStreamingNode();
+        clearStreamingRow();
         for (const entry of message.messages) {
           appendMessage(entry);
         }
@@ -340,39 +411,41 @@
         updateMessage(message.message);
         break;
       case "assistantDelta": {
-        const node = ensureStreamingNode(message.id);
-        setMessageText(node, { role: "assistant", text: message.text });
-        renderToolCalls(node, message.toolCalls);
-        setStreamingState(node, message.streaming !== false);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        const bubble = ensureStreamingRow(message.id);
+        setMessageText(bubble, { role: "assistant", text: message.text });
+        renderToolCalls(bubble, message.toolCalls);
+        if (streamingRow) {
+          setStreamingState(streamingRow, message.streaming !== false);
+        }
+        scrollToBottom();
         break;
       }
       case "assistantDone":
         updateMessage(message.message, { streaming: false });
-        clearStreamingNode();
+        clearStreamingRow();
         break;
       case "status":
         setComposerState(message);
         break;
       case "error": {
-        clearStreamingNode();
-        const node = document.createElement("div");
-        node.className = "error";
-        node.textContent = message.message;
-        messagesEl.appendChild(node);
+        clearStreamingRow();
+        appendSystemMessage(message.message, "error");
         break;
       }
     }
   });
 
-  sendBtn.addEventListener("click", () => {
+  function sendCurrentMessage() {
     const text = input.value.trim();
     if (!text) {
       return;
     }
     vscode.postMessage({ type: "send", text });
     input.value = "";
-  });
+    resizeInput();
+  }
+
+  sendBtn.addEventListener("click", sendCurrentMessage);
 
   stopBtn.addEventListener("click", () => {
     vscode.postMessage({ type: "stop" });
@@ -386,12 +459,15 @@
     vscode.postMessage({ type: "setMode", modeId: modeSelect.value });
   });
 
+  input.addEventListener("input", resizeInput);
+
   input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      sendBtn.click();
+      sendCurrentMessage();
     }
   });
 
+  resizeInput();
   vscode.postMessage({ type: "ready" });
 })();
