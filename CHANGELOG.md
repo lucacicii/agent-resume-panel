@@ -9,6 +9,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 ## 简体中文
 
 
+### [2.0.1] - 2026-07-01
+
+#### 修复
+
+- 发布构建移除 `vsce package --no-dependencies`，确保 VSIX 包含 `@agentclientprotocol/sdk` 等 ACP 运行时依赖，修复安装后 `Cannot find package '@agentclientprotocol/sdk'` 导致无法连接 Agent 的问题。
+
 ### [2.0.0] - 2026-07-01
 
 #### 新增
@@ -134,6 +140,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.0.1] - 2026-07-01
+
+#### Fixed
+
+- Release builds no longer use `vsce package --no-dependencies`, so the VSIX includes ACP runtime deps such as `@agentclientprotocol/sdk`; fixes `Cannot find package '@agentclientprotocol/sdk'` and failed agent connections after install.
 
 ### [2.0.0] - 2026-07-01
 

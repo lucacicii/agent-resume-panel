@@ -19,7 +19,7 @@ execSync("npm run compile", { cwd: root, stdio: "inherit" });
 
 function vscePackage(outName) {
   const outPath = join(distDir, outName);
-  execFileSync("npx", ["vsce", "package", "--no-dependencies", "-o", outPath], {
+  execFileSync("npx", ["vsce", "package", "-o", outPath], {
     cwd: root,
     stdio: "inherit",
   });
