@@ -4,6 +4,7 @@ export type ProjectMenuAction =
   | "favorite"
   | "openProject"
   | "openInGhostty"
+  | "newChatSession"
   | "newCodexSession"
   | "newClaudeSession"
   | "newAgySession"
@@ -17,6 +18,7 @@ export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "favorite",
   "openProject",
   "openInGhostty",
+  "newChatSession",
   "newCodexSession",
   "newClaudeSession",
   "newAgySession",
@@ -36,6 +38,7 @@ export const PROJECT_MENU_ACTION_LABELS: Record<ProjectMenuAction, string> = {
   favorite: "Add to / Remove from Favorites",
   openProject: "Open Folder and Resume",
   openInGhostty: "Open in Ghostty",
+  newChatSession: "New Chat Session",
   newCodexSession: "New Codex Session",
   newClaudeSession: "New Claude Session",
   newAgySession: "New Antigravity Session",

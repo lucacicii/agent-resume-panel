@@ -17,6 +17,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:agentResume.sessions",
+    "onView:agentResume.acpChats",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
     "onCommand:agentResume.newSession",
@@ -38,6 +39,13 @@
     "onCommand:agentResume.unfavoriteProject",
     "onCommand:agentResume.configureProjectMenu",
     "onCommand:agentResume.newSessionFromEditor",
+    "onCommand:agentResume.newChatSession",
+    "onCommand:agentResume.openChatSession",
+    "onCommand:agentResume.openAcpChat",
+    "onCommand:agentResume.newAcpChat",
+    "onCommand:agentResume.refreshAcpChats",
+    "onCommand:agentResume.renameAcpChat",
+    "onCommand:agentResume.openAcpSettings",
     "onCommand:agentResume.openSettings",
     "onCommand:agentResume.autoRenameSession"
   ],
@@ -93,6 +101,101 @@
           "type": "string",
           "default": "~/.pi/agent",
           "description": "Pi agent home directory containing sessions."
+        },
+        "agentResume.panelHome": {
+          "type": "string",
+          "default": "~/.agent-resume-panel",
+          "description": "Agent Resume Panel data directory for ACP chat sessions."
+        },
+        "agentResume.acp.autoApprovePermissions": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "allowAll"
+          ],
+          "default": "ask",
+          "description": "How ACP Chat handles agent permission requests. ask shows a quick pick; allowAll auto-approves when possible."
+        },
+        "agentResume.acp.agents.codex.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Codex ACP agent."
+        },
+        "agentResume.acp.agents.codex.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@zed-industries/codex-acp@latest"
+          ],
+          "description": "Launch arguments for Codex ACP agent."
+        },
+        "agentResume.acp.agents.claude.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Claude ACP agent."
+        },
+        "agentResume.acp.agents.claude.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/claude-agent-acp@latest"
+          ],
+          "description": "Launch arguments for Claude ACP agent."
+        },
+        "agentResume.acp.agents.grok.command": {
+          "type": "string",
+          "default": "grok",
+          "description": "Launch command for Grok ACP agent. Uses the locally installed Grok Build CLI (see https://x.ai/cli)."
+        },
+        "agentResume.acp.agents.grok.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "agent",
+            "stdio"
+          ],
+          "description": "Launch arguments for Grok ACP agent."
+        },
+        "agentResume.acp.agents.opencode.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.opencode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "opencode-ai@latest",
+            "acp"
+          ],
+          "description": "Launch arguments for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.pi.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Pi ACP agent."
+        },
+        "agentResume.acp.agents.pi.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "pi-acp"
+          ],
+          "description": "Launch arguments for Pi ACP agent."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -444,6 +547,44 @@
         "icon": "$(settings-gear)"
       },
       {
+        "command": "agentResume.newChatSession",
+        "title": "New ACP Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAcpChat",
+        "title": "New ACP Chat",
+        "category": "Agent Resume",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentResume.openChatSession",
+        "title": "Open ACP Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpChat",
+        "title": "Open ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.refreshAcpChats",
+        "title": "Refresh ACP Chats",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.renameAcpChat",
+        "title": "Rename ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpSettings",
+        "title": "ACP Chat Settings",
+        "category": "Agent Resume",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "agentResume.renameSession",
         "title": "Rename Session",
         "category": "Agent Resume"
@@ -485,6 +626,11 @@
         {
           "id": "agentResume.sessions",
           "name": "Sessions",
+          "icon": "$(history)"
+        },
+        {
+          "id": "agentResume.acpChats",
+          "name": "ACP Chats",
           "icon": "$(comment-discussion)"
         }
       ]
@@ -574,6 +720,14 @@
           "when": "false"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openChatSession",
+          "when": "false"
+        },
+        {
           "command": "agentResume.renameSession",
           "when": "false"
         },
@@ -610,6 +764,21 @@
           "command": "agentResume.openSettings",
           "when": "view == agentResume.sessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAcpChat",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.refreshAcpChats",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openAcpSettings",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -635,18 +804,33 @@
         },
         {
           "command": "agentResume.previewSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.renameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@4"
         },
         {
           "command": "agentResume.autoRenameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@4.5"
+        },
+        {
+          "command": "agentResume.openAcpChat",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.renameAcpChat",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpProject",
+          "group": "navigation@1"
         },
         {
           "command": "agentResume.openInCodexApp",
@@ -686,6 +870,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at1 == openInGhostty",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at1 == newChatSession",
           "group": "navigation@1"
         },
         {
@@ -749,6 +938,11 @@
           "group": "navigation@2"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at2 == newChatSession",
+          "group": "navigation@2"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at2 == newCodexSession",
           "group": "navigation@2"
@@ -806,6 +1000,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at3 == openInGhostty",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at3 == newChatSession",
           "group": "navigation@3"
         },
         {
@@ -869,6 +1068,11 @@
           "group": "navigation@4"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at4 == newChatSession",
+          "group": "navigation@4"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at4 == newCodexSession",
           "group": "navigation@4"
@@ -926,6 +1130,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at5 == openInGhostty",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at5 == newChatSession",
           "group": "navigation@5"
         },
         {
@@ -989,6 +1198,11 @@
           "group": "navigation@6"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at6 == newChatSession",
+          "group": "navigation@6"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at6 == newCodexSession",
           "group": "navigation@6"
@@ -1046,6 +1260,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at7 == openInGhostty",
+          "group": "navigation@7"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at7 == newChatSession",
           "group": "navigation@7"
         },
         {
@@ -1109,6 +1328,11 @@
           "group": "navigation@8"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at8 == newChatSession",
+          "group": "navigation@8"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at8 == newCodexSession",
           "group": "navigation@8"
@@ -1166,6 +1390,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at9 == openInGhostty",
+          "group": "navigation@9"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at9 == newChatSession",
           "group": "navigation@9"
         },
         {
@@ -1229,6 +1458,11 @@
           "group": "navigation@10"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at10 == newChatSession",
+          "group": "navigation@10"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at10 == newCodexSession",
           "group": "navigation@10"
@@ -1289,6 +1523,11 @@
           "group": "navigation@11"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at11 == newChatSession",
+          "group": "navigation@11"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at11 == newCodexSession",
           "group": "navigation@11"
@@ -1329,6 +1568,71 @@
           "group": "navigation@11"
         },
         {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at12 == favorite",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && agentResume.projectMenu.main.favorite && agentResume.projectMenu.at12 == favorite",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openProject && agentResume.projectMenu.at12 == openProject",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.at12 == openInGhostty",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.at12 == newChatSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.at12 == newCodexSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.at12 == newClaudeSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.at12 == newAgySession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.at12 == newGrokSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.at12 == newOpenCodeSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.at12 == newPiSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.at12 == newAlmaSession",
+          "group": "navigation@12"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at12 == newCodexAppSession",
+          "group": "navigation@12"
+        },
+        {
           "submenu": "agentResume.projectMore",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "navigation@50"
@@ -1353,6 +1657,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt0 == openInGhostty",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt0 == newChatSession",
           "group": "navigation@0"
         },
         {
@@ -1416,6 +1725,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt1 == newChatSession",
+          "group": "navigation@1"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt1 == newCodexSession",
           "group": "navigation@1"
@@ -1473,6 +1787,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt2 == openInGhostty",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt2 == newChatSession",
           "group": "navigation@2"
         },
         {
@@ -1536,6 +1855,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt3 == newChatSession",
+          "group": "navigation@3"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt3 == newCodexSession",
           "group": "navigation@3"
@@ -1593,6 +1917,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt4 == openInGhostty",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt4 == newChatSession",
           "group": "navigation@4"
         },
         {
@@ -1656,6 +1985,11 @@
           "group": "navigation@5"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt5 == newChatSession",
+          "group": "navigation@5"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt5 == newCodexSession",
           "group": "navigation@5"
@@ -1713,6 +2047,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt6 == openInGhostty",
+          "group": "navigation@6"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt6 == newChatSession",
           "group": "navigation@6"
         },
         {
@@ -1776,6 +2115,11 @@
           "group": "navigation@7"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt7 == newChatSession",
+          "group": "navigation@7"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt7 == newCodexSession",
           "group": "navigation@7"
@@ -1833,6 +2177,11 @@
         {
           "command": "agentResume.openInGhostty",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt8 == openInGhostty",
+          "group": "navigation@8"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt8 == newChatSession",
           "group": "navigation@8"
         },
         {
@@ -1896,6 +2245,11 @@
           "group": "navigation@9"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt9 == newChatSession",
+          "group": "navigation@9"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt9 == newCodexSession",
           "group": "navigation@9"
@@ -1956,6 +2310,11 @@
           "group": "navigation@10"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt10 == newChatSession",
+          "group": "navigation@10"
+        },
+        {
           "command": "agentResume.newCodexSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt10 == newCodexSession",
           "group": "navigation@10"
@@ -1994,6 +2353,71 @@
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt10 == newCodexAppSession",
           "group": "navigation@10"
+        },
+        {
+          "command": "agentResume.favoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem != agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt11 == favorite",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.unfavoriteProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && viewItem == agentResume.project.favorited && !agentResume.projectMenu.main.favorite && agentResume.projectMenu.moreAt11 == favorite",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.openProject",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openProject && agentResume.projectMenu.moreAt11 == openProject",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.openInGhostty",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.openInGhostty && agentResume.projectMenu.moreAt11 == openInGhostty",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newChatSession && agentResume.projectMenu.moreAt11 == newChatSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newCodexSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexSession && agentResume.projectMenu.moreAt11 == newCodexSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newClaudeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newClaudeSession && agentResume.projectMenu.moreAt11 == newClaudeSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newAgySession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAgySession && agentResume.projectMenu.moreAt11 == newAgySession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newGrokSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newGrokSession && agentResume.projectMenu.moreAt11 == newGrokSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newOpenCodeSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newOpenCodeSession && agentResume.projectMenu.moreAt11 == newOpenCodeSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newPiSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newPiSession && agentResume.projectMenu.moreAt11 == newPiSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newAlmaSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newAlmaSession && agentResume.projectMenu.moreAt11 == newAlmaSession",
+          "group": "navigation@11"
+        },
+        {
+          "command": "agentResume.newCodexAppSession",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && !agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.moreAt11 == newCodexAppSession",
+          "group": "navigation@11"
         },
         {
           "command": "agentResume.configureProjectMenu",

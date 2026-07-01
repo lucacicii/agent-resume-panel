@@ -3,6 +3,9 @@
 import assert from "node:assert/strict";
 import { buildProjectMenuContributionBlocks } from "./generate-project-menu-contributions.mjs";
 
+const ACTION_COUNT = 12;
+const COMMAND_VARIANT_COUNT = 13;
+
 const PROJECT_VIEW_PATTERN = /viewItem =~ \/agentResume\\.project\//;
 const SESSION_VIEW_PATTERN = /agentResume\\.session/;
 const SESSION_COMMANDS = new Set([
@@ -38,8 +41,16 @@ function assertProjectMenuEntries(entries, label) {
 assertProjectMenuEntries(blocks.mainProjectMenu, "mainProjectMenu");
 assertProjectMenuEntries(blocks.moreProjectMenu, "moreProjectMenu");
 
-assert.equal(blocks.mainProjectMenu.length, 11 * 12, "main menu should have 11 slots x 12 command variants");
-assert.equal(blocks.moreProjectMenu.length, 11 * 12 + 1, "more menu should include configureProjectMenu");
+assert.equal(
+  blocks.mainProjectMenu.length,
+  ACTION_COUNT * COMMAND_VARIANT_COUNT,
+  "main menu should have one slot per action x all command variants"
+);
+assert.equal(
+  blocks.moreProjectMenu.length,
+  ACTION_COUNT * COMMAND_VARIANT_COUNT + 1,
+  "more menu should include configureProjectMenu"
+);
 
 const configureEntry = blocks.moreProjectMenu.find((entry) => entry.command === "agentResume.configureProjectMenu");
 assert.ok(configureEntry, "more menu should include configureProjectMenu");

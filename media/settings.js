@@ -196,16 +196,47 @@
       fieldsEl.appendChild(renderLlmTip());
     }
 
-    for (const field of section.fields) {
-      fieldsEl.appendChild(renderField(field));
-      if (sectionId === "llm" && field.key === "llm.baseUrl") {
-        fieldsEl.appendChild(renderApiKeyField());
+    if (section.groups?.length) {
+      for (const group of section.groups) {
+        fieldsEl.appendChild(renderFieldGroup(group));
+      }
+    } else {
+      for (const field of section.fields ?? []) {
+        fieldsEl.appendChild(renderField(field));
+        if (sectionId === "llm" && field.key === "llm.baseUrl") {
+          fieldsEl.appendChild(renderApiKeyField());
+        }
       }
     }
 
     if (sectionId === "llm") {
       llmActions.classList.remove("hidden");
     }
+  }
+
+  function renderFieldGroup(group) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "settings-group";
+
+    const title = document.createElement("h3");
+    title.className = "settings-group-title";
+    title.textContent = group.title;
+    wrapper.appendChild(title);
+
+    if (group.description) {
+      const description = document.createElement("div");
+      description.className = "settings-group-description";
+      description.textContent = group.description;
+      wrapper.appendChild(description);
+    }
+
+    const body = document.createElement("div");
+    body.className = "settings-group-body";
+    for (const field of group.fields) {
+      body.appendChild(renderField(field));
+    }
+    wrapper.appendChild(body);
+    return wrapper;
   }
 
   function renderProjectMenuList() {
@@ -392,6 +423,22 @@
         values[field.key] = select.value;
       });
       wrapper.appendChild(select);
+      return wrapper;
+    }
+
+    if (field.type === "stringArray") {
+      const textarea = document.createElement("textarea");
+      textarea.className = "settings-textarea";
+      textarea.rows = 3;
+      const current = values[field.key] ?? field.default;
+      textarea.value = Array.isArray(current) ? current.join("\n") : String(current ?? "");
+      textarea.addEventListener("input", () => {
+        values[field.key] = textarea.value
+          .split("\n")
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+      });
+      wrapper.appendChild(textarea);
       return wrapper;
     }
 

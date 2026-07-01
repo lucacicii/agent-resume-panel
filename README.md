@@ -21,9 +21,9 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 ### 快速开始
 
 1. 在 VS Code 左侧活动栏打开 **Agent Resume**。
-2. 在 **Sessions** 视图里浏览最近会话或项目分组。
-3. 点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
-4. 如果列表没有更新，点击刷新按钮，或运行 **Agent Resume: Refresh**。
+2. **Sessions** 视图用于浏览和恢复各 Agent 的 CLI 历史会话；**ACP Chats** 视图单独列出基于 ACP 的聊天会话（见下方 [ACP Chat](#acp-chat)）。
+3. 在 **Sessions** 中点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
+4. 如果列表没有更新，点击对应视图标题栏的刷新按钮，或运行 **Agent Resume: Refresh** / **Refresh ACP Chats**。
 
 默认情况下，Codex 等终端类 Agent 会在编辑器旁边打开集成终端；可将 Claude / Codex 的默认恢复方式改为官方插件面板（见下方设置）。
 
@@ -106,6 +106,56 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 
 - Alma 相关 UI 操作（恢复会话的标题搜索、新建对话的 `Cmd+N`）需要为 VSCodium / VS Code 授予 **辅助功能（Accessibility）** 权限。
 
+### ACP Chat
+
+除侧边栏浏览/恢复各 Agent 的 CLI 历史会话外，扩展还提供基于 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 的 **ACP Chat**：在 VS Code 编辑器旁打开聊天面板，直接与 Agent 对话。
+
+**新建与打开**
+
+- 切换到 **ACP Chats** 视图，点击标题栏 **+**（**New ACP Chat**）从当前工作区新建；或在 **By Project** 下右键项目选择 **New Chat Session**，再选择 Agent 类型。
+- **Sessions** 视图的项目右键菜单仍保留 **New Chat Session**（新建后会出现在 **ACP Chats** 中）。
+- 在 **ACP Chats** 中点击会话即可重新打开对应聊天面板；右键可 **Rename ACP Chat**。
+- **Sessions** 与搜索面板不再显示 ACP 聊天条目，避免与 CLI 历史混在一起。
+
+**支持的 Agent**
+
+| Agent | 默认启动方式 |
+|-------|-------------|
+| Codex | `npx -y @zed-industries/codex-acp@latest` |
+| Claude | `npx -y @agentclientprotocol/claude-agent-acp@latest` |
+| Grok Build | 本机 `grok agent stdio` |
+| OpenCode | `npx -y opencode-ai@latest acp` |
+| Pi | `npx -y pi-acp` |
+
+**图片上传**
+
+| Agent | 图片上传 |
+|-------|----------|
+| Codex | 支持 |
+| Claude | 支持 |
+| OpenCode | 支持 |
+| Pi | 支持 |
+| Grok Build | 不支持 |
+
+在支持图片的 Agent 对话中，可使用输入框左侧 **附件** 按钮选图，或 **Ctrl/Cmd+V** 粘贴剪贴板图片；每条消息最多 4 张、单张最大 5 MB（PNG / JPEG / WebP / GIF）。可附带文字说明，也可只发图片。
+
+**Grok Build 说明**
+
+Grok 默认使用本机已安装的 [Grok Build CLI](https://x.ai/cli)（`grok agent stdio`），本地升级 Grok 后无需更新扩展。安装示例：
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+请确保 `grok` 在 PATH 中（官方安装脚本通常会写入 `~/.grok/bin`）。若连接失败，可先运行 `grok agent stdio --reauth` 检查登录状态。
+
+> **不要用 `@xai-official/grok@latest`。** npm 的 `latest` 标签目前指向 0.1.x（无 `agent` 子命令），会导致 `ACP connection closed`。未安装本机 CLI 时，可在设置中改为 `npx` + `@xai-official/grok@0.2`（主版本范围，非 `latest`）。
+
+ACP Chat 相关设置：
+
+- **Agent Resume Settings → ACP Chat**（**ACP Chats** 标题栏齿轮 **ACP Chat Settings**，或 **Agent Resume: Open Settings**）：推荐在此配置 ACP 数据目录、权限处理、各 Agent 启动命令与参数。
+- 也可在 VS Code Settings 中搜索 `agentResume.acp` 或 `agentResume.panelHome` 直接编辑。
+
 ### 在官方插件面板中恢复
 
 #### Claude Code
@@ -153,6 +203,10 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.ghosttyExecutable`：Ghostty 应用名或可执行文件路径。
 - `agentResume.grokHome`：Grok Build 数据目录（默认 `~/.grok`）。
 - `agentResume.showSubagentGrok`：是否显示 Grok 子 Agent 会话。
+- `agentResume.panelHome`：ACP Chat 会话数据目录（默认 `~/.agent-resume-panel`）。
+- `agentResume.acp.autoApprovePermissions`：ACP Chat 权限请求处理方式（`ask` / `allowAll`）。
+- `agentResume.acp.agents.grok.command` / `.args`：Grok ACP 启动命令（默认 `grok` + `agent stdio`，使用本机 CLI）。
+- `agentResume.acp.agents.<provider>.command` / `.args`：其他 ACP Agent 的启动命令与参数。
 - `agentResume.opencodeHome`：OpenCode 数据目录（默认 `~/.local/share/opencode`）。
 - `agentResume.showArchivedOpenCode`：是否显示已归档的 OpenCode 会话。
 - `agentResume.piHome`：Pi 数据目录（默认 `~/.pi/agent`）。
@@ -188,9 +242,9 @@ Best for:
 ### Quick Start
 
 1. Open **Agent Resume** from the VS Code Activity Bar.
-2. Browse recent sessions or project groups in the **Sessions** view.
-3. Click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
-4. If the list is stale, click refresh or run **Agent Resume: Refresh**.
+2. Use **Sessions** to browse and resume CLI history; use **ACP Chats** for ACP-based chat sessions (see [ACP Chat](#acp-chat) below).
+3. In **Sessions**, click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
+4. If a list is stale, use that view's refresh button, or run **Agent Resume: Refresh** / **Refresh ACP Chats**.
 
 By default, Codex and other terminal agents resume in an integrated terminal beside the editor. You can switch Claude / Codex defaults to the official extension panel in Settings (below).
 
@@ -273,6 +327,56 @@ Alma integration uses the local Alma API (default `http://localhost:23001`) and 
 
 - Alma UI automation (title search for resume, `Cmd+N` for new chat) requires **Accessibility** permission for VSCodium / VS Code.
 
+### ACP Chat
+
+Besides browsing and resuming CLI history in the sidebar, the extension includes **ACP Chat** powered by the [Agent Client Protocol (ACP)](https://agentclientprotocol.com): a chat panel beside the editor for talking to an agent directly.
+
+**Create and open**
+
+- Switch to **ACP Chats** and click **+** (**New ACP Chat**) to start from the current workspace, or right-click a project under **By Project** and choose **New Chat Session**, then pick an agent type.
+- **Sessions** project menus still offer **New Chat Session**; new chats appear in **ACP Chats**.
+- Click a chat in **ACP Chats** to reopen its panel; right-click to **Rename ACP Chat**.
+- **Sessions** and the search panel no longer list ACP chats, keeping CLI history separate.
+
+**Supported agents**
+
+| Agent | Default launch |
+|-------|----------------|
+| Codex | `npx -y @zed-industries/codex-acp@latest` |
+| Claude | `npx -y @agentclientprotocol/claude-agent-acp@latest` |
+| Grok Build | local `grok agent stdio` |
+| OpenCode | `npx -y opencode-ai@latest acp` |
+| Pi | `npx -y pi-acp` |
+
+**Image upload**
+
+| Agent | Images |
+|-------|--------|
+| Codex | Yes |
+| Claude | Yes |
+| OpenCode | Yes |
+| Pi | Yes |
+| Grok Build | No |
+
+In chats with image-capable agents, use the **attach** button beside the input or **Ctrl/Cmd+V** to paste from the clipboard. Up to 4 images per message, 5 MB each (PNG / JPEG / WebP / GIF). Add a caption or send images only.
+
+**Grok Build notes**
+
+Grok defaults to your locally installed [Grok Build CLI](https://x.ai/cli) (`grok agent stdio`). When you upgrade Grok locally, the extension picks up the new version automatically. Install example:
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+Make sure `grok` is on your PATH (the official installer usually adds `~/.grok/bin`). If connection fails, run `grok agent stdio --reauth` to check authentication.
+
+> **Do not use `@xai-official/grok@latest`.** npm's `latest` tag currently points at 0.1.x (no `agent` subcommand), which causes `ACP connection closed`. If you have no local CLI, override in Settings with `npx` and `@xai-official/grok@0.2` (major range, not `latest`).
+
+ACP Chat settings:
+
+- **Agent Resume Settings → ACP Chat** (**ACP Chat Settings** gear on the **ACP Chats** title bar, or **Agent Resume: Open Settings**): configure ACP data directory, permissions, and per-agent launch command/args.
+- You can also search `agentResume.acp` or `agentResume.panelHome` in VS Code Settings.
+
 ### Extension panel resume
 
 #### Claude Code
@@ -320,6 +424,10 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.ghosttyExecutable`: Ghostty app name or executable path.
 - `agentResume.grokHome`: Grok Build data directory (default `~/.grok`).
 - `agentResume.showSubagentGrok`: Show Grok subagent sessions.
+- `agentResume.panelHome`: ACP Chat session data directory (default `~/.agent-resume-panel`).
+- `agentResume.acp.autoApprovePermissions`: ACP Chat permission handling (`ask` / `allowAll`).
+- `agentResume.acp.agents.grok.command` / `.args`: Grok ACP launch (default `grok` + `agent stdio`, local CLI).
+- `agentResume.acp.agents.<provider>.command` / `.args`: Launch command and args for other ACP agents.
 - `agentResume.opencodeHome`: OpenCode data directory (default `~/.local/share/opencode`).
 - `agentResume.showArchivedOpenCode`: Show or hide archived OpenCode sessions.
 - `agentResume.piHome`: Pi data directory (default `~/.pi/agent`).

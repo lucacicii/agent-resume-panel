@@ -162,7 +162,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     if (element.kind === "recentRoot") {
       const visibleSessions: TreeNode[] = this.sessions
         .slice(0, this.recentVisibleCount)
-        .map((session) => ({ kind: "session" as const, session, showProjectName: true }));
+        .map((session) => ({ kind: "session" as const, session, showProjectName: true } satisfies SessionNode));
       const remaining = Math.max(0, this.sessions.length - visibleSessions.length);
       if (remaining > 0) {
         visibleSessions.push({ kind: "showMoreRecent", remaining });
@@ -179,7 +179,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "project") {
-      return element.sessions.map((session) => ({ kind: "session", session }));
+      return buildProjectChildren(element.sessions);
     }
 
     return [];
@@ -213,26 +213,24 @@ export function isSectionRoot(node: TreeNode): node is SectionRootNode {
 
 function sessionItem(session: AgentSession, showProjectName = false): vscode.TreeItem {
   const item = new vscode.TreeItem(sessionLabel(session, showProjectName), vscode.TreeItemCollapsibleState.None);
-  item.description = `${providerLabel(session.provider)} · ${relativeTime(session.updatedAt)}`;
-  item.tooltip = [
-    formatTitleWithMessageCount(session),
-    `Provider: ${providerLabel(session.provider)}`,
-    `Project: ${session.projectPath}`,
-    session.model ? `Model: ${session.model}` : undefined,
-    session.branch ? `Branch: ${session.branch}` : undefined,
-    session.source ? `Source: ${session.source}` : undefined,
-    `Session: ${session.id}`
-  ]
-    .filter(Boolean)
-    .join("\n");
+  item.description = sessionDescription(session);
+  item.tooltip = buildSessionTooltip(session);
   item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
-    command: "agentResume.openSession",
-    title: "Resume Session",
+    command: session.provider === "chat" ? "agentResume.openChatSession" : "agentResume.openSession",
+    title: session.provider === "chat" ? "Open ACP Chat" : "Resume Session",
     arguments: [{ kind: "session", session } satisfies SessionNode]
   };
   return item;
+}
+
+function sessionDescription(session: AgentSession): string {
+  const provider = providerLabel(session.provider);
+  if (session.provider === "chat" && session.acpProvider) {
+    return `acp · ${session.acpProvider} · ${relativeTime(session.updatedAt)}`;
+  }
+  return `${provider} · ${relativeTime(session.updatedAt)}`;
 }
 
 function showMoreRecentItem(remaining: number): vscode.TreeItem {
@@ -256,6 +254,21 @@ function sessionLabel(session: AgentSession, showProjectName: boolean): string {
   return `${basenameOrPath(session.projectPath)} · ${title}`;
 }
 
+function buildSessionTooltip(session: AgentSession): string {
+  return [
+    formatTitleWithMessageCount(session),
+    `Provider: ${providerLabel(session.provider)}`,
+    session.acpProvider ? `ACP agent: ${session.acpProvider}` : undefined,
+    `Project: ${session.projectPath}`,
+    session.model ? `Model: ${session.model}` : undefined,
+    session.branch ? `Branch: ${session.branch}` : undefined,
+    session.source ? `Source: ${session.source}` : undefined,
+    `Session: ${session.id}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function formatTitleWithMessageCount(session: AgentSession): string {
   const title = session.title;
   if (
@@ -266,6 +279,10 @@ export function formatTitleWithMessageCount(session: AgentSession): string {
     return `${title}(${session.messageCount}msg)`;
   }
   return title;
+}
+
+function buildProjectChildren(projectSessions: AgentSession[]): TreeNode[] {
+  return projectSessions.map((session) => ({ kind: "session" as const, session }));
 }
 
 export interface ProjectGroup {
@@ -326,6 +343,9 @@ function latest(sessions: AgentSession[]): number {
 }
 
 export function providerLabel(provider: AgentSession["provider"]): string {
+  if (provider === "chat") {
+    return "chat";
+  }
   if (provider === "codex") {
     return "codex";
   }
@@ -348,6 +368,9 @@ export function providerLabel(provider: AgentSession["provider"]): string {
 }
 
 function providerIcon(provider: AgentSession["provider"]): string {
+  if (provider === "chat") {
+    return "comment";
+  }
   if (provider === "codex") {
     return "hubot";
   }
@@ -419,13 +442,14 @@ export function sessionQuickPickLabel(
   session: AgentSession,
   options?: { omitProjectPath?: boolean }
 ): vscode.QuickPickItem & { session: AgentSession } {
+  const linkSuffix = session.provider === "chat" && session.acpProvider ? ` · acp/${session.acpProvider}` : "";
   const detail = options?.omitProjectPath
     ? session.branch || undefined
     : `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`;
 
   return {
     label: `$(${providerIcon(session.provider)}) ${formatTitleWithMessageCount(session)}`,
-    description: providerLabel(session.provider),
+    description: `${providerLabel(session.provider)}${linkSuffix}`,
     detail,
     session
   };

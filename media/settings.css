@@ -152,6 +152,36 @@ body {
   border-left: 3px solid var(--vscode-charts-blue, #3794ff);
 }
 
+.settings-group {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+.settings-group-title {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-inactiveSelectionBackground));
+}
+
+.settings-group-description {
+  padding: 8px 12px 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.45;
+}
+
+.settings-group-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -169,7 +199,8 @@ body {
 }
 
 .settings-input,
-.settings-select {
+.settings-select,
+.settings-textarea {
   padding: 6px 8px;
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
   border-radius: 4px;
@@ -177,6 +208,12 @@ body {
   color: var(--vscode-input-foreground);
   font-size: 12px;
   font-family: inherit;
+}
+
+.settings-textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.4;
 }
 
 .settings-checkbox-row {

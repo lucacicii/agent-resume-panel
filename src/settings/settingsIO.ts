@@ -12,7 +12,13 @@ import {
   saveItemOrder,
   saveMainActions
 } from "../menu/projectContextMenu";
-import { getAllSettingKeys, LLM_API_KEY_SECRET, SETTING_SECTIONS, SettingField } from "./settingsSchema";
+import {
+  findSettingField,
+  getAllSettingKeys,
+  LLM_API_KEY_SECRET,
+  SETTING_SECTIONS,
+  SettingField
+} from "./settingsSchema";
 
 export interface SettingsSnapshot {
   sections: typeof SETTING_SECTIONS;
@@ -25,6 +31,10 @@ function getFieldDefault(field: SettingField): unknown {
   return field.default;
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
 function readFieldValue(field: SettingField): unknown {
   return readAgentResumeSetting(field.key, getFieldDefault(field));
 }
@@ -34,7 +44,7 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
   const values: Record<string, unknown> = {};
 
   for (const key of getAllSettingKeys()) {
-    const field = SETTING_SECTIONS.flatMap((section) => section.fields).find((entry) => entry.key === key);
+    const field = findSettingField(key);
     if (field) {
       values[key] = readFieldValue(field);
     }
@@ -98,7 +108,7 @@ export async function applySettingsPatch(
       continue;
     }
 
-    const field = SETTING_SECTIONS.flatMap((section) => section.fields).find((entry) => entry.key === key);
+    const field = findSettingField(key);
     if (!field) {
       continue;
     }
@@ -142,6 +152,19 @@ function normalizeValue(field: SettingField, value: unknown): unknown {
   if (field.type === "enum" && field.enum) {
     const text = String(value ?? "").trim();
     return field.enum.includes(text) ? text : field.default;
+  }
+
+  if (field.type === "stringArray") {
+    if (isStringArray(value)) {
+      return value.map((entry) => entry.trim()).filter(Boolean);
+    }
+    if (typeof value === "string") {
+      return value
+        .split("\n")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+    return isStringArray(field.default) ? [...field.default] : [];
   }
 
   return String(value ?? "").trim();

@@ -1,4 +1,6 @@
-export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma" | "opencode" | "pi";
+import { AcpAgentProvider } from "../acp/types";
+
+export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma" | "opencode" | "pi" | "chat";
 
 export interface AgentSession {
   provider: AgentProvider;
@@ -11,9 +13,11 @@ export interface AgentSession {
   source?: string;
   archived?: boolean;
   messageCount?: number;
+  acpProvider?: AcpAgentProvider;
 }
 
 export interface HistoryLoadOptions {
+  panelHome: string;
   codexHome: string;
   claudeHome: string;
   antigravityHome: string;

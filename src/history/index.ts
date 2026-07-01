@@ -33,10 +33,12 @@ export async function loadAllSessions(options: HistoryLoadOptions): Promise<Hist
     warnings.push(opencode.warning);
   }
 
+  const sessions = [...codex.sessions, ...claude, ...agy, ...grok, ...alma.sessions, ...opencode.sessions, ...pi]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, options.maxItems);
+
   return {
-    sessions: [...codex.sessions, ...claude, ...agy, ...grok, ...alma.sessions, ...opencode.sessions, ...pi]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, options.maxItems),
+    sessions,
     warnings
   };
 }
