@@ -140,22 +140,30 @@ export class AcpAgentConnection {
     const cwd = path.resolve(projectPath);
     const params = { sessionId: acpSessionId, cwd, mcpServers: [] as [] };
 
-    if (this.agentCapabilities?.sessionCapabilities?.resume) {
-      const response = await agent.request(acp.methods.agent.session.resume, params);
-      return {
-        sessionId: acpSessionId,
-        modes: normalizeSessionModes(response as Record<string, unknown>),
-        method: "resume"
-      };
+    const restoreMethods: Array<"load" | "resume"> = [];
+    if (this.agentCapabilities?.loadSession) {
+      restoreMethods.push("load");
+    }
+    if (supportsSessionResume(this.agentCapabilities)) {
+      restoreMethods.push("resume");
     }
 
-    if (this.agentCapabilities?.loadSession) {
-      const response = await agent.request(acp.methods.agent.session.load, params);
-      return {
-        sessionId: acpSessionId,
-        modes: normalizeSessionModes(response as Record<string, unknown>),
-        method: "load"
-      };
+    for (const method of restoreMethods) {
+      try {
+        const response = await agent.request(
+          method === "load" ? acp.methods.agent.session.load : acp.methods.agent.session.resume,
+          params
+        );
+        return {
+          sessionId: acpSessionId,
+          modes: normalizeSessionModes(response as Record<string, unknown>),
+          method
+        };
+      } catch (error) {
+        if (!isResourceNotFoundError(error)) {
+          throw error;
+        }
+      }
     }
 
     const response = await agent.buildSession(cwd).start();
@@ -215,6 +223,20 @@ export class AcpAgentConnection {
     this.initialized = false;
     this.agentCapabilities = undefined;
   }
+}
+
+function supportsSessionResume(capabilities?: AgentCapabilities): boolean {
+  const resume = capabilities?.sessionCapabilities?.resume;
+  return resume != null && typeof resume === "object";
+}
+
+function isResourceNotFoundError(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    return (error as { code?: number }).code === -32002;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Resource not found");
 }
 
 function normalizeSessionModes(response: Record<string, unknown>): AcpSessionModes | null {

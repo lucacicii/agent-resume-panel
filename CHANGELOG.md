@@ -9,6 +9,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 ## 简体中文
 
 
+### [2.0.2] - 2026-07-01
+
+#### 修复
+
+- Codex ACP 重连：优先 `session/load`，`Resource not found` 时回退新建会话，避免 `Failed to connect to codex agent: Resource not found`。
+- ACP Chat 在 session ID 变更后重新订阅 `session/update`，修复 Codex 回复被丢弃导致的 `Agent returned an empty response`。
+
 ### [2.0.1] - 2026-07-01
 
 #### 修复
@@ -140,6 +147,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.0.2] - 2026-07-01
+
+#### Fixed
+
+- Codex ACP reconnect: prefer `session/load`, fall back to a new session on `Resource not found`; fixes `Failed to connect to codex agent: Resource not found`.
+- ACP Chat re-subscribes to `session/update` after the session ID changes; fixes dropped Codex streams and `Agent returned an empty response`.
 
 ### [2.0.1] - 2026-07-01
 

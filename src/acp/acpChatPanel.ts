@@ -139,12 +139,13 @@ export class AcpChatPanel {
       this.connection = new AcpAgentConnection(this.record.provider);
 
       if (this.record.acpSessionId) {
-        this.activeAcpSessionId = this.record.acpSessionId;
-        this.setupSessionUpdates();
+        const previousSessionId = this.record.acpSessionId;
+        this.activeAcpSessionId = previousSessionId;
         this.isReplayingLoadedHistory = false;
         try {
-          const result = await this.connection.restoreSession(this.record.acpSessionId, this.record.projectPath);
-          if (result.sessionId !== this.record.acpSessionId) {
+          const result = await this.connection.restoreSession(previousSessionId, this.record.projectPath);
+          if (result.sessionId !== previousSessionId) {
+            clearSessionUpdateListeners(previousSessionId);
             this.record.acpSessionId = result.sessionId;
             this.activeAcpSessionId = result.sessionId;
             this.record.updatedAt = Date.now();
@@ -166,8 +167,9 @@ export class AcpChatPanel {
         this.applyModes(result.modes);
         this.record.updatedAt = Date.now();
         await updateAcpRecord(this.panelHome, this.record);
-        this.setupSessionUpdates();
       }
+
+      this.setupSessionUpdates();
 
       this.post({ type: "status", status: "ready", isRunning: false, isConnecting: false });
     } catch (error) {
