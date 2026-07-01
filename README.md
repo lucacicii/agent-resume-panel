@@ -4,10 +4,11 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 ## 简体中文
 
-Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜索和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
+Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜索和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话，并在编辑器旁通过 **ACP Chat** 直接与 Agent 对话。
 
 适合这些场景：
 
+- 在 VS Code 内用 ACP Chat 与 Codex、Claude、Grok、OpenCode、Pi 实时对话（支持图片上传）。
 - 快速回到最近一次 AI 编程会话。
 - 同时使用多个 CLI / 桌面 Agent，并希望统一管理。
 - 按项目查看历史会话，收藏常用项目，并直接在对应项目里继续工作。
@@ -225,10 +226,11 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 ## English
 
-Agent Resume Panel is a VS Code sidebar extension for browsing, searching, and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
+Agent Resume Panel is a VS Code sidebar extension for browsing, searching, and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place — plus **ACP Chat** for talking to agents directly beside the editor.
 
 Best for:
 
+- Real-time conversations in VS Code via ACP Chat with Codex, Claude, Grok, OpenCode, and Pi (image upload supported).
 - Jumping back into a recent AI coding session.
 - Managing sessions from multiple CLI and desktop agents in one list.
 - Browsing sessions by project, favoriting frequent projects, and continuing in the right workspace.

@@ -9,6 +9,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 ## 简体中文
 
 
+### [2.0.0] - 2026-07-01
+
+#### 新增
+
+- **ACP Chat**：基于 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 重写聊天面板，在编辑器旁直接与 Agent 对话；移除旧 handoff 栈。
+- **ACP Chats** 独立侧边栏视图：与 **Sessions**（CLI 历史）分离，各自刷新与管理。
+- 支持 Agent：Codex、Claude、Grok Build、OpenCode、Pi；可在 **Agent Resume Settings → ACP Chat** 配置启动命令与权限。
+- **图片上传**：Codex、Claude、OpenCode、Pi 支持附件按钮与 Ctrl/Cmd+V 粘贴（每条最多 4 张、单张 5 MB）。
+- Grok ACP 默认使用本机 `grok agent stdio` CLI。
+
+#### 变更
+
+- **Sessions** 与搜索面板不再混入 ACP 聊天条目；新建聊天出现在 **ACP Chats**。
+- ACP 数据目录、权限与各 Agent 启动参数集中在 **ACP Chat** 设置分区。
+
+
 ### [1.2.1] - 2026-06-30
 
 #### 新增
@@ -118,6 +134,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.0.0] - 2026-07-01
+
+#### Added
+
+- **ACP Chat**: Chat panel rebuilt on the [Agent Client Protocol (ACP)](https://agentclientprotocol.com) for direct agent conversations beside the editor; legacy handoff stack removed.
+- **ACP Chats** sidebar view: separate from **Sessions** (CLI history), each with its own refresh and management.
+- Supported agents: Codex, Claude, Grok Build, OpenCode, Pi; launch commands and permissions configurable under **Agent Resume Settings → ACP Chat**.
+- **Image upload**: Codex, Claude, OpenCode, and Pi support attach button and Ctrl/Cmd+V paste (up to 4 images per message, 5 MB each).
+- Grok ACP defaults to the local `grok agent stdio` CLI.
+
+#### Changed
+
+- **Sessions** and the search panel no longer mix in ACP chat entries; new chats appear in **ACP Chats**.
+- ACP data directory, permissions, and per-agent launch settings grouped under **ACP Chat** settings.
+
 
 ### [1.2.1] - 2026-06-30
 
