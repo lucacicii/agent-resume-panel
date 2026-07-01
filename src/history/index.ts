@@ -11,7 +11,7 @@ import { HistoryLoadOptions, HistoryLoadResult } from "./types";
 export async function loadAllSessions(options: HistoryLoadOptions): Promise<HistoryLoadResult> {
   const warnings: string[] = [];
   const [codex, claude, agy, grok, alma, opencode, pi, chat] = await Promise.all([
-    loadCodexSessions(options.codexHome, options.maxItems, options.showArchivedCodex),
+    loadCodexSessions(options.codexHome, options.maxItems, options.showArchivedCodex, options.showSubagentCodex),
     loadClaudeSessions(options.claudeHome, options.maxItems),
     loadAntigravitySessions(options.antigravityHome, options.maxItems),
     loadGrokSessions(options.grokHome, options.maxItems, options.showSubagentGrok),

@@ -30,13 +30,14 @@ interface CodexIndexRow {
 export async function loadCodexSessions(
   codexHome: string,
   maxItems: number,
-  showArchived: boolean
+  showArchived: boolean,
+  showSubagents: boolean
 ): Promise<{ sessions: AgentSession[]; warning?: string }> {
   try {
     const dbPath = await findNewestStateDb(codexHome);
     if (dbPath) {
       return {
-        sessions: await loadFromSqlite(dbPath, maxItems, showArchived)
+        sessions: await loadFromSqlite(dbPath, maxItems, showArchived, showSubagents)
       };
     }
   } catch (error) {
@@ -78,9 +79,17 @@ async function findNewestStateDb(codexHome: string): Promise<string | undefined>
 async function loadFromSqlite(
   dbPath: string,
   maxItems: number,
-  showArchived: boolean
+  showArchived: boolean,
+  showSubagents: boolean
 ): Promise<AgentSession[]> {
-  const where = showArchived ? "" : "where archived = 0";
+  const clauses: string[] = [];
+  if (!showArchived) {
+    clauses.push("archived = 0");
+  }
+  if (!showSubagents) {
+    clauses.push("(source is null or instr(source, 'subagent') = 0)");
+  }
+  const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
   const sql = `
     select id,title,cwd,updated_at_ms,updated_at,model,git_branch,archived,source,preview,first_user_message
     from threads
@@ -95,7 +104,7 @@ async function loadFromSqlite(
   const rows = JSON.parse(stdout || "[]") as CodexThreadRow[];
 
   return rows
-    .filter((row) => row.id)
+    .filter((row) => row.id && (showSubagents || !isCodexSubagent(row.source)))
     .map((row) => ({
       provider: "codex" as const,
       id: row.id,
@@ -122,6 +131,10 @@ async function loadFromIndex(codexHome: string, maxItems: number): Promise<Agent
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, maxItems);
+}
+
+function isCodexSubagent(source?: string | null): boolean {
+  return (source ?? "").includes("subagent");
 }
 
 function firstNonEmpty(...values: Array<string | null | undefined>): string {

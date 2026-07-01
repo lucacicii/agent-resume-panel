@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 import { AgentProvider, AgentSession } from "../history";
 import { openAlmaThread } from "./almaApp";
+import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./claudeCodePanel";
+import {
+  getCodexResumeMode,
+  openCodexIdePanelResumeFlow,
+  shouldResumeCodexInIdePanel
+} from "./codexIdePanel";
 import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
 
 export { buildNewSessionCommand, buildResumeCommand };
@@ -8,6 +14,21 @@ export { buildNewSessionCommand, buildResumeCommand };
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
   if (session.provider === "alma") {
     void openAlmaThread(session);
+    return;
+  }
+
+  if (session.provider === "claude" && shouldResumeClaudeInPanel()) {
+    void openClaudeCodePanelResumeFlow(session, context);
+    return;
+  }
+
+  if (session.provider === "codex" && shouldResumeCodexInIdePanel()) {
+    void openCodexIdePanelResumeFlow(session, context);
+    return;
+  }
+
+  if (session.provider === "codex" && getCodexResumeMode() === "app") {
+    openCodexAppResumeTerminal(session, context);
     return;
   }
 

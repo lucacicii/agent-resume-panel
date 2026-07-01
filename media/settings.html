@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="{{styleUri}}" />
+  </head>
+  <body>
+    <div class="settings-shell">
+      <aside class="settings-nav">
+        <div class="settings-nav-title">Settings</div>
+        <nav id="settings-nav-list"></nav>
+      </aside>
+      <main class="settings-main">
+        <header class="settings-header">
+          <div>
+            <h1 id="section-title" class="settings-section-title">Loading...</h1>
+            <p id="section-description" class="settings-section-description"></p>
+          </div>
+          <div class="settings-header-actions">
+            <button id="save-settings" type="button" class="settings-btn settings-btn-primary">Save</button>
+          </div>
+        </header>
+        <div id="status-banner" class="settings-status hidden"></div>
+        <section id="settings-fields" class="settings-fields"></section>
+        <section id="llm-actions" class="settings-llm-actions hidden">
+          <p class="settings-hint">Test Connection uses the values currently in the form above (Save is not required).</p>
+          <button id="test-llm" type="button" class="settings-btn">Test Connection</button>
+          <div id="test-result" class="settings-test-result hidden"></div>
+        </section>
+        <section id="project-menu-actions" class="settings-project-menu hidden">
+          <p class="settings-hint">
+            Open Folder is always visible. Checked items appear in the main project context menu; unchecked items go under Show More. Drag items to reorder, then click Save.
+          </p>
+          <div id="project-menu-list" class="project-menu-list"></div>
+          <div class="project-menu-footer">
+            <button id="reset-project-menu" type="button" class="settings-btn">Reset to Defaults</button>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+  </body>
+</html>

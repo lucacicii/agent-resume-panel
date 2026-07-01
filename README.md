@@ -4,13 +4,16 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 ## 简体中文
 
-Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
+Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜索和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话。
 
 适合这些场景：
 
 - 快速回到最近一次 AI 编程会话。
 - 同时使用多个 CLI / 桌面 Agent，并希望统一管理。
-- 按项目查看历史会话，并直接在对应项目里继续工作。
+- 按项目查看历史会话，收藏常用项目，并直接在对应项目里继续工作。
+- 在搜索面板里按项目筛选，再快速定位某个会话。
+- 重命名会话标题，并写回各 Agent 的原生存储（其他终端 resume 时也会看到新名称）。
+- 需要在 Claude Code 或 Codex 官方 VS Code 插件面板中继续会话（Codex 面板恢复为实验性功能）。
 - 需要用 Ghostty 或 Codex App 接着打开已有会话。
 - 在 Alma 桌面客户端中按项目打开新对话。
 - 在编辑器右上角一键新建预设类型的 Agent 会话。
@@ -19,22 +22,28 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中查看和恢�
 
 1. 在 VS Code 左侧活动栏打开 **Agent Resume**。
 2. 在 **Sessions** 视图里浏览最近会话或项目分组。
-3. 点击某个会话即可恢复（终端 Agent 在 VS Code 终端中恢复；Alma 在 Alma 客户端中打开）。
+3. 点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
 4. 如果列表没有更新，点击刷新按钮，或运行 **Agent Resume: Refresh**。
 
-默认情况下，终端类 Agent 的恢复会话会在当前编辑器旁边打开一个新的集成终端，方便一边看代码一边继续对话。
+默认情况下，Codex 等终端类 Agent 会在编辑器旁边打开集成终端；可将 Claude / Codex 的默认恢复方式改为官方插件面板（见下方设置）。
 
 ### 常用操作
 
 在 **Sessions** 列表中点击会话，或右键会话选择：
 
-- **Resume Session**：在 VS Code 终端恢复会话（Alma 除外）。
+- **Preview Session**：只读浏览 User/Assistant 对话，不恢复会话。
+- **Rename Session**：重命名会话标题，并写入对应 Agent 的原生存储（Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 均支持）。
+- **Resume Session**：按当前设置的默认方式恢复（Alma 除外）。
 - **Copy Resume Command**：复制恢复命令。
 - **Open Folder and Resume**：打开会话所属项目，并在新窗口中恢复。
 - **Open in Ghostty**：用 Ghostty 打开并恢复会话。
+- **Resume in Claude Code Panel**：在 Claude Code 插件面板中恢复（需已安装 `anthropic.claude-code`）。
+- **Resume in Codex IDE Panel (Experimental)**：尝试在 Codex 插件面板中恢复（需已安装 `openai.chatgpt`，见下方说明）。
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 
-Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试切换到对应对话（通过标题搜索，可能不完全精准）。
+在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。
+
+Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会话。点击 Alma 会话会在 Alma 客户端中尝试切换到对应对话（通过标题搜索，可能不完全精准）。若 Agent 正在运行并锁住数据库，重命名可能失败，请先关闭对应 Agent 后重试。
 
 项目分组支持右键操作：
 
@@ -43,12 +52,21 @@ Alma 会话**没有右键菜单**，点击会话会在 Alma 客户端中尝试�
 - **New Codex Session**、**New Claude Session**、**New Antigravity Session**、**New Grok Session**、**New OpenCode Session**、**New Pi Session**：在该项目中新建对应 Agent 会话。
 - **New Codex App Session**：用 Codex App 打开该项目。
 - **New Alma Thread**：在 Alma 中打开新对话，并将工作区目录设为该项目（见下方 Alma 说明）。
+- **Show More**：未勾选为主菜单的项会收纳在此子菜单中。
+
+可通过 **Agent Resume Settings → Project Menu**（或运行 **Customize Project Menu** / 在 **Show More** 中点击 **Customize Project Menu**）自定义项目右键菜单：勾选要在主菜单显示的项，**拖动**调整顺序，然后点击 **Save**。**Open Folder** 始终显示在顶部。
 
 ### 新建和搜索
 
 在 **Sessions** 视图右上角点击加号，或运行 **Agent Resume: New Session**，可以从当前 VS Code 工作区新建 Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi 或 Codex App 会话。Alma 不在全局新建列表中，请通过项目右键 **New Alma Thread** 创建。
 
-运行 **Agent Resume: Search Sessions**，可以从所有已加载会话中快速搜索并恢复。
+运行 **Agent Resume: Search Sessions** 会打开专用搜索面板：
+
+- 顶部是 **Projects** 按钮区：点击 `All Projects` 或某个项目，先按项目做初步筛选；收藏项目会带星标。
+- 下方是独立的 **Sessions** 列表：在已选项目范围内继续输入关键字，按标题、provider、分支（未选项目时也匹配路径）过滤。
+- 点击某条会话即可恢复；行尾的 **Preview** 可只读浏览 User/Assistant 对话，**Rename** 可直接重命名，面板保持打开。
+
+侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
 
 ### 编辑器标题栏快捷新建
 
@@ -88,11 +106,36 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 
 - Alma 相关 UI 操作（恢复会话的标题搜索、新建对话的 `Cmd+N`）需要为 VSCodium / VS Code 授予 **辅助功能（Accessibility）** 权限。
 
+### 在官方插件面板中恢复
+
+#### Claude Code
+
+- 安装 [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code)。
+- 设置 `agentResume.claudeResumeMode` 为 `panel`（默认）时，点击 Claude 会话会在插件面板中恢复；设为 `terminal` 则走集成终端 CLI。
+- 也可通过右键 **Resume in Claude Code Panel** 或 **Resume with…** 显式选择。
+
+#### Codex（实验性）
+
+- 安装 [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt)。
+- 设置 `agentResume.codexResumeMode` 为 `panel` 时，点击 Codex 会话会尝试在插件面板中恢复；默认 `terminal` 走集成终端，`app` 走 Codex App。
+- 也可通过右键 **Resume in Codex IDE Panel (Experimental)** 或 **Resume with…** 显式选择。
+
+Codex 面板恢复依赖未公开的内部路由，**可能随 Codex 插件更新而失效**。若出现问题：
+
+1. 将 `agentResume.codexIdePanelResume.enabled` 设为 `false`，立即停用面板恢复。
+2. 等待扩展更新，或在我们修复后对齐 `agentResume.codexIdePanelResume.implementationVersion` 与新版集成。
+
+首次使用会提示实验性警告。跨项目恢复时，扩展会先打开对应文件夹，再在新窗口中继续面板恢复。
+
 ### Ghostty
 
 当你需要 Ghostty 的图片上传、图片显示或其他终端能力时，可以使用 **Open in Ghostty**。
 
 macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code 自动化或辅助功能权限。默认行为是打开 Ghostty、复制恢复命令、自动粘贴并回车。如果你更喜欢手动操作，可以把 `agentResume.ghosttyLaunchMode` 设置为 `copyCommand`。
+
+### Agent Resume Settings
+
+点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist 等常规项外，左侧导航还有 **Project Menu** 分区，用于配置项目右键菜单的显示项与顺序。
 
 ### 常用设置
 
@@ -101,6 +144,10 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.maxItems`：列表最多加载多少条会话。
 - `agentResume.editorNewSessionProvider`：编辑器标题栏快捷新建按钮使用的 Agent 类型。
 - `agentResume.terminalLocation`：终端打开在编辑器旁边还是底部面板。
+- `agentResume.claudeResumeMode`：Claude 默认恢复方式（`panel` 插件面板 / `terminal` 集成终端）。
+- `agentResume.codexResumeMode`：Codex 默认恢复方式（`terminal` / `panel` 插件面板 / `app` Codex App）。
+- `agentResume.codexIdePanelResume.enabled`：是否启用 Codex 插件面板恢复（实验性总开关）。
+- `agentResume.codexIdePanelResume.implementationVersion`：Codex 面板集成版本号；与扩展内置版本不一致时会自动阻止面板恢复。
 - `agentResume.showArchivedCodex`：是否显示已归档的 Codex 会话。
 - `agentResume.ghosttyLaunchMode`：Ghostty 打开会话时的命令处理方式。
 - `agentResume.ghosttyExecutable`：Ghostty 应用名或可执行文件路径。
@@ -113,6 +160,8 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.hideCronAlma`：隐藏 Alma Cron 会话。
 - `agentResume.hideChannelAlma`：隐藏 Alma 频道会话。
 - `agentResume.showIncognitoAlma`：显示 Alma 隐身模式会话。
+- `agentResume.projectMenu.mainActions`：显示在项目右键主菜单中的操作（数组顺序即显示顺序）。
+- `agentResume.projectMenu.itemOrder`：全部可配置项目菜单项的完整顺序（含 **Show More** 中的项）。推荐在 **Agent Resume Settings → Project Menu** 中拖动排序，无需手改 JSON。
 
 如果你的 Codex、Claude Code、Antigravity、OpenCode 或 Pi 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
 
@@ -122,13 +171,16 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 ## English
 
-Agent Resume Panel is a VS Code sidebar extension for browsing and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
+Agent Resume Panel is a VS Code sidebar extension for browsing, searching, and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place.
 
 Best for:
 
 - Jumping back into a recent AI coding session.
 - Managing sessions from multiple CLI and desktop agents in one list.
-- Browsing sessions by project and continuing in the right workspace.
+- Browsing sessions by project, favoriting frequent projects, and continuing in the right workspace.
+- Filtering by project in the search panel, then narrowing down to a specific session.
+- Renaming session titles in each agent's native storage so other terminals see the new name too.
+- Resuming in the Claude Code or Codex official VS Code extension panels (Codex panel resume is experimental).
 - Continuing an existing session in Ghostty or Codex App when needed.
 - Starting a new Alma chat scoped to a project directory.
 - Starting a preset agent session from the editor title bar in one click.
@@ -137,22 +189,28 @@ Best for:
 
 1. Open **Agent Resume** from the VS Code Activity Bar.
 2. Browse recent sessions or project groups in the **Sessions** view.
-3. Click a session to resume it (terminal agents in a VS Code terminal; Alma in the Alma desktop app).
+3. Click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
 4. If the list is stale, click refresh or run **Agent Resume: Refresh**.
 
-By default, terminal agent sessions open in a new integrated terminal beside the current editor, so you can keep code and conversation side by side.
+By default, Codex and other terminal agents resume in an integrated terminal beside the editor. You can switch Claude / Codex defaults to the official extension panel in Settings (below).
 
 ### Common Actions
 
 Click a session in **Sessions**, or right-click it and choose:
 
-- **Resume Session**: Resume in a VS Code terminal (not Alma).
+- **Preview Session**: Read User/Assistant messages without resuming the session.
+- **Rename Session**: Rename the title and write it back to the agent's native storage (Codex, Claude, Antigravity, Grok, OpenCode, Pi, and Alma).
+- **Resume Session**: Resume using the configured default (see **Extension panel resume** below).
 - **Copy Resume Command**: Copy the resume command.
 - **Open Folder and Resume**: Open the session's project and resume in a new window.
 - **Open in Ghostty**: Open and resume in Ghostty.
+- **Resume in Claude Code Panel**: Resume a Claude session in the Claude Code VS Code extension panel.
+- **Resume in Codex IDE Panel (Experimental)**: Try resuming a Codex session in the Codex VS Code extension panel (experimental; can be disabled instantly).
 - **Resume in Codex App**: Continue a Codex session in Codex App.
 
-Alma sessions have **no context menu**. Clicking a session tries to switch Alma to that thread via title search, which may not be exact.
+The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more).
+
+Alma sessions support **Rename Session**; use a click to resume in the Alma app. Clicking an Alma session tries to switch Alma to that thread via title search, which may not be exact. Rename can fail if the agent holds a database lock—close the agent and try again.
 
 Project groups support these right-click actions:
 
@@ -161,12 +219,21 @@ Project groups support these right-click actions:
 - **New Codex Session**, **New Claude Session**, **New Antigravity Session**, **New Grok Session**, **New OpenCode Session**, **New Pi Session**: Start a new agent session in that project.
 - **New Codex App Session**: Open the project with Codex App.
 - **New Alma Thread**: Open a new Alma chat with the project workspace directory (see Alma below).
+- **Show More**: Actions not pinned to the main menu appear in this submenu.
+
+Customize the project context menu in **Agent Resume Settings → Project Menu** (or run **Customize Project Menu** / use **Customize Project Menu** under **Show More**): check items for the main menu, **drag** to reorder, then click **Save**. **Open Folder** always stays at the top.
 
 ### New and Search
 
 Click the plus button in the **Sessions** title bar, or run **Agent Resume: New Session**, to start a Codex, Claude, Antigravity CLI, Grok Build, OpenCode, Pi, or Codex App session from the current VS Code workspace. Alma is not in the global new-session picker; use **New Alma Thread** on a project instead.
 
-Run **Agent Resume: Search Sessions** to quickly find and resume any loaded session.
+Run **Agent Resume: Search Sessions** to open a dedicated search panel:
+
+- **Projects** chip buttons at the top: click **All Projects** or a project to filter first; favorited projects show a star.
+- A separate **Sessions** list below: type to filter by title, provider, branch, or path (when no project is selected).
+- Click a session row to resume; use **Preview** to read User/Assistant messages without resuming, or **Rename** to rename without closing the panel.
+
+The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
 
 ### Editor Title Bar Shortcut
 
@@ -206,11 +273,36 @@ Alma integration uses the local Alma API (default `http://localhost:23001`) and 
 
 - Alma UI automation (title search for resume, `Cmd+N` for new chat) requires **Accessibility** permission for VSCodium / VS Code.
 
+### Extension panel resume
+
+#### Claude Code
+
+- Install [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code).
+- With `agentResume.claudeResumeMode` set to `panel` (default), clicking a Claude session resumes in the extension panel; set `terminal` to use the integrated terminal CLI instead.
+- You can also pick **Resume in Claude Code Panel** from the context menu or **Resume with…** in the preview panel.
+
+#### Codex (experimental)
+
+- Install [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt).
+- With `agentResume.codexResumeMode` set to `panel`, clicking a Codex session tries to resume in the extension panel; default `terminal` uses the integrated terminal, and `app` opens Codex App.
+- You can also pick **Resume in Codex IDE Panel (Experimental)** from the context menu or **Resume with…** in the preview panel.
+
+Codex panel resume relies on undocumented internal routing and **may break when the Codex extension updates**. If something goes wrong:
+
+1. Set `agentResume.codexIdePanelResume.enabled` to `false` to disable panel resume immediately.
+2. Wait for an extension update, or after we ship a fix, align `agentResume.codexIdePanelResume.implementationVersion` with the new integration.
+
+A one-time experimental warning appears on first use. For cross-project resume, the extension opens the session folder first, then continues panel resume in the new window.
+
 ### Ghostty
 
 Use **Open in Ghostty** when you need Ghostty-specific image upload, image display, or terminal behavior.
 
 On macOS, the first automatic paste may require granting VS Code Automation or Accessibility permission. By default, the extension opens Ghostty, copies the resume command, pastes it, and presses Enter. If you prefer manual control, set `agentResume.ghosttyLaunchMode` to `copyCommand`.
+
+### Agent Resume Settings
+
+Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, and LLM Assist, the left nav includes **Project Menu** for configuring project right-click actions and their order.
 
 ### Settings
 
@@ -219,6 +311,10 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.maxItems`: Maximum number of sessions to load.
 - `agentResume.editorNewSessionProvider`: Agent type used by the editor title bar new-session button.
 - `agentResume.terminalLocation`: Open terminals beside the editor or in the bottom panel.
+- `agentResume.claudeResumeMode`: Claude default resume target (`panel` extension panel / `terminal` integrated terminal).
+- `agentResume.codexResumeMode`: Codex default resume target (`terminal` / `panel` extension panel / `app` Codex App).
+- `agentResume.codexIdePanelResume.enabled`: Enable Codex extension panel resume (experimental kill switch).
+- `agentResume.codexIdePanelResume.implementationVersion`: Codex panel integration version; panel resume is blocked when this does not match the built-in version.
 - `agentResume.showArchivedCodex`: Show or hide archived Codex sessions.
 - `agentResume.ghosttyLaunchMode`: How Ghostty receives the resume command.
 - `agentResume.ghosttyExecutable`: Ghostty app name or executable path.
@@ -231,6 +327,8 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.hideCronAlma`: Hide Alma cron threads.
 - `agentResume.hideChannelAlma`: Hide Alma channel threads.
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
+- `agentResume.projectMenu.mainActions`: Actions shown on the main project context menu (array order is display order).
+- `agentResume.projectMenu.itemOrder`: Full order of all configurable project menu actions (including items under **Show More**). Prefer dragging in **Agent Resume Settings → Project Menu** instead of editing JSON by hand.
 
 If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not in the default location, adjust the matching home path in Settings.
 

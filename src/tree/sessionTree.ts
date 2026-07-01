@@ -376,7 +376,7 @@ function buildSessionTooltip(session: AgentSession): string {
     .join("\n");
 }
 
-function formatTitleWithMessageCount(session: AgentSession): string {
+export function formatTitleWithMessageCount(session: AgentSession): string {
   const title = session.title;
   if (
     session.provider === "grok" &&
@@ -415,7 +415,26 @@ function resolveLinkedAgentSession(chatSession: AgentSession, sessions: AgentSes
   return sessions.find((session) => session.provider === link.provider && session.id === link.sessionId);
 }
 
-function groupSessionsByPath(sessions: AgentSession[], linkedAgentKeys: Set<string>): Map<string, AgentSession[]> {
+export interface ProjectGroup {
+  projectPath: string;
+  sessions: AgentSession[];
+  favorited?: boolean;
+}
+
+export function buildProjectList(sessions: AgentSession[], favoriteProjects: string[] = []): ProjectGroup[] {
+  const favoriteSet = new Set(favoriteProjects.map((projectPath) => path.resolve(projectPath)));
+  const byPath = groupSessionsByPath(sessions);
+
+  return [...byPath.entries()]
+    .map(([projectPath, projectSessions]) => ({
+      projectPath,
+      sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
+      favorited: favoriteSet.has(projectPath)
+    }))
+    .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
+}
+
+function groupSessionsByPath(sessions: AgentSession[], linkedAgentKeys: Set<string> = new Set()): Map<string, AgentSession[]> {
   const byPath = new Map<string, AgentSession[]>();
   for (const session of sessions) {
     if (session.provider !== "chat" && linkedAgentKeys.has(`${session.provider}:${session.id}`)) {
@@ -464,7 +483,7 @@ function latest(sessions: AgentSession[]): number {
   return sessions[0]?.updatedAt ?? 0;
 }
 
-function providerLabel(provider: AgentSession["provider"]): string {
+export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "chat") {
     return "chat";
   }
@@ -514,7 +533,7 @@ function providerIcon(provider: AgentSession["provider"]): string {
   return "comment-discussion";
 }
 
-function relativeTime(timestamp: number): string {
+export function relativeTime(timestamp: number): string {
   if (!timestamp) {
     return "unknown";
   }
@@ -538,15 +557,44 @@ function relativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-export function sessionQuickPickLabel(session: AgentSession): vscode.QuickPickItem & { session: AgentSession } {
+export interface SearchSessionItem {
+  provider: AgentSession["provider"];
+  id: string;
+  title: string;
+  projectPath: string;
+  projectName: string;
+  branch?: string;
+  updatedAtLabel: string;
+}
+
+export function serializeSessionForSearch(session: AgentSession): SearchSessionItem {
+  return {
+    provider: session.provider,
+    id: session.id,
+    title: formatTitleWithMessageCount(session),
+    projectPath: session.projectPath,
+    projectName: basenameOrPath(session.projectPath),
+    branch: session.branch,
+    updatedAtLabel: relativeTime(session.updatedAt)
+  };
+}
+
+export function sessionQuickPickLabel(
+  session: AgentSession,
+  options?: { omitProjectPath?: boolean }
+): vscode.QuickPickItem & { session: AgentSession } {
   const linkSuffix =
     session.provider === "chat" && session.chatLink
       ? ` → ${session.chatLink.provider}${session.chatLink.sessionId ? "" : " (pending)"}`
       : "";
+  const detail = options?.omitProjectPath
+    ? session.branch || undefined
+    : `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`;
+
   return {
     label: `$(${providerIcon(session.provider)}) ${formatTitleWithMessageCount(session)}`,
     description: `${providerLabel(session.provider)}${linkSuffix}`,
-    detail: `${compactPath(session.projectPath)}${session.branch ? ` · ${session.branch}` : ""}`,
+    detail,
     session
   };
 }

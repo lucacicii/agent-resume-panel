@@ -6,15 +6,28 @@ import { openSessionResume } from "./resumeTerminal";
 const pendingResumeKey = "agentResume.pendingResume";
 const pendingTtlMs = 5 * 60 * 1000;
 
+export interface PendingResumeOptions {
+  claudePanel?: boolean;
+  codexPanel?: boolean;
+}
+
 interface PendingResume {
   session: AgentSession;
   createdAt: number;
+  claudePanel?: boolean;
+  codexPanel?: boolean;
 }
 
-export async function storePendingResume(context: vscode.ExtensionContext, session: AgentSession): Promise<void> {
+export async function storePendingResume(
+  context: vscode.ExtensionContext,
+  session: AgentSession,
+  options?: PendingResumeOptions
+): Promise<void> {
   await context.globalState.update(pendingResumeKey, {
     session,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    claudePanel: options?.claudePanel,
+    codexPanel: options?.codexPanel
   } satisfies PendingResume);
 }
 
@@ -36,8 +49,24 @@ export async function consumePendingResumeForWorkspace(context: vscode.Extension
   await context.globalState.update(pendingResumeKey, undefined);
 
   setTimeout(() => {
-    openSessionResume(pending.session, context);
+    void resumePendingSession(pending, context);
   }, 750);
+}
+
+async function resumePendingSession(pending: PendingResume, context: vscode.ExtensionContext): Promise<void> {
+  if (pending.claudePanel && pending.session.provider === "claude") {
+    const { openClaudeCodePanelResumeFlow } = await import("./claudeCodePanel.js");
+    await openClaudeCodePanelResumeFlow(pending.session, context);
+    return;
+  }
+
+  if (pending.codexPanel && pending.session.provider === "codex") {
+    const { openCodexIdePanelResumeFlow } = await import("./codexIdePanel.js");
+    await openCodexIdePanelResumeFlow(pending.session, context);
+    return;
+  }
+
+  openSessionResume(pending.session, context);
 }
 
 function isCurrentWorkspace(projectPath: string): boolean {

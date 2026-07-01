@@ -32,3 +32,7 @@ export async function readJsonLines<T>(filePath: string): Promise<T[]> {
 export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
+
+export async function appendJsonLine(filePath: string, row: unknown): Promise<void> {
+  await fs.appendFile(filePath, `${JSON.stringify(row)}\n`, "utf8");
+}
