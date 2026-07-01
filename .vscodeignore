@@ -1,6 +1,10 @@
 .vscode/**
 .git/**
 node_modules/**
+!node_modules/@agentclientprotocol/**
+!node_modules/zod/**
+!node_modules/marked/**
+!node_modules/dompurify/**
 src/**
 tsconfig.json
 *.vsix

@@ -48,8 +48,6 @@
     "onCommand:agentResume.newSessionFromEditor",
     "onCommand:agentResume.newChatSession",
     "onCommand:agentResume.openChatSession",
-    "onCommand:agentResume.setChatApiKey",
-    "onCommand:agentResume.handoffChat",
     "onCommand:agentResume.openSettings",
     "onCommand:agentResume.autoRenameSession"
   ],
@@ -59,7 +57,7 @@
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
-    "package": "npm run compile && vsce package --no-dependencies",
+    "package": "npm run compile && vsce package",
     "install:local": "npm run package && node scripts/install-local.mjs",
     "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
   },
@@ -111,78 +109,99 @@
         "agentResume.panelHome": {
           "type": "string",
           "default": "~/.agent-resume-panel",
-          "description": "Agent Resume Panel data directory for chat sessions and handoff files."
+          "description": "Agent Resume Panel data directory for ACP chat sessions."
         },
-        "agentResume.chatBaseUrl": {
+        "agentResume.acp.autoApprovePermissions": {
           "type": "string",
-          "default": "https://api.openai.com/v1",
-          "markdownDescription": "OpenAI-compatible API base URL for Chat Panel.\n\nExamples:\n- OpenAI: `https://api.openai.com/v1`\n- DeepSeek: `https://api.deepseek.com/v1`\n- Local proxy (OneAPI/New API): `http://127.0.0.1:3000/v1`"
+          "enum": [
+            "ask",
+            "allowAll"
+          ],
+          "default": "ask",
+          "description": "How ACP Chat handles agent permission requests. ask shows a quick pick; allowAll auto-approves when possible."
         },
-        "agentResume.chatApiKey": {
+        "agentResume.acp.agents.codex.command": {
           "type": "string",
-          "default": "",
-          "markdownDescription": "API key for Chat Panel. Use the same key format as your `chatBaseUrl` provider.\n\nYou can also run **Agent Resume: Set Chat API Key** to save it here."
+          "default": "npx",
+          "description": "Launch command for Codex ACP agent."
         },
-        "agentResume.chatModels": {
+        "agentResume.acp.agents.codex.args": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "default": [],
-          "description": "Fallback models when the /models API request fails."
-        },
-        "agentResume.chatDefaultModel": {
-          "type": "string",
-          "default": "gpt-4o-mini",
-          "description": "Default model for new chat sessions."
-        },
-        "agentResume.chatSystemPrompt": {
-          "type": "string",
-          "default": "You are a helpful coding assistant for the current VS Code workspace. Use the workspace context below when answering project questions.",
-          "description": "System prompt used by Chat Panel."
-        },
-        "agentResume.chatIncludeProjectContext": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically attach project tree and key config files to each Chat request."
-        },
-        "agentResume.chatHandoffMode": {
-          "type": "string",
-          "enum": [
-            "background",
-            "visible"
+          "default": [
+            "-y",
+            "@zed-industries/codex-acp@latest"
           ],
-          "default": "background",
-          "description": "How Chat handoff runs terminal agents. background keeps terminals hidden and reuses one terminal per chat. visible opens and focuses the terminal."
+          "description": "Launch arguments for Codex ACP agent."
         },
-        "agentResume.chatHandoffBootstrapDelayMs": {
-          "type": "number",
-          "default": 3000,
-          "minimum": 500,
-          "maximum": 15000,
-          "description": "Delay after starting the agent terminal before sending the handoff prompt."
+        "agentResume.acp.agents.claude.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Claude ACP agent."
         },
-        "agentResume.chatAutoHandoff": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically hand off to the linked agent after each assistant reply. When false, use Handoff to Agent manually."
+        "agentResume.acp.agents.claude.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/claude-agent-acp@latest"
+          ],
+          "description": "Launch arguments for Claude ACP agent."
         },
-        "agentResume.chatAutoSyncAgentSummary": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically sync structured agent execution summaries back into the chat after handoff."
+        "agentResume.acp.agents.grok.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Grok ACP agent."
         },
-        "agentResume.chatSummaryPollIntervalMs": {
-          "type": "number",
-          "default": 15000,
-          "minimum": 5000,
-          "maximum": 120000,
-          "description": "Polling interval in milliseconds for agent summary sync after handoff."
+        "agentResume.acp.agents.grok.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@xai-official/grok@latest",
+            "agent",
+            "stdio"
+          ],
+          "description": "Launch arguments for Grok ACP agent."
         },
-        "agentResume.chatSummarizeAgentReturn": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use the Chat LLM to generate a short bullet summary from agent session metadata."
+        "agentResume.acp.agents.opencode.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.opencode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "opencode-ai@latest",
+            "acp"
+          ],
+          "description": "Launch arguments for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.pi.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Pi ACP agent."
+        },
+        "agentResume.acp.agents.pi.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "pi-acp"
+          ],
+          "description": "Launch arguments for Pi ACP agent."
         },
         "agentResume.maxItems": {
           "type": "number",
@@ -537,24 +556,13 @@
       },
       {
         "command": "agentResume.newChatSession",
-        "title": "New Chat Session",
+        "title": "New ACP Chat Session",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.openChatSession",
-        "title": "Open Chat Session",
+        "title": "Open ACP Chat Session",
         "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.setChatApiKey",
-        "title": "Set Chat API Key",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.handoffChat",
-        "title": "Handoff to Agent",
-        "category": "Agent Resume",
-        "icon": "$(arrow-right)"
       },
       {
         "command": "agentResume.renameSession",
@@ -695,14 +703,6 @@
           "when": "false"
         },
         {
-          "command": "agentResume.handoffChat",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.setChatApiKey",
-          "when": "false"
-        },
-        {
           "command": "agentResume.renameSession",
           "when": "false"
         },
@@ -748,19 +748,9 @@
           "group": "inline@1"
         },
         {
-          "command": "agentResume.openSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.linkedAgent\\.(codex|claude|agy|grok|opencode|pi)/",
-          "group": "inline@1"
-        },
-        {
           "command": "agentResume.openChatSession",
           "when": "view == agentResume.sessions && viewItem == agentResume.session.chat",
           "group": "inline@1"
-        },
-        {
-          "command": "agentResume.handoffChat",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session.chat",
-          "group": "navigation@0"
         },
         {
           "command": "agentResume.copyResumeCommand",
@@ -2386,5 +2376,11 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "zod": "^4.4.3"
   }
 }

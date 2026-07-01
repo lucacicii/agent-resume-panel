@@ -1,6 +1,6 @@
 import { loadAlmaSessions } from "./alma";
 import { loadAntigravitySessions } from "./antigravity";
-import { collectLinkedAgentKeys, loadChatSessions } from "./chat";
+import { loadAcpSessions } from "./acp";
 import { loadClaudeSessions } from "./claude";
 import { loadCodexSessions } from "./codex";
 import { loadGrokSessions } from "./grok";
@@ -22,7 +22,7 @@ export async function loadAllSessions(options: HistoryLoadOptions): Promise<Hist
     }),
     loadOpenCodeSessions(options.opencodeHome, options.maxItems, options.showArchivedOpenCode),
     loadPiSessions(options.piHome, options.maxItems),
-    loadChatSessions(options.panelHome, options.maxItems)
+    loadAcpSessions(options.panelHome, options.maxItems)
   ]);
 
   if (codex.warning) {
@@ -41,7 +41,6 @@ export async function loadAllSessions(options: HistoryLoadOptions): Promise<Hist
 
   return {
     sessions,
-    linkedAgentKeys: collectLinkedAgentKeys(sessions),
     warnings
   };
 }

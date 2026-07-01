@@ -1,12 +1,7 @@
 import * as vscode from "vscode";
-import { syncAllChatSummaries } from "./chat/agentSummary";
-import { startWatchingSummary, stopAllWatchers } from "./chat/agentSummaryWatcher";
-import { setChatApiKey } from "./chat/apiKey";
-import { ChatPanelManager, handoffChatSession } from "./chat/chatPanel";
-import { tryLinkChatAgent } from "./chat/linkAgent";
-import { clearPendingChatLink, drainPendingChatLinks } from "./chat/pendingLinks";
-import { createChatSession, panelHomeFromConfig, pickTerminalAgentProvider } from "./chat/newChat";
-import { getChatRecord } from "./chat/store";
+import { AcpChatManager } from "./acp/acpChatManager";
+import { createAcpChatSession, panelHomeFromConfig, pickAcpAgentProvider } from "./acp/newSession";
+import { getAcpRecord } from "./acp/store";
 import { loadAllSessions, AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
 import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
@@ -53,14 +48,7 @@ let extensionContext: vscode.ExtensionContext | undefined;
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   const tree = new SessionTreeProvider();
-  let chatPanels: ChatPanelManager;
-  chatPanels = new ChatPanelManager(
-    context,
-    () => refresh(tree, false, chatPanels, context),
-    (chatId) => {
-      startWatchingSummary(context, panelHomeFromConfig(), chatId, () => loadSessionsFromConfig(), chatPanels);
-    }
-  );
+  const acpChatManager = new AcpChatManager(context, () => refresh(tree, false));
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   void applyProjectMenuContextFromConfig();
@@ -72,38 +60,34 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     treeView,
-    { dispose: () => chatPanels.dispose() },
-    vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true, chatPanels, context)),
+    { dispose: () => acpChatManager.dispose() },
+    vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.search", () =>
-      searchAndOpen(context, tree, chatPanels, () => refresh(tree, false, chatPanels, context))
+      searchAndOpen(context, tree, () => refresh(tree, false))
     ),
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
-      renameSessionCommand(tree, nodeOrSession, chatPanels, context)
+      renameSessionCommand(tree, nodeOrSession, context)
     ),
     vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
-        void openSessionPreviewPanel(session, tree, () => refresh(tree, false, chatPanels, context), context);
+        void openSessionPreviewPanel(session, tree, () => refresh(tree, false), context);
       }
     }),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
-    vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, chatPanels, tree)),
-    vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, chatPanels, tree)),
+    vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, acpChatManager, tree)),
+    vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, acpChatManager, tree)),
     vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
-        void openResolvedSession(session, context, chatPanels);
+        void openResolvedSession(session, context, acpChatManager);
       }
     }),
     vscode.commands.registerCommand("agentResume.openChatSession", (nodeOrSession?: unknown) => {
-      void openChatSession(tree, nodeOrSession, chatPanels);
+      void openChatSession(tree, nodeOrSession, acpChatManager);
     }),
-    vscode.commands.registerCommand("agentResume.setChatApiKey", () => setChatApiKey(context)),
-    vscode.commands.registerCommand("agentResume.handoffChat", (nodeOrSession?: unknown) =>
-      void handoffChat(context, tree, nodeOrSession, chatPanels)
-    ),
     vscode.commands.registerCommand("agentResume.newChatSession", (node?: unknown) =>
-      void openNewChatSession(tree, node, chatPanels)
+      void openNewChatSession(tree, node, acpChatManager)
     ),
     vscode.commands.registerCommand("agentResume.copyResumeCommand", async (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
@@ -162,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
-      autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false, chatPanels, context))
+      autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
@@ -175,95 +159,34 @@ export function activate(context: vscode.ExtensionContext): void {
         void applyCodexIdePanelContext();
       }
       if (event.affectsConfiguration("agentResume")) {
-        void refresh(tree, false, chatPanels, context);
+        void refresh(tree, false);
       }
     })
   );
 
   void applyCodexIdePanelContext();
-  void refresh(tree, false, chatPanels, context);
+  void refresh(tree, false);
   void consumePendingResumeForWorkspace(context);
 }
 
 export function deactivate(): void {
-  stopAllWatchers();
+  // AcpChatManager disposes via context.subscriptions.
 }
 
-async function refresh(
-  tree: SessionTreeProvider,
-  showToast: boolean,
-  chatPanels?: ChatPanelManager,
-  context?: vscode.ExtensionContext
-): Promise<void> {
+async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");
-  const panelHome = panelHomeFromConfig();
   const loadOptions = buildHistoryLoadOptions(config);
 
   try {
     const result = await loadAllSessions(loadOptions);
-
-    let sessions = result.sessions;
-    let linkedAgentKeys = result.linkedAgentKeys;
-    let linkedAny = false;
-
-    for (const chatId of drainPendingChatLinks()) {
-      const linked = await tryLinkChatAgent(panelHome, chatId, sessions, linkedAgentKeys);
-      if (linked?.linkedAgent.sessionId) {
-        clearPendingChatLink(chatId);
-        linkedAny = true;
-      }
-    }
-
-    if (linkedAny) {
-      const refreshed = await loadAllSessions(loadOptions);
-      sessions = refreshed.sessions;
-      linkedAgentKeys = refreshed.linkedAgentKeys;
-    }
-
-    if (chatPanels && context) {
-      const synced = await syncAllChatSummaries(context, panelHome, sessions, chatPanels);
-      if (synced > 0) {
-        const refreshed = await loadAllSessions(loadOptions);
-        sessions = refreshed.sessions;
-        linkedAgentKeys = refreshed.linkedAgentKeys;
-      }
-    }
-
-    tree.setData(sessions, result.warnings, linkedAgentKeys);
+    tree.setData(result.sessions, result.warnings);
     if (showToast) {
-      vscode.window.showInformationMessage(`Loaded ${sessions.length} agent sessions.`);
+      vscode.window.showInformationMessage(`Loaded ${result.sessions.length} agent sessions.`);
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
     vscode.window.showErrorMessage(`Agent Resume refresh failed: ${formatError(error)}`);
   }
-}
-
-async function handoffChat(
-  context: vscode.ExtensionContext,
-  tree: SessionTreeProvider,
-  nodeOrSession: unknown,
-  chatPanels: ChatPanelManager
-): Promise<void> {
-  const session = resolveSession(tree, nodeOrSession);
-  if (!session || session.provider !== "chat") {
-    return;
-  }
-
-  if (chatPanels.hasPanel(session.id)) {
-    await chatPanels.runHandoff(session.id);
-    return;
-  }
-
-  await handoffChatSession(
-    context,
-    panelHomeFromConfig(),
-    session.id,
-    () => refresh(tree, false, chatPanels, context),
-    (chatId) => {
-      startWatchingSummary(context, panelHomeFromConfig(), chatId, () => loadSessionsFromConfig(), chatPanels);
-    }
-  );
 }
 
 function buildHistoryLoadOptions(
@@ -289,21 +212,14 @@ function buildHistoryLoadOptions(
   };
 }
 
-async function loadSessionsFromConfig(): Promise<AgentSession[]> {
-  const config = vscode.workspace.getConfiguration("agentResume");
-  const result = await loadAllSessions(buildHistoryLoadOptions(config));
-  return result.sessions;
-}
-
 async function searchAndOpen(
   context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
-  chatPanels: ChatPanelManager,
   refreshTree: () => Promise<void>
 ): Promise<void> {
   let sessions = tree.getSessions();
   if (!sessions.length) {
-    await refresh(tree, false, chatPanels, extensionContext);
+    await refresh(tree, false);
     sessions = tree.getSessions();
   }
 
@@ -341,7 +257,6 @@ async function autoRenameSessionCommand(
 async function renameSessionCommand(
   tree: SessionTreeProvider,
   nodeOrSession: unknown,
-  chatPanels?: ChatPanelManager,
   context?: vscode.ExtensionContext
 ): Promise<void> {
   const session = resolveSession(tree, nodeOrSession);
@@ -362,7 +277,7 @@ async function renameSessionCommand(
 
   try {
     await renameSession(session, newTitle, loadRenameHomes());
-    await refresh(tree, false, chatPanels, context);
+    await refresh(tree, false);
     vscode.window.showInformationMessage("Session renamed.");
   } catch (error) {
     vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
@@ -372,11 +287,11 @@ async function renameSessionCommand(
 async function openResolvedSession(
   session: AgentSession,
   context: vscode.ExtensionContext | undefined,
-  chatPanels: ChatPanelManager | undefined
+  acpChatManager: AcpChatManager | undefined
 ): Promise<void> {
   if (session.provider === "chat") {
-    if (chatPanels) {
-      await openChatSessionById(session.id, chatPanels);
+    if (acpChatManager) {
+      await openChatSessionById(session.id, acpChatManager);
     }
     return;
   }
@@ -386,47 +301,47 @@ async function openResolvedSession(
 async function openChatSession(
   tree: SessionTreeProvider,
   nodeOrSession: unknown,
-  chatPanels: ChatPanelManager
+  acpChatManager: AcpChatManager
 ): Promise<void> {
   const session = resolveSession(tree, nodeOrSession);
   if (!session || session.provider !== "chat") {
     return;
   }
-  await openChatSessionById(session.id, chatPanels);
+  await openChatSessionById(session.id, acpChatManager);
 }
 
-async function openChatSessionById(chatId: string, chatPanels: ChatPanelManager): Promise<void> {
-  const record = await getChatRecord(panelHomeFromConfig(), chatId);
+async function openChatSessionById(chatId: string, acpChatManager: AcpChatManager): Promise<void> {
+  const record = await getAcpRecord(panelHomeFromConfig(), chatId);
   if (!record) {
-    vscode.window.showWarningMessage("Chat session not found.");
+    vscode.window.showWarningMessage("ACP chat session not found.");
     return;
   }
-  chatPanels.open(record);
+  acpChatManager.open(record);
 }
 
 async function openNewChatSession(
   tree: SessionTreeProvider,
   node: unknown,
-  chatPanels: ChatPanelManager
+  acpChatManager: AcpChatManager
 ): Promise<void> {
   const projectPath = tree.getProjectFromNode(node) ?? (await pickWorkspaceProject());
   if (!projectPath) {
     return;
   }
 
-  const provider = await pickTerminalAgentProvider();
+  const provider = await pickAcpAgentProvider();
   if (!provider) {
     return;
   }
 
-  const record = await createChatSession(projectPath, provider);
-  chatPanels.open(record);
-  await refresh(tree, false, chatPanels, extensionContext);
+  const record = await createAcpChatSession(projectPath, provider);
+  acpChatManager.open(record);
+  await refresh(tree, false);
 }
 
 async function newSessionFromEditor(
   context: vscode.ExtensionContext,
-  chatPanels?: ChatPanelManager,
+  acpChatManager?: AcpChatManager,
   tree?: SessionTreeProvider
 ): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");
@@ -437,14 +352,14 @@ async function newSessionFromEditor(
   }
 
   if (provider === "chat") {
-    const linkedProvider = await pickTerminalAgentProvider();
-    if (!linkedProvider || !chatPanels) {
+    const acpProvider = await pickAcpAgentProvider();
+    if (!acpProvider || !acpChatManager) {
       return;
     }
-    const record = await createChatSession(projectPath, linkedProvider);
-    chatPanels.open(record);
+    const record = await createAcpChatSession(projectPath, acpProvider);
+    acpChatManager.open(record);
     if (tree) {
-      await refresh(tree, false, chatPanels, context);
+      await refresh(tree, false);
     }
     return;
   }
@@ -466,7 +381,7 @@ async function resolveProjectForNewSession(): Promise<string | undefined> {
 
 async function newSessionInCurrentWorkspace(
   context: vscode.ExtensionContext,
-  chatPanels: ChatPanelManager,
+  acpChatManager: AcpChatManager,
   tree: SessionTreeProvider
 ): Promise<void> {
   const target = await pickNewSessionTarget();
@@ -490,13 +405,13 @@ async function newSessionInCurrentWorkspace(
   }
 
   if (target === "chat") {
-    const provider = await pickTerminalAgentProvider();
+    const provider = await pickAcpAgentProvider();
     if (!provider) {
       return;
     }
-    const record = await createChatSession(projectPath, provider);
-    chatPanels.open(record);
-    await refresh(tree, false, chatPanels, context);
+    const record = await createAcpChatSession(projectPath, provider);
+    acpChatManager.open(record);
+    await refresh(tree, false);
     return;
   }
 
@@ -533,8 +448,8 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         provider: "pi" as const
       },
       {
-        label: "$(comment) Chat",
-        description: "Start a new Chat session with linked agent",
+        label: "$(comment) ACP Chat",
+        description: "Start a new ACP chat session with a coding agent",
         provider: "chat" as const
       },
       {

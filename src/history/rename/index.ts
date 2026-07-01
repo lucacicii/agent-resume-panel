@@ -5,9 +5,11 @@ import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
 import { renameOpenCodeSession } from "./opencode";
+import { renameAcpSession } from "./acp";
 import { renamePiSession } from "./pi";
 
 export interface RenameHomes {
+  panelHome: string;
   codexHome: string;
   claudeHome: string;
   antigravityHome: string;
@@ -46,6 +48,8 @@ export async function renameSession(
       return renameOpenCodeSession(homes.opencodeHome, session, title);
     case "pi":
       return renamePiSession(homes.piHome, session, title);
+    case "chat":
+      return renameAcpSession(homes.panelHome, session, title);
     default:
       throw new Error(`Rename is not supported for provider ${session.provider}.`);
   }
