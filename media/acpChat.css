@@ -475,7 +475,7 @@ body.chat-shell {
 
 .composer-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   padding: 6px;
   border-radius: 22px;
@@ -512,12 +512,13 @@ body.chat-shell {
 #input {
   flex: 1;
   resize: none;
-  min-height: 22px;
+  min-height: 32px;
   max-height: 160px;
   border: none;
   background: transparent;
   color: var(--vscode-input-foreground);
-  padding: 4px 0;
+  padding: 6px 0;
+  box-sizing: border-box;
   font: inherit;
   line-height: 1.4;
   outline: none;
