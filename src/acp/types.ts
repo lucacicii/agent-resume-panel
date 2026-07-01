@@ -20,12 +20,33 @@ export interface AcpSessionRecord {
 
 export type AcpChatMessageRole = "user" | "assistant" | "system" | "tool" | "plan";
 
+export type AcpToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface AcpToolCallLocation {
+  path: string;
+  line?: number;
+}
+
+export interface AcpToolCallInfo {
+  toolCallId: string;
+  title: string;
+  kind: string;
+  status: AcpToolCallStatus;
+  locations?: AcpToolCallLocation[];
+  content?: unknown[];
+  rawInput?: unknown;
+  rawOutput?: unknown;
+}
+
 export interface AcpChatMessage {
   id: string;
   role: AcpChatMessageRole;
   text: string;
   timestamp: number;
+  toolCalls?: AcpToolCallInfo[];
+  /** @deprecated Legacy field from standalone tool messages */
   toolCallId?: string;
+  /** @deprecated Legacy field from standalone tool messages */
   status?: string;
 }
 

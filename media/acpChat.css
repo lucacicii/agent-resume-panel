@@ -129,6 +129,121 @@ body {
   color: var(--vscode-textLink-foreground);
 }
 
+.tool-calls-group {
+  margin-bottom: 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  background: var(--vscode-textCodeBlock-background);
+  font-size: 12px;
+}
+
+.tool-calls-summary,
+.tool-call-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-calls-summary::-webkit-details-marker,
+.tool-call-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-calls-summary {
+  padding: 6px 10px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.tool-calls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+
+.tool-call-item {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-editor-background);
+}
+
+.tool-call-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+}
+
+.tool-call-title {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.tool-call-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-call-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+.tool-status-pending {
+  border-left: 2px solid var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.tool-status-in_progress {
+  border-left: 2px solid var(--vscode-textLink-foreground);
+}
+
+.tool-status-completed {
+  border-left: 2px solid var(--vscode-testing-iconPassed, #73c991);
+}
+
+.tool-status-failed {
+  border-left: 2px solid var(--vscode-errorForeground);
+}
+
+.tool-call-detail {
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.tool-call-section + .tool-call-section {
+  margin-top: 6px;
+}
+
+.tool-call-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 4px;
+}
+
+.tool-call-section-body {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+}
+
+.tool-call-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
 #composer {
   border-top: 1px solid var(--vscode-panel-border);
   padding: 10px 12px;

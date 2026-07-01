@@ -8,7 +8,13 @@ import {
   loadAcpMessages,
   updateAcpRecord
 } from "./store";
-import { AcpChatMessage, AcpSessionRecord } from "./types";
+import {
+  AcpChatMessage,
+  AcpSessionRecord,
+  AcpToolCallInfo,
+  AcpToolCallLocation,
+  AcpToolCallStatus
+} from "./types";
 
 interface AcpMode {
   id: string;
@@ -85,7 +91,7 @@ export class AcpChatPanel {
   }
 
   private async bootstrap(): Promise<void> {
-    this.messages = await loadAcpMessages(this.panelHome, this.record.id);
+    this.messages = migrateLegacyToolMessages(await loadAcpMessages(this.panelHome, this.record.id));
     this.post({ type: "history", messages: this.messages });
     await this.ensureAgentSession();
     this.postInit();
@@ -163,10 +169,10 @@ export class AcpChatPanel {
       case "agent_thought_chunk":
         break;
       case "tool_call":
-        this.handleToolCall(update, "pending");
+        this.upsertTurnToolCall(parseToolCallFromUpdate(update, "pending"));
         break;
       case "tool_call_update":
-        this.handleToolCallUpdate(update);
+        this.upsertTurnToolCall(parseToolCallFromUpdate(update));
         break;
       case "plan":
         this.handlePlan(update);
@@ -202,47 +208,90 @@ export class AcpChatPanel {
       this.streamingText += delta;
     }
 
-    this.post({
-      type: "assistantDelta",
-      id: this.streamingAssistantId,
-      text: this.streamingText,
-      streaming: true
-    });
+    this.postAssistantUpdate(this.getAssistantMessage(this.streamingAssistantId));
   }
 
-  private handleToolCall(update: Record<string, unknown>, status: string): void {
-    const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : crypto.randomUUID();
-    const title = typeof update.title === "string" ? update.title : "Tool call";
-    const text = formatToolCallText(title, update, status);
-    const message: AcpChatMessage = {
-      id: toolCallId,
-      role: "tool",
-      text,
+  private getAssistantMessage(id: string): AcpChatMessage {
+    const existing = this.messages.find((entry) => entry.id === id);
+    if (existing) {
+      return existing;
+    }
+    return {
+      id,
+      role: "assistant",
+      text: id === this.streamingAssistantId ? this.streamingText : "",
       timestamp: Date.now(),
-      toolCallId,
-      status
+      toolCalls: []
     };
-    this.upsertMessage(message);
   }
 
-  private handleToolCallUpdate(update: Record<string, unknown>): void {
-    const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : undefined;
-    if (!toolCallId) {
+  private ensureTurnAssistantMessage(): AcpChatMessage {
+    const turnId = this.turnAssistantId;
+    if (!turnId) {
+      throw new Error("No active assistant turn.");
+    }
+
+    if (!this.streamingAssistantId) {
+      this.streamingAssistantId = turnId;
+    }
+
+    const index = this.messages.findIndex((entry) => entry.id === turnId);
+    if (index >= 0) {
+      return this.messages[index];
+    }
+
+    const stub: AcpChatMessage = {
+      id: turnId,
+      role: "assistant",
+      text: "",
+      timestamp: Date.now(),
+      toolCalls: []
+    };
+    this.messages.push(stub);
+    return stub;
+  }
+
+  private upsertTurnToolCall(incoming: AcpToolCallInfo): void {
+    if (!this.turnAssistantId) {
       return;
     }
 
-    const status = typeof update.status === "string" ? update.status : "updated";
-    const title = typeof update.title === "string" ? update.title : "Tool call";
-    const text = formatToolCallText(title, update, status);
-    const message: AcpChatMessage = {
-      id: toolCallId,
-      role: "tool",
-      text,
-      timestamp: Date.now(),
-      toolCallId,
-      status
-    };
-    this.upsertMessage(message);
+    const assistant = this.ensureTurnAssistantMessage();
+    const toolCalls = [...(assistant.toolCalls ?? [])];
+    const index = toolCalls.findIndex((entry) => entry.toolCallId === incoming.toolCallId);
+    if (index >= 0) {
+      toolCalls[index] = mergeToolCallInfo(toolCalls[index], incoming);
+    } else {
+      toolCalls.push(incoming);
+    }
+
+    assistant.toolCalls = toolCalls;
+    if (this.streamingText && this.streamingAssistantId === assistant.id) {
+      assistant.text = this.streamingText;
+    }
+
+    const messageIndex = this.messages.findIndex((entry) => entry.id === assistant.id);
+    if (messageIndex >= 0) {
+      this.messages[messageIndex] = assistant;
+    }
+
+    this.postAssistantUpdate(assistant);
+  }
+
+  private postAssistantUpdate(assistant: AcpChatMessage): void {
+    const streaming = this.isRunning && this.streamingAssistantId === assistant.id;
+    if (streaming) {
+      this.post({
+        type: "assistantDelta",
+        id: assistant.id,
+        text: assistant.text,
+        toolCalls: assistant.toolCalls ?? [],
+        streaming: true
+      });
+      return;
+    }
+
+    this.post({ type: "messageUpdate", message: assistant });
   }
 
   private handlePlan(update: Record<string, unknown>): void {
@@ -375,24 +424,41 @@ export class AcpChatPanel {
   }
 
   private finalizeStreamingAssistant(): void {
-    if (!this.streamingAssistantId || !this.streamingText.trim()) {
+    const turnId = this.streamingAssistantId ?? this.turnAssistantId;
+    if (!turnId) {
+      this.streamingText = "";
+      return;
+    }
+
+    const index = this.messages.findIndex((entry) => entry.id === turnId);
+    const existing = index >= 0 ? this.messages[index] : undefined;
+    const text = this.streamingText.trim() || existing?.text?.trim() || "";
+    const toolCalls = existing?.toolCalls;
+
+    if (!text && !toolCalls?.length) {
+      if (index >= 0) {
+        this.messages.splice(index, 1);
+      }
       this.streamingAssistantId = undefined;
+      this.turnAssistantId = undefined;
       this.streamingText = "";
       return;
     }
 
     const assistantMessage: AcpChatMessage = {
-      id: this.streamingAssistantId,
+      id: turnId,
       role: "assistant",
-      text: this.streamingText,
-      timestamp: Date.now()
+      text,
+      timestamp: existing?.timestamp ?? Date.now(),
+      toolCalls: toolCalls?.length ? toolCalls : undefined
     };
-    const index = this.messages.findIndex((entry) => entry.id === assistantMessage.id);
+
     if (index >= 0) {
       this.messages[index] = assistantMessage;
     } else {
       this.messages.push(assistantMessage);
     }
+
     void appendAcpMessage(this.panelHome, this.record.id, assistantMessage);
     this.post({ type: "assistantDone", message: assistantMessage, streaming: false });
     this.streamingAssistantId = undefined;
@@ -487,18 +553,136 @@ function extractTextFromContent(content: unknown): string {
   return "";
 }
 
-function formatToolCallText(title: string, update: Record<string, unknown>, status: string): string {
-  const lines = [`${title} (${status})`];
-  const content = update.content;
-  if (Array.isArray(content)) {
-    for (const item of content) {
-      const text = extractTextFromContent(item);
-      if (text) {
-        lines.push(text);
+function migrateLegacyToolMessages(messages: AcpChatMessage[]): AcpChatMessage[] {
+  const result: AcpChatMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role !== "tool") {
+      result.push({
+        ...message,
+        toolCalls: message.toolCalls?.length ? [...message.toolCalls] : undefined
+      });
+      continue;
+    }
+
+    const info = legacyToolMessageToInfo(message);
+    let attached = false;
+
+    for (let index = result.length - 1; index >= 0; index -= 1) {
+      if (result[index].role !== "assistant") {
+        continue;
       }
+
+      const assistant = result[index];
+      const toolCalls = [...(assistant.toolCalls ?? [])];
+      const existingIndex = toolCalls.findIndex((entry) => entry.toolCallId === info.toolCallId);
+      if (existingIndex >= 0) {
+        toolCalls[existingIndex] = mergeToolCallInfo(toolCalls[existingIndex], info);
+      } else {
+        toolCalls.push(info);
+      }
+      result[index] = { ...assistant, toolCalls };
+      attached = true;
+      break;
+    }
+
+    if (!attached) {
+      result.push({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: "",
+        timestamp: message.timestamp,
+        toolCalls: [info]
+      });
     }
   }
-  return lines.join("\n");
+
+  return result;
+}
+
+function legacyToolMessageToInfo(message: AcpChatMessage): AcpToolCallInfo {
+  const lines = message.text.split("\n");
+  const firstLine = lines[0] ?? "Tool";
+  const match = firstLine.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  const title = match ? match[1].trim() : firstLine;
+  const statusFromText = match?.[2];
+  const contentText = lines.slice(1).join("\n").trim();
+  const content = contentText ? [{ type: "text", text: contentText }] : undefined;
+
+  return {
+    toolCallId: message.toolCallId ?? message.id,
+    title,
+    kind: "other",
+    status: normalizeToolStatus(message.status ?? statusFromText ?? "completed"),
+    content
+  };
+}
+
+function normalizeToolStatus(value: unknown): AcpToolCallStatus {
+  if (value === "pending" || value === "in_progress" || value === "completed" || value === "failed") {
+    return value;
+  }
+  return "in_progress";
+}
+
+function parseLocations(value: unknown): AcpToolCallLocation[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const locations: AcpToolCallLocation[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const location = item as { path?: string; line?: number };
+    if (typeof location.path !== "string") {
+      continue;
+    }
+    const entry: AcpToolCallLocation = { path: location.path };
+    if (typeof location.line === "number") {
+      entry.line = location.line;
+    }
+    locations.push(entry);
+  }
+
+  return locations.length ? locations : undefined;
+}
+
+function parseToolCallFromUpdate(
+  update: Record<string, unknown>,
+  defaultStatus?: AcpToolCallStatus
+): AcpToolCallInfo {
+  const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : crypto.randomUUID();
+  const title = typeof update.title === "string" ? update.title : "Tool";
+  const kind = typeof update.kind === "string" ? update.kind : "other";
+  const status = normalizeToolStatus(
+    typeof update.status === "string" ? update.status : defaultStatus ?? "in_progress"
+  );
+
+  return {
+    toolCallId,
+    title,
+    kind,
+    status,
+    locations: parseLocations(update.locations),
+    content: Array.isArray(update.content) ? update.content : undefined,
+    rawInput: update.rawInput,
+    rawOutput: update.rawOutput
+  };
+}
+
+function mergeToolCallInfo(existing: AcpToolCallInfo, incoming: AcpToolCallInfo): AcpToolCallInfo {
+  return {
+    toolCallId: incoming.toolCallId || existing.toolCallId,
+    title: incoming.title || existing.title,
+    kind: incoming.kind || existing.kind,
+    status: incoming.status || existing.status,
+    locations: incoming.locations ?? existing.locations,
+    content: incoming.content ?? existing.content,
+    rawInput: incoming.rawInput !== undefined ? incoming.rawInput : existing.rawInput,
+    rawOutput: incoming.rawOutput !== undefined ? incoming.rawOutput : existing.rawOutput
+  };
 }
 
 function formatPlanText(update: Record<string, unknown>): string {
