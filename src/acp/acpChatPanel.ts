@@ -42,6 +42,8 @@ export class AcpChatPanel {
   private turnAssistantId?: string;
   private streamingText = "";
   private activeAcpSessionId?: string;
+  private isRestoringHistory = false;
+  private historyReplayDone?: () => void;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -106,12 +108,29 @@ export class AcpChatPanel {
     this.post({ type: "status", status: "connecting", isRunning: false, isConnecting: true });
 
     try {
+      this.connection?.dispose();
       this.connection = new AcpAgentConnection(this.record.provider);
 
       if (this.record.acpSessionId) {
-        const result = await this.connection.resumeSession(this.record.acpSessionId, this.record.projectPath);
         this.activeAcpSessionId = this.record.acpSessionId;
-        this.applyModes(result.modes);
+        this.setupSessionUpdates();
+        this.isRestoringHistory = true;
+        try {
+          const result = await this.connection.restoreSession(this.record.acpSessionId, this.record.projectPath);
+          if (result.sessionId !== this.record.acpSessionId) {
+            this.record.acpSessionId = result.sessionId;
+            this.activeAcpSessionId = result.sessionId;
+            this.record.updatedAt = Date.now();
+            await updateAcpRecord(this.panelHome, this.record);
+          }
+          this.applyModes(result.modes);
+          if (result.method === "load") {
+            await this.waitForHistoryReplay();
+          }
+        } finally {
+          this.isRestoringHistory = false;
+          this.historyReplayDone = undefined;
+        }
       } else {
         const result = await this.connection.startSession(this.record.projectPath);
         this.record.acpSessionId = result.sessionId;
@@ -119,9 +138,9 @@ export class AcpChatPanel {
         this.applyModes(result.modes);
         this.record.updatedAt = Date.now();
         await updateAcpRecord(this.panelHome, this.record);
+        this.setupSessionUpdates();
       }
 
-      this.setupSessionUpdates();
       this.post({ type: "status", status: "ready", isRunning: false, isConnecting: false });
     } catch (error) {
       this.post({
@@ -132,6 +151,16 @@ export class AcpChatPanel {
     } finally {
       this.isConnecting = false;
     }
+  }
+
+  private waitForHistoryReplay(): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, 3000);
+      this.historyReplayDone = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   }
 
   private applyModes(modes: ModesState | null | undefined): void {
@@ -160,6 +189,21 @@ export class AcpChatPanel {
     const kind = update.sessionUpdate;
     if (typeof kind !== "string") {
       return;
+    }
+
+    if (this.isRestoringHistory) {
+      if (kind === "available_commands_update") {
+        this.historyReplayDone?.();
+      }
+      if (
+        kind === "user_message_chunk" ||
+        kind === "agent_message_chunk" ||
+        kind === "agent_thought_chunk" ||
+        kind === "tool_call" ||
+        kind === "tool_call_update"
+      ) {
+        return;
+      }
     }
 
     switch (kind) {

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Writable, Readable } from "node:stream";
-import type { ClientConnection, ClientContext } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
+import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
 import * as path from "node:path";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
@@ -10,10 +10,22 @@ import type { AcpAgentProvider } from "./types";
 
 const STDERR_BUFFER_LIMIT = 2048;
 
+export type AcpSessionModes = {
+  currentModeId: string;
+  availableModes: Array<{ id: string; name: string }>;
+};
+
+export type RestoreSessionResult = {
+  sessionId: string;
+  modes: AcpSessionModes | null;
+  method: "resume" | "load" | "new";
+};
+
 export class AcpAgentConnection {
   private process?: ChildProcessWithoutNullStreams;
   private connection?: ClientConnection;
   private initialized = false;
+  private agentCapabilities?: AgentCapabilities;
   private stderrBuffer = "";
 
   constructor(private readonly provider: AcpAgentProvider) {}
@@ -60,13 +72,14 @@ export class AcpAgentConnection {
     this.connection = app.connect(stream);
 
     try {
-      await this.connection.agent.request(acp.methods.agent.initialize, {
+      const initResponse = await this.connection.agent.request(acp.methods.agent.initialize, {
         protocolVersion: acp.PROTOCOL_VERSION,
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
           terminal: true
         }
       });
+      this.agentCapabilities = initResponse.agentCapabilities;
       handshakeComplete = true;
     } catch (error) {
       await processExit;
@@ -107,22 +120,46 @@ export class AcpAgentConnection {
     return new Error(`${baseMessage}: ${details.join(" — ")}`);
   }
 
-  async startSession(projectPath: string): Promise<{ sessionId: string; modes?: { currentModeId: string; availableModes: Array<{ id: string; name: string }> } | null }> {
+  async startSession(projectPath: string): Promise<{ sessionId: string; modes: AcpSessionModes | null }> {
     const agent = await this.connect();
     const cwd = path.resolve(projectPath);
     const response = await agent.buildSession(cwd).start();
-    return { sessionId: response.sessionId, modes: response.modes ?? null };
+    return {
+      sessionId: response.sessionId,
+      modes: normalizeSessionModes(response.newSessionResponse as Record<string, unknown>)
+    };
   }
 
-  async resumeSession(acpSessionId: string, projectPath: string): Promise<{ modes?: { currentModeId: string; availableModes: Array<{ id: string; name: string }> } | null }> {
+  async restoreSession(acpSessionId: string, projectPath: string): Promise<RestoreSessionResult> {
     const agent = await this.connect();
     const acp = await getAcpSdk();
-    const response = await agent.request(acp.methods.agent.session.resume, {
-      sessionId: acpSessionId,
-      cwd: path.resolve(projectPath),
-      mcpServers: []
-    });
-    return { modes: response.modes ?? null };
+    const cwd = path.resolve(projectPath);
+    const params = { sessionId: acpSessionId, cwd, mcpServers: [] as [] };
+
+    if (this.agentCapabilities?.sessionCapabilities?.resume) {
+      const response = await agent.request(acp.methods.agent.session.resume, params);
+      return {
+        sessionId: acpSessionId,
+        modes: normalizeSessionModes(response as Record<string, unknown>),
+        method: "resume"
+      };
+    }
+
+    if (this.agentCapabilities?.loadSession) {
+      const response = await agent.request(acp.methods.agent.session.load, params);
+      return {
+        sessionId: acpSessionId,
+        modes: normalizeSessionModes(response as Record<string, unknown>),
+        method: "load"
+      };
+    }
+
+    const response = await agent.buildSession(cwd).start();
+    return {
+      sessionId: response.sessionId,
+      modes: normalizeSessionModes(response.newSessionResponse as Record<string, unknown>),
+      method: "new"
+    };
   }
 
   async setMode(acpSessionId: string, modeId: string): Promise<void> {
@@ -159,6 +196,32 @@ export class AcpAgentConnection {
       this.process = undefined;
     }
     this.initialized = false;
+    this.agentCapabilities = undefined;
     clearAllSessionUpdateListeners();
   }
+}
+
+function normalizeSessionModes(response: Record<string, unknown>): AcpSessionModes | null {
+  const modes = response.modes;
+  if (modes && typeof modes === "object") {
+    const currentModeId = (modes as { currentModeId?: string }).currentModeId;
+    const availableModes = (modes as { availableModes?: Array<{ id: string; name: string }> }).availableModes;
+    if (currentModeId && availableModes?.length) {
+      return { currentModeId, availableModes };
+    }
+  }
+
+  const models = response.models;
+  if (models && typeof models === "object") {
+    const currentModelId = (models as { currentModelId?: string }).currentModelId;
+    const availableModels = (models as { availableModels?: Array<{ modelId: string; name: string }> }).availableModels;
+    if (currentModelId && availableModels?.length) {
+      return {
+        currentModeId: currentModelId,
+        availableModes: availableModels.map((entry) => ({ id: entry.modelId, name: entry.name }))
+      };
+    }
+  }
+
+  return null;
 }
