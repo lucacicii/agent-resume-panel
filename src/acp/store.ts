@@ -2,7 +2,22 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { readJsonLines } from "../history/jsonl";
-import { AcpAgentProvider, AcpChatMessage, AcpSessionRecord } from "./types";
+import { AcpAgentProvider, AcpChatMessage, AcpImageAttachment, AcpSessionRecord } from "./types";
+
+export const ACP_MAX_IMAGES_PER_MESSAGE = 4;
+export const ACP_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const ACP_ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif"
+]);
+
+export interface IncomingAcpImage {
+  mimeType: string;
+  fileName: string;
+  data: string;
+}
 
 export function acpSessionsPath(panelHome: string): string {
   return path.join(panelHome, "acp", "sessions.jsonl");
@@ -73,6 +88,91 @@ export async function loadAcpMessages(panelHome: string, sessionId: string): Pro
 export async function appendAcpMessage(panelHome: string, sessionId: string, message: AcpChatMessage): Promise<void> {
   await ensureAcpDirs(panelHome);
   await appendJsonLine(acpThreadPath(panelHome, sessionId), message);
+}
+
+export function acpAttachmentPath(
+  panelHome: string,
+  chatId: string,
+  messageId: string,
+  attachmentId: string,
+  ext: string
+): string {
+  return path.join("acp", "attachments", chatId, messageId, `${attachmentId}.${ext}`);
+}
+
+export function mimeTypeToExtension(mimeType: string): string | undefined {
+  switch (mimeType) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return undefined;
+  }
+}
+
+export function validateIncomingImages(images: IncomingAcpImage[]): string | undefined {
+  if (images.length > ACP_MAX_IMAGES_PER_MESSAGE) {
+    return `At most ${ACP_MAX_IMAGES_PER_MESSAGE} images per message.`;
+  }
+
+  for (const image of images) {
+    if (!ACP_ALLOWED_IMAGE_MIME_TYPES.has(image.mimeType)) {
+      return `Unsupported image type: ${image.mimeType}`;
+    }
+    const bytes = estimateBase64Bytes(image.data);
+    if (bytes > ACP_MAX_IMAGE_BYTES) {
+      return `Image "${image.fileName}" exceeds the 5 MB limit.`;
+    }
+  }
+
+  return undefined;
+}
+
+export async function saveAcpImageAttachments(
+  panelHome: string,
+  chatId: string,
+  messageId: string,
+  images: IncomingAcpImage[]
+): Promise<AcpImageAttachment[]> {
+  const saved: AcpImageAttachment[] = [];
+
+  for (const image of images) {
+    const ext = mimeTypeToExtension(image.mimeType);
+    if (!ext) {
+      throw new Error(`Unsupported image type: ${image.mimeType}`);
+    }
+
+    const id = crypto.randomUUID();
+    const storagePath = acpAttachmentPath(panelHome, chatId, messageId, id, ext);
+    const absolutePath = path.join(panelHome, storagePath);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, Buffer.from(image.data, "base64"));
+
+    saved.push({
+      id,
+      mimeType: image.mimeType,
+      fileName: image.fileName,
+      storagePath
+    });
+  }
+
+  return saved;
+}
+
+export async function readAcpImageBase64(panelHome: string, attachment: AcpImageAttachment): Promise<string> {
+  const absolutePath = path.join(panelHome, attachment.storagePath);
+  const buffer = await fs.readFile(absolutePath);
+  return buffer.toString("base64");
+}
+
+function estimateBase64Bytes(data: string): number {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.floor((data.length * 3) / 4) - padding;
 }
 
 async function appendJsonLine(filePath: string, value: unknown): Promise<void> {

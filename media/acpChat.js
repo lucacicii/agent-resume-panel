@@ -9,13 +9,28 @@
   const sendBtn = document.getElementById("send");
   const stopBtn = document.getElementById("stop");
   const reconnectBtn = document.getElementById("reconnect");
+  const attachBtn = document.getElementById("attach");
+  const fileInput = document.getElementById("file-input");
+  const pendingImagesEl = document.getElementById("pending-images");
+
+  const MAX_IMAGES = 4;
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+  const ALLOWED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
   let streamingRow = null;
   let streamingMessageId = null;
   let lastInit = null;
+  let imageUploadEnabled = false;
+  let pendingImages = [];
 
   if (typeof marked !== "undefined") {
     marked.setOptions({ breaks: true, gfm: true });
+  }
+
+  function newId() {
+    return typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `img-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
   function renderHeader(init) {
@@ -120,15 +135,49 @@
       return;
     }
     const textEl = bubble.querySelector(".text");
+    const text = message.text || "";
     const useMarkdown = message.role === "assistant" || message.role === "plan";
-    const html = useMarkdown ? renderMarkdown(message.text) : null;
+    const html = useMarkdown ? renderMarkdown(text) : null;
 
+    if (!text) {
+      textEl.innerHTML = "";
+      textEl.classList.remove("markdown-body");
+      textEl.hidden = Boolean(message.images?.length);
+      return;
+    }
+
+    textEl.hidden = false;
     if (html != null) {
       textEl.innerHTML = html;
       textEl.classList.add("markdown-body");
     } else {
-      textEl.textContent = message.text;
+      textEl.textContent = text;
       textEl.classList.remove("markdown-body");
+    }
+  }
+
+  function renderMessageImages(bubble, images) {
+    let container = bubble.querySelector(".message-images");
+    if (!images?.length) {
+      container?.remove();
+      return;
+    }
+
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "message-images";
+      const textEl = bubble.querySelector(".text");
+      bubble.insertBefore(container, textEl);
+    }
+
+    container.replaceChildren();
+    for (const image of images) {
+      const img = document.createElement("img");
+      img.className = "message-image";
+      img.src = image.previewUrl;
+      img.alt = image.fileName || "Attached image";
+      img.loading = "lazy";
+      container.appendChild(img);
     }
   }
 
@@ -249,7 +298,7 @@
 
     const bubble = document.createElement("div");
     bubble.className = `bubble ${message.role}`;
-    bubble.innerHTML = '<div class="text"></div>';
+    bubble.innerHTML = '<div class="message-images"></div><div class="text"></div>';
     row.appendChild(bubble);
     return row;
   }
@@ -270,6 +319,7 @@
 
     const row = createMessageRow(message);
     const bubble = getBubble(row);
+    renderMessageImages(bubble, message.images);
     setMessageText(bubble, message);
     if (message.role === "assistant") {
       renderToolCalls(bubble, message.toolCalls);
@@ -293,6 +343,7 @@
     }
 
     const bubble = getBubble(row);
+    renderMessageImages(bubble, message.images);
     setMessageText(bubble, message);
     if (message.role === "assistant") {
       renderToolCalls(bubble, message.toolCalls);
@@ -368,12 +419,110 @@
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
   }
 
+  function updateComposerChrome(init) {
+    imageUploadEnabled = Boolean(init?.imageUpload);
+    if (attachBtn) {
+      attachBtn.hidden = !imageUploadEnabled;
+    }
+    if (input) {
+      input.placeholder = imageUploadEnabled
+        ? "Message the agent… (paste images)"
+        : "Message the agent… (images not supported)";
+    }
+  }
+
+  function renderPendingImages() {
+    if (!pendingImagesEl) {
+      return;
+    }
+
+    pendingImagesEl.replaceChildren();
+    if (!pendingImages.length) {
+      pendingImagesEl.hidden = true;
+      return;
+    }
+
+    pendingImagesEl.hidden = false;
+    for (const image of pendingImages) {
+      const item = document.createElement("div");
+      item.className = "pending-image";
+      item.dataset.id = image.id;
+
+      const thumb = document.createElement("img");
+      thumb.src = image.previewUrl;
+      thumb.alt = image.fileName;
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "pending-image-remove";
+      remove.title = "Remove image";
+      remove.textContent = "×";
+      remove.addEventListener("click", () => {
+        pendingImages = pendingImages.filter((entry) => entry.id !== image.id);
+        renderPendingImages();
+      });
+
+      item.append(thumb, remove);
+      pendingImagesEl.appendChild(item);
+    }
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function dataUrlToBase64(dataUrl) {
+    const comma = dataUrl.indexOf(",");
+    return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  }
+
+  function showImageError(message) {
+    appendSystemMessage(message, "error");
+  }
+
+  async function stageImageFile(file) {
+    if (!imageUploadEnabled) {
+      showImageError("This agent does not support image uploads.");
+      return;
+    }
+    if (!file || !ALLOWED_MIME_TYPES.has(file.type)) {
+      showImageError("Unsupported image type. Use PNG, JPEG, WebP, or GIF.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      showImageError(`"${file.name}" exceeds the 5 MB limit.`);
+      return;
+    }
+    if (pendingImages.length >= MAX_IMAGES) {
+      showImageError(`At most ${MAX_IMAGES} images per message.`);
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    pendingImages.push({
+      id: newId(),
+      mimeType: file.type,
+      fileName: file.name,
+      data: dataUrlToBase64(dataUrl),
+      previewUrl: dataUrl
+    });
+    renderPendingImages();
+  }
+
   function setComposerState(status) {
     const busy = Boolean(status.isRunning || status.isConnecting);
     stopBtn.disabled = !status.isRunning;
     sendBtn.disabled = busy;
     modeSelect.disabled = busy;
     reconnectBtn.disabled = status.isRunning;
+    if (attachBtn) {
+      attachBtn.disabled = busy || !imageUploadEnabled;
+    }
     updateStatusDot({ ...lastInit, ...status });
     if (!status.isRunning) {
       clearStreamingRow();
@@ -395,6 +544,7 @@
       case "init":
         renderHeader(message.init);
         renderModes(message.init);
+        updateComposerChrome(message.init);
         setComposerState(message.init);
         break;
       case "history":
@@ -437,15 +587,37 @@
 
   function sendCurrentMessage() {
     const text = input.value.trim();
-    if (!text) {
+    if (!text && !pendingImages.length) {
       return;
     }
-    vscode.postMessage({ type: "send", text });
+    vscode.postMessage({
+      type: "send",
+      text,
+      images: pendingImages.map(({ mimeType, fileName, data }) => ({ mimeType, fileName, data }))
+    });
     input.value = "";
+    pendingImages = [];
+    renderPendingImages();
     resizeInput();
   }
 
   sendBtn.addEventListener("click", sendCurrentMessage);
+
+  attachBtn?.addEventListener("click", () => {
+    fileInput?.click();
+  });
+
+  fileInput?.addEventListener("change", async () => {
+    const files = [...(fileInput.files ?? [])];
+    fileInput.value = "";
+    for (const file of files) {
+      try {
+        await stageImageFile(file);
+      } catch (error) {
+        showImageError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  });
 
   stopBtn.addEventListener("click", () => {
     vscode.postMessage({ type: "stop" });
@@ -465,6 +637,29 @@
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       sendCurrentMessage();
+    }
+  });
+
+  document.addEventListener("paste", async (event) => {
+    if (!imageUploadEnabled) {
+      return;
+    }
+    const items = [...(event.clipboardData?.items ?? [])];
+    const imageItems = items.filter((item) => item.type.startsWith("image/"));
+    if (!imageItems.length) {
+      return;
+    }
+    event.preventDefault();
+    for (const item of imageItems) {
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      try {
+        await stageImageFile(file);
+      } catch (error) {
+        showImageError(error instanceof Error ? error.message : String(error));
+      }
     }
   });
 

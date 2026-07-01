@@ -38,11 +38,20 @@ export interface AcpToolCallInfo {
   rawOutput?: unknown;
 }
 
+export interface AcpImageAttachment {
+  id: string;
+  mimeType: string;
+  fileName: string;
+  /** Path relative to panelHome, e.g. acp/attachments/{chatId}/{msgId}/{id}.png */
+  storagePath: string;
+}
+
 export interface AcpChatMessage {
   id: string;
   role: AcpChatMessageRole;
   text: string;
   timestamp: number;
+  images?: AcpImageAttachment[];
   toolCalls?: AcpToolCallInfo[];
   /** @deprecated Legacy field from standalone tool messages */
   toolCallId?: string;

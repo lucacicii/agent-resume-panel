@@ -1,20 +1,40 @@
 import * as crypto from "node:crypto";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { expandHome } from "../history/pathUtils";
-import { AcpAgentConnection } from "./agentConnection";
+import { AcpAgentConnection, AcpPromptBlock } from "./agentConnection";
 import { subscribeSessionUpdates, clearSessionUpdateListeners } from "./sessionUpdateBus";
 import {
   appendAcpMessage,
+  IncomingAcpImage,
   loadAcpMessages,
-  updateAcpRecord
+  readAcpImageBase64,
+  saveAcpImageAttachments,
+  updateAcpRecord,
+  validateIncomingImages
 } from "./store";
 import {
   AcpChatMessage,
+  AcpImageAttachment,
   AcpSessionRecord,
   AcpToolCallInfo,
   AcpToolCallLocation,
   AcpToolCallStatus
 } from "./types";
+
+type WebviewImageAttachment = AcpImageAttachment & { previewUrl: string };
+
+type WebviewChatMessage = Omit<AcpChatMessage, "images"> & {
+  images?: WebviewImageAttachment[];
+};
+
+interface WebviewSendPayload {
+  type: string;
+  text?: string;
+  images?: IncomingAcpImage[];
+  modeId?: string;
+  href?: string;
+}
 
 interface AcpMode {
   id: string;
@@ -42,7 +62,7 @@ export class AcpChatPanel {
   private turnAssistantId?: string;
   private streamingText = "";
   private activeAcpSessionId?: string;
-  private isRestoringHistory = false;
+  private isReplayingLoadedHistory = false;
   private historyReplayDone?: () => void;
 
   constructor(
@@ -66,7 +86,8 @@ export class AcpChatPanel {
         localResourceRoots: [
           vscode.Uri.joinPath(context.extensionUri, "media"),
           vscode.Uri.joinPath(context.extensionUri, "node_modules", "marked"),
-          vscode.Uri.joinPath(context.extensionUri, "node_modules", "dompurify")
+          vscode.Uri.joinPath(context.extensionUri, "node_modules", "dompurify"),
+          vscode.Uri.file(path.join(this.panelHome, "acp", "attachments"))
         ]
       }
     );
@@ -87,6 +108,7 @@ export class AcpChatPanel {
       clearSessionUpdateListeners(this.activeAcpSessionId);
     }
     this.unsubscribeSessionUpdates?.();
+    this.unsubscribeSessionUpdates = undefined;
     this.connection?.dispose();
     this.connection = undefined;
     this.onDispose();
@@ -94,7 +116,7 @@ export class AcpChatPanel {
 
   private async bootstrap(): Promise<void> {
     this.messages = migrateLegacyToolMessages(await loadAcpMessages(this.panelHome, this.record.id));
-    this.post({ type: "history", messages: this.messages });
+    this.postHistory();
     await this.ensureAgentSession();
     this.postInit();
   }
@@ -108,13 +130,18 @@ export class AcpChatPanel {
     this.post({ type: "status", status: "connecting", isRunning: false, isConnecting: true });
 
     try {
+      if (this.activeAcpSessionId) {
+        clearSessionUpdateListeners(this.activeAcpSessionId);
+      }
+      this.unsubscribeSessionUpdates?.();
+      this.unsubscribeSessionUpdates = undefined;
       this.connection?.dispose();
       this.connection = new AcpAgentConnection(this.record.provider);
 
       if (this.record.acpSessionId) {
         this.activeAcpSessionId = this.record.acpSessionId;
         this.setupSessionUpdates();
-        this.isRestoringHistory = true;
+        this.isReplayingLoadedHistory = false;
         try {
           const result = await this.connection.restoreSession(this.record.acpSessionId, this.record.projectPath);
           if (result.sessionId !== this.record.acpSessionId) {
@@ -125,10 +152,11 @@ export class AcpChatPanel {
           }
           this.applyModes(result.modes);
           if (result.method === "load") {
+            this.isReplayingLoadedHistory = true;
             await this.waitForHistoryReplay();
           }
         } finally {
-          this.isRestoringHistory = false;
+          this.isReplayingLoadedHistory = false;
           this.historyReplayDone = undefined;
         }
       } else {
@@ -191,7 +219,7 @@ export class AcpChatPanel {
       return;
     }
 
-    if (this.isRestoringHistory) {
+    if (this.isReplayingLoadedHistory) {
       if (kind === "available_commands_update") {
         this.historyReplayDone?.();
       }
@@ -208,9 +236,8 @@ export class AcpChatPanel {
 
     switch (kind) {
       case "agent_message_chunk":
-        this.handleAgentChunk(update);
-        break;
       case "agent_thought_chunk":
+        this.handleAgentChunk(update);
         break;
       case "tool_call":
         this.upsertTurnToolCall(parseToolCallFromUpdate(update, "pending"));
@@ -234,25 +261,18 @@ export class AcpChatPanel {
 
   private handleAgentChunk(update: Record<string, unknown>): void {
     const delta = extractTextFromContent(update.content);
-    if (!delta) {
+    if (!delta || !this.turnAssistantId) {
       return;
     }
 
-    const chunkMessageId = typeof update.messageId === "string" ? update.messageId : undefined;
-    const messageId = chunkMessageId ?? this.turnAssistantId ?? this.streamingAssistantId ?? crypto.randomUUID();
-
-    if (this.streamingAssistantId && messageId !== this.streamingAssistantId) {
-      this.finalizeStreamingAssistant();
-    }
-
     if (!this.streamingAssistantId) {
-      this.streamingAssistantId = messageId;
+      this.streamingAssistantId = this.turnAssistantId;
       this.streamingText = delta;
     } else {
       this.streamingText += delta;
     }
 
-    this.postAssistantUpdate(this.getAssistantMessage(this.streamingAssistantId));
+    this.postAssistantUpdate(this.getAssistantMessage(this.turnAssistantId));
   }
 
   private getAssistantMessage(id: string): AcpChatMessage {
@@ -357,22 +377,22 @@ export class AcpChatPanel {
     const index = this.messages.findIndex((entry) => entry.id === message.id);
     if (index >= 0) {
       this.messages[index] = message;
-      this.post({ type: "messageUpdate", message });
+      this.post({ type: "messageUpdate", message: this.enrichMessageForWebview(message) });
     } else {
       this.messages.push(message);
-      this.post({ type: "message", message });
+      this.post({ type: "message", message: this.enrichMessageForWebview(message) });
     }
     void appendAcpMessage(this.panelHome, this.record.id, message);
   }
 
-  private async handleMessage(message: { type: string; text?: string; modeId?: string; href?: string }): Promise<void> {
+  private async handleMessage(message: WebviewSendPayload): Promise<void> {
     switch (message.type) {
       case "ready":
         this.postInit();
-        this.post({ type: "history", messages: this.messages });
+        this.postHistory();
         return;
       case "send":
-        await this.sendMessage(message.text ?? "");
+        await this.sendMessage(message.text ?? "", message.images ?? []);
         return;
       case "stop":
         if (this.activeAcpSessionId && this.connection) {
@@ -415,25 +435,46 @@ export class AcpChatPanel {
     }
   }
 
-  private async sendMessage(rawText: string): Promise<void> {
+  private async sendMessage(rawText: string, rawImages: IncomingAcpImage[] = []): Promise<void> {
     const text = rawText.trim();
-    if (!text || this.isRunning || this.isConnecting || !this.connection || !this.activeAcpSessionId) {
+    const images = rawImages.filter((image) => image.data);
+
+    if ((!text && !images.length) || this.isRunning || this.isConnecting || !this.connection || !this.activeAcpSessionId) {
       return;
     }
 
+    if (images.length) {
+      const validationError = validateIncomingImages(images);
+      if (validationError) {
+        this.post({ type: "error", message: validationError });
+        return;
+      }
+      if (!this.connection.supportsImageUpload()) {
+        this.post({ type: "error", message: `${this.record.provider} does not support image uploads.` });
+        return;
+      }
+    }
+
+    const messageId = crypto.randomUUID();
+    const savedImages = images.length
+      ? await saveAcpImageAttachments(this.panelHome, this.record.id, messageId, images)
+      : undefined;
+
     const userMessage: AcpChatMessage = {
-      id: crypto.randomUUID(),
+      id: messageId,
       role: "user",
       text,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      images: savedImages
     };
 
     this.messages.push(userMessage);
     await appendAcpMessage(this.panelHome, this.record.id, userMessage);
-    this.post({ type: "message", message: userMessage });
+    this.post({ type: "message", message: this.enrichMessageForWebview(userMessage) });
 
     if (this.record.title === "New ACP Chat") {
-      this.record.title = truncate(text, 48);
+      const titleSource = text || savedImages?.[0]?.fileName || "Image message";
+      this.record.title = truncate(titleSource, 48);
     }
     this.record.messageCount += 1;
     this.record.updatedAt = Date.now();
@@ -447,9 +488,18 @@ export class AcpChatPanel {
     this.streamingText = "";
     this.post({ type: "status", status: "thinking", isRunning: true, isConnecting: false });
 
+    const turnId = this.turnAssistantId;
     try {
-      await this.connection.prompt(this.activeAcpSessionId, text);
+      const blocks = await this.buildPromptBlocks(text, savedImages);
+      await this.connection.prompt(this.activeAcpSessionId, blocks);
+      await this.drainSessionUpdates();
       this.finalizeStreamingAssistant();
+      if (turnId && !this.messages.some((entry) => entry.role === "assistant" && entry.id === turnId)) {
+        this.post({
+          type: "error",
+          message: "Agent returned an empty response. Try again or check Codex permissions."
+        });
+      }
       this.record.updatedAt = Date.now();
       await updateAcpRecord(this.panelHome, this.record);
       await this.reloadTree();
@@ -504,7 +554,7 @@ export class AcpChatPanel {
     }
 
     void appendAcpMessage(this.panelHome, this.record.id, assistantMessage);
-    this.post({ type: "assistantDone", message: assistantMessage, streaming: false });
+    this.post({ type: "assistantDone", message: this.enrichMessageForWebview(assistantMessage), streaming: false });
     this.streamingAssistantId = undefined;
     this.turnAssistantId = undefined;
     this.streamingText = "";
@@ -522,10 +572,56 @@ export class AcpChatPanel {
         modeId: this.currentModeId,
         isRunning: this.isRunning,
         isConnecting: this.isConnecting,
-        status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready"
+        status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready",
+        imageUpload: this.connection?.supportsImageUpload() ?? false
       }
     });
     this.panel.title = this.title();
+  }
+
+  private postHistory(): void {
+    this.post({
+      type: "history",
+      messages: this.messages.map((entry) => this.enrichMessageForWebview(entry))
+    });
+  }
+
+  private enrichMessageForWebview(message: AcpChatMessage): WebviewChatMessage {
+    const { images, ...rest } = message;
+    const enriched: WebviewChatMessage = { ...rest };
+    if (!images?.length) {
+      return enriched;
+    }
+
+    enriched.images = images.map((image) => ({
+      ...image,
+      previewUrl: this.panel.webview
+        .asWebviewUri(vscode.Uri.file(path.join(this.panelHome, image.storagePath)))
+        .toString()
+    }));
+    return enriched;
+  }
+
+  private async drainSessionUpdates(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  private async buildPromptBlocks(text: string, images?: AcpImageAttachment[]): Promise<AcpPromptBlock[]> {
+    const blocks: AcpPromptBlock[] = [];
+
+    for (const image of images ?? []) {
+      blocks.push({
+        type: "image",
+        mimeType: image.mimeType,
+        data: await readAcpImageBase64(this.panelHome, image)
+      });
+    }
+
+    if (text) {
+      blocks.push({ type: "text", text });
+    }
+
+    return blocks;
   }
 
   private title(): string {
@@ -584,7 +680,12 @@ export class AcpChatPanel {
   </header>
   <main id="messages" class="chat-messages"></main>
   <footer id="composer">
+    <div id="pending-images" class="pending-images" hidden></div>
     <div class="composer-bar">
+      <button id="attach" type="button" class="attach-btn" hidden title="Attach image" aria-label="Attach image">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5a4 4 0 0 1-8 0V5a2.5 2.5 0 0 1 5 0v10.5a1 1 0 0 1-2 0V6h-1.5v9.5a2.5 2.5 0 0 0 5 0V5a4 4 0 0 0-8 0v12.5a5.5 5.5 0 0 0 11 0V6z"/></svg>
+      </button>
+      <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
       <textarea id="input" rows="1" placeholder="Message the agent…" aria-label="Message"></textarea>
       <button id="send" type="button" aria-label="Send">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>

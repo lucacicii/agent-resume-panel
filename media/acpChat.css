@@ -163,7 +163,9 @@ body.chat-shell {
 }
 
 .bubble {
-  max-width: min(78%, 520px);
+  width: fit-content;
+  max-width: 80%;
+  min-width: 0;
   padding: 8px 12px;
   border-radius: 16px;
   word-break: break-word;
@@ -185,7 +187,7 @@ body.chat-shell {
 }
 
 .bubble-row.system .bubble {
-  max-width: min(90%, 420px);
+  max-width: 80%;
   padding: 6px 12px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-input-background)) 85%, transparent);
@@ -398,6 +400,32 @@ body.chat-shell {
   font-style: italic;
 }
 
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.message-image {
+  display: block;
+  width: auto;
+  max-width: min(360px, 100%);
+  max-height: 280px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+}
+
+.bubble-row.outgoing .message-image {
+  border: 1px solid color-mix(in srgb, var(--bubble-out-fg) 18%, transparent);
+}
+
+.bubble .text[hidden] {
+  display: none;
+}
+
 /* Composer */
 #composer {
   flex-shrink: 0;
@@ -406,14 +434,79 @@ body.chat-shell {
   border-top: 1px solid var(--vscode-panel-border);
 }
 
+.pending-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pending-image {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-input-background);
+}
+
+.pending-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pending-image-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  line-height: 1;
+  font-size: 14px;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
+  color: var(--vscode-foreground);
+}
+
 .composer-bar {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 6px 6px 6px 12px;
+  gap: 6px;
+  padding: 6px;
   border-radius: 22px;
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
   background: var(--vscode-input-background);
+}
+
+.attach-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.attach-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.attach-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 #input {

@@ -4,7 +4,7 @@ import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentc
 import * as path from "node:path";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
-import { clearAllSessionUpdateListeners } from "./sessionUpdateBus";
+
 import { getAcpSdk } from "./sdk";
 import type { AcpAgentProvider } from "./types";
 
@@ -20,6 +20,10 @@ export type RestoreSessionResult = {
   modes: AcpSessionModes | null;
   method: "resume" | "load" | "new";
 };
+
+export type AcpPromptBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
 
 export class AcpAgentConnection {
   private process?: ChildProcessWithoutNullStreams;
@@ -162,6 +166,10 @@ export class AcpAgentConnection {
     };
   }
 
+  supportsImageUpload(): boolean {
+    return this.agentCapabilities?.promptCapabilities?.image === true;
+  }
+
   async setMode(acpSessionId: string, modeId: string): Promise<void> {
     const agent = await this.connect();
     const acp = await getAcpSdk();
@@ -171,12 +179,21 @@ export class AcpAgentConnection {
     });
   }
 
-  async prompt(acpSessionId: string, text: string): Promise<{ stopReason: string }> {
+  async prompt(acpSessionId: string, blocks: AcpPromptBlock[]): Promise<{ stopReason: string }> {
+    if (!blocks.length) {
+      throw new Error("Prompt must include at least one content block.");
+    }
+
+    const hasImage = blocks.some((block) => block.type === "image");
+    if (hasImage && !this.supportsImageUpload()) {
+      throw new Error(`${this.provider} does not support image uploads.`);
+    }
+
     const agent = await this.connect();
     const acp = await getAcpSdk();
     return agent.request(acp.methods.agent.session.prompt, {
       sessionId: acpSessionId,
-      prompt: [{ type: "text", text }]
+      prompt: blocks
     });
   }
 
@@ -197,7 +214,6 @@ export class AcpAgentConnection {
     }
     this.initialized = false;
     this.agentCapabilities = undefined;
-    clearAllSessionUpdateListeners();
   }
 }
 

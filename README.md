@@ -127,6 +127,18 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 | OpenCode | `npx -y opencode-ai@latest acp` |
 | Pi | `npx -y pi-acp` |
 
+**图片上传**
+
+| Agent | 图片上传 |
+|-------|----------|
+| Codex | 支持 |
+| Claude | 支持 |
+| OpenCode | 支持 |
+| Pi | 支持 |
+| Grok Build | 不支持 |
+
+在支持图片的 Agent 对话中，可使用输入框左侧 **附件** 按钮选图，或 **Ctrl/Cmd+V** 粘贴剪贴板图片；每条消息最多 4 张、单张最大 5 MB（PNG / JPEG / WebP / GIF）。可附带文字说明，也可只发图片。
+
 **Grok Build 说明**
 
 Grok 默认使用本机已安装的 [Grok Build CLI](https://x.ai/cli)（`grok agent stdio`），本地升级 Grok 后无需更新扩展。安装示例：
@@ -335,6 +347,18 @@ Besides browsing and resuming CLI history in the sidebar, the extension includes
 | Grok Build | local `grok agent stdio` |
 | OpenCode | `npx -y opencode-ai@latest acp` |
 | Pi | `npx -y pi-acp` |
+
+**Image upload**
+
+| Agent | Images |
+|-------|--------|
+| Codex | Yes |
+| Claude | Yes |
+| OpenCode | Yes |
+| Pi | Yes |
+| Grok Build | No |
+
+In chats with image-capable agents, use the **attach** button beside the input or **Ctrl/Cmd+V** to paste from the clipboard. Up to 4 images per message, 5 MB each (PNG / JPEG / WebP / GIF). Add a caption or send images only.
 
 **Grok Build notes**
 
