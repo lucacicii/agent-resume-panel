@@ -64,7 +64,7 @@ export const SETTING_SECTIONS: SettingSection[] = [
       {
         key: "editorNewSessionProvider",
         label: "Editor New Session Provider",
-        description: "Agent provider started by the editor title bar New Session button.",
+        description: "CLI agent provider started by the editor title bar New Session button.",
         type: "enum",
         default: "codex",
         enum: ["codex", "claude", "agy", "grok", "opencode", "pi"]

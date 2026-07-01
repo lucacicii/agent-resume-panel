@@ -17,6 +17,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:agentResume.sessions",
+    "onView:agentResume.acpChats",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
     "onCommand:agentResume.newSession",
@@ -38,6 +39,13 @@
     "onCommand:agentResume.unfavoriteProject",
     "onCommand:agentResume.configureProjectMenu",
     "onCommand:agentResume.newSessionFromEditor",
+    "onCommand:agentResume.newChatSession",
+    "onCommand:agentResume.openChatSession",
+    "onCommand:agentResume.openAcpChat",
+    "onCommand:agentResume.newAcpChat",
+    "onCommand:agentResume.refreshAcpChats",
+    "onCommand:agentResume.renameAcpChat",
+    "onCommand:agentResume.openAcpSettings",
     "onCommand:agentResume.openSettings",
     "onCommand:agentResume.autoRenameSession"
   ],
@@ -539,6 +547,44 @@
         "icon": "$(settings-gear)"
       },
       {
+        "command": "agentResume.newChatSession",
+        "title": "New ACP Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAcpChat",
+        "title": "New ACP Chat",
+        "category": "Agent Resume",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentResume.openChatSession",
+        "title": "Open ACP Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpChat",
+        "title": "Open ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.refreshAcpChats",
+        "title": "Refresh ACP Chats",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.renameAcpChat",
+        "title": "Rename ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpSettings",
+        "title": "ACP Chat Settings",
+        "category": "Agent Resume",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "agentResume.renameSession",
         "title": "Rename Session",
         "category": "Agent Resume"
@@ -580,6 +626,11 @@
         {
           "id": "agentResume.sessions",
           "name": "Sessions",
+          "icon": "$(history)"
+        },
+        {
+          "id": "agentResume.acpChats",
+          "name": "ACP Chats",
           "icon": "$(comment-discussion)"
         }
       ]
@@ -669,6 +720,14 @@
           "when": "false"
         },
         {
+          "command": "agentResume.newChatSession",
+          "when": "false"
+        },
+        {
+          "command": "agentResume.openChatSession",
+          "when": "false"
+        },
+        {
           "command": "agentResume.renameSession",
           "when": "false"
         },
@@ -705,6 +764,21 @@
           "command": "agentResume.openSettings",
           "when": "view == agentResume.sessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.newAcpChat",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.refreshAcpChats",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.openAcpSettings",
+          "when": "view == agentResume.acpChats",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -730,18 +804,33 @@
         },
         {
           "command": "agentResume.previewSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.renameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@4"
         },
         {
           "command": "agentResume.autoRenameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@4.5"
+        },
+        {
+          "command": "agentResume.openAcpChat",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.renameAcpChat",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.newChatSession",
+          "when": "view == agentResume.acpChats && viewItem == agentResume.acpProject",
+          "group": "navigation@1"
         },
         {
           "command": "agentResume.openInCodexApp",

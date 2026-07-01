@@ -21,9 +21,9 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 ### 快速开始
 
 1. 在 VS Code 左侧活动栏打开 **Agent Resume**。
-2. 在 **Sessions** 视图里浏览最近会话或项目分组。
-3. 点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
-4. 如果列表没有更新，点击刷新按钮，或运行 **Agent Resume: Refresh**。
+2. **Sessions** 视图用于浏览和恢复各 Agent 的 CLI 历史会话；**ACP Chats** 视图单独列出基于 ACP 的聊天会话（见下方 [ACP Chat](#acp-chat)）。
+3. 在 **Sessions** 中点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
+4. 如果列表没有更新，点击对应视图标题栏的刷新按钮，或运行 **Agent Resume: Refresh** / **Refresh ACP Chats**。
 
 默认情况下，Codex 等终端类 Agent 会在编辑器旁边打开集成终端；可将 Claude / Codex 的默认恢复方式改为官方插件面板（见下方设置）。
 
@@ -112,8 +112,10 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 
 **新建与打开**
 
-- 项目右键 **New Chat Session**（或在 **Show More** 中），选择 Agent 类型后新建 ACP 会话。
-- 侧边栏 **Sessions** 列表中的 **Chat** 会话（provider 为 `chat`）点击即可重新打开对应 ACP Chat 面板。
+- 切换到 **ACP Chats** 视图，点击标题栏 **+**（**New ACP Chat**）从当前工作区新建；或在 **By Project** 下右键项目选择 **New Chat Session**，再选择 Agent 类型。
+- **Sessions** 视图的项目右键菜单仍保留 **New Chat Session**（新建后会出现在 **ACP Chats** 中）。
+- 在 **ACP Chats** 中点击会话即可重新打开对应聊天面板；右键可 **Rename ACP Chat**。
+- **Sessions** 与搜索面板不再显示 ACP 聊天条目，避免与 CLI 历史混在一起。
 
 **支持的 Agent**
 
@@ -139,7 +141,7 @@ curl -fsSL https://x.ai/cli/install.sh | bash
 
 ACP Chat 相关设置：
 
-- **Agent Resume Settings → ACP Chat**（Sessions 标题栏齿轮，或 **Agent Resume: Open Settings**）：推荐在此配置 ACP 数据目录、权限处理、各 Agent 启动命令与参数。
+- **Agent Resume Settings → ACP Chat**（**ACP Chats** 标题栏齿轮 **ACP Chat Settings**，或 **Agent Resume: Open Settings**）：推荐在此配置 ACP 数据目录、权限处理、各 Agent 启动命令与参数。
 - 也可在 VS Code Settings 中搜索 `agentResume.acp` 或 `agentResume.panelHome` 直接编辑。
 
 ### 在官方插件面板中恢复
@@ -228,9 +230,9 @@ Best for:
 ### Quick Start
 
 1. Open **Agent Resume** from the VS Code Activity Bar.
-2. Browse recent sessions or project groups in the **Sessions** view.
-3. Click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
-4. If the list is stale, click refresh or run **Agent Resume: Refresh**.
+2. Use **Sessions** to browse and resume CLI history; use **ACP Chats** for ACP-based chat sessions (see [ACP Chat](#acp-chat) below).
+3. In **Sessions**, click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
+4. If a list is stale, use that view's refresh button, or run **Agent Resume: Refresh** / **Refresh ACP Chats**.
 
 By default, Codex and other terminal agents resume in an integrated terminal beside the editor. You can switch Claude / Codex defaults to the official extension panel in Settings (below).
 
@@ -319,8 +321,10 @@ Besides browsing and resuming CLI history in the sidebar, the extension includes
 
 **Create and open**
 
-- Right-click a project and choose **New Chat Session** (or find it under **Show More**), then pick an agent type.
-- **Chat** sessions in the **Sessions** sidebar (provider `chat`) reopen the matching ACP Chat panel.
+- Switch to **ACP Chats** and click **+** (**New ACP Chat**) to start from the current workspace, or right-click a project under **By Project** and choose **New Chat Session**, then pick an agent type.
+- **Sessions** project menus still offer **New Chat Session**; new chats appear in **ACP Chats**.
+- Click a chat in **ACP Chats** to reopen its panel; right-click to **Rename ACP Chat**.
+- **Sessions** and the search panel no longer list ACP chats, keeping CLI history separate.
 
 **Supported agents**
 
@@ -346,7 +350,7 @@ Make sure `grok` is on your PATH (the official installer usually adds `~/.grok/b
 
 ACP Chat settings:
 
-- **Agent Resume Settings → ACP Chat** (gear on the Sessions title bar, or **Agent Resume: Open Settings**): configure ACP data directory, permissions, and per-agent launch command/args.
+- **Agent Resume Settings → ACP Chat** (**ACP Chat Settings** gear on the **ACP Chats** title bar, or **Agent Resume: Open Settings**): configure ACP data directory, permissions, and per-agent launch command/args.
 - You can also search `agentResume.acp` or `agentResume.panelHome` in VS Code Settings.
 
 ### Extension panel resume
