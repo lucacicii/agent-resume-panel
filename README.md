@@ -106,6 +106,42 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 
 - Alma 相关 UI 操作（恢复会话的标题搜索、新建对话的 `Cmd+N`）需要为 VSCodium / VS Code 授予 **辅助功能（Accessibility）** 权限。
 
+### ACP Chat
+
+除侧边栏浏览/恢复各 Agent 的 CLI 历史会话外，扩展还提供基于 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 的 **ACP Chat**：在 VS Code 编辑器旁打开聊天面板，直接与 Agent 对话。
+
+**新建与打开**
+
+- 项目右键 **New Chat Session**（或在 **Show More** 中），选择 Agent 类型后新建 ACP 会话。
+- 侧边栏 **Sessions** 列表中的 **Chat** 会话（provider 为 `chat`）点击即可重新打开对应 ACP Chat 面板。
+
+**支持的 Agent**
+
+| Agent | 默认启动方式 |
+|-------|-------------|
+| Codex | `npx -y @zed-industries/codex-acp@latest` |
+| Claude | `npx -y @agentclientprotocol/claude-agent-acp@latest` |
+| Grok Build | 本机 `grok agent stdio` |
+| OpenCode | `npx -y opencode-ai@latest acp` |
+| Pi | `npx -y pi-acp` |
+
+**Grok Build 说明**
+
+Grok 默认使用本机已安装的 [Grok Build CLI](https://x.ai/cli)（`grok agent stdio`），本地升级 Grok 后无需更新扩展。安装示例：
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+请确保 `grok` 在 PATH 中（官方安装脚本通常会写入 `~/.grok/bin`）。若连接失败，可先运行 `grok agent stdio --reauth` 检查登录状态。
+
+> **不要用 `@xai-official/grok@latest`。** npm 的 `latest` 标签目前指向 0.1.x（无 `agent` 子命令），会导致 `ACP connection closed`。未安装本机 CLI 时，可在设置中改为 `npx` + `@xai-official/grok@0.2`（主版本范围，非 `latest`）。
+
+ACP Chat 相关设置：
+
+- **Agent Resume Settings → ACP Chat**（Sessions 标题栏齿轮，或 **Agent Resume: Open Settings**）：推荐在此配置 ACP 数据目录、权限处理、各 Agent 启动命令与参数。
+- 也可在 VS Code Settings 中搜索 `agentResume.acp` 或 `agentResume.panelHome` 直接编辑。
+
 ### 在官方插件面板中恢复
 
 #### Claude Code
@@ -153,6 +189,10 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.ghosttyExecutable`：Ghostty 应用名或可执行文件路径。
 - `agentResume.grokHome`：Grok Build 数据目录（默认 `~/.grok`）。
 - `agentResume.showSubagentGrok`：是否显示 Grok 子 Agent 会话。
+- `agentResume.panelHome`：ACP Chat 会话数据目录（默认 `~/.agent-resume-panel`）。
+- `agentResume.acp.autoApprovePermissions`：ACP Chat 权限请求处理方式（`ask` / `allowAll`）。
+- `agentResume.acp.agents.grok.command` / `.args`：Grok ACP 启动命令（默认 `grok` + `agent stdio`，使用本机 CLI）。
+- `agentResume.acp.agents.<provider>.command` / `.args`：其他 ACP Agent 的启动命令与参数。
 - `agentResume.opencodeHome`：OpenCode 数据目录（默认 `~/.local/share/opencode`）。
 - `agentResume.showArchivedOpenCode`：是否显示已归档的 OpenCode 会话。
 - `agentResume.piHome`：Pi 数据目录（默认 `~/.pi/agent`）。
@@ -273,6 +313,42 @@ Alma integration uses the local Alma API (default `http://localhost:23001`) and 
 
 - Alma UI automation (title search for resume, `Cmd+N` for new chat) requires **Accessibility** permission for VSCodium / VS Code.
 
+### ACP Chat
+
+Besides browsing and resuming CLI history in the sidebar, the extension includes **ACP Chat** powered by the [Agent Client Protocol (ACP)](https://agentclientprotocol.com): a chat panel beside the editor for talking to an agent directly.
+
+**Create and open**
+
+- Right-click a project and choose **New Chat Session** (or find it under **Show More**), then pick an agent type.
+- **Chat** sessions in the **Sessions** sidebar (provider `chat`) reopen the matching ACP Chat panel.
+
+**Supported agents**
+
+| Agent | Default launch |
+|-------|----------------|
+| Codex | `npx -y @zed-industries/codex-acp@latest` |
+| Claude | `npx -y @agentclientprotocol/claude-agent-acp@latest` |
+| Grok Build | local `grok agent stdio` |
+| OpenCode | `npx -y opencode-ai@latest acp` |
+| Pi | `npx -y pi-acp` |
+
+**Grok Build notes**
+
+Grok defaults to your locally installed [Grok Build CLI](https://x.ai/cli) (`grok agent stdio`). When you upgrade Grok locally, the extension picks up the new version automatically. Install example:
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+Make sure `grok` is on your PATH (the official installer usually adds `~/.grok/bin`). If connection fails, run `grok agent stdio --reauth` to check authentication.
+
+> **Do not use `@xai-official/grok@latest`.** npm's `latest` tag currently points at 0.1.x (no `agent` subcommand), which causes `ACP connection closed`. If you have no local CLI, override in Settings with `npx` and `@xai-official/grok@0.2` (major range, not `latest`).
+
+ACP Chat settings:
+
+- **Agent Resume Settings → ACP Chat** (gear on the Sessions title bar, or **Agent Resume: Open Settings**): configure ACP data directory, permissions, and per-agent launch command/args.
+- You can also search `agentResume.acp` or `agentResume.panelHome` in VS Code Settings.
+
 ### Extension panel resume
 
 #### Claude Code
@@ -320,6 +396,10 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.ghosttyExecutable`: Ghostty app name or executable path.
 - `agentResume.grokHome`: Grok Build data directory (default `~/.grok`).
 - `agentResume.showSubagentGrok`: Show Grok subagent sessions.
+- `agentResume.panelHome`: ACP Chat session data directory (default `~/.agent-resume-panel`).
+- `agentResume.acp.autoApprovePermissions`: ACP Chat permission handling (`ask` / `allowAll`).
+- `agentResume.acp.agents.grok.command` / `.args`: Grok ACP launch (default `grok` + `agent stdio`, local CLI).
+- `agentResume.acp.agents.<provider>.command` / `.args`: Launch command and args for other ACP agents.
 - `agentResume.opencodeHome`: OpenCode data directory (default `~/.local/share/opencode`).
 - `agentResume.showArchivedOpenCode`: Show or hide archived OpenCode sessions.
 - `agentResume.piHome`: Pi data directory (default `~/.pi/agent`).

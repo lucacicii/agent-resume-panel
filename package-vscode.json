@@ -94,6 +94,101 @@
           "default": "~/.pi/agent",
           "description": "Pi agent home directory containing sessions."
         },
+        "agentResume.panelHome": {
+          "type": "string",
+          "default": "~/.agent-resume-panel",
+          "description": "Agent Resume Panel data directory for ACP chat sessions."
+        },
+        "agentResume.acp.autoApprovePermissions": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "allowAll"
+          ],
+          "default": "ask",
+          "description": "How ACP Chat handles agent permission requests. ask shows a quick pick; allowAll auto-approves when possible."
+        },
+        "agentResume.acp.agents.codex.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Codex ACP agent."
+        },
+        "agentResume.acp.agents.codex.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@zed-industries/codex-acp@latest"
+          ],
+          "description": "Launch arguments for Codex ACP agent."
+        },
+        "agentResume.acp.agents.claude.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Claude ACP agent."
+        },
+        "agentResume.acp.agents.claude.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/claude-agent-acp@latest"
+          ],
+          "description": "Launch arguments for Claude ACP agent."
+        },
+        "agentResume.acp.agents.grok.command": {
+          "type": "string",
+          "default": "grok",
+          "description": "Launch command for Grok ACP agent. Uses the locally installed Grok Build CLI (see https://x.ai/cli)."
+        },
+        "agentResume.acp.agents.grok.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "agent",
+            "stdio"
+          ],
+          "description": "Launch arguments for Grok ACP agent."
+        },
+        "agentResume.acp.agents.opencode.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.opencode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "opencode-ai@latest",
+            "acp"
+          ],
+          "description": "Launch arguments for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.pi.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Pi ACP agent."
+        },
+        "agentResume.acp.agents.pi.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "pi-acp"
+          ],
+          "description": "Launch arguments for Pi ACP agent."
+        },
         "agentResume.maxItems": {
           "type": "number",
           "default": 500,

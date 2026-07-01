@@ -8,10 +8,13 @@ import { clearAllSessionUpdateListeners } from "./sessionUpdateBus";
 import { getAcpSdk } from "./sdk";
 import type { AcpAgentProvider } from "./types";
 
+const STDERR_BUFFER_LIMIT = 2048;
+
 export class AcpAgentConnection {
   private process?: ChildProcessWithoutNullStreams;
   private connection?: ClientConnection;
   private initialized = false;
+  private stderrBuffer = "";
 
   constructor(private readonly provider: AcpAgentProvider) {}
 
@@ -25,14 +28,29 @@ export class AcpAgentConnection {
     const env = { ...process.env, ...launch.env };
     const command = launch.command;
     const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
+    this.stderrBuffer = "";
     this.process = spawn(command, launch.args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
       shell: useShell
     });
 
+    let handshakeComplete = false;
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+
+    const processExit = new Promise<void>((resolve) => {
+      this.process?.on("exit", (code, signal) => {
+        exitCode = code;
+        exitSignal = signal;
+        resolve();
+      });
+    });
+
     this.process.stderr.on("data", (chunk: Buffer) => {
-      console.error(`[ACP ${this.provider}]`, chunk.toString());
+      const text = chunk.toString();
+      this.stderrBuffer = (this.stderrBuffer + text).slice(-STDERR_BUFFER_LIMIT);
+      console.error(`[ACP ${this.provider}]`, text);
     });
 
     const input = Writable.toWeb(this.process.stdin) as WritableStream<Uint8Array>;
@@ -41,16 +59,52 @@ export class AcpAgentConnection {
     const app = await createAcpClientApp();
     this.connection = app.connect(stream);
 
-    await this.connection.agent.request(acp.methods.agent.initialize, {
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: {
-        fs: { readTextFile: true, writeTextFile: true },
-        terminal: true
-      }
-    });
+    try {
+      await this.connection.agent.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: true
+        }
+      });
+      handshakeComplete = true;
+    } catch (error) {
+      await processExit;
+      throw this.wrapConnectError(error, handshakeComplete, exitCode, exitSignal);
+    }
 
     this.initialized = true;
     return this.connection.agent;
+  }
+
+  private wrapConnectError(
+    error: unknown,
+    handshakeComplete: boolean,
+    exitCode: number | null,
+    exitSignal: NodeJS.Signals | null
+  ): Error {
+    const baseMessage = error instanceof Error ? error.message : String(error);
+    const details: string[] = [];
+
+    if (!handshakeComplete) {
+      details.push(`${this.provider} agent exited before ACP handshake`);
+      if (exitSignal) {
+        details.push(`signal ${exitSignal}`);
+      } else if (exitCode != null) {
+        details.push(`exit code ${exitCode}`);
+      }
+    }
+
+    const stderr = this.stderrBuffer.trim();
+    if (stderr) {
+      details.push(stderr);
+    }
+
+    if (!details.length) {
+      return error instanceof Error ? error : new Error(baseMessage);
+    }
+
+    return new Error(`${baseMessage}: ${details.join(" — ")}`);
   }
 
   async startSession(projectPath: string): Promise<{ sessionId: string; modes?: { currentModeId: string; availableModes: Array<{ id: string; name: string }> } | null }> {

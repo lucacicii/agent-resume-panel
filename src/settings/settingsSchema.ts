@@ -1,23 +1,48 @@
 import { DEFAULT_LLM_OUTPUT_LANGUAGE, LLM_OUTPUT_LANGUAGES } from "../llm/languages";
 
-export type SettingFieldType = "string" | "number" | "boolean" | "enum";
+export type SettingFieldType = "string" | "number" | "boolean" | "enum" | "stringArray";
 
 export interface SettingField {
   key: string;
   label: string;
   description: string;
   type: SettingFieldType;
-  default: string | number | boolean;
+  default: string | number | boolean | string[];
   enum?: string[];
   minimum?: number;
   maximum?: number;
+}
+
+export interface SettingGroup {
+  id: string;
+  title: string;
+  description?: string;
+  fields: SettingField[];
 }
 
 export interface SettingSection {
   id: string;
   title: string;
   description?: string;
-  fields: SettingField[];
+  fields?: SettingField[];
+  groups?: SettingGroup[];
+}
+
+export function getSectionFields(section: SettingSection): SettingField[] {
+  if (section.groups?.length) {
+    return section.groups.flatMap((group) => group.fields);
+  }
+  return section.fields ?? [];
+}
+
+export function findSettingField(key: string): SettingField | undefined {
+  for (const section of SETTING_SECTIONS) {
+    const field = getSectionFields(section).find((entry) => entry.key === key);
+    if (field) {
+      return field;
+    }
+  }
+  return undefined;
 }
 
 export const LLM_API_KEY_SECRET = "agentResume.llm.apiKey";
@@ -248,6 +273,136 @@ export const SETTING_SECTIONS: SettingSection[] = [
     ]
   },
   {
+    id: "acp",
+    title: "ACP Chat",
+    description: "In-editor ACP chat panel launch configuration.",
+    groups: [
+      {
+        id: "general",
+        title: "General",
+        fields: [
+          {
+            key: "panelHome",
+            label: "ACP Data Directory",
+            description: "Directory for ACP Chat session data (default ~/.agent-resume-panel).",
+            type: "string",
+            default: "~/.agent-resume-panel"
+          },
+          {
+            key: "acp.autoApprovePermissions",
+            label: "Permission Handling",
+            description: "How ACP Chat handles agent permission requests.",
+            type: "enum",
+            default: "ask",
+            enum: ["ask", "allowAll"]
+          }
+        ]
+      },
+      {
+        id: "codex",
+        title: "Codex",
+        fields: [
+          {
+            key: "acp.agents.codex.command",
+            label: "Launch Command",
+            description: "Command used to start the Codex ACP agent.",
+            type: "string",
+            default: "npx"
+          },
+          {
+            key: "acp.agents.codex.args",
+            label: "Launch Args",
+            description: "Arguments for the Codex ACP agent (one per line).",
+            type: "stringArray",
+            default: ["-y", "@zed-industries/codex-acp@latest"]
+          }
+        ]
+      },
+      {
+        id: "claude",
+        title: "Claude",
+        fields: [
+          {
+            key: "acp.agents.claude.command",
+            label: "Launch Command",
+            description: "Command used to start the Claude ACP agent.",
+            type: "string",
+            default: "npx"
+          },
+          {
+            key: "acp.agents.claude.args",
+            label: "Launch Args",
+            description: "Arguments for the Claude ACP agent (one per line).",
+            type: "stringArray",
+            default: ["-y", "@agentclientprotocol/claude-agent-acp@latest"]
+          }
+        ]
+      },
+      {
+        id: "grok",
+        title: "Grok Build",
+        description:
+          "Uses the locally installed grok CLI by default (https://x.ai/cli). Do not use @xai-official/grok@latest — npm latest points at 0.1.x without agent stdio.",
+        fields: [
+          {
+            key: "acp.agents.grok.command",
+            label: "Launch Command",
+            description: "Command used to start the Grok ACP agent.",
+            type: "string",
+            default: "grok"
+          },
+          {
+            key: "acp.agents.grok.args",
+            label: "Launch Args",
+            description: "Arguments for the Grok ACP agent (one per line).",
+            type: "stringArray",
+            default: ["agent", "stdio"]
+          }
+        ]
+      },
+      {
+        id: "opencode",
+        title: "OpenCode",
+        fields: [
+          {
+            key: "acp.agents.opencode.command",
+            label: "Launch Command",
+            description: "Command used to start the OpenCode ACP agent.",
+            type: "string",
+            default: "npx"
+          },
+          {
+            key: "acp.agents.opencode.args",
+            label: "Launch Args",
+            description: "Arguments for the OpenCode ACP agent (one per line).",
+            type: "stringArray",
+            default: ["-y", "opencode-ai@latest", "acp"]
+          }
+        ]
+      },
+      {
+        id: "pi",
+        title: "Pi",
+        fields: [
+          {
+            key: "acp.agents.pi.command",
+            label: "Launch Command",
+            description: "Command used to start the Pi ACP agent.",
+            type: "string",
+            default: "npx"
+          },
+          {
+            key: "acp.agents.pi.args",
+            label: "Launch Args",
+            description: "Arguments for the Pi ACP agent (one per line).",
+            type: "stringArray",
+            default: ["-y", "pi-acp"]
+          }
+        ]
+      }
+    ]
+  },
+  {
     id: "llm",
     title: "LLM Assist",
     description:
@@ -290,5 +445,5 @@ export const SETTING_SECTIONS: SettingSection[] = [
 ];
 
 export function getAllSettingKeys(): string[] {
-  return SETTING_SECTIONS.flatMap((section) => section.fields.map((field) => field.key));
+  return SETTING_SECTIONS.flatMap((section) => getSectionFields(section).map((field) => field.key));
 }

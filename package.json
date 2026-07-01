@@ -154,8 +154,8 @@
         },
         "agentResume.acp.agents.grok.command": {
           "type": "string",
-          "default": "npx",
-          "description": "Launch command for Grok ACP agent."
+          "default": "grok",
+          "description": "Launch command for Grok ACP agent. Uses the locally installed Grok Build CLI (see https://x.ai/cli)."
         },
         "agentResume.acp.agents.grok.args": {
           "type": "array",
@@ -163,8 +163,6 @@
             "type": "string"
           },
           "default": [
-            "-y",
-            "@xai-official/grok@latest",
             "agent",
             "stdio"
           ],
