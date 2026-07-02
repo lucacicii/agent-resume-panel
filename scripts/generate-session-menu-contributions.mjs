@@ -10,8 +10,7 @@ const ACTIONS = [
   "previewSession",
   "renameSession",
   "removeSessionFromPanel",
-  "autoRenameSession",
-  "collapseParentProject"
+  "autoRenameSession"
 ];
 
 const COMMANDS = {
@@ -21,8 +20,7 @@ const COMMANDS = {
   previewSession: [{ command: "agentResume.previewSession" }],
   renameSession: [{ command: "agentResume.renameSession" }],
   removeSessionFromPanel: [{ command: "agentResume.removeSessionFromPanel" }],
-  autoRenameSession: [{ command: "agentResume.autoRenameSession" }],
-  collapseParentProject: [{ command: "agentResume.collapseParentProject" }]
+  autoRenameSession: [{ command: "agentResume.autoRenameSession" }]
 };
 
 const MAIN_SLOT_START = 1;
@@ -151,11 +149,6 @@ export function buildSessionMenuContributionBlocks() {
       }
     ],
     projectSortExtras: [
-      {
-        command: "agentResume.collapseProject",
-        when: "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
-        group: "fold@1"
-      },
       {
         submenu: "agentResume.projectSort",
         when: "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",

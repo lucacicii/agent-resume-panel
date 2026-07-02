@@ -987,11 +987,6 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at1 == collapseParentProject",
-          "group": "navigation@1"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.at2 == copyResumeCommand",
           "group": "navigation@2"
@@ -1024,11 +1019,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.at2 == autoRenameSession",
-          "group": "navigation@2"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at2 == collapseParentProject",
           "group": "navigation@2"
         },
         {
@@ -1067,11 +1057,6 @@
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at3 == collapseParentProject",
-          "group": "navigation@3"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.at4 == copyResumeCommand",
           "group": "navigation@4"
@@ -1104,11 +1089,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.at4 == autoRenameSession",
-          "group": "navigation@4"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at4 == collapseParentProject",
           "group": "navigation@4"
         },
         {
@@ -1147,11 +1127,6 @@
           "group": "navigation@5"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at5 == collapseParentProject",
-          "group": "navigation@5"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.at6 == copyResumeCommand",
           "group": "navigation@6"
@@ -1184,11 +1159,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.at6 == autoRenameSession",
-          "group": "navigation@6"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at6 == collapseParentProject",
           "group": "navigation@6"
         },
         {
@@ -1225,51 +1195,6 @@
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.at7 == autoRenameSession",
           "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at7 == collapseParentProject",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.at8 == copyResumeCommand",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.openProject && agentResume.sessionMenu.at8 == openProject",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.openInGhostty && agentResume.sessionMenu.at8 == openInGhostty",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.previewSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.previewSession && agentResume.sessionMenu.at8 == previewSession",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.renameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.renameSession && agentResume.sessionMenu.at8 == renameSession",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.removeSessionFromPanel",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.removeSessionFromPanel && agentResume.sessionMenu.at8 == removeSessionFromPanel",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.autoRenameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.at8 == autoRenameSession",
-          "group": "navigation@8"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.at8 == collapseParentProject",
-          "group": "navigation@8"
         },
         {
           "submenu": "agentResume.sessionMore",
@@ -2090,11 +2015,6 @@
           "command": "agentResume.newCodexAppSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/ && agentResume.projectMenu.main.newCodexAppSession && agentResume.projectMenu.at12 == newCodexAppSession",
           "group": "navigation@12"
-        },
-        {
-          "command": "agentResume.collapseProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
-          "group": "fold@1"
         },
         {
           "submenu": "agentResume.projectSort",
@@ -2931,11 +2851,6 @@
           "group": "navigation@0"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt0 == collapseParentProject",
-          "group": "navigation@0"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.moreAt1 == copyResumeCommand",
           "group": "navigation@1"
@@ -2968,11 +2883,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.moreAt1 == autoRenameSession",
-          "group": "navigation@1"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt1 == collapseParentProject",
           "group": "navigation@1"
         },
         {
@@ -3011,11 +2921,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt2 == collapseParentProject",
-          "group": "navigation@2"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.moreAt3 == copyResumeCommand",
           "group": "navigation@3"
@@ -3048,11 +2953,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.moreAt3 == autoRenameSession",
-          "group": "navigation@3"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt3 == collapseParentProject",
           "group": "navigation@3"
         },
         {
@@ -3091,11 +2991,6 @@
           "group": "navigation@4"
         },
         {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt4 == collapseParentProject",
-          "group": "navigation@4"
-        },
-        {
           "command": "agentResume.copyResumeCommand",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.moreAt5 == copyResumeCommand",
           "group": "navigation@5"
@@ -3128,11 +3023,6 @@
         {
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.moreAt5 == autoRenameSession",
-          "group": "navigation@5"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt5 == collapseParentProject",
           "group": "navigation@5"
         },
         {
@@ -3169,51 +3059,6 @@
           "command": "agentResume.autoRenameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.moreAt6 == autoRenameSession",
           "group": "navigation@6"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt6 == collapseParentProject",
-          "group": "navigation@6"
-        },
-        {
-          "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.copyResumeCommand && agentResume.sessionMenu.moreAt7 == copyResumeCommand",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.openProject && agentResume.sessionMenu.moreAt7 == openProject",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.openInGhostty && agentResume.sessionMenu.moreAt7 == openInGhostty",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.previewSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.previewSession && agentResume.sessionMenu.moreAt7 == previewSession",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.renameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.renameSession && agentResume.sessionMenu.moreAt7 == renameSession",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.removeSessionFromPanel",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.removeSessionFromPanel && agentResume.sessionMenu.moreAt7 == removeSessionFromPanel",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.autoRenameSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.autoRenameSession && agentResume.sessionMenu.moreAt7 == autoRenameSession",
-          "group": "navigation@7"
-        },
-        {
-          "command": "agentResume.collapseParentProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/ && !agentResume.sessionMenu.main.collapseParentProject && agentResume.sessionMenu.moreAt7 == collapseParentProject",
-          "group": "navigation@7"
         },
         {
           "command": "agentResume.configureSessionMenu",

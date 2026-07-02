@@ -81,8 +81,6 @@ function ensureSessionCommands(pkg) {
   const commands = pkg.contributes.commands ?? [];
   const required = [
     ["agentResume.configureSessionMenu", "Customize Session Menu"],
-    ["agentResume.collapseParentProject", "Collapse Project"],
-    ["agentResume.collapseProject", "Collapse Project"],
     ["agentResume.sortProjectSessionsUpdatedDesc", "Sort by Updated (Newest First)"],
     ["agentResume.sortProjectSessionsUpdatedAsc", "Sort by Updated (Oldest First)"],
     ["agentResume.sortProjectSessionsTitleAsc", "Sort by Title (A–Z)"],
@@ -112,8 +110,7 @@ function ensureSessionConfiguration(pkg) {
           "previewSession",
           "renameSession",
           "removeSessionFromPanel",
-          "autoRenameSession",
-          "collapseParentProject"
+          "autoRenameSession"
         ]
       },
       default: ["copyResumeCommand", "openProject", "previewSession", "renameSession"],
@@ -134,8 +131,7 @@ function ensureSessionConfiguration(pkg) {
           "previewSession",
           "renameSession",
           "removeSessionFromPanel",
-          "autoRenameSession",
-          "collapseParentProject"
+          "autoRenameSession"
         ]
       },
       default: [
@@ -145,8 +141,7 @@ function ensureSessionConfiguration(pkg) {
         "previewSession",
         "renameSession",
         "removeSessionFromPanel",
-        "autoRenameSession",
-        "collapseParentProject"
+        "autoRenameSession"
       ],
       description: "Preferred display order for all configurable session context menu actions."
     };

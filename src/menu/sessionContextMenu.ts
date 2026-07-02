@@ -7,8 +7,7 @@ export type SessionMenuAction =
   | "previewSession"
   | "renameSession"
   | "removeSessionFromPanel"
-  | "autoRenameSession"
-  | "collapseParentProject";
+  | "autoRenameSession";
 
 export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "copyResumeCommand",
@@ -17,8 +16,7 @@ export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "previewSession",
   "renameSession",
   "removeSessionFromPanel",
-  "autoRenameSession",
-  "collapseParentProject"
+  "autoRenameSession"
 ];
 
 export const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
@@ -38,8 +36,7 @@ export const SESSION_MENU_ACTION_LABELS: Record<SessionMenuAction, string> = {
   previewSession: "Preview Session",
   renameSession: "Rename Session",
   removeSessionFromPanel: "Remove from Panel",
-  autoRenameSession: "Auto Rename Session",
-  collapseParentProject: "Collapse Project"
+  autoRenameSession: "Auto Rename Session"
 };
 
 const COMMAND_BY_ACTION: Record<SessionMenuAction, string> = {
@@ -49,8 +46,7 @@ const COMMAND_BY_ACTION: Record<SessionMenuAction, string> = {
   previewSession: "agentResume.previewSession",
   renameSession: "agentResume.renameSession",
   removeSessionFromPanel: "agentResume.removeSessionFromPanel",
-  autoRenameSession: "agentResume.autoRenameSession",
-  collapseParentProject: "agentResume.collapseParentProject"
+  autoRenameSession: "agentResume.autoRenameSession"
 };
 
 export interface SessionMenuEditorState {

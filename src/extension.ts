@@ -63,13 +63,12 @@ import {
 } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
-import { projectUri, sessionQuickPickLabel, SessionTreeProvider, TreeNode } from "./tree/sessionTree";
+import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
 
 let extensionContext: vscode.ExtensionContext | undefined;
-let sessionsTreeView: vscode.TreeView<TreeNode> | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -86,7 +85,6 @@ export function activate(context: vscode.ExtensionContext): void {
     showCollapseAll: true,
     dragAndDropController: new SessionTreeDragDrop(tree, context)
   });
-  sessionsTreeView = treeView;
   const acpTreeView = vscode.window.createTreeView("agentResume.acpChats", {
     treeDataProvider: acpTree,
     showCollapseAll: true
@@ -196,10 +194,6 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
     vscode.commands.registerCommand("agentResume.configureSessionMenu", () => openSettingsPanelToSessionMenu(context)),
-    vscode.commands.registerCommand("agentResume.collapseParentProject", (node?: unknown) =>
-      collapseProjectInTree(tree, node)
-    ),
-    vscode.commands.registerCommand("agentResume.collapseProject", (node?: unknown) => collapseProjectInTree(tree, node)),
     vscode.commands.registerCommand("agentResume.sortProjectSessionsUpdatedDesc", (node?: unknown) =>
       setProjectSortMode(context, tree, node, "updatedDesc")
     ),
@@ -869,25 +863,6 @@ function applyProjectMenuContextFromConfig(): void {
 function applySessionMenuContextFromConfig(): void {
   const config = vscode.workspace.getConfiguration("agentResume");
   void applySessionMenuContext(loadMainSessionActions(config), loadSessionItemOrder(config));
-}
-
-async function collapseProjectInTree(tree: SessionTreeProvider, node: unknown): Promise<void> {
-  const projectPath = tree.getProjectFromNode(node);
-  if (!projectPath || !sessionsTreeView) {
-    return;
-  }
-
-  const projectNode = {
-    kind: "project" as const,
-    projectPath,
-    sessions: tree.getProjectSessionsFromNode(node)
-  };
-
-  try {
-    await sessionsTreeView.reveal(projectNode, { expand: false, focus: false, select: false });
-  } catch {
-    // Project may be outside the expanded tree; ignore.
-  }
 }
 
 async function setProjectSortMode(
