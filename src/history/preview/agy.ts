@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { AgentSession } from "../types";
 import { readJsonLines } from "../jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
+import { candidateAgyRoots } from "./agyRoots";
 import { finalizePreviewMessages } from "./text";
 
 interface AntigravityHistoryRow {
@@ -9,21 +10,8 @@ interface AntigravityHistoryRow {
   conversationId?: string;
 }
 
-function candidateRoots(antigravityHome: string): string[] {
-  const normalized = path.resolve(antigravityHome);
-  const parent = path.dirname(normalized);
-  const base = path.basename(normalized);
-  const roots = [normalized, path.join(normalized, "antigravity-cli"), path.join(normalized, "antigravity")];
-
-  if (base === "antigravity-cli" || base === "antigravity") {
-    roots.push(path.join(parent, "antigravity-cli"), path.join(parent, "antigravity"));
-  }
-
-  return [...new Set(roots)];
-}
-
 export async function previewAgySession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
-  for (const root of candidateRoots(homes.antigravityHome)) {
+  for (const root of candidateAgyRoots(homes.antigravityHome)) {
     const rows = await readJsonLines<AntigravityHistoryRow>(path.join(root, "history.jsonl"));
     const match = rows.filter((row) => row.conversationId === session.id).at(-1);
     if (match?.display?.trim()) {

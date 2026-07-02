@@ -20,6 +20,7 @@
     "onView:agentResume.acpChats",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
+    "onCommand:agentResume.openSessionManager",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -106,6 +107,36 @@
           "type": "string",
           "default": "~/.agent-resume-panel",
           "description": "Agent Resume Panel data directory for ACP chat sessions."
+        },
+        "agentResume.catalog.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "SQLite catalog database path. Empty uses <panelHome>/catalog.db."
+        },
+        "agentResume.catalog.syncMaxItems": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 500,
+          "maximum": 50000,
+          "description": "Maximum sessions per sync pass written into the catalog (per-provider loaders use this cap during sync)."
+        },
+        "agentResume.catalog.stalePolicy": {
+          "type": "string",
+          "enum": [
+            "hide",
+            "purge"
+          ],
+          "default": "hide",
+          "description": "When a session disappears from agent storage during sync: hide marks it hidden in the catalog; purge deletes the catalog row."
+        },
+        "agentResume.catalog.sidebarMode": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "full"
+          ],
+          "default": "legacy",
+          "description": "Sidebar session cap. legacy uses Max Sessions; full shows up to syncMaxItems."
         },
         "agentResume.acp.autoApprovePermissions": {
           "type": "string",
@@ -434,6 +465,12 @@
         "icon": "$(search)"
       },
       {
+        "command": "agentResume.openSessionManager",
+        "title": "Session Manager",
+        "category": "Agent Resume",
+        "icon": "$(database)"
+      },
+      {
         "command": "agentResume.newSession",
         "title": "New Session",
         "category": "Agent Resume",
@@ -590,6 +627,11 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.removeSessionFromPanel",
+        "title": "Remove from Panel",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.previewSession",
         "title": "Preview Session",
         "category": "Agent Resume"
@@ -732,6 +774,10 @@
           "when": "false"
         },
         {
+          "command": "agentResume.removeSessionFromPanel",
+          "when": "false"
+        },
+        {
           "command": "agentResume.previewSession",
           "when": "false"
         },
@@ -756,14 +802,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.refresh",
+          "command": "agentResume.openSessionManager",
           "when": "view == agentResume.sessions",
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.openSettings",
+          "command": "agentResume.refresh",
           "when": "view == agentResume.sessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openSettings",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@4"
         },
         {
           "command": "agentResume.newAcpChat",
@@ -811,6 +862,11 @@
           "command": "agentResume.renameSession",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.removeSessionFromPanel",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/",
+          "group": "navigation@4.2"
         },
         {
           "command": "agentResume.autoRenameSession",

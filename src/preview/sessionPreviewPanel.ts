@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
-import { renameSession } from "../history/rename";
+import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadRenameHomes } from "../history/rename/homes";
 import { getLlmConfig, isLlmConfigured } from "../llm/config";
 
@@ -157,7 +157,7 @@ async function handleRename(panel: vscode.WebviewPanel): Promise<void> {
   }
 
   try {
-    await renameSession(session, newTitle, loadRenameHomes());
+    await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await activeRefreshTree?.();
     panel.title = `Preview: ${newTitle.trim()}`;
     webview.postMessage({ type: "titleUpdated", title: newTitle.trim() });

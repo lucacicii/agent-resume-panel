@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
-import { renameSession } from "../history/rename";
+import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadRenameHomes } from "../history/rename/homes";
 import { getLlmConfig, isLlmConfigured } from "../llm/config";
 import { setCachedSummary } from "../llm/summaryCache";
@@ -78,7 +78,7 @@ export async function runAutoRename(
       throw new Error("LLM returned an empty title.");
     }
 
-    await renameSession(session, newTitle, loadRenameHomes());
+    await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refreshTree();
 
     if (options?.panel) {

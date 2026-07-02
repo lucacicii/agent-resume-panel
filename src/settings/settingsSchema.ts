@@ -72,6 +72,46 @@ export const SETTING_SECTIONS: SettingSection[] = [
     ]
   },
   {
+    id: "catalog",
+    title: "Session Catalog (SQLite)",
+    description:
+      "CLI sessions are stored in catalog.db (SQLite). Inbound sync imports agent metadata and transcript reference paths (no copies). Export reads native transcripts via those refs. Remove-from-panel only hides rows; rename updates SQLite and pushes to the native agent.",
+    fields: [
+      {
+        key: "catalog.dbPath",
+        label: "Catalog Database Path",
+        description: "Leave empty to use <panelHome>/catalog.db.",
+        type: "string",
+        default: ""
+      },
+      {
+        key: "catalog.syncMaxItems",
+        label: "Catalog Sync Max Items",
+        description: "Upper bound of sessions imported per refresh into the catalog.",
+        type: "number",
+        default: 10000,
+        minimum: 500,
+        maximum: 50000
+      },
+      {
+        key: "catalog.stalePolicy",
+        label: "Stale Session Policy",
+        description: "hide keeps a hidden catalog row; purge removes rows missing from the latest agent snapshot.",
+        type: "enum",
+        default: "hide",
+        enum: ["hide", "purge"]
+      },
+      {
+        key: "catalog.sidebarMode",
+        label: "Sidebar Mode",
+        description: "legacy matches Max Sessions; full shows more rows from the catalog in the sidebar.",
+        type: "enum",
+        default: "legacy",
+        enum: ["legacy", "full"]
+      }
+    ]
+  },
+  {
     id: "dataPaths",
     title: "Data Paths",
     fields: [

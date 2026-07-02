@@ -4,7 +4,17 @@ import { AcpChatTreeProvider } from "./acp/acpChatTree";
 import { createAcpChatSession, panelHomeFromConfig, pickAcpAgentProvider } from "./acp/newSession";
 import { getAcpRecord, loadAcpRecords } from "./acp/store";
 import { AcpSessionRecord } from "./acp/types";
-import { loadAllSessions, AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
+import {
+  loadCatalogSettings,
+  queryCatalogSessions,
+  querySidebarSessions,
+  removeSessionsFromPanel,
+  renameSessionWithCatalog,
+  resolveSessionById,
+  syncCatalog
+} from "./catalog";
+import { exportCatalogCommand } from "./catalog/exportCatalog";
+import { AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
 import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
 import { defaultAlmaDataDir } from "./history/alma";
@@ -34,6 +44,7 @@ import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
+import { openSessionManagerPanel } from "./manager/sessionManagerPanel";
 import { openSettingsPanel, openSettingsPanelToAcp, openSettingsPanelToProjectMenu } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
@@ -71,8 +82,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.search", () =>
       searchAndOpen(context, tree, () => refresh(tree, false))
     ),
+    vscode.commands.registerCommand("agentResume.openSessionManager", () =>
+      openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
+        refresh(tree, false)
+      )
+    ),
+    vscode.commands.registerCommand("agentResume.exportCatalog", () =>
+      exportCatalogCommand(() => refresh(tree, true))
+    ),
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession, context)
+    ),
+    vscode.commands.registerCommand("agentResume.removeSessionFromPanel", (nodeOrSession?: unknown) =>
+      void removeSessionFromPanelCommand(tree, nodeOrSession)
     ),
     vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
@@ -192,12 +214,14 @@ export function deactivate(): void {
 async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<void> {
   const config = vscode.workspace.getConfiguration("agentResume");
   const loadOptions = buildHistoryLoadOptions(config);
+  const catalog = loadCatalogSettings(config);
 
   try {
-    const result = await loadAllSessions(loadOptions);
-    tree.setData(result.sessions, result.warnings);
+    const result = await syncCatalog(loadOptions, catalog);
+    const sessions = await querySidebarSessions(catalog, loadOptions.maxItems);
+    tree.setData(sessions, result.warnings);
     if (showToast) {
-      vscode.window.showInformationMessage(`Loaded ${result.sessions.length} CLI sessions.`);
+      vscode.window.showInformationMessage(`Synced ${sessions.length} CLI sessions from catalog.`);
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
@@ -246,13 +270,9 @@ async function searchAndOpen(
   tree: SessionTreeProvider,
   refreshTree: () => Promise<void>
 ): Promise<void> {
-  let sessions = tree.getSessions();
-  if (!sessions.length) {
-    await refresh(tree, false);
-    sessions = tree.getSessions();
-  }
-
-  if (!sessions.length) {
+  await refresh(tree, false);
+  const catalog = loadCatalogSettings();
+  if (!tree.getSessions().length && !(await queryCatalogSessions(catalog)).length) {
     vscode.window.showInformationMessage("No agent sessions found.");
     return;
   }
@@ -305,12 +325,51 @@ async function renameSessionCommand(
   }
 
   try {
-    await renameSession(session, newTitle, loadRenameHomes());
+    await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refresh(tree, false);
     vscode.window.showInformationMessage("Session renamed.");
   } catch (error) {
     vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
   }
+}
+
+async function removeSessionFromPanelCommand(tree: SessionTreeProvider, nodeOrSession: unknown): Promise<void> {
+  const session =
+    resolveSession(tree, nodeOrSession) ??
+    (await resolveSessionFromArgument(tree, nodeOrSession));
+  if (!session || session.provider === "chat") {
+    return;
+  }
+
+  const confirm = await vscode.window.showWarningMessage(
+    `Remove "${session.title}" from Agent Resume panel only? Native ${session.provider} storage is unchanged.`,
+    { modal: true },
+    "Remove"
+  );
+  if (confirm !== "Remove") {
+    return;
+  }
+
+  try {
+    const catalog = loadCatalogSettings();
+    await removeSessionsFromPanel(catalog.dbPath, [session]);
+    await refresh(tree, false);
+    vscode.window.showInformationMessage("Session removed from panel.");
+  } catch (error) {
+    vscode.window.showErrorMessage(`Remove failed: ${formatError(error)}`);
+  }
+}
+
+async function resolveSessionFromArgument(tree: SessionTreeProvider, value: unknown): Promise<AgentSession | undefined> {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const provider = (value as { provider?: AgentProvider }).provider;
+  const id = (value as { id?: string }).id;
+  if (!provider || !id) {
+    return undefined;
+  }
+  return resolveSessionById(tree, provider, id);
 }
 
 async function openResolvedSession(session: AgentSession, context: vscode.ExtensionContext | undefined): Promise<void> {

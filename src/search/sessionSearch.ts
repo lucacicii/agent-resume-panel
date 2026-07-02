@@ -1,10 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { AgentProvider } from "../history";
+import { loadCatalogSettings, queryCatalogSessions, resolveSessionById } from "../catalog";
+import { AgentProvider, AgentSession } from "../history";
 import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
-import { renameSession } from "../history/rename";
+import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadSessionPreview } from "../history/preview";
 import { getLlmConfig, isLlmConfigured } from "../llm/config";
 import { getCachedSummary } from "../llm/summaryCache";
@@ -42,7 +43,7 @@ export async function searchAndOpenSessions(
 
   if (searchPanel) {
     searchPanel.reveal(column);
-    postInitMessage(searchPanel.webview, tree);
+    void postInitMessage(searchPanel.webview, tree);
     return;
   }
 
@@ -62,12 +63,12 @@ export async function searchAndOpenSessions(
 
   searchPanel.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
     if (message.type === "ready") {
-      postInitMessage(searchPanel!.webview, tree);
+      await postInitMessage(searchPanel!.webview, tree);
       return;
     }
 
     if (message.type === "resume" && message.provider && message.id) {
-      const session = findSession(tree, message.provider, message.id);
+      const session = await findSession(tree, message.provider, message.id);
       if (session) {
         searchPanel?.dispose();
         openSessionResume(session, undefined);
@@ -86,7 +87,7 @@ export async function searchAndOpenSessions(
     }
 
     if (message.type === "previewResume" && message.provider && message.id) {
-      const session = findSession(tree, message.provider, message.id);
+      const session = await findSession(tree, message.provider, message.id);
       if (session) {
         await resumeSession(session, "vscode", context);
       }
@@ -94,7 +95,7 @@ export async function searchAndOpenSessions(
     }
 
     if (message.type === "previewResumeWith" && message.provider && message.id) {
-      const session = findSession(tree, message.provider, message.id);
+      const session = await findSession(tree, message.provider, message.id);
       if (!session) {
         return;
       }
@@ -107,7 +108,7 @@ export async function searchAndOpenSessions(
     }
 
     if (message.type === "summarize" && message.provider && message.id) {
-      const session = findSession(tree, message.provider, message.id);
+      const session = await findSession(tree, message.provider, message.id);
       if (session) {
         await runSummarize(session, context, searchPanel!.webview);
       }
@@ -115,7 +116,7 @@ export async function searchAndOpenSessions(
     }
 
     if (message.type === "autoRename" && message.provider && message.id) {
-      const session = findSession(tree, message.provider, message.id);
+      const session = await findSession(tree, message.provider, message.id);
       if (session) {
         await runAutoRename(session, tree, refreshTree, context, {
           webview: searchPanel!.webview
@@ -136,7 +137,7 @@ async function handlePreviewMessage(
   provider: AgentProvider,
   id: string
 ): Promise<void> {
-  const session = findSession(tree, provider, id);
+  const session = await findSession(tree, provider, id);
   if (!session) {
     return;
   }
@@ -180,7 +181,7 @@ async function handleRenameMessage(
   provider: AgentProvider,
   id: string
 ): Promise<void> {
-  const session = findSession(tree, provider, id);
+  const session = await findSession(tree, provider, id);
   if (!session) {
     webview.postMessage({ type: "renameDone" });
     return;
@@ -199,9 +200,9 @@ async function handleRenameMessage(
   }
 
   try {
-    await renameSession(session, newTitle, loadRenameHomes());
+    await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refreshTree();
-    postInitMessage(webview, tree);
+    await postInitMessage(webview, tree);
     vscode.window.showInformationMessage("Session renamed.");
   } catch (error) {
     webview.postMessage({ type: "renameDone" });
@@ -209,12 +210,17 @@ async function handleRenameMessage(
   }
 }
 
-function findSession(tree: SessionTreeProvider, provider: AgentProvider, id: string) {
-  return tree.getSessions().find((entry) => entry.provider === provider && entry.id === id);
+async function findSession(tree: SessionTreeProvider, provider: AgentProvider, id: string): Promise<AgentSession | undefined> {
+  return resolveSessionById(tree, provider, id);
 }
 
-function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): void {
-  const sessions = tree.getSessions();
+async function getSessionsForSearch(_tree: SessionTreeProvider): Promise<AgentSession[]> {
+  const catalog = loadCatalogSettings();
+  return queryCatalogSessions(catalog);
+}
+
+async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): Promise<void> {
+  const sessions = await getSessionsForSearch(tree);
   const favoriteProjects = tree.getFavoriteProjects();
   const projects = buildProjectList(sessions, favoriteProjects);
 

@@ -63,6 +63,21 @@ export async function createAcpRecord(panelHome: string, projectPath: string, pr
   return record;
 }
 
+export async function deleteAcpRecord(panelHome: string, chatId: string): Promise<void> {
+  const records = await loadAcpRecords(panelHome);
+  const nextRecords = records.filter((record) => record.id !== chatId);
+  await writeJsonLines(acpSessionsPath(panelHome), nextRecords);
+
+  const threadFile = acpThreadPath(panelHome, chatId);
+  try {
+    await fs.unlink(threadFile);
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+  }
+}
+
 export async function updateAcpRecord(panelHome: string, record: AcpSessionRecord): Promise<void> {
   const records = await loadAcpRecords(panelHome);
   const index = records.findIndex((entry) => entry.id === record.id);
@@ -173,6 +188,10 @@ export async function readAcpImageBase64(panelHome: string, attachment: AcpImage
 function estimateBase64Bytes(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
+}
+
+function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
