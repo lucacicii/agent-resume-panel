@@ -167,6 +167,15 @@ body {
   opacity: 0.6;
 }
 
+.session-action-warn {
+  color: var(--vscode-errorForeground);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground) 35%, var(--vscode-panel-border));
+}
+
+.session-action-warn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vscode-errorForeground) 12%, var(--vscode-button-secondaryHoverBackground));
+}
+
 .session-action:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;

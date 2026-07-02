@@ -107,6 +107,15 @@
       renderSessions();
       syncPreviewTitle();
       previewRename.disabled = false;
+      if (
+        activePreviewSession &&
+        !state.sessions.some(
+          (entry) =>
+            entry.provider === activePreviewSession.provider && entry.id === activePreviewSession.id
+        )
+      ) {
+        closePreview();
+      }
       return;
     }
 
@@ -294,8 +303,25 @@
         });
       });
 
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "session-action session-action-warn";
+      removeBtn.title = "Remove from panel only (native agent unchanged)";
+      removeBtn.setAttribute("aria-label", "Remove from panel");
+      removeBtn.textContent = "Remove";
+      removeBtn.disabled = session.provider === "chat";
+      removeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        vscode.postMessage({
+          type: "remove",
+          provider: session.provider,
+          id: session.id
+        });
+      });
+
       actions.appendChild(previewBtn);
       actions.appendChild(renameBtn);
+      actions.appendChild(removeBtn);
       row.appendChild(body);
       row.appendChild(actions);
       sessionsEl.appendChild(row);

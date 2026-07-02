@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { loadCatalogSettings, queryCatalogSessions, resolveSessionById } from "../catalog";
+import { loadCatalogSettings, queryCatalogSessions, removeSessionsFromPanel, resolveSessionById } from "../catalog";
 import { AgentProvider, AgentSession } from "../history";
 import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
@@ -78,6 +78,11 @@ export async function searchAndOpenSessions(
 
     if (message.type === "rename" && message.provider && message.id) {
       await handleRenameMessage(tree, searchPanel!.webview, refreshTree, message.provider, message.id);
+      return;
+    }
+
+    if (message.type === "remove" && message.provider && message.id) {
+      await handleRemoveMessage(tree, searchPanel!.webview, refreshTree, message.provider, message.id);
       return;
     }
 
@@ -171,6 +176,38 @@ async function handlePreviewMessage(
       error: formatError(error)
     });
     vscode.window.showErrorMessage(`Preview failed: ${formatError(error)}`);
+  }
+}
+
+async function handleRemoveMessage(
+  tree: SessionTreeProvider,
+  webview: vscode.Webview,
+  refreshTree: () => Promise<void>,
+  provider: AgentProvider,
+  id: string
+): Promise<void> {
+  const session = await findSession(tree, provider, id);
+  if (!session || session.provider === "chat") {
+    return;
+  }
+
+  const confirm = await vscode.window.showWarningMessage(
+    `Remove "${session.title}" from Agent Resume panel only? Native ${session.provider} storage is unchanged.`,
+    { modal: true },
+    "Remove"
+  );
+  if (confirm !== "Remove") {
+    return;
+  }
+
+  try {
+    const catalog = loadCatalogSettings();
+    await removeSessionsFromPanel(catalog.dbPath, [session]);
+    await refreshTree();
+    await postInitMessage(webview, tree);
+    vscode.window.showInformationMessage("Session removed from panel.");
+  } catch (error) {
+    vscode.window.showErrorMessage(`Remove failed: ${formatError(error)}`);
   }
 }
 
