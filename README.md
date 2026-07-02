@@ -4,6 +4,10 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 ## 简体中文
 
+**本页结构**：[第一部分：概览](#第一部分概览) · [第二部分：插件说明](#第二部分插件说明)
+
+### 第一部分：概览
+
 Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜索和恢复 Codex、Claude Code、Antigravity CLI、Grok Build、OpenCode、Pi、Alma 的历史会话，并在编辑器旁通过 **ACP Chat** 直接与 Agent 对话。
 
 适合这些场景：
@@ -34,6 +38,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 
 - **Preview Session**：只读浏览 User/Assistant 对话，不恢复会话。
 - **Rename Session**：重命名会话标题，并写入对应 Agent 的原生存储（Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 均支持）。
+- **Remove from Panel**：仅从扩展面板与 Catalog 索引中隐藏该会话，不删除 Agent 原生存储（见 [第二部分：插件说明](#第二部分插件说明)）。
 - **Resume Session**：按当前设置的默认方式恢复（Alma 除外）。
 - **Copy Resume Command**：复制恢复命令。
 - **Open Folder and Resume**：打开会话所属项目，并在新窗口中恢复。
@@ -65,7 +70,7 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 
 - 顶部是 **Projects** 按钮区：点击 `All Projects` 或某个项目，先按项目做初步筛选；收藏项目会带星标。
 - 下方是独立的 **Sessions** 列表：在已选项目范围内继续输入关键字，按标题、provider、分支（未选项目时也匹配路径）过滤。
-- 点击某条会话即可恢复；行尾的 **Preview** 可只读浏览 User/Assistant 对话，**Rename** 可直接重命名，面板保持打开。
+- 点击某条会话即可恢复；行尾的 **Preview**、**Rename**、**Remove** 可分别预览、重命名或从面板移除，面板保持打开。
 
 侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
 
@@ -186,7 +191,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 ### Agent Resume Settings
 
-点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist 等常规项外，左侧导航还有 **Project Menu** 分区，用于配置项目右键菜单的显示项与顺序。
+点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist 等常规项外，左侧导航还有 **Project Menu**、**Session Menu** 等分区，用于配置项目与会话右键菜单的显示项与顺序。
 
 ### 常用设置
 
@@ -217,14 +222,52 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.showIncognitoAlma`：显示 Alma 隐身模式会话。
 - `agentResume.projectMenu.mainActions`：显示在项目右键主菜单中的操作（数组顺序即显示顺序）。
 - `agentResume.projectMenu.itemOrder`：全部可配置项目菜单项的完整顺序（含 **Show More** 中的项）。推荐在 **Agent Resume Settings → Project Menu** 中拖动排序，无需手改 JSON。
+- `agentResume.sessionMenu.mainActions` / `agentResume.sessionMenu.itemOrder`：会话右键主菜单与 **Show More** 的显示项与顺序（推荐在 **Session Menu** 设置页拖动配置）。
+- `agentResume.catalog.dbPath`：Session Catalog 的 SQLite 数据库路径（留空则 `<panelHome>/catalog.db`）。
+- `agentResume.catalog.syncMaxItems`：每次同步写入 Catalog 的会话数量上限。
+- `agentResume.catalog.stalePolicy`：Agent 存储中已消失的会话在 Catalog 中的处理方式（`hide` / `purge`）。
+- `agentResume.catalog.sidebarMode`：侧边栏展示上限（`legacy` 沿用 `maxItems`，`full` 至多 `syncMaxItems`）。
 
 如果你的 Codex、Claude Code、Antigravity、OpenCode 或 Pi 数据目录不是默认位置，也可以在设置里调整对应的 home 路径。
+
+### 第二部分：插件说明
+
+本节说明 2.1.0 起 CLI 会话在扩展内部的索引与管理方式，便于备份、排查与理解「从面板移除」等行为。
+
+#### Session Catalog（SQLite）
+
+扩展对 **CLI 历史会话的目录与面板状态** 使用本地 **SQLite** 数据库（**Session Catalog**）作为统一真相源，扩展启动后始终维护该 Catalog（无需单独开关）。
+
+- **默认路径**：`~/.agent-resume-panel/catalog.db`（与 ACP 数据同属 `agentResume.panelHome`）；可用 `agentResume.catalog.dbPath` 覆盖。
+- **存储分工（重要）**：
+  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、从面板移除时的 `hidden` 标记），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
+  - **Agent 原生存储**：对话正文与各 Agent 自己的 session 文件**仍在原位置**；扩展**不复制** transcript，也**不创建**操作系统级软链接。预览、恢复、Session Manager 导出时按需读取原生文件。
+- **入站同步**：运行 **Refresh** 或打开面板时，从 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等数据目录加载会话并 UPSERT 到 Catalog。同步**不会**因冲突而把已「从面板移除」的会话自动恢复为可见（不会对 `hidden` 强行置回显示）。
+- **出站操作**：**Rename** 更新 Catalog 并调用各 Provider 的 `renameSession()` 写回原生存储；**Remove from Panel** 仅将 Catalog 中 `hidden=1`，不删除 Agent 侧文件。
+- **ACP Chats** 使用独立目录（`panelHome` 下 ACP 会话数据），**不纳入** Session Catalog。
+
+#### Session Manager
+
+在 **Sessions** 标题栏点击 **Session Manager**（数据库图标），或运行 **Agent Resume: Session Manager**，可打开 Webview 管理大量历史会话（筛选、浏览、批量处理）。**Export** 仅在此面板提供：导出 Catalog 元数据，并在导出时从各 Agent 原生存储读取完整对话写入导出结果（引用式读取，非事先在库内存全文）。
+
+#### 项目内会话排序
+
+右键 **项目** 分组或 **会话** 项，通过 **Sort Sessions** 子菜单按更新时间或标题升/降序排列该项目下的会话；排序模式按项目路径记忆。
+
+#### 与侧边栏条数限制的关系
+
+- `agentResume.catalog.sidebarMode` 为 `legacy`（默认）时，侧边栏树仍受 `agentResume.maxItems` 约束，但 Catalog 可同步更多条供 **Session Manager** 与 **Search Sessions** 使用。
+- 设为 `full` 时，侧边栏最多可展示至 `syncMaxItems`（仍来自 Catalog 且尊重 `hidden`）。
 
 ### 联系
 
 如有问题或建议，请联系：[lucas.zeus.ai@gmail.com](mailto:lucas.zeus.ai@gmail.com)
 
 ## English
+
+**On this page**：[Part 1: Overview](#part-1-overview) · [Part 2: Plugin Guide](#part-2-plugin-guide)
+
+### Part 1: Overview
 
 Agent Resume Panel is a VS Code sidebar extension for browsing, searching, and resuming Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions in one place — plus **ACP Chat** for talking to agents directly beside the editor.
 
@@ -256,6 +299,7 @@ Click a session in **Sessions**, or right-click it and choose:
 
 - **Preview Session**: Read User/Assistant messages without resuming the session.
 - **Rename Session**: Rename the title and write it back to the agent's native storage (Codex, Claude, Antigravity, Grok, OpenCode, Pi, and Alma).
+- **Remove from Panel**: Hide the session from the extension sidebar and catalog only; does not delete the agent's native session files (see [Part 2: Plugin Guide](#part-2-plugin-guide)).
 - **Resume Session**: Resume using the configured default (see **Extension panel resume** below).
 - **Copy Resume Command**: Copy the resume command.
 - **Open Folder and Resume**: Open the session's project and resume in a new window.
@@ -287,7 +331,7 @@ Run **Agent Resume: Search Sessions** to open a dedicated search panel:
 
 - **Projects** chip buttons at the top: click **All Projects** or a project to filter first; favorited projects show a star.
 - A separate **Sessions** list below: type to filter by title, provider, branch, or path (when no project is selected).
-- Click a session row to resume; use **Preview** to read User/Assistant messages without resuming, or **Rename** to rename without closing the panel.
+- Click a session row to resume; use **Preview**, **Rename**, or **Remove** on each row to preview, rename, or hide from the panel without closing the search panel.
 
 The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
 
@@ -408,7 +452,7 @@ On macOS, the first automatic paste may require granting VS Code Automation or A
 
 ### Agent Resume Settings
 
-Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, and LLM Assist, the left nav includes **Project Menu** for configuring project right-click actions and their order.
+Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, and LLM Assist, the left nav includes **Project Menu** and **Session Menu** for configuring project and session context menus.
 
 ### Settings
 
@@ -439,8 +483,42 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
 - `agentResume.projectMenu.mainActions`: Actions shown on the main project context menu (array order is display order).
 - `agentResume.projectMenu.itemOrder`: Full order of all configurable project menu actions (including items under **Show More**). Prefer dragging in **Agent Resume Settings → Project Menu** instead of editing JSON by hand.
+- `agentResume.sessionMenu.mainActions` / `agentResume.sessionMenu.itemOrder`: Session context menu and **Show More** order (configure in **Session Menu** settings).
+- `agentResume.catalog.dbPath`: SQLite Session Catalog database path (empty → `<panelHome>/catalog.db`).
+- `agentResume.catalog.syncMaxItems`: Upper bound on sessions written per sync pass.
+- `agentResume.catalog.stalePolicy`: How catalog rows are handled when a session vanishes from agent storage (`hide` / `purge`).
+- `agentResume.catalog.sidebarMode`: Sidebar cap (`legacy` uses `maxItems`, `full` up to `syncMaxItems`).
 
 If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not in the default location, adjust the matching home path in Settings.
+
+### Part 2: Plugin Guide
+
+This section describes how CLI sessions are indexed and managed inside the extension from 2.1.0 onward.
+
+#### Session Catalog (SQLite)
+
+The extension uses a local **SQLite** database (**Session Catalog**) as the source of truth for **CLI session listings and panel-side state**. The catalog is always maintained after activation (no separate enable switch).
+
+- **Default path**: `~/.agent-resume-panel/catalog.db` (under `agentResume.panelHome`, shared with ACP data roots); override with `agentResume.catalog.dbPath`.
+- **Storage split (important)**:
+  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, `hidden` when removed from the panel), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
+  - **Agent native storage**: Full conversation content and agent-specific session files **stay in place**. The extension does **not** copy transcripts into SQLite and does **not** create OS-level symlinks. Preview, resume, and Session Manager export read native files on demand.
+- **Inbound sync**: On **Refresh** or when views load, sessions are loaded from Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, and similar homes and UPSERTed into the catalog. Sync does **not** force `hidden` sessions back to visible when agent files still exist.
+- **Outbound actions**: **Rename** updates the catalog and calls each provider's `renameSession()` for native storage; **Remove from Panel** sets `hidden=1` in the catalog only.
+- **ACP Chats** use a separate store under `panelHome` and are **not** part of the Session Catalog.
+
+#### Session Manager
+
+Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets. **Export** is available only here: it emits catalog metadata and pulls full transcripts from native agent storage at export time (reference-based, not pre-stored blobs in SQLite).
+
+#### Sort sessions within a project
+
+Right-click a **project** group or a **session** under it and use **Sort Sessions** to order by updated time or title (ascending/descending). The choice is remembered per project path.
+
+#### Sidebar limits vs catalog
+
+- With `agentResume.catalog.sidebarMode` `legacy` (default), the sidebar tree still respects `agentResume.maxItems`, while the catalog can hold more for **Session Manager** and **Search Sessions**.
+- With `full`, the sidebar can show up to `syncMaxItems` catalog rows (still honoring `hidden`).
 
 ### Contact
 

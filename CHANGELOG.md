@@ -8,6 +8,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.1.0] - 2026-07-02
+
+#### 新增
+
+- **Session Catalog（SQLite）**：CLI 会话目录与面板状态默认写入本地 SQLite（`~/.agent-resume-panel/catalog.db`，可配置 `agentResume.catalog.dbPath`）；对话正文仍保留在各 Agent 原生存储，Catalog 存元数据与 transcript **引用**，预览/导出时按需读取原生文件。
+- **Session Manager**：**Sessions** 标题栏入口，浏览与筛选大量会话；**Export** 仅在此提供（含元数据 + 导出时读取的完整对话）。
+- **Search Sessions** 每行 **Remove**：与侧边栏 **Remove from Panel** 一致，仅在 Catalog 中隐藏。
+- **Session Menu** 设置页与可配置会话右键菜单（含 **Remove from Panel**）；项目/会话右键 **Sort Sessions**（按项目记忆排序）。
+
+#### 变更
+
+- 刷新时 UPSERT 同步各 Agent 会话至 Catalog；「从面板移除」的 `hidden` 状态不会因同步被自动恢复显示。
+- 移除 **Sessions** 标题栏 **Export Catalog**（导出仅保留在 Session Manager）。
+
+#### 移除
+
+- 项目/会话右键 **Collapse Project**。
 
 ### [2.0.2] - 2026-07-01
 
@@ -147,6 +164,24 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.1.0] - 2026-07-02
+
+#### Added
+
+- **Session Catalog (SQLite)**: CLI session listings and panel state are indexed in a local SQLite database (default `~/.agent-resume-panel/catalog.db`, configurable via `agentResume.catalog.dbPath`). Conversation bodies remain in each agent's native storage; the catalog stores metadata and transcript **references**, with native reads on preview/export.
+- **Session Manager**: Title-bar entry on **Sessions** to browse and filter large session sets; **Export** is only available here (metadata plus full transcripts read at export time).
+- **Remove** on each **Search Sessions** row, matching sidebar **Remove from Panel** (catalog hide only).
+- **Session Menu** settings and configurable session context menus (including **Remove from Panel**); **Sort Sessions** on project/session right-clicks (per-project sort memory).
+
+#### Changed
+
+- Refresh UPSERTs agent sessions into the catalog; `hidden` from remove-from-panel is not cleared automatically by sync.
+- Removed **Export Catalog** from the **Sessions** title bar (export remains in Session Manager only).
+
+#### Removed
+
+- **Collapse Project** from project/session context menus.
 
 ### [2.0.2] - 2026-07-01
 

@@ -3,11 +3,19 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-luc/agent-resume-panel.git"
+  },
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel#readme",
+  "bugs": {
+    "url": "https://github.com/thunder-luc/agent-resume-panel/issues"
+  },
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -53,10 +61,12 @@
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
+    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
     "package": "npm run compile && vsce package",
-    "install:local": "npm run package && node scripts/install-local.mjs"
+    "install:local": "npm run package && node scripts/install-local.mjs",
+    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
@@ -325,7 +335,7 @@
             "pi"
           ],
           "default": "codex",
-          "description": "Agent provider started by the editor title bar New Session button."
+          "description": "CLI agent provider started by the editor title bar New Session button."
         },
         "agentResume.claudeResumeMode": {
           "type": "string",
@@ -400,6 +410,7 @@
               "favorite",
               "openProject",
               "openInGhostty",
+              "newChatSession",
               "newCodexSession",
               "newClaudeSession",
               "newAgySession",
@@ -3105,5 +3116,11 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "zod": "^4.4.3"
   }
 }
