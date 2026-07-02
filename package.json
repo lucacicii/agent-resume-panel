@@ -29,7 +29,6 @@
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
-    "onCommand:agentResume.exportCatalog",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -533,12 +532,6 @@
         "icon": "$(database)"
       },
       {
-        "command": "agentResume.exportCatalog",
-        "title": "Export Catalog (Metadata + Transcripts)",
-        "category": "Agent Resume",
-        "icon": "$(export)"
-      },
-      {
         "command": "agentResume.newSession",
         "title": "New Session",
         "category": "Agent Resume",
@@ -920,11 +913,6 @@
           "command": "agentResume.openSessionManager",
           "when": "view == agentResume.sessions",
           "group": "navigation@2"
-        },
-        {
-          "command": "agentResume.exportCatalog",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@2.5"
         },
         {
           "command": "agentResume.refresh",

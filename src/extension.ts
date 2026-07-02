@@ -13,7 +13,7 @@ import {
   resolveSessionById,
   syncCatalog
 } from "./catalog";
-import { exportCatalogCommand } from "./catalog/exportCatalog";
+
 import { AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
 import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
@@ -105,9 +105,6 @@ export function activate(context: vscode.ExtensionContext): void {
       openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
         refresh(tree, false)
       )
-    ),
-    vscode.commands.registerCommand("agentResume.exportCatalog", () =>
-      exportCatalogCommand(() => refresh(tree, true))
     ),
     vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession, context)
