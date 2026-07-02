@@ -22,6 +22,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - 需要用 Ghostty 或 Codex App 接着打开已有会话。
 - 在 Alma 桌面客户端中按项目打开新对话。
 - 在编辑器右上角一键新建预设类型的 Agent 会话。
+- 将 Catalog 中的**全部 CLI 历史会话**（含元数据与各 Agent 原生存储中的完整对话）一次性导出到本地文件夹，便于备份或迁移。
 
 ### 快速开始
 
@@ -73,6 +74,16 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 - 点击某条会话即可恢复；行尾的 **Preview**、**Rename**、**Remove** 可分别预览、重命名或从面板移除，面板保持打开。
 
 侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
+
+### 导出全部会话
+
+通过 **Session Manager** 可导出会话（侧边栏 **Sessions** 标题栏的数据库图标，或 **Agent Resume: Session Manager**）：
+
+1. 打开面板后，可先点 **Refresh** 与侧边栏刷新同步，确保 Catalog 已收录各 Agent 的最新会话（受 `agentResume.catalog.syncMaxItems` 上限约束）。
+2. 保持搜索框为空、时间筛选为 **All**，并勾选要包含的 **Provider**（默认全部），列表即当前 Catalog 中的全部可见会话（不含已从面板移除的 `hidden` 会话）。
+3. 不勾选任何行，直接点击 **Export**，选择目标文件夹；扩展会创建带时间戳的子目录，写入 `manifest.json`，并从各 Agent **原生存储**读取 transcript 复制到 `sessions/` 下（可按 provider 筛选或勾选部分行，只导出选中会话；表头 **全选** 后再 **Export** 则导出当前筛选结果中的全部）。
+
+导出范围覆盖 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等已同步进 Catalog 的 CLI 会话；**ACP Chats** 不在此导出范围内。更多存储细节见 [第二部分：插件说明](#第二部分插件说明)。
 
 ### 编辑器标题栏快捷新建
 
@@ -248,7 +259,9 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 #### Session Manager
 
-在 **Sessions** 标题栏点击 **Session Manager**（数据库图标），或运行 **Agent Resume: Session Manager**，可打开 Webview 管理大量历史会话（筛选、浏览、批量处理）。**Export** 仅在此面板提供：导出 Catalog 元数据，并在导出时从各 Agent 原生存储读取完整对话写入导出结果（引用式读取，非事先在库内存全文）。
+在 **Sessions** 标题栏点击 **Session Manager**（数据库图标），或运行 **Agent Resume: Session Manager**，可打开 Webview 管理大量历史会话（筛选、浏览、批量处理）。
+
+**Export** 仅在此面板提供：导出 Catalog 中的会话元数据（`manifest.json`），并在导出时从各 Agent 原生存储读取完整对话写入 `sessions/`（引用式读取，非事先在库内存全文）。未勾选列表项时 **Export** 表示导出**当前筛选条件下的全部会话**；在默认筛选下即为 Catalog 内全部可见 CLI 会话（至多 `syncMaxItems`），实现「导出所有 session」的备份能力。已从面板移除（`hidden`）的条目默认不包含在导出 SQL 中。
 
 #### 项目内会话排序
 
@@ -283,6 +296,7 @@ Best for:
 - Continuing an existing session in Ghostty or Codex App when needed.
 - Starting a new Alma chat scoped to a project directory.
 - Starting a preset agent session from the editor title bar in one click.
+- Exporting **all CLI sessions** in the catalog at once (metadata plus full transcripts read from each agent's native storage) to a local folder for backup or migration.
 
 ### Quick Start
 
@@ -334,6 +348,16 @@ Run **Agent Resume: Search Sessions** to open a dedicated search panel:
 - Click a session row to resume; use **Preview**, **Rename**, or **Remove** on each row to preview, rename, or hide from the panel without closing the search panel.
 
 The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
+
+### Export all sessions
+
+Use **Session Manager** (**Sessions** title bar database icon, or **Agent Resume: Session Manager**):
+
+1. Optionally click **Refresh** (or refresh the sidebar first) so the catalog includes the latest sessions from each agent (capped by `agentResume.catalog.syncMaxItems`).
+2. Leave the search box empty, set the age filter to **All**, and enable every **Provider** you want (all are on by default). The list is then every visible catalog row (sessions removed from the panel via `hidden` are excluded).
+3. Click **Export** without selecting rows and pick a folder. The extension creates a timestamped subdirectory with `manifest.json` and copies transcripts from native agent storage under `sessions/`. You can also select specific rows, or use the header **select all** checkbox and **Export** to dump everything matching the current filters.
+
+This covers CLI sessions synced into the catalog (Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, etc.). **ACP Chats** are not included. See [Part 2: Plugin Guide](#part-2-plugin-guide) for storage details.
 
 ### Editor Title Bar Shortcut
 
@@ -509,7 +533,9 @@ The extension uses a local **SQLite** database (**Session Catalog**) as the sour
 
 #### Session Manager
 
-Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets. **Export** is available only here: it emits catalog metadata and pulls full transcripts from native agent storage at export time (reference-based, not pre-stored blobs in SQLite).
+Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets.
+
+**Export** is available only here: it writes catalog metadata (`manifest.json`) and pulls full transcripts from native agent storage into `sessions/` at export time (reference-based, not pre-stored blobs in SQLite). With no rows checked, **Export** dumps **all sessions matching the current filters**; with default filters that is every visible CLI session in the catalog (up to `syncMaxItems`)—i.e. export all sessions for backup. Rows marked `hidden` (removed from the panel) are omitted by default.
 
 #### Sort sessions within a project
 
