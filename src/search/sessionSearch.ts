@@ -115,7 +115,7 @@ export async function searchAndOpenSessions(
     if (message.type === "summarize" && message.provider && message.id) {
       const session = await findSession(tree, message.provider, message.id);
       if (session) {
-        await runSummarize(session, context, searchPanel!.webview);
+        await runSummarize(session, context, searchPanel!.webview, tree);
       }
       return;
     }

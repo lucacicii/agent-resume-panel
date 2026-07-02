@@ -14,6 +14,7 @@ export interface AgentSession {
   archived?: boolean;
   messageCount?: number;
   acpProvider?: AcpAgentProvider;
+  sessionSummary?: string;
 }
 
 export interface HistoryLoadOptions {

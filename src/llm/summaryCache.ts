@@ -1,48 +1,28 @@
 import * as vscode from "vscode";
+import { loadCatalogSettings } from "../catalog/config";
+import { ensureCatalogSchema } from "../catalog/db";
+import { setSessionSummaryInCatalog } from "../catalog/mutations";
+import { getSessionSummaryFromCatalog } from "../catalog/query";
 import { AgentSession } from "../history";
 import { LlmOutputLanguage } from "./languages";
 
-const CACHE_PREFIX = "agentResume.sessionSummary.";
-
-interface CachedSummaryEntry {
-  language: LlmOutputLanguage;
-  summary: string;
-}
-
-function cacheKey(session: AgentSession): string {
-  return `${CACHE_PREFIX}${session.provider}:${session.id}`;
-}
-
 export async function getCachedSummary(
-  context: vscode.ExtensionContext,
+  _context: vscode.ExtensionContext,
   session: AgentSession,
   language: LlmOutputLanguage
 ): Promise<string | undefined> {
-  const raw = context.globalState.get<CachedSummaryEntry | string>(cacheKey(session));
-  if (!raw) {
-    return undefined;
-  }
-
-  if (typeof raw === "string") {
-    return undefined;
-  }
-
-  if (raw.language !== language) {
-    return undefined;
-  }
-
-  return raw.summary?.trim() || undefined;
+  const catalog = loadCatalogSettings();
+  await ensureCatalogSchema(catalog.dbPath);
+  return getSessionSummaryFromCatalog(catalog.dbPath, session.provider, session.id, language);
 }
 
 export async function setCachedSummary(
-  context: vscode.ExtensionContext,
+  _context: vscode.ExtensionContext,
   session: AgentSession,
   language: LlmOutputLanguage,
   summary: string
 ): Promise<void> {
-  const entry: CachedSummaryEntry = {
-    language,
-    summary: summary.trim()
-  };
-  await context.globalState.update(cacheKey(session), entry);
+  const catalog = loadCatalogSettings();
+  await ensureCatalogSchema(catalog.dbPath);
+  await setSessionSummaryInCatalog(catalog.dbPath, session.provider, session.id, language, summary);
 }

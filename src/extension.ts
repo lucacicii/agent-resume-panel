@@ -51,6 +51,8 @@ import {
   ProjectSessionSortMode,
   setProjectSessionSortMode
 } from "./tree/projectSessionSort";
+import { getLlmConfig } from "./llm/config";
+import { migrateSummariesFromGlobalState } from "./llm/summaryMigration";
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
@@ -235,7 +237,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   void applyCodexIdePanelContext();
-  void refresh(tree, false);
+  void migrateSummariesFromGlobalState(context).then(() => refresh(tree, false));
   void refreshAcpChats(acpTree, false);
   void consumePendingResumeForWorkspace(context);
 }
@@ -251,7 +253,8 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
 
   try {
     const result = await syncCatalog(loadOptions, catalog);
-    const sessions = await querySidebarSessions(catalog, loadOptions.maxItems);
+    const llmConfig = extensionContext ? await getLlmConfig(extensionContext) : undefined;
+    const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
     tree.setData(sessions, result.warnings);
     if (showToast) {
       vscode.window.showInformationMessage(`Synced ${sessions.length} CLI sessions from catalog.`);

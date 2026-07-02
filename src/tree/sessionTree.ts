@@ -205,6 +205,23 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   getSessions(): AgentSession[] {
     return this.sessions;
   }
+
+  updateSessionSummary(session: AgentSession, summary: string): void {
+    const trimmed = summary.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const index = this.sessions.findIndex(
+      (entry) => entry.provider === session.provider && entry.id === session.id
+    );
+    if (index < 0) {
+      return;
+    }
+
+    this.sessions[index] = { ...this.sessions[index], sessionSummary: trimmed };
+    this.onDidChangeTreeDataEmitter.fire();
+  }
 }
 
 function rootItem(label: string, icon: string, id: string, description?: string): vscode.TreeItem {
@@ -262,8 +279,8 @@ function sessionLabel(session: AgentSession, showProjectName: boolean): string {
   return `${basenameOrPath(session.projectPath)} · ${title}`;
 }
 
-function buildSessionTooltip(session: AgentSession): string {
-  return [
+function buildSessionTooltip(session: AgentSession): string | vscode.MarkdownString {
+  const lines = [
     formatTitleWithMessageCount(session),
     `Provider: ${providerLabel(session.provider)}`,
     session.acpProvider ? `ACP agent: ${session.acpProvider}` : undefined,
@@ -272,9 +289,19 @@ function buildSessionTooltip(session: AgentSession): string {
     session.branch ? `Branch: ${session.branch}` : undefined,
     session.source ? `Source: ${session.source}` : undefined,
     `Session: ${session.id}`
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean);
+
+  if (session.sessionSummary) {
+    const tooltip = new vscode.MarkdownString();
+    tooltip.isTrusted = true;
+    tooltip.supportHtml = false;
+    tooltip.appendMarkdown(lines.join("  \n"));
+    tooltip.appendMarkdown("\n\n---\n\n**Summary**\n\n");
+    tooltip.appendText(session.sessionSummary);
+    return tooltip;
+  }
+
+  return lines.join("\n");
 }
 
 export function formatTitleWithMessageCount(session: AgentSession): string {

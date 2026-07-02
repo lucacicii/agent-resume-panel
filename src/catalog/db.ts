@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_synced_at_ms INTEGER,
   transcript_kind TEXT,
   transcript_refs TEXT,
+  session_summary TEXT,
+  session_summary_language TEXT,
+  session_summary_at_ms INTEGER,
   PRIMARY KEY (provider, agent_session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
@@ -33,6 +36,9 @@ CREATE TABLE IF NOT EXISTS sync_state (
 const MIGRATION_SQL = `
 ALTER TABLE sessions ADD COLUMN transcript_kind TEXT;
 ALTER TABLE sessions ADD COLUMN transcript_refs TEXT;
+ALTER TABLE sessions ADD COLUMN session_summary TEXT;
+ALTER TABLE sessions ADD COLUMN session_summary_language TEXT;
+ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
 `;
 
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {

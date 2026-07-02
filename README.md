@@ -48,7 +48,9 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - **Resume in Codex IDE Panel (Experimental)**：尝试在 Codex 插件面板中恢复（需已安装 `openai.chatgpt`，见下方说明）。
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 
-在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。
+在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。若已在 **Agent Resume Settings → LLM Assist** 配置 API，还可使用 **Summarize** 生成会话摘要（显示在对话上方），以及 **Auto Rename** 由 AI 建议标题并写回原生存储。
+
+**Summarize** 结果自 2.1.1 起写入 Session Catalog（`catalog.db` 的 `session_summary` 等字段），不再仅存于扩展内部状态。在 **Sessions** 侧边栏列表中**悬停**某条会话时，若存在与当前输出语言匹配的摘要，会在 tooltip 中显示 **Summary** 区块。
 
 Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会话。点击 Alma 会话会在 Alma 客户端中尝试切换到对应对话（通过标题搜索，可能不完全精准）。若 Agent 正在运行并锁住数据库，重命名可能失败，请先关闭对应 Agent 后重试。
 
@@ -251,7 +253,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 - **默认路径**：`~/.agent-resume-panel/catalog.db`（与 ACP 数据同属 `agentResume.panelHome`）；可用 `agentResume.catalog.dbPath` 覆盖。
 - **存储分工（重要）**：
-  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、从面板移除时的 `hidden` 标记），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
+  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、LLM **Summarize** 摘要 `session_summary` / `session_summary_language`、从面板移除时的 `hidden` 标记），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
   - **Agent 原生存储**：对话正文与各 Agent 自己的 session 文件**仍在原位置**；扩展**不复制** transcript，也**不创建**操作系统级软链接。预览、恢复、Session Manager 导出时按需读取原生文件。
 - **入站同步**：运行 **Refresh** 或打开面板时，从 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等数据目录加载会话并 UPSERT 到 Catalog。同步**不会**因冲突而把已「从面板移除」的会话自动恢复为可见（不会对 `hidden` 强行置回显示）。
 - **出站操作**：**Rename** 更新 Catalog 并调用各 Provider 的 `renameSession()` 写回原生存储；**Remove from Panel** 仅将 Catalog 中 `hidden=1`，不删除 Agent 侧文件。
@@ -322,7 +324,9 @@ Click a session in **Sessions**, or right-click it and choose:
 - **Resume in Codex IDE Panel (Experimental)**: Try resuming a Codex session in the Codex VS Code extension panel (experimental; can be disabled instantly).
 - **Resume in Codex App**: Continue a Codex session in Codex App.
 
-The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more).
+The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more). With **LLM Assist** configured under **Agent Resume Settings**, you can **Summarize** the session (shown above messages) or **Auto Rename** via AI title suggestion written back to native storage.
+
+As of 2.1.1, **Summarize** results are stored in the Session Catalog (`session_summary` and related columns in `catalog.db`), not only in extension-internal state. **Hover** a session in the **Sessions** sidebar to see a **Summary** block in the tooltip when a summary exists for the current output language.
 
 Alma sessions support **Rename Session**; use a click to resume in the Alma app. Clicking an Alma session tries to switch Alma to that thread via title search, which may not be exact. Rename can fail if the agent holds a database lock—close the agent and try again.
 
@@ -525,7 +529,7 @@ The extension uses a local **SQLite** database (**Session Catalog**) as the sour
 
 - **Default path**: `~/.agent-resume-panel/catalog.db` (under `agentResume.panelHome`, shared with ACP data roots); override with `agentResume.catalog.dbPath`.
 - **Storage split (important)**:
-  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, `hidden` when removed from the panel), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
+  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, LLM **Summarize** text in `session_summary` / `session_summary_language`, `hidden` when removed from the panel), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
   - **Agent native storage**: Full conversation content and agent-specific session files **stay in place**. The extension does **not** copy transcripts into SQLite and does **not** create OS-level symlinks. Preview, resume, and Session Manager export read native files on demand.
 - **Inbound sync**: On **Refresh** or when views load, sessions are loaded from Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, and similar homes and UPSERTed into the catalog. Sync does **not** force `hidden` sessions back to visible when agent files still exist.
 - **Outbound actions**: **Rename** updates the catalog and calls each provider's `renameSession()` for native storage; **Remove from Panel** sets `hidden=1` in the catalog only.

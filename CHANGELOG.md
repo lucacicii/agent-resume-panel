@@ -8,6 +8,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.1.1] - 2026-07-02
+
+#### 新增
+
+- **Summarize 持久化到 Catalog**：LLM 生成的会话摘要写入 Session Catalog SQLite（`sessions` 表字段 `session_summary`、`session_summary_language`、`session_summary_at_ms`），与 `user_title` 同为面板侧字段，同步刷新不会覆盖。
+- **侧边栏 Hover 显示摘要**：在 **Sessions** 列表中悬停某条会话时，若存在与当前 `agentResume.llm.outputLanguage` 匹配的摘要，会在 tooltip 中展示 **Summary** 区块。
+- **旧版摘要迁移**：首次启动时自动将此前保存在 VS Code `globalState` 中的 Summarize 缓存一次性迁入 Catalog。
+
+#### 变更
+
+- Summarize 缓存由 `globalState` 改为 Catalog DB；备份 `catalog.db` 即可保留摘要，重装扩展后仍可读取（需语言一致）。
+- 执行 Summarize 后侧边栏 tooltip 立即更新，无需手动 Refresh。
+
 ### [2.1.0] - 2026-07-02
 
 #### 新增
@@ -164,6 +177,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.1.1] - 2026-07-02
+
+#### Added
+
+- **Summarize persisted in catalog**: LLM session summaries are stored in the Session Catalog SQLite database (`session_summary`, `session_summary_language`, `session_summary_at_ms` on `sessions`), as panel-side fields alongside `user_title`; catalog sync refresh does not overwrite them.
+- **Sidebar hover summary**: Hovering a session in **Sessions** shows a **Summary** section in the tooltip when a summary exists for the current `agentResume.llm.outputLanguage`.
+- **Legacy summary migration**: On first startup, Summarize entries previously kept in VS Code `globalState` are migrated into the catalog once.
+
+#### Changed
+
+- Summarize cache moved from `globalState` to the catalog DB; backing up `catalog.db` preserves summaries across extension reinstalls (language must still match).
+- After Summarize, the sidebar tooltip updates immediately without a manual Refresh.
 
 ### [2.1.0] - 2026-07-02
 

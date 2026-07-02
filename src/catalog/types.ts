@@ -1,5 +1,6 @@
 import { AcpAgentProvider } from "../acp/types";
 import { AgentProvider, AgentSession } from "../history/types";
+import { LlmOutputLanguage } from "../llm/languages";
 
 export type CatalogStalePolicy = "hide" | "purge";
 export type CatalogSidebarMode = "legacy" | "full";
@@ -28,9 +29,12 @@ export interface CatalogSessionRow {
   last_synced_at_ms: number | null;
   transcript_kind?: string | null;
   transcript_refs?: string | null;
+  session_summary?: string | null;
+  session_summary_language?: string | null;
+  session_summary_at_ms?: number | null;
 }
 
-export function toAgentSession(row: CatalogSessionRow): AgentSession {
+export function toAgentSession(row: CatalogSessionRow, outputLanguage?: LlmOutputLanguage): AgentSession {
   const title = (row.user_title?.trim() || row.title || row.agent_session_id).trim();
   const session: AgentSession = {
     provider: row.provider,
@@ -57,6 +61,13 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   }
   if (row.acp_provider && row.provider === "chat") {
     session.acpProvider = row.acp_provider as AcpAgentProvider;
+  }
+  if (
+    outputLanguage &&
+    row.session_summary?.trim() &&
+    row.session_summary_language === outputLanguage
+  ) {
+    session.sessionSummary = row.session_summary.trim();
   }
 
   return session;

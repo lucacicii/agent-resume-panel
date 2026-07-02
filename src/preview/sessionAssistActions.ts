@@ -29,7 +29,8 @@ export async function ensureLlmConfigured(context: vscode.ExtensionContext): Pro
 export async function runSummarize(
   session: AgentSession,
   context: vscode.ExtensionContext,
-  webview?: vscode.Webview
+  webview?: vscode.Webview,
+  tree?: SessionTreeProvider
 ): Promise<void> {
   if (!(await ensureLlmConfigured(context))) {
     webview?.postMessage({ type: "summaryError", error: "LLM is not configured." });
@@ -44,6 +45,7 @@ export async function runSummarize(
     const summary = await summarizeSession(context, preview.messages);
     if (llmConfig) {
       await setCachedSummary(context, session, llmConfig.outputLanguage, summary);
+      tree?.updateSessionSummary(session, summary);
     }
     webview?.postMessage({ type: "summaryResult", summary });
   } catch (error) {

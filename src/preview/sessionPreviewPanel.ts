@@ -83,7 +83,7 @@ export async function openSessionPreviewPanel(
     if (message.type === "summarize") {
       const activeSession = findActiveSession();
       if (activeSession && activeContext) {
-        await runSummarize(activeSession, activeContext, previewPanel!.webview);
+        await runSummarize(activeSession, activeContext, previewPanel!.webview, activeTree);
       }
       return;
     }
