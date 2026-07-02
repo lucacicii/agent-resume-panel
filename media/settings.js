@@ -21,6 +21,18 @@
   let draggedProjectMenuIndex = null;
   let projectMenuDirty = false;
 
+  /** @type {string[]} */
+  let sessionMenuOrder = [];
+  /** @type {Set<string>} */
+  let sessionMenuChecked = new Set();
+  /** @type {Record<string, string>} */
+  let sessionMenuLabels = {};
+  /** @type {string[]} */
+  let sessionMenuDefaultMainActions = [];
+  /** @type {number | null} */
+  let draggedSessionMenuIndex = null;
+  let sessionMenuDirty = false;
+
   const navList = document.getElementById("settings-nav-list");
   const sectionTitle = document.getElementById("section-title");
   const sectionDescription = document.getElementById("section-description");
@@ -28,7 +40,10 @@
   const llmActions = document.getElementById("llm-actions");
   const projectMenuActions = document.getElementById("project-menu-actions");
   const projectMenuList = document.getElementById("project-menu-list");
+  const sessionMenuActions = document.getElementById("session-menu-actions");
+  const sessionMenuList = document.getElementById("session-menu-list");
   const resetProjectMenuBtn = document.getElementById("reset-project-menu");
+  const resetSessionMenuBtn = document.getElementById("reset-session-menu");
   const testResult = document.getElementById("test-result");
   const statusBanner = document.getElementById("status-banner");
   const saveBtn = document.getElementById("save-settings");
@@ -44,6 +59,12 @@
       patch["projectMenu.mainActions"] = {
         order: [...projectMenuOrder],
         checked: [...projectMenuChecked]
+      };
+    }
+    if (sessionMenuDirty) {
+      patch["sessionMenu.mainActions"] = {
+        order: [...sessionMenuOrder],
+        checked: [...sessionMenuChecked]
       };
     }
     vscode.postMessage({ type: "save", patch });
@@ -65,6 +86,12 @@
     renderProjectMenuList();
   });
 
+  resetSessionMenuBtn.addEventListener("click", () => {
+    applySessionMenuDefaults();
+    sessionMenuDirty = true;
+    renderSessionMenuList();
+  });
+
   window.addEventListener("message", (event) => {
     const message = event.data;
 
@@ -75,6 +102,7 @@
       apiKeyInput = "";
       saveBtn.disabled = false;
       loadProjectMenuState(message.projectMenu);
+      loadSessionMenuState(message.sessionMenu);
       if (message.activeSection) {
         activeSectionId = message.activeSection;
       }
@@ -86,6 +114,7 @@
     if (message.type === "saved") {
       apiKeyInput = "";
       projectMenuDirty = false;
+      sessionMenuDirty = false;
       saveBtn.disabled = false;
       showStatus("Settings saved.", "success");
       renderSection(activeSectionId);
@@ -123,6 +152,43 @@
     projectMenuDefaultMainActions = Array.isArray(projectMenu.defaultMainActions)
       ? [...projectMenu.defaultMainActions]
       : [];
+  }
+
+  function loadSessionMenuState(sessionMenu) {
+    sessionMenuDirty = false;
+
+    if (!sessionMenu) {
+      sessionMenuOrder = [];
+      sessionMenuChecked = new Set();
+      sessionMenuLabels = {};
+      sessionMenuDefaultMainActions = [];
+      return;
+    }
+
+    sessionMenuOrder = Array.isArray(sessionMenu.order) ? [...sessionMenu.order] : [];
+    sessionMenuChecked = new Set(Array.isArray(sessionMenu.mainActions) ? sessionMenu.mainActions : []);
+    sessionMenuLabels = sessionMenu.labels || {};
+    sessionMenuDefaultMainActions = Array.isArray(sessionMenu.defaultMainActions)
+      ? [...sessionMenu.defaultMainActions]
+      : [];
+  }
+
+  function applySessionMenuDefaults() {
+    const defaultSet = new Set(sessionMenuDefaultMainActions);
+    const order = [];
+
+    for (const action of sessionMenuDefaultMainActions) {
+      order.push(action);
+    }
+
+    for (const action of sessionMenuOrder.length ? sessionMenuOrder : Object.keys(sessionMenuLabels)) {
+      if (!defaultSet.has(action)) {
+        order.push(action);
+      }
+    }
+
+    sessionMenuOrder = order;
+    sessionMenuChecked = new Set(sessionMenuDefaultMainActions);
   }
 
   function applyProjectMenuDefaults() {
@@ -168,12 +234,24 @@
       renderSection("projectMenu");
     });
     navList.appendChild(projectButton);
+
+    const sessionButton = document.createElement("button");
+    sessionButton.type = "button";
+    sessionButton.className = `settings-nav-item${activeSectionId === "sessionMenu" ? " active" : ""}`;
+    sessionButton.textContent = "Session Menu";
+    sessionButton.addEventListener("click", () => {
+      activeSectionId = "sessionMenu";
+      renderNav();
+      renderSection("sessionMenu");
+    });
+    navList.appendChild(sessionButton);
   }
 
   function renderSection(sectionId) {
     fieldsEl.innerHTML = "";
     llmActions.classList.add("hidden");
     projectMenuActions.classList.add("hidden");
+    sessionMenuActions.classList.add("hidden");
     testResult.classList.add("hidden");
 
     if (sectionId === "projectMenu") {
@@ -181,6 +259,14 @@
       sectionDescription.textContent = "Configure and drag to reorder project context menu actions.";
       projectMenuActions.classList.remove("hidden");
       renderProjectMenuList();
+      return;
+    }
+
+    if (sectionId === "sessionMenu") {
+      sectionTitle.textContent = "Session Menu";
+      sectionDescription.textContent = "Configure and drag to reorder session context menu actions.";
+      sessionMenuActions.classList.remove("hidden");
+      renderSessionMenuList();
       return;
     }
 
@@ -341,6 +427,110 @@
     projectMenuOrder = next;
     projectMenuDirty = true;
     renderProjectMenuList();
+  }
+
+  function renderSessionMenuList() {
+    if (!sessionMenuList) {
+      return;
+    }
+
+    sessionMenuList.innerHTML = "";
+
+    sessionMenuOrder.forEach((actionId, index) => {
+      const row = document.createElement("div");
+      row.className = "project-menu-row";
+      row.dataset.index = String(index);
+
+      const handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "project-menu-drag-handle";
+      handle.title = "Drag to reorder";
+      handle.setAttribute("aria-label", "Drag to reorder");
+      handle.draggable = true;
+      handle.textContent = "⋮⋮";
+
+      handle.addEventListener("dragstart", (event) => {
+        draggedSessionMenuIndex = index;
+        row.classList.add("is-dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        }
+      });
+
+      handle.addEventListener("dragend", () => {
+        draggedSessionMenuIndex = null;
+        clearSessionMenuDragState();
+      });
+
+      row.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        row.classList.add("drag-over");
+      });
+
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drag-over");
+      });
+
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const fromIndex =
+          draggedSessionMenuIndex ?? Number(event.dataTransfer?.getData("text/plain") ?? Number.NaN);
+        reorderSessionMenuItem(fromIndex, index);
+        clearSessionMenuDragState();
+      });
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = sessionMenuChecked.has(actionId);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          sessionMenuChecked.add(actionId);
+        } else {
+          sessionMenuChecked.delete(actionId);
+        }
+        sessionMenuDirty = true;
+      });
+
+      const label = document.createElement("span");
+      label.className = "project-menu-label";
+      label.textContent = sessionMenuLabels[actionId] || actionId;
+
+      row.appendChild(handle);
+      row.appendChild(checkbox);
+      row.appendChild(label);
+      sessionMenuList.appendChild(row);
+    });
+  }
+
+  function clearSessionMenuDragState() {
+    sessionMenuList.querySelectorAll(".project-menu-row").forEach((row) => {
+      row.classList.remove("is-dragging", "drag-over");
+    });
+  }
+
+  function reorderSessionMenuItem(fromIndex, toIndex) {
+    if (
+      !Number.isInteger(fromIndex) ||
+      !Number.isInteger(toIndex) ||
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= sessionMenuOrder.length ||
+      toIndex >= sessionMenuOrder.length
+    ) {
+      return;
+    }
+
+    const next = [...sessionMenuOrder];
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    sessionMenuOrder = next;
+    sessionMenuDirty = true;
+    renderSessionMenuList();
   }
 
   function renderLlmTip() {

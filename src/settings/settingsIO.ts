@@ -13,6 +13,17 @@ import {
   saveMainActions
 } from "../menu/projectContextMenu";
 import {
+  applySessionMenuContext,
+  buildSessionMenuEditorState,
+  loadMainSessionActions,
+  loadSessionItemOrder,
+  mainSessionActionsFromEditorState,
+  saveMainSessionActions,
+  saveSessionItemOrder,
+  SessionMenuEditorState,
+  sessionItemOrderFromEditorState
+} from "../menu/sessionContextMenu";
+import {
   findSettingField,
   getAllSettingKeys,
   LLM_API_KEY_SECRET,
@@ -25,6 +36,7 @@ export interface SettingsSnapshot {
   values: Record<string, unknown>;
   llmApiKeyConfigured: boolean;
   projectMenu: ProjectMenuEditorState;
+  sessionMenu: SessionMenuEditorState;
 }
 
 function getFieldDefault(field: SettingField): unknown {
@@ -54,12 +66,15 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
   const envKey = process.env.AGENT_RESUME_LLM_API_KEY?.trim();
   const mainActions = loadMainActions(config);
   const itemOrder = loadItemOrder(config);
+  const sessionMainActions = loadMainSessionActions(config);
+  const sessionItemOrder = loadSessionItemOrder(config);
 
   return {
     sections: SETTING_SECTIONS,
     values,
     llmApiKeyConfigured: Boolean(apiKey?.trim() || envKey),
-    projectMenu: buildProjectMenuEditorState(mainActions, itemOrder)
+    projectMenu: buildProjectMenuEditorState(mainActions, itemOrder),
+    sessionMenu: buildSessionMenuEditorState(sessionMainActions, sessionItemOrder)
   };
 }
 
@@ -103,8 +118,39 @@ export async function applySettingsPatch(
     await applyProjectMenuContext(nextMainActions, nextItemOrder);
   }
 
+  if ("sessionMenu.mainActions" in patch) {
+    const raw = patch["sessionMenu.mainActions"];
+    let nextMainActions;
+    let nextItemOrder;
+
+    if (Array.isArray(raw) && raw.every((entry) => typeof entry === "string")) {
+      nextMainActions = mainSessionActionsFromEditorState(raw, raw);
+      nextItemOrder = sessionItemOrderFromEditorState(raw);
+    } else if (
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as { order?: unknown }).order) &&
+      Array.isArray((raw as { checked?: unknown }).checked)
+    ) {
+      const editor = raw as { order: string[]; checked: string[] };
+      nextMainActions = mainSessionActionsFromEditorState(editor.order, editor.checked);
+      nextItemOrder = sessionItemOrderFromEditorState(editor.order);
+    } else {
+      throw new Error("Invalid session menu configuration.");
+    }
+
+    await saveMainSessionActions(config, nextMainActions);
+    await saveSessionItemOrder(config, nextItemOrder);
+    await applySessionMenuContext(nextMainActions, nextItemOrder);
+  }
+
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "llm.apiKey" || key === "projectMenu.mainActions" || !allowedKeys.has(key)) {
+    if (
+      key === "llm.apiKey" ||
+      key === "projectMenu.mainActions" ||
+      key === "sessionMenu.mainActions" ||
+      !allowedKeys.has(key)
+    ) {
       continue;
     }
 

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
+import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
 
 type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
@@ -59,6 +60,12 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private favoriteProjects: string[] = [];
   private sectionOrder: SectionKind[] = [...DEFAULT_SECTION_ORDER];
   private recentVisibleCount = recentInitialLimit;
+  private projectSessionSortMode: (projectPath: string) => ProjectSessionSortMode = () => "updatedDesc";
+
+  setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
+    this.projectSessionSortMode = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
 
   setData(sessions: AgentSession[], warnings: string[]): void {
     this.sessions = sessions;
@@ -138,6 +145,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         );
         item.description = `${element.sessions.length}`;
         item.tooltip = element.projectPath;
+        item.id = projectTreeItemId(element.projectPath);
         item.iconPath = new vscode.ThemeIcon(element.favorited ? "star-full" : "folder");
         item.contextValue = element.favorited ? "agentResume.project.favorited" : "agentResume.project";
         return item;
@@ -179,7 +187,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "project") {
-      return buildProjectChildren(element.sessions);
+      return buildProjectChildren(element.sessions, this.projectSessionSortMode(element.projectPath));
     }
 
     return [];
@@ -281,8 +289,8 @@ export function formatTitleWithMessageCount(session: AgentSession): string {
   return title;
 }
 
-function buildProjectChildren(projectSessions: AgentSession[]): TreeNode[] {
-  return projectSessions.map((session) => ({ kind: "session" as const, session }));
+function buildProjectChildren(projectSessions: AgentSession[], sortMode: ProjectSessionSortMode): TreeNode[] {
+  return sortSessionsForProject(projectSessions, sortMode).map((session) => ({ kind: "session" as const, session }));
 }
 
 export interface ProjectGroup {
@@ -317,12 +325,15 @@ function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession
 
 function buildFavoriteProjectNodes(favoritePaths: string[], sessions: AgentSession[]): ProjectNode[] {
   const byPath = groupSessionsByPath(sessions);
-  return favoritePaths.map((projectPath) => ({
+  return favoritePaths.map((favoritePath) => {
+    const projectPath = path.resolve(favoritePath);
+    return {
     kind: "project" as const,
     projectPath,
-    sessions: (byPath.get(projectPath) ?? []).sort((a, b) => b.updatedAt - a.updatedAt),
+    sessions: byPath.get(projectPath) ?? [],
     favorited: true
-  }));
+  };
+  });
 }
 
 function groupByProject(sessions: AgentSession[], excludePaths = new Set<string>()): ProjectNode[] {
@@ -333,7 +344,7 @@ function groupByProject(sessions: AgentSession[], excludePaths = new Set<string>
     .map(([projectPath, projectSessions]) => ({
       kind: "project" as const,
       projectPath,
-      sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt)
+      sessions: projectSessions
     }))
     .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
 }

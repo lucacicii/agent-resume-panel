@@ -24,6 +24,11 @@ export async function openSettingsPanelToProjectMenu(context: vscode.ExtensionCo
   await revealSettingsPanel(context);
 }
 
+export async function openSettingsPanelToSessionMenu(context: vscode.ExtensionContext): Promise<void> {
+  pendingActiveSection = "sessionMenu";
+  await revealSettingsPanel(context);
+}
+
 export async function openSettingsPanelToAcp(context: vscode.ExtensionContext): Promise<void> {
   pendingActiveSection = "acp";
   await revealSettingsPanel(context);
@@ -114,6 +119,7 @@ async function sendInit(webview: vscode.Webview, context: vscode.ExtensionContex
     values: snapshot.values,
     llmApiKeyConfigured: snapshot.llmApiKeyConfigured,
     projectMenu: snapshot.projectMenu,
+    sessionMenu: snapshot.sessionMenu,
     activeSection
   });
 }

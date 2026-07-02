@@ -41,19 +41,35 @@ import {
   removeFavoriteProject
 } from "./favorites/projectFavorites";
 import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
+import {
+  applySessionMenuContext,
+  loadMainSessionActions,
+  loadSessionItemOrder
+} from "./menu/sessionContextMenu";
+import {
+  getProjectSessionSortMode,
+  ProjectSessionSortMode,
+  setProjectSessionSortMode
+} from "./tree/projectSessionSort";
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
 import { openSessionManagerPanel } from "./manager/sessionManagerPanel";
-import { openSettingsPanel, openSettingsPanelToAcp, openSettingsPanelToProjectMenu } from "./settings/settingsPanel";
+import {
+  openSettingsPanel,
+  openSettingsPanelToAcp,
+  openSettingsPanelToProjectMenu,
+  openSettingsPanelToSessionMenu
+} from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
-import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
+import { projectUri, sessionQuickPickLabel, SessionTreeProvider, TreeNode } from "./tree/sessionTree";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
 
 let extensionContext: vscode.ExtensionContext | undefined;
+let sessionsTreeView: vscode.TreeView<TreeNode> | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -62,12 +78,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
+  tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
   void applyProjectMenuContextFromConfig();
+  void applySessionMenuContextFromConfig();
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
     showCollapseAll: true,
     dragAndDropController: new SessionTreeDragDrop(tree, context)
   });
+  sessionsTreeView = treeView;
   const acpTreeView = vscode.window.createTreeView("agentResume.acpChats", {
     treeDataProvider: acpTree,
     showCollapseAll: true
@@ -179,6 +198,23 @@ export function activate(context: vscode.ExtensionContext): void {
       unfavoriteProject(context, tree, node)
     ),
     vscode.commands.registerCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
+    vscode.commands.registerCommand("agentResume.configureSessionMenu", () => openSettingsPanelToSessionMenu(context)),
+    vscode.commands.registerCommand("agentResume.collapseParentProject", (node?: unknown) =>
+      collapseProjectInTree(tree, node)
+    ),
+    vscode.commands.registerCommand("agentResume.collapseProject", (node?: unknown) => collapseProjectInTree(tree, node)),
+    vscode.commands.registerCommand("agentResume.sortProjectSessionsUpdatedDesc", (node?: unknown) =>
+      setProjectSortMode(context, tree, node, "updatedDesc")
+    ),
+    vscode.commands.registerCommand("agentResume.sortProjectSessionsUpdatedAsc", (node?: unknown) =>
+      setProjectSortMode(context, tree, node, "updatedAsc")
+    ),
+    vscode.commands.registerCommand("agentResume.sortProjectSessionsTitleAsc", (node?: unknown) =>
+      setProjectSortMode(context, tree, node, "titleAsc")
+    ),
+    vscode.commands.registerCommand("agentResume.sortProjectSessionsTitleDesc", (node?: unknown) =>
+      setProjectSortMode(context, tree, node, "titleDesc")
+    ),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.openAcpSettings", () => openSettingsPanelToAcp(context)),
     vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
@@ -190,6 +226,12 @@ export function activate(context: vscode.ExtensionContext): void {
         event.affectsConfiguration("agentResume.projectMenu.itemOrder")
       ) {
         void applyProjectMenuContextFromConfig();
+      }
+      if (
+        event.affectsConfiguration("agentResume.sessionMenu.mainActions") ||
+        event.affectsConfiguration("agentResume.sessionMenu.itemOrder")
+      ) {
+        void applySessionMenuContextFromConfig();
       }
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
@@ -825,4 +867,58 @@ async function renameAcpChatCommand(
 function applyProjectMenuContextFromConfig(): void {
   const config = vscode.workspace.getConfiguration("agentResume");
   void applyProjectMenuContext(loadMainActions(config), loadItemOrder(config));
+}
+
+function applySessionMenuContextFromConfig(): void {
+  const config = vscode.workspace.getConfiguration("agentResume");
+  void applySessionMenuContext(loadMainSessionActions(config), loadSessionItemOrder(config));
+}
+
+async function collapseProjectInTree(tree: SessionTreeProvider, node: unknown): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath || !sessionsTreeView) {
+    return;
+  }
+
+  const projectNode = {
+    kind: "project" as const,
+    projectPath,
+    sessions: tree.getProjectSessionsFromNode(node)
+  };
+
+  try {
+    await sessionsTreeView.reveal(projectNode, { expand: false, focus: false, select: false });
+  } catch {
+    // Project may be outside the expanded tree; ignore.
+  }
+}
+
+async function setProjectSortMode(
+  context: vscode.ExtensionContext,
+  tree: SessionTreeProvider,
+  node: unknown,
+  mode: ProjectSessionSortMode
+): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+
+  await setProjectSessionSortMode(context, projectPath, mode);
+  tree.setProjectSessionSortMode((pathValue) => getProjectSessionSortMode(context, pathValue));
+  vscode.window.showInformationMessage(`Sessions sorted by ${sortModeLabel(mode)}.`);
+}
+
+function sortModeLabel(mode: ProjectSessionSortMode): string {
+  switch (mode) {
+    case "updatedAsc":
+      return "updated (oldest first)";
+    case "titleAsc":
+      return "title (A–Z)";
+    case "titleDesc":
+      return "title (Z–A)";
+    case "updatedDesc":
+    default:
+      return "updated (newest first)";
+  }
 }

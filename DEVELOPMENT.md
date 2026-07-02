@@ -59,16 +59,16 @@ npm run publish:openvsx
 
 ## Project Menu Contributions
 
-When you add, remove, or reorder configurable **project** context menu actions:
+When you add, remove, or reorder configurable **project** or **session** context menu actions:
 
-1. Update the action list in [`scripts/generate-project-menu-contributions.mjs`](scripts/generate-project-menu-contributions.mjs) and the related TypeScript labels in [`src/menu/projectContextMenu.ts`](src/menu/projectContextMenu.ts).
+1. Update [`scripts/generate-project-menu-contributions.mjs`](scripts/generate-project-menu-contributions.mjs) / [`src/menu/projectContextMenu.ts`](src/menu/projectContextMenu.ts), or [`scripts/generate-session-menu-contributions.mjs`](scripts/generate-session-menu-contributions.mjs) / [`src/menu/sessionContextMenu.ts`](src/menu/sessionContextMenu.ts).
 2. Regenerate menu contributions:
 
 ```sh
 node scripts/patch-project-menu-package.mjs
 ```
 
-This script replaces only the **project** block in `package.json` and `package-vscode.json`. It preserves the existing **session** right-click menu entries from the current package file, falling back to `git HEAD` only if the session block is missing.
+This script regenerates the **session** and **project** menu blocks in `package.json` and `package-vscode.json`, and preserves ACP chat context menu entries.
 
 3. Verify the generator:
 
