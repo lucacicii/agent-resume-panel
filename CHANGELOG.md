@@ -8,6 +8,21 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.1.3] - 2026-03-19
+
+#### 新增
+
+- **Session Manager 列表摘要**：会话列表 **Title / Summary** 列在标题下显示摘要行；优先 LLM Summarize（Catalog 中任意语言），否则回退为 branch / model / 消息数 / 项目路径；过长内容在本列内省略，悬停可看全文。
+- **Search Sessions 列表摘要**：有 LLM 摘要时在标题下额外显示一行；保留原有 project / branch 副标题；支持按摘要搜索；在预览内 Summarize 后列表即时更新。
+
+#### 变更
+
+- Session Manager / Search Sessions 加载摘要时不再依赖 LLM API Key（直接读取 `agentResume.llm.outputLanguage` 与 Catalog）；并与侧边栏树中的内存摘要合并。
+
+#### 修复
+
+- **Session Manager**：未配置 LLM API Key 时加载列表可能失败、摘要无法显示的问题。
+
 ### [2.1.1] - 2026-07-02
 
 #### 新增
@@ -177,6 +192,21 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.1.3] - 2026-03-19
+
+#### Added
+
+- **Session Manager list summaries**: The **Title / Summary** column shows a subtitle under each title—LLM Summarize from the catalog (any language) when present, otherwise branch / model / message count / project path; long text ellipsizes within the column with full text on hover.
+- **Search Sessions list summaries**: When an LLM summary exists, an extra line appears under the title; existing project / branch meta is unchanged; summaries are searchable; the list updates immediately after Summarize in the preview overlay.
+
+#### Changed
+
+- Session Manager and Search Sessions load summaries without requiring an LLM API key (using `agentResume.llm.outputLanguage` and the catalog), merging in-memory summaries from the sidebar tree.
+
+#### Fixed
+
+- **Session Manager**: Loading could fail and summaries would not appear when no LLM API key was configured.
 
 ### [2.1.1] - 2026-07-02
 

@@ -1,7 +1,7 @@
 import { AgentSession } from "../history/types";
 import { runSqliteJson } from "../history/sqlite";
 import { LlmOutputLanguage } from "../llm/languages";
-import { CatalogSessionRow, CatalogSettings, toAgentSession } from "./types";
+import { CatalogSessionRow, CatalogSettings, SessionSummaryPolicy, toAgentSession } from "./types";
 
 export async function querySidebarSessions(
   catalog: CatalogSettings,
@@ -14,9 +14,10 @@ export async function querySidebarSessions(
 
 export async function queryCatalogSessions(
   catalog: CatalogSettings,
-  outputLanguage?: LlmOutputLanguage
+  outputLanguage?: LlmOutputLanguage,
+  summaryPolicy: SessionSummaryPolicy = "match"
 ): Promise<AgentSession[]> {
-  return queryVisibleSessions(catalog.dbPath, catalog.syncMaxItems, outputLanguage);
+  return queryVisibleSessions(catalog.dbPath, catalog.syncMaxItems, outputLanguage, summaryPolicy);
 }
 
 export async function querySessionById(
@@ -63,7 +64,8 @@ export async function getSessionSummaryFromCatalog(
 async function queryVisibleSessions(
   dbPath: string,
   limit: number,
-  outputLanguage?: LlmOutputLanguage
+  outputLanguage?: LlmOutputLanguage,
+  summaryPolicy: SessionSummaryPolicy = "match"
 ): Promise<AgentSession[]> {
   const safeLimit = Math.max(1, Math.min(limit, 50_000));
   const rows = await runSqliteJson<CatalogSessionRow>(
@@ -77,7 +79,7 @@ async function queryVisibleSessions(
      LIMIT ${safeLimit};`
   );
 
-  return rows.map((row) => toAgentSession(row, outputLanguage));
+  return rows.map((row) => toAgentSession(row, outputLanguage, summaryPolicy));
 }
 
 function escapeProvider(provider: string): string {

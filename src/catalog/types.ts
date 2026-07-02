@@ -34,7 +34,13 @@ export interface CatalogSessionRow {
   session_summary_at_ms?: number | null;
 }
 
-export function toAgentSession(row: CatalogSessionRow, outputLanguage?: LlmOutputLanguage): AgentSession {
+export type SessionSummaryPolicy = "match" | "any";
+
+export function toAgentSession(
+  row: CatalogSessionRow,
+  outputLanguage?: LlmOutputLanguage,
+  summaryPolicy: SessionSummaryPolicy = "match"
+): AgentSession {
   const title = (row.user_title?.trim() || row.title || row.agent_session_id).trim();
   const session: AgentSession = {
     provider: row.provider,
@@ -62,12 +68,12 @@ export function toAgentSession(row: CatalogSessionRow, outputLanguage?: LlmOutpu
   if (row.acp_provider && row.provider === "chat") {
     session.acpProvider = row.acp_provider as AcpAgentProvider;
   }
+  const summary = row.session_summary?.trim();
   if (
-    outputLanguage &&
-    row.session_summary?.trim() &&
-    row.session_summary_language === outputLanguage
+    summary &&
+    (summaryPolicy === "any" || (outputLanguage && row.session_summary_language === outputLanguage))
   ) {
-    session.sessionSummary = row.session_summary.trim();
+    session.sessionSummary = summary;
   }
 
   return session;

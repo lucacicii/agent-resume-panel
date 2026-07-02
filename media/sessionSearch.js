@@ -1,7 +1,7 @@
 (function () {
   const vscode = acquireVsCodeApi();
 
-  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, updatedAtLabel: string}> }} */
+  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string}> }} */
   let state = { projects: [], sessions: [] };
   let selectedProjectPath = null;
   let query = "";
@@ -154,8 +154,12 @@
     }
 
     if (message.type === "summaryResult") {
-      renderSummary(message.summary || "");
+      const summary = message.summary || "";
+      renderSummary(summary);
       setAiButtonsDisabled(false);
+      if (activePreviewSession && summary) {
+        updateSessionSummary(activePreviewSession.provider, activePreviewSession.id, summary);
+      }
       return;
     }
 
@@ -235,6 +239,15 @@
       const title = document.createElement("div");
       title.className = "session-title";
       title.textContent = session.title;
+      main.appendChild(title);
+
+      if (session.summary) {
+        const summary = document.createElement("div");
+        summary.className = "session-summary";
+        summary.textContent = session.summary;
+        summary.title = session.summary;
+        main.appendChild(summary);
+      }
 
       const meta = document.createElement("div");
       meta.className = "session-meta";
@@ -247,7 +260,6 @@
       }
       meta.textContent = metaParts.join(" · ");
 
-      main.appendChild(title);
       if (metaParts.length) {
         main.appendChild(meta);
       }
@@ -429,6 +441,23 @@
     return `${provider}:${id}`;
   }
 
+  function updateSessionSummary(provider, id, summary) {
+    const trimmed = summary.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const index = state.sessions.findIndex(
+      (session) => session.provider === provider && session.id === id
+    );
+    if (index < 0) {
+      return;
+    }
+
+    state.sessions[index] = { ...state.sessions[index], summary: trimmed };
+    renderSessions();
+  }
+
   function matchesSession(session) {
     if (selectedProjectPath && normalizePath(session.projectPath) !== selectedProjectPath) {
       return false;
@@ -441,6 +470,7 @@
 
     return (
       session.title.toLowerCase().includes(trimmed) ||
+      (session.summary && session.summary.toLowerCase().includes(trimmed)) ||
       session.provider.toLowerCase().includes(trimmed) ||
       (session.branch && session.branch.toLowerCase().includes(trimmed)) ||
       (!selectedProjectPath &&

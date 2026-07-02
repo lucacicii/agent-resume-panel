@@ -1,9 +1,9 @@
 (function () {
   const vscode = acquireVsCodeApi();
 
-  const ROW_HEIGHT = 36;
-  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,removeAction:string}>, stats: {total:number, byProvider: Record<string, number>} }} */
-  let state = { sessions: [], stats: { total: 0, byProvider: {} } };
+  const ROW_HEIGHT = 64;
+  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,removeAction:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>} }} */
+  let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} } };
 
   const selected = new Set();
   const enabledProviders = new Set();
@@ -63,7 +63,7 @@
     const message = event.data;
     if (message.type === "init") {
       state.sessions = message.sessions || [];
-      state.stats = message.stats || { total: 0, byProvider: {} };
+      state.stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
       enabledProviders.clear();
       for (const provider of Object.keys(state.stats.byProvider || {})) {
         enabledProviders.add(provider);
@@ -137,6 +137,7 @@
       }
       return (
         session.title.toLowerCase().includes(trimmed) ||
+        session.subtitle.toLowerCase().includes(trimmed) ||
         session.provider.toLowerCase().includes(trimmed) ||
         session.projectName.toLowerCase().includes(trimmed) ||
         session.projectPath.toLowerCase().includes(trimmed)
@@ -168,7 +169,8 @@
 
   function render() {
     const filtered = getFilteredSessions();
-    statsEl.textContent = `Showing ${filtered.length} of ${state.stats.total} catalog sessions`;
+    const summaryCount = state.stats.withSummary ?? 0;
+    statsEl.textContent = `Showing ${filtered.length} of ${state.stats.total} catalog sessions · ${summaryCount} with LLM summary`;
     spacer.style.height = `${Math.max(filtered.length, 1) * ROW_HEIGHT}px`;
     renderRows();
   }
@@ -198,6 +200,9 @@
       const row = document.createElement("div");
       row.className = "row";
 
+      const top = document.createElement("div");
+      top.className = "row-top";
+
       const check = document.createElement("input");
       check.type = "checkbox";
       check.checked = selected.has(sessionKey(session));
@@ -213,10 +218,20 @@
       badge.className = "badge";
       badge.textContent = session.provider;
 
-      const title = document.createElement("span");
+      const titleCol = document.createElement("div");
+      titleCol.className = "title-col";
+
+      const title = document.createElement("div");
       title.className = "title";
       title.textContent = session.title;
-      title.title = `${session.title}\n${session.removeAction}`;
+      title.title = session.title;
+      titleCol.appendChild(title);
+
+      const subtitle = document.createElement("div");
+      subtitle.className = "subtitle";
+      subtitle.textContent = session.subtitle;
+      subtitle.title = session.subtitle;
+      titleCol.appendChild(subtitle);
 
       const project = document.createElement("span");
       project.className = "project";
@@ -227,11 +242,13 @@
       time.className = "time";
       time.textContent = session.updatedAtLabel;
 
-      row.appendChild(check);
-      row.appendChild(badge);
-      row.appendChild(title);
-      row.appendChild(project);
-      row.appendChild(time);
+      top.appendChild(check);
+      top.appendChild(badge);
+      top.appendChild(titleCol);
+      top.appendChild(project);
+      top.appendChild(time);
+      row.appendChild(top);
+
       rowsEl.appendChild(row);
     }
   }

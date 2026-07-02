@@ -351,6 +351,16 @@ body {
   white-space: nowrap;
 }
 
+.session-summary {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .session-meta {
   margin-top: 2px;
   font-size: 11px;
@@ -358,6 +368,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .session-time {

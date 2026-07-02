@@ -94,6 +94,24 @@ body {
   font-size: 12px;
 }
 
+.list-header {
+  display: grid;
+  grid-template-columns: 28px 72px minmax(0, 1fr) 120px 88px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.col-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .list-viewport {
   position: relative;
   flex: 1;
@@ -115,12 +133,8 @@ body {
 }
 
 .row {
-  display: grid;
-  grid-template-columns: 28px 72px 1fr 120px 88px;
-  gap: 8px;
-  align-items: center;
-  height: 36px;
-  padding: 0 8px;
+  min-height: 64px;
+  padding: 6px 8px 8px;
   border-bottom: 1px solid var(--vscode-panel-border);
   font-size: 12px;
 }
@@ -129,18 +143,47 @@ body {
   background: var(--vscode-list-hoverBackground);
 }
 
+.row-top {
+  display: grid;
+  grid-template-columns: 28px 72px minmax(0, 1fr) 120px 88px;
+  gap: 8px;
+  align-items: center;
+}
+
 .badge {
   text-transform: lowercase;
   color: var(--vscode-descriptionForeground);
+}
+
+.title-col {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.92;
 }
 
 .project {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

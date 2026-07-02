@@ -7,16 +7,20 @@ import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
 import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadSessionPreview } from "../history/preview";
-import { getLlmConfig, isLlmConfigured } from "../llm/config";
+import { getLlmConfig, getLlmOutputLanguage, isLlmConfigured } from "../llm/config";
 import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
 import { runAutoRename, runSummarize } from "../preview/sessionAssistActions";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
   buildProjectList,
+  enrichSessionsWithTreeSummaries,
+  getSessionSummaryText,
   serializeSessionForSearch,
   SessionTreeProvider
 } from "../tree/sessionTree";
+
+const WEBVIEW_ASSET_VERSION = "1";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -251,13 +255,13 @@ async function findSession(tree: SessionTreeProvider, provider: AgentProvider, i
   return resolveSessionById(tree, provider, id);
 }
 
-async function getSessionsForSearch(_tree: SessionTreeProvider): Promise<AgentSession[]> {
+async function getSessionsForSearch(): Promise<AgentSession[]> {
   const catalog = loadCatalogSettings();
-  return queryCatalogSessions(catalog);
+  return queryCatalogSessions(catalog, getLlmOutputLanguage(), "any");
 }
 
 async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): Promise<void> {
-  const sessions = await getSessionsForSearch(tree);
+  const sessions = enrichSessionsWithTreeSummaries(await getSessionsForSearch(), tree.getSessions());
   const favoriteProjects = tree.getFavoriteProjects();
   const projects = buildProjectList(sessions, favoriteProjects);
 
@@ -272,7 +276,11 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
         compactPath: compactPath(project.projectPath)
       })
     ),
-    sessions: sessions.map(serializeSessionForSearch)
+    sessions: sessions.map((session) => {
+      const item = serializeSessionForSearch(session);
+      const summary = getSessionSummaryText(session);
+      return summary ? { ...item, summary } : item;
+    })
   };
 
   webview.postMessage(payload);
@@ -281,8 +289,12 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
 function getWebviewHtml(webview: vscode.Webview): string {
   const extensionUri = getExtensionUri();
   const htmlUri = vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.html");
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.css"));
-  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.js"));
+  const styleUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.css"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
+  const scriptUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionSearch.js"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
   const nonce = getNonce();
 
   let html = readMediaFile(htmlUri.fsPath);

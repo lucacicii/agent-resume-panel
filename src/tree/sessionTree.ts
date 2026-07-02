@@ -462,6 +462,56 @@ export interface SearchSessionItem {
   projectName: string;
   branch?: string;
   updatedAtLabel: string;
+  summary?: string;
+}
+
+export function enrichSessionsWithTreeSummaries(
+  sessions: AgentSession[],
+  treeSessions: AgentSession[]
+): AgentSession[] {
+  const treeSummaries = new Map<string, string>();
+  for (const session of treeSessions) {
+    const summary = session.sessionSummary?.trim();
+    if (summary) {
+      treeSummaries.set(`${session.provider}:${session.id}`, summary);
+    }
+  }
+
+  return sessions.map((session) => {
+    const key = `${session.provider}:${session.id}`;
+    if (session.sessionSummary?.trim() || !treeSummaries.has(key)) {
+      return session;
+    }
+
+    return { ...session, sessionSummary: treeSummaries.get(key) };
+  });
+}
+
+export function getSessionSummaryText(session: AgentSession): string | undefined {
+  const summary = session.sessionSummary?.trim();
+  return summary || undefined;
+}
+
+export function buildSessionSubtitle(session: AgentSession): string {
+  if (session.sessionSummary?.trim()) {
+    return session.sessionSummary.trim();
+  }
+
+  const parts: string[] = [];
+  if (session.branch) {
+    parts.push(session.branch);
+  }
+  if (session.model) {
+    parts.push(session.model);
+  }
+  if (session.messageCount != null) {
+    parts.push(`${session.messageCount} msgs`);
+  }
+  if (parts.length) {
+    return parts.join(" · ");
+  }
+
+  return compactPath(session.projectPath);
 }
 
 export function serializeSessionForSearch(session: AgentSession): SearchSessionItem {

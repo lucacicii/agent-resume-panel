@@ -69,6 +69,12 @@ export async function isLlmConfigured(context: vscode.ExtensionContext): Promise
   return (await getLlmConfig(context)) !== undefined;
 }
 
+export function getLlmOutputLanguage(): LlmOutputLanguage {
+  return normalizeOutputLanguage(
+    readAgentResumeSetting("llm.outputLanguage", DEFAULT_LLM_OUTPUT_LANGUAGE)
+  );
+}
+
 export function readAgentResumeSetting<T>(key: string, defaultValue: T): T {
   const config = vscode.workspace.getConfiguration("agentResume");
   const value = config.get<T>(key);

@@ -6,8 +6,15 @@ import { resolveSessionById } from "../catalog/resolve";
 import { AgentSession, HistoryLoadOptions } from "../history/types";
 import { exportCatalogWithTranscripts } from "../catalog/transcript/export";
 import { removeSessionsFromPanel } from "../catalog/mutations";
+import { getLlmOutputLanguage } from "../llm/config";
 import { openSessionResume } from "../terminal/resumeTerminal";
-import { relativeTime, serializeSessionForSearch, SessionTreeProvider } from "../tree/sessionTree";
+import {
+  buildSessionSubtitle,
+  enrichSessionsWithTreeSummaries,
+  relativeTime,
+  serializeSessionForSearch,
+  SessionTreeProvider
+} from "../tree/sessionTree";
 
 interface ManagerSessionPayload {
   provider: string;
@@ -17,13 +24,17 @@ interface ManagerSessionPayload {
   projectName: string;
   updatedAtMs: number;
   updatedAtLabel: string;
+  subtitle: string;
   removeAction: string;
 }
 
 interface ManagerStats {
   total: number;
+  withSummary: number;
   byProvider: Record<string, number>;
 }
+
+const WEBVIEW_ASSET_VERSION = "4";
 
 let managerPanel: vscode.WebviewPanel | undefined;
 
@@ -36,7 +47,7 @@ export async function openSessionManagerPanel(
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
   if (managerPanel) {
     managerPanel.reveal(column);
-    await postManagerInit(managerPanel.webview, buildLoadOptions);
+    await postManagerInit(managerPanel.webview, tree, buildLoadOptions);
     return;
   }
 
@@ -52,18 +63,17 @@ export async function openSessionManagerPanel(
   );
 
   managerPanel.iconPath = vscode.Uri.joinPath(context.extensionUri, "resources", "agent-resume.svg");
-  managerPanel.webview.html = getWebviewHtml(managerPanel.webview, context.extensionUri);
 
   managerPanel.webview.onDidReceiveMessage(async (message) => {
     if (message.type === "ready" || message.type === "resync") {
       await refreshTree();
-      await postManagerInit(managerPanel!.webview, buildLoadOptions);
+      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions);
       return;
     }
 
     if (message.type === "remove" && Array.isArray(message.items)) {
       await handleRemoveFromPanel(message.items, buildLoadOptions, refreshTree);
-      await postManagerInit(managerPanel!.webview, buildLoadOptions);
+      await postManagerInit(managerPanel!.webview, tree, buildLoadOptions);
       return;
     }
 
@@ -84,6 +94,9 @@ export async function openSessionManagerPanel(
   managerPanel.onDidDispose(() => {
     managerPanel = undefined;
   });
+
+  managerPanel.webview.html = getWebviewHtml(managerPanel.webview, context.extensionUri);
+  void postManagerInit(managerPanel.webview, tree, buildLoadOptions);
 }
 
 async function handleExportFromManager(
@@ -168,46 +181,72 @@ async function handleRemoveFromPanel(
   managerPanel?.webview.postMessage({ type: "removeDone" });
 }
 
-async function postManagerInit(webview: vscode.Webview, buildLoadOptions: () => HistoryLoadOptions): Promise<void> {
-  const catalog = loadCatalogSettings();
-  await syncCatalog(buildLoadOptions(), catalog);
-  const sessions = await queryCatalogSessions(catalog);
-  const payload = buildManagerPayload(sessions);
-  webview.postMessage({
-    type: "init",
-    sessions: payload.sessions,
-    stats: payload.stats
-  });
+async function postManagerInit(
+  webview: vscode.Webview,
+  tree: SessionTreeProvider,
+  buildLoadOptions: () => HistoryLoadOptions
+): Promise<void> {
+  try {
+    const catalog = loadCatalogSettings();
+    await syncCatalog(buildLoadOptions(), catalog);
+    const outputLanguage = getLlmOutputLanguage();
+    const sessions = await queryCatalogSessions(catalog, outputLanguage, "any");
+    const payload = buildManagerPayload(sessions, tree);
+    webview.postMessage({
+      type: "init",
+      sessions: payload.sessions,
+      stats: payload.stats
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Session Manager load failed: ${message}`);
+  }
 }
 
-function buildManagerPayload(sessions: AgentSession[]): { sessions: ManagerSessionPayload[]; stats: ManagerStats } {
+function buildManagerPayload(
+  sessions: AgentSession[],
+  tree: SessionTreeProvider
+): { sessions: ManagerSessionPayload[]; stats: ManagerStats } {
+  const enrichedSessions = enrichSessionsWithTreeSummaries(sessions, tree.getSessions());
+
   const byProvider: Record<string, number> = {};
-  for (const session of sessions) {
-    byProvider[session.provider] = (byProvider[session.provider] ?? 0) + 1;
-  }
+  let withSummary = 0;
+  const payloadSessions = enrichedSessions.map((enrichedSession) => {
+    byProvider[enrichedSession.provider] = (byProvider[enrichedSession.provider] ?? 0) + 1;
+
+    const subtitle = buildSessionSubtitle(enrichedSession);
+    if (enrichedSession.sessionSummary?.trim()) {
+      withSummary += 1;
+    }
+
+    const search = serializeSessionForSearch(enrichedSession);
+    return {
+      provider: enrichedSession.provider,
+      id: enrichedSession.id,
+      title: search.title,
+      projectPath: enrichedSession.projectPath,
+      projectName: search.projectName,
+      updatedAtMs: enrichedSession.updatedAt,
+      updatedAtLabel: relativeTime(enrichedSession.updatedAt),
+      subtitle,
+      removeAction: "Remove from panel only (native agent unchanged)"
+    };
+  });
 
   return {
-    stats: { total: sessions.length, byProvider },
-    sessions: sessions.map((session) => {
-      const search = serializeSessionForSearch(session);
-      return {
-        provider: session.provider,
-        id: session.id,
-        title: search.title,
-        projectPath: session.projectPath,
-        projectName: search.projectName,
-        updatedAtMs: session.updatedAt,
-        updatedAtLabel: relativeTime(session.updatedAt),
-        removeAction: "Remove from panel only (native agent unchanged)"
-      };
-    })
+    stats: { total: sessions.length, withSummary, byProvider },
+    sessions: payloadSessions
   };
 }
 
 function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const htmlPath = vscode.Uri.joinPath(extensionUri, "media", "sessionManager.html").fsPath;
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionManager.css"));
-  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionManager.js"));
+  const styleUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionManager.css"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
+  const scriptUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "sessionManager.js"))
+    .with({ query: WEBVIEW_ASSET_VERSION });
   const nonce = getNonce();
 
   let html = fs.readFileSync(htmlPath, "utf8");
