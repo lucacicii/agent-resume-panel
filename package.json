@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -84,12 +84,18 @@
     "onCommand:agentResume.renameAcpChat",
     "onCommand:agentResume.openAcpSettings",
     "onCommand:agentResume.openSettings",
-    "onCommand:agentResume.autoRenameSession"
+    "onCommand:agentResume.autoRenameSession",
+    "onCommand:agentResume.handoffTo.codex",
+    "onCommand:agentResume.handoffTo.claude",
+    "onCommand:agentResume.handoffTo.agy",
+    "onCommand:agentResume.handoffTo.grok",
+    "onCommand:agentResume.handoffTo.opencode",
+    "onCommand:agentResume.handoffTo.pi"
   ],
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
-    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs",
+    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs && node scripts/generate-handoff-menu-contributions.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
     "package": "npm run compile && vsce package",
@@ -537,6 +543,20 @@
             "collapseParentProject"
           ],
           "description": "Preferred display order for all configurable session context menu actions."
+        },
+        "agentResume.handoff.attachRecentVerbatim": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Number of recent verbatim exchanges appended after the handoff brief."
+        },
+        "agentResume.handoff.maxBriefTokens": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 500,
+          "maximum": 8000,
+          "description": "Maximum LLM output tokens for the generated handoff brief."
         }
       }
     },
@@ -770,6 +790,36 @@
         "command": "agentResume.sortProjectSessionsTitleDesc",
         "title": "Sort by Title (Z–A)",
         "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.codex",
+        "title": "Hand Off to Codex",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.claude",
+        "title": "Hand Off to Claude Code",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.agy",
+        "title": "Hand Off to Antigravity CLI",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.grok",
+        "title": "Hand Off to Grok Build",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.opencode",
+        "title": "Hand Off to OpenCode",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.pi",
+        "title": "Hand Off to Pi",
+        "category": "Agent Resume"
       }
     ],
     "submenus": [
@@ -788,6 +838,10 @@
       {
         "id": "agentResume.projectSort",
         "label": "Sort Sessions"
+      },
+      {
+        "id": "agentResume.handoffTo",
+        "label": "Hand Off to Another Agent"
       }
     ],
     "viewsContainers": {
@@ -1245,19 +1299,29 @@
           "group": "navigation@60"
         },
         {
+          "submenu": "agentResume.handoffTo",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
+          "group": "navigation@55"
+        },
+        {
           "command": "agentResume.openAcpChat",
-          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./",
           "group": "inline@1"
         },
         {
           "command": "agentResume.renameAcpChat",
-          "when": "view == agentResume.acpChats && viewItem == agentResume.acpChat",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./",
           "group": "navigation@0"
         },
         {
           "command": "agentResume.newChatSession",
           "when": "view == agentResume.acpChats && viewItem == agentResume.acpProject",
           "group": "navigation@1"
+        },
+        {
+          "submenu": "agentResume.handoffTo",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./",
+          "group": "navigation@2"
         },
         {
           "command": "agentResume.openFolder",
@@ -3141,6 +3205,63 @@
           "command": "agentResume.sortProjectSessionsTitleDesc",
           "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
           "group": "sort@4"
+        }
+      ],
+      "agentResume.handoffTo": [
+        {
+          "command": "agentResume.handoffTo.codex",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.codex",
+          "group": "handoff@1"
+        },
+        {
+          "command": "agentResume.handoffTo.claude",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.claude",
+          "group": "handoff@2"
+        },
+        {
+          "command": "agentResume.handoffTo.agy",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.agy",
+          "group": "handoff@3"
+        },
+        {
+          "command": "agentResume.handoffTo.grok",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.grok",
+          "group": "handoff@4"
+        },
+        {
+          "command": "agentResume.handoffTo.opencode",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.opencode",
+          "group": "handoff@5"
+        },
+        {
+          "command": "agentResume.handoffTo.pi",
+          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/ && viewItem != agentResume.session.pi",
+          "group": "handoff@6"
+        },
+        {
+          "command": "agentResume.handoffTo.codex",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./ && viewItem != agentResume.acpChat.codex",
+          "group": "handoff@1"
+        },
+        {
+          "command": "agentResume.handoffTo.claude",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./ && viewItem != agentResume.acpChat.claude",
+          "group": "handoff@2"
+        },
+        {
+          "command": "agentResume.handoffTo.grok",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./ && viewItem != agentResume.acpChat.grok",
+          "group": "handoff@3"
+        },
+        {
+          "command": "agentResume.handoffTo.opencode",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./ && viewItem != agentResume.acpChat.opencode",
+          "group": "handoff@4"
+        },
+        {
+          "command": "agentResume.handoffTo.pi",
+          "when": "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./ && viewItem != agentResume.acpChat.pi",
+          "group": "handoff@5"
         }
       ]
     }

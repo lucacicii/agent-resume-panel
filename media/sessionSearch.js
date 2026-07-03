@@ -21,6 +21,7 @@
   const previewResumeWith = document.getElementById("preview-resume-with");
   const previewSummarize = document.getElementById("preview-summarize");
   const previewAutoRename = document.getElementById("preview-auto-rename");
+  const previewHandoff = document.getElementById("preview-handoff");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
 
@@ -70,6 +71,18 @@
     setAiButtonsDisabled(true);
     vscode.postMessage({
       type: "autoRename",
+      provider: activePreviewSession.provider,
+      id: activePreviewSession.id
+    });
+  });
+
+  previewHandoff.addEventListener("click", () => {
+    if (!activePreviewSession) {
+      return;
+    }
+    setAiButtonsDisabled(true);
+    vscode.postMessage({
+      type: "continueWithAgent",
       provider: activePreviewSession.provider,
       id: activePreviewSession.id
     });
@@ -169,7 +182,7 @@
       return;
     }
 
-    if (message.type === "autoRenameDone") {
+    if (message.type === "autoRenameDone" || message.type === "handoffDone" || message.type === "handoffError") {
       setAiButtonsDisabled(false);
     }
   });
@@ -344,7 +357,7 @@
     activePreviewSession = { provider: message.provider, id: message.id };
     previewRename.disabled = false;
     applyResumeActions(message.showResumeWith !== false);
-    applyLlmActions(message.llmConfigured === true);
+    applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
 
@@ -413,14 +426,16 @@
     previewResumeWith.classList.toggle("hidden", !showResumeWith);
   }
 
-  function applyLlmActions(show) {
+  function applyLlmActions(show, showHandoff) {
     previewSummarize.classList.toggle("hidden", !show);
     previewAutoRename.classList.toggle("hidden", !show);
+    previewHandoff.classList.toggle("hidden", !(show && showHandoff));
   }
 
   function setAiButtonsDisabled(disabled) {
     previewSummarize.disabled = disabled;
     previewAutoRename.disabled = disabled;
+    previewHandoff.disabled = disabled;
   }
 
   function syncPreviewTitle() {

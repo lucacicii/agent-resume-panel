@@ -145,7 +145,7 @@ function chatItem(record: AcpSessionRecord, showProjectName = false): vscode.Tre
     .filter(Boolean)
     .join("\n");
   item.iconPath = new vscode.ThemeIcon(providerIcon(record.provider));
-  item.contextValue = "agentResume.acpChat";
+  item.contextValue = `agentResume.acpChat.${record.provider}`;
   item.command = {
     command: "agentResume.openAcpChat",
     title: "Open ACP Chat",

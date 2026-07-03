@@ -481,6 +481,32 @@ export const SETTING_SECTIONS: SettingSection[] = [
         maximum: 500000
       }
     ]
+  },
+  {
+    id: "handoff",
+    title: "Handoff",
+    description:
+      "Settings for handing off a session to another coding agent. CLI sessions hand off via CLI; ACP chats hand off via ACP Chat.",
+    fields: [
+      {
+        key: "handoff.attachRecentVerbatim",
+        label: "Attach Recent Verbatim",
+        description: "Number of recent user/assistant exchanges appended after the handoff brief.",
+        type: "number",
+        default: 5,
+        minimum: 0,
+        maximum: 20
+      },
+      {
+        key: "handoff.maxBriefTokens",
+        label: "Max Brief Tokens",
+        description: "Maximum LLM output tokens for the generated handoff brief.",
+        type: "number",
+        default: 2500,
+        minimum: 500,
+        maximum: 8000
+      }
+    ]
   }
 ];
 

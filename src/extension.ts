@@ -19,6 +19,7 @@ import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
 import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
+import { removeFromPanelConfirmMessage } from "./util/dialogText";
 import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
@@ -53,6 +54,9 @@ import {
 } from "./tree/projectSessionSort";
 import { getLlmConfig } from "./llm/config";
 import { migrateSummariesFromGlobalState } from "./llm/summaryMigration";
+import { executeHandoffCommand } from "./handoff/handoffCommand";
+import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
+
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
 import { searchAndOpenSessions } from "./search/sessionSearch";
@@ -99,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshAcpChats", () => refreshAcpChats(acpTree, true)),
     vscode.commands.registerCommand("agentResume.search", () =>
-      searchAndOpen(context, tree, () => refresh(tree, false))
+      searchAndOpen(context, tree, () => refresh(tree, false), acpChatManager)
     ),
     vscode.commands.registerCommand("agentResume.openSessionManager", () =>
       openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
@@ -115,7 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session && session.provider !== "chat") {
-        void openSessionPreviewPanel(session, tree, () => refresh(tree, false), context);
+        void openSessionPreviewPanel(session, tree, () => refresh(tree, false), context, acpChatManager);
       }
     }),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
@@ -213,6 +217,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
       autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
+    ...CLI_HANDOFF_TARGETS.map((target) =>
+      vscode.commands.registerCommand(handoffCommandId(target), (nodeOrSource?: unknown) => {
+        void executeHandoffCommand(nodeOrSource, { target }, {
+          context,
+          acpChatManager,
+          sessionTree: tree,
+          acpTree
+        }).then(() => refreshAcpChats(acpTree, false));
+      })
+    ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
         event.affectsConfiguration("agentResume.projectMenu.mainActions") ||
@@ -304,7 +318,8 @@ function buildHistoryLoadOptions(
 async function searchAndOpen(
   context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
-  refreshTree: () => Promise<void>
+  refreshTree: () => Promise<void>,
+  acpChatManager: AcpChatManager
 ): Promise<void> {
   await refresh(tree, false);
   const catalog = loadCatalogSettings();
@@ -313,7 +328,7 @@ async function searchAndOpen(
     return;
   }
 
-  await searchAndOpenSessions(context, tree, refreshTree);
+  await searchAndOpenSessions(context, tree, refreshTree, acpChatManager);
 }
 
 async function autoRenameSessionCommand(
@@ -378,7 +393,7 @@ async function removeSessionFromPanelCommand(tree: SessionTreeProvider, nodeOrSe
   }
 
   const confirm = await vscode.window.showWarningMessage(
-    `Remove "${session.title}" from Agent Resume panel only? Native ${session.provider} storage is unchanged.`,
+    removeFromPanelConfirmMessage(session),
     { modal: true },
     "Remove"
   );

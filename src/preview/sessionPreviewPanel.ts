@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { AcpChatManager } from "../acp/acpChatManager";
 import { AgentSession } from "../history";
 import { loadSessionPreview } from "../history/preview";
 import { renameSessionWithCatalog } from "../catalog/rename";
@@ -9,6 +10,7 @@ import { getLlmConfig, isLlmConfigured } from "../llm/config";
 
 import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "./resumeActions";
+import { canHandoffSession, runContinueWithAgent } from "./handoffActions";
 import { runAutoRename, runSummarize } from "./sessionAssistActions";
 import { SessionTreeProvider } from "../tree/sessionTree";
 
@@ -17,12 +19,14 @@ let activeSessionKey: string | undefined;
 let activeTree: SessionTreeProvider | undefined;
 let activeRefreshTree: (() => Promise<void>) | undefined;
 let activeContext: vscode.ExtensionContext | undefined;
+let activeAcpChatManager: AcpChatManager | undefined;
 
 export async function openSessionPreviewPanel(
   session: AgentSession,
   tree: SessionTreeProvider,
   refreshTree: () => Promise<void>,
-  context: vscode.ExtensionContext
+  context: vscode.ExtensionContext,
+  acpChatManager: AcpChatManager
 ): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Beside;
   const sessionKey = `${session.provider}:${session.id}`;
@@ -31,6 +35,7 @@ export async function openSessionPreviewPanel(
     activeTree = tree;
     activeRefreshTree = refreshTree;
     activeContext = context;
+    activeAcpChatManager = acpChatManager;
     previewPanel.reveal(column);
     return;
   }
@@ -56,6 +61,7 @@ export async function openSessionPreviewPanel(
   activeTree = tree;
   activeRefreshTree = refreshTree;
   activeContext = context;
+  activeAcpChatManager = acpChatManager;
   previewPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   previewPanel.webview.html = getWebviewHtml(previewPanel.webview);
 
@@ -99,6 +105,14 @@ export async function openSessionPreviewPanel(
       return;
     }
 
+    if (message.type === "continueWithAgent") {
+      const activeSession = findActiveSession();
+      if (activeSession && activeContext && activeAcpChatManager) {
+        await runContinueWithAgent(activeSession, activeContext, activeAcpChatManager, previewPanel!.webview);
+      }
+      return;
+    }
+
     if (message.type === "close") {
       previewPanel?.dispose();
     }
@@ -110,6 +124,7 @@ export async function openSessionPreviewPanel(
     activeTree = undefined;
     activeRefreshTree = undefined;
     activeContext = undefined;
+    activeAcpChatManager = undefined;
   });
 }
 
@@ -197,6 +212,7 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
       type: "init",
       provider: session.provider,
       showResumeWith: session.provider !== "alma",
+      showHandoff: canHandoffSession(session),
       llmConfigured,
       cachedSummary,
       title: preview.title,

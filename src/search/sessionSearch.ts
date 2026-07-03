@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { AcpChatManager } from "../acp/acpChatManager";
 import { loadCatalogSettings, queryCatalogSessions, removeSessionsFromPanel, resolveSessionById } from "../catalog";
+import { removeFromPanelConfirmMessage } from "../util/dialogText";
 import { AgentProvider, AgentSession } from "../history";
 import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
@@ -10,6 +12,7 @@ import { loadSessionPreview } from "../history/preview";
 import { getLlmConfig, getLlmOutputLanguage, isLlmConfigured } from "../llm/config";
 import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
+import { canHandoffSession, runContinueWithAgent } from "../preview/handoffActions";
 import { runAutoRename, runSummarize } from "../preview/sessionAssistActions";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
@@ -41,7 +44,8 @@ let searchPanel: vscode.WebviewPanel | undefined;
 export async function searchAndOpenSessions(
   context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
-  refreshTree: () => Promise<void>
+  refreshTree: () => Promise<void>,
+  acpChatManager: AcpChatManager
 ): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
@@ -131,6 +135,14 @@ export async function searchAndOpenSessions(
           webview: searchPanel!.webview
         });
       }
+      return;
+    }
+
+    if (message.type === "continueWithAgent" && message.provider && message.id) {
+      const session = await findSession(tree, message.provider, message.id);
+      if (session) {
+        await runContinueWithAgent(session, context, acpChatManager, searchPanel!.webview);
+      }
     }
   });
 
@@ -165,6 +177,7 @@ async function handlePreviewMessage(
       provider,
       id,
       showResumeWith: session.provider !== "alma",
+      showHandoff: canHandoffSession(session),
       llmConfigured,
       cachedSummary,
       title: preview.title,
@@ -196,7 +209,7 @@ async function handleRemoveMessage(
   }
 
   const confirm = await vscode.window.showWarningMessage(
-    `Remove "${session.title}" from Agent Resume panel only? Native ${session.provider} storage is unchanged.`,
+    removeFromPanelConfirmMessage(session),
     { modal: true },
     "Remove"
   );

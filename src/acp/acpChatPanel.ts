@@ -64,13 +64,17 @@ export class AcpChatPanel {
   private activeAcpSessionId?: string;
   private isReplayingLoadedHistory = false;
   private historyReplayDone?: () => void;
+  private readonly initialPrompt?: string;
+  private initialPromptSent = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     record: AcpSessionRecord,
     private readonly reloadTree: () => Promise<void>,
-    private readonly onDispose: () => void
+    private readonly onDispose: () => void,
+    options?: { initialPrompt?: string }
   ) {
+    this.initialPrompt = options?.initialPrompt?.trim() || undefined;
     this.record = record;
     this.panelHome = expandHome(
       vscode.workspace.getConfiguration("agentResume").get<string>("panelHome", "~/.agent-resume-panel")
@@ -172,6 +176,7 @@ export class AcpChatPanel {
       this.setupSessionUpdates();
 
       this.post({ type: "status", status: "ready", isRunning: false, isConnecting: false });
+      await this.sendInitialPromptIfNeeded();
     } catch (error) {
       this.post({
         type: "error",
@@ -435,6 +440,15 @@ export class AcpChatPanel {
     } catch (error) {
       this.post({ type: "error", message: `Mode switch failed: ${formatError(error)}` });
     }
+  }
+
+  private async sendInitialPromptIfNeeded(): Promise<void> {
+    if (!this.initialPrompt || this.initialPromptSent || this.isRunning || this.isConnecting) {
+      return;
+    }
+
+    this.initialPromptSent = true;
+    await this.sendMessage(this.initialPrompt);
   }
 
   private async sendMessage(rawText: string, rawImages: IncomingAcpImage[] = []): Promise<void> {

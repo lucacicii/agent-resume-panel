@@ -23,6 +23,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - 在 Alma 桌面客户端中按项目打开新对话。
 - 在编辑器右上角一键新建预设类型的 Agent 会话。
 - 将 Catalog 中的**全部 CLI 历史会话**（含元数据与各 Agent 原生存储中的完整对话）一次性导出到本地文件夹，便于备份或迁移。
+- 将当前 CLI 或 ACP 会话**转交给其他 Agent** 继续（LLM 生成 Handoff Brief，CLI 走终端、ACP 走 ACP Chat）。
 
 ### 快速开始
 
@@ -47,8 +48,9 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - **Resume in Claude Code Panel**：在 Claude Code 插件面板中恢复（需已安装 `anthropic.claude-code`）。
 - **Resume in Codex IDE Panel (Experimental)**：尝试在 Codex 插件面板中恢复（需已安装 `openai.chatgpt`，见下方说明）。
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
+- **Hand Off to Another Agent**：子菜单选择目标 Agent，生成 Handoff Brief 并转交（CLI session → CLI 终端；ACP Chat → ACP Chat）。需已配置 **LLM Assist**；当前 Agent 不会出现在子菜单中。
 
-在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。若已在 **Agent Resume Settings → LLM Assist** 配置 API，还可使用 **Summarize** 生成会话摘要（显示在对话上方），以及 **Auto Rename** 由 AI 建议标题并写回原生存储。
+在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。若已在 **Agent Resume Settings → LLM Assist** 配置 API，还可使用 **Summarize** 生成会话摘要（显示在对话上方）、**Auto Rename** 由 AI 建议标题并写回原生存储，以及 **Hand Off to…** 将上下文转交给其他 Agent。
 
 **Summarize** 结果自 2.1.1 起写入 Session Catalog（`catalog.db` 的 `session_summary` 等字段），不再仅存于扩展内部状态。在 **Sessions** 侧边栏列表中**悬停**某条会话时，若存在与当前输出语言匹配的摘要，会在 tooltip 中显示 **Summary** 区块。
 
@@ -133,7 +135,7 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 
 - 切换到 **ACP Chats** 视图，点击标题栏 **+**（**New ACP Chat**）从当前工作区新建；或在 **By Project** 下右键项目选择 **New Chat Session**，再选择 Agent 类型。
 - **Sessions** 视图的项目右键菜单仍保留 **New Chat Session**（新建后会出现在 **ACP Chats** 中）。
-- 在 **ACP Chats** 中点击会话即可重新打开对应聊天面板；右键可 **Rename ACP Chat**。
+- 在 **ACP Chats** 中点击会话即可重新打开对应聊天面板；右键可 **Rename ACP Chat**，或通过 **Hand Off to Another Agent** 转交给其他 ACP Agent。
 - **Sessions** 与搜索面板不再显示 ACP 聊天条目，避免与 CLI 历史混在一起。
 
 **支持的 Agent**
@@ -204,7 +206,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 ### Agent Resume Settings
 
-点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist 等常规项外，左侧导航还有 **Project Menu**、**Session Menu** 等分区，用于配置项目与会话右键菜单的显示项与顺序。
+点击 **Sessions** 视图标题栏的齿轮图标，或运行 **Agent Resume: Open Settings**，打开 **Agent Resume Settings** Webview。除 Data Paths、Resume、Terminal、LLM Assist、**Handoff** 等常规项外，左侧导航还有 **Project Menu**、**Session Menu** 等分区，用于配置项目与会话右键菜单的显示项与顺序。
 
 ### 常用设置
 
@@ -233,6 +235,8 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 - `agentResume.hideCronAlma`：隐藏 Alma Cron 会话。
 - `agentResume.hideChannelAlma`：隐藏 Alma 频道会话。
 - `agentResume.showIncognitoAlma`：显示 Alma 隐身模式会话。
+- `agentResume.handoff.attachRecentVerbatim`：Handoff Brief 后附加最近几轮原文（默认 5；0 表示不附加）。
+- `agentResume.handoff.maxBriefTokens`：Handoff Brief 的 LLM 输出 token 上限（默认 2500）。
 - `agentResume.projectMenu.mainActions`：显示在项目右键主菜单中的操作（数组顺序即显示顺序）。
 - `agentResume.projectMenu.itemOrder`：全部可配置项目菜单项的完整顺序（含 **Show More** 中的项）。推荐在 **Agent Resume Settings → Project Menu** 中拖动排序，无需手改 JSON。
 - `agentResume.sessionMenu.mainActions` / `agentResume.sessionMenu.itemOrder`：会话右键主菜单与 **Show More** 的显示项与顺序（推荐在 **Session Menu** 设置页拖动配置）。
@@ -299,6 +303,7 @@ Best for:
 - Starting a new Alma chat scoped to a project directory.
 - Starting a preset agent session from the editor title bar in one click.
 - Exporting **all CLI sessions** in the catalog at once (metadata plus full transcripts read from each agent's native storage) to a local folder for backup or migration.
+- **Handing off** the current CLI or ACP session to another agent (LLM-generated handoff brief; CLI sources use the terminal, ACP sources use ACP Chat).
 
 ### Quick Start
 
@@ -323,8 +328,9 @@ Click a session in **Sessions**, or right-click it and choose:
 - **Resume in Claude Code Panel**: Resume a Claude session in the Claude Code VS Code extension panel.
 - **Resume in Codex IDE Panel (Experimental)**: Try resuming a Codex session in the Codex VS Code extension panel (experimental; can be disabled instantly).
 - **Resume in Codex App**: Continue a Codex session in Codex App.
+- **Hand Off to Another Agent**: Submenu to pick a target agent, generate a handoff brief, and deliver it (CLI session → CLI terminal; ACP chat → ACP Chat). Requires **LLM Assist**; the current agent is hidden from the submenu.
 
-The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more). With **LLM Assist** configured under **Agent Resume Settings**, you can **Summarize** the session (shown above messages) or **Auto Rename** via AI title suggestion written back to native storage.
+The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more). With **LLM Assist** configured under **Agent Resume Settings**, you can **Summarize** the session (shown above messages), **Auto Rename** via AI title suggestion written back to native storage, or **Hand Off to…** to continue with another agent.
 
 As of 2.1.1, **Summarize** results are stored in the Session Catalog (`session_summary` and related columns in `catalog.db`), not only in extension-internal state. **Hover** a session in the **Sessions** sidebar to see a **Summary** block in the tooltip when a summary exists for the current output language.
 
@@ -409,7 +415,7 @@ Besides browsing and resuming CLI history in the sidebar, the extension includes
 
 - Switch to **ACP Chats** and click **+** (**New ACP Chat**) to start from the current workspace, or right-click a project under **By Project** and choose **New Chat Session**, then pick an agent type.
 - **Sessions** project menus still offer **New Chat Session**; new chats appear in **ACP Chats**.
-- Click a chat in **ACP Chats** to reopen its panel; right-click to **Rename ACP Chat**.
+- Click a chat in **ACP Chats** to reopen its panel; right-click to **Rename ACP Chat** or use **Hand Off to Another Agent** to continue with another ACP agent.
 - **Sessions** and the search panel no longer list ACP chats, keeping CLI history separate.
 
 **Supported agents**
@@ -480,7 +486,7 @@ On macOS, the first automatic paste may require granting VS Code Automation or A
 
 ### Agent Resume Settings
 
-Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, and LLM Assist, the left nav includes **Project Menu** and **Session Menu** for configuring project and session context menus.
+Click the gear icon on the **Sessions** view title bar, or run **Agent Resume: Open Settings**, to open the **Agent Resume Settings** webview. Besides data paths, resume behavior, terminal, LLM Assist, and **Handoff**, the left nav includes **Project Menu** and **Session Menu** for configuring project and session context menus.
 
 ### Settings
 
@@ -509,6 +515,8 @@ Search `Agent Resume` in VS Code Settings to adjust:
 - `agentResume.hideCronAlma`: Hide Alma cron threads.
 - `agentResume.hideChannelAlma`: Hide Alma channel threads.
 - `agentResume.showIncognitoAlma`: Show Alma incognito threads.
+- `agentResume.handoff.attachRecentVerbatim`: Append recent verbatim turns after the handoff brief (default 5; 0 to disable).
+- `agentResume.handoff.maxBriefTokens`: LLM output token limit for the handoff brief (default 2500).
 - `agentResume.projectMenu.mainActions`: Actions shown on the main project context menu (array order is display order).
 - `agentResume.projectMenu.itemOrder`: Full order of all configurable project menu actions (including items under **Show More**). Prefer dragging in **Agent Resume Settings → Project Menu** instead of editing JSON by hand.
 - `agentResume.sessionMenu.mainActions` / `agentResume.sessionMenu.itemOrder`: Session context menu and **Show More** order (configure in **Session Menu** settings).

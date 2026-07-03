@@ -8,16 +8,29 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
-### [2.1.3] - 2026-03-19
+### [2.1.4] - 2026-07-03
 
 #### 新增
 
-- **Session Manager 列表摘要**：会话列表 **Title / Summary** 列在标题下显示摘要行；优先 LLM Summarize（Catalog 中任意语言），否则回退为 branch / model / 消息数 / 项目路径；过长内容在本列内省略，悬停可看全文。
-- **Search Sessions 列表摘要**：有 LLM 摘要时在标题下额外显示一行；保留原有 project / branch 副标题；支持按摘要搜索；在预览内 Summarize 后列表即时更新。
+- **转交给其他 Agent（Handoff）**：在 **Sessions** 与 **ACP Chats** 右键菜单中提供 **Hand Off to Another Agent** 子菜单，可直接选择目标 Agent（Codex、Claude、Antigravity CLI、Grok Build、OpenCode、Pi）；当前 Agent 自动隐藏。
+- **Handoff Brief**：基于 **Agent Resume Settings → LLM Assist** 生成结构化交接文档（目标、已完成项、关键决策、涉及文件、约束、阻塞点、下一步），供下一个 Agent 接续工作。
+- **按来源投递**：CLI session 转交通过 **CLI 终端**（启动命令携带初始 prompt，较短时内联全文，较长时引用 `panelHome/handoffs/` 下的文件）；ACP Chat 转交通过 **ACP Chat**（新建会话并自动发送 handoff 首条消息）。
+- **Preview / Search**：在预览面板中增加 **Hand Off to…** 按钮（QuickPick 选择目标 Agent）。
+
+#### 设置
+
+- **Agent Resume Settings → Handoff**：`handoff.attachRecentVerbatim`（附加最近原文轮数）、`handoff.maxBriefTokens`（Brief 输出 token 上限）。
+
+### [2.1.3] - 2026-07-03
+
+#### 新增
+
+- **Session Manager 列表摘要**：会话列表 **Title / Summary** 列始终在标题下显示一行副标题；优先显示 LLM Summarize（Catalog 中任意语言），没有摘要时回退为 branch / model / 消息数 / 项目路径；过长内容在本列内省略，悬停可看全文。
+- **Search Sessions 列表摘要**：仅在存在 LLM 摘要时在标题下额外显示摘要行；原有 project / branch 副标题保持在摘要下方；支持按摘要搜索；在预览内 Summarize 后列表即时更新。
 
 #### 变更
 
-- Session Manager / Search Sessions 加载摘要时不再依赖 LLM API Key（直接读取 `agentResume.llm.outputLanguage` 与 Catalog）；并与侧边栏树中的内存摘要合并。
+- Session Manager / Search Sessions 加载列表摘要时不再依赖 LLM API Key（直接读取 `agentResume.llm.outputLanguage` 并按 Catalog 任意语言摘要加载）；并与侧边栏树中的内存摘要合并。
 
 #### 修复
 
@@ -193,16 +206,29 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## English
 
-### [2.1.3] - 2026-03-19
+### [2.1.4] - 2026-07-03
 
 #### Added
 
-- **Session Manager list summaries**: The **Title / Summary** column shows a subtitle under each title—LLM Summarize from the catalog (any language) when present, otherwise branch / model / message count / project path; long text ellipsizes within the column with full text on hover.
-- **Search Sessions list summaries**: When an LLM summary exists, an extra line appears under the title; existing project / branch meta is unchanged; summaries are searchable; the list updates immediately after Summarize in the preview overlay.
+- **Hand off to another agent**: **Hand Off to Another Agent** submenu on **Sessions** and **ACP Chats** context menus with per-agent targets (Codex, Claude, Antigravity CLI, Grok Build, OpenCode, Pi); the current agent is hidden.
+- **Handoff brief**: Structured handoff document generated via **Agent Resume Settings → LLM Assist** (goal, completed work, key decisions, files touched, constraints, blockers, next step) for the receiving agent.
+- **Source-matched delivery**: CLI sessions hand off through the **CLI terminal** (launch command includes the initial prompt—inlined when short, file reference under `panelHome/handoffs/` when long); ACP chats hand off through **ACP Chat** (new chat with the handoff sent as the first message).
+- **Preview / Search**: **Hand Off to…** button in the session preview overlay (QuickPick for the target agent).
+
+#### Settings
+
+- **Agent Resume Settings → Handoff**: `handoff.attachRecentVerbatim` (append recent verbatim turns), `handoff.maxBriefTokens` (brief output token limit).
+
+### [2.1.3] - 2026-07-03
+
+#### Added
+
+- **Session Manager list summaries**: The **Title / Summary** column always shows one subtitle line under each title: LLM Summarize from the catalog (any language) when present, otherwise branch / model / message count / project path; long text ellipsizes within the column with full text on hover.
+- **Search Sessions list summaries**: When an LLM summary exists, an extra summary line appears under the title; existing project / branch meta stays below it; summaries are searchable; the list updates immediately after Summarize in the preview overlay.
 
 #### Changed
 
-- Session Manager and Search Sessions load summaries without requiring an LLM API key (using `agentResume.llm.outputLanguage` and the catalog), merging in-memory summaries from the sidebar tree.
+- Session Manager and Search Sessions load list summaries without requiring an LLM API key (using `agentResume.llm.outputLanguage` and catalog summaries from any language), merging in-memory summaries from the sidebar tree.
 
 #### Fixed
 

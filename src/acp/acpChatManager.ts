@@ -10,7 +10,7 @@ export class AcpChatManager {
     private readonly reloadTree: () => Promise<void>
   ) {}
 
-  open(record: AcpSessionRecord): void {
+  open(record: AcpSessionRecord, options?: { initialPrompt?: string }): void {
     const existing = this.panels.get(record.id);
     if (existing) {
       existing.reveal();
@@ -19,7 +19,7 @@ export class AcpChatManager {
 
     const panel = new AcpChatPanel(this.context, record, this.reloadTree, () => {
       this.panels.delete(record.id);
-    });
+    }, options);
     this.panels.set(record.id, panel);
   }
 

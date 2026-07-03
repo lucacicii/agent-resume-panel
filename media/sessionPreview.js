@@ -9,6 +9,7 @@
   const previewResumeWith = document.getElementById("preview-resume-with");
   const previewSummarize = document.getElementById("preview-summarize");
   const previewAutoRename = document.getElementById("preview-auto-rename");
+  const previewHandoff = document.getElementById("preview-handoff");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
 
@@ -28,6 +29,11 @@
   previewAutoRename.addEventListener("click", () => {
     setAiButtonsDisabled(true);
     vscode.postMessage({ type: "autoRename" });
+  });
+
+  previewHandoff.addEventListener("click", () => {
+    setAiButtonsDisabled(true);
+    vscode.postMessage({ type: "continueWithAgent" });
   });
 
   previewRename.addEventListener("click", () => {
@@ -96,13 +102,21 @@
     if (message.type === "autoRenameDone") {
       setAiButtonsDisabled(false);
     }
+
+    if (message.type === "handoffLoading") {
+      return;
+    }
+
+    if (message.type === "handoffDone" || message.type === "handoffError") {
+      setAiButtonsDisabled(false);
+    }
   });
 
   function renderPreview(message) {
     previewTitle.textContent = message.title || "Session Preview";
     previewMessages.innerHTML = "";
     applyResumeActions(message.showResumeWith !== false);
-    applyLlmActions(message.llmConfigured === true);
+    applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
 
     if (message.cachedSummary) {
       renderSummary(message.cachedSummary);
@@ -155,14 +169,16 @@
     previewResumeWith.classList.toggle("hidden", !showResumeWith);
   }
 
-  function applyLlmActions(show) {
+  function applyLlmActions(show, showHandoff) {
     previewSummarize.classList.toggle("hidden", !show);
     previewAutoRename.classList.toggle("hidden", !show);
+    previewHandoff.classList.toggle("hidden", !(show && showHandoff));
   }
 
   function setAiButtonsDisabled(disabled) {
     previewSummarize.disabled = disabled;
     previewAutoRename.disabled = disabled;
+    previewHandoff.disabled = disabled;
   }
 
   vscode.postMessage({ type: "ready" });
