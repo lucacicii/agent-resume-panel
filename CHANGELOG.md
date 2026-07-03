@@ -8,7 +8,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
-### [2.1.4] - 2026-07-03
+### [2.2.0] - 2026-07-03
 
 #### 新增
 
@@ -206,7 +206,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## English
 
-### [2.1.4] - 2026-07-03
+### [2.2.0] - 2026-07-03
 
 #### Added
 
