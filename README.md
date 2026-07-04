@@ -89,6 +89,36 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 
 导出范围覆盖 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等已同步进 Catalog 的 CLI 会话；**ACP Chats** 不在此导出范围内。更多存储细节见 [第二部分：插件说明](#第二部分插件说明)。
 
+### Sessions 本地备份
+
+**Agent Resume Panel** 提供多种可靠的 sessions 本地备份方式，帮助您安全保存历史对话和元数据，防止数据丢失或便于迁移到新设备：
+
+1. **推荐：使用 Session Manager 导出备份**  
+   打开侧边栏 **Sessions** 视图标题栏的数据库图标（或运行 **Agent Resume: Session Manager**），设置筛选条件后点击 **Export**。扩展会自动在目标文件夹创建带时间戳的子目录，包含：
+   - `manifest.json`：会话元数据清单
+   - `sessions/` 目录：按 provider 组织的完整 transcript（从各 Agent 原生存储读取）
+   
+   支持导出**全部可见会话**或仅选中部分，完美实现 "sessions 本地备份" 需求。已从面板移除的 hidden 会话默认不包含。
+
+2. **备份 Panel 本地数据目录**  
+   默认 `panelHome` 路径为 `~/.agent-resume-panel/`（可通过 `agentResume.panelHome` 设置修改）。该目录包含：
+   - `catalog.db`：Session Catalog SQLite 数据库（存储所有会话元数据、用户自定义标题、AI 生成的 session_summary、hidden 状态等）
+   - ACP Chats 相关数据
+   
+   建议使用 rsync、GoodSync、Time Machine、iCloud Drive 或其他同步工具定期备份整个目录。这是 sessions 元数据最核心的本地备份位置。
+
+3. **备份各 Agent 原生存储目录**  
+   CLI 会话的完整对话内容仍保存在对应 Agent 的原生目录中（可在 **Agent Resume Settings** 中查看/修改各 provider 的 home 路径，如 Codex、Claude、Grok Build、OpenCode、Pi、Alma）。
+   虽然 Export 功能会读取这些 transcript 进行备份，但若需完整原始备份，建议一并复制这些目录。
+
+4. **ACP Chat 会话备份**  
+   ACP 聊天会话数据独立存储在 `panelHome` 下，与 CLI Sessions Catalog 分开。备份 panelHome 即可同时保护 ACP 数据。
+
+**注意事项**：
+- 所有备份操作均为**只读读取 + 复制**，**不会修改或删除**任何原生 Agent 存储或 Catalog 数据。
+- 建议在重要项目会话较多时，或定期（如每周）执行导出 + 目录备份。
+- 结合使用导出功能和完整目录备份，可实现最全面的 sessions 本地备份方案。
+
 ### 编辑器标题栏快捷新建
 
 打开任意编辑器标签页时，编辑器右上角工具栏（Split Editor 旁）会常驻显示 **Agent Resume** 图标，行为类似 Claude Code 的 Spark 按钮。
@@ -156,9 +186,6 @@ Alma 集成基于本地 Alma API（默认 `http://localhost:23001`）和 SQLite 
 | Claude | 支持 |
 | OpenCode | 支持 |
 | Pi | 支持 |
-| Grok Build | 不支持 |
-
-在支持图片的 Agent 对话中，可使用输入框左侧 **附件** 按钮选图，或 **Ctrl/Cmd+V** 粘贴剪贴板图片；每条消息最多 4 张、单张最大 5 MB（PNG / JPEG / WebP / GIF）。可附带文字说明，也可只发图片。
 
 **Grok Build 说明**
 
@@ -181,13 +208,13 @@ ACP Chat 相关设置：
 
 #### Claude Code
 
-- 安装 [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code)。
-- 设置 `agentResume.claudeResumeMode` 为 `panel`（默认）时，点击 Claude 会话会在插件面板中恢复；设为 `terminal` 则走集成终端 CLI。
+- 安装 [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code）。
+- 设置 `agentResume.claudeResumeMode` 为 `panel`（默认）时，点击 Claude 会话会在插件面板中恢复；设为 `terminal` 则走集成终端。
 - 也可通过右键 **Resume in Claude Code Panel** 或 **Resume with…** 显式选择。
 
 #### Codex（实验性）
 
-- 安装 [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt)。
+- 安装 [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt）。
 - 设置 `agentResume.codexResumeMode` 为 `panel` 时，点击 Codex 会话会尝试在插件面板中恢复；默认 `terminal` 走集成终端，`app` 走 Codex App。
 - 也可通过右键 **Resume in Codex IDE Panel (Experimental)** 或 **Resume with…** 显式选择。
 
@@ -369,6 +396,35 @@ Use **Session Manager** (**Sessions** title bar database icon, or **Agent Resume
 
 This covers CLI sessions synced into the catalog (Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, etc.). **ACP Chats** are not included. See [Part 2: Plugin Guide](#part-2-plugin-guide) for storage details.
 
+### Sessions Local Backup
+
+**Agent Resume Panel** provides several reliable ways to perform local backup of sessions, helping you safely preserve historical conversations and metadata for migration or disaster recovery:
+
+1. **Recommended: Export via Session Manager**  
+   Open the database icon in the **Sessions** sidebar title bar (or run **Agent Resume: Session Manager**), configure filters, and click **Export**. The extension automatically creates a timestamped subdirectory containing:
+   - `manifest.json`: session metadata manifest
+   - `sessions/`: full transcripts organized by provider (read from each agent's native storage)
+   
+   This is the most convenient way to achieve "sessions local backup". You can export all visible sessions or only selected ones. Sessions marked `hidden` (removed from panel) are excluded by default.
+
+2. **Backup Panel Local Data Directory**  
+   The default `panelHome` is `~/.agent-resume-panel/` (customizable via `agentResume.panelHome`). This directory contains:
+   - `catalog.db`: Session Catalog SQLite database (stores all session metadata, custom titles, AI-generated summaries, hidden status, etc.)
+   - ACP Chats data
+   
+   Use rsync, GoodSync, Time Machine, or cloud sync tools to regularly back up this entire directory — it is the core location for session metadata local backup.
+
+3. **Backup Agent Native Storage Directories**  
+   Full conversation content remains in each agent's native directories (paths viewable/editable in **Agent Resume Settings** for Codex, Claude, Grok, OpenCode, Pi, Alma, etc.). While the Export feature reads transcripts from these locations for backup, a complete raw backup should also include copying these directories.
+
+4. **ACP Chat Sessions Backup**  
+   ACP chat data is stored separately under `panelHome`. Backing up the panelHome directory protects both CLI and ACP sessions.
+
+**Notes**:
+- All backup operations are read-only + copy; **no original Agent storage or Catalog data is modified or deleted**.
+- Recommended to run Export + directory backup regularly (e.g. weekly) or after important projects.
+- Combining the Export feature with full directory backup gives the most comprehensive local sessions backup solution.
+
 ### Editor Title Bar Shortcut
 
 When any editor tab is open, an **Agent Resume** icon stays visible in the editor toolbar (next to Split Editor), similar to the Claude Code Spark button.
@@ -436,9 +492,6 @@ Besides browsing and resuming CLI history in the sidebar, the extension includes
 | Claude | Yes |
 | OpenCode | Yes |
 | Pi | Yes |
-| Grok Build | No |
-
-In chats with image-capable agents, use the **attach** button beside the input or **Ctrl/Cmd+V** to paste from the clipboard. Up to 4 images per message, 5 MB each (PNG / JPEG / WebP / GIF). Add a caption or send images only.
 
 **Grok Build notes**
 
@@ -461,13 +514,13 @@ ACP Chat settings:
 
 #### Claude Code
 
-- Install [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code).
+- Install [Claude Code for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code}).
 - With `agentResume.claudeResumeMode` set to `panel` (default), clicking a Claude session resumes in the extension panel; set `terminal` to use the integrated terminal CLI instead.
 - You can also pick **Resume in Claude Code Panel** from the context menu or **Resume with…** in the preview panel.
 
 #### Codex (experimental)
 
-- Install [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt).
+- Install [Codex – OpenAI's coding agent](https://marketplace.visualstudio.com/items?itemName=openai.chatgpt}).
 - With `agentResume.codexResumeMode` set to `panel`, clicking a Codex session tries to resume in the extension panel; default `terminal` uses the integrated terminal, and `app` opens Codex App.
 - You can also pick **Resume in Codex IDE Panel (Experimental)** from the context menu or **Resume with…** in the preview panel.
 
@@ -532,7 +585,6 @@ If your Codex, Claude Code, Antigravity, OpenCode, or Pi data directory is not i
 This section describes how CLI sessions are indexed and managed inside the extension from 2.1.0 onward.
 
 #### Session Catalog (SQLite)
-
 The extension uses a local **SQLite** database (**Session Catalog**) as the source of truth for **CLI session listings and panel-side state**. The catalog is always maintained after activation (no separate enable switch).
 
 - **Default path**: `~/.agent-resume-panel/catalog.db` (under `agentResume.panelHome`, shared with ACP data roots); override with `agentResume.catalog.dbPath`.
@@ -544,22 +596,18 @@ The extension uses a local **SQLite** database (**Session Catalog**) as the sour
 - **ACP Chats** use a separate store under `panelHome` and are **not** part of the Session Catalog.
 
 #### Session Manager
-
 Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets.
 
 **Export** is available only here: it writes catalog metadata (`manifest.json`) and pulls full transcripts from native agent storage into `sessions/` at export time (reference-based, not pre-stored blobs in SQLite). With no rows checked, **Export** dumps **all sessions matching the current filters**; with default filters that is every visible CLI session in the catalog (up to `syncMaxItems`)—i.e. export all sessions for backup. Rows marked `hidden` (removed from the panel) are omitted by default.
 
 #### Sort sessions within a project
-
 Right-click a **project** group or a **session** under it and use **Sort Sessions** to order by updated time or title (ascending/descending). The choice is remembered per project path.
 
 #### Sidebar limits vs catalog
-
 - With `agentResume.catalog.sidebarMode` `legacy` (default), the sidebar tree still respects `agentResume.maxItems`, while the catalog can hold more for **Session Manager** and **Search Sessions**.
 - With `full`, the sidebar can show up to `syncMaxItems` catalog rows (still honoring `hidden`).
 
 ### Contact
-
 Questions or feedback: [lucas.zeus.ai@gmail.com](mailto:lucas.zeus.ai@gmail.com)
 
 ## License
