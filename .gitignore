@@ -9,3 +9,19 @@ dist/
 
 # Local VS Code extension test/cache output
 .vscode-test/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local env
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE local config
+.idea/
+.cursor/

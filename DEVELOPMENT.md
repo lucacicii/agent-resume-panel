@@ -1,6 +1,16 @@
 # Development
 
-This repository is private and used for local VS Code extension development.
+Guide for building, testing, and publishing the Agent Resume Panel VS Code extension.
+
+## Secrets & local config
+
+Never commit:
+
+- Open VSX or VS Code Marketplace publish tokens
+- LLM API keys (`AGENT_RESUME_LLM_API_KEY` or values stored in VS Code Secret Storage)
+- `.env` files or other local credential files
+
+`package.json` sets `"private": true` to prevent accidental npm registry publishing. That flag is unrelated to repository visibility.
 
 ## Setup
 
