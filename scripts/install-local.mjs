@@ -9,7 +9,7 @@ const manifest = await import("../package.json", { with: { type: "json" } });
 const pkg = manifest.default;
 const extensionId = `${pkg.publisher}.${pkg.name}`;
 const extensionDirName = `${extensionId}-${pkg.version}`;
-const vsixPath = join(process.cwd(), `${pkg.name}-${pkg.version}.vsix`);
+const vsixPath = join(process.cwd(), "dist", `${pkg.name}-${pkg.version}.vsix`);
 
 if (!existsSync(vsixPath)) {
   throw new Error(`VSIX not found: ${vsixPath}`);

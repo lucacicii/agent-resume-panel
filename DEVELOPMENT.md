@@ -34,7 +34,7 @@ After installing, run **Developer: Reload Window** in VS Code. The extension's o
 
 ## Packaging
 
-Package a local VSIX:
+Package a local VSIX into `dist/`:
 
 ```sh
 npm run package

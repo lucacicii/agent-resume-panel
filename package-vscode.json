@@ -92,7 +92,7 @@
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
-    "package": "npm run compile && vsce package",
+    "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
     "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
   },
