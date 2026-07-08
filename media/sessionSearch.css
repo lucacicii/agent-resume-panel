@@ -35,7 +35,8 @@ body {
   border-color: var(--vscode-focusBorder);
 }
 
-.projects-section {
+.projects-section,
+.gtd-section {
   display: flex;
   flex-direction: column;
   gap: 8px;

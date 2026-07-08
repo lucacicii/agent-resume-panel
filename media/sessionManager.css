@@ -80,6 +80,32 @@ body {
   font-size: 12px;
 }
 
+.gtd-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gtd-filter {
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.gtd-filter:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.gtd-filter.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+
 .bulk-bar {
   display: flex;
   align-items: center;
@@ -150,9 +176,24 @@ body {
   align-items: center;
 }
 
+.badge-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .badge {
   text-transform: lowercase;
   color: var(--vscode-descriptionForeground);
+}
+
+.gtd-badge {
+  font-size: 10px;
+  color: var(--vscode-textLink-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .title-col {

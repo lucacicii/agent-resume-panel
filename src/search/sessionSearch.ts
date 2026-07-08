@@ -19,15 +19,16 @@ import { runAutoRename, runSummarize } from "../preview/sessionAssistActions";
 import { openSettingsPanelToLlm } from "../settings/settingsPanel";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import { openSessionResume } from "../terminal/resumeTerminal";
+import { GTD_STATUSES } from "../catalog/gtd";
+import { gtdStatusLabel } from "../gtd/gtdTree";
 import {
   buildProjectList,
+  enrichSearchSessionItem,
   enrichSessionsWithTreeSummaries,
-  getSessionSummaryText,
-  serializeSessionForSearch,
   SessionTreeProvider
 } from "../tree/sessionTree";
 
-const WEBVIEW_ASSET_VERSION = "1";
+const WEBVIEW_ASSET_VERSION = "2";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -354,11 +355,11 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
         compactPath: compactPath(project.projectPath)
       })
     ),
-    sessions: sessions.map((session) => {
-      const item = serializeSessionForSearch(session, tree.getProjectDisplayName(session.projectPath));
-      const summary = getSessionSummaryText(session);
-      return summary ? { ...item, summary } : item;
-    })
+    sessions: sessions.map((session) => enrichSearchSessionItem(session, tree)),
+    gtdStatuses: GTD_STATUSES.map((status) => ({
+      status,
+      label: gtdStatusLabel(status)
+    }))
   };
 
   webview.postMessage(payload);

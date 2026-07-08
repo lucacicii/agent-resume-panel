@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 import { t } from "../i18n";
+import { GtdStatus } from "../catalog/gtd";
 import { formatProjectLabel } from "../projects/projectAliases";
 import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
@@ -65,6 +66,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private recentVisibleCount = recentInitialLimit;
   private projectSessionSortMode: (projectPath: string) => ProjectSessionSortMode = () => "updatedDesc";
   private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
+  private gtdStatusResolver: (session: AgentSession) => string | undefined = () => undefined;
+  private gtdRawStatusResolver: (session: AgentSession) => GtdStatus | undefined = () => undefined;
 
   setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
     this.projectSessionSortMode = resolver;
@@ -74,6 +77,32 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   setProjectAliasResolver(resolver: (projectPath: string) => string | undefined): void {
     this.projectAliasResolver = resolver;
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setGtdStatusResolver(resolver: (session: AgentSession) => string | undefined): void {
+    this.gtdStatusResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setGtdRawStatusResolver(resolver: (session: AgentSession) => GtdStatus | undefined): void {
+    this.gtdRawStatusResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getSessionGtdStatus(session: AgentSession): GtdStatus | undefined {
+    return this.gtdRawStatusResolver(session);
+  }
+
+  getSessionGtdStatusLabel(session: AgentSession): string | undefined {
+    return this.gtdStatusResolver(session);
+  }
+
+  getSessionTreeItemOptions(showProjectName = false): SessionTreeItemOptions {
+    return {
+      showProjectName,
+      projectDisplayName: (projectPath) => this.getProjectDisplayName(projectPath),
+      gtdStatusResolver: (session) => this.gtdStatusResolver(session)
+    };
   }
 
   getProjectDisplayName(projectPath: string): string {
@@ -165,7 +194,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         return item;
       }
       case "session":
-        return sessionItem(element.session, element.showProjectName, (path) => this.getProjectDisplayName(path));
+        return buildSessionTreeItem(element.session, this.getSessionTreeItemOptions(element.showProjectName));
       case "showMoreRecent":
         return showMoreRecentItem(element.remaining);
     }
@@ -250,14 +279,23 @@ export function isSectionRoot(node: TreeNode): node is SectionRootNode {
   return node.kind === "recentRoot" || node.kind === "favoritesRoot" || node.kind === "projectsRoot";
 }
 
-function sessionItem(
-  session: AgentSession,
-  showProjectName = false,
-  projectDisplayName: (projectPath: string) => string = basenameOrPath
-): vscode.TreeItem {
-  const item = new vscode.TreeItem(sessionLabel(session, showProjectName, projectDisplayName), vscode.TreeItemCollapsibleState.None);
+export interface SessionTreeItemOptions {
+  showProjectName?: boolean;
+  projectDisplayName?: (projectPath: string) => string;
+  gtdStatusResolver?: (session: AgentSession) => string | undefined;
+}
+
+export function buildSessionTreeItem(session: AgentSession, options: SessionTreeItemOptions = {}): vscode.TreeItem {
+  const showProjectName = options.showProjectName ?? false;
+  const projectDisplayName = options.projectDisplayName ?? basenameOrPath;
+  const gtdStatus = options.gtdStatusResolver?.(session);
+
+  const item = new vscode.TreeItem(
+    sessionLabel(session, showProjectName, projectDisplayName),
+    vscode.TreeItemCollapsibleState.None
+  );
   item.description = sessionDescription(session);
-  item.tooltip = buildSessionTooltip(session);
+  item.tooltip = buildSessionTooltip(session, gtdStatus);
   item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
@@ -310,11 +348,12 @@ function buildProjectTooltip(projectPath: string, alias?: string): string {
   return `${t("tree.tooltipProjectAlias", trimmed)}\n${projectPath}`;
 }
 
-function buildSessionTooltip(session: AgentSession): string | vscode.MarkdownString {
+function buildSessionTooltip(session: AgentSession, gtdStatus?: string): string | vscode.MarkdownString {
   const lines = [
     formatTitleWithMessageCount(session),
     t("tree.tooltipProvider", providerLabel(session.provider)),
     session.acpProvider ? t("tree.tooltipAcpAgent", session.acpProvider) : undefined,
+    gtdStatus ? t("tree.tooltipGtdStatus", gtdStatus) : undefined,
     t("tree.tooltipProject", session.projectPath),
     session.model ? t("tree.tooltipModel", session.model) : undefined,
     session.branch ? t("tree.tooltipBranch", session.branch) : undefined,
@@ -470,6 +509,8 @@ export interface SearchSessionItem {
   branch?: string;
   updatedAtLabel: string;
   summary?: string;
+  gtdStatus?: GtdStatus;
+  gtdStatusLabel?: string;
 }
 
 export function enrichSessionsWithTreeSummaries(
@@ -533,6 +574,19 @@ export function serializeSessionForSearch(
     projectName: projectDisplayName ?? basenameOrPath(session.projectPath),
     branch: session.branch,
     updatedAtLabel: relativeTime(session.updatedAt)
+  };
+}
+
+export function enrichSearchSessionItem(session: AgentSession, tree: SessionTreeProvider): SearchSessionItem {
+  const item = serializeSessionForSearch(session, tree.getProjectDisplayName(session.projectPath));
+  const summary = getSessionSummaryText(session);
+  const gtdStatus = tree.getSessionGtdStatus(session);
+  const gtdStatusLabel = tree.getSessionGtdStatusLabel(session);
+
+  return {
+    ...item,
+    ...(summary ? { summary } : {}),
+    ...(gtdStatus && gtdStatusLabel ? { gtdStatus, gtdStatusLabel } : {})
   };
 }
 

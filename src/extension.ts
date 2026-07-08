@@ -46,6 +46,9 @@ import {
   removeFavoriteProject
 } from "./favorites/projectFavorites";
 import { ProjectAliasStore } from "./projects/projectAliasStore";
+import { GtdStatus, GTD_STATUSES } from "./catalog/gtd";
+import { GtdTreeProvider, gtdStatusLabel } from "./gtd/gtdTree";
+import { SessionGtdStore } from "./gtd/sessionGtdStore";
 import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
 import {
   applySessionMenuContext,
@@ -83,17 +86,22 @@ type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy
 
 let extensionContext: vscode.ExtensionContext | undefined;
 let projectAliasStore: ProjectAliasStore | undefined;
+let sessionGtdStore: SessionGtdStore | undefined;
+let gtdTree: GtdTreeProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
   const tree = new SessionTreeProvider();
   const acpTree = new AcpChatTreeProvider();
+  const catalogDbPath = loadCatalogSettings().dbPath;
+  projectAliasStore = new ProjectAliasStore(catalogDbPath);
+  sessionGtdStore = new SessionGtdStore(catalogDbPath);
+  gtdTree = new GtdTreeProvider(sessionGtdStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
-  projectAliasStore = new ProjectAliasStore(loadCatalogSettings().dbPath);
   void applyProjectMenuContextFromConfig();
   void applySessionMenuContextFromConfig();
   void applyUiLocaleContext();
@@ -106,12 +114,18 @@ export function activate(context: vscode.ExtensionContext): void {
     treeDataProvider: acpTree,
     showCollapseAll: true
   });
+  const gtdTreeView = vscode.window.createTreeView("agentResume.gtd", {
+    treeDataProvider: gtdTree,
+    showCollapseAll: true
+  });
 
   context.subscriptions.push(
     treeView,
     acpTreeView,
+    gtdTreeView,
     { dispose: () => acpChatManager.dispose() },
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
+    vscode.commands.registerCommand("agentResume.refreshGtd", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshAcpChats", () => refreshAcpChats(acpTree, true)),
     vscode.commands.registerCommand("agentResume.search", () =>
       searchAndOpen(context, tree, () => refresh(tree, false), acpChatManager)
@@ -120,6 +134,9 @@ export function activate(context: vscode.ExtensionContext): void {
       openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
         refresh(tree, false)
       )
+    ),
+    ...menuCommand("agentResume.setSessionGtdStatus", (nodeOrSession?: unknown) =>
+      setSessionGtdStatusCommand(tree, nodeOrSession)
     ),
     ...menuCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession, context)
@@ -252,11 +269,12 @@ export function activate(context: vscode.ExtensionContext): void {
   void applyCodexIdePanelContext();
   void Promise.all([
     migrateSummariesFromGlobalState(context),
-    projectAliasStore.initialize(context)
+    projectAliasStore.initialize(context),
+    sessionGtdStore.initialize()
   ]).then(() => {
-    const resolver = (projectPath: string) => projectAliasStore?.get(projectPath);
-    tree.setProjectAliasResolver(resolver);
-    acpTree.setProjectAliasResolver(resolver);
+    if (gtdTree) {
+      applyProjectAndGtdResolvers(tree, acpTree, gtdTree);
+    }
     void refresh(tree, false);
     void refreshAcpChats(acpTree, false);
   });
@@ -265,6 +283,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerLocalizedUiRefreshTargets({
     sessionTree: { refresh: () => tree.refresh() },
     acpTree: { refresh: () => acpTree.refresh() },
+    gtdTree: { refresh: () => gtdTree?.refresh() },
     refreshSettingsPanel,
     refreshSessionSearch: refreshSessionSearchPanel,
     refreshSessionPreview: refreshSessionPreviewPanel,
@@ -286,12 +305,15 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     const result = await syncCatalog(loadOptions, catalog);
     const llmConfig = extensionContext ? await getLlmConfig(extensionContext) : undefined;
     const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
+    await sessionGtdStore?.reload();
     tree.setData(sessions, result.warnings);
+    gtdTree?.setData(sessions, result.warnings);
     if (showToast) {
       vscode.window.showInformationMessage(t("notification.syncedCliSessions", sessions.length));
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
+    gtdTree?.setData([], [formatError(error)]);
     vscode.window.showErrorMessage(t("notification.refreshFailed", formatError(error)));
   }
 }
@@ -793,8 +815,78 @@ async function resolveOpenFolderSession(
   return picked?.session;
 }
 
+function applyProjectAndGtdResolvers(
+  tree: SessionTreeProvider,
+  acpTree: AcpChatTreeProvider,
+  gtdTreeProvider: GtdTreeProvider
+): void {
+  const aliasResolver = (projectPath: string) => projectAliasStore?.get(projectPath);
+  tree.setProjectAliasResolver(aliasResolver);
+  acpTree.setProjectAliasResolver(aliasResolver);
+
+  const gtdResolver = (session: AgentSession) => {
+    const status = sessionGtdStore?.get(session);
+    return status ? gtdStatusLabel(status) : undefined;
+  };
+  tree.setGtdStatusResolver(gtdResolver);
+  tree.setGtdRawStatusResolver((session) => sessionGtdStore?.get(session));
+  gtdTreeProvider.setSessionTreeOptions({
+    projectDisplayName: (projectPath) => tree.getProjectDisplayName(projectPath),
+    gtdStatusResolver: gtdResolver
+  });
+}
+
+async function setSessionGtdStatusCommand(
+  tree: SessionTreeProvider,
+  nodeOrSession: unknown
+): Promise<void> {
+  const session = resolveSession(tree, nodeOrSession);
+  if (!session || session.provider === "chat" || !sessionGtdStore) {
+    return;
+  }
+
+  const current = sessionGtdStore.get(session);
+  const picked = await vscode.window.showQuickPick<
+    { label: string; description?: string; status?: GtdStatus }
+  >(
+    [
+      ...GTD_STATUSES.map((status) => ({
+        label: gtdStatusLabel(status),
+        description: current === status ? t("dialog.setGtdStatusCurrent") : undefined,
+        status
+      })),
+      { label: t("menu.session.clearGtdStatus") }
+    ],
+    {
+      title: t("dialog.setGtdStatusTitle"),
+      placeHolder: t("dialog.setGtdStatusPlaceholder")
+    }
+  );
+
+  if (!picked) {
+    return;
+  }
+
+  if (!picked.status) {
+    await sessionGtdStore.clear(session);
+    tree.refresh();
+    gtdTree?.refresh();
+    await refreshSessionSearchPanel();
+    await refreshSessionManagerPanel();
+    vscode.window.showInformationMessage(t("notification.gtdStatusCleared"));
+    return;
+  }
+
+  await sessionGtdStore.set(session, picked.status);
+  tree.refresh();
+  gtdTree?.refresh();
+  await refreshSessionSearchPanel();
+  await refreshSessionManagerPanel();
+  vscode.window.showInformationMessage(t("notification.gtdStatusSet", gtdStatusLabel(picked.status)));
+}
+
 function resolveSession(tree: SessionTreeProvider, nodeOrSession: unknown): AgentSession | undefined {
-  const fromNode = tree.getSessionFromNode(nodeOrSession);
+  const fromNode = tree.getSessionFromNode(nodeOrSession) ?? gtdTree?.getSessionFromNode(nodeOrSession);
   if (fromNode) {
     return fromNode;
   }

@@ -24,6 +24,8 @@ const nested = {
     projectRemovedFromFavorites: "Project removed from favorites.",
     projectAliasSet: "Project alias saved.",
     projectAliasCleared: "Project alias cleared.",
+    gtdStatusSet: "GTD status set to {0}.",
+    gtdStatusCleared: "GTD status cleared.",
     sessionsSortedBy: "Sessions sorted by {0}.",
     acpChatRenamed: "ACP chat renamed.",
     acpChatNotFound: "ACP chat session not found.",
@@ -78,7 +80,9 @@ const nested = {
       "Codex IDE panel resume is experimental ({0}). If a Codex update breaks it, set agentResume.codexIdePanelResume.enabled to false.",
     almaNotRunningResume: "Alma does not appear to be running. Start Alma first, then resume the thread.",
     almaNotRunningNewSession: "Alma does not appear to be running. Open Alma and set the project workspace?",
-    almaStillStarting: 'Alma is still starting. Open a new chat in Alma and select workspace "{0}".'
+    almaStillStarting: 'Alma is still starting. Open a new chat in Alma and select workspace "{0}".',
+    extensionReloadRequiredAfterUpgrade:
+      "Agent Resume Panel was upgraded in place, but this window has not been reloaded yet, so new settings (such as UI language) are not active. Press Cmd+Shift+P (macOS) or Ctrl+Shift+P (Win/Linux), run Developer: Reload Window, or click Reload Window below. Sidebar Refresh does not apply package.json changes."
   },
   error: {
     failedOpenGhostty: "Failed to open Ghostty: {0}",
@@ -103,6 +107,8 @@ const nested = {
     handoffAcpNotSupported: "{0} does not support ACP handoff delivery.",
     settingsInvalidProjectMenu: "Invalid project menu configuration.",
     settingsInvalidSessionMenu: "Invalid session menu configuration.",
+    settingsConfigurationRequiresReload:
+      "Settings could not be saved: the extension was upgraded in place, but this window has not been reloaded yet. Press Cmd+Shift+P (macOS) or Ctrl+Shift+P (Win/Linux), run Developer: Reload Window, or click Reload Window in the notification, then save again. Sidebar Refresh does not apply package.json changes.",
     settingsApiKeyEmpty: "API key cannot be empty.",
     llmTestNotConfigured: "LLM is not configured. Set API base URL, model, and API key.",
     llmTestSuccess: "Connected to {0} ({1}): {2}"
@@ -111,6 +117,7 @@ const nested = {
     removeFromPanelConfirm: 'Remove "{0}" from the panel only? Native {1} storage is unchanged.',
     removeMultipleFromPanelConfirm: "Remove {0} session(s) from the panel only? Native agent storage is unchanged.",
     buttonRemove: "Remove",
+    buttonReloadWindow: "Reload Window",
     buttonOpenSettings: "Open Settings",
     buttonInstallExtension: "Install Extension",
     buttonOpenAlma: "Open Alma",
@@ -122,6 +129,9 @@ const nested = {
     setProjectAliasTitle: "Set Project Alias",
     setProjectAliasPrompt: "Enter a display alias shown after the folder name. Leave empty to clear.",
     setProjectAliasPlaceholder: "e.g. Backend API",
+    setGtdStatusTitle: "Set GTD Status",
+    setGtdStatusPlaceholder: "Choose a GTD bucket for this session",
+    setGtdStatusCurrent: "Current",
     exportSelectFolderOpenLabel: "Select export folder"
   },
   quickpick: {
@@ -204,6 +214,7 @@ const nested = {
     tooltipSessionId: "Session: {0}",
     tooltipSummaryHeading: "Summary",
     tooltipProjectAlias: "Alias: {0}",
+    tooltipGtdStatus: "GTD: {0}",
     descriptionAcp: "acp · {0} · {1}",
     descriptionProvider: "{0} · {1}",
     relativeTimeUnknown: "unknown",
@@ -215,6 +226,18 @@ const nested = {
     sortModeUpdatedAsc: "updated (oldest first)",
     sortModeTitleAsc: "title (A–Z)",
     sortModeTitleDesc: "title (Z–A)"
+  },
+  "tree.gtd": {
+    viewTitle: "GTD",
+    noTaggedSessions: "No tagged sessions yet",
+    noTaggedSessionsDescription: "Right-click a session in Sessions and choose Set GTD Status",
+    status: {
+      inbox: "@inbox",
+      next: "@next",
+      waiting: "@waiting",
+      someday: "@someday",
+      reference: "@reference"
+    }
   },
   "tree.acp": {
     recentChats: "Recent ACP Chats",
@@ -256,7 +279,9 @@ const nested = {
     previewSession: "Preview Session",
     renameSession: "Rename Session",
     removeSessionFromPanel: "Remove from Panel",
-    autoRenameSession: "Auto Rename Session"
+    autoRenameSession: "Auto Rename Session",
+    setGtdStatus: "Set GTD Status…",
+    clearGtdStatus: "Clear GTD Status"
   },
   menu: {
     openFolder: "Open Folder",
@@ -484,11 +509,16 @@ const nested = {
     statusSaveFailed: "Save failed."
   },
   "webview.search": {
-    placeholder: "Search title, summary, provider, project, or branch",
+    placeholder: "Search title, summary, provider, project, branch, or GTD",
     sectionProjects: "Projects",
+    sectionGtd: "GTD",
     sectionSessions: "Sessions",
     chipAllProjects: "All Projects",
     chipAllProjectsTooltip: "Show sessions from all projects",
+    chipAllGtd: "All GTD",
+    chipAllGtdTooltip: "Show sessions regardless of GTD status",
+    chipUntagged: "Untagged",
+    chipUntaggedTooltip: "Show sessions without a GTD status",
     emptyNoMatchProject: "No sessions match in this project.",
     emptyNoMatchSearch: "No sessions match your search.",
     actionPreview: "Preview",
@@ -530,8 +560,11 @@ const nested = {
     summarizeFailed: "Summarize failed."
   },
   "webview.manager": {
-    searchPlaceholder: "Filter title, summary, project, provider, branch",
+    searchPlaceholder: "Filter title, summary, project, provider, branch, or GTD",
     ageFilterLabel: "Age filter",
+    gtdFilterLabel: "GTD filter",
+    gtdFilterAll: "All GTD",
+    gtdFilterUntagged: "Untagged",
     ageFilterAll: "All ages",
     ageFilter7days: "Older than 7 days",
     ageFilter30days: "Older than 30 days",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const SESSION_VIEW_WHEN =
-  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/";
+  "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/";
 
 const ACTIONS = [
   "copyResumeCommand",
@@ -10,7 +10,8 @@ const ACTIONS = [
   "previewSession",
   "renameSession",
   "removeSessionFromPanel",
-  "autoRenameSession"
+  "autoRenameSession",
+  "setGtdStatus"
 ];
 
 const COMMANDS = {
@@ -20,7 +21,8 @@ const COMMANDS = {
   previewSession: [{ command: "agentResume.previewSession" }],
   renameSession: [{ command: "agentResume.renameSession" }],
   removeSessionFromPanel: [{ command: "agentResume.removeSessionFromPanel" }],
-  autoRenameSession: [{ command: "agentResume.autoRenameSession" }]
+  autoRenameSession: [{ command: "agentResume.autoRenameSession" }],
+  setGtdStatus: [{ command: "agentResume.setSessionGtdStatus" }]
 };
 
 const MAIN_SLOT_START = 1;
@@ -89,8 +91,7 @@ export function buildSessionMenuContributionBlocks() {
     sessionMenuPrefix: [
       {
         command: "agentResume.openSession",
-        when:
-          "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/",
+        when: SESSION_VIEW_WHEN,
         group: "inline@1"
       },
       {

@@ -18,6 +18,7 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.renameSession", key: "menu.session.renameSession" },
   { base: "agentResume.removeSessionFromPanel", key: "menu.session.removeSessionFromPanel" },
   { base: "agentResume.autoRenameSession", key: "menu.session.autoRenameSession" },
+  { base: "agentResume.setSessionGtdStatus", key: "menu.session.setGtdStatus" },
   { base: "agentResume.configureSessionMenu", key: "menu.configureSessionMenu" },
   { base: "agentResume.openInCodexApp", key: "menu.resumeInCodexApp" },
   { base: "agentResume.openInClaudeCodePanel", key: "menu.resumeInClaudeCodePanel" },

@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS projects (
   alias TEXT NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_gtd (
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_gtd_status ON session_gtd(status);
 `;
 
 const MIGRATION_SQL = `
@@ -49,6 +57,14 @@ CREATE TABLE IF NOT EXISTS projects (
   alias TEXT NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_gtd (
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_gtd_status ON session_gtd(status);
 `;
 
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {

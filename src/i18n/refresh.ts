@@ -5,6 +5,7 @@ import { applyUiLocaleContext } from "./uiLocaleContext";
 export interface LocalizedUiRefreshTargets {
   sessionTree?: { refresh: () => void };
   acpTree?: { refresh: () => void };
+  gtdTree?: { refresh: () => void };
   refreshSettingsPanel?: () => Promise<void>;
   refreshSessionSearch?: () => Promise<void>;
   refreshSessionPreview?: () => Promise<void>;
@@ -23,6 +24,7 @@ export async function refreshAllLocalizedUi(showToast = true): Promise<void> {
   await applyUiLocaleContext();
   targets.sessionTree?.refresh();
   targets.acpTree?.refresh();
+  targets.gtdTree?.refresh();
 
   await Promise.all([
     targets.refreshSettingsPanel?.(),

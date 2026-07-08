@@ -8,6 +8,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.4.0] - 2026-07-08
+
+#### 新增
+
+- **GTD 视图**：侧边栏新增独立 **GTD** 标签页，按 `@inbox` / `@next` / `@waiting` / `@someday` / `@reference` 五个互斥状态分组展示已打标的 CLI sessions。
+- **设置 GTD 状态**：在 **Sessions** 或 **GTD** 视图中右键 session → **显示更多** → **设置 GTD 状态…**（QuickPick 单选；可选清除状态）。每个 session 同时只属于一个 GTD 桶。
+- **Catalog 持久化**：GTD 状态写入 `catalog.db` 的 `session_gtd` 表（`provider` + `session_id` 主键），与 agent sync 独立；主 Sessions 树 tooltip 显示当前 GTD 状态。
+- **Search / Manager**：**Search Sessions** 与 **Session Manager** 支持按 GTD 状态筛选（全部 / 未打标 / 各状态桶），列表行显示 GTD 标签，文本搜索可匹配 GTD 状态。
+- **ACP 说明**：不支持 ACP Chat session 打标（数据不在 catalog）。
+
 ### [2.3.2] - 2026-07-08
 
 #### 新增
@@ -256,6 +266,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.4.0] - 2026-07-08
+
+#### Added
+
+- **GTD view**: New **GTD** sidebar tab grouping tagged CLI sessions by mutually exclusive status: `@inbox`, `@next`, `@waiting`, `@someday`, `@reference`.
+- **Set GTD status**: Right-click a session in **Sessions** or **GTD** → **Show More** → **Set GTD Status…** (single-select QuickPick; clear option included). Each session belongs to at most one GTD bucket.
+- **Catalog persistence**: Status stored in `session_gtd` inside `catalog.db`, independent of agent sync; main Sessions tree tooltip shows the current GTD status when set.
+- **Search / Manager**: **Search Sessions** and **Session Manager** support GTD filters (all / untagged / each bucket), show GTD labels on rows, and match GTD status in text search.
+- **ACP note**: ACP Chat sessions are not tagged (not in catalog).
 
 ### [2.3.2] - 2026-07-08
 

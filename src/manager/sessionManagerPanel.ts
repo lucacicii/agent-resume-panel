@@ -10,10 +10,12 @@ import { t } from "../i18n";
 import { getSessionManagerUiStrings } from "../webview/uiStrings";
 import { getLlmOutputLanguage } from "../llm/config";
 import { openSessionResume } from "../terminal/resumeTerminal";
+import { GTD_STATUSES } from "../catalog/gtd";
+import { gtdStatusLabel } from "../gtd/gtdTree";
 import {
   buildSessionSubtitle,
+  enrichSearchSessionItem,
   enrichSessionsWithTreeSummaries,
-  serializeSessionForSearch,
   SessionTreeProvider
 } from "../tree/sessionTree";
 import { relativeTime } from "../util/relativeTime";
@@ -27,6 +29,8 @@ interface ManagerSessionPayload {
   updatedAtMs: number;
   updatedAtLabel: string;
   subtitle: string;
+  gtdStatus?: string;
+  gtdStatusLabel?: string;
 }
 
 interface ManagerStats {
@@ -35,7 +39,7 @@ interface ManagerStats {
   byProvider: Record<string, number>;
 }
 
-const WEBVIEW_ASSET_VERSION = "4";
+const WEBVIEW_ASSET_VERSION = "5";
 
 let managerPanel: vscode.WebviewPanel | undefined;
 let activeManagerTree: SessionTreeProvider | undefined;
@@ -213,7 +217,11 @@ async function postManagerInit(
       type: "init",
       uiStrings: getSessionManagerUiStrings(),
       sessions: payload.sessions,
-      stats: payload.stats
+      stats: payload.stats,
+      gtdStatuses: GTD_STATUSES.map((status) => ({
+        status,
+        label: gtdStatusLabel(status)
+      }))
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -237,10 +245,7 @@ function buildManagerPayload(
       withSummary += 1;
     }
 
-    const search = serializeSessionForSearch(
-      enrichedSession,
-      tree.getProjectDisplayName(enrichedSession.projectPath)
-    );
+    const search = enrichSearchSessionItem(enrichedSession, tree);
     return {
       provider: enrichedSession.provider,
       id: enrichedSession.id,
@@ -249,7 +254,10 @@ function buildManagerPayload(
       projectName: search.projectName,
       updatedAtMs: enrichedSession.updatedAt,
       updatedAtLabel: relativeTime(enrichedSession.updatedAt),
-      subtitle
+      subtitle,
+      ...(search.gtdStatus && search.gtdStatusLabel
+        ? { gtdStatus: search.gtdStatus, gtdStatusLabel: search.gtdStatusLabel }
+        : {})
     };
   });
 

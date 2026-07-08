@@ -45,7 +45,12 @@ export function getSessionSearchUiStrings(): Record<string, string> {
     actionRenameTooltip: t("webview.search.actionRenameTooltip"),
     actionRemove: t("webview.search.actionRemove"),
     actionRemoveTooltip: t("webview.search.actionRemoveTooltip"),
-    actionRemoveAria: t("webview.search.actionRemoveAria")
+    actionRemoveAria: t("webview.search.actionRemoveAria"),
+    sectionGtd: t("webview.search.sectionGtd"),
+    chipAllGtd: t("webview.search.chipAllGtd"),
+    chipAllGtdTooltip: t("webview.search.chipAllGtdTooltip"),
+    chipUntagged: t("webview.search.chipUntagged"),
+    chipUntaggedTooltip: t("webview.search.chipUntaggedTooltip")
   };
 }
 
@@ -99,7 +104,10 @@ export function getSessionManagerUiStrings(): Record<string, string> {
     columnUpdated: t("webview.manager.columnUpdated"),
     stats: t("webview.manager.stats"),
     emptyNoMatch: t("webview.manager.emptyNoMatch"),
-    removeAction: t("webview.manager.removeAction")
+    removeAction: t("webview.manager.removeAction"),
+    gtdFilterLabel: t("webview.manager.gtdFilterLabel"),
+    gtdFilterAll: t("webview.manager.gtdFilterAll"),
+    gtdFilterUntagged: t("webview.manager.gtdFilterUntagged")
   };
 }
 

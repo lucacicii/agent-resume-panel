@@ -3,18 +3,21 @@
 
   const ROW_HEIGHT = 64;
   let uiStrings = {};
-  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>} }} */
-  let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} } };
+  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,gtdStatus?:string,gtdStatusLabel?:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>}, gtdStatuses: Array<{status:string,label:string}> }} */
+  let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} }, gtdStatuses: [] };
 
   const selected = new Set();
   const enabledProviders = new Set();
   let query = "";
   let ageDays = "all";
+  /** @type {null | "untagged" | string} */
+  let selectedGtdFilter = null;
 
   const searchInput = document.getElementById("search");
   const ageFilter = document.getElementById("age-filter");
   const statsEl = document.getElementById("stats");
   const providerFiltersEl = document.getElementById("provider-filters");
+  const gtdFiltersEl = document.getElementById("gtd-filters");
   const viewport = document.getElementById("list-viewport");
   const spacer = document.getElementById("list-spacer");
   const rowsEl = document.getElementById("list-rows");
@@ -128,13 +131,16 @@
       applyStaticUi();
       state.sessions = message.sessions || [];
       state.stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
+      state.gtdStatuses = message.gtdStatuses || [];
       enabledProviders.clear();
       for (const provider of Object.keys(state.stats.byProvider || {})) {
         enabledProviders.add(provider);
       }
+      selectedGtdFilter = null;
       selected.clear();
       selectAllEl.checked = false;
       renderProviderFilters();
+      renderGtdFilters();
       render();
       return;
     }
@@ -196,6 +202,12 @@
       if (minAgeMs > 0 && now - session.updatedAtMs < minAgeMs) {
         return false;
       }
+      if (selectedGtdFilter === "untagged" && session.gtdStatus) {
+        return false;
+      }
+      if (selectedGtdFilter && selectedGtdFilter !== "untagged" && session.gtdStatus !== selectedGtdFilter) {
+        return false;
+      }
       if (!trimmed) {
         return true;
       }
@@ -203,10 +215,58 @@
         session.title.toLowerCase().includes(trimmed) ||
         session.subtitle.toLowerCase().includes(trimmed) ||
         session.provider.toLowerCase().includes(trimmed) ||
+        (session.gtdStatusLabel && session.gtdStatusLabel.toLowerCase().includes(trimmed)) ||
         session.projectName.toLowerCase().includes(trimmed) ||
         session.projectPath.toLowerCase().includes(trimmed)
       );
     });
+  }
+
+  function renderGtdFilters() {
+    if (!gtdFiltersEl) {
+      return;
+    }
+
+    gtdFiltersEl.innerHTML = "";
+    gtdFiltersEl.setAttribute("aria-label", uiStrings.gtdFilterLabel || "GTD filter");
+
+    const untaggedCount = state.sessions.filter((session) => !session.gtdStatus).length;
+    gtdFiltersEl.appendChild(
+      createGtdFilterButton(
+        uiStrings.gtdFilterAll || "All GTD",
+        state.sessions.length,
+        null,
+        selectedGtdFilter === null
+      )
+    );
+    gtdFiltersEl.appendChild(
+      createGtdFilterButton(
+        uiStrings.gtdFilterUntagged || "Untagged",
+        untaggedCount,
+        "untagged",
+        selectedGtdFilter === "untagged"
+      )
+    );
+
+    for (const entry of state.gtdStatuses) {
+      const count = state.sessions.filter((session) => session.gtdStatus === entry.status).length;
+      gtdFiltersEl.appendChild(
+        createGtdFilterButton(entry.label, count, entry.status, selectedGtdFilter === entry.status)
+      );
+    }
+  }
+
+  function createGtdFilterButton(label, count, filterValue, active) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gtd-filter" + (active ? " active" : "");
+    button.textContent = `${label} (${count})`;
+    button.addEventListener("click", () => {
+      selectedGtdFilter = filterValue;
+      renderGtdFilters();
+      render();
+    });
+    return button;
   }
 
   function renderProviderFilters() {
@@ -283,9 +343,21 @@
         }
       });
 
+      const badgeCol = document.createElement("div");
+      badgeCol.className = "badge-col";
+
       const badge = document.createElement("span");
       badge.className = "badge";
       badge.textContent = session.provider;
+      badgeCol.appendChild(badge);
+
+      if (session.gtdStatusLabel) {
+        const gtdBadge = document.createElement("span");
+        gtdBadge.className = "gtd-badge";
+        gtdBadge.textContent = session.gtdStatusLabel;
+        gtdBadge.title = session.gtdStatusLabel;
+        badgeCol.appendChild(gtdBadge);
+      }
 
       const titleCol = document.createElement("div");
       titleCol.className = "title-col";
@@ -312,7 +384,7 @@
       time.textContent = session.updatedAtLabel;
 
       top.appendChild(check);
-      top.appendChild(badge);
+      top.appendChild(badgeCol);
       top.appendChild(titleCol);
       top.appendChild(project);
       top.appendChild(time);

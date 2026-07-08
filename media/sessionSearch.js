@@ -4,9 +4,11 @@
   let uiStrings = {};
   let previewUiStrings = {};
 
-  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string}> }} */
-  let state = { projects: [], sessions: [] };
+  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string, gtdStatus?: string, gtdStatusLabel?: string}>, gtdStatuses: Array<{status: string, label: string}> }} */
+  let state = { projects: [], sessions: [], gtdStatuses: [] };
   let selectedProjectPath = null;
+  /** @type {null | "untagged" | string} */
+  let selectedGtdFilter = null;
   let query = "";
   let previewLoadingKey = null;
   /** @type {{ provider: string, id: string } | null} */
@@ -14,6 +16,8 @@
 
   const searchInput = document.getElementById("search");
   const chipsEl = document.getElementById("chips");
+  const gtdChipsEl = document.getElementById("gtd-chips");
+  const gtdSectionLabel = document.getElementById("gtd-section-label");
   const sessionsEl = document.getElementById("sessions");
   const previewOverlay = document.getElementById("preview-overlay");
   const previewTitle = document.getElementById("preview-title");
@@ -70,6 +74,9 @@
     }
     if (sessionsSectionLabel) {
       sessionsSectionLabel.textContent = uiStrings.sectionSessions || sessionsSectionLabel.textContent;
+    }
+    if (gtdSectionLabel) {
+      gtdSectionLabel.textContent = uiStrings.sectionGtd || gtdSectionLabel.textContent;
     }
     applyPreviewStaticUi();
   }
@@ -149,11 +156,14 @@
       applyStaticUi();
       state = {
         projects: message.projects || [],
-        sessions: message.sessions || []
+        sessions: message.sessions || [],
+        gtdStatuses: message.gtdStatuses || []
       };
       selectedProjectPath = null;
+      selectedGtdFilter = null;
       query = searchInput.value;
       renderChips();
+      renderGtdChips();
       renderSessions();
       syncPreviewTitle();
       previewRename.disabled = false;
@@ -263,6 +273,55 @@
     return button;
   }
 
+  function renderGtdChips() {
+    if (!gtdChipsEl) {
+      return;
+    }
+
+    gtdChipsEl.innerHTML = "";
+
+    const untaggedCount = state.sessions.filter((session) => !session.gtdStatus).length;
+    gtdChipsEl.appendChild(
+      createGtdChip(
+        uiStrings.chipAllGtd || "All GTD",
+        state.sessions.length,
+        null,
+        selectedGtdFilter === null,
+        uiStrings.chipAllGtdTooltip || "Show sessions regardless of GTD status"
+      )
+    );
+    gtdChipsEl.appendChild(
+      createGtdChip(
+        uiStrings.chipUntagged || "Untagged",
+        untaggedCount,
+        "untagged",
+        selectedGtdFilter === "untagged",
+        uiStrings.chipUntaggedTooltip || "Show sessions without a GTD status"
+      )
+    );
+
+    for (const entry of state.gtdStatuses) {
+      const count = state.sessions.filter((session) => session.gtdStatus === entry.status).length;
+      gtdChipsEl.appendChild(
+        createGtdChip(entry.label, count, entry.status, selectedGtdFilter === entry.status, entry.label)
+      );
+    }
+  }
+
+  function createGtdChip(label, count, filterValue, active, tooltip) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip" + (active ? " active" : "");
+    button.title = tooltip || label;
+    button.innerHTML = `${escapeHtml(label)}<span class="count">(${count})</span>`;
+    button.addEventListener("click", () => {
+      selectedGtdFilter = filterValue;
+      renderGtdChips();
+      renderSessions();
+    });
+    return button;
+  }
+
   function renderSessions() {
     const filtered = state.sessions.filter(matchesSession);
     sessionsEl.innerHTML = "";
@@ -310,6 +369,9 @@
       const metaParts = [];
       if (!selectedProjectPath) {
         metaParts.push(session.projectName);
+      }
+      if (session.gtdStatusLabel) {
+        metaParts.push(session.gtdStatusLabel);
       }
       if (session.branch) {
         metaParts.push(session.branch);
@@ -598,6 +660,13 @@
       return false;
     }
 
+    if (selectedGtdFilter === "untagged" && session.gtdStatus) {
+      return false;
+    }
+    if (selectedGtdFilter && selectedGtdFilter !== "untagged" && session.gtdStatus !== selectedGtdFilter) {
+      return false;
+    }
+
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) {
       return true;
@@ -607,6 +676,7 @@
       session.title.toLowerCase().includes(trimmed) ||
       (session.summary && session.summary.toLowerCase().includes(trimmed)) ||
       session.provider.toLowerCase().includes(trimmed) ||
+      (session.gtdStatusLabel && session.gtdStatusLabel.toLowerCase().includes(trimmed)) ||
       (session.branch && session.branch.toLowerCase().includes(trimmed)) ||
       (!selectedProjectPath &&
         (session.projectName.toLowerCase().includes(trimmed) ||
