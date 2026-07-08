@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.3.1] - 2026-07-08
+
+#### 修复
+
+- **就地升级后设置无法保存**：扩展就地升级后若未重新加载窗口，VS Code Extension Host 仍使用旧版 `package.json` 贡献点，保存界面语言等设置会报 *not a registered configuration*。现于打开设置页或保存失败时检测并提示 **Reload Window**（重装扩展会隐式重启宿主，故表现正常）。
+
 ### [2.3.0] - 2026-07-08
 
 #### 新增
@@ -232,6 +238,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.3.1] - 2026-07-08
+
+#### Fixed
+
+- **Settings fail to save after in-place upgrade**: Without **Developer: Reload Window**, the Extension Host keeps the previous `package.json` contribution registry after an in-place upgrade, so saving UI language (and other newly registered settings) can fail with *not a registered configuration*. The extension now detects this when opening Settings or on save failure and prompts **Reload Window** (a full reinstall implicitly restarts the host, which is why reinstall appeared to work).
 
 ### [2.3.0] - 2026-07-08
 

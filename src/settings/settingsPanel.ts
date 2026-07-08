@@ -5,6 +5,11 @@ import { llmOverridesFromDraft } from "../llm/config";
 import { testLlmConnection } from "../llm/sessionAssist";
 import { t } from "../i18n";
 import { getSettingsUiStrings } from "../webview/uiStrings";
+import {
+  isUnregisteredConfigurationError,
+  promptReloadIfContributionsStale,
+  promptReloadWindow
+} from "../upgrade/contributionSync";
 import { applySettingsPatch, loadSettingsSnapshot } from "./settingsIO";
 
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -42,6 +47,7 @@ export async function openSettingsPanelToLlm(context: vscode.ExtensionContext): 
 }
 
 async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<void> {
+  await promptReloadIfContributionsStale(context);
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
   if (settingsPanel) {
@@ -83,9 +89,14 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
         await sendInit(settingsPanel!.webview, ctx);
         settingsPanel!.webview.postMessage({ type: "saved" });
       } catch (error) {
+        if (isUnregisteredConfigurationError(error)) {
+          void promptReloadWindow(t("error.settingsConfigurationRequiresReload"));
+        }
         settingsPanel!.webview.postMessage({
           type: "saveError",
-          error: formatError(error)
+          error: isUnregisteredConfigurationError(error)
+            ? t("error.settingsConfigurationRequiresReload")
+            : formatError(error)
         });
       }
       return;

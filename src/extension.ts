@@ -75,6 +75,7 @@ import {
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
+import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
@@ -83,6 +84,7 @@ let extensionContext: vscode.ExtensionContext | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
+  void promptReloadIfContributionsStale(context);
   const tree = new SessionTreeProvider();
   const acpTree = new AcpChatTreeProvider();
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
