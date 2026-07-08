@@ -10,18 +10,6 @@ import { join } from "node:path";
 const root = join(import.meta.dirname, "..");
 
 const nested = {
-  locale: {
-    en: "English",
-    "zh-cn": "Chinese (Simplified)",
-    ja: "Japanese",
-    ko: "Korean",
-    es: "Spanish",
-    fr: "French",
-    de: "German",
-    "pt-br": "Portuguese (Brazil)",
-    it: "Italian",
-    ru: "Russian"
-  },
   notification: {
     syncedCliSessions: "Synced {0} CLI sessions from catalog.",
     refreshFailed: "Agent Resume refresh failed: {0}",

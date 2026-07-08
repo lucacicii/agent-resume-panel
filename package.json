@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -271,6 +271,24 @@
             "pi-acp"
           ],
           "description": "Launch arguments for Pi ACP agent."
+        },
+        "agentResume.uiLanguage": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn",
+            "ja",
+            "ko",
+            "es",
+            "fr",
+            "de",
+            "pt-br",
+            "it",
+            "ru"
+          ],
+          "default": "auto",
+          "description": "Extension UI language. auto follows the VS Code display language; choose a language to override."
         },
         "agentResume.maxItems": {
           "type": "number",

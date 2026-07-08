@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { readAgentResumeSetting } from "../llm/config";
 import {
+  NATIVE_LOCALE_LABELS,
   normalizeUiLanguagePreference,
   normalizeVsCodeLocale,
   UI_LANGUAGE_AUTO,
@@ -67,21 +68,8 @@ export function t(key: string, ...args: (string | number)[]): string {
   return args.length > 0 ? interpolate(template, args) : template;
 }
 
-const LOCALE_LABEL_KEYS: Record<UiLocale, string> = {
-  en: "locale.en",
-  "zh-cn": "locale.zh-cn",
-  ja: "locale.ja",
-  ko: "locale.ko",
-  es: "locale.es",
-  fr: "locale.fr",
-  de: "locale.de",
-  "pt-br": "locale.pt-br",
-  it: "locale.it",
-  ru: "locale.ru"
-};
-
 export function getUiLocaleDisplayName(locale: UiLocale): string {
-  return t(LOCALE_LABEL_KEYS[locale]);
+  return NATIVE_LOCALE_LABELS[locale];
 }
 
 export function getUiLanguageOptionLabel(preference: string): string {
@@ -89,7 +77,7 @@ export function getUiLanguageOptionLabel(preference: string): string {
     return t("settings.fieldUiLanguageOptionAuto");
   }
   if (isUiLocale(preference)) {
-    return t(LOCALE_LABEL_KEYS[preference]);
+    return NATIVE_LOCALE_LABELS[preference];
   }
   return preference;
 }

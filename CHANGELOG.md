@@ -8,6 +8,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.3.0] - 2026-07-08
+
+#### 新增
+
+- **界面语言（UI Language）**：**Agent Resume Settings → General** 可单独选择扩展界面语言（`auto` 跟随 VS Code，或 10 种语言之一），与 VS Code 显示语言及 **LLM Assist → Output Language** 独立。
+- **多语言 UI**：覆盖 Extension Host 通知与对话框、侧边栏 Sessions / ACP Chats 树、Session / Project 右键菜单，以及 Settings、Session Preview、Search Sessions、Session Manager、ACP Chat 等 Webview（`en`、`zh-cn`、`ja`、`ko`、`es`、`fr`、`de`、`pt-br`、`it`、`ru`）。
+- **语言自称**：界面语言下拉中各语言选项固定显示自称（如 **English**、**简体中文**），「自动」选项仍随当前界面翻译，便于误选后找回。
+
+#### 修复
+
+- **`agentResume.uiLanguage`**：在 `package.json` 注册配置项，修复保存界面语言时报错 *not a registered configuration*。
+
+#### 说明
+
+- 命令面板与 VS Code 原生 Settings 中的扩展配置描述仍为英文（manifest 在扩展激活前加载，暂无法随 UI Language 动态切换）。
+
 ### [2.2.1] - 2026-07-08
 
 #### 新增
@@ -216,6 +232,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.3.0] - 2026-07-08
+
+#### Added
+
+- **UI Language**: **Agent Resume Settings → General** lets you choose the extension UI language (`auto` follows VS Code, or one of 10 languages), independent of the VS Code display language and **LLM Assist → Output Language**.
+- **Localized UI**: Extension Host notifications and dialogs, Sessions / ACP Chats sidebar trees, Session / Project context menus, and Webviews (Settings, Session Preview, Search Sessions, Session Manager, ACP Chat) in `en`, `zh-cn`, `ja`, `ko`, `es`, `fr`, `de`, `pt-br`, `it`, and `ru`.
+- **Native language names**: UI language dropdown options always show each language in its own name (e.g. **English**, **简体中文**); the Auto option still follows the current UI translation so users can recover after a mistaken selection.
+
+#### Fixed
+
+- **`agentResume.uiLanguage`**: Registered in `package.json` so saving UI language no longer fails with *not a registered configuration*.
+
+#### Notes
+
+- Command Palette titles and native VS Code Settings descriptions for this extension remain English (manifest strings load before extension activation).
 
 ### [2.2.1] - 2026-07-08
 

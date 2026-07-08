@@ -21,6 +21,20 @@ export type UiLanguagePreference = typeof UI_LANGUAGE_AUTO | UiLocale;
 
 export const UI_LANGUAGE_OPTIONS: UiLanguagePreference[] = [UI_LANGUAGE_AUTO, ...UI_LOCALES];
 
+/** Endonyms for UI language picker — always shown in the language itself, never translated. */
+export const NATIVE_LOCALE_LABELS: Record<UiLocale, string> = {
+  en: "English",
+  "zh-cn": "简体中文",
+  ja: "日本語",
+  ko: "한국어",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  "pt-br": "Português (Brasil)",
+  it: "Italiano",
+  ru: "Русский"
+};
+
 const VSCODE_LOCALE_MAP: Record<string, UiLocale> = {
   en: "en",
   "en-us": "en",
