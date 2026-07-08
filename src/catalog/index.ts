@@ -2,6 +2,7 @@ export * from "./config";
 export * from "./projects";
 export * from "./gtd";
 export * from "./mutations";
+export * from "./notes";
 export * from "./rename";
 export * from "./query";
 export * from "./resolve";

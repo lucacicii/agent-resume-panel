@@ -8,6 +8,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.5.0] - 2026-07-08
+
+#### 新增
+
+- **Session / Project 笔记**：每个 CLI session、ACP Chat session 与项目文件夹各可保存一条 `note.md` 正文，通过右键 **Open Note** / **Open Project Note** 在 VS Code 原生 Markdown 编辑器中打开与保存（支持预览、`Cmd+S`、自动保存）。
+- **菜单入口**：**Sessions**、**GTD** 与 **ACP Chats** 视图中右键 session → **Open Note** / **Delete Note**；右键项目 → **Open Project Note** / **Delete Project Note**（默认在 **Show More** 中，可在 **Agent Resume Settings → Session Menu / Project Menu** 拖到主菜单）。
+- **Catalog 持久化**：笔记写入 `catalog.db` 的 `session_notes` 与 `project_notes` 表，与 agent 原生存储独立；备份 `panelHome` 即可保留。
+- **状态提示**：有内容的 session / project 在侧边栏 description 与 tooltip 显示 **Note** 标记。
+
+
 ### [2.4.0] - 2026-07-08
 
 #### 新增
@@ -266,6 +276,16 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.5.0] - 2026-07-08
+
+#### Added
+
+- **Session / project notes**: Each CLI session, ACP Chat session, and project folder can store one `note.md` body. Right-click **Open Note** / **Open Project Note** to edit in the VS Code Markdown editor (preview, `Cmd+S`, auto-save).
+- **Menu access**: In **Sessions**, **GTD**, and **ACP Chats**, right-click a session for **Open Note** / **Delete Note**; right-click a project for **Open Project Note** / **Delete Project Note** (under **Show More** by default; pin in **Agent Resume Settings → Session Menu / Project Menu**).
+- **Catalog persistence**: Notes live in `session_notes` and `project_notes` inside `catalog.db`, independent of agent native storage; back up `panelHome` to keep them.
+- **Indicators**: Sessions and projects with note content show a **Note** marker in the sidebar description and tooltip.
+
 
 ### [2.4.0] - 2026-07-08
 

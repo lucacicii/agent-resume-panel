@@ -49,6 +49,15 @@ import { ProjectAliasStore } from "./projects/projectAliasStore";
 import { GtdStatus, GTD_STATUSES } from "./catalog/gtd";
 import { GtdTreeProvider, gtdStatusLabel } from "./gtd/gtdTree";
 import { SessionGtdStore } from "./gtd/sessionGtdStore";
+import {
+  deleteProjectNoteCommand,
+  deleteSessionNoteCommand,
+  openProjectNoteCommand,
+  openSessionNoteCommand
+} from "./notes/noteCommands";
+import { NoteFileSystemProvider } from "./notes/noteFileSystemProvider";
+import { NOTE_SCHEME } from "./notes/noteUri";
+import { NotesStore } from "./notes/notesStore";
 import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
 import {
   applySessionMenuContext,
@@ -87,6 +96,7 @@ type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy
 let extensionContext: vscode.ExtensionContext | undefined;
 let projectAliasStore: ProjectAliasStore | undefined;
 let sessionGtdStore: SessionGtdStore | undefined;
+let notesStore: NotesStore | undefined;
 let gtdTree: GtdTreeProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -97,6 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
   sessionGtdStore = new SessionGtdStore(catalogDbPath);
+  notesStore = new NotesStore(catalogDbPath);
   gtdTree = new GtdTreeProvider(sessionGtdStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
   tree.setFavoriteProjects(loadFavoriteProjects(context));
@@ -230,6 +241,40 @@ export function activate(context: vscode.ExtensionContext): void {
     ...menuCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
       autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
+    ...menuCommand("agentResume.openSessionNote", (nodeOrSession?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void openSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () => refreshNoteIndicators(tree));
+    }),
+    ...menuCommand("agentResume.deleteSessionNote", (nodeOrSession?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void deleteSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () => refreshNoteIndicators(tree));
+    }),
+    ...menuCommand("agentResume.openProjectNote", (node?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void openProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNoteIndicators(tree));
+    }),
+    ...menuCommand("agentResume.deleteProjectNote", (node?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void deleteProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNoteIndicators(tree));
+    }),
+    vscode.workspace.registerFileSystemProvider(
+      NOTE_SCHEME,
+      new NoteFileSystemProvider(notesStore as NotesStore),
+      { isCaseSensitive: true }
+    ),
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      if (document.uri.scheme === NOTE_SCHEME) {
+        refreshNoteIndicators(tree);
+      }
+    }),
     ...CLI_HANDOFF_TARGETS.map((target) =>
       vscode.commands.registerCommand(handoffCommandId(target), (nodeOrSource?: unknown) => {
         void executeHandoffCommand(nodeOrSource, { target }, {
@@ -270,7 +315,8 @@ export function activate(context: vscode.ExtensionContext): void {
   void Promise.all([
     migrateSummariesFromGlobalState(context),
     projectAliasStore.initialize(context),
-    sessionGtdStore.initialize()
+    sessionGtdStore.initialize(),
+    notesStore.initialize()
   ]).then(() => {
     if (gtdTree) {
       applyProjectAndGtdResolvers(tree, acpTree, gtdTree);
@@ -306,6 +352,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     const llmConfig = extensionContext ? await getLlmConfig(extensionContext) : undefined;
     const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
     await sessionGtdStore?.reload();
+    await notesStore?.reload();
     tree.setData(sessions, result.warnings);
     gtdTree?.setData(sessions, result.warnings);
     if (showToast) {
@@ -830,10 +877,18 @@ function applyProjectAndGtdResolvers(
   };
   tree.setGtdStatusResolver(gtdResolver);
   tree.setGtdRawStatusResolver((session) => sessionGtdStore?.get(session));
+  tree.setHasSessionNoteResolver((session) => notesStore?.hasSessionNote(session) ?? false);
+  tree.setHasProjectNoteResolver((projectPath) => notesStore?.hasProjectNote(projectPath) ?? false);
   gtdTreeProvider.setSessionTreeOptions({
     projectDisplayName: (projectPath) => tree.getProjectDisplayName(projectPath),
-    gtdStatusResolver: gtdResolver
+    gtdStatusResolver: gtdResolver,
+    hasSessionNoteResolver: (session) => notesStore?.hasSessionNote(session) ?? false
   });
+}
+
+function refreshNoteIndicators(tree: SessionTreeProvider): void {
+  tree.refresh();
+  gtdTree?.refresh();
 }
 
 async function setSessionGtdStatusCommand(

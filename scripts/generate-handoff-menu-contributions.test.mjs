@@ -20,6 +20,9 @@ assert.ok(
     (entry) => entry.when.includes("agentResume.acpChat.grok") && entry.command === "agentResume.handoffTo.grok"
   )
 );
-assert.ok(blocks.acpContextEntries.length === 3);
+assert.ok(blocks.acpContextEntries.length === 7);
+assert.ok(
+  blocks.acpContextEntries.some((entry) => entry.command === "agentResume.openSessionNote")
+);
 
 console.log("generate-handoff-menu-contributions.test.mjs: ok");

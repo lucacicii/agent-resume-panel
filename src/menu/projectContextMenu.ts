@@ -14,7 +14,9 @@ export type ProjectMenuAction =
   | "newOpenCodeSession"
   | "newPiSession"
   | "newAlmaSession"
-  | "newCodexAppSession";
+  | "newCodexAppSession"
+  | "openProjectNote"
+  | "deleteProjectNote";
 
 export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "favorite",
@@ -29,7 +31,9 @@ export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "newOpenCodeSession",
   "newPiSession",
   "newAlmaSession",
-  "newCodexAppSession"
+  "newCodexAppSession",
+  "openProjectNote",
+  "deleteProjectNote"
 ];
 
 export const DEFAULT_MAIN_ACTIONS: ProjectMenuAction[] = ["newCodexSession", "newClaudeSession"];
@@ -51,7 +55,9 @@ export function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> 
     newOpenCodeSession: t("menu.project.newOpenCodeSession"),
     newPiSession: t("menu.project.newPiSession"),
     newAlmaSession: t("menu.project.newAlmaSession"),
-    newCodexAppSession: t("menu.project.newCodexAppSession")
+    newCodexAppSession: t("menu.project.newCodexAppSession"),
+    openProjectNote: t("menu.project.openNote"),
+    deleteProjectNote: t("menu.project.deleteNote")
   };
 }
 

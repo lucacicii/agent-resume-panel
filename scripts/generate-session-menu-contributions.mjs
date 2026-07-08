@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const SESSION_VIEW_WHEN =
-  "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi)/";
+  "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi|chat)/";
 
 const ACTIONS = [
   "copyResumeCommand",
@@ -11,7 +11,9 @@ const ACTIONS = [
   "renameSession",
   "removeSessionFromPanel",
   "autoRenameSession",
-  "setGtdStatus"
+  "setGtdStatus",
+  "openSessionNote",
+  "deleteSessionNote"
 ];
 
 const COMMANDS = {
@@ -22,7 +24,9 @@ const COMMANDS = {
   renameSession: [{ command: "agentResume.renameSession" }],
   removeSessionFromPanel: [{ command: "agentResume.removeSessionFromPanel" }],
   autoRenameSession: [{ command: "agentResume.autoRenameSession" }],
-  setGtdStatus: [{ command: "agentResume.setSessionGtdStatus" }]
+  setGtdStatus: [{ command: "agentResume.setSessionGtdStatus" }],
+  openSessionNote: [{ command: "agentResume.openSessionNote" }],
+  deleteSessionNote: [{ command: "agentResume.deleteSessionNote" }]
 };
 
 const MAIN_SLOT_START = 1;

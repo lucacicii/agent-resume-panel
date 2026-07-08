@@ -17,6 +17,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - 同时使用多个 CLI / 桌面 Agent，并希望统一管理。
 - 按项目查看历史会话，收藏常用项目，为项目设置显示别名，并直接在对应项目里继续工作。
 - 用 **GTD** 视图按 `@inbox` / `@next` / `@waiting` 等状态组织 CLI 会话，并在 Search / Session Manager 中筛选。
+- 为每个 **session** 或 **project** 写 Markdown 笔记（`note.md`），在编辑器中打开、保存，数据存入 Session Catalog。
 - 在搜索面板里按项目或 GTD 状态筛选，再快速定位某个会话。
 - 重命名会话标题，并写回各 Agent 的原生存储（其他终端 resume 时也会看到新名称）。
 - 需要在 Claude Code 或 Codex 官方 VS Code 插件面板中继续会话（Codex 面板恢复为实验性功能）。
@@ -51,6 +52,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 - **Hand Off to Another Agent**：子菜单选择目标 Agent，生成 Handoff Brief 并转交（CLI session → CLI 终端；ACP Chat → ACP Chat）。需已配置 **LLM Assist**；当前 Agent 不会出现在子菜单中。
 - **Set GTD Status…**（默认在 **Show More** 中）：为 CLI session 设置互斥 GTD 状态（`@inbox` / `@next` / `@waiting` / `@someday` / `@reference`），或清除状态。可在 **Agent Resume Settings → Session Menu** 拖到主菜单。
+- **Open Note** / **Delete Note**（默认在 **Show More** 中）：打开或删除该 session 的 `note.md` 笔记（VS Code Markdown 编辑器，支持预览与保存）。**ACP Chats** 中 chat session 同样支持。
 
 在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。若已在 **Agent Resume Settings → LLM Assist** 配置 API，还可使用 **Summarize** 生成会话摘要（显示在对话上方）、**Auto Rename** 由 AI 建议标题并写回原生存储，以及 **Hand Off to…** 将上下文转交给其他 Agent。
 
@@ -66,6 +68,7 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 - **New Codex App Session**：用 Codex App 打开该项目。
 - **New Alma Thread**：在 Alma 中打开新对话，并将工作区目录设为该项目（见下方 Alma 说明）。
 - **Set Project Alias…**（默认在 **Show More** 中）：为项目文件夹设置显示别名（`文件夹名 · 别名`）；留空可清除。Recent Sessions、Search Sessions、Session Manager 与 **ACP Chats** 中的项目名均使用同一格式。
+- **Open Project Note** / **Delete Project Note**（默认在 **Show More** 中）：打开或删除该项目的 `note.md` 笔记。
 - **Show More**：未勾选为主菜单的项会收纳在此子菜单中。
 
 可通过 **Agent Resume Settings → Project Menu**（或运行 **Customize Project Menu** / 在 **Show More** 中点击 **Customize Project Menu**）自定义项目右键菜单：勾选要在主菜单显示的项，**拖动**调整顺序，然后点击 **Save**。**Open Folder** 始终显示在顶部。
@@ -89,6 +92,31 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 **持久化**
 
 - 状态写入 `catalog.db` 的 `session_gtd` 表，与 agent 同步独立；备份 `panelHome` 即可保留。
+
+### 笔记（Session / Project Notes）
+
+为 session 或 project 附加一条 Markdown 笔记（`note.md`），用于记录上下文、待办、决策摘要等，与 Agent 原生存储无关。
+
+**打开与编辑**
+
+- **Sessions** / **GTD**：右键 session → **Open Note**（默认在 **Show More** 中）。
+- **ACP Chats**：右键 chat → **Open Note**。
+- **Projects / Favorite Projects**：右键项目文件夹 → **Open Project Note**（默认在 **Show More** 中）。
+- 在 VS Code 编辑器中直接编辑；`Cmd+S` 或启用自动保存即写入数据库。可开 Markdown 预览分屏。
+
+**删除**
+
+- 右键 **Delete Note** / **Delete Project Note**（默认在 **Show More** 中），确认后清除笔记内容。
+
+**展示**
+
+- 有内容的 session / project 在侧边栏 description 与 tooltip 显示 **Note** 标记；树上不单独挂 note 子节点。
+
+**持久化**
+
+- 写入 `catalog.db`：`session_notes`（`provider` + `session_id`）与 `project_notes`（`project_path`）。CLI 与 ACP Chat session 均使用 `session_notes`；备份 `panelHome` 即可保留。
+
+可在 **Agent Resume Settings → Session Menu / Project Menu** 将 **Open Note** 等项拖到主菜单。
 
 ### 新建和搜索
 
@@ -126,7 +154,7 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 
 2. **备份 Panel 本地数据目录**  
    默认 `panelHome` 路径为 `~/.agent-resume-panel/`（可通过 `agentResume.panelHome` 设置修改）。该目录包含：
-   - `catalog.db`：Session Catalog SQLite 数据库（存储所有会话元数据、用户自定义标题、AI 生成的 session_summary、hidden 状态等）
+   - `catalog.db`：Session Catalog SQLite 数据库（存储所有会话元数据、用户自定义标题、AI 生成的 session_summary、GTD 状态、项目别名、session/project 笔记、hidden 状态等）
    - ACP Chats 相关数据
    
    建议使用 rsync、GoodSync、Time Machine、iCloud Drive 或其他同步工具定期备份整个目录。这是 sessions 元数据最核心的本地备份位置。
@@ -308,7 +336,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 - **默认路径**：`~/.agent-resume-panel/catalog.db`（与 ACP 数据同属 `agentResume.panelHome`）；可用 `agentResume.catalog.dbPath` 覆盖。
 - **存储分工（重要）**：
-  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、LLM **Summarize** 摘要 `session_summary` / `session_summary_language`、从面板移除时的 `hidden` 标记）、**GTD** 状态（`session_gtd` 表）与**项目别名**（`projects` 表），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
+  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、LLM **Summarize** 摘要 `session_summary` / `session_summary_language`、从面板移除时的 `hidden` 标记）、**GTD** 状态（`session_gtd` 表）、**项目别名**（`projects` 表）、**session / project 笔记**（`session_notes` / `project_notes` 表），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
   - **Agent 原生存储**：对话正文与各 Agent 自己的 session 文件**仍在原位置**；扩展**不复制** transcript，也**不创建**操作系统级软链接。预览、恢复、Session Manager 导出时按需读取原生文件。
 - **入站同步**：运行 **Refresh** 或打开面板时，从 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等数据目录加载会话并 UPSERT 到 Catalog。同步**不会**因冲突而把已「从面板移除」的会话自动恢复为可见（不会对 `hidden` 强行置回显示）。
 - **出站操作**：**Rename** 更新 Catalog 并调用各 Provider 的 `renameSession()` 写回原生存储；**Remove from Panel** 仅将 Catalog 中 `hidden=1`，不删除 Agent 侧文件。
@@ -348,6 +376,7 @@ Best for:
 - Managing sessions from multiple CLI and desktop agents in one list.
 - Browsing sessions by project, favoriting frequent projects, setting project display aliases, and continuing in the right workspace.
 - Organizing CLI sessions with the **GTD** view (`@inbox`, `@next`, `@waiting`, etc.) and filtering in Search / Session Manager.
+- Attaching Markdown **notes** (`note.md`) to each **session** or **project**, edited in VS Code and stored in the Session Catalog.
 - Filtering by project or GTD status in the search panel, then narrowing down to a specific session.
 - Renaming session titles in each agent's native storage so other terminals see the new name too.
 - Resuming in the Claude Code or Codex official VS Code extension panels (Codex panel resume is experimental).
@@ -382,6 +411,7 @@ Click a session in **Sessions**, or right-click it and choose:
 - **Resume in Codex App**: Continue a Codex session in Codex App.
 - **Hand Off to Another Agent**: Submenu to pick a target agent, generate a handoff brief, and deliver it (CLI session → CLI terminal; ACP chat → ACP Chat). Requires **LLM Assist**; the current agent is hidden from the submenu.
 - **Set GTD Status…** (under **Show More** by default): Assign a mutually exclusive GTD bucket (`@inbox`, `@next`, `@waiting`, `@someday`, `@reference`) to a CLI session, or clear it. Pin it in **Agent Resume Settings → Session Menu** if you want it on the main menu.
+- **Open Note** / **Delete Note** (under **Show More** by default): Open or delete the session's `note.md` in the VS Code Markdown editor (preview and save supported). ACP Chat sessions in **ACP Chats** work the same way.
 
 The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more). With **LLM Assist** configured under **Agent Resume Settings**, you can **Summarize** the session (shown above messages), **Auto Rename** via AI title suggestion written back to native storage, or **Hand Off to…** to continue with another agent.
 
@@ -397,6 +427,7 @@ Project groups support these right-click actions:
 - **New Codex App Session**: Open the project with Codex App.
 - **New Alma Thread**: Open a new Alma chat with the project workspace directory (see Alma below).
 - **Set Project Alias…** (under **Show More** by default): Set a display alias for the project folder (`folderName · alias`); leave empty to clear. Recent Sessions, Search Sessions, Session Manager, and **ACP Chats** use the same format.
+- **Open Project Note** / **Delete Project Note** (under **Show More** by default): Open or delete the project's `note.md`.
 - **Show More**: Actions not pinned to the main menu appear in this submenu.
 
 Customize the project context menu in **Agent Resume Settings → Project Menu** (or run **Customize Project Menu** / use **Customize Project Menu** under **Show More**): check items for the main menu, **drag** to reorder, then click **Save**. **Open Folder** always stays at the top.
@@ -420,6 +451,31 @@ The **GTD** view helps manage CLI session workflow. Each session belongs to at m
 **Persistence**
 
 - Status is stored in `session_gtd` inside `catalog.db`, independent of agent sync. Back up `panelHome` to keep it.
+
+### Notes (Session / Project Notes)
+
+Attach one Markdown note (`note.md`) per session or project—for context, todos, decisions, etc.—without touching agent native storage.
+
+**Open and edit**
+
+- **Sessions** / **GTD**: right-click a session → **Open Note** (under **Show More** by default).
+- **ACP Chats**: right-click a chat → **Open Note**.
+- **Projects / Favorite Projects**: right-click a project folder → **Open Project Note** (under **Show More** by default).
+- Edit in the VS Code editor; `Cmd+S` or auto-save writes to the catalog. Use Markdown preview side-by-side if you like.
+
+**Delete**
+
+- **Delete Note** / **Delete Project Note** (under **Show More** by default) clears the note after confirmation.
+
+**Display**
+
+- Sessions and projects with note content show a **Note** marker in the sidebar description and tooltip; notes are not separate tree children.
+
+**Persistence**
+
+- Stored in `catalog.db`: `session_notes` (`provider` + `session_id`) and `project_notes` (`project_path`). CLI and ACP Chat sessions both use `session_notes`. Back up `panelHome` to keep notes.
+
+Pin **Open Note** on the main menu via **Agent Resume Settings → Session Menu / Project Menu**.
 
 ### New and Search
 
@@ -457,7 +513,7 @@ This covers CLI sessions synced into the catalog (Codex, Claude, Antigravity, Gr
 
 2. **Backup Panel Local Data Directory**  
    The default `panelHome` is `~/.agent-resume-panel/` (customizable via `agentResume.panelHome`). This directory contains:
-   - `catalog.db`: Session Catalog SQLite database (stores all session metadata, custom titles, AI-generated summaries, hidden status, etc.)
+   - `catalog.db`: Session Catalog SQLite database (stores session metadata, custom titles, AI summaries, GTD status, project aliases, session/project notes, hidden flag, etc.)
    - ACP Chats data
    
    Use rsync, GoodSync, Time Machine, or cloud sync tools to regularly back up this entire directory — it is the core location for session metadata local backup.
@@ -637,7 +693,7 @@ The extension uses a local **SQLite** database (**Session Catalog**) as the sour
 
 - **Default path**: `~/.agent-resume-panel/catalog.db` (under `agentResume.panelHome`, shared with ACP data roots); override with `agentResume.catalog.dbPath`.
 - **Storage split (important)**:
-  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, LLM **Summarize** text in `session_summary` / `session_summary_language`, `hidden` when removed from the panel), **GTD** status (`session_gtd` table), **project aliases** (`projects` table), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
+  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, LLM **Summarize** text in `session_summary` / `session_summary_language`, `hidden` when removed from the panel), **GTD** status (`session_gtd` table), **project aliases** (`projects` table), **session / project notes** (`session_notes` / `project_notes` tables), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
   - **Agent native storage**: Full conversation content and agent-specific session files **stay in place**. The extension does **not** copy transcripts into SQLite and does **not** create OS-level symlinks. Preview, resume, and Session Manager export read native files on demand.
 - **Inbound sync**: On **Refresh** or when views load, sessions are loaded from Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, and similar homes and UPSERTed into the catalog. Sync does **not** force `hidden` sessions back to visible when agent files still exist.
 - **Outbound actions**: **Rename** updates the catalog and calls each provider's `renameSession()` for native storage; **Remove from Panel** sets `hidden=1` in the catalog only.

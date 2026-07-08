@@ -15,7 +15,9 @@ const ACTIONS = [
   "newOpenCodeSession",
   "newPiSession",
   "newAlmaSession",
-  "newCodexAppSession"
+  "newCodexAppSession",
+  "openProjectNote",
+  "deleteProjectNote"
 ];
 
 const COMMANDS = {
@@ -40,7 +42,9 @@ const COMMANDS = {
   newOpenCodeSession: [{ command: "agentResume.newOpenCodeSession" }],
   newPiSession: [{ command: "agentResume.newPiSession" }],
   newAlmaSession: [{ command: "agentResume.newAlmaSession" }],
-  newCodexAppSession: [{ command: "agentResume.newCodexAppSession" }]
+  newCodexAppSession: [{ command: "agentResume.newCodexAppSession" }],
+  openProjectNote: [{ command: "agentResume.openProjectNote" }],
+  deleteProjectNote: [{ command: "agentResume.deleteProjectNote" }]
 };
 
 const MAIN_SLOT_START = 1;

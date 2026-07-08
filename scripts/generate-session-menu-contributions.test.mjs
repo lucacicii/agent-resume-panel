@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildSessionMenuContributionBlocks } from "./generate-session-menu-contributions.mjs";
 import { UI_LOCALES, expandMenuEntriesForLocales } from "./menu-i18n.mjs";
 
-const ACTION_COUNT = 8;
+const ACTION_COUNT = 10;
 const SESSION_VIEW_PATTERN = /agentResume\\.session/;
 
 const blocks = buildSessionMenuContributionBlocks();

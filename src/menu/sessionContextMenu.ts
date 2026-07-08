@@ -9,7 +9,9 @@ export type SessionMenuAction =
   | "renameSession"
   | "removeSessionFromPanel"
   | "autoRenameSession"
-  | "setGtdStatus";
+  | "setGtdStatus"
+  | "openSessionNote"
+  | "deleteSessionNote";
 
 export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "copyResumeCommand",
@@ -19,7 +21,9 @@ export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "renameSession",
   "removeSessionFromPanel",
   "autoRenameSession",
-  "setGtdStatus"
+  "setGtdStatus",
+  "openSessionNote",
+  "deleteSessionNote"
 ];
 
 export const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
@@ -41,7 +45,9 @@ export function getSessionMenuActionLabels(): Record<SessionMenuAction, string> 
     renameSession: t("menu.session.renameSession"),
     removeSessionFromPanel: t("menu.session.removeSessionFromPanel"),
     autoRenameSession: t("menu.session.autoRenameSession"),
-    setGtdStatus: t("menu.session.setGtdStatus")
+    setGtdStatus: t("menu.session.setGtdStatus"),
+    openSessionNote: t("menu.session.openNote"),
+    deleteSessionNote: t("menu.session.deleteNote")
   };
 }
 
@@ -53,7 +59,9 @@ const COMMAND_BY_ACTION: Record<SessionMenuAction, string> = {
   renameSession: "agentResume.renameSession",
   removeSessionFromPanel: "agentResume.removeSessionFromPanel",
   autoRenameSession: "agentResume.autoRenameSession",
-  setGtdStatus: "agentResume.setSessionGtdStatus"
+  setGtdStatus: "agentResume.setSessionGtdStatus",
+  openSessionNote: "agentResume.openSessionNote",
+  deleteSessionNote: "agentResume.deleteSessionNote"
 };
 
 export interface SessionMenuEditorState {

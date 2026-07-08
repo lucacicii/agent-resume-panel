@@ -72,9 +72,29 @@ export function buildHandoffMenuContributionBlocks() {
         group: "navigation@0"
       },
       {
+        command: "agentResume.openSessionNote",
+        when: "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./",
+        group: "navigation@1"
+      },
+      {
+        command: "agentResume.deleteSessionNote",
+        when: "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./",
+        group: "navigation@2"
+      },
+      {
         command: "agentResume.newChatSession",
         when: "view == agentResume.acpChats && viewItem == agentResume.acpProject",
         group: "navigation@1"
+      },
+      {
+        command: "agentResume.openProjectNote",
+        when: "view == agentResume.acpChats && viewItem == agentResume.acpProject",
+        group: "navigation@2"
+      },
+      {
+        command: "agentResume.deleteProjectNote",
+        when: "view == agentResume.acpChats && viewItem == agentResume.acpProject",
+        group: "navigation@3"
       }
     ],
     handoffCommands: [

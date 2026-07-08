@@ -68,6 +68,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
   private gtdStatusResolver: (session: AgentSession) => string | undefined = () => undefined;
   private gtdRawStatusResolver: (session: AgentSession) => GtdStatus | undefined = () => undefined;
+  private hasSessionNoteResolver: (session: AgentSession) => boolean = () => false;
+  private hasProjectNoteResolver: (projectPath: string) => boolean = () => false;
 
   setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
     this.projectSessionSortMode = resolver;
@@ -89,6 +91,16 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this.onDidChangeTreeDataEmitter.fire();
   }
 
+  setHasSessionNoteResolver(resolver: (session: AgentSession) => boolean): void {
+    this.hasSessionNoteResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setHasProjectNoteResolver(resolver: (projectPath: string) => boolean): void {
+    this.hasProjectNoteResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
   getSessionGtdStatus(session: AgentSession): GtdStatus | undefined {
     return this.gtdRawStatusResolver(session);
   }
@@ -101,8 +113,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     return {
       showProjectName,
       projectDisplayName: (projectPath) => this.getProjectDisplayName(projectPath),
-      gtdStatusResolver: (session) => this.gtdStatusResolver(session)
+      gtdStatusResolver: (session) => this.gtdStatusResolver(session),
+      hasSessionNoteResolver: (session) => this.hasSessionNoteResolver(session)
     };
+  }
+
+  hasProjectNote(projectPath: string): boolean {
+    return this.hasProjectNoteResolver(projectPath);
   }
 
   getProjectDisplayName(projectPath: string): string {
@@ -187,7 +204,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
           vscode.TreeItemCollapsibleState.Collapsed
         );
         item.description = `${element.sessions.length}`;
-        item.tooltip = buildProjectTooltip(element.projectPath, alias);
+        item.tooltip = buildProjectTooltip(element.projectPath, alias, this.hasProjectNoteResolver(element.projectPath));
         item.id = projectTreeItemId(element.projectPath);
         item.iconPath = new vscode.ThemeIcon(element.favorited ? "star-full" : "folder");
         item.contextValue = element.favorited ? "agentResume.project.favorited" : "agentResume.project";
@@ -283,19 +300,21 @@ export interface SessionTreeItemOptions {
   showProjectName?: boolean;
   projectDisplayName?: (projectPath: string) => string;
   gtdStatusResolver?: (session: AgentSession) => string | undefined;
+  hasSessionNoteResolver?: (session: AgentSession) => boolean;
 }
 
 export function buildSessionTreeItem(session: AgentSession, options: SessionTreeItemOptions = {}): vscode.TreeItem {
   const showProjectName = options.showProjectName ?? false;
   const projectDisplayName = options.projectDisplayName ?? basenameOrPath;
   const gtdStatus = options.gtdStatusResolver?.(session);
+  const hasNote = options.hasSessionNoteResolver?.(session) ?? false;
 
   const item = new vscode.TreeItem(
     sessionLabel(session, showProjectName, projectDisplayName),
     vscode.TreeItemCollapsibleState.None
   );
-  item.description = sessionDescription(session);
-  item.tooltip = buildSessionTooltip(session, gtdStatus);
+  item.description = sessionDescription(session, hasNote);
+  item.tooltip = buildSessionTooltip(session, gtdStatus, hasNote);
   item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
@@ -306,12 +325,13 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
   return item;
 }
 
-function sessionDescription(session: AgentSession): string {
+function sessionDescription(session: AgentSession, hasNote = false): string {
   const provider = providerLabel(session.provider);
-  if (session.provider === "chat" && session.acpProvider) {
-    return t("tree.descriptionAcp", session.acpProvider, relativeTime(session.updatedAt));
-  }
-  return t("tree.descriptionProvider", provider, relativeTime(session.updatedAt));
+  const time =
+    session.provider === "chat" && session.acpProvider
+      ? t("tree.descriptionAcp", session.acpProvider, relativeTime(session.updatedAt))
+      : t("tree.descriptionProvider", provider, relativeTime(session.updatedAt));
+  return hasNote ? `${time} · ${t("tree.hasNote")}` : time;
 }
 
 function showMoreRecentItem(remaining: number): vscode.TreeItem {
@@ -339,21 +359,28 @@ function sessionLabel(
   return `${projectDisplayName(session.projectPath)} · ${title}`;
 }
 
-function buildProjectTooltip(projectPath: string, alias?: string): string {
+function buildProjectTooltip(projectPath: string, alias?: string, hasNote = false): string {
   const trimmed = alias?.trim();
-  if (!trimmed) {
-    return projectPath;
-  }
+  const lines = [
+    trimmed ? t("tree.tooltipProjectAlias", trimmed) : undefined,
+    hasNote ? t("tree.tooltipHasNote") : undefined,
+    projectPath
+  ].filter(Boolean);
 
-  return `${t("tree.tooltipProjectAlias", trimmed)}\n${projectPath}`;
+  return lines.join("\n");
 }
 
-function buildSessionTooltip(session: AgentSession, gtdStatus?: string): string | vscode.MarkdownString {
+function buildSessionTooltip(
+  session: AgentSession,
+  gtdStatus?: string,
+  hasNote = false
+): string | vscode.MarkdownString {
   const lines = [
     formatTitleWithMessageCount(session),
     t("tree.tooltipProvider", providerLabel(session.provider)),
     session.acpProvider ? t("tree.tooltipAcpAgent", session.acpProvider) : undefined,
     gtdStatus ? t("tree.tooltipGtdStatus", gtdStatus) : undefined,
+    hasNote ? t("tree.tooltipHasNote") : undefined,
     t("tree.tooltipProject", session.projectPath),
     session.model ? t("tree.tooltipModel", session.model) : undefined,
     session.branch ? t("tree.tooltipBranch", session.branch) : undefined,
