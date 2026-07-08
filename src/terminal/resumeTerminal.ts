@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AgentProvider, AgentSession } from "../history";
+import { t } from "../i18n";
 import { openAlmaThread } from "./almaApp";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./claudeCodePanel";
 import {
@@ -39,7 +40,7 @@ export function openResumeTerminal(session: AgentSession, context?: vscode.Exten
   void showImageSupportHint(context);
 
   const terminal = vscode.window.createTerminal({
-    name: `${providerLabel(session.provider)}: ${truncate(session.title, 32)}`,
+    name: t("terminal.nameResume", providerLabel(session.provider), truncate(session.title, 32)),
     cwd: session.projectPath || undefined,
     location: terminalLocation(),
     isTransient: false
@@ -57,7 +58,7 @@ export function openCodexAppResumeTerminal(session: AgentSession, context?: vsco
   void showImageSupportHint(context);
 
   const terminal = vscode.window.createTerminal({
-    name: `Codex App: ${truncate(session.title, 28)}`,
+    name: t("terminal.nameCodexApp", truncate(session.title, 28)),
     cwd: session.projectPath || undefined,
     location: terminalLocation(),
     isTransient: false
@@ -77,7 +78,7 @@ export function openNewSessionTerminal(provider: AgentProvider, projectPath: str
   void showImageSupportHint(context);
 
   const terminal = vscode.window.createTerminal({
-    name: `${providerLabel(provider)}: New Session`,
+    name: t("terminal.nameNewSession", providerLabel(provider)),
     cwd: projectPath || undefined,
     location: terminalLocation(),
     isTransient: false
@@ -109,31 +110,29 @@ async function showImageSupportHint(context?: vscode.ExtensionContext): Promise<
   }
 
   await context?.globalState.update("agentResume.vscodeImagesHintShown", true);
-  vscode.window.showInformationMessage(
-    "VS Code terminal can show Sixel/iTerm inline images when terminal.integrated.enableImages is enabled. Use Open in Ghostty for full Ghostty image workflows."
-  );
+  vscode.window.showInformationMessage(t("notification.vscodeTerminalImagesHint"));
 }
 
 function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "codex") {
-    return "Codex";
+    return t("terminal.providerLabelCodex");
   }
   if (provider === "agy") {
-    return "agy";
+    return t("terminal.providerLabelAgy");
   }
   if (provider === "grok") {
-    return "Grok Build";
+    return t("terminal.providerLabelGrok");
   }
   if (provider === "alma") {
-    return "Alma";
+    return t("terminal.providerLabelAlma");
   }
   if (provider === "opencode") {
-    return "OpenCode";
+    return t("terminal.providerLabelOpencode");
   }
   if (provider === "pi") {
-    return "Pi";
+    return t("terminal.providerLabelPi");
   }
-  return "Claude";
+  return t("terminal.providerLabelClaude");
 }
 
 function truncate(value: string, maxLength: number): string {

@@ -2,7 +2,8 @@
   const vscode = acquireVsCodeApi();
 
   const ROW_HEIGHT = 64;
-  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,removeAction:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>} }} */
+  let uiStrings = {};
+  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>} }} */
   let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} } };
 
   const selected = new Set();
@@ -18,6 +19,67 @@
   const spacer = document.getElementById("list-spacer");
   const rowsEl = document.getElementById("list-rows");
   const selectAllEl = document.getElementById("select-all");
+  const refreshBtn = document.getElementById("refresh");
+  const exportBtn = document.getElementById("export-selected");
+  const removeBtn = document.getElementById("hide-selected");
+  const selectFilteredLabel = document.querySelector(".select-all span");
+  const colProvider = document.querySelector(".list-header .col-provider");
+  const colTitle = document.querySelector(".list-header .col-title");
+  const colProject = document.querySelector(".list-header .col-project");
+  const colTime = document.querySelector(".list-header .col-time");
+
+  function formatUi(template, ...args) {
+    let text = template || "";
+    args.forEach((arg, index) => {
+      text = text.replaceAll(`{${index}}`, String(arg));
+    });
+    return text;
+  }
+
+  function applyStaticUi() {
+    if (searchInput) {
+      searchInput.placeholder = uiStrings.searchPlaceholder || searchInput.placeholder;
+    }
+    if (ageFilter) {
+      ageFilter.setAttribute("aria-label", uiStrings.ageFilterLabel || "Age filter");
+      const options = {
+        all: uiStrings.ageFilterAll || "All ages",
+        7: uiStrings.ageFilter7days || "Older than 7 days",
+        30: uiStrings.ageFilter30days || "Older than 30 days",
+        90: uiStrings.ageFilter90days || "Older than 90 days"
+      };
+      for (const option of ageFilter.options) {
+        if (options[option.value]) {
+          option.textContent = options[option.value];
+        }
+      }
+    }
+    if (refreshBtn) {
+      refreshBtn.textContent = uiStrings.buttonResync || "Resync";
+    }
+    if (exportBtn) {
+      exportBtn.textContent = uiStrings.buttonExport || "Export";
+    }
+    if (removeBtn) {
+      removeBtn.textContent = uiStrings.buttonRemoveFromPanel || "Remove from panel";
+      removeBtn.title = uiStrings.removeAction || removeBtn.title;
+    }
+    if (selectFilteredLabel) {
+      selectFilteredLabel.textContent = uiStrings.selectFiltered || "Select filtered";
+    }
+    if (colProvider) {
+      colProvider.textContent = uiStrings.columnProvider || "Provider";
+    }
+    if (colTitle) {
+      colTitle.textContent = uiStrings.columnTitleSummary || "Title / Summary";
+    }
+    if (colProject) {
+      colProject.textContent = uiStrings.columnProject || "Project";
+    }
+    if (colTime) {
+      colTime.textContent = uiStrings.columnUpdated || "Updated";
+    }
+  }
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
@@ -62,6 +124,8 @@
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.type === "init") {
+      uiStrings = message.uiStrings || {};
+      applyStaticUi();
       state.sessions = message.sessions || [];
       state.stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
       enabledProviders.clear();
@@ -170,7 +234,12 @@
   function render() {
     const filtered = getFilteredSessions();
     const summaryCount = state.stats.withSummary ?? 0;
-    statsEl.textContent = `Showing ${filtered.length} of ${state.stats.total} catalog sessions · ${summaryCount} with LLM summary`;
+    statsEl.textContent = formatUi(
+      uiStrings.stats || "Showing {0} of {1} catalog sessions · {2} with LLM summary",
+      filtered.length,
+      state.stats.total,
+      summaryCount
+    );
     spacer.style.height = `${Math.max(filtered.length, 1) * ROW_HEIGHT}px`;
     renderRows();
   }
@@ -182,7 +251,7 @@
     if (!filtered.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "No sessions match the current filters.";
+      empty.textContent = uiStrings.emptyNoMatch || "No sessions match the current filters.";
       rowsEl.appendChild(empty);
       return;
     }

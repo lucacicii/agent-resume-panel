@@ -3,7 +3,9 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatManager } from "../acp/acpChatManager";
 import { loadCatalogSettings, queryCatalogSessions, removeSessionsFromPanel, resolveSessionById } from "../catalog";
-import { removeFromPanelConfirmMessage } from "../util/dialogText";
+import { t } from "../i18n";
+import { getSessionPreviewUiStrings, getSessionSearchUiStrings } from "../webview/uiStrings";
+import { truncateText } from "../util/dialogText";
 import { AgentProvider, AgentSession } from "../history";
 import { basenameOrPath, compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
@@ -58,6 +60,7 @@ export async function searchAndOpenSessions(
   if (searchPanel) {
     activeSearchContext = context;
     activeSearchTree = tree;
+    searchPanel.title = t("panel.searchSessionsTitle");
     searchPanel.reveal(column);
     void postInitMessage(searchPanel.webview, tree);
     return;
@@ -65,7 +68,7 @@ export async function searchAndOpenSessions(
 
   searchPanel = vscode.window.createWebviewPanel(
     "agentResume.searchSessions",
-    "Search Sessions",
+    t("panel.searchSessionsTitle"),
     column,
     {
       enableScripts: true,
@@ -251,7 +254,7 @@ async function handlePreviewMessage(
       id,
       error: formatError(error)
     });
-    vscode.window.showErrorMessage(`Preview failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.previewFailed", formatError(error)));
   }
 }
 
@@ -267,12 +270,13 @@ async function handleRemoveMessage(
     return;
   }
 
+  const removeButton = t("dialog.buttonRemove");
   const confirm = await vscode.window.showWarningMessage(
-    removeFromPanelConfirmMessage(session),
+    t("dialog.removeFromPanelConfirm", truncateText(session.title, 48), session.provider),
     { modal: true },
-    "Remove"
+    removeButton
   );
-  if (confirm !== "Remove") {
+  if (confirm !== removeButton) {
     return;
   }
 
@@ -281,9 +285,9 @@ async function handleRemoveMessage(
     await removeSessionsFromPanel(catalog.dbPath, [session]);
     await refreshTree();
     await postInitMessage(webview, tree);
-    vscode.window.showInformationMessage("Session removed from panel.");
+    vscode.window.showInformationMessage(t("notification.sessionRemovedFromPanel"));
   } catch (error) {
-    vscode.window.showErrorMessage(`Remove failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.removeFailed", formatError(error)));
   }
 }
 
@@ -301,10 +305,10 @@ async function handleRenameMessage(
   }
 
   const newTitle = await vscode.window.showInputBox({
-    title: "Rename Session",
-    prompt: "Enter a new session title",
+    title: t("dialog.renameSessionTitle"),
+    prompt: t("dialog.renameSessionPrompt"),
     value: session.title,
-    validateInput: (value) => (value.trim() ? undefined : "Title cannot be empty.")
+    validateInput: (value) => (value.trim() ? undefined : t("dialog.renameSessionValidateEmpty"))
   });
 
   if (!newTitle) {
@@ -316,10 +320,10 @@ async function handleRenameMessage(
     await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refreshTree();
     await postInitMessage(webview, tree);
-    vscode.window.showInformationMessage("Session renamed.");
+    vscode.window.showInformationMessage(t("notification.sessionRenamed"));
   } catch (error) {
     webview.postMessage({ type: "renameDone" });
-    vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.renameFailed", formatError(error)));
   }
 }
 
@@ -339,6 +343,8 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
 
   const payload = {
     type: "init",
+    uiStrings: getSessionSearchUiStrings(),
+    previewUiStrings: getSessionPreviewUiStrings(),
     projects: projects.map(
       (project): SearchProjectPayload => ({
         projectPath: path.resolve(project.projectPath),
@@ -394,6 +400,15 @@ function getNonce(): string {
     text += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return text;
+}
+
+export async function refreshSessionSearchPanel(): Promise<void> {
+  if (!searchPanel || !activeSearchTree) {
+    return;
+  }
+
+  searchPanel.title = t("panel.searchSessionsTitle");
+  await postInitMessage(searchPanel.webview, activeSearchTree);
 }
 
 function formatError(error: unknown): string {

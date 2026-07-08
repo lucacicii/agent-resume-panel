@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AcpChatManager } from "./acp/acpChatManager";
+import { AcpChatManager, refreshAcpChatPanels } from "./acp/acpChatManager";
 import { AcpChatTreeProvider } from "./acp/acpChatTree";
 import { createAcpChatSession, panelHomeFromConfig, pickAcpAgentProvider } from "./acp/newSession";
 import { getAcpRecord, loadAcpRecords } from "./acp/store";
@@ -19,7 +19,11 @@ import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
 import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
-import { removeFromPanelConfirmMessage } from "./util/dialogText";
+import { t } from "./i18n";
+import { menuCommand } from "./i18n/menuCommands";
+import { registerLocalizedUiRefreshTargets, refreshAllLocalizedUi } from "./i18n/refresh";
+import { applyUiLocaleContext } from "./i18n/uiLocaleContext";
+import { truncateText } from "./util/dialogText";
 import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
@@ -58,14 +62,15 @@ import { executeHandoffCommand } from "./handoff/handoffCommand";
 import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
 
 import { runAutoRename } from "./preview/sessionAssistActions";
-import { openSessionPreviewPanel } from "./preview/sessionPreviewPanel";
-import { searchAndOpenSessions } from "./search/sessionSearch";
-import { openSessionManagerPanel } from "./manager/sessionManagerPanel";
+import { openSessionManagerPanel, refreshSessionManagerPanel } from "./manager/sessionManagerPanel";
+import { openSessionPreviewPanel, refreshSessionPreviewPanel } from "./preview/sessionPreviewPanel";
+import { refreshSessionSearchPanel, searchAndOpenSessions } from "./search/sessionSearch";
 import {
   openSettingsPanel,
   openSettingsPanelToAcp,
   openSettingsPanelToProjectMenu,
-  openSettingsPanelToSessionMenu
+  openSettingsPanelToSessionMenu,
+  refreshSettingsPanel
 } from "./settings/settingsPanel";
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
@@ -86,6 +91,7 @@ export function activate(context: vscode.ExtensionContext): void {
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
   void applyProjectMenuContextFromConfig();
   void applySessionMenuContextFromConfig();
+  void applyUiLocaleContext();
   const treeView = vscode.window.createTreeView("agentResume.sessions", {
     treeDataProvider: tree,
     showCollapseAll: true,
@@ -110,13 +116,13 @@ export function activate(context: vscode.ExtensionContext): void {
         refresh(tree, false)
       )
     ),
-    vscode.commands.registerCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.renameSession", (nodeOrSession?: unknown) =>
       renameSessionCommand(tree, nodeOrSession, context)
     ),
-    vscode.commands.registerCommand("agentResume.removeSessionFromPanel", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.removeSessionFromPanel", (nodeOrSession?: unknown) =>
       void removeSessionFromPanelCommand(tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
+    ...menuCommand("agentResume.previewSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session && session.provider !== "chat") {
         void openSessionPreviewPanel(session, tree, () => refresh(tree, false), context, acpChatManager);
@@ -126,7 +132,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, tree)),
     vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, tree)),
     vscode.commands.registerCommand("agentResume.newAcpChat", () => openNewAcpChat(acpTree, acpChatManager)),
-    vscode.commands.registerCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
+    ...menuCommand("agentResume.openSession", (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (session) {
         void openResolvedSession(session, context);
@@ -138,83 +144,65 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("agentResume.openChatSession", (nodeOrSession?: unknown) => {
       void openAcpChat(acpTree, nodeOrSession, acpChatManager);
     }),
-    vscode.commands.registerCommand("agentResume.newChatSession", (node?: unknown) =>
+    ...menuCommand("agentResume.newChatSession", (node?: unknown) =>
       void openNewChatSession(acpTree, tree, node, acpChatManager)
     ),
     vscode.commands.registerCommand("agentResume.renameAcpChat", (nodeOrRecord?: unknown) =>
       renameAcpChatCommand(acpTree, nodeOrRecord, () => refreshAcpChats(acpTree, false))
     ),
-    vscode.commands.registerCommand("agentResume.copyResumeCommand", async (nodeOrSession?: unknown) => {
+    ...menuCommand("agentResume.copyResumeCommand", async (nodeOrSession?: unknown) => {
       const session = resolveSession(tree, nodeOrSession);
       if (!session) {
         return;
       }
       await vscode.env.clipboard.writeText(buildResumeCommand(session));
-      vscode.window.showInformationMessage("Resume command copied.");
+      vscode.window.showInformationMessage(t("notification.resumeCommandCopied"));
     }),
-    vscode.commands.registerCommand("agentResume.openFolder", (node?: unknown) => openFolder(tree, node)),
-    vscode.commands.registerCommand("agentResume.openProject", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.openFolder", (node?: unknown) => openFolder(tree, node)),
+    ...menuCommand("agentResume.openProject", (nodeOrSession?: unknown) =>
       openFolderAndResume(context, tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.openInGhostty", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.openInGhostty", (nodeOrSession?: unknown) =>
       openSessionInGhostty(tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.openInCodexApp", (nodeOrSession?: unknown) =>
       openSessionInCodexApp(tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.openInClaudeCodePanel", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.openInClaudeCodePanel", (nodeOrSession?: unknown) =>
       openSessionInClaudeCodePanel(context, tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.openInCodexIdePanel", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.openInCodexIdePanel", (nodeOrSession?: unknown) =>
       openSessionInCodexIdePanel(context, tree, nodeOrSession)
     ),
-    vscode.commands.registerCommand("agentResume.newCodexSession", (node?: unknown) =>
-      openNewSession(tree, node, "codex", context)
-    ),
-    vscode.commands.registerCommand("agentResume.newClaudeSession", (node?: unknown) =>
-      openNewSession(tree, node, "claude", context)
-    ),
-    vscode.commands.registerCommand("agentResume.newAgySession", (node?: unknown) =>
-      openNewSession(tree, node, "agy", context)
-    ),
-    vscode.commands.registerCommand("agentResume.newGrokSession", (node?: unknown) =>
-      openNewSession(tree, node, "grok", context)
-    ),
-    vscode.commands.registerCommand("agentResume.newOpenCodeSession", (node?: unknown) =>
+    ...menuCommand("agentResume.newCodexSession", (node?: unknown) => openNewSession(tree, node, "codex", context)),
+    ...menuCommand("agentResume.newClaudeSession", (node?: unknown) => openNewSession(tree, node, "claude", context)),
+    ...menuCommand("agentResume.newAgySession", (node?: unknown) => openNewSession(tree, node, "agy", context)),
+    ...menuCommand("agentResume.newGrokSession", (node?: unknown) => openNewSession(tree, node, "grok", context)),
+    ...menuCommand("agentResume.newOpenCodeSession", (node?: unknown) =>
       openNewSession(tree, node, "opencode", context)
     ),
-    vscode.commands.registerCommand("agentResume.newPiSession", (node?: unknown) =>
-      openNewSession(tree, node, "pi", context)
-    ),
-    vscode.commands.registerCommand("agentResume.newAlmaSession", (node?: unknown) =>
-      openNewAlmaSessionFromTree(tree, node)
-    ),
-    vscode.commands.registerCommand("agentResume.newCodexAppSession", (node?: unknown) =>
-      openNewCodexAppSession(tree, node)
-    ),
-    vscode.commands.registerCommand("agentResume.favoriteProject", (node?: unknown) =>
-      favoriteProject(context, tree, node)
-    ),
-    vscode.commands.registerCommand("agentResume.unfavoriteProject", (node?: unknown) =>
-      unfavoriteProject(context, tree, node)
-    ),
-    vscode.commands.registerCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
-    vscode.commands.registerCommand("agentResume.configureSessionMenu", () => openSettingsPanelToSessionMenu(context)),
-    vscode.commands.registerCommand("agentResume.sortProjectSessionsUpdatedDesc", (node?: unknown) =>
+    ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
+    ...menuCommand("agentResume.newAlmaSession", (node?: unknown) => openNewAlmaSessionFromTree(tree, node)),
+    ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
+    ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
+    ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
+    ...menuCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
+    ...menuCommand("agentResume.configureSessionMenu", () => openSettingsPanelToSessionMenu(context)),
+    ...menuCommand("agentResume.sortProjectSessionsUpdatedDesc", (node?: unknown) =>
       setProjectSortMode(context, tree, node, "updatedDesc")
     ),
-    vscode.commands.registerCommand("agentResume.sortProjectSessionsUpdatedAsc", (node?: unknown) =>
+    ...menuCommand("agentResume.sortProjectSessionsUpdatedAsc", (node?: unknown) =>
       setProjectSortMode(context, tree, node, "updatedAsc")
     ),
-    vscode.commands.registerCommand("agentResume.sortProjectSessionsTitleAsc", (node?: unknown) =>
+    ...menuCommand("agentResume.sortProjectSessionsTitleAsc", (node?: unknown) =>
       setProjectSortMode(context, tree, node, "titleAsc")
     ),
-    vscode.commands.registerCommand("agentResume.sortProjectSessionsTitleDesc", (node?: unknown) =>
+    ...menuCommand("agentResume.sortProjectSessionsTitleDesc", (node?: unknown) =>
       setProjectSortMode(context, tree, node, "titleDesc")
     ),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.openAcpSettings", () => openSettingsPanelToAcp(context)),
-    vscode.commands.registerCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
+    ...menuCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
       autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
     ...CLI_HANDOFF_TARGETS.map((target) =>
@@ -243,7 +231,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
       }
-      if (event.affectsConfiguration("agentResume")) {
+      if (event.affectsConfiguration("agentResume.uiLanguage")) {
+        void refreshAllLocalizedUi(false);
+      }
+      if (event.affectsConfiguration("agentResume") && !event.affectsConfiguration("agentResume.uiLanguage")) {
         void refresh(tree, false);
         void refreshAcpChats(acpTree, false);
       }
@@ -254,6 +245,16 @@ export function activate(context: vscode.ExtensionContext): void {
   void migrateSummariesFromGlobalState(context).then(() => refresh(tree, false));
   void refreshAcpChats(acpTree, false);
   void consumePendingResumeForWorkspace(context);
+
+  registerLocalizedUiRefreshTargets({
+    sessionTree: { refresh: () => tree.refresh() },
+    acpTree: { refresh: () => acpTree.refresh() },
+    refreshSettingsPanel,
+    refreshSessionSearch: refreshSessionSearchPanel,
+    refreshSessionPreview: refreshSessionPreviewPanel,
+    refreshSessionManager: refreshSessionManagerPanel,
+    refreshAcpChatPanels
+  });
 }
 
 export function deactivate(): void {
@@ -271,11 +272,11 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
     tree.setData(sessions, result.warnings);
     if (showToast) {
-      vscode.window.showInformationMessage(`Synced ${sessions.length} CLI sessions from catalog.`);
+      vscode.window.showInformationMessage(t("notification.syncedCliSessions", sessions.length));
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
-    vscode.window.showErrorMessage(`Agent Resume refresh failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.refreshFailed", formatError(error)));
   }
 }
 
@@ -284,11 +285,11 @@ async function refreshAcpChats(acpTree: AcpChatTreeProvider, showToast: boolean)
     const records = await loadAcpRecords(panelHomeFromConfig());
     acpTree.setData(records);
     if (showToast) {
-      vscode.window.showInformationMessage(`Loaded ${records.length} ACP chats.`);
+      vscode.window.showInformationMessage(t("notification.loadedAcpChats", records.length));
     }
   } catch (error) {
     acpTree.setData([], [formatError(error)]);
-    vscode.window.showErrorMessage(`ACP Chats refresh failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.acpRefreshFailed", formatError(error)));
   }
 }
 
@@ -324,7 +325,7 @@ async function searchAndOpen(
   await refresh(tree, false);
   const catalog = loadCatalogSettings();
   if (!tree.getSessions().length && !(await queryCatalogSessions(catalog)).length) {
-    vscode.window.showInformationMessage("No agent sessions found.");
+    vscode.window.showInformationMessage(t("notification.noAgentSessionsFound"));
     return;
   }
 
@@ -345,7 +346,7 @@ async function autoRenameSessionCommand(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Auto renaming session...",
+      title: t("progress.autoRenamingSession"),
       cancellable: false
     },
     async () => {
@@ -365,10 +366,10 @@ async function renameSessionCommand(
   }
 
   const newTitle = await vscode.window.showInputBox({
-    title: "Rename Session",
-    prompt: "Enter a new session title",
+    title: t("dialog.renameSessionTitle"),
+    prompt: t("dialog.renameSessionPrompt"),
     value: session.title,
-    validateInput: (value) => (value.trim() ? undefined : "Title cannot be empty.")
+    validateInput: (value) => (value.trim() ? undefined : t("dialog.renameSessionValidateEmpty"))
   });
 
   if (!newTitle) {
@@ -378,9 +379,9 @@ async function renameSessionCommand(
   try {
     await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await refresh(tree, false);
-    vscode.window.showInformationMessage("Session renamed.");
+    vscode.window.showInformationMessage(t("notification.sessionRenamed"));
   } catch (error) {
-    vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.renameFailed", formatError(error)));
   }
 }
 
@@ -392,12 +393,17 @@ async function removeSessionFromPanelCommand(tree: SessionTreeProvider, nodeOrSe
     return;
   }
 
+  const removeButton = t("dialog.buttonRemove");
   const confirm = await vscode.window.showWarningMessage(
-    removeFromPanelConfirmMessage(session),
+    t(
+      "dialog.removeFromPanelConfirm",
+      truncateText(session.title, 48),
+      session.provider
+    ),
     { modal: true },
-    "Remove"
+    removeButton
   );
-  if (confirm !== "Remove") {
+  if (confirm !== removeButton) {
     return;
   }
 
@@ -405,9 +411,9 @@ async function removeSessionFromPanelCommand(tree: SessionTreeProvider, nodeOrSe
     const catalog = loadCatalogSettings();
     await removeSessionsFromPanel(catalog.dbPath, [session]);
     await refresh(tree, false);
-    vscode.window.showInformationMessage("Session removed from panel.");
+    vscode.window.showInformationMessage(t("notification.sessionRemovedFromPanel"));
   } catch (error) {
-    vscode.window.showErrorMessage(`Remove failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.removeFailed", formatError(error)));
   }
 }
 
@@ -445,7 +451,7 @@ async function openAcpChat(
 async function openAcpChatById(chatId: string, acpChatManager: AcpChatManager): Promise<void> {
   const record = await getAcpRecord(panelHomeFromConfig(), chatId);
   if (!record) {
-    vscode.window.showWarningMessage("ACP chat session not found.");
+    vscode.window.showWarningMessage(t("notification.acpChatNotFound"));
     return;
   }
   acpChatManager.open(record);
@@ -544,46 +550,50 @@ async function newSessionInCurrentWorkspace(context: vscode.ExtensionContext, tr
 async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
   const picked = await vscode.window.showQuickPick(
     [
-      { label: "$(hubot) Codex", description: "Start a new Codex session", provider: "codex" as const },
       {
-        label: "$(comment-discussion) Claude",
-        description: "Start a new Claude session",
+        label: t("quickpick.newSessionCodexLabel"),
+        description: t("quickpick.newSessionCodexDescription"),
+        provider: "codex" as const
+      },
+      {
+        label: t("quickpick.newSessionClaudeLabel"),
+        description: t("quickpick.newSessionClaudeDescription"),
         provider: "claude" as const
       },
       {
-        label: "$(sparkle) Antigravity CLI",
-        description: "Start a new agy session",
+        label: t("quickpick.newSessionAgyLabel"),
+        description: t("quickpick.newSessionAgyDescription"),
         provider: "agy" as const
       },
       {
-        label: "$(rocket) Grok Build",
-        description: "Start a new Grok session",
+        label: t("quickpick.newSessionGrokLabel"),
+        description: t("quickpick.newSessionGrokDescription"),
         provider: "grok" as const
       },
       {
-        label: "$(terminal) OpenCode",
-        description: "Start a new OpenCode session",
+        label: t("quickpick.newSessionOpenCodeLabel"),
+        description: t("quickpick.newSessionOpenCodeDescription"),
         provider: "opencode" as const
       },
       {
-        label: "$(symbol-method) Pi",
-        description: "Start a new Pi session",
+        label: t("quickpick.newSessionPiLabel"),
+        description: t("quickpick.newSessionPiDescription"),
         provider: "pi" as const
       },
       {
-        label: "$(window) Codex App",
-        description: "Start a new Codex App session",
+        label: t("quickpick.newSessionCodexAppLabel"),
+        description: t("quickpick.newSessionCodexAppDescription"),
         provider: "codexApp" as const
       },
       {
-        label: "$(terminal) Ghostty",
-        description: "Open this workspace in Ghostty",
+        label: t("quickpick.newSessionGhosttyLabel"),
+        description: t("quickpick.newSessionGhosttyDescription"),
         provider: "ghostty" as const
       }
     ],
     {
-      title: "New Session",
-      placeHolder: "Choose agent"
+      title: t("quickpick.newSessionTitle"),
+      placeHolder: t("quickpick.newSessionPlaceHolder")
     }
   );
 
@@ -593,7 +603,7 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
 async function pickWorkspaceProject(): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (!folders.length) {
-    vscode.window.showWarningMessage("Open a workspace folder before starting a new agent session.");
+    vscode.window.showWarningMessage(t("warning.openWorkspaceBeforeNewSession"));
     return undefined;
   }
 
@@ -608,8 +618,8 @@ async function pickWorkspaceProject(): Promise<string | undefined> {
       projectPath: folder.uri.fsPath
     })),
     {
-      title: "New Session",
-      placeHolder: "Choose workspace folder"
+      title: t("quickpick.workspaceFolderTitle"),
+      placeHolder: t("quickpick.workspaceFolderPlaceHolder")
     }
   );
 
@@ -632,7 +642,7 @@ function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown
   }
 
   if (session.provider !== "codex") {
-    vscode.window.showWarningMessage("Open in Codex App is only available for Codex sessions.");
+    vscode.window.showWarningMessage(t("warning.codexAppOnlyForCodex"));
     return;
   }
 
@@ -650,7 +660,7 @@ async function openSessionInClaudeCodePanel(
   }
 
   if (session.provider !== "claude") {
-    vscode.window.showWarningMessage("Resume in Claude Code Panel is only available for Claude sessions.");
+    vscode.window.showWarningMessage(t("warning.claudePanelOnlyForClaude"));
     return;
   }
 
@@ -668,7 +678,7 @@ async function openSessionInCodexIdePanel(
   }
 
   if (session.provider !== "codex") {
-    vscode.window.showWarningMessage("Resume in Codex IDE Panel is only available for Codex sessions.");
+    vscode.window.showWarningMessage(t("warning.codexIdePanelOnlyForCodex"));
     return;
   }
 
@@ -757,11 +767,12 @@ async function resolveOpenFolderSession(
   const picked = await vscode.window.showQuickPick(
     projectSessions.map((session) => sessionQuickPickLabel(session)),
     {
-    title: "Select Session to Resume",
-    matchOnDescription: true,
-    matchOnDetail: true,
-    placeHolder: "Choose the conversation to resume in the new window"
-  });
+      title: t("quickpick.selectSessionToResumeTitle"),
+      matchOnDescription: true,
+      matchOnDetail: true,
+      placeHolder: t("quickpick.selectSessionToResumePlaceHolder")
+    }
+  );
 
   return picked?.session;
 }
@@ -808,7 +819,7 @@ async function favoriteProject(
 
   const favorites = await addFavoriteProject(context, projectPath);
   tree.setFavoriteProjects(favorites);
-  vscode.window.showInformationMessage("Project added to favorites.");
+  vscode.window.showInformationMessage(t("notification.projectAddedToFavorites"));
 }
 
 async function unfavoriteProject(
@@ -823,7 +834,7 @@ async function unfavoriteProject(
 
   const favorites = await removeFavoriteProject(context, projectPath);
   tree.setFavoriteProjects(favorites);
-  vscode.window.showInformationMessage("Project removed from favorites.");
+  vscode.window.showInformationMessage(t("notification.projectRemovedFromFavorites"));
 }
 
 function formatError(error: unknown): string {
@@ -855,10 +866,10 @@ async function renameAcpChatCommand(
   }
 
   const nextTitle = await vscode.window.showInputBox({
-    title: "Rename ACP Chat",
+    title: t("dialog.renameAcpChatTitle"),
     value: record.title,
-    prompt: "Enter a new title for this ACP chat session.",
-    validateInput: (value) => (value.trim() ? undefined : "Title cannot be empty.")
+    prompt: t("dialog.renameAcpChatPrompt"),
+    validateInput: (value) => (value.trim() ? undefined : t("dialog.renameSessionValidateEmpty"))
   });
   if (!nextTitle) {
     return;
@@ -867,9 +878,9 @@ async function renameAcpChatCommand(
   try {
     await renameSession(acpRecordToAgentSession(record), nextTitle, loadRenameHomes());
     await refreshAcpTree();
-    vscode.window.showInformationMessage("ACP chat renamed.");
+    vscode.window.showInformationMessage(t("notification.acpChatRenamed"));
   } catch (error) {
-    vscode.window.showErrorMessage(`Rename failed: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("notification.renameFailed", formatError(error)));
   }
 }
 
@@ -896,19 +907,19 @@ async function setProjectSortMode(
 
   await setProjectSessionSortMode(context, projectPath, mode);
   tree.setProjectSessionSortMode((pathValue) => getProjectSessionSortMode(context, pathValue));
-  vscode.window.showInformationMessage(`Sessions sorted by ${sortModeLabel(mode)}.`);
+  vscode.window.showInformationMessage(t("notification.sessionsSortedBy", sortModeLabel(mode)));
 }
 
 function sortModeLabel(mode: ProjectSessionSortMode): string {
   switch (mode) {
     case "updatedAsc":
-      return "updated (oldest first)";
+      return t("tree.sortModeUpdatedAsc");
     case "titleAsc":
-      return "title (A–Z)";
+      return t("tree.sortModeTitleAsc");
     case "titleDesc":
-      return "title (Z–A)";
+      return t("tree.sortModeTitleDesc");
     case "updatedDesc":
     default:
-      return "updated (newest first)";
+      return t("tree.sortModeUpdatedDesc");
   }
 }

@@ -20,8 +20,21 @@
   let streamingRow = null;
   let streamingMessageId = null;
   let lastInit = null;
+  let uiStrings = {};
   let imageUploadEnabled = false;
   let pendingImages = [];
+
+  function formatUi(template, ...args) {
+    let text = template || "";
+    args.forEach((arg, index) => {
+      text = text.replaceAll(`{${index}}`, String(arg));
+    });
+    return text;
+  }
+
+  function applyStaticUi() {
+    updateComposerChrome(lastInit);
+  }
 
   if (typeof marked !== "undefined") {
     marked.setOptions({ breaks: true, gfm: true });
@@ -38,13 +51,30 @@
       return;
     }
     lastInit = init;
-    headerTitle.textContent = init.title || "ACP Chat";
+    if (init.uiStrings) {
+      uiStrings = init.uiStrings;
+    }
+    headerTitle.textContent = init.title || uiStrings.defaultTitle || "ACP Chat";
     const parts = [init.provider, init.projectPath].filter(Boolean);
     if (init.modeId) {
       parts.push(init.modeId);
     }
+    parts.push(statusLabel(init));
     headerMeta.textContent = parts.join(" · ");
     updateStatusDot(init);
+  }
+
+  function statusLabel(state) {
+    if (state.isConnecting) {
+      return uiStrings.statusConnecting || "connecting";
+    }
+    if (state.isRunning) {
+      return uiStrings.statusRunning || "running";
+    }
+    if (state.status === "error") {
+      return "error";
+    }
+    return uiStrings.statusReady || "ready";
   }
 
   function updateStatusDot(state) {
@@ -208,7 +238,15 @@
     const completed = calls.filter((entry) => entry.status === "completed" || entry.status === "failed").length;
     const summary = document.createElement("summary");
     summary.className = "tool-calls-summary";
-    summary.textContent = `Tool calls (${calls.length}${completed ? `, ${completed} done` : ""})`;
+    const doneSuffix =
+      completed > 0
+        ? formatUi(uiStrings.toolCallsDone || ", {0} done", completed)
+        : "";
+    summary.textContent = formatUi(
+      uiStrings.toolCallsSummary || "Tool calls ({0}{1})",
+      calls.length,
+      doneSuffix
+    );
     group.replaceChildren(summary);
     group.open = groupWasOpen;
 
@@ -259,7 +297,7 @@
       if (!sections.length) {
         const empty = document.createElement("div");
         empty.className = "tool-call-empty";
-        empty.textContent = "No details yet.";
+        empty.textContent = uiStrings.noDetailsYet || "No details yet.";
         detail.appendChild(empty);
       } else {
         for (const section of sections) {
@@ -426,8 +464,8 @@
     }
     if (input) {
       input.placeholder = imageUploadEnabled
-        ? "Message the agent… (paste images)"
-        : "Message the agent… (images not supported)";
+        ? uiStrings.inputPlaceholderWithImages || "Message the agent… (paste or drop images)"
+        : uiStrings.inputPlaceholder || "Message the agent…";
     }
   }
 
@@ -542,9 +580,12 @@
     const message = event.data;
     switch (message.type) {
       case "init":
+        if (message.init?.uiStrings) {
+          uiStrings = message.init.uiStrings;
+        }
         renderHeader(message.init);
         renderModes(message.init);
-        updateComposerChrome(message.init);
+        applyStaticUi();
         setComposerState(message.init);
         break;
       case "history":

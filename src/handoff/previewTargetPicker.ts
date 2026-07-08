@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { ACP_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, HANDOFF_TARGET_META } from "./targets";
+import { t } from "../i18n";
+import { ACP_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "./targets";
 import { HandoffTargetProvider } from "./types";
 
 interface TargetPickItem extends vscode.QuickPickItem {
@@ -14,7 +15,7 @@ export async function pickHandoffTargetForPreview(
   const options: TargetPickItem[] = pool
     .filter((provider) => provider !== sourceProvider)
     .map((provider) => ({
-      label: HANDOFF_TARGET_META[provider].label,
+      label: getHandoffTargetLabel(provider),
       target: provider
     }));
 
@@ -23,8 +24,8 @@ export async function pickHandoffTargetForPreview(
   }
 
   const picked = await vscode.window.showQuickPick(options, {
-    title: "Hand Off to Another Agent",
-    placeHolder: "Choose the target agent"
+    title: t("quickpick.handoffTargetTitle"),
+    placeHolder: t("quickpick.handoffTargetPlaceHolder")
   });
 
   return picked?.target;

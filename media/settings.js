@@ -32,6 +32,8 @@
   /** @type {number | null} */
   let draggedSessionMenuIndex = null;
   let sessionMenuDirty = false;
+  /** @type {Record<string, string>} */
+  let uiStrings = {};
 
   const navList = document.getElementById("settings-nav-list");
   const sectionTitle = document.getElementById("section-title");
@@ -99,6 +101,7 @@
       sections = message.sections || [];
       values = { ...(message.values || {}) };
       llmApiKeyConfigured = Boolean(message.llmApiKeyConfigured);
+      uiStrings = message.uiStrings || {};
       apiKeyInput = "";
       saveBtn.disabled = false;
       loadProjectMenuState(message.projectMenu);
@@ -106,6 +109,7 @@
       if (message.activeSection) {
         activeSectionId = message.activeSection;
       }
+      applyStaticUiStrings();
       renderNav();
       renderSection(activeSectionId);
       return;
@@ -116,14 +120,14 @@
       projectMenuDirty = false;
       sessionMenuDirty = false;
       saveBtn.disabled = false;
-      showStatus("Settings saved.", "success");
+      showStatus(uiStrings.statusSaved || "Settings saved.", "success");
       renderSection(activeSectionId);
       return;
     }
 
     if (message.type === "saveError") {
       saveBtn.disabled = false;
-      showStatus(message.error || "Save failed.", "error");
+      showStatus(message.error || uiStrings.statusSaveFailed || "Save failed.", "error");
       return;
     }
 
@@ -227,7 +231,7 @@
     const projectButton = document.createElement("button");
     projectButton.type = "button";
     projectButton.className = `settings-nav-item${activeSectionId === "projectMenu" ? " active" : ""}`;
-    projectButton.textContent = "Project Menu";
+    projectButton.textContent = uiStrings.navProjectMenu || "Project Menu";
     projectButton.addEventListener("click", () => {
       activeSectionId = "projectMenu";
       renderNav();
@@ -238,7 +242,7 @@
     const sessionButton = document.createElement("button");
     sessionButton.type = "button";
     sessionButton.className = `settings-nav-item${activeSectionId === "sessionMenu" ? " active" : ""}`;
-    sessionButton.textContent = "Session Menu";
+    sessionButton.textContent = uiStrings.navSessionMenu || "Session Menu";
     sessionButton.addEventListener("click", () => {
       activeSectionId = "sessionMenu";
       renderNav();
@@ -255,16 +259,16 @@
     testResult.classList.add("hidden");
 
     if (sectionId === "projectMenu") {
-      sectionTitle.textContent = "Project Menu";
-      sectionDescription.textContent = "Configure and drag to reorder project context menu actions.";
+      sectionTitle.textContent = uiStrings.projectMenuTitle || "Project Menu";
+      sectionDescription.textContent = uiStrings.projectMenuDescription || "Configure and drag to reorder project context menu actions.";
       projectMenuActions.classList.remove("hidden");
       renderProjectMenuList();
       return;
     }
 
     if (sectionId === "sessionMenu") {
-      sectionTitle.textContent = "Session Menu";
-      sectionDescription.textContent = "Configure and drag to reorder session context menu actions.";
+      sectionTitle.textContent = uiStrings.sessionMenuTitle || "Session Menu";
+      sectionDescription.textContent = uiStrings.sessionMenuDescription || "Configure and drag to reorder session context menu actions.";
       sessionMenuActions.classList.remove("hidden");
       renderSessionMenuList();
       return;
@@ -340,8 +344,8 @@
       const handle = document.createElement("button");
       handle.type = "button";
       handle.className = "project-menu-drag-handle";
-      handle.title = "Drag to reorder";
-      handle.setAttribute("aria-label", "Drag to reorder");
+      handle.title = uiStrings.dragHandleTitle || "Drag to reorder";
+      handle.setAttribute("aria-label", uiStrings.dragHandleTitle || "Drag to reorder");
       handle.draggable = true;
       handle.textContent = "⋮⋮";
 
@@ -444,8 +448,8 @@
       const handle = document.createElement("button");
       handle.type = "button";
       handle.className = "project-menu-drag-handle";
-      handle.title = "Drag to reorder";
-      handle.setAttribute("aria-label", "Drag to reorder");
+      handle.title = uiStrings.dragHandleTitle || "Drag to reorder";
+      handle.setAttribute("aria-label", uiStrings.dragHandleTitle || "Drag to reorder");
       handle.draggable = true;
       handle.textContent = "⋮⋮";
 
@@ -537,6 +541,7 @@
     const tip = document.createElement("div");
     tip.className = "settings-tip";
     tip.textContent =
+      uiStrings.llmTip ||
       "Tip: Use a fast, low-cost model when possible. Summarize and Auto Rename work well with lightweight models such as gpt-4o-mini or deepseek-chat — a large reasoning model is not required.";
     return tip;
   }
@@ -574,14 +579,16 @@
 
     const label = document.createElement("label");
     label.className = "settings-label";
-    label.textContent = "API Key";
+    label.textContent = uiStrings.apiKeyLabel || "API Key";
     wrapper.appendChild(label);
 
     const description = document.createElement("div");
     description.className = "settings-description";
     description.textContent = llmApiKeyConfigured
-      ? "Configured. Enter a new key to replace, or leave blank to keep the current key."
-      : "OpenAI-compatible API key. Stored securely in VS Code Secret Storage.";
+      ? uiStrings.apiKeyDescriptionConfigured ||
+        "Configured. Enter a new key to replace, or leave blank to keep the current key."
+      : uiStrings.apiKeyDescriptionEmpty ||
+        "OpenAI-compatible API key. Stored securely in VS Code Secret Storage.";
     wrapper.appendChild(description);
 
     const row = document.createElement("div");
@@ -591,7 +598,9 @@
     input.className = "settings-input settings-password-input";
     input.type = "password";
     input.autocomplete = "off";
-    input.placeholder = llmApiKeyConfigured ? "••••••••" : "sk-...";
+    input.placeholder = llmApiKeyConfigured
+      ? uiStrings.apiKeyPlaceholderConfigured || "••••••••"
+      : uiStrings.apiKeyPlaceholderEmpty || "sk-...";
     input.value = apiKeyInput;
     input.addEventListener("input", () => {
       apiKeyInput = input.value;
@@ -601,14 +610,16 @@
     toggle.type = "button";
     toggle.className = "settings-password-toggle";
     setPasswordToggleIcon(toggle, false);
-    toggle.setAttribute("aria-label", "Show password");
-    toggle.title = "Show password";
+    toggle.setAttribute("aria-label", uiStrings.passwordToggleShow || "Show password");
+    toggle.title = uiStrings.passwordToggleShow || "Show password";
     toggle.addEventListener("click", () => {
       const revealing = input.type === "password";
       input.type = revealing ? "text" : "password";
       setPasswordToggleIcon(toggle, revealing);
-      toggle.setAttribute("aria-label", revealing ? "Hide password" : "Show password");
-      toggle.title = revealing ? "Hide password" : "Show password";
+      const hideLabel = uiStrings.passwordToggleHide || "Hide password";
+      const showLabel = uiStrings.passwordToggleShow || "Show password";
+      toggle.setAttribute("aria-label", revealing ? hideLabel : showLabel);
+      toggle.title = revealing ? hideLabel : showLabel;
       toggle.classList.toggle("is-visible", revealing);
     });
 
@@ -653,7 +664,7 @@
       for (const option of field.enum) {
         const el = document.createElement("option");
         el.value = option;
-        el.textContent = option;
+        el.textContent = field.enumLabels?.[option] || option;
         select.appendChild(el);
       }
       select.value = String(values[field.key] ?? field.default);
@@ -695,6 +706,40 @@
     });
     wrapper.appendChild(input);
     return wrapper;
+  }
+
+  function applyStaticUiStrings() {
+    const navTitle = document.querySelector(".settings-nav-title");
+    if (navTitle) {
+      navTitle.textContent = uiStrings.navTitle || "Settings";
+    }
+    if (saveBtn) {
+      saveBtn.textContent = uiStrings.buttonSave || "Save";
+    }
+    if (testLlmBtn) {
+      testLlmBtn.textContent = uiStrings.buttonTestConnection || "Test Connection";
+    }
+    if (resetProjectMenuBtn) {
+      resetProjectMenuBtn.textContent = uiStrings.buttonResetDefaults || "Reset to Defaults";
+    }
+    if (resetSessionMenuBtn) {
+      resetSessionMenuBtn.textContent = uiStrings.buttonResetDefaults || "Reset to Defaults";
+    }
+    const llmHint = document.querySelector("#llm-actions .settings-hint");
+    if (llmHint) {
+      llmHint.textContent = uiStrings.hintTestConnection || llmHint.textContent;
+    }
+    const projectHint = document.querySelector("#project-menu-actions .settings-hint");
+    if (projectHint) {
+      projectHint.textContent = uiStrings.hintProjectMenu || projectHint.textContent;
+    }
+    const sessionHint = document.querySelector("#session-menu-actions .settings-hint");
+    if (sessionHint) {
+      sessionHint.textContent = uiStrings.hintSessionMenu || sessionHint.textContent;
+    }
+    if (sectionTitle && sectionTitle.textContent.trim() === "Loading...") {
+      sectionTitle.textContent = uiStrings.loading || sectionTitle.textContent;
+    }
   }
 
   function showStatus(text, kind) {

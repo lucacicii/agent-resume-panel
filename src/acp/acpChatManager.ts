@@ -2,13 +2,17 @@ import * as vscode from "vscode";
 import { AcpChatPanel } from "./acpChatPanel";
 import { AcpSessionRecord } from "./types";
 
+let activeAcpChatManager: AcpChatManager | undefined;
+
 export class AcpChatManager {
   private readonly panels = new Map<string, AcpChatPanel>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly reloadTree: () => Promise<void>
-  ) {}
+  ) {
+    activeAcpChatManager = this;
+  }
 
   open(record: AcpSessionRecord, options?: { initialPrompt?: string }): void {
     const existing = this.panels.get(record.id);
@@ -27,10 +31,23 @@ export class AcpChatManager {
     return this.panels.has(id);
   }
 
+  refreshAllPanels(): void {
+    for (const panel of this.panels.values()) {
+      panel.refreshLocalizedUi();
+    }
+  }
+
   dispose(): void {
     for (const panel of this.panels.values()) {
       panel.dispose();
     }
     this.panels.clear();
+    if (activeAcpChatManager === this) {
+      activeAcpChatManager = undefined;
+    }
   }
+}
+
+export async function refreshAcpChatPanels(): Promise<void> {
+  activeAcpChatManager?.refreshAllPanels();
 }

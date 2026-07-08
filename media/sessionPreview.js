@@ -1,9 +1,7 @@
 (function () {
   const vscode = acquireVsCodeApi();
 
-  const LLM_SETUP_HINT =
-    "Summarize, Auto Rename, and Hand Off need an API key in Agent Resume Settings → LLM Assist (each editor stores its own key).";
-  const LLM_BUTTON_HINT = "Configure LLM Assist in Agent Resume Settings";
+  let uiStrings = {};
 
   const previewTitle = document.getElementById("preview-title");
   const previewNotice = document.getElementById("preview-notice");
@@ -16,6 +14,44 @@
   const previewHandoff = document.getElementById("preview-handoff");
   const previewRename = document.getElementById("preview-rename");
   const previewClose = document.getElementById("preview-close");
+
+  function applyStaticUi() {
+    if (previewResume) {
+      previewResume.textContent = uiStrings.buttonResume || "Resume";
+      previewResume.setAttribute("aria-label", uiStrings.ariaResume || "Resume session");
+    }
+    if (previewResumeWith) {
+      previewResumeWith.textContent = uiStrings.buttonResumeWith || "Resume with…";
+      previewResumeWith.setAttribute("aria-label", uiStrings.ariaResumeWith || "Resume session with");
+    }
+    if (previewSummarize) {
+      previewSummarize.textContent = uiStrings.buttonSummarize || "Summarize";
+      previewSummarize.setAttribute("aria-label", uiStrings.ariaSummarize || "Summarize session");
+    }
+    if (previewAutoRename) {
+      previewAutoRename.textContent = uiStrings.buttonAutoRename || "Auto Rename";
+      previewAutoRename.setAttribute("aria-label", uiStrings.ariaAutoRename || "Auto rename session");
+    }
+    if (previewHandoff) {
+      previewHandoff.textContent = uiStrings.buttonHandoff || "Hand Off to…";
+      previewHandoff.setAttribute("aria-label", uiStrings.ariaHandoff || "Hand off to another agent");
+    }
+    if (previewRename) {
+      previewRename.textContent = uiStrings.buttonRename || "Rename";
+      previewRename.setAttribute("aria-label", uiStrings.ariaRename || "Rename session");
+    }
+    if (previewClose) {
+      previewClose.textContent = uiStrings.buttonClose || "Close";
+      previewClose.setAttribute("aria-label", uiStrings.ariaClose || "Close preview");
+    }
+    const loadingEl = document.querySelector(".preview-loading");
+    if (loadingEl) {
+      loadingEl.textContent = uiStrings.loadingConversation || loadingEl.textContent;
+    }
+    if (previewTitle && previewTitle.textContent.trim() === "Loading preview...") {
+      previewTitle.textContent = uiStrings.loadingTitle || previewTitle.textContent;
+    }
+  }
 
   previewResume.addEventListener("click", () => {
     vscode.postMessage({ type: "resume" });
@@ -49,18 +85,20 @@
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.type === "init") {
+      uiStrings = message.uiStrings || {};
+      applyStaticUi();
       renderPreview(message);
       return;
     }
 
     if (message.type === "error") {
-      previewTitle.textContent = "Preview failed";
+      previewTitle.textContent = uiStrings.failedTitle || "Preview failed";
       previewNotice.classList.add("hidden");
       previewSummary.classList.add("hidden");
       previewMessages.innerHTML = "";
       const error = document.createElement("div");
       error.className = "preview-error";
-      error.textContent = message.error || "Failed to load session preview.";
+      error.textContent = message.error || uiStrings.failedLoad || "Failed to load session preview.";
       previewMessages.appendChild(error);
       setAiButtonsDisabled(false);
       previewRename.disabled = false;
@@ -68,7 +106,7 @@
     }
 
     if (message.type === "titleUpdated") {
-      previewTitle.textContent = message.title || "Session Preview";
+      previewTitle.textContent = message.title || uiStrings.defaultTitle || "Session Preview";
       previewRename.disabled = false;
       setAiButtonsDisabled(false);
       return;
@@ -80,7 +118,7 @@
     }
 
     if (message.type === "summaryLoading") {
-      renderSummary("Summarizing session...");
+      renderSummary(uiStrings.summarizing || "Summarizing session...");
       return;
     }
 
@@ -91,7 +129,7 @@
     }
 
     if (message.type === "summaryError") {
-      renderSummary(message.error || "Summarize failed.", true);
+      renderSummary(message.error || uiStrings.summarizeFailed || "Summarize failed.", true);
       setAiButtonsDisabled(false);
       return;
     }
@@ -114,7 +152,7 @@
   });
 
   function renderPreview(message) {
-    previewTitle.textContent = message.title || "Session Preview";
+    previewTitle.textContent = message.title || uiStrings.defaultTitle || "Session Preview";
     previewMessages.innerHTML = "";
     applyResumeActions(message.showResumeWith !== false);
     applyLlmActions(message.llmConfigured === true, message.showHandoff === true);
@@ -133,7 +171,10 @@
 
       const role = document.createElement("div");
       role.className = "preview-role";
-      role.textContent = entry.role === "assistant" ? "Assistant" : "User";
+      role.textContent =
+        entry.role === "assistant"
+          ? uiStrings.roleAssistant || "Assistant"
+          : uiStrings.roleUser || "User";
 
       const text = document.createElement("div");
       text.className = "preview-text";
@@ -150,7 +191,7 @@
     const parts = [];
 
     if (message.truncated) {
-      parts.push({ kind: "text", text: "Showing the most recent 100 messages." });
+      parts.push({ kind: "text", text: uiStrings.noticeTruncated || "Showing the most recent 100 messages." });
     }
     if (message.warning) {
       parts.push({ kind: "text", text: message.warning });
@@ -177,12 +218,12 @@
       const row = document.createElement("div");
       row.className = "preview-notice-line preview-notice-llm";
       const text = document.createElement("span");
-      text.textContent = LLM_SETUP_HINT + " ";
+      text.textContent = (uiStrings.noticeLlmSetup || "") + " ";
       row.appendChild(text);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "preview-notice-action";
-      button.textContent = "Open LLM Settings";
+      button.textContent = uiStrings.noticeOpenLlmSettings || "Open LLM Settings";
       button.addEventListener("click", () => {
         vscode.postMessage({ type: "openLlmSettings" });
       });
@@ -203,18 +244,19 @@
 
   function applyLlmActions(llmConfigured, showHandoff) {
     const needsConfig = llmConfigured !== true;
+    const llmHint = uiStrings.tooltipLlmRequired || "Configure LLM Assist in Agent Resume Settings";
 
     previewSummarize.classList.remove("hidden");
     previewAutoRename.classList.remove("hidden");
     previewSummarize.classList.toggle("preview-action-muted", needsConfig);
     previewAutoRename.classList.toggle("preview-action-muted", needsConfig);
-    previewSummarize.title = needsConfig ? LLM_BUTTON_HINT : "";
-    previewAutoRename.title = needsConfig ? LLM_BUTTON_HINT : "";
+    previewSummarize.title = needsConfig ? llmHint : "";
+    previewAutoRename.title = needsConfig ? llmHint : "";
 
     previewHandoff.classList.toggle("hidden", showHandoff !== true);
     if (showHandoff === true) {
       previewHandoff.classList.toggle("preview-action-muted", needsConfig);
-      previewHandoff.title = needsConfig ? LLM_BUTTON_HINT : "";
+      previewHandoff.title = needsConfig ? llmHint : "";
     } else {
       previewHandoff.classList.remove("preview-action-muted");
       previewHandoff.title = "";

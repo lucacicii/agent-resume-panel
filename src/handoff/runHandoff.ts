@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AcpChatManager } from "../acp/acpChatManager";
+import { t } from "../i18n";
 import { getLlmConfig, readAgentResumeSetting } from "../llm/config";
 import { loadAcpHandoffContext } from "./acpContextLoader";
 import { composeHandoffMessage } from "./briefComposer";
@@ -29,7 +30,7 @@ export async function runHandoff(
 ): Promise<HandoffResult> {
   const llmConfig = await getLlmConfig(deps.context);
   if (!llmConfig) {
-    throw new Error("LLM is not configured. Open Agent Resume Settings to set API base URL, model, and API key.");
+    throw new Error(t("error.handoffLlmNotConfigured"));
   }
 
   const handoffContext =
@@ -53,7 +54,7 @@ export async function runHandoff(
 
   const deliverer = getHandoffDeliverer(channel);
   if (!deliverer) {
-    throw new Error(`Unsupported handoff delivery channel: ${channel}`);
+    throw new Error(t("error.handoffUnsupportedChannel", channel));
   }
 
   const deliveryInput = {
@@ -75,7 +76,7 @@ export async function runHandoff(
   if (!deliverer.canDeliver(deliveryInput)) {
     const fallbackDeliverer = getHandoffDeliverer("clipboard");
     if (!fallbackDeliverer) {
-      throw new Error(`Cannot deliver handoff to ${targetProvider} via ${channel}.`);
+      throw new Error(t("error.handoffCannotDeliver", targetProvider, channel));
     }
     const delivery = await fallbackDeliverer.deliver(deliveryInput, {
       acpChatManager: deps.acpChatManager,
@@ -102,9 +103,7 @@ export async function runHandoff(
       throw error;
     }
 
-    vscode.window.showWarningMessage(
-      `Handoff delivery via ${channel} failed. Copied handoff to clipboard instead.`
-    );
+    vscode.window.showWarningMessage(t("notification.handoffDeliveryFallback", channel));
     const delivery = await clipboard.deliver(deliveryInput, {
       acpChatManager: deps.acpChatManager,
       panelHome: options.panelHome,

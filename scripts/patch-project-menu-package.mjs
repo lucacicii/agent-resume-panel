@@ -6,24 +6,41 @@ import { fileURLToPath } from "node:url";
 import { buildHandoffMenuContributionBlocks } from "./generate-handoff-menu-contributions.mjs";
 import { buildProjectMenuContributionBlocks } from "./generate-project-menu-contributions.mjs";
 import { buildSessionMenuContributionBlocks } from "./generate-session-menu-contributions.mjs";
+import {
+  UI_LOCALES,
+  buildLocalizedContextMenuCommands,
+  buildLocalizedContextSubmenus,
+  expandMenuEntriesForLocales,
+  localizedSubmenuId,
+  loadAllLocaleCatalogs
+} from "./menu-i18n.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(root, "..");
 
+function expandBlock(entries) {
+  return expandMenuEntriesForLocales(entries);
+}
+
+function assignLocalizedSubmenus(pkg, baseId, entries) {
+  for (const locale of UI_LOCALES) {
+    pkg.contributes.menus[localizedSubmenuId(baseId, locale)] = expandBlock(entries);
+  }
+}
+
 function patchPackage(fileName) {
   const filePath = path.join(repoRoot, fileName);
   const pkg = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const currentContext = pkg.contributes.menus["view/item/context"];
+  const catalogs = loadAllLocaleCatalogs(repoRoot);
   const handoffBlocks = buildHandoffMenuContributionBlocks();
-  const projectEnd = currentContext.findIndex((entry) => entry.submenu === "agentResume.projectMore");
-
-  if (projectEnd === -1) {
-    throw new Error(`Could not locate projectMore submenu in ${fileName}`);
-  }
-
   const projectBlocks = buildProjectMenuContributionBlocks();
   const sessionBlocks = buildSessionMenuContributionBlocks();
-  const after = currentContext.slice(projectEnd);
+
+  const projectMoreTrigger = {
+    submenu: "agentResume.projectMore",
+    when: "view == agentResume.sessions && viewItem =~ /agentResume\\.project/",
+    group: "navigation@50"
+  };
 
   const openFolderProjectEntry = {
     command: "agentResume.openFolder",
@@ -32,71 +49,51 @@ function patchPackage(fileName) {
   };
 
   pkg.contributes.menus["view/item/context"] = [
-    ...sessionBlocks.sessionMenuPrefix,
-    ...sessionBlocks.mainSessionMenu,
-    ...sessionBlocks.sessionMoreTrigger,
-    ...sessionBlocks.sessionMenuSuffix,
+    ...expandBlock(sessionBlocks.sessionMenuPrefix),
+    ...expandBlock(sessionBlocks.mainSessionMenu),
+    ...expandBlock(sessionBlocks.sessionMoreTrigger),
+    ...expandBlock(sessionBlocks.sessionMenuSuffix),
     ...handoffBlocks.sessionHandoffTrigger,
     ...handoffBlocks.acpContextEntries,
     ...handoffBlocks.acpHandoffTrigger,
-    openFolderProjectEntry,
-    ...projectBlocks.mainProjectMenu,
-    ...sessionBlocks.projectSortExtras,
-    ...after
+    ...expandBlock([openFolderProjectEntry]),
+    ...expandBlock(projectBlocks.mainProjectMenu),
+    ...expandBlock(sessionBlocks.projectSortExtras),
+    ...expandBlock([projectMoreTrigger])
   ];
 
-  pkg.contributes.menus["agentResume.projectMore"] = projectBlocks.moreProjectMenu;
-  pkg.contributes.menus["agentResume.sessionMore"] = sessionBlocks.moreSessionMenu;
-  pkg.contributes.menus["agentResume.sessionSort"] = sessionBlocks.sessionSortMenu;
-  pkg.contributes.menus["agentResume.projectSort"] = sessionBlocks.projectSortMenu;
+  assignLocalizedSubmenus(pkg, "agentResume.projectMore", projectBlocks.moreProjectMenu);
+  assignLocalizedSubmenus(pkg, "agentResume.sessionMore", sessionBlocks.moreSessionMenu);
+  assignLocalizedSubmenus(pkg, "agentResume.sessionSort", sessionBlocks.sessionSortMenu);
+  assignLocalizedSubmenus(pkg, "agentResume.projectSort", sessionBlocks.projectSortMenu);
 
   pkg.contributes.menus[handoffBlocks.handoffSubmenu.id] = handoffBlocks.handoffSubmenuItems;
 
-  ensureSubmenus(pkg, handoffBlocks.handoffSubmenu);
-  ensureSessionCommands(pkg);
+  ensureSubmenus(pkg, handoffBlocks.handoffSubmenu, catalogs);
+  ensureLocalizedContextMenuCommands(pkg, catalogs);
   ensureHandoffCommands(pkg, handoffBlocks.handoffCommands);
   ensureSessionConfiguration(pkg);
   ensureHandoffConfiguration(pkg, handoffBlocks.handoffConfiguration);
 
   fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`);
-  console.log(`Patched ${fileName} (session + handoff menus generated)`);
+  console.log(`Patched ${fileName} (session + project menus with locale variants)`);
 }
 
-function ensureSubmenus(pkg, handoffSubmenu) {
-  const submenus = pkg.contributes.submenus ?? [];
-  const required = [
-    { id: "agentResume.projectMore", label: "Show More" },
-    { id: "agentResume.sessionMore", label: "Show More" },
-    { id: "agentResume.sessionSort", label: "Sort Project Sessions" },
-    { id: "agentResume.projectSort", label: "Sort Sessions" },
-    handoffSubmenu
-  ];
-
-  for (const entry of required) {
-    if (!submenus.some((item) => item.id === entry.id)) {
-      submenus.push(entry);
-    }
-  }
-
+function ensureSubmenus(pkg, handoffSubmenu, catalogs) {
+  const localized = buildLocalizedContextSubmenus(catalogs);
+  const submenus = (pkg.contributes.submenus ?? []).filter(
+    (item) =>
+      !/^agentResume\.(projectMore|sessionMore|sessionSort|projectSort)(\.|$)/.test(item.id)
+  );
+  submenus.push(...localized, handoffSubmenu);
   pkg.contributes.submenus = submenus;
 }
 
-function ensureSessionCommands(pkg) {
-  const commands = pkg.contributes.commands ?? [];
-  const required = [
-    ["agentResume.configureSessionMenu", "Customize Session Menu"],
-    ["agentResume.sortProjectSessionsUpdatedDesc", "Sort by Updated (Newest First)"],
-    ["agentResume.sortProjectSessionsUpdatedAsc", "Sort by Updated (Oldest First)"],
-    ["agentResume.sortProjectSessionsTitleAsc", "Sort by Title (A–Z)"],
-    ["agentResume.sortProjectSessionsTitleDesc", "Sort by Title (Z–A)"]
-  ];
-
-  for (const [command, title] of required) {
-    if (!commands.some((entry) => entry.command === command)) {
-      commands.push({ command, title, category: "Agent Resume" });
-    }
-  }
-
+function ensureLocalizedContextMenuCommands(pkg, catalogs) {
+  const localized = buildLocalizedContextMenuCommands(catalogs);
+  const localizedIds = new Set(localized.map((entry) => entry.command));
+  const commands = (pkg.contributes.commands ?? []).filter((entry) => !localizedIds.has(entry.command));
+  commands.push(...localized);
   pkg.contributes.commands = commands;
 }
 

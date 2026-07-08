@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { storePendingResume } from "./pendingResume";
 
 /**
@@ -91,9 +92,7 @@ export async function openCodexIdePanelResume(
   }
 
   if (!isCodexIdePanelResumeEnabled()) {
-    vscode.window.showWarningMessage(
-      "Codex IDE panel resume is disabled. Enable agentResume.codexIdePanelResume.enabled in Settings, or use terminal/Codex App resume."
-    );
+    vscode.window.showWarningMessage(t("warning.codexIdePanelDisabled"));
     return "disabled";
   }
 
@@ -103,7 +102,11 @@ export async function openCodexIdePanelResume(
       .get<number>("codexIdePanelResume.implementationVersion", CODEX_IDE_PANEL_IMPLEMENTATION_VERSION);
 
     vscode.window.showWarningMessage(
-      `Codex IDE panel resume is blocked: implementation version mismatch (extension code v${CODEX_IDE_PANEL_IMPLEMENTATION_VERSION}, settings v${expected}). Update Agent Resume Panel or align agentResume.codexIdePanelResume.implementationVersion after verifying the new Codex routes.`
+      t(
+        "warning.codexIdePanelVersionMismatch",
+        CODEX_IDE_PANEL_IMPLEMENTATION_VERSION,
+        expected
+      )
     );
     return "disabled";
   }
@@ -112,9 +115,9 @@ export async function openCodexIdePanelResume(
 
   const extension = getCodexExtension();
   if (!extension) {
-    const install = "Install Extension";
+    const install = t("dialog.buttonInstallExtension");
     const choice = await vscode.window.showWarningMessage(
-      "Codex extension (openai.chatgpt) is not installed. Install it to resume in the Codex IDE panel.",
+      t("warning.codexExtensionNotInstalled"),
       install
     );
     if (choice === install) {
@@ -137,12 +140,10 @@ export async function openCodexIdePanelResume(
       return "opened";
     }
 
-    vscode.window.showErrorMessage(
-      "Failed to open Codex IDE panel. Disable agentResume.codexIdePanelResume.enabled and use terminal resume, or open Codex manually and pick the thread from session history."
-    );
+    vscode.window.showErrorMessage(t("error.failedOpenCodexIdePanelManual"));
     return "unsupported";
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to open Codex IDE panel: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenCodexIdePanel", formatError(error)));
     return "unsupported";
   }
 }
@@ -157,9 +158,7 @@ export async function openCodexIdePanelResumeFlow(
   }
 
   if (!context) {
-    vscode.window.showWarningMessage(
-      "Open the session project in VS Code first, or use Open Folder and Resume."
-    );
+    vscode.window.showWarningMessage(t("warning.openProjectFirstOrOpenFolderResume"));
     return;
   }
 
@@ -219,7 +218,7 @@ async function showExperimentalWarning(context?: vscode.ExtensionContext): Promi
   if (!context?.globalState.get<boolean>(WARNING_STATE_KEY)) {
     await context?.globalState.update(WARNING_STATE_KEY, true);
     vscode.window.showWarningMessage(
-      `Codex IDE panel resume is experimental (${CODEX_IDE_PANEL_IMPLEMENTATION_NOTE}). If a Codex update breaks it, set agentResume.codexIdePanelResume.enabled to false.`
+      t("warning.codexIdePanelExperimental", CODEX_IDE_PANEL_IMPLEMENTATION_NOTE)
     );
   }
 }

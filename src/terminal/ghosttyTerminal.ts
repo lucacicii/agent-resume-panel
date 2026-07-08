@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { buildResumeCommand } from "./commandBuilder";
 
 export async function openProjectInGhostty(projectPath: string): Promise<void> {
@@ -10,7 +11,7 @@ export async function openProjectInGhostty(projectPath: string): Promise<void> {
   try {
     await launchGhosttyShell(ghosttyExecutable, projectPath);
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to open Ghostty: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenGhostty", formatError(error)));
   }
 }
 
@@ -36,7 +37,7 @@ export async function openInGhostty(session: AgentSession): Promise<void> {
     if (launchMode === "copyCommand" || process.platform !== "darwin") {
       await vscode.env.clipboard.writeText(resumeCommand);
       await launchGhosttyShell(ghosttyExecutable, session.projectPath);
-      vscode.window.showInformationMessage("Ghostty opened. Resume command copied; paste it into Ghostty and press Enter.");
+      vscode.window.showInformationMessage(t("notification.ghosttyOpenedCopyPaste"));
       return;
     }
 
@@ -45,13 +46,11 @@ export async function openInGhostty(session: AgentSession): Promise<void> {
     await pasteClipboardAndSubmit(ghosttyExecutable, autoPasteDelayMs);
   } catch (error) {
     if (launchMode === "pasteCommand") {
-      vscode.window.showErrorMessage(
-        `Ghostty opened and the resume command was copied, but auto paste failed: ${formatError(error)}`
-      );
+      vscode.window.showErrorMessage(t("notification.ghosttyAutoPasteFailed", formatError(error)));
       return;
     }
 
-    vscode.window.showErrorMessage(`Failed to open Ghostty: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenGhostty", formatError(error)));
   }
 }
 

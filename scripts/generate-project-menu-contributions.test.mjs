@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { buildProjectMenuContributionBlocks } from "./generate-project-menu-contributions.mjs";
+import { UI_LOCALES, expandMenuEntriesForLocales } from "./menu-i18n.mjs";
 
 const ACTION_COUNT = 12;
 const COMMAND_VARIANT_COUNT = 13;
@@ -20,6 +21,7 @@ const SESSION_COMMANDS = new Set([
 ]);
 
 const blocks = buildProjectMenuContributionBlocks();
+const localizedMain = expandMenuEntriesForLocales(blocks.mainProjectMenu);
 
 function assertProjectMenuEntries(entries, label) {
   assert.ok(entries.length > 0, `${label} should not be empty`);
@@ -40,6 +42,10 @@ function assertProjectMenuEntries(entries, label) {
 
 assertProjectMenuEntries(blocks.mainProjectMenu, "mainProjectMenu");
 assertProjectMenuEntries(blocks.moreProjectMenu, "moreProjectMenu");
+assert.equal(localizedMain.length, blocks.mainProjectMenu.length * UI_LOCALES.length);
+for (const entry of localizedMain) {
+  assert.match(entry.when, /agentResume\.uiLocale/);
+}
 
 assert.equal(
   blocks.mainProjectMenu.length,

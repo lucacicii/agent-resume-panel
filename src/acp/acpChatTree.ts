@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { basenameOrPath, compactPath } from "../history/pathUtils";
+import { t } from "../i18n";
+import { acpRelativeTime } from "../util/relativeTime";
 import { AcpAgentProvider, AcpSessionRecord } from "./types";
 
 type AcpTreeRoot = "recentRoot" | "projectsRoot";
@@ -61,17 +63,17 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
   getTreeItem(element: AcpChatTreeNode): vscode.TreeItem {
     switch (element.kind) {
       case "recentRoot":
-        return rootItem("Recent ACP Chats", "clock", "acp.recentRoot");
+        return rootItem(t("tree.acp.recentChats"), "clock", "acp.recentRoot");
       case "projectsRoot":
-        return rootItem("By Project", "folder-library", "acp.projectsRoot");
+        return rootItem(t("tree.acp.byProject"), "folder-library", "acp.projectsRoot");
       case "warning": {
         const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
         item.iconPath = new vscode.ThemeIcon("warning");
         return item;
       }
       case "empty": {
-        const item = new vscode.TreeItem("No ACP chats yet", vscode.TreeItemCollapsibleState.None);
-        item.description = "Use + New ACP Chat";
+        const item = new vscode.TreeItem(t("tree.acp.noChatsYet"), vscode.TreeItemCollapsibleState.None);
+        item.description = t("tree.acp.noChatsYetDescription");
         item.iconPath = new vscode.ThemeIcon("info");
         return item;
       }
@@ -130,17 +132,17 @@ function rootItem(label: string, icon: string, id: string): vscode.TreeItem {
 }
 
 function chatItem(record: AcpSessionRecord, showProjectName = false): vscode.TreeItem {
-  const title = record.title || "New ACP Chat";
+  const title = record.title || t("tree.acp.defaultTitle");
   const label = showProjectName ? `${basenameOrPath(record.projectPath)} · ${title}` : title;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-  item.description = `acp/${record.provider} · ${relativeTime(record.updatedAt)}`;
+  item.description = t("tree.acp.description", record.provider, acpRelativeTime(record.updatedAt));
   item.tooltip = [
     title,
-    `ACP agent: ${record.provider}`,
-    `Project: ${record.projectPath}`,
-    `Messages: ${record.messageCount}`,
-    record.acpSessionId ? `ACP session: ${record.acpSessionId}` : undefined,
-    `Chat: ${record.id}`
+    t("tree.acp.tooltipAcpAgent", record.provider),
+    t("tree.acp.tooltipProject", record.projectPath),
+    t("tree.acp.tooltipMessages", record.messageCount),
+    record.acpSessionId ? t("tree.acp.tooltipAcpSession", record.acpSessionId) : undefined,
+    t("tree.acp.tooltipChatId", record.id)
   ]
     .filter(Boolean)
     .join("\n");
@@ -148,7 +150,7 @@ function chatItem(record: AcpSessionRecord, showProjectName = false): vscode.Tre
   item.contextValue = `agentResume.acpChat.${record.provider}`;
   item.command = {
     command: "agentResume.openAcpChat",
-    title: "Open ACP Chat",
+    title: t("tree.acp.commandOpen"),
     arguments: [{ kind: "chat", record } satisfies AcpChatTreeNode & { kind: "chat" }]
   };
   return item;
@@ -189,26 +191,9 @@ function providerIcon(provider: AcpAgentProvider): string {
   }
 }
 
-function relativeTime(timestamp: number): string {
-  const delta = Date.now() - timestamp;
-  const minutes = Math.floor(delta / 60_000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 export function acpChatQuickPickLabel(record: AcpSessionRecord): { label: string; description: string; detail: string; record: AcpSessionRecord } {
   return {
-    label: record.title || "New ACP Chat",
+    label: record.title || t("tree.acp.defaultTitle"),
     description: `acp/${record.provider}`,
     detail: compactPath(record.projectPath),
     record

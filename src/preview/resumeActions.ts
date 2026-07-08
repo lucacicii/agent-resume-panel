@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { openClaudeCodePanelResumeFlow } from "../terminal/claudeCodePanel";
 import { isCodexIdePanelResumeAvailable, openCodexIdePanelResumeFlow } from "../terminal/codexIdePanel";
 import { openInGhostty } from "../terminal/ghosttyTerminal";
@@ -23,7 +24,7 @@ export async function resumeSession(
 
   if (target === "ghostty") {
     if (session.provider === "alma") {
-      vscode.window.showWarningMessage("Ghostty resume is not available for Alma sessions.");
+      vscode.window.showWarningMessage(t("warning.ghosttyNotForAlma"));
       return;
     }
 
@@ -33,7 +34,7 @@ export async function resumeSession(
 
   if (target === "claudePanel") {
     if (session.provider !== "claude") {
-      vscode.window.showWarningMessage("Claude Code panel resume is only available for Claude sessions.");
+      vscode.window.showWarningMessage(t("warning.claudePanelResumeOnlyForClaude"));
       return;
     }
 
@@ -43,7 +44,7 @@ export async function resumeSession(
 
   if (target === "codexIdePanel") {
     if (session.provider !== "codex") {
-      vscode.window.showWarningMessage("Codex IDE panel resume is only available for Codex sessions.");
+      vscode.window.showWarningMessage(t("warning.codexIdePanelResumeOnlyForCodex"));
       return;
     }
 
@@ -53,7 +54,7 @@ export async function resumeSession(
 
   if (target === "codexApp") {
     if (session.provider !== "codex") {
-      vscode.window.showWarningMessage("Codex App resume is only available for Codex sessions.");
+      vscode.window.showWarningMessage(t("warning.codexAppResumeOnlyForCodex"));
       return;
     }
 
@@ -61,7 +62,7 @@ export async function resumeSession(
     return;
   }
 
-  vscode.window.showWarningMessage("Unsupported resume target.");
+  vscode.window.showWarningMessage(t("warning.unsupportedResumeTarget"));
 }
 
 export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
@@ -71,21 +72,21 @@ export async function pickResumeTarget(session: AgentSession): Promise<ResumeTar
 
   const options: ResumeTargetOption[] = [
     {
-      label: "VS Code Integrated Terminal",
-      description: "Resume in a VS Code integrated terminal",
+      label: t("quickpick.resumeWithVscodeLabel"),
+      description: t("quickpick.resumeWithVscodeDescription"),
       target: "vscode"
     },
     {
-      label: "Ghostty",
-      description: "Open the session in Ghostty",
+      label: t("quickpick.resumeWithGhosttyLabel"),
+      description: t("quickpick.resumeWithGhosttyDescription"),
       target: "ghostty"
     }
   ];
 
   if (session.provider === "claude") {
     options.push({
-      label: "Claude Code Panel",
-      description: "Resume in the Claude Code VS Code extension panel",
+      label: t("quickpick.resumeWithClaudePanelLabel"),
+      description: t("quickpick.resumeWithClaudePanelDescription"),
       target: "claudePanel"
     });
   }
@@ -93,22 +94,22 @@ export async function pickResumeTarget(session: AgentSession): Promise<ResumeTar
   if (session.provider === "codex") {
     if (isCodexIdePanelResumeAvailable()) {
       options.push({
-        label: "Codex IDE Panel (Experimental)",
-        description: "Resume in the Codex VS Code extension panel",
+        label: t("quickpick.resumeWithCodexIdePanelLabel"),
+        description: t("quickpick.resumeWithCodexIdePanelDescription"),
         target: "codexIdePanel"
       });
     }
 
     options.push({
-      label: "Codex App",
-      description: "Resume in Codex App via integrated terminal",
+      label: t("quickpick.resumeWithCodexAppLabel"),
+      description: t("quickpick.resumeWithCodexAppDescription"),
       target: "codexApp"
     });
   }
 
   const picked = await vscode.window.showQuickPick(options, {
-    title: "Resume With",
-    placeHolder: "Choose where to resume this session"
+    title: t("quickpick.resumeWithTitle"),
+    placeHolder: t("quickpick.resumeWithPlaceHolder")
   });
 
   return picked?.target;

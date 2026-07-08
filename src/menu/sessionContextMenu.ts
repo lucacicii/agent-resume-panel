@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { t } from "../i18n";
 
 export type SessionMenuAction =
   | "copyResumeCommand"
@@ -29,15 +30,17 @@ export const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
 const CONFIG_KEY = "sessionMenu.mainActions";
 const ORDER_CONFIG_KEY = "sessionMenu.itemOrder";
 
-export const SESSION_MENU_ACTION_LABELS: Record<SessionMenuAction, string> = {
-  copyResumeCommand: "Copy Resume Command",
-  openProject: "Open Folder and Resume",
-  openInGhostty: "Open in Ghostty",
-  previewSession: "Preview Session",
-  renameSession: "Rename Session",
-  removeSessionFromPanel: "Remove from Panel",
-  autoRenameSession: "Auto Rename Session"
-};
+export function getSessionMenuActionLabels(): Record<SessionMenuAction, string> {
+  return {
+    copyResumeCommand: t("menu.session.copyResumeCommand"),
+    openProject: t("menu.session.openProject"),
+    openInGhostty: t("menu.session.openInGhostty"),
+    previewSession: t("menu.session.previewSession"),
+    renameSession: t("menu.session.renameSession"),
+    removeSessionFromPanel: t("menu.session.removeSessionFromPanel"),
+    autoRenameSession: t("menu.session.autoRenameSession")
+  };
+}
 
 const COMMAND_BY_ACTION: Record<SessionMenuAction, string> = {
   copyResumeCommand: "agentResume.copyResumeCommand",
@@ -136,7 +139,7 @@ export function buildSessionMenuEditorState(
     order,
     mainActions: normalized,
     allActions: ALL_SESSION_MENU_ACTIONS,
-    labels: { ...SESSION_MENU_ACTION_LABELS },
+    labels: getSessionMenuActionLabels(),
     defaultMainActions: [...DEFAULT_MAIN_SESSION_ACTIONS]
   };
 }

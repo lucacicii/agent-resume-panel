@@ -1,9 +1,10 @@
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
 import * as vscode from "vscode";
+import { t } from "../../i18n";
 import { autoApprovePermissions } from "../config";
 
 export async function requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-  const title = params.toolCall.title ?? "Agent action";
+  const title = params.toolCall.title ?? t("quickpick.acpPermissionDefaultTitle");
 
   if (autoApprovePermissions()) {
     const allow = params.options.find((option) => option.kind === "allow_once" || option.kind === "allow_always");
@@ -19,8 +20,8 @@ export async function requestPermission(params: RequestPermissionRequest): Promi
       optionId: option.optionId
     })),
     {
-      title: `Agent permission: ${title}`,
-      placeHolder: "Allow this agent action?"
+      title: t("quickpick.acpPermissionTitle", title),
+      placeHolder: t("quickpick.acpPermissionPlaceHolder")
     }
   );
 

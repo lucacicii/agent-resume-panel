@@ -13,6 +13,7 @@ import {
   updateAcpRecord,
   validateIncomingImages
 } from "./store";
+import { getAcpChatUiStrings } from "../webview/uiStrings";
 import {
   AcpChatMessage,
   AcpImageAttachment,
@@ -104,6 +105,10 @@ export class AcpChatPanel {
 
   reveal(): void {
     this.panel.reveal(vscode.ViewColumn.Beside);
+  }
+
+  refreshLocalizedUi(): void {
+    this.postInit();
   }
 
   dispose(): void {
@@ -589,7 +594,8 @@ export class AcpChatPanel {
         isRunning: this.isRunning,
         isConnecting: this.isConnecting,
         status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready",
-        imageUpload: this.connection?.supportsImageUpload() ?? false
+        imageUpload: this.connection?.supportsImageUpload() ?? false,
+        uiStrings: getAcpChatUiStrings()
       }
     });
     this.panel.title = this.title();

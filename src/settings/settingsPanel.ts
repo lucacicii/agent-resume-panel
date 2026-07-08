@@ -3,6 +3,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { llmOverridesFromDraft } from "../llm/config";
 import { testLlmConnection } from "../llm/sessionAssist";
+import { t } from "../i18n";
+import { getSettingsUiStrings } from "../webview/uiStrings";
 import { applySettingsPatch, loadSettingsSnapshot } from "./settingsIO";
 
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -51,7 +53,7 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
 
   settingsPanel = vscode.window.createWebviewPanel(
     "agentResume.settings",
-    "Agent Resume Settings",
+    t("panel.settingsTitle"),
     column,
     {
       enableScripts: true,
@@ -125,8 +127,17 @@ async function sendInit(webview: vscode.Webview, context: vscode.ExtensionContex
     llmApiKeyConfigured: snapshot.llmApiKeyConfigured,
     projectMenu: snapshot.projectMenu,
     sessionMenu: snapshot.sessionMenu,
-    activeSection
+    activeSection,
+    uiStrings: getSettingsUiStrings()
   });
+}
+
+export async function refreshSettingsPanel(): Promise<void> {
+  if (!settingsPanel || !activeContext) {
+    return;
+  }
+  settingsPanel.title = t("panel.settingsTitle");
+  await sendInit(settingsPanel.webview, activeContext);
 }
 
 function getWebviewHtml(webview: vscode.Webview): string {

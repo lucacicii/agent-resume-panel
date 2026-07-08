@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { t } from "../../i18n";
 import { HandoffDeliverer } from "./types";
 
 export const clipboardHandoffDeliverer: HandoffDeliverer = {
@@ -10,7 +11,7 @@ export const clipboardHandoffDeliverer: HandoffDeliverer = {
 
   async deliver(input) {
     await vscode.env.clipboard.writeText(input.composedMessage);
-    vscode.window.showInformationMessage("Handoff brief copied to clipboard.");
+    vscode.window.showInformationMessage(t("notification.handoffCopiedToClipboard"));
     return { channel: "clipboard" };
   }
 };

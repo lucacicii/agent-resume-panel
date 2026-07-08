@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { basenameOrPath } from "../history/pathUtils";
 import {
   ensureAlmaWorkspaceId,
@@ -18,9 +19,9 @@ export async function openAlmaThread(session: AgentSession): Promise<void> {
 
   const running = await isAlmaApiRunning();
   if (!running) {
-    const openAnyway = "Open Alma";
+    const openAnyway = t("dialog.buttonOpenAlma");
     const picked = await vscode.window.showWarningMessage(
-      "Alma does not appear to be running. Start Alma first, then resume the thread.",
+      t("warning.almaNotRunningResume"),
       openAnyway
     );
     if (picked !== openAnyway) {
@@ -31,9 +32,9 @@ export async function openAlmaThread(session: AgentSession): Promise<void> {
 
   try {
     await navigateAlmaThreadInUi(session.title);
-    vscode.window.showInformationMessage(`Switched Alma to "${truncate(session.title, 48)}".`);
+    vscode.window.showInformationMessage(t("notification.almaSwitchedThread", truncate(session.title, 48)));
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to open Alma thread: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenAlmaThread", formatError(error)));
   }
 }
 
@@ -41,9 +42,9 @@ export async function openNewAlmaSession(projectPath: string, almaDataDir: strin
   const projectName = basenameOrPath(projectPath);
   let apiReady = await isAlmaApiRunning();
   if (!apiReady) {
-    const openAnyway = "Open Alma";
+    const openAnyway = t("dialog.buttonOpenAlma");
     const picked = await vscode.window.showWarningMessage(
-      "Alma does not appear to be running. Open Alma and set the project workspace?",
+      t("warning.almaNotRunningNewSession"),
       openAnyway
     );
     if (picked !== openAnyway) {
@@ -52,9 +53,7 @@ export async function openNewAlmaSession(projectPath: string, almaDataDir: strin
     focusAlmaApp();
     apiReady = await waitForAlmaApi();
     if (!apiReady) {
-      vscode.window.showWarningMessage(
-        `Alma is still starting. Open a new chat in Alma and select workspace "${projectName}".`
-      );
+      vscode.window.showWarningMessage(t("warning.almaStillStarting", projectName));
       return;
     }
   }
@@ -67,9 +66,9 @@ export async function openNewAlmaSession(projectPath: string, almaDataDir: strin
     } else {
       focusAlmaApp();
     }
-    vscode.window.showInformationMessage(`Opened a new Alma chat in "${projectName}".`);
+    vscode.window.showInformationMessage(t("notification.almaOpenedNewChat", projectName));
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to open Alma workspace: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenAlmaWorkspace", formatError(error)));
   }
 }
 

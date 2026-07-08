@@ -8,7 +8,8 @@ import { SessionTreeProvider } from "../tree/sessionTree";
 import { ensureLlmConfigured } from "../preview/sessionAssistActions";
 import { HandoffSource, HandoffTargetProvider } from "./types";
 import { runHandoff } from "./runHandoff";
-import { HANDOFF_TARGET_META, CLI_HANDOFF_TARGETS } from "./targets";
+import { t } from "../i18n";
+import { CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "./targets";
 import { pickHandoffTargetForPreview } from "./previewTargetPicker";
 
 export interface HandoffCommandArg {
@@ -31,7 +32,7 @@ export async function executeHandoffCommand(
 
   const source = resolveHandoffSource(nodeOrSource, deps);
   if (!source) {
-    vscode.window.showWarningMessage("Could not resolve a session to hand off.");
+    vscode.window.showWarningMessage(t("warning.handoffCouldNotResolveSession"));
     return;
   }
 
@@ -46,17 +47,17 @@ export async function executeHandoffCommand(
   }
 
   if (isSameProvider(source, target)) {
-    vscode.window.showWarningMessage("Cannot hand off a session to the same agent.");
+    vscode.window.showWarningMessage(t("warning.handoffSameAgent"));
     return;
   }
 
-  const targetLabel = HANDOFF_TARGET_META[target].label;
+  const targetLabel = getHandoffTargetLabel(target);
 
   try {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Handing off to ${targetLabel}…`,
+        title: t("progress.handingOffTo", targetLabel),
         cancellable: false
       },
       async () => {
@@ -74,18 +75,18 @@ export async function executeHandoffCommand(
 
         const channelLabel =
           result.delivery.channel === "acp"
-            ? "ACP Chat"
+            ? t("menu.handoff.channelAcp")
             : result.delivery.channel === "cli"
-              ? "CLI terminal"
-              : "clipboard";
+              ? t("menu.handoff.channelCli")
+              : t("menu.handoff.channelClipboard");
 
-        vscode.window.showInformationMessage(`Session handed off to ${targetLabel} via ${channelLabel}.`);
+        vscode.window.showInformationMessage(t("notification.handoffSuccess", targetLabel, channelLabel));
       }
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage !== "Handoff cancelled.") {
-      vscode.window.showErrorMessage(`Handoff failed: ${errorMessage}`);
+    if (errorMessage !== t("handoff.cancelled")) {
+      vscode.window.showErrorMessage(t("notification.handoffFailed", errorMessage));
     }
     throw error;
   }

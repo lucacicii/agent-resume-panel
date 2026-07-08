@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
+import { t } from "../i18n";
+import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
 
@@ -122,19 +124,19 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   getTreeItem(element: TreeNode): vscode.TreeItem {
     switch (element.kind) {
       case "recentRoot":
-        return rootItem("Recent Sessions", "clock", element.kind);
+        return rootItem(t("tree.recentSessions"), "clock", element.kind);
       case "favoritesRoot":
-        return rootItem("Favorite Projects", "star-full", element.kind);
+        return rootItem(t("tree.favoriteProjects"), "star-full", element.kind);
       case "projectsRoot":
-        return rootItem("Projects", "folder-library", element.kind);
+        return rootItem(t("tree.projects"), "folder-library", element.kind);
       case "warning": {
         const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
         item.iconPath = new vscode.ThemeIcon("warning");
         return item;
       }
       case "empty": {
-        const item = new vscode.TreeItem("No sessions found", vscode.TreeItemCollapsibleState.None);
-        item.description = "Check settings";
+        const item = new vscode.TreeItem(t("tree.noSessionsFound"), vscode.TreeItemCollapsibleState.None);
+        item.description = t("tree.noSessionsFoundDescription");
         item.iconPath = new vscode.ThemeIcon("info");
         return item;
       }
@@ -244,7 +246,7 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
     command: session.provider === "chat" ? "agentResume.openChatSession" : "agentResume.openSession",
-    title: session.provider === "chat" ? "Open ACP Chat" : "Resume Session",
+    title: session.provider === "chat" ? t("tree.commandOpenAcpChat") : t("tree.commandResumeSession"),
     arguments: [{ kind: "session", session } satisfies SessionNode]
   };
   return item;
@@ -253,19 +255,19 @@ function sessionItem(session: AgentSession, showProjectName = false): vscode.Tre
 function sessionDescription(session: AgentSession): string {
   const provider = providerLabel(session.provider);
   if (session.provider === "chat" && session.acpProvider) {
-    return `acp · ${session.acpProvider} · ${relativeTime(session.updatedAt)}`;
+    return t("tree.descriptionAcp", session.acpProvider, relativeTime(session.updatedAt));
   }
-  return `${provider} · ${relativeTime(session.updatedAt)}`;
+  return t("tree.descriptionProvider", provider, relativeTime(session.updatedAt));
 }
 
 function showMoreRecentItem(remaining: number): vscode.TreeItem {
-  const item = new vscode.TreeItem("Show More", vscode.TreeItemCollapsibleState.None);
-  item.description = `${remaining} remaining`;
-  item.tooltip = "Show 10 more recent sessions";
+  const item = new vscode.TreeItem(t("tree.showMore"), vscode.TreeItemCollapsibleState.None);
+  item.description = t("tree.showMoreDescription", remaining);
+  item.tooltip = t("tree.showMoreTooltip");
   item.iconPath = new vscode.ThemeIcon("add");
   item.command = {
     command: "agentResume.showMoreRecent",
-    title: "Show More Recent Sessions"
+    title: t("tree.showMoreCommandTitle")
   };
   return item;
 }
@@ -282,13 +284,13 @@ function sessionLabel(session: AgentSession, showProjectName: boolean): string {
 function buildSessionTooltip(session: AgentSession): string | vscode.MarkdownString {
   const lines = [
     formatTitleWithMessageCount(session),
-    `Provider: ${providerLabel(session.provider)}`,
-    session.acpProvider ? `ACP agent: ${session.acpProvider}` : undefined,
-    `Project: ${session.projectPath}`,
-    session.model ? `Model: ${session.model}` : undefined,
-    session.branch ? `Branch: ${session.branch}` : undefined,
-    session.source ? `Source: ${session.source}` : undefined,
-    `Session: ${session.id}`
+    t("tree.tooltipProvider", providerLabel(session.provider)),
+    session.acpProvider ? t("tree.tooltipAcpAgent", session.acpProvider) : undefined,
+    t("tree.tooltipProject", session.projectPath),
+    session.model ? t("tree.tooltipModel", session.model) : undefined,
+    session.branch ? t("tree.tooltipBranch", session.branch) : undefined,
+    session.source ? t("tree.tooltipSource", session.source) : undefined,
+    t("tree.tooltipSessionId", session.id)
   ].filter(Boolean);
 
   if (session.sessionSummary) {
@@ -296,7 +298,7 @@ function buildSessionTooltip(session: AgentSession): string | vscode.MarkdownStr
     tooltip.isTrusted = true;
     tooltip.supportHtml = false;
     tooltip.appendMarkdown(lines.join("  \n"));
-    tooltip.appendMarkdown("\n\n---\n\n**Summary**\n\n");
+    tooltip.appendMarkdown(`\n\n---\n\n**${t("tree.tooltipSummaryHeading")}**\n\n`);
     tooltip.appendText(session.sessionSummary);
     return tooltip;
   }
@@ -311,7 +313,7 @@ export function formatTitleWithMessageCount(session: AgentSession): string {
     session.messageCount != null &&
     session.messageCount > MESSAGE_COUNT_THRESHOLD
   ) {
-    return `${title}(${session.messageCount}msg)`;
+    return `${title}(${t("tree.subtitleMessageCount", session.messageCount)})`;
   }
   return title;
 }
@@ -430,30 +432,6 @@ function providerIcon(provider: AgentSession["provider"]): string {
   return "comment-discussion";
 }
 
-export function relativeTime(timestamp: number): string {
-  if (!timestamp) {
-    return "unknown";
-  }
-
-  const diffMs = Date.now() - timestamp;
-  const absMs = Math.abs(diffMs);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (absMs < hour) {
-    return `${Math.max(1, Math.round(absMs / minute))}m`;
-  }
-  if (absMs < day) {
-    return `${Math.round(absMs / hour)}h`;
-  }
-  if (absMs < 30 * day) {
-    return `${Math.round(absMs / day)}d`;
-  }
-
-  return new Date(timestamp).toLocaleDateString();
-}
-
 export interface SearchSessionItem {
   provider: AgentSession["provider"];
   id: string;
@@ -505,7 +483,7 @@ export function buildSessionSubtitle(session: AgentSession): string {
     parts.push(session.model);
   }
   if (session.messageCount != null) {
-    parts.push(`${session.messageCount} msgs`);
+    parts.push(t("tree.subtitleMessageCount", session.messageCount));
   }
   if (parts.length) {
     return parts.join(" · ");

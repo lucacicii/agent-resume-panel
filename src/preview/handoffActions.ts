@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { AcpChatManager } from "../acp/acpChatManager";
+import { t } from "../i18n";
 import { AgentSession } from "../history";
 import { executeHandoffCommand } from "../handoff/handoffCommand";
 
@@ -42,7 +43,7 @@ export async function runContinueWithAgent(
   } catch (error) {
     const errorMessage = formatError(error);
     webview?.postMessage({ type: "handoffError", error: errorMessage });
-    vscode.window.showErrorMessage(`Handoff failed: ${errorMessage}`);
+    vscode.window.showErrorMessage(t("notification.handoffFailed", errorMessage));
   }
 }
 

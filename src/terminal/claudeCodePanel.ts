@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession } from "../history";
+import { t } from "../i18n";
 import { storePendingResume } from "./pendingResume";
 
 const CLAUDE_CODE_EXTENSION_IDS = ["anthropic.claude-code", "Anthropic.claude-code"];
@@ -52,9 +53,9 @@ export async function openClaudeCodePanelResume(session: AgentSession): Promise<
 
   const extension = getClaudeCodeExtension();
   if (!extension) {
-    const install = "Install Extension";
+    const install = t("dialog.buttonInstallExtension");
     const choice = await vscode.window.showWarningMessage(
-      "Claude Code extension is not installed. Install it to resume in the Claude Code panel.",
+      t("warning.claudeExtensionNotInstalled"),
       install
     );
     if (choice === install) {
@@ -82,12 +83,10 @@ export async function openClaudeCodePanelResume(session: AgentSession): Promise<
       return "opened";
     }
 
-    vscode.window.showErrorMessage(
-      "Failed to open Claude Code panel. Try opening Claude Code manually, then use Session history."
-    );
+    vscode.window.showErrorMessage(t("error.failedOpenClaudePanelManual"));
     return "unsupported";
   } catch (error) {
-    vscode.window.showErrorMessage(`Failed to open Claude Code panel: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenClaudePanel", formatError(error)));
     return "unsupported";
   }
 }
@@ -146,9 +145,7 @@ export async function openClaudeCodePanelResumeFlow(
   }
 
   if (!context) {
-    vscode.window.showWarningMessage(
-      "Open the session project in VS Code first, or use Open Folder and Resume."
-    );
+    vscode.window.showWarningMessage(t("warning.openProjectFirstOrOpenFolderResume"));
     return;
   }
 

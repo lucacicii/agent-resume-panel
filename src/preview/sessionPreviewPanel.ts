@@ -14,6 +14,8 @@ import { canHandoffSession, runContinueWithAgent } from "./handoffActions";
 import { runAutoRename, runSummarize } from "./sessionAssistActions";
 import { openSettingsPanelToLlm } from "../settings/settingsPanel";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
+import { t } from "../i18n";
+import { getSessionPreviewUiStrings } from "../webview/uiStrings";
 import { SessionTreeProvider } from "../tree/sessionTree";
 
 let previewPanel: vscode.WebviewPanel | undefined;
@@ -39,6 +41,7 @@ export async function openSessionPreviewPanel(
     activeRefreshTree = refreshTree;
     activeContext = context;
     activeAcpChatManager = acpChatManager;
+    previewPanel.title = t("panel.sessionPreviewTitle", session.title);
     previewPanel.reveal(column);
     await sendPreviewData(previewPanel.webview, session);
     return;
@@ -52,7 +55,7 @@ export async function openSessionPreviewPanel(
 
   previewPanel = vscode.window.createWebviewPanel(
     "agentResume.sessionPreview",
-    `Preview: ${session.title}`,
+    t("panel.sessionPreviewTitle", session.title),
     column,
     {
       enableScripts: true,
@@ -172,10 +175,10 @@ async function handleRename(panel: vscode.WebviewPanel): Promise<void> {
   }
 
   const newTitle = await vscode.window.showInputBox({
-    title: "Rename Session",
-    prompt: "Enter a new session title",
+    title: t("dialog.renameSessionTitle"),
+    prompt: t("dialog.renameSessionPrompt"),
     value: session.title,
-    validateInput: (value) => (value.trim() ? undefined : "Title cannot be empty.")
+    validateInput: (value) => (value.trim() ? undefined : t("dialog.renameSessionValidateEmpty"))
   });
 
   if (!newTitle) {
@@ -186,13 +189,13 @@ async function handleRename(panel: vscode.WebviewPanel): Promise<void> {
   try {
     await renameSessionWithCatalog(session, newTitle, loadRenameHomes());
     await activeRefreshTree?.();
-    panel.title = `Preview: ${newTitle.trim()}`;
+    panel.title = t("panel.sessionPreviewTitle", newTitle.trim());
     webview.postMessage({ type: "titleUpdated", title: newTitle.trim() });
-    vscode.window.showInformationMessage("Session renamed.");
+    vscode.window.showInformationMessage(t("notification.sessionRenamed"));
   } catch (error) {
     const errorMessage = formatError(error);
     webview.postMessage({ type: "renameDone" });
-    vscode.window.showErrorMessage(`Rename failed: ${errorMessage}`);
+    vscode.window.showErrorMessage(t("notification.renameFailed", errorMessage));
   }
 }
 
@@ -251,6 +254,7 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
         : undefined;
     webview.postMessage({
       type: "init",
+      uiStrings: getSessionPreviewUiStrings(),
       provider: session.provider,
       showResumeWith: session.provider !== "alma",
       showHandoff: canHandoffSession(session),
@@ -267,8 +271,21 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
       type: "error",
       error: errorMessage
     });
-    vscode.window.showErrorMessage(`Preview failed: ${errorMessage}`);
+    vscode.window.showErrorMessage(t("notification.previewFailed", errorMessage));
   }
+}
+
+export async function refreshSessionPreviewPanel(): Promise<void> {
+  if (!previewPanel) {
+    return;
+  }
+
+  const session = findActiveSession();
+  if (session) {
+    previewPanel.title = t("panel.sessionPreviewTitle", session.title);
+  }
+
+  await refreshActivePreview();
 }
 
 function getWebviewHtml(webview: vscode.Webview): string {

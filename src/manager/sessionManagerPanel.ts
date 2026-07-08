@@ -6,15 +6,17 @@ import { resolveSessionById } from "../catalog/resolve";
 import { AgentSession, HistoryLoadOptions } from "../history/types";
 import { exportCatalogWithTranscripts } from "../catalog/transcript/export";
 import { removeSessionsFromPanel } from "../catalog/mutations";
+import { t } from "../i18n";
+import { getSessionManagerUiStrings } from "../webview/uiStrings";
 import { getLlmOutputLanguage } from "../llm/config";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
   buildSessionSubtitle,
   enrichSessionsWithTreeSummaries,
-  relativeTime,
   serializeSessionForSearch,
   SessionTreeProvider
 } from "../tree/sessionTree";
+import { relativeTime } from "../util/relativeTime";
 
 interface ManagerSessionPayload {
   provider: string;
@@ -25,7 +27,6 @@ interface ManagerSessionPayload {
   updatedAtMs: number;
   updatedAtLabel: string;
   subtitle: string;
-  removeAction: string;
 }
 
 interface ManagerStats {
@@ -37,6 +38,8 @@ interface ManagerStats {
 const WEBVIEW_ASSET_VERSION = "4";
 
 let managerPanel: vscode.WebviewPanel | undefined;
+let activeManagerTree: SessionTreeProvider | undefined;
+let activeManagerBuildLoadOptions: (() => HistoryLoadOptions) | undefined;
 
 export async function openSessionManagerPanel(
   context: vscode.ExtensionContext,
@@ -46,14 +49,20 @@ export async function openSessionManagerPanel(
 ): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
   if (managerPanel) {
+    activeManagerTree = tree;
+    activeManagerBuildLoadOptions = buildLoadOptions;
+    managerPanel.title = t("panel.sessionManagerTitle");
     managerPanel.reveal(column);
     await postManagerInit(managerPanel.webview, tree, buildLoadOptions);
     return;
   }
 
+  activeManagerTree = tree;
+  activeManagerBuildLoadOptions = buildLoadOptions;
+
   managerPanel = vscode.window.createWebviewPanel(
     "agentResume.sessionManager",
-    "Session Manager",
+    t("panel.sessionManagerTitle"),
     column,
     {
       enableScripts: true,
@@ -93,6 +102,8 @@ export async function openSessionManagerPanel(
 
   managerPanel.onDidDispose(() => {
     managerPanel = undefined;
+    activeManagerTree = undefined;
+    activeManagerBuildLoadOptions = undefined;
   });
 
   managerPanel.webview.html = getWebviewHtml(managerPanel.webview, context.extensionUri);
@@ -108,7 +119,7 @@ async function handleExportFromManager(
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Select export folder"
+    openLabel: t("dialog.exportSelectFolderOpenLabel")
   });
   if (!folder?.[0]) {
     return;
@@ -120,7 +131,7 @@ async function handleExportFromManager(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Exporting sessions...",
+      title: t("progress.exportingSessions"),
       cancellable: false
     },
     async () => {
@@ -131,7 +142,12 @@ async function handleExportFromManager(
         onlySessions: items?.length ? items : undefined
       });
       vscode.window.showInformationMessage(
-        `Exported ${result.sessionCount} session(s), ${result.transcriptFileCount} transcript file(s) to ${result.outputDir}`
+        t(
+          "notification.sessionManagerExported",
+          result.sessionCount,
+          result.transcriptFileCount,
+          result.outputDir
+        )
       );
     }
   );
@@ -155,19 +171,20 @@ async function handleRemoveFromPanel(
     return;
   }
 
+  const removeButton = t("dialog.buttonRemove");
   const confirm = await vscode.window.showWarningMessage(
-    `Remove ${sessions.length} session(s) from the panel only? Native agent storage is unchanged.`,
+    t("dialog.removeMultipleFromPanelConfirm", sessions.length),
     { modal: true },
-    "Remove"
+    removeButton
   );
-  if (confirm !== "Remove") {
+  if (confirm !== removeButton) {
     return;
   }
 
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Removing sessions from panel...",
+      title: t("progress.removingSessionsFromPanel"),
       cancellable: false
     },
     async () => {
@@ -177,7 +194,7 @@ async function handleRemoveFromPanel(
 
   await syncCatalog(buildLoadOptions(), catalog);
   await refreshTree();
-  vscode.window.showInformationMessage(`Removed ${sessions.length} session(s) from panel.`);
+  vscode.window.showInformationMessage(t("notification.sessionManagerRemoved", sessions.length));
   managerPanel?.webview.postMessage({ type: "removeDone" });
 }
 
@@ -194,12 +211,13 @@ async function postManagerInit(
     const payload = buildManagerPayload(sessions, tree);
     webview.postMessage({
       type: "init",
+      uiStrings: getSessionManagerUiStrings(),
       sessions: payload.sessions,
       stats: payload.stats
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Session Manager load failed: ${message}`);
+    vscode.window.showErrorMessage(t("notification.sessionManagerLoadFailed", message));
   }
 }
 
@@ -228,8 +246,7 @@ function buildManagerPayload(
       projectName: search.projectName,
       updatedAtMs: enrichedSession.updatedAt,
       updatedAtLabel: relativeTime(enrichedSession.updatedAt),
-      subtitle,
-      removeAction: "Remove from panel only (native agent unchanged)"
+      subtitle
     };
   });
 
@@ -257,6 +274,15 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
     .replaceAll("{{scriptUri}}", scriptUri.toString());
 
   return html;
+}
+
+export async function refreshSessionManagerPanel(): Promise<void> {
+  if (!managerPanel || !activeManagerTree || !activeManagerBuildLoadOptions) {
+    return;
+  }
+
+  managerPanel.title = t("panel.sessionManagerTitle");
+  await postManagerInit(managerPanel.webview, activeManagerTree, activeManagerBuildLoadOptions);
 }
 
 function getNonce(): string {

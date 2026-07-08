@@ -23,16 +23,18 @@ import {
   SessionMenuEditorState,
   sessionItemOrderFromEditorState
 } from "../menu/sessionContextMenu";
+import { t } from "../i18n";
 import {
   findSettingField,
   getAllSettingKeys,
+  getSettingSections,
   LLM_API_KEY_SECRET,
-  SETTING_SECTIONS,
-  SettingField
+  SettingField,
+  SettingSection
 } from "./settingsSchema";
 
 export interface SettingsSnapshot {
-  sections: typeof SETTING_SECTIONS;
+  sections: SettingSection[];
   values: Record<string, unknown>;
   llmApiKeyConfigured: boolean;
   projectMenu: ProjectMenuEditorState;
@@ -70,7 +72,7 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
   const sessionItemOrder = loadSessionItemOrder(config);
 
   return {
-    sections: SETTING_SECTIONS,
+    sections: getSettingSections(),
     values,
     llmApiKeyConfigured: Boolean(apiKey?.trim() || envKey),
     projectMenu: buildProjectMenuEditorState(mainActions, itemOrder),
@@ -110,7 +112,7 @@ export async function applySettingsPatch(
       nextMainActions = mainActionsFromEditorState(editor.order, editor.checked);
       nextItemOrder = itemOrderFromEditorState(editor.order);
     } else {
-      throw new Error("Invalid project menu configuration.");
+      throw new Error(t("error.settingsInvalidProjectMenu"));
     }
 
     await saveMainActions(config, nextMainActions);
@@ -136,7 +138,7 @@ export async function applySettingsPatch(
       nextMainActions = mainSessionActionsFromEditorState(editor.order, editor.checked);
       nextItemOrder = sessionItemOrderFromEditorState(editor.order);
     } else {
-      throw new Error("Invalid session menu configuration.");
+      throw new Error(t("error.settingsInvalidSessionMenu"));
     }
 
     await saveMainSessionActions(config, nextMainActions);
@@ -167,7 +169,7 @@ export async function applySettingsPatch(
 export async function setLlmApiKey(context: vscode.ExtensionContext, apiKey: string): Promise<void> {
   const trimmed = apiKey.trim();
   if (!trimmed) {
-    throw new Error("API key cannot be empty.");
+    throw new Error(t("error.settingsApiKeyEmpty"));
   }
   await context.secrets.store(LLM_API_KEY_SECRET, trimmed);
 }

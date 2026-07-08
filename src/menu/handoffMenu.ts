@@ -1,6 +1,7 @@
 import { AcpAgentProvider } from "../acp/types";
 import { HandoffTargetProvider } from "../handoff/types";
-import { ACP_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, HANDOFF_TARGET_META } from "../handoff/targets";
+import { t } from "../i18n";
+import { ACP_HANDOFF_TARGETS, CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "../handoff/targets";
 
 export const HANDOFF_SUBMENU_ID = "agentResume.handoffTo";
 
@@ -11,9 +12,12 @@ export function handoffCommandId(provider: HandoffTargetProvider | AcpAgentProvi
 export { CLI_HANDOFF_TARGETS, ACP_HANDOFF_TARGETS };
 
 export function handoffTargetLabel(provider: HandoffTargetProvider | AcpAgentProvider): string {
-  return HANDOFF_TARGET_META[provider as HandoffTargetProvider]?.label ?? provider;
+  if ((CLI_HANDOFF_TARGETS as readonly string[]).includes(provider)) {
+    return getHandoffTargetLabel(provider as HandoffTargetProvider);
+  }
+  return provider;
 }
 
 export function handoffCommandTitle(provider: HandoffTargetProvider | AcpAgentProvider): string {
-  return `Hand Off to ${handoffTargetLabel(provider)}`;
+  return t("menu.handoff.commandTitle", handoffTargetLabel(provider));
 }

@@ -1,20 +1,33 @@
+import { t } from "../i18n";
 import { AcpAgentProvider } from "../acp/types";
 import { HandoffDeliveryChannel, HandoffSource, HandoffTargetProvider } from "./types";
 
+const HANDOFF_TARGET_LABEL_KEYS: Record<HandoffTargetProvider, string> = {
+  codex: "menu.handoff.targetCodex",
+  claude: "menu.handoff.targetClaude",
+  agy: "menu.handoff.targetAgy",
+  grok: "menu.handoff.targetGrok",
+  opencode: "menu.handoff.targetOpenCode",
+  pi: "menu.handoff.targetPi"
+};
+
 export interface HandoffTargetMeta {
   provider: HandoffTargetProvider;
-  label: string;
   supportsAcp: boolean;
   supportsCli: boolean;
 }
 
+export function getHandoffTargetLabel(provider: HandoffTargetProvider): string {
+  return t(HANDOFF_TARGET_LABEL_KEYS[provider]);
+}
+
 export const HANDOFF_TARGET_META: Record<HandoffTargetProvider, HandoffTargetMeta> = {
-  codex: { provider: "codex", label: "Codex", supportsAcp: true, supportsCli: true },
-  claude: { provider: "claude", label: "Claude Code", supportsAcp: true, supportsCli: true },
-  agy: { provider: "agy", label: "Antigravity CLI", supportsAcp: false, supportsCli: true },
-  grok: { provider: "grok", label: "Grok Build", supportsAcp: true, supportsCli: true },
-  opencode: { provider: "opencode", label: "OpenCode", supportsAcp: true, supportsCli: true },
-  pi: { provider: "pi", label: "Pi", supportsAcp: true, supportsCli: true }
+  codex: { provider: "codex", supportsAcp: true, supportsCli: true },
+  claude: { provider: "claude", supportsAcp: true, supportsCli: true },
+  agy: { provider: "agy", supportsAcp: false, supportsCli: true },
+  grok: { provider: "grok", supportsAcp: true, supportsCli: true },
+  opencode: { provider: "opencode", supportsAcp: true, supportsCli: true },
+  pi: { provider: "pi", supportsAcp: true, supportsCli: true }
 };
 
 export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
@@ -42,4 +55,3 @@ export function resolveDeliveryChannelForSource(
 
   return HANDOFF_TARGET_META[target].supportsCli ? "cli" : "clipboard";
 }
-

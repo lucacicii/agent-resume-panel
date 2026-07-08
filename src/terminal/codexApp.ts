@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
+import { t } from "../i18n";
 import { basenameOrPath } from "../history/pathUtils";
 
 export function openCodexAppProject(projectPath: string): void {
@@ -10,11 +11,11 @@ export function openCodexAppProject(projectPath: string): void {
   });
 
   child.once("error", (error) => {
-    vscode.window.showErrorMessage(`Failed to open Codex App: ${formatError(error)}`);
+    vscode.window.showErrorMessage(t("error.failedOpenCodexApp", formatError(error)));
   });
   child.once("spawn", () => {
     child.unref();
-    vscode.window.showInformationMessage(`Opening ${basenameOrPath(projectPath)} in Codex App.`);
+    vscode.window.showInformationMessage(t("notification.openingCodexApp", basenameOrPath(projectPath)));
   });
 }
 

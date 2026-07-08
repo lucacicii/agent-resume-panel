@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { t } from "../i18n";
 
 export type ProjectMenuAction =
   | "favorite"
@@ -34,20 +35,22 @@ export const DEFAULT_MAIN_ACTIONS: ProjectMenuAction[] = ["newCodexSession", "ne
 const CONFIG_KEY = "projectMenu.mainActions";
 const ORDER_CONFIG_KEY = "projectMenu.itemOrder";
 
-export const PROJECT_MENU_ACTION_LABELS: Record<ProjectMenuAction, string> = {
-  favorite: "Add to / Remove from Favorites",
-  openProject: "Open Folder and Resume",
-  openInGhostty: "Open in Ghostty",
-  newChatSession: "New Chat Session",
-  newCodexSession: "New Codex Session",
-  newClaudeSession: "New Claude Session",
-  newAgySession: "New Antigravity Session",
-  newGrokSession: "New Grok Session",
-  newOpenCodeSession: "New OpenCode Session",
-  newPiSession: "New Pi Session",
-  newAlmaSession: "New Alma Thread",
-  newCodexAppSession: "New Codex App Session"
-};
+export function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> {
+  return {
+    favorite: t("menu.project.favorite"),
+    openProject: t("menu.project.openProject"),
+    openInGhostty: t("menu.project.openInGhostty"),
+    newChatSession: t("menu.project.newChatSession"),
+    newCodexSession: t("menu.project.newCodexSession"),
+    newClaudeSession: t("menu.project.newClaudeSession"),
+    newAgySession: t("menu.project.newAgySession"),
+    newGrokSession: t("menu.project.newGrokSession"),
+    newOpenCodeSession: t("menu.project.newOpenCodeSession"),
+    newPiSession: t("menu.project.newPiSession"),
+    newAlmaSession: t("menu.project.newAlmaSession"),
+    newCodexAppSession: t("menu.project.newCodexAppSession")
+  };
+}
 
 export interface ProjectMenuEditorState {
   order: ProjectMenuAction[];
@@ -136,7 +139,7 @@ export function buildProjectMenuEditorState(
     order,
     mainActions: normalized,
     allActions: ALL_PROJECT_MENU_ACTIONS,
-    labels: { ...PROJECT_MENU_ACTION_LABELS },
+    labels: getProjectMenuActionLabels(),
     defaultMainActions: [...DEFAULT_MAIN_ACTIONS]
   };
 }
