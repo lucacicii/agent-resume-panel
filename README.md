@@ -15,8 +15,9 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - 在 VS Code 内用 ACP Chat 与 Codex、Claude、Grok、OpenCode、Pi 实时对话（支持图片上传）。
 - 快速回到最近一次 AI 编程会话。
 - 同时使用多个 CLI / 桌面 Agent，并希望统一管理。
-- 按项目查看历史会话，收藏常用项目，并直接在对应项目里继续工作。
-- 在搜索面板里按项目筛选，再快速定位某个会话。
+- 按项目查看历史会话，收藏常用项目，为项目设置显示别名，并直接在对应项目里继续工作。
+- 用 **GTD** 视图按 `@inbox` / `@next` / `@waiting` 等状态组织 CLI 会话，并在 Search / Session Manager 中筛选。
+- 在搜索面板里按项目或 GTD 状态筛选，再快速定位某个会话。
 - 重命名会话标题，并写回各 Agent 的原生存储（其他终端 resume 时也会看到新名称）。
 - 需要在 Claude Code 或 Codex 官方 VS Code 插件面板中继续会话（Codex 面板恢复为实验性功能）。
 - 需要用 Ghostty 或 Codex App 接着打开已有会话。
@@ -28,7 +29,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 ### 快速开始
 
 1. 在 VS Code 左侧活动栏打开 **Agent Resume**。
-2. **Sessions** 视图用于浏览和恢复各 Agent 的 CLI 历史会话；**ACP Chats** 视图单独列出基于 ACP 的聊天会话（见下方 [ACP Chat](#acp-chat)）。
+2. **Sessions** 视图用于浏览和恢复各 Agent 的 CLI 历史会话；**ACP Chats** 视图单独列出基于 ACP 的聊天会话；**GTD** 视图按 GTD 状态分组展示已打标的 CLI sessions（见下方 [GTD](#gtd)）。
 3. 在 **Sessions** 中点击某个会话即可恢复。恢复位置取决于 Agent 类型与设置：Claude / Codex 可进入官方插件面板，也可走集成终端；Alma 在 Alma 客户端中打开。
 4. 如果列表没有更新，点击对应视图标题栏的刷新按钮，或运行 **Agent Resume: Refresh** / **Refresh ACP Chats**。
 
@@ -49,6 +50,7 @@ Agent Resume Panel 是一个 VS Code 侧边栏扩展，用来集中浏览、搜�
 - **Resume in Codex IDE Panel (Experimental)**：尝试在 Codex 插件面板中恢复（需已安装 `openai.chatgpt`，见下方说明）。
 - **Resume in Codex App**：将 Codex 会话交给 Codex App 继续。
 - **Hand Off to Another Agent**：子菜单选择目标 Agent，生成 Handoff Brief 并转交（CLI session → CLI 终端；ACP Chat → ACP Chat）。需已配置 **LLM Assist**；当前 Agent 不会出现在子菜单中。
+- **Set GTD Status…**（默认在 **Show More** 中）：为 CLI session 设置互斥 GTD 状态（`@inbox` / `@next` / `@waiting` / `@someday` / `@reference`），或清除状态。可在 **Agent Resume Settings → Session Menu** 拖到主菜单。
 
 在 **Preview Session** 面板或搜索预览中，还可使用 **Resume** / **Resume with…** 选择集成终端、Ghostty、Claude Code Panel、Codex IDE Panel（实验性）或 Codex App。若已在 **Agent Resume Settings → LLM Assist** 配置 API，还可使用 **Summarize** 生成会话摘要（显示在对话上方）、**Auto Rename** 由 AI 建议标题并写回原生存储，以及 **Hand Off to…** 将上下文转交给其他 Agent。
 
@@ -63,9 +65,30 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 - **New Codex Session**、**New Claude Session**、**New Antigravity Session**、**New Grok Session**、**New OpenCode Session**、**New Pi Session**：在该项目中新建对应 Agent 会话。
 - **New Codex App Session**：用 Codex App 打开该项目。
 - **New Alma Thread**：在 Alma 中打开新对话，并将工作区目录设为该项目（见下方 Alma 说明）。
+- **Set Project Alias…**（默认在 **Show More** 中）：为项目文件夹设置显示别名（`文件夹名 · 别名`）；留空可清除。Recent Sessions、Search Sessions、Session Manager 与 **ACP Chats** 中的项目名均使用同一格式。
 - **Show More**：未勾选为主菜单的项会收纳在此子菜单中。
 
 可通过 **Agent Resume Settings → Project Menu**（或运行 **Customize Project Menu** / 在 **Show More** 中点击 **Customize Project Menu**）自定义项目右键菜单：勾选要在主菜单显示的项，**拖动**调整顺序，然后点击 **Save**。**Open Folder** 始终显示在顶部。
+
+### GTD
+
+**GTD** 视图用于按工作状态管理 CLI 历史会话。每个 session 同时只能属于一个 GTD 桶；**ACP Chats** 不支持打标（数据不在 Session Catalog）。
+
+**视图与预设状态**
+
+- 活动栏 **Agent Resume** 下除 **Sessions**、**ACP Chats** 外，还有 **GTD** 标签页。
+- 预设互斥状态：`@inbox`、`@next`、`@waiting`、`@someday`、`@reference`。
+- 已打标 session 按状态分组列出；未打标 session 不出现在 GTD 视图中。
+
+**设置与展示**
+
+- 在 **Sessions** 或 **GTD** 视图中右键 session → **显示更多** → **设置 GTD 状态…**（QuickPick 单选，可清除）。
+- **Sessions** 树悬停 tooltip 显示当前 GTD 状态。
+- **Search Sessions** 与 **Session Manager** 支持 GTD 筛选（全部 / 未打标 / 各状态桶），列表行显示 GTD 标签，文本搜索可匹配 GTD 状态。
+
+**持久化**
+
+- 状态写入 `catalog.db` 的 `session_gtd` 表，与 agent 同步独立；备份 `panelHome` 即可保留。
 
 ### 新建和搜索
 
@@ -74,7 +97,8 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 运行 **Agent Resume: Search Sessions** 会打开专用搜索面板：
 
 - 顶部是 **Projects** 按钮区：点击 `All Projects` 或某个项目，先按项目做初步筛选；收藏项目会带星标。
-- 下方是独立的 **Sessions** 列表：在已选项目范围内继续输入关键字，按标题、provider、分支（未选项目时也匹配路径）过滤。
+- **GTD** 筛选区：按全部 GTD、未打标或各状态桶（`@inbox` 等）筛选；列表 meta 行显示 GTD 标签。
+- 下方是独立的 **Sessions** 列表：在已选项目与 GTD 范围内继续输入关键字，按标题、provider、分支、GTD 状态或项目别名（未选项目时也匹配路径）过滤。
 - 点击某条会话即可恢复；行尾的 **Preview**、**Rename**、**Remove** 可分别预览、重命名或从面板移除，面板保持打开。
 
 侧边栏还支持将项目拖入 **Favorite Projects**、调整 Recent / Favorites / Projects 分区顺序。
@@ -84,7 +108,7 @@ Alma 会话支持 **Rename Session**；其余终端类操作请直接点击会�
 通过 **Session Manager** 可导出会话（侧边栏 **Sessions** 标题栏的数据库图标，或 **Agent Resume: Session Manager**）：
 
 1. 打开面板后，可先点 **Refresh** 与侧边栏刷新同步，确保 Catalog 已收录各 Agent 的最新会话（受 `agentResume.catalog.syncMaxItems` 上限约束）。
-2. 保持搜索框为空、时间筛选为 **All**，并勾选要包含的 **Provider**（默认全部），列表即当前 Catalog 中的全部可见会话（不含已从面板移除的 `hidden` 会话）。
+2. 保持搜索框为空、时间筛选为 **All**，并勾选要包含的 **Provider**（默认全部）；可用 **GTD** 筛选按钮按状态过滤。列表即当前 Catalog 中的全部可见会话（不含已从面板移除的 `hidden` 会话）。
 3. 不勾选任何行，直接点击 **Export**，选择目标文件夹；扩展会创建带时间戳的子目录，写入 `manifest.json`，并从各 Agent **原生存储**读取 transcript 复制到 `sessions/` 下（可按 provider 筛选或勾选部分行，只导出选中会话；表头 **全选** 后再 **Export** 则导出当前筛选结果中的全部）。
 
 导出范围覆盖 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等已同步进 Catalog 的 CLI 会话；**ACP Chats** 不在此导出范围内。更多存储细节见 [第二部分：插件说明](#第二部分插件说明)。
@@ -284,7 +308,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 - **默认路径**：`~/.agent-resume-panel/catalog.db`（与 ACP 数据同属 `agentResume.panelHome`）；可用 `agentResume.catalog.dbPath` 覆盖。
 - **存储分工（重要）**：
-  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、LLM **Summarize** 摘要 `session_summary` / `session_summary_language`、从面板移除时的 `hidden` 标记），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
+  - **Catalog（SQLite）**：会话元数据（provider、项目路径、时间、分支等）、面板侧字段（如 `user_title`、LLM **Summarize** 摘要 `session_summary` / `session_summary_language`、从面板移除时的 `hidden` 标记）、**GTD** 状态（`session_gtd` 表）与**项目别名**（`projects` 表），以及指向各 Agent 原生存储中 transcript 的**引用**（`transcript_kind` / `transcript_refs`）。
   - **Agent 原生存储**：对话正文与各 Agent 自己的 session 文件**仍在原位置**；扩展**不复制** transcript，也**不创建**操作系统级软链接。预览、恢复、Session Manager 导出时按需读取原生文件。
 - **入站同步**：运行 **Refresh** 或打开面板时，从 Codex、Claude、Antigravity、Grok、OpenCode、Pi、Alma 等数据目录加载会话并 UPSERT 到 Catalog。同步**不会**因冲突而把已「从面板移除」的会话自动恢复为可见（不会对 `hidden` 强行置回显示）。
 - **出站操作**：**Rename** 更新 Catalog 并调用各 Provider 的 `renameSession()` 写回原生存储；**Remove from Panel** 仅将 Catalog 中 `hidden=1`，不删除 Agent 侧文件。
@@ -292,7 +316,7 @@ macOS 上第一次自动粘贴命令时，系统可能会要求授予 VS Code �
 
 #### Session Manager
 
-在 **Sessions** 标题栏点击 **Session Manager**（数据库图标），或运行 **Agent Resume: Session Manager**，可打开 Webview 管理大量历史会话（筛选、浏览、批量处理）。
+在 **Sessions** 标题栏点击 **Session Manager**（数据库图标），或运行 **Agent Resume: Session Manager**，可打开 Webview 管理大量历史会话（按 provider、年龄、**GTD** 状态筛选，浏览、批量处理）。
 
 **Export** 仅在此面板提供：导出 Catalog 中的会话元数据（`manifest.json`），并在导出时从各 Agent 原生存储读取完整对话写入 `sessions/`（引用式读取，非事先在库内存全文）。未勾选列表项时 **Export** 表示导出**当前筛选条件下的全部会话**；在默认筛选下即为 Catalog 内全部可见 CLI 会话（至多 `syncMaxItems`），实现「导出所有 session」的备份能力。已从面板移除（`hidden`）的条目默认不包含在导出 SQL 中。
 
@@ -322,8 +346,9 @@ Best for:
 - Real-time conversations in VS Code via ACP Chat with Codex, Claude, Grok, OpenCode, and Pi (image upload supported).
 - Jumping back into a recent AI coding session.
 - Managing sessions from multiple CLI and desktop agents in one list.
-- Browsing sessions by project, favoriting frequent projects, and continuing in the right workspace.
-- Filtering by project in the search panel, then narrowing down to a specific session.
+- Browsing sessions by project, favoriting frequent projects, setting project display aliases, and continuing in the right workspace.
+- Organizing CLI sessions with the **GTD** view (`@inbox`, `@next`, `@waiting`, etc.) and filtering in Search / Session Manager.
+- Filtering by project or GTD status in the search panel, then narrowing down to a specific session.
 - Renaming session titles in each agent's native storage so other terminals see the new name too.
 - Resuming in the Claude Code or Codex official VS Code extension panels (Codex panel resume is experimental).
 - Continuing an existing session in Ghostty or Codex App when needed.
@@ -335,7 +360,7 @@ Best for:
 ### Quick Start
 
 1. Open **Agent Resume** from the VS Code Activity Bar.
-2. Use **Sessions** to browse and resume CLI history; use **ACP Chats** for ACP-based chat sessions (see [ACP Chat](#acp-chat) below).
+2. Use **Sessions** to browse and resume CLI history; use **ACP Chats** for ACP-based chat sessions; use **GTD** to browse CLI sessions grouped by GTD status (see [GTD](#gtd-1) below).
 3. In **Sessions**, click a session to resume it. Where it opens depends on the agent and settings: Claude / Codex can use the official extension panel or the integrated terminal; Alma opens in the Alma desktop app.
 4. If a list is stale, use that view's refresh button, or run **Agent Resume: Refresh** / **Refresh ACP Chats**.
 
@@ -356,6 +381,7 @@ Click a session in **Sessions**, or right-click it and choose:
 - **Resume in Codex IDE Panel (Experimental)**: Try resuming a Codex session in the Codex VS Code extension panel (experimental; can be disabled instantly).
 - **Resume in Codex App**: Continue a Codex session in Codex App.
 - **Hand Off to Another Agent**: Submenu to pick a target agent, generate a handoff brief, and deliver it (CLI session → CLI terminal; ACP chat → ACP Chat). Requires **LLM Assist**; the current agent is hidden from the submenu.
+- **Set GTD Status…** (under **Show More** by default): Assign a mutually exclusive GTD bucket (`@inbox`, `@next`, `@waiting`, `@someday`, `@reference`) to a CLI session, or clear it. Pin it in **Agent Resume Settings → Session Menu** if you want it on the main menu.
 
 The preview panel and search panel also offer **Resume** and **Resume with…** (integrated terminal, Ghostty, Claude Code Panel, Codex IDE Panel, Codex App, and more). With **LLM Assist** configured under **Agent Resume Settings**, you can **Summarize** the session (shown above messages), **Auto Rename** via AI title suggestion written back to native storage, or **Hand Off to…** to continue with another agent.
 
@@ -370,9 +396,30 @@ Project groups support these right-click actions:
 - **New Codex Session**, **New Claude Session**, **New Antigravity Session**, **New Grok Session**, **New OpenCode Session**, **New Pi Session**: Start a new agent session in that project.
 - **New Codex App Session**: Open the project with Codex App.
 - **New Alma Thread**: Open a new Alma chat with the project workspace directory (see Alma below).
+- **Set Project Alias…** (under **Show More** by default): Set a display alias for the project folder (`folderName · alias`); leave empty to clear. Recent Sessions, Search Sessions, Session Manager, and **ACP Chats** use the same format.
 - **Show More**: Actions not pinned to the main menu appear in this submenu.
 
 Customize the project context menu in **Agent Resume Settings → Project Menu** (or run **Customize Project Menu** / use **Customize Project Menu** under **Show More**): check items for the main menu, **drag** to reorder, then click **Save**. **Open Folder** always stays at the top.
+
+### GTD
+
+The **GTD** view helps manage CLI session workflow. Each session belongs to at most one GTD bucket. **ACP Chats** cannot be tagged (not in the Session Catalog).
+
+**View and buckets**
+
+- Besides **Sessions** and **ACP Chats**, the **GTD** tab groups tagged CLI sessions by status.
+- Mutually exclusive buckets: `@inbox`, `@next`, `@waiting`, `@someday`, `@reference`.
+- Untagged sessions do not appear in the GTD view.
+
+**Set and display**
+
+- Right-click a session in **Sessions** or **GTD** → **Show More** → **Set GTD Status…** (single-select QuickPick; clear option included).
+- The **Sessions** tree tooltip shows the current GTD status on hover.
+- **Search Sessions** and **Session Manager** support GTD filters (all / untagged / each bucket), show GTD labels on rows, and match GTD status in text search.
+
+**Persistence**
+
+- Status is stored in `session_gtd` inside `catalog.db`, independent of agent sync. Back up `panelHome` to keep it.
 
 ### New and Search
 
@@ -381,7 +428,8 @@ Click the plus button in the **Sessions** title bar, or run **Agent Resume: New 
 Run **Agent Resume: Search Sessions** to open a dedicated search panel:
 
 - **Projects** chip buttons at the top: click **All Projects** or a project to filter first; favorited projects show a star.
-- A separate **Sessions** list below: type to filter by title, provider, branch, or path (when no project is selected).
+- **GTD** filter chips: all GTD, untagged, or each bucket (`@inbox`, etc.); rows show GTD labels in the meta line.
+- A separate **Sessions** list below: type to filter by title, provider, branch, GTD status, project alias, or path (when no project is selected).
 - Click a session row to resume; use **Preview**, **Rename**, or **Remove** on each row to preview, rename, or hide from the panel without closing the search panel.
 
 The sidebar also supports dragging projects into **Favorite Projects** and reordering the Recent / Favorites / Projects sections.
@@ -391,7 +439,7 @@ The sidebar also supports dragging projects into **Favorite Projects** and reord
 Use **Session Manager** (**Sessions** title bar database icon, or **Agent Resume: Session Manager**):
 
 1. Optionally click **Refresh** (or refresh the sidebar first) so the catalog includes the latest sessions from each agent (capped by `agentResume.catalog.syncMaxItems`).
-2. Leave the search box empty, set the age filter to **All**, and enable every **Provider** you want (all are on by default). The list is then every visible catalog row (sessions removed from the panel via `hidden` are excluded).
+2. Leave the search box empty, set the age filter to **All**, and enable every **Provider** you want (all are on by default). Use the **GTD** filter buttons to narrow by status. The list is then every visible catalog row (sessions removed from the panel via `hidden` are excluded).
 3. Click **Export** without selecting rows and pick a folder. The extension creates a timestamped subdirectory with `manifest.json` and copies transcripts from native agent storage under `sessions/`. You can also select specific rows, or use the header **select all** checkbox and **Export** to dump everything matching the current filters.
 
 This covers CLI sessions synced into the catalog (Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, etc.). **ACP Chats** are not included. See [Part 2: Plugin Guide](#part-2-plugin-guide) for storage details.
@@ -589,14 +637,14 @@ The extension uses a local **SQLite** database (**Session Catalog**) as the sour
 
 - **Default path**: `~/.agent-resume-panel/catalog.db` (under `agentResume.panelHome`, shared with ACP data roots); override with `agentResume.catalog.dbPath`.
 - **Storage split (important)**:
-  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, LLM **Summarize** text in `session_summary` / `session_summary_language`, `hidden` when removed from the panel), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
+  - **Catalog (SQLite)**: Session metadata (provider, project path, timestamps, branch, etc.), panel fields (`user_title`, LLM **Summarize** text in `session_summary` / `session_summary_language`, `hidden` when removed from the panel), **GTD** status (`session_gtd` table), **project aliases** (`projects` table), and **references** to transcript files in each agent's native storage (`transcript_kind` / `transcript_refs`).
   - **Agent native storage**: Full conversation content and agent-specific session files **stay in place**. The extension does **not** copy transcripts into SQLite and does **not** create OS-level symlinks. Preview, resume, and Session Manager export read native files on demand.
 - **Inbound sync**: On **Refresh** or when views load, sessions are loaded from Codex, Claude, Antigravity, Grok, OpenCode, Pi, Alma, and similar homes and UPSERTed into the catalog. Sync does **not** force `hidden` sessions back to visible when agent files still exist.
 - **Outbound actions**: **Rename** updates the catalog and calls each provider's `renameSession()` for native storage; **Remove from Panel** sets `hidden=1` in the catalog only.
 - **ACP Chats** use a separate store under `panelHome` and are **not** part of the Session Catalog.
 
 #### Session Manager
-Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets.
+Use **Session Manager** from the **Sessions** title bar (database icon) or **Agent Resume: Session Manager** to browse and filter large session sets (by provider, age, and **GTD** status).
 
 **Export** is available only here: it writes catalog metadata (`manifest.json`) and pulls full transcripts from native agent storage into `sessions/` at export time (reference-based, not pre-stored blobs in SQLite). With no rows checked, **Export** dumps **all sessions matching the current filters**; with default filters that is every visible CLI session in the catalog (up to `syncMaxItems`)—i.e. export all sessions for backup. Rows marked `hidden` (removed from the panel) are omitted by default.
 
