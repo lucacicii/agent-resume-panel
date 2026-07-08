@@ -12,7 +12,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### 修复
 
-- **就地升级后设置无法保存**：扩展就地升级后若未重新加载窗口，VS Code Extension Host 仍使用旧版 `package.json` 贡献点，保存界面语言等设置会报 *not a registered configuration*。现于打开设置页或保存失败时检测并提示 **Reload Window**（重装扩展会隐式重启宿主，故表现正常）。
+- **就地升级后设置无法保存**：扩展就地升级后若未重新加载窗口，VS Code Extension Host 仍使用旧版 `package.json` 贡献点，保存界面语言等设置会报 *not a registered configuration*。现于打开设置页或保存失败时检测并弹出提示（重装扩展会隐式重启宿主，故表现正常）。
+
+#### 如何重新加载窗口（Reload Window）
+
+扩展就地升级后，**必须**重新加载当前 VS Code / Cursor 窗口一次，新的 `package.json` 配置项（如 `agentResume.uiLanguage`）才会生效：
+
+1. 按 **`Cmd+Shift+P`**（macOS）或 **`Ctrl+Shift+P`**（Windows / Linux）打开**命令面板**（Command Palette）。
+2. 输入 **`Reload Window`** 或 **`Developer: Reload Window`**（VS Code 中文界面可能显示为 **开发人员: 重新加载窗口**），选中并回车。
+3. 若扩展弹出黄色提示，也可直接点击 **重新加载窗口** 按钮，效果与上述命令相同。
+
+> 说明：扩展侧栏的 **Refresh** 只刷新会话数据，**不能**替代 Reload Window；修改菜单、命令、配置项等 `package.json` 贡献点后都需要 Reload Window。
 
 ### [2.3.0] - 2026-07-08
 
@@ -243,7 +253,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### Fixed
 
-- **Settings fail to save after in-place upgrade**: Without **Developer: Reload Window**, the Extension Host keeps the previous `package.json` contribution registry after an in-place upgrade, so saving UI language (and other newly registered settings) can fail with *not a registered configuration*. The extension now detects this when opening Settings or on save failure and prompts **Reload Window** (a full reinstall implicitly restarts the host, which is why reinstall appeared to work).
+- **Settings fail to save after in-place upgrade**: Without reloading the window, the Extension Host keeps the previous `package.json` contribution registry after an in-place upgrade, so saving UI language (and other newly registered settings) can fail with *not a registered configuration*. The extension now detects this when opening Settings or on save failure and shows a prompt (a full reinstall implicitly restarts the host, which is why reinstall appeared to work).
+
+#### How to reload the window
+
+After an in-place extension upgrade, you **must** reload the current VS Code / Cursor window once so new `package.json` configuration keys (such as `agentResume.uiLanguage`) take effect:
+
+1. Press **`Cmd+Shift+P`** (macOS) or **`Ctrl+Shift+P`** (Windows / Linux) to open the **Command Palette**.
+2. Type **`Reload Window`** or **`Developer: Reload Window`** (localized VS Code builds may show a translated title) and press Enter.
+3. If the extension shows a yellow notification, you can also click **Reload Window** on that prompt — same effect as the command above.
+
+> Note: the sidebar **Refresh** command only reloads session data; it does **not** replace Reload Window. Any change to `package.json` contributions (menus, commands, configuration) requires Reload Window.
 
 ### [2.3.0] - 2026-07-08
 
