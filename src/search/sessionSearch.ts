@@ -14,6 +14,8 @@ import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "../preview/resumeActions";
 import { canHandoffSession, runContinueWithAgent } from "../preview/handoffActions";
 import { runAutoRename, runSummarize } from "../preview/sessionAssistActions";
+import { openSettingsPanelToLlm } from "../settings/settingsPanel";
+import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import { openSessionResume } from "../terminal/resumeTerminal";
 import {
   buildProjectList,
@@ -40,6 +42,10 @@ interface WebviewMessage {
 }
 
 let searchPanel: vscode.WebviewPanel | undefined;
+let activeSearchContext: vscode.ExtensionContext | undefined;
+let activeSearchTree: SessionTreeProvider | undefined;
+let activeSearchPreview: { provider: AgentProvider; id: string } | undefined;
+let llmConfigRefreshRegistered = false;
 
 export async function searchAndOpenSessions(
   context: vscode.ExtensionContext,
@@ -50,6 +56,8 @@ export async function searchAndOpenSessions(
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
   if (searchPanel) {
+    activeSearchContext = context;
+    activeSearchTree = tree;
     searchPanel.reveal(column);
     void postInitMessage(searchPanel.webview, tree);
     return;
@@ -66,6 +74,9 @@ export async function searchAndOpenSessions(
     }
   );
 
+  activeSearchContext = context;
+  activeSearchTree = tree;
+  registerLlmConfigRefresh(context);
   searchPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   searchPanel.webview.html = getWebviewHtml(searchPanel.webview);
 
@@ -143,12 +154,59 @@ export async function searchAndOpenSessions(
       if (session) {
         await runContinueWithAgent(session, context, acpChatManager, searchPanel!.webview);
       }
+      return;
+    }
+
+    if (message.type === "openLlmSettings") {
+      await openSettingsPanelToLlm(context);
+      return;
+    }
+
+    if (message.type === "previewClosed") {
+      activeSearchPreview = undefined;
     }
   });
 
   searchPanel.onDidDispose(() => {
     searchPanel = undefined;
+    activeSearchContext = undefined;
+    activeSearchTree = undefined;
+    activeSearchPreview = undefined;
   });
+}
+
+function registerLlmConfigRefresh(context: vscode.ExtensionContext): void {
+  if (llmConfigRefreshRegistered) {
+    return;
+  }
+
+  llmConfigRefreshRegistered = true;
+  context.subscriptions.push(
+    context.secrets.onDidChange((event) => {
+      if (event.key === LLM_API_KEY_SECRET) {
+        void refreshActiveSearchPreview();
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("agentResume.llm")) {
+        void refreshActiveSearchPreview();
+      }
+    })
+  );
+}
+
+async function refreshActiveSearchPreview(): Promise<void> {
+  if (!searchPanel || !activeSearchContext || !activeSearchTree || !activeSearchPreview) {
+    return;
+  }
+
+  await handlePreviewMessage(
+    activeSearchContext,
+    activeSearchTree,
+    searchPanel.webview,
+    activeSearchPreview.provider,
+    activeSearchPreview.id
+  );
 }
 
 async function handlePreviewMessage(
@@ -163,6 +221,7 @@ async function handlePreviewMessage(
     return;
   }
 
+  activeSearchPreview = { provider, id };
   webview.postMessage({ type: "previewLoading", provider, id });
 
   try {

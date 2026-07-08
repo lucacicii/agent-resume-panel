@@ -92,6 +92,37 @@ body {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
+.preview-notice-line + .preview-notice-line {
+  margin-top: 6px;
+}
+
+.preview-notice-llm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-notice-action {
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.preview-notice-action:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.preview-action-muted {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
 .preview-summary {
   padding: 12px 14px;
   font-size: 12px;

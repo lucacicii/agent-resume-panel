@@ -34,6 +34,11 @@ export async function openSettingsPanelToAcp(context: vscode.ExtensionContext): 
   await revealSettingsPanel(context);
 }
 
+export async function openSettingsPanelToLlm(context: vscode.ExtensionContext): Promise<void> {
+  pendingActiveSection = "llm";
+  await revealSettingsPanel(context);
+}
+
 async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<void> {
   const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 

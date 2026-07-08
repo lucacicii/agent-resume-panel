@@ -12,9 +12,12 @@ import { getCachedSummary } from "../llm/summaryCache";
 import { pickResumeTarget, resumeSession } from "./resumeActions";
 import { canHandoffSession, runContinueWithAgent } from "./handoffActions";
 import { runAutoRename, runSummarize } from "./sessionAssistActions";
+import { openSettingsPanelToLlm } from "../settings/settingsPanel";
+import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import { SessionTreeProvider } from "../tree/sessionTree";
 
 let previewPanel: vscode.WebviewPanel | undefined;
+let llmConfigRefreshRegistered = false;
 let activeSessionKey: string | undefined;
 let activeTree: SessionTreeProvider | undefined;
 let activeRefreshTree: (() => Promise<void>) | undefined;
@@ -37,6 +40,7 @@ export async function openSessionPreviewPanel(
     activeContext = context;
     activeAcpChatManager = acpChatManager;
     previewPanel.reveal(column);
+    await sendPreviewData(previewPanel.webview, session);
     return;
   }
 
@@ -62,6 +66,7 @@ export async function openSessionPreviewPanel(
   activeRefreshTree = refreshTree;
   activeContext = context;
   activeAcpChatManager = acpChatManager;
+  registerLlmConfigRefresh(context);
   previewPanel.iconPath = vscode.Uri.joinPath(getExtensionUri(), "resources", "agent-resume.svg");
   previewPanel.webview.html = getWebviewHtml(previewPanel.webview);
 
@@ -109,6 +114,13 @@ export async function openSessionPreviewPanel(
       const activeSession = findActiveSession();
       if (activeSession && activeContext && activeAcpChatManager) {
         await runContinueWithAgent(activeSession, activeContext, activeAcpChatManager, previewPanel!.webview);
+      }
+      return;
+    }
+
+    if (message.type === "openLlmSettings") {
+      if (activeContext) {
+        await openSettingsPanelToLlm(activeContext);
       }
       return;
     }
@@ -197,6 +209,35 @@ function findActiveSession(): AgentSession | undefined {
   const provider = activeSessionKey.slice(0, separatorIndex);
   const id = activeSessionKey.slice(separatorIndex + 1);
   return activeTree.getSessions().find((entry) => entry.provider === provider && entry.id === id);
+}
+
+function registerLlmConfigRefresh(context: vscode.ExtensionContext): void {
+  if (llmConfigRefreshRegistered) {
+    return;
+  }
+
+  llmConfigRefreshRegistered = true;
+  context.subscriptions.push(
+    context.secrets.onDidChange((event) => {
+      if (event.key === LLM_API_KEY_SECRET) {
+        void refreshActivePreview();
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("agentResume.llm")) {
+        void refreshActivePreview();
+      }
+    })
+  );
+}
+
+async function refreshActivePreview(): Promise<void> {
+  const session = findActiveSession();
+  if (!session || !previewPanel) {
+    return;
+  }
+
+  await sendPreviewData(previewPanel.webview, session);
 }
 
 async function sendPreviewData(webview: vscode.Webview, session: AgentSession): Promise<void> {

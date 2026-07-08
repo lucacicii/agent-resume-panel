@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",

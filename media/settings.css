@@ -210,6 +210,53 @@ body {
   font-family: inherit;
 }
 
+.settings-password-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.settings-password-input {
+  flex: 1;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.settings-password-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  background: var(--vscode-input-background);
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.settings-password-toggle:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-list-hoverBackground);
+}
+
+.settings-password-toggle:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.settings-password-toggle.is-visible {
+  color: var(--vscode-foreground);
+}
+
+.settings-password-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
 .settings-textarea {
   resize: vertical;
   min-height: 72px;

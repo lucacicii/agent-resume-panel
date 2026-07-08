@@ -541,6 +541,33 @@
     return tip;
   }
 
+  const svgNs = "http://www.w3.org/2000/svg";
+  const weuiEyeOnPath =
+    "M12 17.8c4.034 0 7.686-2.25 9.648-5.8C19.686 8.45 16.034 6.2 12 6.2S4.314 8.45 2.352 12c1.962 3.55 5.614 5.8 9.648 5.8M12 5c4.808 0 8.972 2.848 11 7c-2.028 4.152-6.192 7-11 7s-8.972-2.848-11-7c2.028-4.152 6.192-7 11-7m0 9.8a2.8 2.8 0 1 0 0-5.6a2.8 2.8 0 0 0 0 5.6m0 1.2a4 4 0 1 1 0-8a4 4 0 0 1 0 8";
+  const weuiEyeOffPath =
+    "m18.67 16.973l2.755 2.755l-.849.848L3.85 3.85L4.697 3l2.855 2.855C8.932 5.303 10.432 5 12 5c4.808 0 8.972 2.848 11 7a12.65 12.65 0 0 1-4.33 4.973M8.486 6.79l1.664 1.664a4 4 0 0 1 5.398 5.398l2.255 2.255c1.574-1 2.904-2.403 3.845-4.106C19.686 8.45 16.034 6.2 12 6.2a10.8 10.8 0 0 0-3.514.59m6.152 6.152a2.8 2.8 0 0 0-3.579-3.579zm1.81 5.204c-1.38.552-2.88.855-4.448.855c-4.808 0-8.972-2.848-11-7a12.65 12.65 0 0 1 4.33-4.973l.867.867A11.36 11.36 0 0 0 2.352 12c1.962 3.55 5.614 5.8 9.648 5.8a10.8 10.8 0 0 0 3.514-.59l.934.935zM8.453 10.15l.909.91a2.8 2.8 0 0 0 3.579 3.579l.91.908a4 4 0 0 1-5.398-5.398z";
+
+  function createWeuiPasswordIcon(pathD) {
+    const svg = document.createElementNS(svgNs, "svg");
+    svg.setAttribute("class", "settings-password-icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+
+    const path = document.createElementNS(svgNs, "path");
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("fill-rule", "evenodd");
+    path.setAttribute("d", pathD);
+    svg.appendChild(path);
+
+    return svg;
+  }
+
+  function setPasswordToggleIcon(button, passwordVisible) {
+    button.replaceChildren(
+      createWeuiPasswordIcon(passwordVisible ? weuiEyeOffPath : weuiEyeOnPath)
+    );
+  }
+
   function renderApiKeyField() {
     const wrapper = document.createElement("div");
     wrapper.className = "settings-field";
@@ -557,8 +584,11 @@
       : "OpenAI-compatible API key. Stored securely in VS Code Secret Storage.";
     wrapper.appendChild(description);
 
+    const row = document.createElement("div");
+    row.className = "settings-password-row";
+
     const input = document.createElement("input");
-    input.className = "settings-input";
+    input.className = "settings-input settings-password-input";
     input.type = "password";
     input.autocomplete = "off";
     input.placeholder = llmApiKeyConfigured ? "••••••••" : "sk-...";
@@ -566,7 +596,25 @@
     input.addEventListener("input", () => {
       apiKeyInput = input.value;
     });
-    wrapper.appendChild(input);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "settings-password-toggle";
+    setPasswordToggleIcon(toggle, false);
+    toggle.setAttribute("aria-label", "Show password");
+    toggle.title = "Show password";
+    toggle.addEventListener("click", () => {
+      const revealing = input.type === "password";
+      input.type = revealing ? "text" : "password";
+      setPasswordToggleIcon(toggle, revealing);
+      toggle.setAttribute("aria-label", revealing ? "Hide password" : "Show password");
+      toggle.title = revealing ? "Hide password" : "Show password";
+      toggle.classList.toggle("is-visible", revealing);
+    });
+
+    row.appendChild(input);
+    row.appendChild(toggle);
+    wrapper.appendChild(row);
 
     return wrapper;
   }

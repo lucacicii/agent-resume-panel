@@ -8,6 +8,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.2.1] - 2026-07-08
+
+#### 新增
+
+- **LLM 未配置提示**：Session Preview 与 Search Sessions 预览在未配置 LLM API Key 时显示说明横幅与 **Open LLM Settings** 按钮；Summarize / Auto Rename / Hand Off 以弱化样式可见（不再完全隐藏），点击可直达 **LLM Assist** 设置分区。
+- **API Key 显示切换**：**Agent Resume Settings → LLM Assist** 的 API Key 输入框增加显示/隐藏密码按钮（WeUI 眼睛图标）。
+
+#### 变更
+
+- 配置 LLM API Key 或 `agentResume.llm` 设置后，已打开的预览面板会自动刷新按钮与提示状态。
+
 ### [2.2.0] - 2026-07-03
 
 #### 新增
@@ -205,6 +216,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.2.1] - 2026-07-08
+
+#### Added
+
+- **LLM not configured hints**: Session Preview and Search Sessions preview show an explanatory banner with **Open LLM Settings** when no LLM API key is set; **Summarize**, **Auto Rename**, and **Hand Off** stay visible in a muted style (no longer fully hidden), and open **LLM Assist** when clicked.
+- **API key visibility toggle**: The API Key field under **Agent Resume Settings → LLM Assist** has a show/hide password control (WeUI eye icons).
+
+#### Changed
+
+- After configuring the LLM API key or `agentResume.llm` settings, an open preview panel refreshes its buttons and hints automatically.
 
 ### [2.2.0] - 2026-07-03
 
