@@ -28,6 +28,7 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.sortProjectSessionsTitleDesc", key: "menu.sort.titleDesc" },
   { base: "agentResume.favoriteProject", key: "menu.addFavorite" },
   { base: "agentResume.unfavoriteProject", key: "menu.removeFavorite" },
+  { base: "agentResume.setProjectAlias", key: "menu.project.setProjectAlias" },
   { base: "agentResume.configureProjectMenu", key: "menu.configureProjectMenu" },
   { base: "agentResume.newChatSession", key: "menu.project.newChatSession" },
   { base: "agentResume.newCodexSession", key: "menu.project.newCodexSession" },

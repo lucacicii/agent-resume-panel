@@ -489,5 +489,12 @@
   "webview.settings.sessionMenuDescription": "配置并拖动以重新排序会话上下文菜单操作。",
   "webview.settings.sessionMenuTitle": "会话菜单",
   "webview.settings.statusSaveFailed": "保存失败。",
-  "webview.settings.statusSaved": "设置已保存。"
+  "webview.settings.statusSaved": "设置已保存。",
+  "dialog.setProjectAliasPlaceholder": "例如：后端 API",
+  "dialog.setProjectAliasPrompt": "输入显示在文件夹名后的别名。留空可清除别名。",
+  "dialog.setProjectAliasTitle": "设置项目别名",
+  "menu.project.setProjectAlias": "设置项目别名…",
+  "notification.projectAliasCleared": "项目别名已清除。",
+  "notification.projectAliasSet": "项目别名已保存。",
+  "tree.tooltipProjectAlias": "别名：{0}"
 }

@@ -45,6 +45,7 @@ import {
   loadFavoriteProjects,
   removeFavoriteProject
 } from "./favorites/projectFavorites";
+import { ProjectAliasStore } from "./projects/projectAliasStore";
 import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
 import {
   applySessionMenuContext,
@@ -81,6 +82,7 @@ type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
 type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
 
 let extensionContext: vscode.ExtensionContext | undefined;
+let projectAliasStore: ProjectAliasStore | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -91,6 +93,7 @@ export function activate(context: vscode.ExtensionContext): void {
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
+  projectAliasStore = new ProjectAliasStore(loadCatalogSettings().dbPath);
   void applyProjectMenuContextFromConfig();
   void applySessionMenuContextFromConfig();
   void applyUiLocaleContext();
@@ -188,6 +191,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
+    ...menuCommand("agentResume.setProjectAlias", (node?: unknown) =>
+      setProjectAliasCommand(tree, acpTree, node)
+    ),
     ...menuCommand("agentResume.configureProjectMenu", () => openSettingsPanelToProjectMenu(context)),
     ...menuCommand("agentResume.configureSessionMenu", () => openSettingsPanelToSessionMenu(context)),
     ...menuCommand("agentResume.sortProjectSessionsUpdatedDesc", (node?: unknown) =>
@@ -244,8 +250,16 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   void applyCodexIdePanelContext();
-  void migrateSummariesFromGlobalState(context).then(() => refresh(tree, false));
-  void refreshAcpChats(acpTree, false);
+  void Promise.all([
+    migrateSummariesFromGlobalState(context),
+    projectAliasStore.initialize(context)
+  ]).then(() => {
+    const resolver = (projectPath: string) => projectAliasStore?.get(projectPath);
+    tree.setProjectAliasResolver(resolver);
+    acpTree.setProjectAliasResolver(resolver);
+    void refresh(tree, false);
+    void refreshAcpChats(acpTree, false);
+  });
   void consumePendingResumeForWorkspace(context);
 
   registerLocalizedUiRefreshTargets({
@@ -837,6 +851,37 @@ async function unfavoriteProject(
   const favorites = await removeFavoriteProject(context, projectPath);
   tree.setFavoriteProjects(favorites);
   vscode.window.showInformationMessage(t("notification.projectRemovedFromFavorites"));
+}
+
+async function setProjectAliasCommand(
+  tree: SessionTreeProvider,
+  acpTree: AcpChatTreeProvider,
+  node: unknown
+): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node);
+  if (!projectPath || !projectAliasStore) {
+    return;
+  }
+
+  const nextAlias = await vscode.window.showInputBox({
+    title: t("dialog.setProjectAliasTitle"),
+    prompt: t("dialog.setProjectAliasPrompt"),
+    placeHolder: t("dialog.setProjectAliasPlaceholder"),
+    value: projectAliasStore.get(projectPath) ?? ""
+  });
+
+  if (nextAlias === undefined) {
+    return;
+  }
+
+  await projectAliasStore.set(projectPath, nextAlias);
+  tree.refresh();
+  acpTree.refresh();
+  await refreshSessionSearchPanel();
+  await refreshSessionManagerPanel();
+  vscode.window.showInformationMessage(
+    nextAlias.trim() ? t("notification.projectAliasSet") : t("notification.projectAliasCleared")
+  );
 }
 
 function formatError(error: unknown): string {

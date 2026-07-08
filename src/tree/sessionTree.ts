@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 import { t } from "../i18n";
+import { formatProjectLabel } from "../projects/projectAliases";
 import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
@@ -63,10 +64,20 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private sectionOrder: SectionKind[] = [...DEFAULT_SECTION_ORDER];
   private recentVisibleCount = recentInitialLimit;
   private projectSessionSortMode: (projectPath: string) => ProjectSessionSortMode = () => "updatedDesc";
+  private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
 
   setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
     this.projectSessionSortMode = resolver;
     this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  setProjectAliasResolver(resolver: (projectPath: string) => string | undefined): void {
+    this.projectAliasResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getProjectDisplayName(projectPath: string): string {
+    return formatProjectLabel(projectPath, this.projectAliasResolver(projectPath));
   }
 
   setData(sessions: AgentSession[], warnings: string[]): void {
@@ -141,19 +152,20 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         return item;
       }
       case "project": {
+        const alias = this.projectAliasResolver(element.projectPath);
         const item = new vscode.TreeItem(
-          basenameOrPath(element.projectPath),
+          this.getProjectDisplayName(element.projectPath),
           vscode.TreeItemCollapsibleState.Collapsed
         );
         item.description = `${element.sessions.length}`;
-        item.tooltip = element.projectPath;
+        item.tooltip = buildProjectTooltip(element.projectPath, alias);
         item.id = projectTreeItemId(element.projectPath);
         item.iconPath = new vscode.ThemeIcon(element.favorited ? "star-full" : "folder");
         item.contextValue = element.favorited ? "agentResume.project.favorited" : "agentResume.project";
         return item;
       }
       case "session":
-        return sessionItem(element.session, element.showProjectName);
+        return sessionItem(element.session, element.showProjectName, (path) => this.getProjectDisplayName(path));
       case "showMoreRecent":
         return showMoreRecentItem(element.remaining);
     }
@@ -238,8 +250,12 @@ export function isSectionRoot(node: TreeNode): node is SectionRootNode {
   return node.kind === "recentRoot" || node.kind === "favoritesRoot" || node.kind === "projectsRoot";
 }
 
-function sessionItem(session: AgentSession, showProjectName = false): vscode.TreeItem {
-  const item = new vscode.TreeItem(sessionLabel(session, showProjectName), vscode.TreeItemCollapsibleState.None);
+function sessionItem(
+  session: AgentSession,
+  showProjectName = false,
+  projectDisplayName: (projectPath: string) => string = basenameOrPath
+): vscode.TreeItem {
+  const item = new vscode.TreeItem(sessionLabel(session, showProjectName, projectDisplayName), vscode.TreeItemCollapsibleState.None);
   item.description = sessionDescription(session);
   item.tooltip = buildSessionTooltip(session);
   item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
@@ -272,13 +288,26 @@ function showMoreRecentItem(remaining: number): vscode.TreeItem {
   return item;
 }
 
-function sessionLabel(session: AgentSession, showProjectName: boolean): string {
+function sessionLabel(
+  session: AgentSession,
+  showProjectName: boolean,
+  projectDisplayName: (projectPath: string) => string = basenameOrPath
+): string {
   const title = formatTitleWithMessageCount(session);
   if (!showProjectName) {
     return title;
   }
 
-  return `${basenameOrPath(session.projectPath)} · ${title}`;
+  return `${projectDisplayName(session.projectPath)} · ${title}`;
+}
+
+function buildProjectTooltip(projectPath: string, alias?: string): string {
+  const trimmed = alias?.trim();
+  if (!trimmed) {
+    return projectPath;
+  }
+
+  return `${t("tree.tooltipProjectAlias", trimmed)}\n${projectPath}`;
 }
 
 function buildSessionTooltip(session: AgentSession): string | vscode.MarkdownString {
@@ -492,13 +521,16 @@ export function buildSessionSubtitle(session: AgentSession): string {
   return compactPath(session.projectPath);
 }
 
-export function serializeSessionForSearch(session: AgentSession): SearchSessionItem {
+export function serializeSessionForSearch(
+  session: AgentSession,
+  projectDisplayName?: string
+): SearchSessionItem {
   return {
     provider: session.provider,
     id: session.id,
     title: formatTitleWithMessageCount(session),
     projectPath: session.projectPath,
-    projectName: basenameOrPath(session.projectPath),
+    projectName: projectDisplayName ?? basenameOrPath(session.projectPath),
     branch: session.branch,
     updatedAtLabel: relativeTime(session.updatedAt)
   };

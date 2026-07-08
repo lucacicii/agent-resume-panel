@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { getSessionPreviewUiStrings, getSessionSearchUiStrings } from "../webview/uiStrings";
 import { truncateText } from "../util/dialogText";
 import { AgentProvider, AgentSession } from "../history";
-import { basenameOrPath, compactPath } from "../history";
+import { compactPath } from "../history";
 import { loadRenameHomes } from "../history/rename/homes";
 import { renameSessionWithCatalog } from "../catalog/rename";
 import { loadSessionPreview } from "../history/preview";
@@ -348,14 +348,14 @@ async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvide
     projects: projects.map(
       (project): SearchProjectPayload => ({
         projectPath: path.resolve(project.projectPath),
-        name: basenameOrPath(project.projectPath),
+        name: tree.getProjectDisplayName(project.projectPath),
         sessionCount: project.sessions.length,
         favorited: Boolean(project.favorited),
         compactPath: compactPath(project.projectPath)
       })
     ),
     sessions: sessions.map((session) => {
-      const item = serializeSessionForSearch(session);
+      const item = serializeSessionForSearch(session, tree.getProjectDisplayName(session.projectPath));
       const summary = getSessionSummaryText(session);
       return summary ? { ...item, summary } : item;
     })

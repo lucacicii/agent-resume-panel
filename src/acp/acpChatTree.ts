@@ -2,6 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { basenameOrPath, compactPath } from "../history/pathUtils";
 import { t } from "../i18n";
+import { formatProjectLabel } from "../projects/projectAliases";
 import { acpRelativeTime } from "../util/relativeTime";
 import { AcpAgentProvider, AcpSessionRecord } from "./types";
 
@@ -24,6 +25,16 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
   private records: AcpSessionRecord[] = [];
   private warnings: string[] = [];
   private recentVisibleCount = recentInitialLimit;
+  private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
+
+  setProjectAliasResolver(resolver: (projectPath: string) => string | undefined): void {
+    this.projectAliasResolver = resolver;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  getProjectDisplayName(projectPath: string): string {
+    return formatProjectLabel(projectPath, this.projectAliasResolver(projectPath));
+  }
 
   setData(records: AcpSessionRecord[], warnings: string[] = []): void {
     this.records = records;
@@ -78,18 +89,19 @@ export class AcpChatTreeProvider implements vscode.TreeDataProvider<AcpChatTreeN
         return item;
       }
       case "project": {
+        const alias = this.projectAliasResolver(element.projectPath);
         const item = new vscode.TreeItem(
-          basenameOrPath(element.projectPath),
+          this.getProjectDisplayName(element.projectPath),
           vscode.TreeItemCollapsibleState.Collapsed
         );
         item.description = `${element.records.length}`;
-        item.tooltip = element.projectPath;
+        item.tooltip = buildAcpProjectTooltip(element.projectPath, alias);
         item.iconPath = new vscode.ThemeIcon("folder");
         item.contextValue = "agentResume.acpProject";
         return item;
       }
       case "chat":
-        return chatItem(element.record, element.showProjectName);
+        return chatItem(element.record, element.showProjectName, (path) => this.getProjectDisplayName(path));
     }
   }
 
@@ -131,9 +143,22 @@ function rootItem(label: string, icon: string, id: string): vscode.TreeItem {
   return item;
 }
 
-function chatItem(record: AcpSessionRecord, showProjectName = false): vscode.TreeItem {
+function buildAcpProjectTooltip(projectPath: string, alias?: string): string {
+  const trimmed = alias?.trim();
+  if (!trimmed) {
+    return projectPath;
+  }
+
+  return `${t("tree.tooltipProjectAlias", trimmed)}\n${projectPath}`;
+}
+
+function chatItem(
+  record: AcpSessionRecord,
+  showProjectName = false,
+  projectDisplayName: (projectPath: string) => string = basenameOrPath
+): vscode.TreeItem {
   const title = record.title || t("tree.acp.defaultTitle");
-  const label = showProjectName ? `${basenameOrPath(record.projectPath)} · ${title}` : title;
+  const label = showProjectName ? `${projectDisplayName(record.projectPath)} · ${title}` : title;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
   item.description = t("tree.acp.description", record.provider, acpRelativeTime(record.updatedAt));
   item.tooltip = [

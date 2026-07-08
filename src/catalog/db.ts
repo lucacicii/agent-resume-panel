@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
   provider TEXT PRIMARY KEY,
   last_sync_at_ms INTEGER
 );
+CREATE TABLE IF NOT EXISTS projects (
+  project_path TEXT PRIMARY KEY,
+  alias TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
 `;
 
 const MIGRATION_SQL = `
@@ -39,6 +44,11 @@ ALTER TABLE sessions ADD COLUMN transcript_refs TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_language TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
+CREATE TABLE IF NOT EXISTS projects (
+  project_path TEXT PRIMARY KEY,
+  alias TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
 `;
 
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {

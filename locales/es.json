@@ -489,5 +489,12 @@
   "webview.settings.sessionMenuDescription": "Configura y arrastra para reordenar las acciones del menú contextual de la sesión.",
   "webview.settings.sessionMenuTitle": "Menú de sesión",
   "webview.settings.statusSaveFailed": "Error al guardar.",
-  "webview.settings.statusSaved": "Configuración guardada."
+  "webview.settings.statusSaved": "Configuración guardada.",
+  "dialog.setProjectAliasPlaceholder": "e.g. Backend API",
+  "dialog.setProjectAliasPrompt": "Enter a display alias shown after the folder name. Leave empty to clear.",
+  "dialog.setProjectAliasTitle": "Set Project Alias",
+  "menu.project.setProjectAlias": "Set Project Alias…",
+  "notification.projectAliasCleared": "Project alias cleared.",
+  "notification.projectAliasSet": "Project alias saved.",
+  "tree.tooltipProjectAlias": "Alias: {0}"
 }

@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.3.2] - 2026-07-08
+
+#### 新增
+
+- **项目别名（Project Alias）**：在 **Sessions** 侧边栏对 **Projects / Favorite Projects** 下的项目文件夹右键 → **显示更多** → **设置项目别名…**（默认在 Show More 中，与新建 Claude 会话等项相同；可在 **Agent Resume Settings → Project Menu** 拖到主菜单）。别名以 `文件夹名 · 别名` 显示在树节点标题后，session 数量仍在右侧 description；完整路径与别名显示在 tooltip。留空并确认可清除别名。
+- **别名同步展示**：Recent Sessions、Search Sessions、Session Manager 与 **ACP Chats** 树中的项目名均使用同一别名格式；搜索可按别名匹配。
+- **持久化**：别名保存在 catalog SQLite（`projects` 表，默认 `~/.agent-resume-panel/catalog.db`），按 `projectPath` 索引；首次升级自动从旧版 `globalState` 迁移，不影响各 Agent 原生存储。
+
 ### [2.3.1] - 2026-07-08
 
 #### 修复
@@ -248,6 +256,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.3.2] - 2026-07-08
+
+#### Added
+
+- **Project alias**: Right-click a project folder under **Projects / Favorite Projects** in **Sessions** → **Show More** → **Set Project Alias…** (in Show More by default, like **New Claude Session**; move to the main menu via **Agent Resume Settings → Project Menu**). The alias appears after the folder name as `folder-name · alias`; session count stays in the description; tooltip shows alias and full path. Submit empty to clear.
+- **Alias everywhere**: Recent Sessions, Search Sessions, Session Manager, and **ACP Chats** project labels use the same format; search matches aliases.
+- **Persistence**: Aliases are stored in catalog SQLite (`projects` table, default `~/.agent-resume-panel/catalog.db`), keyed by `projectPath`; legacy `globalState` entries migrate on first launch. Native agent storage is unchanged.
 
 ### [2.3.1] - 2026-07-08
 

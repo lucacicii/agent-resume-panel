@@ -3,6 +3,7 @@ import { t } from "../i18n";
 
 export type ProjectMenuAction =
   | "favorite"
+  | "setProjectAlias"
   | "openProject"
   | "openInGhostty"
   | "newChatSession"
@@ -17,6 +18,7 @@ export type ProjectMenuAction =
 
 export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "favorite",
+  "setProjectAlias",
   "openProject",
   "openInGhostty",
   "newChatSession",
@@ -38,6 +40,7 @@ const ORDER_CONFIG_KEY = "projectMenu.itemOrder";
 export function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> {
   return {
     favorite: t("menu.project.favorite"),
+    setProjectAlias: t("menu.project.setProjectAlias"),
     openProject: t("menu.project.openProject"),
     openInGhostty: t("menu.project.openInGhostty"),
     newChatSession: t("menu.project.newChatSession"),

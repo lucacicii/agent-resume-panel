@@ -4,6 +4,7 @@ const PROJECT_VIEW_WHEN = "view == agentResume.sessions && viewItem =~ /agentRes
 
 const ACTIONS = [
   "favorite",
+  "setProjectAlias",
   "openProject",
   "openInGhostty",
   "newChatSession",
@@ -28,6 +29,7 @@ const COMMANDS = {
       whenExtra: "viewItem == agentResume.project.favorited"
     }
   ],
+  setProjectAlias: [{ command: "agentResume.setProjectAlias" }],
   openProject: [{ command: "agentResume.openProject" }],
   openInGhostty: [{ command: "agentResume.openInGhostty" }],
   newChatSession: [{ command: "agentResume.newChatSession" }],

@@ -22,6 +22,8 @@ const nested = {
     sessionRemovedFromPanel: "Session removed from panel.",
     projectAddedToFavorites: "Project added to favorites.",
     projectRemovedFromFavorites: "Project removed from favorites.",
+    projectAliasSet: "Project alias saved.",
+    projectAliasCleared: "Project alias cleared.",
     sessionsSortedBy: "Sessions sorted by {0}.",
     acpChatRenamed: "ACP chat renamed.",
     acpChatNotFound: "ACP chat session not found.",
@@ -117,6 +119,9 @@ const nested = {
     renameSessionValidateEmpty: "Title cannot be empty.",
     renameAcpChatTitle: "Rename ACP Chat",
     renameAcpChatPrompt: "Enter a new title for this ACP chat session.",
+    setProjectAliasTitle: "Set Project Alias",
+    setProjectAliasPrompt: "Enter a display alias shown after the folder name. Leave empty to clear.",
+    setProjectAliasPlaceholder: "e.g. Backend API",
     exportSelectFolderOpenLabel: "Select export folder"
   },
   quickpick: {
@@ -198,6 +203,7 @@ const nested = {
     tooltipSource: "Source: {0}",
     tooltipSessionId: "Session: {0}",
     tooltipSummaryHeading: "Summary",
+    tooltipProjectAlias: "Alias: {0}",
     descriptionAcp: "acp · {0} · {1}",
     descriptionProvider: "{0} · {1}",
     relativeTimeUnknown: "unknown",
@@ -230,6 +236,7 @@ const nested = {
   },
   "menu.project": {
     favorite: "Add to / Remove from Favorites",
+    setProjectAlias: "Set Project Alias…",
     openProject: "Open Folder and Resume",
     openInGhostty: "Open in Ghostty",
     newChatSession: "New Chat Session",

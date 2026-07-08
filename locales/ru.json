@@ -489,5 +489,12 @@
   "webview.settings.sessionMenuDescription": "Настройте и перетащите для изменения порядка действий контекстного меню сессии.",
   "webview.settings.sessionMenuTitle": "Меню сессии",
   "webview.settings.statusSaveFailed": "Сохранение не удалось.",
-  "webview.settings.statusSaved": "Настройки сохранены."
+  "webview.settings.statusSaved": "Настройки сохранены.",
+  "dialog.setProjectAliasPlaceholder": "e.g. Backend API",
+  "dialog.setProjectAliasPrompt": "Enter a display alias shown after the folder name. Leave empty to clear.",
+  "dialog.setProjectAliasTitle": "Set Project Alias",
+  "menu.project.setProjectAlias": "Set Project Alias…",
+  "notification.projectAliasCleared": "Project alias cleared.",
+  "notification.projectAliasSet": "Project alias saved.",
+  "tree.tooltipProjectAlias": "Alias: {0}"
 }

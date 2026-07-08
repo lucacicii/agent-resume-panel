@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { buildProjectMenuContributionBlocks } from "./generate-project-menu-contributions.mjs";
 import { UI_LOCALES, expandMenuEntriesForLocales } from "./menu-i18n.mjs";
 
-const ACTION_COUNT = 12;
-const COMMAND_VARIANT_COUNT = 13;
+const ACTION_COUNT = 13;
+const COMMAND_VARIANT_COUNT = 14;
 
 const PROJECT_VIEW_PATTERN = /viewItem =~ \/agentResume\\.project\//;
 const SESSION_VIEW_PATTERN = /agentResume\\.session/;

@@ -237,7 +237,10 @@ function buildManagerPayload(
       withSummary += 1;
     }
 
-    const search = serializeSessionForSearch(enrichedSession);
+    const search = serializeSessionForSearch(
+      enrichedSession,
+      tree.getProjectDisplayName(enrichedSession.projectPath)
+    );
     return {
       provider: enrichedSession.provider,
       id: enrichedSession.id,
