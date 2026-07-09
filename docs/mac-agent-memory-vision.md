@@ -241,7 +241,7 @@ agent-resume-panel/
 - **`~/.agent-resume-panel` 即 VS Code 插件与 Electron App 的通用配置与数据根**（可用设置改路径，默认不变）。  
 - **共用配置文件：`~/.agent-resume-panel/settings.json`**（实现时定 schema；含 chat LLM、**embedding** OpenAI 兼容 base/model、Memory 开关等）。  
 - **API key**：优先安全存储（如 OS keychain / 扩展 SecretStorage）；`settings.json` 可只存非敏感项与「key 引用」；迁移期允许兼容现有扩展配置读取。  
-- **扩展逐步对齐**：现有 VS Code `settings` / Secret 继续可用；新逻辑优先读写 panelHome，避免用户配两遍。  
+- **扩展已对齐（v0.1）**：LLM 读序为 Secret → `settings.json` → env；非 key 项优先「VS Code 显式配置」，否则回落 `settings.json`。在扩展 Settings 保存 LLM / API key 时会**回写** `settings.json`，Desktop 与扩展共用。  
 - **两边都能读**；**App 可覆盖**仅桌面相关键（窗口、托盘、定时本地策略等），覆盖层仍落在同一 `panelHome`（如 `settings.desktop.json` 或同文件 `desktop` 命名空间）。  
 - 目标：配置一次 chat + embedding，扩展与 App 都能用。
 
@@ -263,7 +263,7 @@ agent-resume-panel/
 | 项 | v0.1 包含 | v0.1 不做（顺延） |
 |----|-----------|-------------------|
 | **packages/core** | 抽出 catalog + history（扩展可编译依赖）；Memory **表结构** + job 骨架 | 扩展全部模块一次迁完 |
-| **Memory** | **手动**生成 **Daily** digest；链路可复用到周/月 | 自动定时默认开；Weekly/Monthly UI 完整验收可 v0.2 |
+| **Memory** | **手动**生成 **Daily** digest（无 summary 时拉 transcript 片段；同日可覆盖）；链路可复用到周/月 | 自动定时默认开；Weekly/Monthly UI 完整验收可 v0.2 |
 | **向量** | schema / embedding 客户端（OpenAI 兼容）可先接线 | 检索体验与全量回填可 v0.2 打磨 |
 | **Electron** | 壳 + **Sessions 列表** + 读 panelHome + Settings 读写 `settings.json` | 精致 Memory 看板、Meta-Agent 对话 |
 | **平台** | **仅 macOS** | Windows |

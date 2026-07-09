@@ -7,7 +7,14 @@ export {
 } from "./panelHome";
 export { escapeSqlLiteral, runSqlite, runSqliteJson } from "./sqlite";
 
-export type { PanelSettings, LlmSettings, EmbeddingSettings, MemorySettings, DesktopSettings } from "./settings/types";
+export type {
+  PanelSettings,
+  LlmSettings,
+  EmbeddingSettings,
+  MemorySettings,
+  DesktopSettings,
+  AgentHomesSettings
+} from "./settings/types";
 export { DEFAULT_SETTINGS } from "./settings/types";
 export {
   loadSettings,
@@ -36,3 +43,12 @@ export { MEMORY_SCHEMA_SQL } from "./memory/schema";
 export { listMemoryEntries, insertMemoryEntry, upsertMemoryJob } from "./memory/store";
 export { runDailyDigest, localDayRange } from "./memory/daily";
 export type { RunDailyDigestOptions, RunDailyDigestResult } from "./memory/daily";
+
+export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
+export { resolvePreviewHomes, DEFAULT_AGENT_HOMES, defaultAlmaDataDir } from "./transcript/homes";
+export {
+  loadSessionPreview,
+  loadSessionSnippet,
+  formatTranscript,
+  truncateTranscript
+} from "./transcript/load";

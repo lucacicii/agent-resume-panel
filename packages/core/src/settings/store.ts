@@ -23,6 +23,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.memory,
       ...(partial.memory || {})
     },
+    agentHomes: {
+      ...base.agentHomes,
+      ...(partial.agentHomes || {})
+    },
     desktop: {
       ...base.desktop,
       ...(partial.desktop || {})

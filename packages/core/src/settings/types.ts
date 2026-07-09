@@ -15,14 +15,31 @@ export interface EmbeddingSettings {
   apiKey?: string;
 }
 
-export interface MemorySettings {
-  /** Scheduled jobs; default false (manual only in v0.1). */
-  enabled?: boolean;
-}
-
 export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
+}
+
+/** Agent CLI data homes (same defaults as the VS Code extension). */
+export interface AgentHomesSettings {
+  codexHome?: string;
+  claudeHome?: string;
+  antigravityHome?: string;
+  grokHome?: string;
+  almaDataDir?: string;
+  opencodeHome?: string;
+  piHome?: string;
+}
+
+export interface MemorySettings {
+  /** Scheduled jobs; default false (manual only in v0.1). */
+  enabled?: boolean;
+  /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
+  includeTranscripts?: boolean;
+  /** Max sessions included in one daily digest. Default 40. */
+  maxSessionsPerDigest?: number;
+  /** Max chars of transcript excerpt per session. Default 2500. */
+  snippetMaxChars?: number;
 }
 
 export interface PanelSettings {
@@ -31,6 +48,7 @@ export interface PanelSettings {
   llm: LlmSettings;
   embedding: EmbeddingSettings;
   memory?: MemorySettings;
+  agentHomes?: AgentHomesSettings;
   desktop?: DesktopSettings;
 }
 
@@ -45,6 +63,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     model: "text-embedding-3-small"
   },
   memory: {
-    enabled: false
+    enabled: false,
+    includeTranscripts: true,
+    maxSessionsPerDigest: 40,
+    snippetMaxChars: 2500
   }
 };

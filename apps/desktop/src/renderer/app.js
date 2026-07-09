@@ -91,16 +91,30 @@ async function loadMemory() {
   }
 }
 
+function todayInputValue() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 async function runDaily() {
   const status = $("memoryStatus");
-  setStatus(status, "Running daily digest…");
+  const date = $("dailyDate").value || undefined;
+  setStatus(status, "Running daily digest (may load transcripts)…");
   try {
-    const result = await agentResume.runDailyDigest();
-    setStatus(
-      status,
-      `OK · ${result.sessionCount} sessions · job ${result.jobKey}${result.embedded ? " · embedded" : ""}`,
-      "ok"
-    );
+    const result = await agentResume.runDailyDigest(date);
+    const parts = [
+      result.replaced ? "replaced" : "created",
+      `${result.sessionCount} sessions`,
+      `${result.snippetCount ?? 0} transcript snippets`,
+      result.jobKey
+    ];
+    if (result.embedded) {
+      parts.push("embedded");
+    }
+    setStatus(status, `OK · ${parts.join(" · ")}`, "ok");
     await loadMemory();
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
@@ -167,6 +181,7 @@ function wire() {
 
 async function boot() {
   wire();
+  $("dailyDate").value = todayInputValue();
   await loadPanelHome();
   await loadSettingsForm();
   await loadSessions();

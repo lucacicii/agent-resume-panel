@@ -24,7 +24,14 @@ npm run dev:desktop
 | Tab | Capability |
 |-----|------------|
 | Sessions | List sessions from shared `catalog.db` |
-| Memory | List daily digests; **生成今日回顾** (needs LLM in settings) |
+| Memory | List daily digests; pick date; **生成 / 覆盖该日回顾** (LLM). Loads transcript excerpts when `session_summary` is missing |
 | Settings | Read/write `~/.agent-resume-panel/settings.json` (chat + embedding OpenAI-compatible) |
+
+### Memory notes
+
+- Same calendar day reuses id `daily:YYYY-MM-DD` (regenerate overwrites).
+- `memory.includeTranscripts` (default true), `maxSessionsPerDigest` (40), `snippetMaxChars` (2500).
+- Agent homes default to the same paths as the VS Code extension (`~/.codex`, `~/.claude`, …); override via `agentHomes` in settings.json if needed.
+- **Shared with VS Code extension**: saving LLM settings (or API key) in the extension updates the same `settings.json`; Desktop can use that key without re-entry. Extension also reads `settings.json` when VS Code has no explicit LLM override / no Secret.
 
 See [`docs/mac-agent-memory-vision.md`](../../docs/mac-agent-memory-vision.md) for product decisions.

@@ -1,11 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { ensureCatalogSchema } from "../catalog/db";
 import { listSessionsInRange } from "../catalog/query";
+import { AgentSession } from "../catalog/types";
 import { chatCompletion } from "../llm/chat";
 import { embedTexts } from "../llm/embeddings";
 import { embeddingConfigFromSettings, llmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { resolvePreviewHomes } from "../transcript/homes";
+import { loadSessionSnippet } from "../transcript/load";
 import { buildDailySystemPrompt, buildDailyUserPrompt, formatSessionForDigest } from "./prompts";
 import { MemoryEntry } from "./schema";
 import { insertMemoryEntry, upsertMemoryJob } from "./store";
@@ -17,17 +19,29 @@ export interface RunDailyDigestOptions {
   date?: string;
   /** Skip embedding even if configured. */
   skipEmbedding?: boolean;
+  /** Override settings.memory.includeTranscripts. */
+  includeTranscripts?: boolean;
 }
 
 export interface RunDailyDigestResult {
   entry: MemoryEntry;
   sessionCount: number;
+  /** Sessions that contributed a transcript excerpt (not only title/summary). */
+  snippetCount: number;
   jobKey: string;
   embedded: boolean;
+  /** True when an existing same-day entry was replaced. */
+  replaced: boolean;
 }
 
 /** Local day bounds [start, end) in ms. */
-export function localDayRange(dateStr?: string): { startMs: number; endMs: number; dateLabel: string; jobKey: string } {
+export function localDayRange(dateStr?: string): {
+  startMs: number;
+  endMs: number;
+  dateLabel: string;
+  jobKey: string;
+  entryId: string;
+} {
   const now = new Date();
   let y: number;
   let m: number;
@@ -47,12 +61,14 @@ export function localDayRange(dateStr?: string): { startMs: number; endMs: numbe
   const start = new Date(y, m - 1, d, 0, 0, 0, 0);
   const end = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
   const dateLabel = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const jobKey = `daily:${dateLabel}`;
 
   return {
     startMs: start.getTime(),
     endMs: end.getTime(),
     dateLabel,
-    jobKey: `daily:${dateLabel}`
+    jobKey,
+    entryId: jobKey
   };
 }
 
@@ -67,7 +83,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
 
   await ensureCatalogSchema(dbPath);
 
-  const { startMs, endMs, dateLabel, jobKey } = localDayRange(options.date);
+  const { startMs, endMs, dateLabel, jobKey, entryId } = localDayRange(options.date);
   await upsertMemoryJob(dbPath, jobKey, "running");
 
   try {
@@ -78,16 +94,57 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       );
     }
 
-    const sessions = await listSessionsInRange(dbPath, startMs, endMs);
-    const lines = sessions.map((s) =>
-      formatSessionForDigest({
-        provider: s.provider,
-        title: s.title,
-        projectPath: s.projectPath,
-        summary: s.sessionSummary,
-        updatedAt: s.updatedAt
-      })
-    );
+    const maxSessions = Math.max(1, Math.min(settings.memory?.maxSessionsPerDigest ?? 40, 200));
+    const includeTranscripts =
+      options.includeTranscripts ?? settings.memory?.includeTranscripts ?? true;
+    const snippetMaxChars = Math.max(400, Math.min(settings.memory?.snippetMaxChars ?? 2500, 12_000));
+
+    let sessions = await listSessionsInRange(dbPath, startMs, endMs);
+    const totalFound = sessions.length;
+    if (sessions.length > maxSessions) {
+      sessions = sessions.slice(0, maxSessions);
+    }
+
+    const homes = resolvePreviewHomes(settings, panelHome);
+    let snippetCount = 0;
+
+    const lines: string[] = [];
+    for (const session of sessions) {
+      let transcriptSnippet: string | undefined;
+      if (includeTranscripts && !session.sessionSummary?.trim()) {
+        const snippet = await loadSessionSnippet(session, homes, snippetMaxChars);
+        if (snippet) {
+          transcriptSnippet = snippet;
+          snippetCount += 1;
+        }
+      } else if (includeTranscripts && session.sessionSummary?.trim()) {
+        // Still attach a short transcript when summary exists but is thin
+        if (session.sessionSummary.trim().length < 80) {
+          const snippet = await loadSessionSnippet(session, homes, Math.min(snippetMaxChars, 1200));
+          if (snippet) {
+            transcriptSnippet = snippet;
+            snippetCount += 1;
+          }
+        }
+      }
+
+      lines.push(
+        formatSessionForDigest({
+          provider: session.provider,
+          title: session.title,
+          projectPath: session.projectPath,
+          summary: session.sessionSummary,
+          transcriptSnippet,
+          updatedAt: session.updatedAt
+        })
+      );
+    }
+
+    if (totalFound > maxSessions) {
+      lines.push(
+        `(Note: ${totalFound - maxSessions} additional sessions on this day were omitted due to maxSessionsPerDigest=${maxSessions}.)`
+      );
+    }
 
     const language = llm.outputLanguage || "zh-CN";
     const content = await chatCompletion(
@@ -109,14 +166,13 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
           embeddingJson = JSON.stringify(vector);
           embedded = true;
         } catch {
-          // Embedding is best-effort in v0.1
           embedded = false;
         }
       }
     }
 
     const entry: MemoryEntry = {
-      id: randomUUID(),
+      id: entryId,
       level: "daily",
       periodStartMs: startMs,
       periodEndMs: endMs,
@@ -126,10 +182,10 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       createdAtMs: Date.now()
     };
 
-    await insertMemoryEntry(
+    const { replaced } = await insertMemoryEntry(
       dbPath,
       entry,
-      sessions.map((s) => ({
+      sessions.map((s: AgentSession) => ({
         provider: s.provider,
         agentSessionId: s.id,
         projectPath: s.projectPath
@@ -137,7 +193,14 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     );
 
     await upsertMemoryJob(dbPath, jobKey, "ok");
-    return { entry, sessionCount: sessions.length, jobKey, embedded };
+    return {
+      entry,
+      sessionCount: sessions.length,
+      snippetCount,
+      jobKey,
+      embedded,
+      replaced
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await upsertMemoryJob(dbPath, jobKey, "error", message);

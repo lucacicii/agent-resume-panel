@@ -50,7 +50,13 @@ export async function insertMemoryEntry(
   dbPath: string,
   entry: MemoryEntry,
   links: Array<{ provider: string; agentSessionId: string; projectPath: string }>
-): Promise<void> {
+): Promise<{ replaced: boolean }> {
+  const existing = await runSqliteJson<{ id: string }>(
+    dbPath,
+    `SELECT id FROM memory_entries WHERE id = '${escapeSqlLiteral(entry.id)}' LIMIT 1;`
+  );
+  const replaced = existing.length > 0;
+
   const titleSql = entry.title == null ? "NULL" : `'${escapeSqlLiteral(entry.title)}'`;
   const embeddingSql =
     entry.embeddingJson == null ? "NULL" : `'${escapeSqlLiteral(entry.embeddingJson)}'`;
@@ -85,6 +91,8 @@ export async function insertMemoryEntry(
        );`
     );
   }
+
+  return { replaced };
 }
 
 export async function upsertMemoryJob(
