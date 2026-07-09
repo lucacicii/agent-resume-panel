@@ -10,9 +10,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ### [2.6.3]
 
-#### 文档
-
-- CHANGELOG 版本标题仅保留版本号，不再附带发布日期。
+- 无功能更新。
 
 ### [2.6.2]
 
@@ -326,9 +324,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ### [2.6.3]
 
-#### Docs
-
-- CHANGELOG version headings no longer include release dates.
+- No functional changes.
 
 ### [2.6.2]
 
