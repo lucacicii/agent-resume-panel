@@ -1,48 +1,283 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatTreeProvider } from "../acp/acpChatTree";
 import { AcpSessionRecord } from "../acp/types";
+import { NoteRecord } from "../catalog/notes";
 import { AgentSession } from "../history/types";
 import { t } from "../i18n";
 import { GtdTreeProvider } from "../gtd/gtdTree";
 import { SessionTreeProvider } from "../tree/sessionTree";
-import { projectNoteUri, sessionNoteUri } from "./noteUri";
+import { noteAssetsDirName } from "./noteNaming";
 import { NotesStore } from "./notesStore";
+import { NotesTreeProvider, NotesTreeNode } from "./notesTree";
+
+export async function openNoteRecord(notesStore: NotesStore, record: NoteRecord): Promise<void> {
+  const abs = notesStore.absolutePath(record);
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
+  await vscode.window.showTextDocument(document, { preview: false });
+}
+
+export async function openNoteCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider | undefined,
+  node: unknown
+): Promise<void> {
+  const record =
+    notesTree?.getNoteFromNode(node) ??
+    (node && typeof node === "object" && "noteId" in node ? (node as NoteRecord) : undefined);
+  if (!record || !("noteId" in record)) {
+    return;
+  }
+  const full = (await notesStore.getNote(record.noteId)) ?? (record as NoteRecord);
+  await openNoteRecord(notesStore, full);
+}
 
 export async function openSessionNoteCommand(
-  _notesStore: NotesStore,
+  notesStore: NotesStore,
   tree: SessionTreeProvider,
   acpTree: AcpChatTreeProvider,
   gtdTree: GtdTreeProvider | undefined,
   nodeOrSession: unknown,
-  onSaved?: () => void
+  onChanged?: () => void
 ): Promise<void> {
   const session = resolveSessionForNote(tree, acpTree, gtdTree, nodeOrSession);
   if (!session) {
     return;
   }
 
-  const uri = sessionNoteUri(session.provider, session.id);
-  const document = await vscode.workspace.openTextDocument(uri);
-  await vscode.window.showTextDocument(document, { preview: false });
-  onSaved?.();
+  const notes = await notesStore.listSessionNotes(session);
+  if (!notes.length) {
+    const created = await notesStore.createSessionNote(session);
+    await openNoteRecord(notesStore, created);
+    onChanged?.();
+    return;
+  }
+
+  if (notes.length === 1) {
+    await openNoteRecord(notesStore, notes[0]);
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    notes.map((n) => ({
+      label: n.filename,
+      description: n.title,
+      note: n
+    })),
+    { title: t("dialog.pickSessionNoteTitle"), placeHolder: t("dialog.pickNotePlaceholder") }
+  );
+  if (picked) {
+    await openNoteRecord(notesStore, picked.note);
+  }
 }
 
 export async function openProjectNoteCommand(
-  _notesStore: NotesStore,
+  notesStore: NotesStore,
   tree: SessionTreeProvider,
   acpTree: AcpChatTreeProvider,
   node: unknown,
-  onSaved?: () => void
+  onChanged?: () => void
 ): Promise<void> {
   const projectPath = tree.getProjectFromNode(node) ?? acpTree.getProjectFromNode(node);
   if (!projectPath) {
     return;
   }
 
-  const uri = projectNoteUri(projectPath);
-  const document = await vscode.workspace.openTextDocument(uri);
-  await vscode.window.showTextDocument(document, { preview: false });
-  onSaved?.();
+  const notes = await notesStore.listProjectNotes(projectPath);
+  if (!notes.length) {
+    const created = await notesStore.createProjectNote(projectPath);
+    await openNoteRecord(notesStore, created);
+    onChanged?.();
+    return;
+  }
+
+  if (notes.length === 1) {
+    await openNoteRecord(notesStore, notes[0]);
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    notes.map((n) => ({
+      label: n.filename,
+      description: n.title,
+      note: n
+    })),
+    { title: t("dialog.pickProjectNoteTitle"), placeHolder: t("dialog.pickNotePlaceholder") }
+  );
+  if (picked) {
+    await openNoteRecord(notesStore, picked.note);
+  }
+}
+
+export async function newSessionNoteCommand(
+  notesStore: NotesStore,
+  tree: SessionTreeProvider,
+  acpTree: AcpChatTreeProvider,
+  gtdTree: GtdTreeProvider | undefined,
+  nodeOrSession: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const session = resolveSessionForNote(tree, acpTree, gtdTree, nodeOrSession);
+  if (!session) {
+    return;
+  }
+  const created = await notesStore.createSessionNote(session);
+  await openNoteRecord(notesStore, created);
+  onChanged?.();
+}
+
+export async function newProjectNoteCommand(
+  notesStore: NotesStore,
+  tree: SessionTreeProvider,
+  acpTree: AcpChatTreeProvider,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const projectPath = tree.getProjectFromNode(node) ?? acpTree.getProjectFromNode(node);
+  if (!projectPath) {
+    return;
+  }
+  const created = await notesStore.createProjectNote(projectPath);
+  await openNoteRecord(notesStore, created);
+  onChanged?.();
+}
+
+export async function newNoteFromNotesViewCommand(
+  notesStore: NotesStore,
+  tree: SessionTreeProvider,
+  notesTree: NotesTreeProvider,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  if (node && typeof node === "object" && "kind" in node) {
+    const n = node as NotesTreeNode;
+    if (n.kind === "project") {
+      const created = await notesStore.createProjectNote(n.projectPath);
+      await openNoteRecord(notesStore, created);
+      onChanged?.();
+      return;
+    }
+    if (n.kind === "session") {
+      const created = await notesStore.createSessionNote({
+        provider: n.provider as AgentSession["provider"],
+        id: n.sessionId,
+        projectPath: n.projectPath ?? ""
+      });
+      await openNoteRecord(notesStore, created);
+      onChanged?.();
+      return;
+    }
+  }
+
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: t("dialog.newNoteKindProject"), noteKind: "project" as const },
+      { label: t("dialog.newNoteKindSession"), noteKind: "session" as const }
+    ],
+    { title: t("dialog.newNoteTitle") }
+  );
+  if (!choice) {
+    return;
+  }
+
+  if (choice.noteKind === "project") {
+    const projects = [...new Set(tree.getSessions().map((s) => s.projectPath).filter(Boolean))];
+    const picked = await vscode.window.showQuickPick(
+      projects.map((p) => ({ label: tree.getProjectDisplayName(p), description: p, path: p })),
+      { title: t("dialog.pickProjectForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+    );
+    if (!picked) {
+      return;
+    }
+    const created = await notesStore.createProjectNote(picked.path);
+    await openNoteRecord(notesStore, created);
+    onChanged?.();
+    return;
+  }
+
+  const sessions = tree.getSessions();
+  const picked = await vscode.window.showQuickPick(
+    sessions.map((s) => ({
+      label: s.title,
+      description: `${s.provider} · ${tree.getProjectDisplayName(s.projectPath)}`,
+      session: s
+    })),
+    { title: t("dialog.pickSessionForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+  );
+  if (!picked) {
+    return;
+  }
+  const created = await notesStore.createSessionNote(picked.session);
+  await openNoteRecord(notesStore, created);
+  onChanged?.();
+  void notesTree;
+}
+
+export async function deleteNoteCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider | undefined,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const record = notesTree?.getNoteFromNode(node);
+  if (!record) {
+    return;
+  }
+
+  const confirm = await vscode.window.showWarningMessage(
+    t("dialog.deleteNoteConfirm", record.filename),
+    { modal: true },
+    t("dialog.deleteNoteButton")
+  );
+  if (confirm !== t("dialog.deleteNoteButton")) {
+    return;
+  }
+
+  await notesStore.deleteNote(record.noteId);
+  onChanged?.();
+  vscode.window.showInformationMessage(t("notification.noteDeleted"));
+}
+
+export async function renameNoteCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider | undefined,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const record = notesTree?.getNoteFromNode(node);
+  if (!record) {
+    return;
+  }
+
+  const value = await vscode.window.showInputBox({
+    title: t("dialog.renameNoteTitle"),
+    prompt: t("dialog.renameNotePrompt"),
+    value: record.filename,
+    valueSelection: [0, record.filename.endsWith(".md") ? record.filename.length - 3 : record.filename.length],
+    validateInput: (input) => {
+      const trimmed = input.trim();
+      if (!trimmed) {
+        return t("dialog.renameNoteValidateEmpty");
+      }
+      if (/[\\/]/.test(trimmed)) {
+        return t("dialog.renameNoteValidatePath");
+      }
+      return undefined;
+    }
+  });
+  if (value === undefined) {
+    return;
+  }
+
+  try {
+    const updated = await notesStore.renameNote(record.noteId, value);
+    onChanged?.();
+    vscode.window.showInformationMessage(t("notification.noteRenamed", updated.filename));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(t("notification.noteRenameFailed", message));
+  }
 }
 
 export async function deleteSessionNoteCommand(
@@ -58,8 +293,14 @@ export async function deleteSessionNoteCommand(
     return;
   }
 
+  const notes = await notesStore.listSessionNotes(session);
+  if (!notes.length) {
+    vscode.window.showInformationMessage(t("notification.noNotesToDelete"));
+    return;
+  }
+
   const confirm = await vscode.window.showWarningMessage(
-    t("dialog.deleteSessionNoteConfirm", session.title),
+    t("dialog.deleteSessionNotesConfirm", session.title, String(notes.length)),
     { modal: true },
     t("dialog.deleteSessionNoteButton")
   );
@@ -67,7 +308,7 @@ export async function deleteSessionNoteCommand(
     return;
   }
 
-  await notesStore.deleteSessionNote(session);
+  await notesStore.deleteSessionNotes(session);
   onDeleted?.();
   vscode.window.showInformationMessage(t("notification.sessionNoteDeleted"));
 }
@@ -84,9 +325,15 @@ export async function deleteProjectNoteCommand(
     return;
   }
 
+  const notes = await notesStore.listProjectNotes(projectPath);
+  if (!notes.length) {
+    vscode.window.showInformationMessage(t("notification.noNotesToDelete"));
+    return;
+  }
+
   const label = tree.getProjectDisplayName(projectPath);
   const confirm = await vscode.window.showWarningMessage(
-    t("dialog.deleteProjectNoteConfirm", label),
+    t("dialog.deleteProjectNotesConfirm", label, String(notes.length)),
     { modal: true },
     t("dialog.deleteProjectNoteButton")
   );
@@ -94,9 +341,98 @@ export async function deleteProjectNoteCommand(
     return;
   }
 
-  await notesStore.deleteProjectNote(projectPath);
+  await notesStore.deleteProjectNotes(projectPath);
   onDeleted?.();
   vscode.window.showInformationMessage(t("notification.projectNoteDeleted"));
+}
+
+export async function filterNotesCommand(notesTree: NotesTreeProvider, treeView?: vscode.TreeView<NotesTreeNode>): Promise<void> {
+  const value = await vscode.window.showInputBox({
+    title: t("dialog.filterNotesTitle"),
+    prompt: t("dialog.filterNotesPrompt"),
+    value: notesTree.getFilter()
+  });
+  if (value === undefined) {
+    return;
+  }
+  notesTree.setFilter(value);
+  if (treeView) {
+    treeView.message = value.trim() ? t("tree.notes.filterMessage", value.trim()) : undefined;
+  }
+}
+
+export async function clearNotesFilterCommand(
+  notesTree: NotesTreeProvider,
+  treeView?: vscode.TreeView<NotesTreeNode>
+): Promise<void> {
+  notesTree.clearFilter();
+  if (treeView) {
+    treeView.message = undefined;
+  }
+}
+
+export async function revealNoteInOsCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider | undefined,
+  node: unknown
+): Promise<void> {
+  const record = notesTree?.getNoteFromNode(node);
+  if (!record) {
+    return;
+  }
+  await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(notesStore.absolutePath(record)));
+}
+
+export async function openNotesFolderCommand(notesStore: NotesStore): Promise<void> {
+  const root = path.join(notesStore.getPanelHome(), "notes");
+  await fs.mkdir(root, { recursive: true });
+  await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(root));
+}
+
+export async function copyNotePathCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider | undefined,
+  node: unknown
+): Promise<void> {
+  const record = notesTree?.getNoteFromNode(node);
+  if (!record) {
+    return;
+  }
+  await vscode.env.clipboard.writeText(notesStore.absolutePath(record));
+  vscode.window.showInformationMessage(t("notification.notePathCopied"));
+}
+
+export async function insertNoteImageCommand(notesStore: NotesStore): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return;
+  }
+  const abs = editor.document.uri.fsPath;
+  const notes = notesStore.getAllNotes();
+  const record = notes.find((n) => notesStore.absolutePath(n) === abs);
+  if (!record) {
+    vscode.window.showWarningMessage(t("notification.insertImageNotANote"));
+    return;
+  }
+
+  const uris = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    filters: { Images: ["png", "jpg", "jpeg", "gif", "webp", "svg"] }
+  });
+  if (!uris?.length) {
+    return;
+  }
+
+  const source = uris[0];
+  const assetsDir = await notesStore.ensureAssetsForNote(record);
+  const base = path.basename(source.fsPath);
+  const dest = path.join(assetsDir, base);
+  await fs.copyFile(source.fsPath, dest);
+  const rel = `./${noteAssetsDirName(record.filename)}/${base}`;
+  const snippet = `![${base}](${rel})`;
+  await editor.edit((builder) => {
+    builder.insert(editor.selection.active, snippet);
+  });
 }
 
 function resolveSessionForNote(

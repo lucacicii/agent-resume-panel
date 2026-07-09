@@ -50,14 +50,26 @@ import { GtdStatus, GTD_STATUSES } from "./catalog/gtd";
 import { GtdTreeProvider, gtdStatusLabel } from "./gtd/gtdTree";
 import { SessionGtdStore } from "./gtd/sessionGtdStore";
 import {
+  clearNotesFilterCommand,
+  copyNotePathCommand,
+  deleteNoteCommand,
   deleteProjectNoteCommand,
   deleteSessionNoteCommand,
+  filterNotesCommand,
+  insertNoteImageCommand,
+  newNoteFromNotesViewCommand,
+  newProjectNoteCommand,
+  newSessionNoteCommand,
+  openNoteCommand,
+  openNotesFolderCommand,
   openProjectNoteCommand,
-  openSessionNoteCommand
+  openSessionNoteCommand,
+  renameNoteCommand,
+  revealNoteInOsCommand
 } from "./notes/noteCommands";
-import { NoteFileSystemProvider } from "./notes/noteFileSystemProvider";
-import { NOTE_SCHEME } from "./notes/noteUri";
 import { NotesStore } from "./notes/notesStore";
+import { NotesTreeProvider } from "./notes/notesTree";
+import { notesRoot } from "./notes/notesPaths";
 import { applyProjectMenuContext, loadItemOrder, loadMainActions } from "./menu/projectContextMenu";
 import {
   applySessionMenuContext,
@@ -98,6 +110,8 @@ let projectAliasStore: ProjectAliasStore | undefined;
 let sessionGtdStore: SessionGtdStore | undefined;
 let notesStore: NotesStore | undefined;
 let gtdTree: GtdTreeProvider | undefined;
+let notesTree: NotesTreeProvider | undefined;
+let notesTreeView: vscode.TreeView<import("./notes/notesTree").NotesTreeNode> | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
@@ -107,8 +121,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
   sessionGtdStore = new SessionGtdStore(catalogDbPath);
-  notesStore = new NotesStore(catalogDbPath);
+  notesStore = new NotesStore(catalogDbPath, panelHomeFromConfig());
   gtdTree = new GtdTreeProvider(sessionGtdStore);
+  notesTree = new NotesTreeProvider(notesStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
@@ -129,11 +144,16 @@ export function activate(context: vscode.ExtensionContext): void {
     treeDataProvider: gtdTree,
     showCollapseAll: true
   });
+  notesTreeView = vscode.window.createTreeView("agentResume.notes", {
+    treeDataProvider: notesTree,
+    showCollapseAll: true
+  });
 
   context.subscriptions.push(
     treeView,
     acpTreeView,
     gtdTreeView,
+    notesTreeView,
     { dispose: () => acpChatManager.dispose() },
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshGtd", () => refresh(tree, true)),
@@ -245,34 +265,114 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!notesStore) {
         return;
       }
-      void openSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () => refreshNoteIndicators(tree));
+      void openSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () =>
+        refreshNotesUi(tree)
+      );
     }),
     ...menuCommand("agentResume.deleteSessionNote", (nodeOrSession?: unknown) => {
       if (!notesStore) {
         return;
       }
-      void deleteSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () => refreshNoteIndicators(tree));
+      void deleteSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () =>
+        refreshNotesUi(tree)
+      );
     }),
     ...menuCommand("agentResume.openProjectNote", (node?: unknown) => {
       if (!notesStore) {
         return;
       }
-      void openProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNoteIndicators(tree));
+      void openProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNotesUi(tree));
     }),
     ...menuCommand("agentResume.deleteProjectNote", (node?: unknown) => {
       if (!notesStore) {
         return;
       }
-      void deleteProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNoteIndicators(tree));
+      void deleteProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNotesUi(tree));
     }),
-    vscode.workspace.registerFileSystemProvider(
-      NOTE_SCHEME,
-      new NoteFileSystemProvider(notesStore as NotesStore),
-      { isCaseSensitive: true }
-    ),
+    ...menuCommand("agentResume.newSessionNote", (nodeOrSession?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void newSessionNoteCommand(notesStore, tree, acpTree, gtdTree, nodeOrSession, () =>
+        refreshNotesUi(tree)
+      );
+    }),
+    ...menuCommand("agentResume.newProjectNote", (node?: unknown) => {
+      if (!notesStore) {
+        return;
+      }
+      void newProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNotesUi(tree));
+    }),
+    vscode.commands.registerCommand("agentResume.openNote", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void openNoteCommand(notesStore, notesTree, node);
+    }),
+    vscode.commands.registerCommand("agentResume.deleteNote", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void deleteNoteCommand(notesStore, notesTree, node, () => refreshNotesUi(tree));
+    }),
+    vscode.commands.registerCommand("agentResume.renameNote", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void renameNoteCommand(notesStore, notesTree, node, () => refreshNotesUi(tree));
+    }),
+    vscode.commands.registerCommand("agentResume.newNote", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void newNoteFromNotesViewCommand(notesStore, tree, notesTree, node, () => refreshNotesUi(tree));
+    }),
+    vscode.commands.registerCommand("agentResume.filterNotes", () => {
+      if (!notesTree) {
+        return;
+      }
+      void filterNotesCommand(notesTree, notesTreeView);
+    }),
+    vscode.commands.registerCommand("agentResume.clearNotesFilter", () => {
+      if (!notesTree) {
+        return;
+      }
+      void clearNotesFilterCommand(notesTree, notesTreeView);
+    }),
+    vscode.commands.registerCommand("agentResume.refreshNotes", () => {
+      void refreshNotesUi(tree, true);
+    }),
+    vscode.commands.registerCommand("agentResume.revealNoteInOS", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void revealNoteInOsCommand(notesStore, notesTree, node);
+    }),
+    vscode.commands.registerCommand("agentResume.openNotesFolder", () => {
+      if (!notesStore) {
+        return;
+      }
+      void openNotesFolderCommand(notesStore);
+    }),
+    vscode.commands.registerCommand("agentResume.copyNotePath", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void copyNotePathCommand(notesStore, notesTree, node);
+    }),
+    vscode.commands.registerCommand("agentResume.insertNoteImage", () => {
+      if (!notesStore) {
+        return;
+      }
+      void insertNoteImageCommand(notesStore);
+    }),
     vscode.workspace.onDidSaveTextDocument((document) => {
-      if (document.uri.scheme === NOTE_SCHEME) {
-        refreshNoteIndicators(tree);
+      if (document.uri.scheme !== "file" || !notesStore) {
+        return;
+      }
+      const root = notesRoot(notesStore.getPanelHome());
+      if (document.uri.fsPath.startsWith(root)) {
+        void notesStore.reload().then(() => refreshNotesUi(tree));
       }
     }),
     ...CLI_HANDOFF_TARGETS.map((target) =>
@@ -321,15 +421,30 @@ export function activate(context: vscode.ExtensionContext): void {
     if (gtdTree) {
       applyProjectAndGtdResolvers(tree, acpTree, gtdTree);
     }
+    notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
     void refresh(tree, false);
     void refreshAcpChats(acpTree, false);
   });
   void consumePendingResumeForWorkspace(context);
 
+  const notesWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(vscode.Uri.file(notesRoot(panelHomeFromConfig())), "**/*.md")
+  );
+  const onNotesFsChange = () => {
+    void notesStore?.reload().then(() => refreshNotesUi(tree));
+  };
+  context.subscriptions.push(
+    notesWatcher,
+    notesWatcher.onDidCreate(onNotesFsChange),
+    notesWatcher.onDidChange(onNotesFsChange),
+    notesWatcher.onDidDelete(onNotesFsChange)
+  );
+
   registerLocalizedUiRefreshTargets({
     sessionTree: { refresh: () => tree.refresh() },
     acpTree: { refresh: () => acpTree.refresh() },
     gtdTree: { refresh: () => gtdTree?.refresh() },
+    notesTree: { refresh: () => notesTree?.refresh() },
     refreshSettingsPanel,
     refreshSessionSearch: refreshSessionSearchPanel,
     refreshSessionPreview: refreshSessionPreviewPanel,
@@ -355,12 +470,17 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     await notesStore?.reload();
     tree.setData(sessions, result.warnings);
     gtdTree?.setData(sessions, result.warnings);
+    notesTree?.setSessions(sessions);
+    notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
+    notesTree?.refresh();
     if (showToast) {
       vscode.window.showInformationMessage(t("notification.syncedCliSessions", sessions.length));
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
     gtdTree?.setData([], [formatError(error)]);
+    notesTree?.setSessions([]);
+    notesTree?.refresh();
     vscode.window.showErrorMessage(t("notification.refreshFailed", formatError(error)));
   }
 }
@@ -886,9 +1006,16 @@ function applyProjectAndGtdResolvers(
   });
 }
 
-function refreshNoteIndicators(tree: SessionTreeProvider): void {
-  tree.refresh();
-  gtdTree?.refresh();
+function refreshNotesUi(tree: SessionTreeProvider, reload = false): void {
+  const run = async () => {
+    if (reload) {
+      await notesStore?.reload();
+    }
+    tree.refresh();
+    gtdTree?.refresh();
+    notesTree?.refresh();
+  };
+  void run();
 }
 
 async function setSessionGtdStatusCommand(

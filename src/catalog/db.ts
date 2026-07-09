@@ -56,6 +56,28 @@ CREATE TABLE IF NOT EXISTS project_notes (
   content TEXT NOT NULL DEFAULT '',
   updated_at_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notes (
+  note_id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  provider TEXT,
+  agent_session_id TEXT,
+  project_path TEXT,
+  filename TEXT NOT NULL,
+  rel_dir TEXT NOT NULL,
+  rel_md_path TEXT NOT NULL UNIQUE,
+  title TEXT,
+  content_preview TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  fs_mtime_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
+CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS catalog_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 const MIGRATION_SQL = `
@@ -88,6 +110,28 @@ CREATE TABLE IF NOT EXISTS project_notes (
   project_path TEXT PRIMARY KEY,
   content TEXT NOT NULL DEFAULT '',
   updated_at_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notes (
+  note_id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  provider TEXT,
+  agent_session_id TEXT,
+  project_path TEXT,
+  filename TEXT NOT NULL,
+  rel_dir TEXT NOT NULL,
+  rel_md_path TEXT NOT NULL UNIQUE,
+  title TEXT,
+  content_preview TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  fs_mtime_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
+CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS catalog_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 `;
 

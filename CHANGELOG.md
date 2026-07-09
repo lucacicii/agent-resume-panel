@@ -8,6 +8,29 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.0] - 2026-07-09
+
+#### 新增
+
+- **Notes 视图**：活动栏 **Agent Resume** 下新增 **Notes** 标签页，按 **Projects** / **Sessions** 分组浏览全部笔记；支持筛选、刷新、新建、在系统文件管理器中打开笔记目录。
+- **多条笔记**：同一 session 或 project 可保存多条 Markdown 笔记；新建文件名按本地日期与当日序号命名，如 `2026-07-08-01.md`、`2026-07-08-02.md`。
+- **磁盘权威 + Catalog 索引**：笔记正文与附件落在 `{panelHome}/notes/` 真实文件树；`catalog.db` 的 `notes` 表仅存关联、路径与预览索引。可用 Finder / Obsidian 等直接打开 md。
+- **一等资源**：每篇笔记旁可有 `{stem}.assets/` 目录；命令 **Insert Image into Note** 将图片写入 assets 并插入相对路径链接，Markdown 预览可正常显示。
+- **Notes 操作**：打开、**重命名**（同步 md、assets 目录与文内相对路径）、删除单条笔记（含 assets）、Reveal in OS、复制路径、打开 Notes 文件夹。
+- **自动迁移**：从 2.5.x 的 `session_notes` / `project_notes` 单条笔记一次性迁出为磁盘 md 并写入索引；旧表保留不删；升级后首次加载自动完成。
+
+#### 变更
+
+- **Open Note…** / **Open Project Note…**：无笔记时创建并打开；仅一条时直接打开；多条时 QuickPick 选择。
+- **Delete Notes** / **Delete Project Notes**：确认后删除该 session 或 project 下全部笔记（含 assets）。
+- 侧栏 **Note** 标记表示「至少有一条笔记」；完整列表在 **Notes** 视图。
+- 废弃虚拟 URI `agentresume-note:`；编辑改为真实 `file:` 路径。
+
+#### 说明
+
+- 备份请包含整个 `panelHome`（`catalog.db` + `notes/`）。仅备份 db 不再包含正文。
+- 升级前若编辑器仍打开旧虚拟笔记标签页，需从 **Notes** 或右键重新打开。
+
 ### [2.5.0] - 2026-07-08
 
 #### 新增
@@ -276,6 +299,29 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.0] - 2026-07-09
+
+#### Added
+
+- **Notes view**: New **Notes** tab under **Agent Resume**, grouped by **Projects** / **Sessions**; filter, refresh, create notes, and open the notes folder in the OS file manager.
+- **Multiple notes per owner**: Each session or project can have many Markdown notes. New files are named `YYYY-MM-DD-NN.md` (local date + per-day sequence), e.g. `2026-07-08-01.md`.
+- **Disk authority + catalog index**: Note bodies and assets live under `{panelHome}/notes/` as real files; `catalog.db` `notes` table stores associations, paths, and preview text only. Open md files in Finder, Obsidian, etc.
+- **First-class assets**: Each note may have a `{stem}.assets/` folder. **Insert Image into Note** copies an image into assets and inserts a relative Markdown link (preview works).
+- **Note actions**: Open, **rename** (syncs md, assets folder, and relative links), delete one note (and its assets), Reveal in OS, copy path, open notes root folder.
+- **Automatic migration**: One-time export of 2.5.x `session_notes` / `project_notes` rows to disk md + index on first load after upgrade; legacy tables are kept, not deleted.
+
+#### Changed
+
+- **Open Note…** / **Open Project Note…**: Create if none; open directly if one; QuickPick if many.
+- **Delete Notes** / **Delete Project Notes**: Delete all notes for that session or project (including assets) after confirmation.
+- Sidebar **Note** marker means “at least one note”; full list is in the **Notes** view.
+- Removed virtual `agentresume-note:` scheme; editing uses real `file:` paths.
+
+#### Notes
+
+- Back up the whole `panelHome` (`catalog.db` + `notes/`). Backing up only the database no longer includes note bodies.
+- If an old virtual note tab is still open after upgrade, reopen the note from **Notes** or the context menu.
 
 ### [2.5.0] - 2026-07-08
 

@@ -2,137 +2,234 @@ import { sessionGtdKey } from "./gtd";
 import { AgentSession } from "../history/types";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../history/sqlite";
 import { normalizeProjectPath } from "../projects/projectAliases";
+import { NoteScope } from "../notes/notesPaths";
 
-interface SessionNoteRow {
-  provider: string;
-  agent_session_id: string;
-  content: string;
+export interface NoteRecord {
+  noteId: string;
+  scope: NoteScope;
+  provider?: string;
+  agentSessionId?: string;
+  projectPath?: string;
+  filename: string;
+  relDir: string;
+  relMdPath: string;
+  title?: string;
+  contentPreview?: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  fsMtimeMs?: number;
 }
 
-interface ProjectNoteRow {
-  project_path: string;
-  content: string;
+interface NoteRow {
+  note_id: string;
+  scope: string;
+  provider: string | null;
+  agent_session_id: string | null;
+  project_path: string | null;
+  filename: string;
+  rel_dir: string;
+  rel_md_path: string;
+  title: string | null;
+  content_preview: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+  fs_mtime_ms: number | null;
 }
 
-interface SessionNoteFlagRow {
-  provider: string;
-  agent_session_id: string;
+function mapRow(row: NoteRow): NoteRecord {
+  return {
+    noteId: row.note_id,
+    scope: row.scope as NoteScope,
+    provider: row.provider ?? undefined,
+    agentSessionId: row.agent_session_id ?? undefined,
+    projectPath: row.project_path ?? undefined,
+    filename: row.filename,
+    relDir: row.rel_dir,
+    relMdPath: row.rel_md_path,
+    title: row.title ?? undefined,
+    contentPreview: row.content_preview ?? undefined,
+    createdAtMs: row.created_at_ms,
+    updatedAtMs: row.updated_at_ms,
+    fsMtimeMs: row.fs_mtime_ms ?? undefined
+  };
 }
 
-interface ProjectNoteFlagRow {
-  project_path: string;
+function sqlNullOrString(value: string | undefined): string {
+  if (value === undefined) {
+    return "NULL";
+  }
+  return `'${escapeSqlLiteral(value)}'`;
 }
 
-function hasNoteContent(content: string | undefined): boolean {
-  return Boolean(content?.trim());
+export async function listAllNotes(dbPath: string): Promise<NoteRecord[]> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT * FROM notes ORDER BY updated_at_ms DESC;`
+  );
+  return rows.map(mapRow);
 }
 
-export async function getSessionNote(
+export async function getNoteById(dbPath: string, noteId: string): Promise<NoteRecord | undefined> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT * FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
+  );
+  return rows[0] ? mapRow(rows[0]) : undefined;
+}
+
+export async function getNoteByRelPath(dbPath: string, relMdPath: string): Promise<NoteRecord | undefined> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT * FROM notes WHERE rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
+  );
+  return rows[0] ? mapRow(rows[0]) : undefined;
+}
+
+export async function listSessionNotes(
   dbPath: string,
   provider: AgentSession["provider"],
   sessionId: string
-): Promise<string | undefined> {
-  const rows = await runSqliteJson<Pick<SessionNoteRow, "content">>(
+): Promise<NoteRecord[]> {
+  const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT content FROM session_notes
-     WHERE provider = '${escapeSqlLiteral(provider)}'
+    `SELECT * FROM notes
+     WHERE scope = 'session'
+       AND provider = '${escapeSqlLiteral(provider)}'
        AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
-     LIMIT 1;`
+     ORDER BY updated_at_ms DESC;`
   );
-
-  const content = rows[0]?.content;
-  return hasNoteContent(content) ? content : undefined;
+  return rows.map(mapRow);
 }
 
-export async function upsertSessionNote(
-  dbPath: string,
-  provider: AgentSession["provider"],
-  sessionId: string,
-  content: string
-): Promise<void> {
-  const nowMs = Date.now();
+export async function listProjectNotes(dbPath: string, projectPath: string): Promise<NoteRecord[]> {
+  const normalized = normalizeProjectPath(projectPath);
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT * FROM notes
+     WHERE scope = 'project'
+       AND project_path = '${escapeSqlLiteral(normalized)}'
+     ORDER BY updated_at_ms DESC;`
+  );
+  return rows.map(mapRow);
+}
+
+export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Promise<void> {
+  const projectPath =
+    record.projectPath !== undefined ? normalizeProjectPath(record.projectPath) : undefined;
   await runSqlite(
     dbPath,
-    `INSERT INTO session_notes (provider, agent_session_id, content, updated_at_ms)
-     VALUES (
-       '${escapeSqlLiteral(provider)}',
-       '${escapeSqlLiteral(sessionId)}',
-       '${escapeSqlLiteral(content)}',
-       ${nowMs}
+    `INSERT INTO notes (
+       note_id, scope, provider, agent_session_id, project_path,
+       filename, rel_dir, rel_md_path, title, content_preview,
+       created_at_ms, updated_at_ms, fs_mtime_ms
+     ) VALUES (
+       '${escapeSqlLiteral(record.noteId)}',
+       '${escapeSqlLiteral(record.scope)}',
+       ${sqlNullOrString(record.provider)},
+       ${sqlNullOrString(record.agentSessionId)},
+       ${sqlNullOrString(projectPath)},
+       '${escapeSqlLiteral(record.filename)}',
+       '${escapeSqlLiteral(record.relDir)}',
+       '${escapeSqlLiteral(record.relMdPath)}',
+       ${sqlNullOrString(record.title)},
+       ${sqlNullOrString(record.contentPreview)},
+       ${record.createdAtMs},
+       ${record.updatedAtMs},
+       ${record.fsMtimeMs ?? "NULL"}
      )
-     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
-       content = excluded.content,
-       updated_at_ms = excluded.updated_at_ms;`
+     ON CONFLICT(note_id) DO UPDATE SET
+       scope = excluded.scope,
+       provider = excluded.provider,
+       agent_session_id = excluded.agent_session_id,
+       project_path = excluded.project_path,
+       filename = excluded.filename,
+       rel_dir = excluded.rel_dir,
+       rel_md_path = excluded.rel_md_path,
+       title = excluded.title,
+       content_preview = excluded.content_preview,
+       created_at_ms = excluded.created_at_ms,
+       updated_at_ms = excluded.updated_at_ms,
+       fs_mtime_ms = excluded.fs_mtime_ms;`
   );
 }
 
-export async function deleteSessionNote(
-  dbPath: string,
-  provider: AgentSession["provider"],
-  sessionId: string
-): Promise<void> {
-  await runSqlite(
-    dbPath,
-    `DELETE FROM session_notes
-     WHERE provider = '${escapeSqlLiteral(provider)}'
-       AND agent_session_id = '${escapeSqlLiteral(sessionId)}';`
-  );
+export async function deleteNoteRecord(dbPath: string, noteId: string): Promise<void> {
+  await runSqlite(dbPath, `DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`);
 }
 
-export async function getProjectNote(dbPath: string, projectPath: string): Promise<string | undefined> {
-  const normalized = normalizeProjectPath(projectPath);
-  const rows = await runSqliteJson<Pick<ProjectNoteRow, "content">>(
-    dbPath,
-    `SELECT content FROM project_notes
-     WHERE project_path = '${escapeSqlLiteral(normalized)}'
-     LIMIT 1;`
-  );
-
-  const content = rows[0]?.content;
-  return hasNoteContent(content) ? content : undefined;
-}
-
-export async function upsertProjectNote(dbPath: string, projectPath: string, content: string): Promise<void> {
-  const normalized = normalizeProjectPath(projectPath);
-  const nowMs = Date.now();
-  await runSqlite(
-    dbPath,
-    `INSERT INTO project_notes (project_path, content, updated_at_ms)
-     VALUES ('${escapeSqlLiteral(normalized)}', '${escapeSqlLiteral(content)}', ${nowMs})
-     ON CONFLICT(project_path) DO UPDATE SET
-       content = excluded.content,
-       updated_at_ms = excluded.updated_at_ms;`
-  );
-}
-
-export async function deleteProjectNote(dbPath: string, projectPath: string): Promise<void> {
-  const normalized = normalizeProjectPath(projectPath);
-  await runSqlite(
-    dbPath,
-    `DELETE FROM project_notes WHERE project_path = '${escapeSqlLiteral(normalized)}';`
-  );
+export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]): Promise<void> {
+  if (!relPaths.length) {
+    return;
+  }
+  const list = relPaths.map((p) => `'${escapeSqlLiteral(p)}'`).join(", ");
+  await runSqlite(dbPath, `DELETE FROM notes WHERE rel_md_path IN (${list});`);
 }
 
 export async function loadSessionNoteFlags(dbPath: string): Promise<Set<string>> {
-  const rows = await runSqliteJson<SessionNoteFlagRow>(
+  const rows = await runSqliteJson<{ provider: string; agent_session_id: string }>(
     dbPath,
-    `SELECT provider, agent_session_id FROM session_notes
-     WHERE TRIM(content) != '';`
+    `SELECT DISTINCT provider, agent_session_id FROM notes
+     WHERE scope = 'session' AND provider IS NOT NULL AND agent_session_id IS NOT NULL;`
   );
-
   const output = new Set<string>();
   for (const row of rows) {
-    output.add(sessionGtdKey({ provider: row.provider as AgentSession["provider"], id: row.agent_session_id }));
+    output.add(
+      sessionGtdKey({ provider: row.provider as AgentSession["provider"], id: row.agent_session_id })
+    );
   }
   return output;
 }
 
 export async function loadProjectNoteFlags(dbPath: string): Promise<Set<string>> {
-  const rows = await runSqliteJson<ProjectNoteFlagRow>(
+  const rows = await runSqliteJson<{ project_path: string }>(
     dbPath,
-    `SELECT project_path FROM project_notes
-     WHERE TRIM(content) != '';`
+    `SELECT DISTINCT project_path FROM notes
+     WHERE scope = 'project' AND project_path IS NOT NULL;`
   );
-
   return new Set(rows.map((row) => normalizeProjectPath(row.project_path)));
+}
+
+export async function getCatalogMeta(dbPath: string, key: string): Promise<string | undefined> {
+  const rows = await runSqliteJson<{ value: string }>(
+    dbPath,
+    `SELECT value FROM catalog_meta WHERE key = '${escapeSqlLiteral(key)}' LIMIT 1;`
+  );
+  return rows[0]?.value;
+}
+
+export async function setCatalogMeta(dbPath: string, key: string, value: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `INSERT INTO catalog_meta (key, value) VALUES ('${escapeSqlLiteral(key)}', '${escapeSqlLiteral(value)}')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value;`
+  );
+}
+
+/** Legacy single-note tables (migration source). */
+export async function listLegacySessionNotes(
+  dbPath: string
+): Promise<Array<{ provider: string; agent_session_id: string; content: string; updated_at_ms: number }>> {
+  try {
+    return await runSqliteJson(
+      dbPath,
+      `SELECT provider, agent_session_id, content, updated_at_ms FROM session_notes
+       WHERE TRIM(content) != '';`
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function listLegacyProjectNotes(
+  dbPath: string
+): Promise<Array<{ project_path: string; content: string; updated_at_ms: number }>> {
+  try {
+    return await runSqliteJson(
+      dbPath,
+      `SELECT project_path, content, updated_at_ms FROM project_notes
+       WHERE TRIM(content) != '';`
+    );
+  } catch {
+    return [];
+  }
 }

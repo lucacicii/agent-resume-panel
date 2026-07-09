@@ -2,8 +2,8 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, project filters, favorites, session/project notes, native session rename, and read-only chat preview.",
-  "version": "2.5.0",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, GTD, multi-note Markdown files (disk + catalog index), project filters, favorites, native session rename, and read-only chat preview.",
+  "version": "2.6.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -58,8 +58,10 @@
     "onView:agentResume.sessions",
     "onView:agentResume.acpChats",
     "onView:agentResume.gtd",
+    "onView:agentResume.notes",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.refreshGtd",
+    "onCommand:agentResume.refreshNotes",
     "onCommand:agentResume.setSessionGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
@@ -664,6 +666,82 @@
         "title": "Refresh GTD",
         "category": "Agent Resume",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentResume.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "agentResume.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentResume.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume",
+        "icon": "$(markdown)"
+      },
+      {
+        "command": "agentResume.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "agentResume.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "agentResume.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "agentResume.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "agentResume.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "agentResume.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "agentResume.newSessionNote",
+        "title": "New Session Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newProjectNote",
+        "title": "New Project Note",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.renameAcpChat",
@@ -2692,6 +2770,11 @@
           "id": "agentResume.gtd",
           "name": "GTD",
           "icon": "$(tag)"
+        },
+        {
+          "id": "agentResume.notes",
+          "name": "Notes",
+          "icon": "$(notebook)"
         }
       ]
     },
@@ -2858,9 +2941,69 @@
           "command": "agentResume.openSettings",
           "when": "view == agentResume.gtd",
           "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.filterNotes",
+          "when": "view == agentResume.notes",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.clearNotesFilter",
+          "when": "view == agentResume.notes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.newNote",
+          "when": "view == agentResume.notes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.refreshNotes",
+          "when": "view == agentResume.notes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.openNotesFolder",
+          "when": "view == agentResume.notes",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openSettings",
+          "when": "view == agentResume.notes",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
+        {
+          "command": "agentResume.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session)",
+          "group": "inline@1"
+        },
         {
           "command": "agentResume.openSession",
           "when": "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|alma|opencode|pi|chat)/ && agentResume.uiLocale == en",
