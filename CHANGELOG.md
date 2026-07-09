@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.3]
+
+#### 文档
+
+- CHANGELOG 版本标题仅保留版本号，不再附带发布日期。
+
 ### [2.6.2]
 
 #### 新增
@@ -317,6 +323,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.3]
+
+#### Docs
+
+- CHANGELOG version headings no longer include release dates.
 
 ### [2.6.2]
 

@@ -4,7 +4,7 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Alma** 历史会话；支持 **ACP Chat** 实时对话、**GTD** 状态管理、**多条 Markdown 笔记**（磁盘文件 + Catalog 索引），以及摘要 / 重命名 / Handoff 等辅助能力。
 
-当前版本：**2.6.2**
+当前版本：**2.6.3**
 
 > **无云端 · 纯本机存储（Local-first）**  
 > **本插件不提供、也不依赖自有云端服务**；会话索引、笔记、ACP 聊天等面板数据均为**纯本机存储**。  
