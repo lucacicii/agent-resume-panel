@@ -2,15 +2,16 @@ import { ensureCatalogSchema } from "../catalog/db";
 import { listSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
 import { chatCompletion } from "../llm/chat";
-import { embedTexts } from "../llm/embeddings";
-import { embeddingConfigFromSettings, llmConfigFromSettings } from "../llm/fromSettings";
+import { llmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { loadSessionSnippet } from "../transcript/load";
+import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
+import { localDayRange as localDayRangeImpl } from "./period";
 import { buildDailySystemPrompt, buildDailyUserPrompt, formatSessionForDigest } from "./prompts";
 import { MemoryEntry } from "./schema";
-import { insertMemoryEntry, upsertMemoryJob } from "./store";
+import { upsertMemoryJob } from "./store";
 
 export interface RunDailyDigestOptions {
   /** Override panel home (default from settings / ~/.agent-resume-panel). */
@@ -34,7 +35,7 @@ export interface RunDailyDigestResult {
   replaced: boolean;
 }
 
-/** Local day bounds [start, end) in ms. */
+/** @deprecated Prefer importing from period.ts; kept for API compatibility. */
 export function localDayRange(dateStr?: string): {
   startMs: number;
   endMs: number;
@@ -42,33 +43,13 @@ export function localDayRange(dateStr?: string): {
   jobKey: string;
   entryId: string;
 } {
-  const now = new Date();
-  let y: number;
-  let m: number;
-  let d: number;
-
-  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [ys, ms, ds] = dateStr.split("-").map(Number);
-    y = ys;
-    m = ms;
-    d = ds;
-  } else {
-    y = now.getFullYear();
-    m = now.getMonth() + 1;
-    d = now.getDate();
-  }
-
-  const start = new Date(y, m - 1, d, 0, 0, 0, 0);
-  const end = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
-  const dateLabel = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const jobKey = `daily:${dateLabel}`;
-
+  const p = localDayRangeImpl(dateStr);
   return {
-    startMs: start.getTime(),
-    endMs: end.getTime(),
-    dateLabel,
-    jobKey,
-    entryId: jobKey
+    startMs: p.startMs,
+    endMs: p.endMs,
+    dateLabel: p.label,
+    jobKey: p.jobKey,
+    entryId: p.entryId
   };
 }
 
@@ -83,7 +64,8 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
 
   await ensureCatalogSchema(dbPath);
 
-  const { startMs, endMs, dateLabel, jobKey, entryId } = localDayRange(options.date);
+  const period = localDayRangeImpl(options.date);
+  const { startMs, endMs, label: dateLabel, jobKey, entryId } = period;
   await upsertMemoryJob(dbPath, jobKey, "running");
 
   try {
@@ -118,7 +100,6 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
           snippetCount += 1;
         }
       } else if (includeTranscripts && session.sessionSummary?.trim()) {
-        // Still attach a short transcript when summary exists but is thin
         if (session.sessionSummary.trim().length < 80) {
           const snippet = await loadSessionSnippet(session, homes, Math.min(snippetMaxChars, 1200));
           if (snippet) {
@@ -156,20 +137,11 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       2000
     );
 
-    let embeddingJson: string | null = null;
-    let embedded = false;
-    if (!options.skipEmbedding) {
-      const emb = embeddingConfigFromSettings(settings);
-      if (emb) {
-        try {
-          const [vector] = await embedTexts(emb, [content.slice(0, 8000)]);
-          embeddingJson = JSON.stringify(vector);
-          embedded = true;
-        } catch {
-          embedded = false;
-        }
-      }
-    }
+    const { embeddingJson, embedded } = await maybeEmbedContent(
+      settings,
+      content,
+      options.skipEmbedding
+    );
 
     const entry: MemoryEntry = {
       id: entryId,
@@ -182,17 +154,17 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       createdAtMs: Date.now()
     };
 
-    const { replaced } = await insertMemoryEntry(
+    const { replaced } = await finalizeDigestEntry(
       dbPath,
       entry,
       sessions.map((s: AgentSession) => ({
         provider: s.provider,
         agentSessionId: s.id,
         projectPath: s.projectPath
-      }))
+      })),
+      jobKey
     );
 
-    await upsertMemoryJob(dbPath, jobKey, "ok");
     return {
       entry,
       sessionCount: sessions.length,

@@ -46,6 +46,55 @@ export async function listMemoryEntries(
   return rows.map(rowToEntry);
 }
 
+/** Entries whose period_start falls in [startMs, endMs). */
+export async function listMemoryEntriesInRange(
+  dbPath: string,
+  options: {
+    level?: MemoryLevel | string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+  }
+): Promise<MemoryEntry[]> {
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const levelClause = options.level
+    ? `AND level = '${escapeSqlLiteral(options.level)}'`
+    : "";
+
+  const rows = await runSqliteJson<MemoryEntryRow>(
+    dbPath,
+    `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+     FROM memory_entries
+     WHERE period_start_ms >= ${Math.floor(options.startMs)}
+       AND period_start_ms < ${Math.floor(options.endMs)}
+       ${levelClause}
+     ORDER BY period_start_ms ASC
+     LIMIT ${limit};`
+  );
+
+  return rows.map(rowToEntry);
+}
+
+export async function getMemoryJobStatus(
+  dbPath: string,
+  jobKey: string
+): Promise<{ status: string; lastError: string | null; updatedAtMs: number } | undefined> {
+  const rows = await runSqliteJson<{
+    status: string;
+    last_error: string | null;
+    updated_at_ms: number;
+  }>(
+    dbPath,
+    `SELECT status, last_error, updated_at_ms FROM memory_jobs
+     WHERE job_key = '${escapeSqlLiteral(jobKey)}' LIMIT 1;`
+  );
+  const row = rows[0];
+  if (!row) {
+    return undefined;
+  }
+  return { status: row.status, lastError: row.last_error, updatedAtMs: row.updated_at_ms };
+}
+
 export async function insertMemoryEntry(
   dbPath: string,
   entry: MemoryEntry,

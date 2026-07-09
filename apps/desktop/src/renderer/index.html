@@ -47,20 +47,45 @@
 
       <section id="tab-memory" class="panel">
         <div class="toolbar">
-          <h2>Daily Memory</h2>
+          <h2>Memory</h2>
           <div class="row">
-            <label class="inline-label">
-              日期
-              <input type="date" id="dailyDate" />
-            </label>
-            <button type="button" id="btnRunDaily">生成 / 覆盖该日回顾</button>
+            <select id="memoryLevel">
+              <option value="all">All levels</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
             <button type="button" id="btnRefreshMemory">Refresh</button>
           </div>
         </div>
-        <p class="muted">
-          无 session_summary 时会从各 CLI 原生存储抽取 transcript 片段（可在 settings 关闭
-          <code>memory.includeTranscripts</code>）。同一天重复生成会覆盖。
-        </p>
+
+        <div class="card-grid">
+          <div class="card">
+            <h3>生成</h3>
+            <div class="form-row">
+              <label>Daily <input type="date" id="dailyDate" /></label>
+              <button type="button" id="btnRunDaily">生成 / 覆盖日报</button>
+            </div>
+            <div class="form-row">
+              <label>Weekly (YYYY-Www) <input type="text" id="weekKey" placeholder="留空=本周" /></label>
+              <button type="button" id="btnRunWeekly">生成 / 覆盖周报</button>
+            </div>
+            <div class="form-row">
+              <label>Monthly <input type="month" id="monthKey" /></label>
+              <button type="button" id="btnRunMonthly">生成 / 覆盖月报</button>
+            </div>
+            <p class="muted">周报优先吃区间内日报；月报优先周报。同 period 重跑会覆盖。</p>
+          </div>
+          <div class="card">
+            <h3>语义搜索</h3>
+            <div class="form-row">
+              <input type="search" id="searchQuery" placeholder="例如：上周 payment 改了什么" />
+              <button type="button" id="btnSearch">搜索</button>
+            </div>
+            <p class="muted">需配置 embedding；仅有 embedding 的 digest 会参与排序。重新生成可写入向量。</p>
+          </div>
+        </div>
+
         <p class="status" id="memoryStatus"></p>
         <div id="digestList" class="digest-list"></div>
       </section>
@@ -71,8 +96,8 @@
           <button type="button" id="btnSaveSettings">Save</button>
         </div>
         <p class="muted">
-          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用 panelHome）。API key
-          v0.1 明文存储，请注意本机安全。
+          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。API key v0.1/v0.2
+          明文存储，注意本机安全。
         </p>
         <form id="settingsForm" class="form">
           <label>
@@ -91,6 +116,16 @@
             <label>Base URL (optional) <input name="embBaseUrl" type="text" placeholder="same as LLM" /></label>
             <label>Model <input name="embModel" type="text" /></label>
             <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Memory schedule (Desktop only)</legend>
+            <label class="check">
+              <input name="memoryEnabled" type="checkbox" />
+              启用定时分析（默认关；会读 transcript 并调用 LLM，产生费用）
+            </label>
+            <label>Daily hour (0–23) <input name="dailyHour" type="number" min="0" max="23" /></label>
+            <label>Weekly hour (Monday) <input name="weeklyHour" type="number" min="0" max="23" /></label>
+            <label>Monthly hour (day 1) <input name="monthlyHour" type="number" min="0" max="23" /></label>
           </fieldset>
         </form>
         <p class="status" id="settingsStatus"></p>

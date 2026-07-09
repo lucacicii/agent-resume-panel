@@ -40,9 +40,30 @@ export { llmConfigFromSettings, embeddingConfigFromSettings } from "./llm/fromSe
 
 export type { MemoryLevel, MemoryEntry, MemoryLink } from "./memory/schema";
 export { MEMORY_SCHEMA_SQL } from "./memory/schema";
-export { listMemoryEntries, insertMemoryEntry, upsertMemoryJob } from "./memory/store";
+export {
+  listMemoryEntries,
+  listMemoryEntriesInRange,
+  insertMemoryEntry,
+  upsertMemoryJob,
+  getMemoryJobStatus
+} from "./memory/store";
 export { runDailyDigest, localDayRange } from "./memory/daily";
 export type { RunDailyDigestOptions, RunDailyDigestResult } from "./memory/daily";
+export {
+  localDayRange as localDayRangePeriod,
+  localWeekRange,
+  localMonthRange,
+  previousCompleteWeekRange,
+  previousCompleteMonthRange
+} from "./memory/period";
+export type { PeriodRange } from "./memory/period";
+export { runWeeklyDigest } from "./memory/weekly";
+export type { RunWeeklyDigestOptions, RunWeeklyDigestResult } from "./memory/weekly";
+export { runMonthlyDigest } from "./memory/monthly";
+export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./memory/monthly";
+export { searchMemoryByEmbedding } from "./memory/search";
+export type { SearchMemoryOptions, MemorySearchHit } from "./memory/search";
+export { cosineSimilarity, parseEmbeddingJson } from "./memory/cosine";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export { resolvePreviewHomes, DEFAULT_AGENT_HOMES, defaultAlmaDataDir } from "./transcript/homes";

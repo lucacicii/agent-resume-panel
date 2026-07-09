@@ -26,6 +26,14 @@ function basename(p) {
   return parts[parts.length - 1] || p;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function switchTab(name) {
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === name);
@@ -33,6 +41,16 @@ function switchTab(name) {
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
+}
+
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function monthInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 async function loadPanelHome() {
@@ -64,58 +82,137 @@ async function loadSessions() {
   }
 }
 
-async function loadMemory() {
+function renderEntries(entries, scoreById) {
   const list = $("digestList");
   list.innerHTML = "";
+  if (!entries.length) {
+    list.innerHTML = `<p class="muted">暂无 memory 条目。先生成日报，再做周报/月报或语义搜索。</p>`;
+    return;
+  }
+  for (const e of entries) {
+    const card = document.createElement("article");
+    card.className = "digest-card";
+    const level = e.level || "daily";
+    const emb = e.embeddingJson ? " · embedding ✓" : "";
+    const score = scoreById && scoreById[e.id] != null ? scoreById[e.id] : null;
+    const scoreHtml =
+      score != null ? `<span class="score">score ${score.toFixed(3)}</span>` : "";
+    card.innerHTML = `
+      <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(
+        e.title || e.id
+      )}${scoreHtml}</h3>
+      <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
+      <pre>${escapeHtml(e.content)}</pre>
+    `;
+    list.appendChild(card);
+  }
+}
+
+async function loadMemory() {
+  const level = $("memoryLevel").value;
   try {
-    const entries = await agentResume.listDailyDigests(30);
-    if (!entries.length) {
-      list.innerHTML = `<p class="muted">暂无 daily digest。配置 LLM 后点击「生成今日回顾」。</p>`;
-      return;
-    }
-    for (const e of entries) {
-      const card = document.createElement("article");
-      card.className = "digest-card";
-      const emb = e.embeddingJson ? " · embedding ✓" : "";
-      card.innerHTML = `
-        <h3>${escapeHtml(e.title || e.id)}</h3>
-        <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
-        <pre>${escapeHtml(e.content)}</pre>
-      `;
-      list.appendChild(card);
-    }
+    const entries = await agentResume.listMemory({
+      level: level === "all" ? undefined : level,
+      limit: 50
+    });
+    renderEntries(entries);
   } catch (error) {
-    list.innerHTML = `<p class="status error">${escapeHtml(
+    $("digestList").innerHTML = `<p class="status error">${escapeHtml(
       error instanceof Error ? error.message : String(error)
     )}</p>`;
   }
 }
 
-function todayInputValue() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 async function runDaily() {
   const status = $("memoryStatus");
   const date = $("dailyDate").value || undefined;
-  setStatus(status, "Running daily digest (may load transcripts)…");
+  setStatus(status, "Running daily digest…");
   try {
     const result = await agentResume.runDailyDigest(date);
-    const parts = [
-      result.replaced ? "replaced" : "created",
-      `${result.sessionCount} sessions`,
-      `${result.snippetCount ?? 0} transcript snippets`,
-      result.jobKey
-    ];
-    if (result.embedded) {
-      parts.push("embedded");
-    }
-    setStatus(status, `OK · ${parts.join(" · ")}`, "ok");
+    setStatus(
+      status,
+      `Daily OK · ${result.replaced ? "replaced" : "created"} · ${result.sessionCount} sessions · snippets ${
+        result.snippetCount ?? 0
+      }${result.embedded ? " · embedded" : ""}`,
+      "ok"
+    );
+    $("memoryLevel").value = "daily";
     await loadMemory();
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function runWeekly() {
+  const status = $("memoryStatus");
+  const weekKey = $("weekKey").value.trim() || undefined;
+  setStatus(status, "Running weekly digest…");
+  try {
+    const result = await agentResume.runWeeklyDigest(weekKey);
+    setStatus(
+      status,
+      `Weekly OK · ${result.replaced ? "replaced" : "created"} · sources ${result.sourceCount} (dailies ${
+        result.usedDailies
+      })${result.embedded ? " · embedded" : ""}`,
+      "ok"
+    );
+    $("memoryLevel").value = "weekly";
+    await loadMemory();
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function runMonthly() {
+  const status = $("memoryStatus");
+  const monthKey = $("monthKey").value || undefined;
+  setStatus(status, "Running monthly digest…");
+  try {
+    const result = await agentResume.runMonthlyDigest(monthKey);
+    setStatus(
+      status,
+      `Monthly OK · ${result.replaced ? "replaced" : "created"} · sources ${result.sourceCount} (W${
+        result.usedWeeklies
+      }/D${result.usedDailies})${result.embedded ? " · embedded" : ""}`,
+      "ok"
+    );
+    $("memoryLevel").value = "monthly";
+    await loadMemory();
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function runSearch() {
+  const status = $("memoryStatus");
+  const query = $("searchQuery").value.trim();
+  if (!query) {
+    setStatus(status, "请输入搜索词", "error");
+    return;
+  }
+  const level = $("memoryLevel").value;
+  setStatus(status, "Searching…");
+  try {
+    const hits = await agentResume.searchMemory({
+      query,
+      level: level === "all" ? undefined : level,
+      limit: 20
+    });
+    const scoreById = {};
+    for (const h of hits) {
+      scoreById[h.entry.id] = h.score;
+    }
+    renderEntries(
+      hits.map((h) => h.entry),
+      scoreById
+    );
+    setStatus(
+      status,
+      hits.length
+        ? `Found ${hits.length} hit(s). Digests without embeddings are skipped.`
+        : "No hits. Generate digests with embedding configured, then retry.",
+      hits.length ? "ok" : "error"
+    );
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -132,11 +229,26 @@ async function loadSettingsForm() {
   form.embBaseUrl.value = s.embedding?.baseUrl || "";
   form.embModel.value = s.embedding?.model || "";
   form.embApiKey.value = s.embedding?.apiKey || "";
+  form.memoryEnabled.checked = Boolean(s.memory?.enabled);
+  form.dailyHour.value = s.memory?.scheduleDailyHour ?? 22;
+  form.weeklyHour.value = s.memory?.scheduleWeeklyHour ?? 9;
+  form.monthlyHour.value = s.memory?.scheduleMonthlyHour ?? 9;
 }
 
 async function saveSettingsForm() {
   const form = $("settingsForm");
   const status = $("settingsStatus");
+  const enabling = form.memoryEnabled.checked;
+  if (enabling) {
+    const ok = window.confirm(
+      "启用定时分析后，Desktop 将在设定时刻读取 session 数据并调用 LLM / embedding API，可能产生费用。是否继续？"
+    );
+    if (!ok) {
+      form.memoryEnabled.checked = false;
+      return;
+    }
+  }
+
   const settings = {
     panelHome: form.panelHome.value.trim() || undefined,
     llm: {
@@ -150,23 +262,24 @@ async function saveSettingsForm() {
       model: form.embModel.value.trim() || "text-embedding-3-small",
       apiKey: form.embApiKey.value || undefined
     },
-    memory: { enabled: false }
+    memory: {
+      enabled: form.memoryEnabled.checked,
+      includeTranscripts: true,
+      maxSessionsPerDigest: 40,
+      snippetMaxChars: 2500,
+      scheduleDailyHour: Number(form.dailyHour.value) || 22,
+      scheduleWeeklyHour: Number(form.weeklyHour.value) || 9,
+      scheduleMonthlyHour: Number(form.monthlyHour.value) || 9
+    }
   };
   try {
     const result = await agentResume.saveSettings(settings);
-    setStatus(status, `Saved · ${result.file}`, "ok");
+    const sched = result.schedulerEnabled ? " · scheduler ON" : " · scheduler OFF";
+    setStatus(status, `Saved · ${result.file}${sched}`, "ok");
     await loadPanelHome();
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 function wire() {
@@ -175,13 +288,23 @@ function wire() {
   });
   $("btnRefreshSessions").addEventListener("click", () => loadSessions());
   $("btnRefreshMemory").addEventListener("click", () => loadMemory());
+  $("memoryLevel").addEventListener("change", () => loadMemory());
   $("btnRunDaily").addEventListener("click", () => runDaily());
+  $("btnRunWeekly").addEventListener("click", () => runWeekly());
+  $("btnRunMonthly").addEventListener("click", () => runMonthly());
+  $("btnSearch").addEventListener("click", () => runSearch());
+  $("searchQuery").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      runSearch();
+    }
+  });
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
 }
 
 async function boot() {
   wire();
   $("dailyDate").value = todayInputValue();
+  $("monthKey").value = monthInputValue();
   await loadPanelHome();
   await loadSettingsForm();
   await loadSessions();

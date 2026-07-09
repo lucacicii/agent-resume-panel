@@ -32,7 +32,7 @@ export interface AgentHomesSettings {
 }
 
 export interface MemorySettings {
-  /** Scheduled jobs; default false (manual only in v0.1). */
+  /** Scheduled jobs in Desktop; default false. */
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
   includeTranscripts?: boolean;
@@ -40,6 +40,12 @@ export interface MemorySettings {
   maxSessionsPerDigest?: number;
   /** Max chars of transcript excerpt per session. Default 2500. */
   snippetMaxChars?: number;
+  /** Local hour 0–23 for automatic daily job. Default 22. */
+  scheduleDailyHour?: number;
+  /** Local hour for weekly job (previous ISO week) on Monday. Default 9. */
+  scheduleWeeklyHour?: number;
+  /** Local hour on day 1 for previous-month job. Default 9. */
+  scheduleMonthlyHour?: number;
 }
 
 export interface PanelSettings {
@@ -66,6 +72,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     enabled: false,
     includeTranscripts: true,
     maxSessionsPerDigest: 40,
-    snippetMaxChars: 2500
+    snippetMaxChars: 2500,
+    scheduleDailyHour: 22,
+    scheduleWeeklyHour: 9,
+    scheduleMonthlyHour: 9
   }
 };

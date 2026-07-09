@@ -52,3 +52,53 @@ function indentBlock(text: string, spaces: number): string {
     .map((line) => `${pad}${line}`)
     .join("\n");
 }
+
+export function buildWeeklySystemPrompt(outputLanguage: string): string {
+  return [
+    "You are a personal work-memory analyst for a software engineer who uses multiple AI coding agents.",
+    "Given daily digests and/or sessions from one calendar week, write a concise weekly review.",
+    "Include: major themes, key decisions, cross-project links, unfinished work / debt, and suggested focus for next week.",
+    "Cluster by theme or project. Use bullet points. Do not invent work not implied by the inputs.",
+    `Write in language: ${outputLanguage}.`
+  ].join(" ");
+}
+
+export function buildWeeklyUserPrompt(weekLabel: string, rangeHint: string, lines: string[]): string {
+  if (!lines.length) {
+    return `Week: ${weekLabel} (${rangeHint})\n\nNo daily digests or sessions in this week. Write a one-line note that there was no catalogued agent activity.`;
+  }
+  return [
+    `Week: ${weekLabel}`,
+    `Range: ${rangeHint}`,
+    "",
+    "Sources:",
+    ...lines.map((line, i) => `--- Source ${i + 1} ---\n${line}`),
+    "",
+    "Write the weekly review now."
+  ].join("\n");
+}
+
+export function buildMonthlySystemPrompt(outputLanguage: string): string {
+  return [
+    "You are a personal work-memory analyst for a software engineer who uses multiple AI coding agents.",
+    "Given weekly/daily digests and/or sessions from one calendar month, write a concise monthly archive.",
+    "Include: project stage shifts, recurring themes, important decisions, technical habits, and open threads for next month.",
+    "Be selective; emphasize durable knowledge over day-to-day noise. Use bullet points. Do not invent facts.",
+    `Write in language: ${outputLanguage}.`
+  ].join(" ");
+}
+
+export function buildMonthlyUserPrompt(monthLabel: string, rangeHint: string, lines: string[]): string {
+  if (!lines.length) {
+    return `Month: ${monthLabel} (${rangeHint})\n\nNo digests or sessions in this month. Write a one-line note that there was no catalogued agent activity.`;
+  }
+  return [
+    `Month: ${monthLabel}`,
+    `Range: ${rangeHint}`,
+    "",
+    "Sources:",
+    ...lines.map((line, i) => `--- Source ${i + 1} ---\n${line}`),
+    "",
+    "Write the monthly archive now."
+  ].join("\n");
+}
