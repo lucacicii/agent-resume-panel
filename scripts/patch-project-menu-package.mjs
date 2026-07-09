@@ -79,6 +79,12 @@ function patchPackage(fileName) {
       when:
         "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session)",
       group: "inline@1"
+    },
+    {
+      command: "agentResume.importNotes",
+      when:
+        "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note)",
+      group: "1_notes@import"
     }
   ];
 
@@ -99,14 +105,19 @@ function patchPackage(fileName) {
       group: "navigation@2"
     },
     {
-      command: "agentResume.refreshNotes",
+      command: "agentResume.importNotes",
       when: "view == agentResume.notes",
       group: "navigation@3"
     },
     {
-      command: "agentResume.openNotesFolder",
+      command: "agentResume.refreshNotes",
       when: "view == agentResume.notes",
       group: "navigation@4"
+    },
+    {
+      command: "agentResume.openNotesFolder",
+      when: "view == agentResume.notes",
+      group: "navigation@5"
     }
   ];
 
@@ -133,7 +144,7 @@ function patchPackage(fileName) {
     {
       command: "agentResume.openSettings",
       when: "view == agentResume.notes",
-      group: "navigation@5"
+      group: "navigation@6"
     }
   ];
 

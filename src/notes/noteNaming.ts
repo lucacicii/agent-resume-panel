@@ -90,3 +90,20 @@ export function rewriteAssetReferences(content: string, oldFilename: string, new
   // replace path segments that point at the old assets dir
   return content.split(oldAssets).join(newAssets);
 }
+
+/** Pick a unique `*.md` name within an owner directory. */
+export function uniqueNoteFilename(desired: string, existingFilenames: string[]): string {
+  const normalized = normalizeNoteFilename(desired);
+  if (!normalized) {
+    return nextNoteFilename(existingFilenames);
+  }
+  if (!existingFilenames.includes(normalized)) {
+    return normalized;
+  }
+  const stem = noteStem(normalized);
+  let n = 2;
+  while (existingFilenames.includes(`${stem}-${n}.md`)) {
+    n += 1;
+  }
+  return `${stem}-${n}.md`;
+}

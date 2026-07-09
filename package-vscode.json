@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, GTD, multi-note Markdown files (disk + catalog index), project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -1417,8 +1417,7 @@
       {
         "command": "agentResume.openNote",
         "title": "Open Note",
-        "category": "Agent Resume",
-        "icon": "$(markdown)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.openNote",
@@ -1468,8 +1467,7 @@
       {
         "command": "agentResume.renameNote",
         "title": "Rename Note",
-        "category": "Agent Resume",
-        "icon": "$(edit)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.renameNote",
@@ -1519,8 +1517,7 @@
       {
         "command": "agentResume.deleteNote",
         "title": "Delete Note",
-        "category": "Agent Resume",
-        "icon": "$(trash)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.deleteNote",
@@ -1570,8 +1567,7 @@
       {
         "command": "agentResume.revealNoteInOS",
         "title": "Reveal Note in File Explorer",
-        "category": "Agent Resume",
-        "icon": "$(folder-opened)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.revealNoteInOS",
@@ -1621,8 +1617,7 @@
       {
         "command": "agentResume.copyNotePath",
         "title": "Copy Note Path",
-        "category": "Agent Resume",
-        "icon": "$(copy)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.copyNotePath",
@@ -1672,8 +1667,7 @@
       {
         "command": "agentResume.newNote",
         "title": "New Note…",
-        "category": "Agent Resume",
-        "icon": "$(add)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.newNote",
@@ -1721,10 +1715,60 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "agentResume.zh-cn.importNotes",
+        "title": "批量导入 Markdown…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume",
-        "icon": "$(filter)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.filterNotes",
@@ -1774,8 +1818,7 @@
       {
         "command": "agentResume.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume",
-        "icon": "$(clear-all)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.clearNotesFilter",
@@ -1825,8 +1868,7 @@
       {
         "command": "agentResume.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume",
-        "icon": "$(refresh)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.refreshNotes",
@@ -1876,8 +1918,7 @@
       {
         "command": "agentResume.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume",
-        "icon": "$(folder-library)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.openNotesFolder",
@@ -1927,8 +1968,7 @@
       {
         "command": "agentResume.insertNoteImage",
         "title": "Insert Image into Note",
-        "category": "Agent Resume",
-        "icon": "$(file-media)"
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.insertNoteImage",
@@ -3064,6 +3104,10 @@
         "label": "Hand Off to Another Agent"
       },
       {
+        "id": "agentResume.handoffTo",
+        "label": "Hand Off to Another Agent"
+      },
+      {
         "id": "agentResume.projectMore",
         "label": "Show More"
       },
@@ -3436,14 +3480,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.refreshNotes",
+          "command": "agentResume.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.openNotesFolder",
+          "command": "agentResume.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.zh-cn.filterNotes",
@@ -3461,14 +3510,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.zh-cn.refreshNotes",
+          "command": "agentResume.zh-cn.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.zh-cn.openNotesFolder",
+          "command": "agentResume.zh-cn.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.zh-cn.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.ja.filterNotes",
@@ -3486,14 +3540,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.ja.refreshNotes",
+          "command": "agentResume.ja.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.ja.openNotesFolder",
+          "command": "agentResume.ja.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.ja.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.ko.filterNotes",
@@ -3511,14 +3570,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.ko.refreshNotes",
+          "command": "agentResume.ko.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.ko.openNotesFolder",
+          "command": "agentResume.ko.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.ko.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.es.filterNotes",
@@ -3536,14 +3600,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.es.refreshNotes",
+          "command": "agentResume.es.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.es.openNotesFolder",
+          "command": "agentResume.es.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.es.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.fr.filterNotes",
@@ -3561,14 +3630,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.fr.refreshNotes",
+          "command": "agentResume.fr.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.fr.openNotesFolder",
+          "command": "agentResume.fr.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.fr.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.de.filterNotes",
@@ -3586,14 +3660,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.de.refreshNotes",
+          "command": "agentResume.de.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.de.openNotesFolder",
+          "command": "agentResume.de.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.de.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.pt-br.filterNotes",
@@ -3611,14 +3690,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.pt-br.refreshNotes",
+          "command": "agentResume.pt-br.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.pt-br.openNotesFolder",
+          "command": "agentResume.pt-br.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.pt-br.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.it.filterNotes",
@@ -3636,14 +3720,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.it.refreshNotes",
+          "command": "agentResume.it.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.it.openNotesFolder",
+          "command": "agentResume.it.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.it.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.ru.filterNotes",
@@ -3661,19 +3750,24 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.ru.refreshNotes",
+          "command": "agentResume.ru.importNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.ru.openNotesFolder",
+          "command": "agentResume.ru.refreshNotes",
           "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
           "group": "navigation@4"
         },
         {
+          "command": "agentResume.ru.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
+          "group": "navigation@5"
+        },
+        {
           "command": "agentResume.openSettings",
           "when": "view == agentResume.notes",
-          "group": "navigation@5"
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [
@@ -3708,6 +3802,11 @@
           "group": "inline@1"
         },
         {
+          "command": "agentResume.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == en",
+          "group": "1_notes@import"
+        },
+        {
           "command": "agentResume.zh-cn.openNote",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
           "group": "inline@1"
@@ -3736,6 +3835,11 @@
           "command": "agentResume.zh-cn.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'zh-cn'",
           "group": "inline@1"
+        },
+        {
+          "command": "agentResume.zh-cn.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@import"
         },
         {
           "command": "agentResume.ja.openNote",
@@ -3768,6 +3872,11 @@
           "group": "inline@1"
         },
         {
+          "command": "agentResume.ja.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@import"
+        },
+        {
           "command": "agentResume.ko.openNote",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
           "group": "inline@1"
@@ -3796,6 +3905,11 @@
           "command": "agentResume.ko.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'ko'",
           "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ko.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'ko'",
+          "group": "1_notes@import"
         },
         {
           "command": "agentResume.es.openNote",
@@ -3828,6 +3942,11 @@
           "group": "inline@1"
         },
         {
+          "command": "agentResume.es.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'es'",
+          "group": "1_notes@import"
+        },
+        {
           "command": "agentResume.fr.openNote",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
           "group": "inline@1"
@@ -3856,6 +3975,11 @@
           "command": "agentResume.fr.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'fr'",
           "group": "inline@1"
+        },
+        {
+          "command": "agentResume.fr.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'fr'",
+          "group": "1_notes@import"
         },
         {
           "command": "agentResume.de.openNote",
@@ -3888,6 +4012,11 @@
           "group": "inline@1"
         },
         {
+          "command": "agentResume.de.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'de'",
+          "group": "1_notes@import"
+        },
+        {
           "command": "agentResume.pt-br.openNote",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
           "group": "inline@1"
@@ -3916,6 +4045,11 @@
           "command": "agentResume.pt-br.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'pt-br'",
           "group": "inline@1"
+        },
+        {
+          "command": "agentResume.pt-br.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'pt-br'",
+          "group": "1_notes@import"
         },
         {
           "command": "agentResume.it.openNote",
@@ -3948,6 +4082,11 @@
           "group": "inline@1"
         },
         {
+          "command": "agentResume.it.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'it'",
+          "group": "1_notes@import"
+        },
+        {
           "command": "agentResume.ru.openNote",
           "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
           "group": "inline@1"
@@ -3976,6 +4115,11 @@
           "command": "agentResume.ru.newNote",
           "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'ru'",
           "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ru.importNotes",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session || viewItem == agentResume.notes.note) && agentResume.uiLocale == 'ru'",
+          "group": "1_notes@import"
         },
         {
           "command": "agentResume.openSession",

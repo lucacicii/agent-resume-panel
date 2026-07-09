@@ -16,8 +16,20 @@ import {
 import { sessionGtdKey } from "../catalog/gtd";
 import { AgentSession } from "../history/types";
 import { normalizeProjectPath } from "../projects/projectAliases";
-import { contentPreview, extractTitle, parseNoteDocument } from "./noteFrontmatter";
-import { nextNoteFilename, normalizeNoteFilename, rewriteAssetReferences } from "./noteNaming";
+import {
+  buildNoteDocument,
+  contentPreview,
+  extractTitle,
+  parseNoteDocument
+} from "./noteFrontmatter";
+import {
+  nextNoteFilename,
+  normalizeNoteFilename,
+  noteAssetsDirName,
+  noteStem,
+  rewriteAssetReferences,
+  uniqueNoteFilename
+} from "./noteNaming";
 import {
   absFromRelMdPath,
   NoteOwner,
@@ -37,6 +49,13 @@ import {
   writeNewNoteFile
 } from "./notesFs";
 import { reconcileNotesIndex } from "./notesReconcile";
+
+export interface ImportNotesResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+  records: NoteRecord[];
+}
 
 export class NotesStore {
   private sessionFlags = new Set<string>();
@@ -154,6 +173,87 @@ export class NotesStore {
     await upsertNoteRecord(this.dbPath, record);
     await this.refreshFlagsFromCacheInsert(record);
     return record;
+  }
+
+  /**
+   * Copy external Markdown files into an owner directory and index them.
+   * Optionally copies a sibling `{stem}.assets/` folder when present.
+   */
+  async importMarkdownFiles(owner: NoteOwner, sourcePaths: string[]): Promise<ImportNotesResult> {
+    const ownerDir = await ensureOwnerDir(this.panelHome, owner);
+    const existing = await listMarkdownFilenames(ownerDir);
+    const result: ImportNotesResult = { imported: 0, skipped: 0, errors: [], records: [] };
+
+    for (const sourcePath of sourcePaths) {
+      try {
+        if (!sourcePath.toLowerCase().endsWith(".md")) {
+          result.skipped += 1;
+          continue;
+        }
+        const sourceBase = path.basename(sourcePath);
+        const filename = uniqueNoteFilename(sourceBase, existing);
+        const raw = await fs.readFile(sourcePath, "utf8");
+        const doc = parseNoteDocument(raw);
+        const noteId = newNoteId();
+        const createdAtMs = Date.now();
+        const fm = {
+          id: noteId,
+          scope: owner.scope,
+          createdAt: new Date(createdAtMs).toISOString(),
+          projectPath: owner.scope === "project" ? owner.projectPath : owner.projectPath,
+          provider: owner.scope === "session" ? owner.provider : undefined,
+          sessionId: owner.scope === "session" ? owner.sessionId : undefined
+        };
+        let body = doc.body;
+        // Prefer keeping relative assets working: if filename changed, rewrite refs
+        // from original source stem to the final stem.
+        body = rewriteAssetReferences(body, sourceBase.endsWith(".md") ? sourceBase : `${sourceBase}.md`, filename);
+        // Also rewrite plain stem.assets if source used that form without rename path
+        const sourceStemAssets = `${noteStem(sourceBase)}.assets`;
+        const destAssetsName = noteAssetsDirName(filename);
+        if (sourceStemAssets !== destAssetsName) {
+          body = body.split(sourceStemAssets).join(destAssetsName);
+        }
+
+        const content = buildNoteDocument(fm, body);
+        const absPath = path.join(ownerDir, filename);
+        await fs.writeFile(absPath, content, "utf8");
+
+        const sourceAssets = path.join(path.dirname(sourcePath), noteAssetsDirName(sourceBase));
+        const destAssets = path.join(ownerDir, destAssetsName);
+        if (await pathExists(sourceAssets)) {
+          await copyDirectoryRecursive(sourceAssets, destAssets);
+        }
+
+        const mtime = await fileMtimeMs(absPath);
+        const record: NoteRecord = {
+          noteId,
+          scope: owner.scope,
+          provider: owner.scope === "session" ? owner.provider : undefined,
+          agentSessionId: owner.scope === "session" ? owner.sessionId : undefined,
+          projectPath: owner.scope === "project" ? owner.projectPath : owner.projectPath,
+          filename,
+          relDir: ownerRelDir(owner),
+          relMdPath: path.join("notes", ownerRelDir(owner), filename),
+          title: extractTitle(body),
+          contentPreview: contentPreview(body),
+          createdAtMs,
+          updatedAtMs: mtime,
+          fsMtimeMs: mtime
+        };
+        await upsertNoteRecord(this.dbPath, record);
+        await this.refreshFlagsFromCacheInsert(record);
+        existing.push(filename);
+        result.records.push(record);
+        result.imported += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.errors.push(`${path.basename(sourcePath)}: ${message}`);
+        result.skipped += 1;
+      }
+    }
+
+    return result;
   }
 
   async deleteNote(noteId: string): Promise<void> {
@@ -287,6 +387,20 @@ export class NotesStore {
       if (note.scope === "project" && note.projectPath) {
         this.projectFlags.add(normalizeProjectPath(note.projectPath));
       }
+    }
+  }
+}
+
+async function copyDirectoryRecursive(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirectoryRecursive(from, to);
+    } else if (entry.isFile()) {
+      await fs.copyFile(from, to);
     }
   }
 }

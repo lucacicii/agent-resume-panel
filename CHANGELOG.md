@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.2] - 2026-07-09
+
+#### 新增
+
+- **批量导入 Markdown 笔记**：Notes 视图标题栏与项目/会话节点支持 **Import Markdown…**；可多选 `.md` 或选择文件夹（导入顶层全部 `.md`）。
+- 导入为拷贝到本机 `panelHome/notes/...`；文件名冲突自动 `-2` / `-3`；若源旁存在 `{stem}.assets/` 会一并复制并尽量改写正文相对路径。
+
 ### [2.6.1] - 2026-07-09
 
 #### 新增
@@ -310,6 +317,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.2] - 2026-07-09
+
+#### Added
+
+- **Bulk import Markdown notes**: **Import Markdown…** on the Notes title bar and project/session nodes; multi-select `.md` files or pick a folder (top-level `.md` only).
+- Imports copy into local `panelHome/notes/...`; filename collisions get `-2` / `-3`; sibling `{stem}.assets/` folders are copied when present, with relative links rewritten when needed.
 
 ### [2.6.1] - 2026-07-09
 

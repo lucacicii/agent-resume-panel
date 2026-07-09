@@ -4,7 +4,7 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Alma** 历史会话；支持 **ACP Chat** 实时对话、**GTD** 状态管理、**多条 Markdown 笔记**（磁盘文件 + Catalog 索引），以及摘要 / 重命名 / Handoff 等辅助能力。
 
-当前版本：**2.6.1**
+当前版本：**2.6.2**
 
 > **无云端 · 纯本机存储（Local-first）**  
 > **本插件不提供、也不依赖自有云端服务**；会话索引、笔记、ACP 聊天等面板数据均为**纯本机存储**。  
@@ -108,13 +108,21 @@ Notes
 
 **标题栏**
 
-Filter · Clear Filter · New Note… · Refresh · Open Notes Folder · Settings
+Filter · Clear Filter · New Note… · **Import Markdown…** · Refresh · Open Notes Folder · Settings
 
 **单条笔记右键**
 
 Open · **Rename Note** · Delete Note · Reveal in File Explorer · Copy Path  
 
 （重命名会同步 `{stem}.assets/` 与文内相对路径。）
+
+**批量导入 Markdown**
+
+- 标题栏 **Import Markdown…**，或在项目 / 会话节点右键 **Import Markdown…**。
+- 可选多个 `.md` 文件，或选择**文件夹**（导入该目录下顶层全部 `.md`）。
+- 复制到目标 project/session 目录；文件名冲突时自动加 `-2`、`-3` 后缀。
+- 若源文件旁存在同名 `{stem}.assets/`，会一并复制；正文相对路径会尽量对齐。
+- 导入为**本机拷贝**，不修改你选中的源文件。
 
 **命名与资源**
 
@@ -402,8 +410,9 @@ Stored in `catalog.db` → `session_gtd`. Filterable in Search / Session Manager
 Multiple Markdown notes per session or project. **Disk is authoritative**; Catalog holds the index only.
 
 - Tree: **Projects** / **Sessions** → notes  
-- Toolbar: Filter · New · Refresh · Open Notes Folder  
+- Toolbar: Filter · New · **Import Markdown…** · Refresh · Open Notes Folder  
 - Note menu: Open · **Rename** (syncs assets + relative links) · Delete · Reveal · Copy path  
+- **Bulk import**: multi-select `.md` files or a folder (top-level `.md` only); copies into the chosen project/session; renames on conflict (`-2`, `-3`); copies sibling `{stem}.assets/` when present. Local copy only—source files unchanged.  
 - Default name: `YYYY-MM-DD-NN.md`; assets: `{stem}.assets/`  
 - **Insert Image into Note** copies into assets and inserts a relative link  
 - Openable in Finder / Obsidian / Typora, etc.  

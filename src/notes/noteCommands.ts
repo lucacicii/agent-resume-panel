@@ -9,6 +9,7 @@ import { t } from "../i18n";
 import { GtdTreeProvider } from "../gtd/gtdTree";
 import { SessionTreeProvider } from "../tree/sessionTree";
 import { noteAssetsDirName } from "./noteNaming";
+import { NoteOwner } from "./notesPaths";
 import { NotesStore } from "./notesStore";
 import { NotesTreeProvider, NotesTreeNode } from "./notesTree";
 
@@ -212,6 +213,146 @@ export async function newNoteFromNotesViewCommand(
   await openNoteRecord(notesStore, created);
   onChanged?.();
   void notesTree;
+}
+
+export async function importNotesCommand(
+  notesStore: NotesStore,
+  tree: SessionTreeProvider,
+  notesTree: NotesTreeProvider,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const owner = await resolveNoteOwnerForCommand(tree, notesTree, node);
+  if (!owner) {
+    return;
+  }
+
+  const uris = await vscode.window.showOpenDialog({
+    canSelectMany: true,
+    canSelectFiles: true,
+    canSelectFolders: true,
+    openLabel: t("dialog.importNotesOpenLabel"),
+    filters: { Markdown: ["md"] }
+  });
+  if (!uris?.length) {
+    return;
+  }
+
+  const sourcePaths: string[] = [];
+  for (const uri of uris) {
+    const fsPath = uri.fsPath;
+    try {
+      const stat = await fs.stat(fsPath);
+      if (stat.isDirectory()) {
+        const entries = await fs.readdir(fsPath, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.toLowerCase().endsWith(".md") && !entry.name.startsWith(".")) {
+            sourcePaths.push(path.join(fsPath, entry.name));
+          }
+        }
+      } else if (stat.isFile() && fsPath.toLowerCase().endsWith(".md")) {
+        sourcePaths.push(fsPath);
+      }
+    } catch {
+      // skip unreadable paths
+    }
+  }
+
+  if (!sourcePaths.length) {
+    vscode.window.showInformationMessage(t("notification.importNotesNoFiles"));
+    return;
+  }
+
+  const result = await notesStore.importMarkdownFiles(owner, sourcePaths);
+  onChanged?.();
+
+  if (result.imported > 0 && result.errors.length === 0) {
+    vscode.window.showInformationMessage(t("notification.importNotesSuccess", result.imported));
+  } else if (result.imported > 0) {
+    vscode.window.showWarningMessage(
+      t("notification.importNotesPartial", result.imported, result.skipped, result.errors.length)
+    );
+  } else {
+    const detail = result.errors[0] ? ` ${result.errors[0]}` : "";
+    vscode.window.showErrorMessage(t("notification.importNotesFailed") + detail);
+  }
+}
+
+async function resolveNoteOwnerForCommand(
+  tree: SessionTreeProvider,
+  notesTree: NotesTreeProvider,
+  node: unknown
+): Promise<NoteOwner | undefined> {
+  if (node && typeof node === "object" && "kind" in node) {
+    const n = node as NotesTreeNode;
+    if (n.kind === "project") {
+      return { scope: "project", projectPath: n.projectPath };
+    }
+    if (n.kind === "session") {
+      return {
+        scope: "session",
+        provider: n.provider as AgentSession["provider"],
+        sessionId: n.sessionId,
+        projectPath: n.projectPath
+      };
+    }
+    if (n.kind === "note") {
+      const note = n.note;
+      if (note.scope === "project" && note.projectPath) {
+        return { scope: "project", projectPath: note.projectPath };
+      }
+      if (note.scope === "session" && note.provider && note.agentSessionId) {
+        return {
+          scope: "session",
+          provider: note.provider as AgentSession["provider"],
+          sessionId: note.agentSessionId,
+          projectPath: note.projectPath
+        };
+      }
+    }
+  }
+
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: t("dialog.newNoteKindProject"), noteKind: "project" as const },
+      { label: t("dialog.newNoteKindSession"), noteKind: "session" as const }
+    ],
+    { title: t("dialog.importNotesTitle") }
+  );
+  if (!choice) {
+    return undefined;
+  }
+
+  if (choice.noteKind === "project") {
+    const projects = [...new Set(tree.getSessions().map((s) => s.projectPath).filter(Boolean))];
+    const picked = await vscode.window.showQuickPick(
+      projects.map((p) => ({ label: tree.getProjectDisplayName(p), description: p, path: p })),
+      { title: t("dialog.pickProjectForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+    );
+    if (!picked) {
+      return undefined;
+    }
+    return { scope: "project", projectPath: picked.path };
+  }
+
+  const sessions = tree.getSessions();
+  const picked = await vscode.window.showQuickPick(
+    sessions.map((s) => ({
+      label: s.title,
+      description: `${s.provider} · ${tree.getProjectDisplayName(s.projectPath)}`,
+      session: s
+    })),
+    { title: t("dialog.pickSessionForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+  );
+  if (!picked) {
+    return undefined;
+  }
+  return {
+    scope: "session",
+    provider: picked.session.provider,
+    sessionId: picked.session.id,
+    projectPath: picked.session.projectPath
+  };
 }
 
 export async function deleteNoteCommand(

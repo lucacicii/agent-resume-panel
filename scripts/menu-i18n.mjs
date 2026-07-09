@@ -29,6 +29,7 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.revealNoteInOS", key: "menu.notes.revealInOS" },
   { base: "agentResume.copyNotePath", key: "menu.notes.copyPath" },
   { base: "agentResume.newNote", key: "menu.notes.new" },
+  { base: "agentResume.importNotes", key: "menu.notes.import" },
   { base: "agentResume.filterNotes", key: "menu.notes.filter" },
   { base: "agentResume.clearNotesFilter", key: "menu.notes.clearFilter" },
   { base: "agentResume.refreshNotes", key: "menu.notes.refresh" },
