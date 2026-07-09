@@ -82,11 +82,78 @@ async function loadSessions() {
   }
 }
 
+/** @type {{ year: number, month: number }} month is 0-based */
+let calView = (() => {
+  const n = new Date();
+  return { year: n.getFullYear(), month: n.getMonth() };
+})();
+
+/** @type {any[]} */
+let calEntries = [];
+/** @type {string | null} YYYY-MM-DD */
+let selectedDayKey = null;
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function dayKeyFromDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function dayKeyFromMs(ms) {
+  return dayKeyFromDate(new Date(ms));
+}
+
+function monthRangeMs(year, month) {
+  // pad grid: 7 days before month start, 14 after end
+  const start = new Date(year, month, 1, 0, 0, 0, 0);
+  start.setDate(start.getDate() - 10);
+  const end = new Date(year, month + 1, 1, 0, 0, 0, 0);
+  end.setDate(end.getDate() + 14);
+  return { fromMs: start.getTime(), toMs: end.getTime() };
+}
+
+function filterLevel() {
+  return $("memoryLevel").value;
+}
+
+function entryDayKey(entry) {
+  if (entry.level === "daily" && typeof entry.id === "string" && entry.id.startsWith("daily:")) {
+    return entry.id.slice("daily:".length);
+  }
+  return dayKeyFromMs(entry.periodStartMs);
+}
+
+function buildDayIndex(entries, levelFilter) {
+  /** @type {Record<string, { daily?: any, weeklies: any[], monthlies: any[] }>} */
+  const map = {};
+  for (const e of entries) {
+    const level = e.level || "daily";
+    if (levelFilter !== "all" && level !== levelFilter) {
+      continue;
+    }
+    const key = entryDayKey(e);
+    if (!map[key]) {
+      map[key] = { weeklies: [], monthlies: [] };
+    }
+    if (level === "daily") {
+      map[key].daily = e;
+    } else if (level === "weekly") {
+      map[key].weeklies.push(e);
+    } else if (level === "monthly") {
+      map[key].monthlies.push(e);
+    }
+  }
+  return map;
+}
+
 function renderEntries(entries, scoreById) {
   const list = $("digestList");
+  list.hidden = false;
   list.innerHTML = "";
   if (!entries.length) {
-    list.innerHTML = `<p class="muted">暂无 memory 条目。先生成日报，再做周报/月报或语义搜索。</p>`;
+    list.innerHTML = `<p class="muted">无搜索结果。</p>`;
     return;
   }
   for (const e of entries) {
@@ -108,19 +175,181 @@ function renderEntries(entries, scoreById) {
   }
 }
 
-async function loadMemory() {
-  const level = $("memoryLevel").value;
-  try {
-    const entries = await agentResume.listMemory({
-      level: level === "all" ? undefined : level,
-      limit: 50
+function updateMonthLabel() {
+  $("calMonthLabel").textContent = `${calView.year} 年 ${calView.month + 1} 月`;
+}
+
+function renderCalendar() {
+  updateMonthLabel();
+  const grid = $("calendarGrid");
+  grid.innerHTML = "";
+  const levelFilter = filterLevel();
+  const index = buildDayIndex(calEntries, levelFilter);
+
+  const first = new Date(calView.year, calView.month, 1);
+  // Monday-based: getDay Sun=0 → convert
+  let startOffset = first.getDay() - 1;
+  if (startOffset < 0) {
+    startOffset = 6;
+  }
+  const gridStart = new Date(calView.year, calView.month, 1 - startOffset);
+  const todayKey = todayInputValue();
+
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+    const key = dayKeyFromDate(d);
+    const outside = d.getMonth() !== calView.month;
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "cal-cell";
+    if (outside) cell.classList.add("outside");
+    if (key === todayKey) cell.classList.add("today");
+    if (key === selectedDayKey) cell.classList.add("selected");
+    cell.dataset.day = key;
+
+    const marks = document.createElement("div");
+    marks.className = "marks";
+    const bucket = index[key];
+    if (bucket?.daily) {
+      const m = document.createElement("span");
+      m.className = "mark daily";
+      m.textContent = "D";
+      m.title = bucket.daily.title || bucket.daily.id;
+      marks.appendChild(m);
+    }
+    if (bucket?.weeklies?.length) {
+      const m = document.createElement("span");
+      m.className = "mark weekly";
+      m.textContent = "W";
+      m.title = bucket.weeklies.map((w) => w.title || w.id).join(", ");
+      marks.appendChild(m);
+    }
+    if (bucket?.monthlies?.length) {
+      const m = document.createElement("span");
+      m.className = "mark monthly";
+      m.textContent = "M";
+      m.title = bucket.monthlies.map((x) => x.title || x.id).join(", ");
+      marks.appendChild(m);
+    }
+
+    cell.innerHTML = `<span class="day-num">${d.getDate()}</span>`;
+    cell.appendChild(marks);
+    cell.addEventListener("click", () => selectDay(key));
+    grid.appendChild(cell);
+  }
+}
+
+function entriesForDay(dayKey) {
+  const levelFilter = filterLevel();
+  return calEntries.filter((e) => {
+    const level = e.level || "daily";
+    if (levelFilter !== "all" && level !== levelFilter) {
+      return false;
+    }
+    return entryDayKey(e) === dayKey;
+  });
+}
+
+function selectDay(dayKey) {
+  selectedDayKey = dayKey;
+  $("dailyDate").value = dayKey;
+  renderCalendar();
+  renderDayDetail(dayKey);
+}
+
+function renderDayDetail(dayKey) {
+  const detail = $("calDetail");
+  const items = entriesForDay(dayKey);
+  const daily = items.find((e) => e.level === "daily");
+  const weeklies = items.filter((e) => e.level === "weekly");
+  const monthlies = items.filter((e) => e.level === "monthly");
+
+  let html = `<h3>${escapeHtml(dayKey)}</h3>
+    <div class="detail-actions">
+      <button type="button" id="btnDetailGenDaily">生成 / 覆盖该日日报</button>
+    </div>`;
+
+  if (!items.length) {
+    html += `<p class="empty-hint">这一天还没有 digest。可点上方按钮生成日报。</p>`;
+    detail.innerHTML = html;
+    $("btnDetailGenDaily").addEventListener("click", () => {
+      $("dailyDate").value = dayKey;
+      runDaily();
     });
-    renderEntries(entries);
+    return;
+  }
+
+  const blocks = [];
+  if (daily) {
+    blocks.push(daily);
+  }
+  blocks.push(...weeklies, ...monthlies);
+
+  for (const e of blocks) {
+    const emb = e.embeddingJson ? " · embedding ✓" : "";
+    html += `
+      <article class="digest-card" style="margin-bottom:10px">
+        <h3><span class="badge ${escapeHtml(e.level)}">${escapeHtml(e.level)}</span>${escapeHtml(
+          e.title || e.id
+        )}</h3>
+        <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
+        <pre>${escapeHtml(e.content)}</pre>
+      </article>`;
+  }
+
+  detail.innerHTML = html;
+  $("btnDetailGenDaily").addEventListener("click", () => {
+    $("dailyDate").value = dayKey;
+    runDaily();
+  });
+}
+
+async function loadMemory() {
+  $("digestList").hidden = true;
+  $("digestList").innerHTML = "";
+  setStatus($("memoryStatus"), "");
+  try {
+    const { fromMs, toMs } = monthRangeMs(calView.year, calView.month);
+    calEntries = await agentResume.listMemory({
+      fromMs,
+      toMs,
+      limit: 300
+    });
+    renderCalendar();
+    if (selectedDayKey) {
+      renderDayDetail(selectedDayKey);
+    } else {
+      $("calDetail").innerHTML = `<p class="muted">点击日历上的日期查看 digests，或生成该日日报。</p>`;
+    }
   } catch (error) {
-    $("digestList").innerHTML = `<p class="status error">${escapeHtml(
+    $("calendarGrid").innerHTML = "";
+    $("calDetail").innerHTML = `<p class="status error">${escapeHtml(
       error instanceof Error ? error.message : String(error)
     )}</p>`;
   }
+}
+
+function shiftCalMonth(delta) {
+  let y = calView.year;
+  let m = calView.month + delta;
+  while (m < 0) {
+    m += 12;
+    y -= 1;
+  }
+  while (m > 11) {
+    m -= 12;
+    y += 1;
+  }
+  calView = { year: y, month: m };
+  loadMemory();
+}
+
+function goCalToday() {
+  const n = new Date();
+  calView = { year: n.getFullYear(), month: n.getMonth() };
+  selectedDayKey = todayInputValue();
+  $("dailyDate").value = selectedDayKey;
+  loadMemory();
 }
 
 async function runDaily() {
@@ -136,7 +365,13 @@ async function runDaily() {
       }${result.embedded ? " · embedded" : ""}`,
       "ok"
     );
-    $("memoryLevel").value = "daily";
+    if ($("dailyDate").value) {
+      selectedDayKey = $("dailyDate").value;
+      const parts = selectedDayKey.split("-").map(Number);
+      if (parts.length === 3) {
+        calView = { year: parts[0], month: parts[1] - 1 };
+      }
+    }
     await loadMemory();
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
@@ -156,7 +391,6 @@ async function runWeekly() {
       })${result.embedded ? " · embedded" : ""}`,
       "ok"
     );
-    $("memoryLevel").value = "weekly";
     await loadMemory();
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
@@ -176,8 +410,116 @@ async function runMonthly() {
       }/D${result.usedDailies})${result.embedded ? " · embedded" : ""}`,
       "ok"
     );
-    $("memoryLevel").value = "monthly";
     await loadMemory();
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function formatBackfillStats(label, s) {
+  if (!s) return "";
+  const fail = s.failed?.length || 0;
+  return `${label}: ok ${s.ok?.length || 0} / skip ${s.skipped?.length || 0} / fail ${fail} (planned ${s.planned?.length || 0})`;
+}
+
+async function previewBackfill() {
+  const status = $("backfillStatus");
+  const maxDays = Number($("backfillMaxDays").value) || 400;
+  const skipExisting = $("backfillSkipExisting").checked;
+  setStatus(status, "Scanning catalog…");
+  try {
+    const p = await agentResume.previewBackfillDigests({ maxDays, skipExisting });
+    setStatus(
+      status,
+      `Preview · sessions ${p.sessionRowsScanned} · days ${p.days.length} · weeks ${p.weeks.length} · months ${p.months.length} · ~${p.estimatedLlmCalls} LLM calls` +
+        (p.days.length
+          ? ` · range ${p.days[0]} → ${p.days[p.days.length - 1]}`
+          : " · no activity days"),
+      p.days.length ? "ok" : "error"
+    );
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function runBackfill() {
+  const status = $("backfillStatus");
+  const maxDays = Number($("backfillMaxDays").value) || 400;
+  const skipExisting = $("backfillSkipExisting").checked;
+  const skipEmbedding = $("backfillSkipEmbedding").checked;
+
+  setStatus(status, "Scanning…");
+  try {
+    const preview = await agentResume.previewBackfillDigests({ maxDays, skipExisting });
+    const ok = window.confirm(
+      `将批量生成历史 digests（日→周→月）。\n\n` +
+        `Sessions 扫描: ${preview.sessionRowsScanned}\n` +
+        `Days: ${preview.days.length} · Weeks: ${preview.weeks.length} · Months: ${preview.months.length}\n` +
+        `预计 LLM 调用: ~${preview.estimatedLlmCalls}\n` +
+        (preview.days.length
+          ? `日期范围: ${preview.days[0]} → ${preview.days[preview.days.length - 1]}\n`
+          : "") +
+        `\n可能较慢并产生 API 费用。是否继续？`
+    );
+    if (!ok) {
+      setStatus(status, "Cancelled");
+      return;
+    }
+
+    setStatus(status, "Backfilling (daily → weekly → monthly)… this may take a while");
+    const result = await agentResume.backfillDigests({
+      maxDays,
+      skipExisting,
+      skipEmbedding
+    });
+    const parts = [
+      formatBackfillStats("daily", result.daily),
+      formatBackfillStats("weekly", result.weekly),
+      formatBackfillStats("monthly", result.monthly)
+    ];
+    const fails =
+      (result.daily.failed?.length || 0) +
+      (result.weekly.failed?.length || 0) +
+      (result.monthly.failed?.length || 0);
+    if (fails && result.daily.failed?.[0]) {
+      console.warn("backfill failures", {
+        daily: result.daily.failed,
+        weekly: result.weekly.failed,
+        monthly: result.monthly.failed
+      });
+    }
+    setStatus(status, parts.join(" · "), fails ? "error" : "ok");
+    await loadMemory();
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function runGtdSync() {
+  const status = $("gtdSyncStatus");
+  const ensureDigests = $("ensureDigests").checked;
+  const ok = window.confirm(
+    "将由 AI 直接改写 catalog 中的 GTD 状态，并覆盖写入 notes 下的 todolist.md。\n操作会标记为 AI 执行。是否继续？"
+  );
+  if (!ok) {
+    return;
+  }
+  setStatus(status, "Running Memory→GTD sync (AI)…");
+  try {
+    const result = await agentResume.runMemoryGtdSync({ ensureDigests });
+    const sample = result.applied[0]?.todolistPath || "";
+    setStatus(
+      status,
+      `AI applied ${result.applied.length} session(s)` +
+        (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
+        (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
+        (result.ensureDigest?.ran ? " · daily generated" : "") +
+        (sample ? ` · e.g. ${sample}` : ""),
+      result.applied.length || !result.warnings.length ? "ok" : "error"
+    );
+    if (result.warnings.length) {
+      console.warn("gtd sync warnings", result.warnings);
+    }
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -282,13 +624,190 @@ async function saveSettingsForm() {
   }
 }
 
+/** @type {Array<{ role: 'user'|'assistant', content: string, citations?: any[], fallback?: boolean }>} */
+let chatTurns = [];
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // fallback
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    return true;
+  }
+}
+
+function renderChat() {
+  const log = $("chatLog");
+  log.innerHTML = "";
+  if (!chatTurns.length) {
+    log.innerHTML = `<p class="muted">向 Meta-Agent 提问。先生成 Daily/Weekly digests 效果更好。</p>`;
+    return;
+  }
+
+  for (let i = 0; i < chatTurns.length; i++) {
+    const turn = chatTurns[i];
+    const bubble = document.createElement("div");
+    bubble.className = `chat-bubble ${turn.role}`;
+    if (turn.role === "user") {
+      bubble.textContent = turn.content;
+      log.appendChild(bubble);
+      continue;
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "chat-meta";
+    meta.textContent = turn.fallback
+      ? "Assistant · fallback retrieval (recent digests)"
+      : "Assistant · memory retrieval";
+    bubble.appendChild(meta);
+
+    const body = document.createElement("div");
+    body.textContent = turn.content;
+    bubble.appendChild(body);
+
+    if (turn.citations?.length) {
+      const list = document.createElement("div");
+      list.className = "citation-list";
+      for (const c of turn.citations) {
+        const chip = document.createElement("div");
+        chip.className = "citation-chip";
+        const sess = c.session
+          ? ` · ${c.session.provider}/${String(c.session.id).slice(0, 10)}…`
+          : "";
+        const score = c.score != null ? ` · ${Number(c.score).toFixed(3)}` : "";
+        chip.textContent = `[${c.index}] ${c.level} · ${c.title}${score}${sess}`;
+        list.appendChild(chip);
+      }
+      bubble.appendChild(list);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "chat-actions";
+
+    const btnCopy = document.createElement("button");
+    btnCopy.type = "button";
+    btnCopy.textContent = "Copy answer";
+    btnCopy.addEventListener("click", async () => {
+      await copyText(turn.content);
+      setStatus($("agentStatus"), "Answer copied", "ok");
+    });
+    actions.appendChild(btnCopy);
+
+    const session = (turn.citations || []).find((c) => c.session)?.session;
+    const btnResume = document.createElement("button");
+    btnResume.type = "button";
+    btnResume.textContent = "Copy resume cmd";
+    btnResume.disabled = !session;
+    btnResume.title = session ? "" : "No linked session on citations (daily digests with links work best)";
+    btnResume.addEventListener("click", async () => {
+      if (!session) return;
+      try {
+        const res = await agentResume.buildResumeCommand({
+          provider: session.provider,
+          id: session.id
+        });
+        await copyText(res.command);
+        setStatus($("agentStatus"), "Resume command copied", "ok");
+      } catch (error) {
+        setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
+      }
+    });
+    actions.appendChild(btnResume);
+
+    const btnBrief = document.createElement("button");
+    btnBrief.type = "button";
+    btnBrief.textContent = "Copy handoff brief";
+    btnBrief.addEventListener("click", async () => {
+      try {
+        const prevUser = [...chatTurns].slice(0, i).reverse().find((t) => t.role === "user");
+        const res = await agentResume.buildHandoffBrief({
+          query: prevUser?.content,
+          answer: turn.content,
+          citations: turn.citations || []
+        });
+        await copyText(res.markdown);
+        setStatus($("agentStatus"), "Handoff brief copied", "ok");
+      } catch (error) {
+        setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
+      }
+    });
+    actions.appendChild(btnBrief);
+
+    bubble.appendChild(actions);
+    log.appendChild(bubble);
+  }
+
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sendAgent() {
+  const input = $("agentInput");
+  const query = input.value.trim();
+  if (!query) {
+    return;
+  }
+
+  chatTurns.push({ role: "user", content: query });
+  input.value = "";
+  renderChat();
+  setStatus($("agentStatus"), "Thinking…");
+
+  const history = chatTurns
+    .filter((t) => t.role === "user" || t.role === "assistant")
+    .slice(0, -1)
+    .map((t) => ({ role: t.role, content: t.content }));
+
+  try {
+    const result = await agentResume.askAgent({ query, history });
+    chatTurns.push({
+      role: "assistant",
+      content: result.answer,
+      citations: result.citations || [],
+      fallback: result.fallback
+    });
+    renderChat();
+    setStatus(
+      $("agentStatus"),
+      result.fallback
+        ? `Done · ${result.citations?.length || 0} sources · fallback retrieval`
+        : `Done · ${result.citations?.length || 0} sources`,
+      "ok"
+    );
+  } catch (error) {
+    chatTurns.pop();
+    renderChat();
+    setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function clearChat() {
+  chatTurns = [];
+  renderChat();
+  setStatus($("agentStatus"), "");
+}
+
 function wire() {
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
   $("btnRefreshSessions").addEventListener("click", () => loadSessions());
   $("btnRefreshMemory").addEventListener("click", () => loadMemory());
-  $("memoryLevel").addEventListener("change", () => loadMemory());
+  $("memoryLevel").addEventListener("change", () => {
+    renderCalendar();
+    if (selectedDayKey) {
+      renderDayDetail(selectedDayKey);
+    }
+  });
+  $("btnCalPrev").addEventListener("click", () => shiftCalMonth(-1));
+  $("btnCalNext").addEventListener("click", () => shiftCalMonth(1));
+  $("btnCalToday").addEventListener("click", () => goCalToday());
   $("btnRunDaily").addEventListener("click", () => runDaily());
   $("btnRunWeekly").addEventListener("click", () => runWeekly());
   $("btnRunMonthly").addEventListener("click", () => runMonthly());
@@ -299,12 +818,24 @@ function wire() {
     }
   });
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
+  $("btnGtdSync").addEventListener("click", () => runGtdSync());
+  $("btnBackfillPreview").addEventListener("click", () => previewBackfill());
+  $("btnBackfillRun").addEventListener("click", () => runBackfill());
+  $("btnAgentSend").addEventListener("click", () => sendAgent());
+  $("btnClearChat").addEventListener("click", () => clearChat());
+  $("agentInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      sendAgent();
+    }
+  });
 }
 
 async function boot() {
   wire();
   $("dailyDate").value = todayInputValue();
   $("monthKey").value = monthInputValue();
+  renderChat();
   await loadPanelHome();
   await loadSettingsForm();
   await loadSessions();

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  AgentCitation,
   AgentSession,
+  AskMetaAgentResult,
   MemoryEntry,
   MemorySearchHit,
   PanelSettings,
@@ -16,7 +18,12 @@ export interface DesktopApi {
     settings: PanelSettings
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean }>;
   listSessions(limit?: number): Promise<AgentSession[]>;
-  listMemory(opts?: { level?: string; limit?: number }): Promise<MemoryEntry[]>;
+  listMemory(opts?: {
+    level?: string;
+    limit?: number;
+    fromMs?: number;
+    toMs?: number;
+  }): Promise<MemoryEntry[]>;
   listDailyDigests(limit?: number): Promise<MemoryEntry[]>;
   runDailyDigest(date?: string): Promise<RunDailyDigestResult>;
   runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
@@ -26,6 +33,62 @@ export interface DesktopApi {
     level?: string;
     limit?: number;
   }): Promise<MemorySearchHit[]>;
+  askAgent(args: {
+    query: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+  }): Promise<AskMetaAgentResult>;
+  buildResumeCommand(args: {
+    provider: string;
+    id: string;
+  }): Promise<{ command: string; session: AgentSession }>;
+  buildHandoffBrief(args: {
+    query?: string;
+    answer?: string;
+    citations: AgentCitation[];
+  }): Promise<{
+    markdown: string;
+    resumeCommand?: string;
+    targetSession?: { provider: string; id: string; projectPath: string };
+  }>;
+  runMemoryGtdSync(args?: {
+    ensureDigests?: boolean;
+  }): Promise<{
+    applied: Array<{
+      provider: string;
+      sessionId: string;
+      previousStatus: string | null;
+      newStatus: string;
+      reason: string;
+      todolistPath?: string;
+      title?: string;
+    }>;
+    skipped: string[];
+    warnings: string[];
+    ensureDigest?: { ran: boolean; jobKey?: string };
+    jobKey: string;
+  }>;
+  previewBackfillDigests(args?: {
+    maxDays?: number;
+    skipExisting?: boolean;
+    minSessionsPerDay?: number;
+  }): Promise<{
+    days: string[];
+    weeks: string[];
+    months: string[];
+    sessionRowsScanned: number;
+    estimatedLlmCalls: number;
+  }>;
+  backfillDigests(args?: {
+    maxDays?: number;
+    skipExisting?: boolean;
+    skipEmbedding?: boolean;
+    minSessionsPerDay?: number;
+  }): Promise<{
+    daily: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
+    weekly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
+    monthly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
+    sessionRowsScanned: number;
+  }>;
 }
 
 const api: DesktopApi = {
@@ -38,7 +101,13 @@ const api: DesktopApi = {
   runDailyDigest: (date) => ipcRenderer.invoke("memory:runDaily", date),
   runWeeklyDigest: (weekKey) => ipcRenderer.invoke("memory:runWeekly", weekKey),
   runMonthlyDigest: (monthKey) => ipcRenderer.invoke("memory:runMonthly", monthKey),
-  searchMemory: (args) => ipcRenderer.invoke("memory:search", args)
+  searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
+  askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
+  buildResumeCommand: (args) => ipcRenderer.invoke("agent:resumeCommand", args),
+  buildHandoffBrief: (args) => ipcRenderer.invoke("agent:handoffBrief", args),
+  runMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:runMemoryGtdSync", args),
+  previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
+  backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args)
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);

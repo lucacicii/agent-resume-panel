@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { runSqlite } from "../sqlite";
 import { MEMORY_MIGRATION_SQL, MEMORY_SCHEMA_SQL } from "../memory/schema";
+import { GTD_AND_NOTES_SCHEMA_SQL } from "./extraSchema";
 
 /** Minimal sessions table so desktop can open a fresh panelHome; extension owns full migrations. */
 const SESSIONS_SCHEMA_SQL = `
@@ -33,8 +34,15 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
 
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {
   await fs.mkdir(path.dirname(dbPath), { recursive: true });
+  // WAL improves concurrent readers (extension) + writer (Desktop)
+  try {
+    await runSqlite(dbPath, "PRAGMA journal_mode=WAL;");
+  } catch {
+    // ignore if filesystem disallows WAL
+  }
   await runSqlite(dbPath, SESSIONS_SCHEMA_SQL);
   await runSqlite(dbPath, MEMORY_SCHEMA_SQL);
+  await runSqlite(dbPath, GTD_AND_NOTES_SCHEMA_SQL);
   await runMemoryMigrations(dbPath);
 }
 

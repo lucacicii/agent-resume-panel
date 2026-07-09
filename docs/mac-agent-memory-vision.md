@@ -282,7 +282,8 @@ agent-resume-panel/
 | **Phase 0** | 讨论固化 → 本文档 |
 | **v0.1** | 见 §6.1（core + Daily 手动 + Electron Sessions + settings.json） |
 | **v0.2** | Weekly/Monthly 跑通；向量检索可用；Memory 看板；定时（默认仍关）— **feature 分支已实现** |
-| **v0.3 / Phase 3** | Meta-Agent 对话：digests + 向量问答、引用溯源、handoff / resume brief |
+| **v0.3 / Phase 3** | Meta-Agent 对话：digests + 向量问答、引用溯源、handoff / resume brief — **feature 分支已实现** |
+| **v0.4** | Memory→GTD 直写（AI 标记）+ panelHome notes `todolist.md` — **Desktop/core only，不改扩展代码** |
 | **Phase 4** | Logical Work Thread、智能路由、可选 ACP 内嵌 |
 
 ---

@@ -19,6 +19,7 @@
       <nav class="tabs">
         <button type="button" class="tab active" data-tab="sessions">Sessions</button>
         <button type="button" class="tab" data-tab="memory">Memory</button>
+        <button type="button" class="tab" data-tab="agent">Agent</button>
         <button type="button" class="tab" data-tab="settings">Settings</button>
       </nav>
     </header>
@@ -48,46 +49,123 @@
       <section id="tab-memory" class="panel">
         <div class="toolbar">
           <h2>Memory</h2>
-          <div class="row">
+          <div class="row cal-nav">
+            <button type="button" id="btnCalPrev" title="上月">←</button>
+            <button type="button" id="btnCalToday">今天</button>
+            <button type="button" id="btnCalNext" title="下月">→</button>
+            <strong id="calMonthLabel">—</strong>
             <select id="memoryLevel">
-              <option value="all">All levels</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              <option value="all">标记：全部</option>
+              <option value="daily">仅日报</option>
+              <option value="weekly">仅周报</option>
+              <option value="monthly">仅月报</option>
             </select>
             <button type="button" id="btnRefreshMemory">Refresh</button>
           </div>
         </div>
 
-        <div class="card-grid">
-          <div class="card">
-            <h3>生成</h3>
-            <div class="form-row">
-              <label>Daily <input type="date" id="dailyDate" /></label>
-              <button type="button" id="btnRunDaily">生成 / 覆盖日报</button>
+        <div class="cal-layout">
+          <div class="cal-main">
+            <div class="cal-weekdays">
+              <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
             </div>
-            <div class="form-row">
-              <label>Weekly (YYYY-Www) <input type="text" id="weekKey" placeholder="留空=本周" /></label>
-              <button type="button" id="btnRunWeekly">生成 / 覆盖周报</button>
-            </div>
-            <div class="form-row">
-              <label>Monthly <input type="month" id="monthKey" /></label>
-              <button type="button" id="btnRunMonthly">生成 / 覆盖月报</button>
-            </div>
-            <p class="muted">周报优先吃区间内日报；月报优先周报。同 period 重跑会覆盖。</p>
+            <div id="calendarGrid" class="cal-grid"></div>
+            <p class="muted cal-legend">
+              <span class="dot daily"></span>日报
+              <span class="dot weekly"></span>周报(周一)
+              <span class="dot monthly"></span>月报(1日)
+            </p>
           </div>
-          <div class="card">
-            <h3>语义搜索</h3>
-            <div class="form-row">
-              <input type="search" id="searchQuery" placeholder="例如：上周 payment 改了什么" />
-              <button type="button" id="btnSearch">搜索</button>
-            </div>
-            <p class="muted">需配置 embedding；仅有 embedding 的 digest 会参与排序。重新生成可写入向量。</p>
-          </div>
+          <aside class="cal-detail" id="calDetail">
+            <p class="muted">点击日历上的日期查看 digests，或生成该日日报。</p>
+          </aside>
         </div>
 
         <p class="status" id="memoryStatus"></p>
-        <div id="digestList" class="digest-list"></div>
+        <div id="digestList" class="digest-list search-results" hidden></div>
+
+        <details class="tools-fold" id="memoryTools">
+          <summary>工具：生成 · 回填 · 搜索 · GTD</summary>
+          <div class="card-grid">
+            <div class="card">
+              <h3>生成</h3>
+              <div class="form-row">
+                <label>Daily <input type="date" id="dailyDate" /></label>
+                <button type="button" id="btnRunDaily">生成 / 覆盖日报</button>
+              </div>
+              <div class="form-row">
+                <label>Weekly (YYYY-Www) <input type="text" id="weekKey" placeholder="留空=本周" /></label>
+                <button type="button" id="btnRunWeekly">生成 / 覆盖周报</button>
+              </div>
+              <div class="form-row">
+                <label>Monthly <input type="month" id="monthKey" /></label>
+                <button type="button" id="btnRunMonthly">生成 / 覆盖月报</button>
+              </div>
+              <p class="muted">周报优先吃区间内日报；月报优先周报。同 period 重跑会覆盖。</p>
+            </div>
+            <div class="card">
+              <h3>批量回填历史 digests</h3>
+              <p class="muted">
+                扫描 catalog 中所有 session 的日期，按日 → 周 → 月批量生成（会多次调用 LLM）。
+              </p>
+              <div class="form-row">
+                <label>
+                  最多处理天数
+                  <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="backfillSkipExisting" checked />
+                  跳过已有成功 digest
+                </label>
+                <label class="check">
+                  <input type="checkbox" id="backfillSkipEmbedding" checked />
+                  跳过 embedding
+                </label>
+              </div>
+              <div class="form-row">
+                <button type="button" id="btnBackfillPreview">预览范围</button>
+                <button type="button" id="btnBackfillRun">开始批量生成</button>
+              </div>
+              <p class="status" id="backfillStatus"></p>
+            </div>
+            <div class="card">
+              <h3>语义搜索</h3>
+              <div class="form-row">
+                <input type="search" id="searchQuery" placeholder="例如：上周 payment 改了什么" />
+                <button type="button" id="btnSearch">搜索</button>
+              </div>
+              <p class="muted">结果以列表显示在下方；需配置 embedding。</p>
+            </div>
+            <div class="card">
+              <h3>Memory → GTD + todolist</h3>
+              <p class="muted">AI 直接写 session_gtd 与 notes/…/todolist.md（标明 AI）。</p>
+              <div class="form-row">
+                <label class="check">
+                  <input type="checkbox" id="ensureDigests" checked />
+                  若今日尚无日报则先生成 daily
+                </label>
+                <button type="button" id="btnGtdSync">同步 GTD + todolist</button>
+              </div>
+              <p class="status" id="gtdSyncStatus"></p>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section id="tab-agent" class="panel">
+        <div class="toolbar">
+          <h2>Meta-Agent</h2>
+          <button type="button" id="btnClearChat">Clear chat</button>
+        </div>
+        <p class="muted">
+          基于 Memory digests 回答（优先语义检索；无向量时用最近日报/周报）。不会改代码，可复制 resume 命令与 handoff brief。
+        </p>
+        <div id="chatLog" class="chat-log"></div>
+        <div class="chat-compose">
+          <textarea id="agentInput" rows="3" placeholder="例如：上周做了什么？payment 卡在哪？"></textarea>
+          <button type="button" id="btnAgentSend">Send</button>
+        </div>
+        <p class="status" id="agentStatus"></p>
       </section>
 
       <section id="tab-settings" class="panel">

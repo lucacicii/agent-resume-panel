@@ -158,3 +158,47 @@ export async function upsertMemoryJob(
      VALUES ('${escapeSqlLiteral(jobKey)}', '${escapeSqlLiteral(status)}', ${errSql}, ${now});`
   );
 }
+
+export interface MemoryLinkRow {
+  memoryId: string;
+  provider: string | null;
+  agentSessionId: string | null;
+  projectPath: string | null;
+}
+
+export async function listMemoryLinks(dbPath: string, memoryId: string): Promise<MemoryLinkRow[]> {
+  const rows = await runSqliteJson<{
+    memory_id: string;
+    provider: string | null;
+    agent_session_id: string | null;
+    project_path: string | null;
+  }>(
+    dbPath,
+    `SELECT memory_id, provider, agent_session_id, project_path
+     FROM memory_links
+     WHERE memory_id = '${escapeSqlLiteral(memoryId)}'
+     LIMIT 50;`
+  );
+
+  return rows.map((row) => ({
+    memoryId: row.memory_id,
+    provider: row.provider,
+    agentSessionId: row.agent_session_id,
+    projectPath: row.project_path
+  }));
+}
+
+export async function getMemoryEntryById(
+  dbPath: string,
+  id: string
+): Promise<MemoryEntry | undefined> {
+  const rows = await runSqliteJson<MemoryEntryRow>(
+    dbPath,
+    `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+     FROM memory_entries
+     WHERE id = '${escapeSqlLiteral(id)}'
+     LIMIT 1;`
+  );
+  const row = rows[0];
+  return row ? rowToEntry(row) : undefined;
+}

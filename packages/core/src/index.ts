@@ -45,8 +45,11 @@ export {
   listMemoryEntriesInRange,
   insertMemoryEntry,
   upsertMemoryJob,
-  getMemoryJobStatus
+  getMemoryJobStatus,
+  listMemoryLinks,
+  getMemoryEntryById
 } from "./memory/store";
+export type { MemoryLinkRow } from "./memory/store";
 export { runDailyDigest, localDayRange } from "./memory/daily";
 export type { RunDailyDigestOptions, RunDailyDigestResult } from "./memory/daily";
 export {
@@ -73,3 +76,45 @@ export {
   formatTranscript,
   truncateTranscript
 } from "./transcript/load";
+
+export type {
+  AgentCitation,
+  AgentSessionRef,
+  AskMetaAgentOptions,
+  AskMetaAgentResult,
+  BuildHandoffBriefOptions
+} from "./agent/types";
+export { retrieveAgentContext } from "./agent/retrieve";
+export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
+export { askMetaAgent } from "./agent/ask";
+export { buildResumeCommand, buildResumeCommandFromRef } from "./agent/resumeCommand";
+export { buildMemoryHandoffBrief } from "./agent/brief";
+
+export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
+export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
+export {
+  getSessionGtdStatus,
+  setSessionGtdStatus,
+  loadSessionGtdMap,
+  sessionGtdKey
+} from "./gtd/store";
+export { writeSessionTodolistMd } from "./notes/todolist";
+export {
+  sessionTodolistAbsPath,
+  sessionTodolistRelMdPath,
+  sessionDirKey
+} from "./notes/paths";
+export { runMemoryGtdSync } from "./workflow/runMemoryGtdSync";
+export type { RunMemoryGtdSyncOptions, RunMemoryGtdSyncResult } from "./workflow/runMemoryGtdSync";
+export { analyzeMemoryForGtd } from "./workflow/analyzeGtd";
+export {
+  backfillMemoryDigests,
+  previewBackfillMemoryDigests,
+  listActivityPeriods,
+  localDateKeyFromMs
+} from "./workflow/backfillDigests";
+export type {
+  BackfillMemoryDigestsOptions,
+  BackfillMemoryDigestsResult,
+  BackfillLevelStats
+} from "./workflow/backfillDigests";
