@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Resume Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>Agent Resume Desktop</h1>
+        <p class="muted" id="panelHomeLabel">panelHome: …</p>
+      </div>
+      <nav class="tabs">
+        <button type="button" class="tab active" data-tab="sessions">Sessions</button>
+        <button type="button" class="tab" data-tab="memory">Memory</button>
+        <button type="button" class="tab" data-tab="settings">Settings</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="tab-sessions" class="panel active">
+        <div class="toolbar">
+          <h2>Sessions</h2>
+          <button type="button" id="btnRefreshSessions">Refresh</button>
+        </div>
+        <p class="muted" id="sessionsMeta"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Provider</th>
+                <th>Project</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody id="sessionsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-memory" class="panel">
+        <div class="toolbar">
+          <h2>Daily Memory</h2>
+          <div class="row">
+            <button type="button" id="btnRunDaily">生成今日回顾</button>
+            <button type="button" id="btnRefreshMemory">Refresh</button>
+          </div>
+        </div>
+        <p class="status" id="memoryStatus"></p>
+        <div id="digestList" class="digest-list"></div>
+      </section>
+
+      <section id="tab-settings" class="panel">
+        <div class="toolbar">
+          <h2>Settings</h2>
+          <button type="button" id="btnSaveSettings">Save</button>
+        </div>
+        <p class="muted">
+          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用 panelHome）。API key
+          v0.1 明文存储，请注意本机安全。
+        </p>
+        <form id="settingsForm" class="form">
+          <label>
+            Panel home
+            <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
+          </label>
+          <fieldset>
+            <legend>LLM (OpenAI-compatible chat)</legend>
+            <label>Base URL <input name="llmBaseUrl" type="text" /></label>
+            <label>Model <input name="llmModel" type="text" /></label>
+            <label>API Key <input name="llmApiKey" type="password" autocomplete="off" /></label>
+            <label>Output language <input name="llmLang" type="text" placeholder="zh-CN" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Embedding (OpenAI-compatible)</legend>
+            <label>Base URL (optional) <input name="embBaseUrl" type="text" placeholder="same as LLM" /></label>
+            <label>Model <input name="embModel" type="text" /></label>
+            <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
+          </fieldset>
+        </form>
+        <p class="status" id="settingsStatus"></p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

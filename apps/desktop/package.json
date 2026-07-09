@@ -1,0 +1,20 @@
+{
+  "name": "@agent-resume/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-renderer.cjs",
+    "dev": "npm run build && electron .",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@agent-resume/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "electron": "^35.2.1",
+    "typescript": "^5.9.3"
+  }
+}
