@@ -169,6 +169,7 @@ function ensureSubmenus(pkg, handoffSubmenu, catalogs) {
   const localized = buildLocalizedContextSubmenus(catalogs);
   const submenus = (pkg.contributes.submenus ?? []).filter(
     (item) =>
+      item.id !== handoffSubmenu.id &&
       !/^agentResume\.(projectMore|sessionMore|sessionSort|projectSort)(\.|$)/.test(item.id)
   );
   submenus.push(...localized, handoffSubmenu);

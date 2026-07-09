@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, GTD, multi-note Markdown files (disk + catalog index), project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.6.3",
+  "version": "2.6.4",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -1667,52 +1667,62 @@
       {
         "command": "agentResume.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.zh-cn.newNote",
         "title": "新建笔记…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.ja.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.ko.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.es.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.fr.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.de.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.pt-br.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.it.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.ru.newNote",
         "title": "New Note…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(plus)"
       },
       {
         "command": "agentResume.importNotes",
@@ -1723,247 +1733,296 @@
       {
         "command": "agentResume.zh-cn.importNotes",
         "title": "批量导入 Markdown…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.ja.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.ko.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.es.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.fr.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.de.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.pt-br.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.it.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.ru.importNotes",
         "title": "Import Markdown Notes…",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
       },
       {
         "command": "agentResume.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.zh-cn.filterNotes",
         "title": "筛选笔记",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.ja.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.ko.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.es.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.fr.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.de.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.pt-br.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.it.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.ru.filterNotes",
         "title": "Filter Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(filter)"
       },
       {
         "command": "agentResume.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.zh-cn.clearNotesFilter",
         "title": "清除筛选",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.ja.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.ko.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.es.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.fr.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.de.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.pt-br.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.it.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.ru.clearNotesFilter",
         "title": "Clear Notes Filter",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
       },
       {
         "command": "agentResume.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.zh-cn.refreshNotes",
         "title": "刷新笔记",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.ja.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.ko.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.es.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.fr.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.de.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.pt-br.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.it.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.ru.refreshNotes",
         "title": "Refresh Notes",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.zh-cn.openNotesFolder",
         "title": "打开笔记文件夹",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.ja.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.ko.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.es.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.fr.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.de.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.pt-br.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.it.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.ru.openNotesFolder",
         "title": "Open Notes Folder",
-        "category": "Agent Resume"
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "agentResume.insertNoteImage",
@@ -3067,46 +3126,6 @@
       }
     ],
     "submenus": [
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
-      {
-        "id": "agentResume.handoffTo",
-        "label": "Hand Off to Another Agent"
-      },
       {
         "id": "agentResume.projectMore",
         "label": "Show More"

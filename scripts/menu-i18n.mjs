@@ -28,12 +28,12 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.deleteNote", key: "menu.notes.delete" },
   { base: "agentResume.revealNoteInOS", key: "menu.notes.revealInOS" },
   { base: "agentResume.copyNotePath", key: "menu.notes.copyPath" },
-  { base: "agentResume.newNote", key: "menu.notes.new" },
-  { base: "agentResume.importNotes", key: "menu.notes.import" },
-  { base: "agentResume.filterNotes", key: "menu.notes.filter" },
-  { base: "agentResume.clearNotesFilter", key: "menu.notes.clearFilter" },
-  { base: "agentResume.refreshNotes", key: "menu.notes.refresh" },
-  { base: "agentResume.openNotesFolder", key: "menu.notes.openFolder" },
+  { base: "agentResume.newNote", key: "menu.notes.new", icon: "$(plus)" },
+  { base: "agentResume.importNotes", key: "menu.notes.import", icon: "$(desktop-download)" },
+  { base: "agentResume.filterNotes", key: "menu.notes.filter", icon: "$(filter)" },
+  { base: "agentResume.clearNotesFilter", key: "menu.notes.clearFilter", icon: "$(clear-all)" },
+  { base: "agentResume.refreshNotes", key: "menu.notes.refresh", icon: "$(refresh)" },
+  { base: "agentResume.openNotesFolder", key: "menu.notes.openFolder", icon: "$(folder-opened)" },
   { base: "agentResume.insertNoteImage", key: "menu.notes.insertImage" },
   { base: "agentResume.configureSessionMenu", key: "menu.configureSessionMenu" },
   { base: "agentResume.openInCodexApp", key: "menu.resumeInCodexApp" },
@@ -136,11 +136,15 @@ export function buildLocalizedContextMenuCommands(catalogs) {
         continue;
       }
       seen.add(command);
-      commands.push({
+      const entry = {
         command,
         title: titleForKey(catalogs, locale, spec.key),
         category: "Agent Resume"
-      });
+      };
+      if (spec.icon) {
+        entry.icon = spec.icon;
+      }
+      commands.push(entry);
     }
   }
 

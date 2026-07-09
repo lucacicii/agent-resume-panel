@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.4]
+
+#### 变更
+
+- **Notes 标题栏**：筛选 / 清除筛选 / 新建 / 导入 / 刷新 / 打开文件夹 改为与 Sessions 一致——默认只显示图标，鼠标悬停显示本地化文案（保留 UI Language 多语言）。
+
 ### [2.6.3]
 
 - 无功能更新。
@@ -321,6 +327,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.4]
+
+#### Changed
+
+- **Notes title bar**: Filter / Clear filter / New / Import / Refresh / Open folder now match Sessions — icons only by default, localized titles on hover (UI Language still applies).
 
 ### [2.6.3]
 
