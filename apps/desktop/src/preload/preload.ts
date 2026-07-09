@@ -50,8 +50,38 @@ export interface DesktopApi {
     resumeCommand?: string;
     targetSession?: { provider: string; id: string; projectPath: string };
   }>;
-  runMemoryGtdSync(args?: {
+  previewMemoryGtdSync(args?: {
     ensureDigests?: boolean;
+  }): Promise<{
+    previewId: string;
+    proposals: Array<{
+      provider: string;
+      sessionId: string;
+      title: string;
+      projectPath: string;
+      previousGtd: string | null;
+      proposedGtd: string;
+      reason: string;
+      tasks: string[];
+      sourceMemoryIds: string[];
+      todolistPreview: string;
+    }>;
+    skipped: string[];
+    warnings: string[];
+    ensureDigest?: { ran: boolean; jobKey?: string };
+  }>;
+  applyMemoryGtdSync(args: {
+    items: Array<{
+      provider: string;
+      sessionId: string;
+      gtd: string;
+      reason: string;
+      tasks: string[];
+      sourceMemoryIds: string[];
+      title?: string;
+      projectPath?: string;
+      previousGtd?: string | null;
+    }>;
   }): Promise<{
     applied: Array<{
       provider: string;
@@ -62,9 +92,7 @@ export interface DesktopApi {
       todolistPath?: string;
       title?: string;
     }>;
-    skipped: string[];
-    warnings: string[];
-    ensureDigest?: { ran: boolean; jobKey?: string };
+    failed: Array<{ key: string; error: string }>;
     jobKey: string;
   }>;
   previewBackfillDigests(args?: {
@@ -105,7 +133,8 @@ const api: DesktopApi = {
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   buildResumeCommand: (args) => ipcRenderer.invoke("agent:resumeCommand", args),
   buildHandoffBrief: (args) => ipcRenderer.invoke("agent:handoffBrief", args),
-  runMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:runMemoryGtdSync", args),
+  previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),
+  applyMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:applyMemoryGtdSync", args),
   previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
   backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args)
 };

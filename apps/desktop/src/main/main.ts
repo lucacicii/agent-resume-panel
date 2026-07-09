@@ -17,7 +17,8 @@ import {
   previewBackfillMemoryDigests,
   resolvePanelHome,
   runDailyDigest,
-  runMemoryGtdSync,
+  applyMemoryGtdSync,
+  previewMemoryGtdSync,
   runMonthlyDigest,
   runWeeklyDigest,
   saveSettings,
@@ -171,10 +172,37 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
-    "workflow:runMemoryGtdSync",
+    "workflow:previewMemoryGtdSync",
     async (_event, args?: { ensureDigests?: boolean }) => {
-      return runMemoryGtdSync({
+      return previewMemoryGtdSync({
         ensureDigests: args?.ensureDigests
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "workflow:applyMemoryGtdSync",
+    async (
+      _event,
+      args: {
+        items: Array<{
+          provider: string;
+          sessionId: string;
+          gtd: string;
+          reason: string;
+          tasks: string[];
+          sourceMemoryIds: string[];
+          title?: string;
+          projectPath?: string;
+          previousGtd?: string | null;
+        }>;
+      }
+    ) => {
+      return applyMemoryGtdSync({
+        items: (args?.items || []).map((it) => ({
+          ...it,
+          previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null
+        }))
       });
     }
   );

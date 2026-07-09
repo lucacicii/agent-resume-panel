@@ -138,14 +138,23 @@
             </div>
             <div class="card">
               <h3>Memory → GTD + todolist</h3>
-              <p class="muted">AI 直接写 session_gtd 与 notes/…/todolist.md（标明 AI）。</p>
+              <p class="muted">
+                先 <strong>分析预览</strong>（不写库、不写 md），勾选后点 <strong>应用选中</strong> 才写入 GTD 与
+                <code>todolist.md</code>（标明 AI）。
+              </p>
               <div class="form-row">
                 <label class="check">
                   <input type="checkbox" id="ensureDigests" checked />
                   若今日尚无日报则先生成 daily
                 </label>
-                <button type="button" id="btnGtdSync">同步 GTD + todolist</button>
+                <button type="button" id="btnGtdPreview">1. 分析预览</button>
+                <button type="button" id="btnGtdApply" disabled>2. 应用选中（写 GTD + md）</button>
               </div>
+              <div class="form-row">
+                <button type="button" id="btnGtdSelectAll" disabled>全选</button>
+                <button type="button" id="btnGtdSelectNone" disabled>全不选</button>
+              </div>
+              <div id="gtdPreview" class="gtd-preview"></div>
               <p class="status" id="gtdSyncStatus"></p>
             </div>
           </div>

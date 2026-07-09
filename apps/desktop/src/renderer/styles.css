@@ -441,6 +441,66 @@ legend {
   margin-bottom: 0;
 }
 
+.gtd-preview {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.gtd-preview:empty {
+  display: none;
+}
+
+.gtd-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.gtd-row-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.gtd-row-head label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex: 1;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.gtd-row .meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.gtd-row .reason {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.gtd-row details {
+  margin-top: 6px;
+}
+
+.gtd-row details pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  max-height: 200px;
+  overflow: auto;
+}
+
 .digest-card {
   border: 1px solid var(--border);
   border-radius: 10px;

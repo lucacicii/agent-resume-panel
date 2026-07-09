@@ -41,13 +41,12 @@ On the **Memory** tab: **预览范围** / **开始批量生成**.
 
 ## Memory → GTD + todolist (v0.4)
 
-On the **Memory** tab: **同步 GTD + todolist**.
+On the **Memory** tab (tools fold):
 
-- AI analyzes recent digests and **directly writes** `session_gtd` in `catalog.db` (same table the VS Code extension already reads — **no extension code changes**).
-- Each update is audited in `gtd_ai_audit` and marked as AI-applied.
-- Writes `notes/sessions/{provider}/{sessionKey}/todolist.md` under panelHome (and best-effort `notes` index for extension Notes after Refresh).
+1. **分析预览** — LLM proposals only (no GTD / no md write); expand to preview `todolist.md`
+2. Check items → **应用选中（写 GTD + md）** — then writes `session_gtd` + audit + `notes/.../todolist.md`
 
-Re-run may overwrite GTD and `todolist.md` again.
+Marked as AI-applied. No VS Code extension code changes.
 
 ## Shared with VS Code
 

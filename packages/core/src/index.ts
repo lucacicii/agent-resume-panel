@@ -104,9 +104,21 @@ export {
   sessionTodolistRelMdPath,
   sessionDirKey
 } from "./notes/paths";
-export { runMemoryGtdSync } from "./workflow/runMemoryGtdSync";
-export type { RunMemoryGtdSyncOptions, RunMemoryGtdSyncResult } from "./workflow/runMemoryGtdSync";
+export {
+  runMemoryGtdSync,
+  previewMemoryGtdSync,
+  applyMemoryGtdSync
+} from "./workflow/runMemoryGtdSync";
+export type {
+  RunMemoryGtdSyncOptions,
+  RunMemoryGtdSyncResult,
+  PreviewMemoryGtdSyncResult,
+  ApplyMemoryGtdSyncOptions,
+  ApplyMemoryGtdSyncResult,
+  GtdPreviewItem
+} from "./workflow/runMemoryGtdSync";
 export { analyzeMemoryForGtd } from "./workflow/analyzeGtd";
+export { renderSessionTodolistMarkdown } from "./notes/todolist";
 export {
   backfillMemoryDigests,
   previewBackfillMemoryDigests,

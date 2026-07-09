@@ -495,34 +495,145 @@ async function runBackfill() {
   }
 }
 
-async function runGtdSync() {
+/** @type {any[]} */
+let gtdPreviewItems = [];
+
+function updateGtdApplyButton() {
+  const boxes = document.querySelectorAll("#gtdPreview input.gtd-check:checked");
+  $("btnGtdApply").disabled = boxes.length === 0;
+  $("btnGtdSelectAll").disabled = gtdPreviewItems.length === 0;
+  $("btnGtdSelectNone").disabled = gtdPreviewItems.length === 0;
+}
+
+function renderGtdPreview(proposals) {
+  gtdPreviewItems = proposals || [];
+  const root = $("gtdPreview");
+  root.innerHTML = "";
+  if (!gtdPreviewItems.length) {
+    root.innerHTML = `<p class="muted">无提议。可先生成 digests 后再分析。</p>`;
+    updateGtdApplyButton();
+    return;
+  }
+
+  gtdPreviewItems.forEach((p, idx) => {
+    const row = document.createElement("div");
+    row.className = "gtd-row";
+    const prev = p.previousGtd ? `@${p.previousGtd}` : "(none)";
+    row.innerHTML = `
+      <div class="gtd-row-head">
+        <label>
+          <input type="checkbox" class="gtd-check" data-idx="${idx}" checked />
+          <span>
+            <strong>${escapeHtml(p.title || p.sessionId)}</strong>
+            <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(String(p.sessionId).slice(0, 16))}…
+              · ${escapeHtml(prev)} → <strong>@${escapeHtml(p.proposedGtd)}</strong>
+              · tasks ${p.tasks?.length || 0}</div>
+          </span>
+        </label>
+      </div>
+      <div class="reason">${escapeHtml(p.reason || "")}</div>
+      <details>
+        <summary>预览 todolist.md（尚未写入磁盘）</summary>
+        <pre>${escapeHtml(p.todolistPreview || "")}</pre>
+      </details>
+    `;
+    root.appendChild(row);
+  });
+
+  root.querySelectorAll("input.gtd-check").forEach((el) => {
+    el.addEventListener("change", () => updateGtdApplyButton());
+  });
+  updateGtdApplyButton();
+}
+
+async function previewGtdSync() {
   const status = $("gtdSyncStatus");
   const ensureDigests = $("ensureDigests").checked;
+  setStatus(status, "Analyzing memory (preview only, no writes)…");
+  $("btnGtdApply").disabled = true;
+  try {
+    const result = await agentResume.previewMemoryGtdSync({ ensureDigests });
+    renderGtdPreview(result.proposals);
+    setStatus(
+      status,
+      `Preview ready · ${result.proposals.length} proposal(s)` +
+        (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
+        (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
+        (result.ensureDigest?.ran ? " · daily generated" : "") +
+        " · nothing written yet",
+      result.proposals.length ? "ok" : "error"
+    );
+    if (result.warnings.length) {
+      console.warn("gtd preview warnings", result.warnings);
+    }
+  } catch (error) {
+    gtdPreviewItems = [];
+    $("gtdPreview").innerHTML = "";
+    updateGtdApplyButton();
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function applyGtdSync() {
+  const status = $("gtdSyncStatus");
+  const checks = [...document.querySelectorAll("#gtdPreview input.gtd-check:checked")];
+  if (!checks.length) {
+    setStatus(status, "请先勾选要应用的项", "error");
+    return;
+  }
+
+  const items = checks
+    .map((el) => gtdPreviewItems[Number(el.dataset.idx)])
+    .filter(Boolean)
+    .map((p) => ({
+      provider: p.provider,
+      sessionId: p.sessionId,
+      gtd: p.proposedGtd,
+      reason: p.reason,
+      tasks: p.tasks || [],
+      sourceMemoryIds: p.sourceMemoryIds || [],
+      title: p.title,
+      projectPath: p.projectPath,
+      previousGtd: p.previousGtd
+    }));
+
   const ok = window.confirm(
-    "将由 AI 直接改写 catalog 中的 GTD 状态，并覆盖写入 notes 下的 todolist.md。\n操作会标记为 AI 执行。是否继续？"
+    `将对 ${items.length} 个 session 写入 GTD，并覆盖写入 notes/…/todolist.md。\n操作会标记为 AI 执行。是否继续？`
   );
   if (!ok) {
     return;
   }
-  setStatus(status, "Running Memory→GTD sync (AI)…");
+
+  setStatus(status, `Applying ${items.length} item(s)…`);
   try {
-    const result = await agentResume.runMemoryGtdSync({ ensureDigests });
+    const result = await agentResume.applyMemoryGtdSync({ items });
     const sample = result.applied[0]?.todolistPath || "";
     setStatus(
       status,
-      `AI applied ${result.applied.length} session(s)` +
-        (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
-        (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
-        (result.ensureDigest?.ran ? " · daily generated" : "") +
+      `Applied ${result.applied.length}` +
+        (result.failed.length ? ` · failed ${result.failed.length}` : "") +
         (sample ? ` · e.g. ${sample}` : ""),
-      result.applied.length || !result.warnings.length ? "ok" : "error"
+      result.applied.length ? "ok" : "error"
     );
-    if (result.warnings.length) {
-      console.warn("gtd sync warnings", result.warnings);
+    if (result.failed.length) {
+      console.warn("gtd apply failed", result.failed);
+    }
+    // clear preview after successful apply of selected
+    if (result.applied.length) {
+      gtdPreviewItems = [];
+      $("gtdPreview").innerHTML = "";
+      updateGtdApplyButton();
     }
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
+}
+
+function gtdSelectAll(on) {
+  document.querySelectorAll("#gtdPreview input.gtd-check").forEach((el) => {
+    el.checked = on;
+  });
+  updateGtdApplyButton();
 }
 
 async function runSearch() {
@@ -818,7 +929,10 @@ function wire() {
     }
   });
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
-  $("btnGtdSync").addEventListener("click", () => runGtdSync());
+  $("btnGtdPreview").addEventListener("click", () => previewGtdSync());
+  $("btnGtdApply").addEventListener("click", () => applyGtdSync());
+  $("btnGtdSelectAll").addEventListener("click", () => gtdSelectAll(true));
+  $("btnGtdSelectNone").addEventListener("click", () => gtdSelectAll(false));
   $("btnBackfillPreview").addEventListener("click", () => previewBackfill());
   $("btnBackfillRun").addEventListener("click", () => runBackfill());
   $("btnAgentSend").addEventListener("click", () => sendAgent());
