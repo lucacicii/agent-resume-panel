@@ -8,14 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
-### [2.6.2] - 2026-07-09
+### [2.6.2]
 
 #### 新增
 
 - **批量导入 Markdown 笔记**：Notes 视图标题栏与项目/会话节点支持 **Import Markdown…**；可多选 `.md` 或选择文件夹（导入顶层全部 `.md`）。
 - 导入为拷贝到本机 `panelHome/notes/...`；文件名冲突自动 `-2` / `-3`；若源旁存在 `{stem}.assets/` 会一并复制并尽量改写正文相对路径。
 
-### [2.6.1] - 2026-07-09
+### [2.6.1]
 
 #### 新增
 
@@ -26,7 +26,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **README 重排**：按当前四视图与 Notes 磁盘模型重写中英文说明。
 - **无云端 · 纯本机存储**：明确本插件**无自有云端、账号与远程数据库**；默认数据目录 `~/.agent-resume-panel`（`catalog.db` / `notes/` / `acp/`），CLI 正文仍在各 Agent 本机原生存储。
 
-### [2.6.0] - 2026-07-09
+### [2.6.0]
 
 #### 新增
 
@@ -49,7 +49,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 备份请包含整个 `panelHome`（`catalog.db` + `notes/`）。仅备份 db 不再包含正文。
 - 升级前若编辑器仍打开旧虚拟笔记标签页，需从 **Notes** 或右键重新打开。
 
-### [2.5.0] - 2026-07-08
+### [2.5.0]
 
 #### 新增
 
@@ -59,7 +59,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **状态提示**：有内容的 session / project 在侧边栏 description 与 tooltip 显示 **Note** 标记。
 
 
-### [2.4.0] - 2026-07-08
+### [2.4.0]
 
 #### 新增
 
@@ -69,7 +69,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **Search / Manager**：**Search Sessions** 与 **Session Manager** 支持按 GTD 状态筛选（全部 / 未打标 / 各状态桶），列表行显示 GTD 标签，文本搜索可匹配 GTD 状态。
 - **ACP 说明**：不支持 ACP Chat session 打标（数据不在 catalog）。
 
-### [2.3.2] - 2026-07-08
+### [2.3.2]
 
 #### 新增
 
@@ -77,7 +77,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **别名同步展示**：Recent Sessions、Search Sessions、Session Manager 与 **ACP Chats** 树中的项目名均使用同一别名格式；搜索可按别名匹配。
 - **持久化**：别名保存在 catalog SQLite（`projects` 表，默认 `~/.agent-resume-panel/catalog.db`），按 `projectPath` 索引；首次升级自动从旧版 `globalState` 迁移，不影响各 Agent 原生存储。
 
-### [2.3.1] - 2026-07-08
+### [2.3.1]
 
 #### 修复
 
@@ -93,7 +93,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 > 说明：扩展侧栏的 **Refresh** 只刷新会话数据，**不能**替代 Reload Window；修改菜单、命令、配置项等 `package.json` 贡献点后都需要 Reload Window。
 
-### [2.3.0] - 2026-07-08
+### [2.3.0]
 
 #### 新增
 
@@ -109,7 +109,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - 命令面板与 VS Code 原生 Settings 中的扩展配置描述仍为英文（manifest 在扩展激活前加载，暂无法随 UI Language 动态切换）。
 
-### [2.2.1] - 2026-07-08
+### [2.2.1]
 
 #### 新增
 
@@ -120,7 +120,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - 配置 LLM API Key 或 `agentResume.llm` 设置后，已打开的预览面板会自动刷新按钮与提示状态。
 
-### [2.2.0] - 2026-07-03
+### [2.2.0]
 
 #### 新增
 
@@ -133,7 +133,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - **Agent Resume Settings → Handoff**：`handoff.attachRecentVerbatim`（附加最近原文轮数）、`handoff.maxBriefTokens`（Brief 输出 token 上限）。
 
-### [2.1.3] - 2026-07-03
+### [2.1.3]
 
 #### 新增
 
@@ -148,7 +148,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - **Session Manager**：未配置 LLM API Key 时加载列表可能失败、摘要无法显示的问题。
 
-### [2.1.1] - 2026-07-02
+### [2.1.1]
 
 #### 新增
 
@@ -161,7 +161,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - Summarize 缓存由 `globalState` 改为 Catalog DB；备份 `catalog.db` 即可保留摘要，重装扩展后仍可读取（需语言一致）。
 - 执行 Summarize 后侧边栏 tooltip 立即更新，无需手动 Refresh。
 
-### [2.1.0] - 2026-07-02
+### [2.1.0]
 
 #### 新增
 
@@ -179,20 +179,20 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - 项目/会话右键 **Collapse Project**。
 
-### [2.0.2] - 2026-07-01
+### [2.0.2]
 
 #### 修复
 
 - Codex ACP 重连：优先 `session/load`，`Resource not found` 时回退新建会话，避免 `Failed to connect to codex agent: Resource not found`。
 - ACP Chat 在 session ID 变更后重新订阅 `session/update`，修复 Codex 回复被丢弃导致的 `Agent returned an empty response`。
 
-### [2.0.1] - 2026-07-01
+### [2.0.1]
 
 #### 修复
 
 - 发布构建移除 `vsce package --no-dependencies`，确保 VSIX 包含 `@agentclientprotocol/sdk` 等 ACP 运行时依赖，修复安装后 `Cannot find package '@agentclientprotocol/sdk'` 导致无法连接 Agent 的问题。
 
-### [2.0.0] - 2026-07-01
+### [2.0.0]
 
 #### 新增
 
@@ -208,7 +208,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - ACP 数据目录、权限与各 Agent 启动参数集中在 **ACP Chat** 设置分区。
 
 
-### [1.2.1] - 2026-06-30
+### [1.2.1]
 
 #### 新增
 
@@ -225,7 +225,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 恢复 **Session** 右键菜单（Preview、Rename、Resume 等）；项目菜单排序改动不再影响会话项。
 - 项目菜单 `when` 条件增加 `viewItem =~ /agentResume\.project/`，避免项目操作出现在 Session 右键菜单中。
 
-### [1.2.0] - 2026-06-30
+### [1.2.0]
 
 #### 新增
 
@@ -242,7 +242,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - LLM Assist 设置页增加提示：请尽可能使用快速、便宜的模型（如 gpt-4o-mini、deepseek-chat）。
 
-### [1.1.20] - 2026-06-29
+### [1.1.20]
 
 #### 新增
 
@@ -255,11 +255,11 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **Codex**：默认过滤 subagent 线程（`source` 含 `subagent`），可通过 `agentResume.showSubagentCodex` 开启显示。
 - **Claude Code**：无首条 user 消息标题时，从 `ai-title` 条目的 `aiTitle` 字段提取会话标题。
 
-### [1.1.90] - 2026-06-29
+### [1.1.90]
 
 无更新。
 
-### [1.1.18] - 2026-06-26
+### [1.1.18]
 
 #### 新增
 
@@ -269,7 +269,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 实现版本号 `agentResume.codexIdePanelResume.implementationVersion`：与内置集成版本不一致时自动阻止面板恢复，便于 Codex 更新后快速修复。
 - **Resume with…** 在开关开启时为 Codex 会话提供 **Codex IDE Panel (Experimental)** 选项。
 
-### [1.1.17] - 2026-06-26
+### [1.1.17]
 
 #### 新增
 
@@ -277,7 +277,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 可在设置中选择 Claude 默认恢复方式：插件面板或集成终端（默认面板）。
 - **Resume with…** 中 Claude 会话新增 **Claude Code Panel** 选项。
 
-### [1.1.16] - 2026-06-25
+### [1.1.16]
 
 #### 新增
 
@@ -290,7 +290,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - 从预览面板恢复会话后，预览面板保持打开，可继续浏览对话。
 
-### [1.1.15] - 2026-06-25
+### [1.1.15]
 
 #### 新增
 
@@ -300,7 +300,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - 从预览面板重命名后，预览标题与侧边栏 Sessions 树会同步更新，无需关闭面板。
 
-### [1.1.14] - 2026-06-25
+### [1.1.14]
 
 #### 新增
 
@@ -318,14 +318,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## English
 
-### [2.6.2] - 2026-07-09
+### [2.6.2]
 
 #### Added
 
 - **Bulk import Markdown notes**: **Import Markdown…** on the Notes title bar and project/session nodes; multi-select `.md` files or pick a folder (top-level `.md` only).
 - Imports copy into local `panelHome/notes/...`; filename collisions get `-2` / `-3`; sibling `{stem}.assets/` folders are copied when present, with relative links rewritten when needed.
 
-### [2.6.1] - 2026-07-09
+### [2.6.1]
 
 #### Added
 
@@ -336,7 +336,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **README reorganized** for the four sidebar views and on-disk multi-note model (ZH/EN).
 - **No cloud · pure local storage**: Clarifies the extension has **no cloud backend, accounts, or remote DB**; default data dir `~/.agent-resume-panel` (`catalog.db` / `notes/` / `acp/`); CLI transcripts remain in each agent’s native local storage.
 
-### [2.6.0] - 2026-07-09
+### [2.6.0]
 
 #### Added
 
@@ -359,7 +359,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - Back up the whole `panelHome` (`catalog.db` + `notes/`). Backing up only the database no longer includes note bodies.
 - If an old virtual note tab is still open after upgrade, reopen the note from **Notes** or the context menu.
 
-### [2.5.0] - 2026-07-08
+### [2.5.0]
 
 #### Added
 
@@ -369,7 +369,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **Indicators**: Sessions and projects with note content show a **Note** marker in the sidebar description and tooltip.
 
 
-### [2.4.0] - 2026-07-08
+### [2.4.0]
 
 #### Added
 
@@ -379,7 +379,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **Search / Manager**: **Search Sessions** and **Session Manager** support GTD filters (all / untagged / each bucket), show GTD labels on rows, and match GTD status in text search.
 - **ACP note**: ACP Chat sessions are not tagged (not in catalog).
 
-### [2.3.2] - 2026-07-08
+### [2.3.2]
 
 #### Added
 
@@ -387,7 +387,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - **Alias everywhere**: Recent Sessions, Search Sessions, Session Manager, and **ACP Chats** project labels use the same format; search matches aliases.
 - **Persistence**: Aliases are stored in catalog SQLite (`projects` table, default `~/.agent-resume-panel/catalog.db`), keyed by `projectPath`; legacy `globalState` entries migrate on first launch. Native agent storage is unchanged.
 
-### [2.3.1] - 2026-07-08
+### [2.3.1]
 
 #### Fixed
 
@@ -403,7 +403,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 > Note: the sidebar **Refresh** command only reloads session data; it does **not** replace Reload Window. Any change to `package.json` contributions (menus, commands, configuration) requires Reload Window.
 
-### [2.3.0] - 2026-07-08
+### [2.3.0]
 
 #### Added
 
@@ -419,7 +419,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - Command Palette titles and native VS Code Settings descriptions for this extension remain English (manifest strings load before extension activation).
 
-### [2.2.1] - 2026-07-08
+### [2.2.1]
 
 #### Added
 
@@ -430,7 +430,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - After configuring the LLM API key or `agentResume.llm` settings, an open preview panel refreshes its buttons and hints automatically.
 
-### [2.2.0] - 2026-07-03
+### [2.2.0]
 
 #### Added
 
@@ -443,7 +443,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - **Agent Resume Settings → Handoff**: `handoff.attachRecentVerbatim` (append recent verbatim turns), `handoff.maxBriefTokens` (brief output token limit).
 
-### [2.1.3] - 2026-07-03
+### [2.1.3]
 
 #### Added
 
@@ -458,7 +458,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - **Session Manager**: Loading could fail and summaries would not appear when no LLM API key was configured.
 
-### [2.1.1] - 2026-07-02
+### [2.1.1]
 
 #### Added
 
@@ -471,7 +471,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 - Summarize cache moved from `globalState` to the catalog DB; backing up `catalog.db` preserves summaries across extension reinstalls (language must still match).
 - After Summarize, the sidebar tooltip updates immediately without a manual Refresh.
 
-### [2.1.0] - 2026-07-02
+### [2.1.0]
 
 #### Added
 
@@ -489,20 +489,20 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - **Collapse Project** from project/session context menus.
 
-### [2.0.2] - 2026-07-01
+### [2.0.2]
 
 #### Fixed
 
 - Codex ACP reconnect: prefer `session/load`, fall back to a new session on `Resource not found`; fixes `Failed to connect to codex agent: Resource not found`.
 - ACP Chat re-subscribes to `session/update` after the session ID changes; fixes dropped Codex streams and `Agent returned an empty response`.
 
-### [2.0.1] - 2026-07-01
+### [2.0.1]
 
 #### Fixed
 
 - Release builds no longer use `vsce package --no-dependencies`, so the VSIX includes ACP runtime deps such as `@agentclientprotocol/sdk`; fixes `Cannot find package '@agentclientprotocol/sdk'` and failed agent connections after install.
 
-### [2.0.0] - 2026-07-01
+### [2.0.0]
 
 #### Added
 
@@ -518,7 +518,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 - ACP data directory, permissions, and per-agent launch settings grouped under **ACP Chat** settings.
 
 
-### [1.2.1] - 2026-06-30
+### [1.2.1]
 
 #### Added
 
@@ -535,7 +535,7 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 - Restored the **session** context menu (Preview, Rename, Resume, etc.); project menu ordering no longer affects session items.
 - Project menu `when` clauses now require `viewItem =~ /agentResume\.project/`, so project actions no longer appear on session right-clicks.
 
-### [1.2.0] - 2026-06-30
+### [1.2.0]
 
 #### Added
 
@@ -552,11 +552,11 @@ After an in-place extension upgrade, you **must** reload the current VS Code / C
 
 - LLM Assist settings include a tip to prefer fast, low-cost models (e.g. gpt-4o-mini, deepseek-chat).
 
-### [1.1.90] - 2026-06-29
+### [1.1.90]
 
 No changes.
 
-### [1.1.20] - 2026-06-29
+### [1.1.20]
 
 #### Added
 
@@ -569,7 +569,7 @@ No changes.
 - **Codex**: Subagent threads (`source` contains `subagent`) are filtered by default; enable `agentResume.showSubagentCodex` to show them.
 - **Claude Code**: When a session has no first user-message title, the panel now uses the `aiTitle` field from `ai-title` rows.
 
-### [1.1.18] - 2026-06-26
+### [1.1.18]
 
 #### Added
 
@@ -579,7 +579,7 @@ No changes.
 - Implementation version `agentResume.codexIdePanelResume.implementationVersion` blocks panel resume when it no longer matches the built-in integration, making post-update fixes safer.
 - **Resume with…** adds **Codex IDE Panel (Experimental)** for Codex sessions when the switch is on.
 
-### [1.1.17] - 2026-06-26
+### [1.1.17]
 
 #### Added
 
@@ -588,7 +588,7 @@ No changes.
 - **Resume with…** adds **Claude Code Panel** for Claude sessions.
 
 
-### [1.1.16] - 2026-06-25
+### [1.1.16]
 
 #### Added
 
@@ -601,7 +601,7 @@ No changes.
 
 - Preview panels stay open after resuming, so you can keep reading the conversation.
 
-### [1.1.15] - 2026-06-25
+### [1.1.15]
 
 #### Added
 
@@ -611,7 +611,7 @@ No changes.
 
 - After a rename from the preview panel, the preview title and Sessions sidebar tree update without closing the panel.
 
-### [1.1.14] - 2026-06-25
+### [1.1.14]
 
 #### Added
 
