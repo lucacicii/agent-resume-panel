@@ -8,6 +8,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.1] - 2026-07-09
+
+#### 新增
+
+- **Notes 菜单 i18n**：Notes 视图右键（打开 / 重命名 / 删除 / 在文件管理器中显示 / 复制路径 / 新建）与标题栏相关命令随 **UI Language** 显示本地化标题（与 Sessions 菜单同一套 locale 机制）。
+
+#### 文档
+
+- **README 重排**：按当前四视图与 Notes 磁盘模型重写中英文说明。
+- **无云端 · 纯本机存储**：明确本插件**无自有云端、账号与远程数据库**；默认数据目录 `~/.agent-resume-panel`（`catalog.db` / `notes/` / `acp/`），CLI 正文仍在各 Agent 本机原生存储。
+
 ### [2.6.0] - 2026-07-09
 
 #### 新增
@@ -299,6 +310,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.1] - 2026-07-09
+
+#### Added
+
+- **Notes menu i18n**: Notes view context menu (Open / Rename / Delete / Reveal / Copy path / New) and related title-bar commands follow **UI Language** (same locale mechanism as Sessions menus).
+
+#### Docs
+
+- **README reorganized** for the four sidebar views and on-disk multi-note model (ZH/EN).
+- **No cloud · pure local storage**: Clarifies the extension has **no cloud backend, accounts, or remote DB**; default data dir `~/.agent-resume-panel` (`catalog.db` / `notes/` / `acp/`); CLI transcripts remain in each agent’s native local storage.
 
 ### [2.6.0] - 2026-07-09
 

@@ -4,7 +4,13 @@ Languages: [简体中文](#简体中文) | [English](#english)
 
 在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Alma** 历史会话；支持 **ACP Chat** 实时对话、**GTD** 状态管理、**多条 Markdown 笔记**（磁盘文件 + Catalog 索引），以及摘要 / 重命名 / Handoff 等辅助能力。
 
-当前版本：**2.6.0**
+当前版本：**2.6.1**
+
+> **无云端 · 纯本机存储（Local-first）**  
+> **本插件不提供、也不依赖自有云端服务**；会话索引、笔记、ACP 聊天等面板数据均为**纯本机存储**。  
+> 默认目录：**`~/.agent-resume-panel`**（可用 `agentResume.panelHome` 修改），内含 `catalog.db`、`notes/`、`acp/`。  
+> CLI 对话全文仍在各 Agent **本机**原生存储（如 `~/.codex`、`~/.claude`）。换机请自行拷贝/同步上述本机目录。  
+> （可选）LLM Assist 仅在你自行配置第三方 API 时才会访问该 API，与本插件是否有云端无关——**插件本身没有账号体系与云端数据库。**
 
 ---
 
@@ -19,7 +25,7 @@ Languages: [简体中文](#简体中文) | [English](#english)
 5. [搜索、Session Manager 与备份](#5-搜索session-manager-与备份)
 6. [LLM Assist 与 Handoff](#6-llm-assist-与-handoff)
 7. [恢复目标与外部工具](#7-恢复目标与外部工具)
-8. [数据存储架构](#8-数据存储架构)
+8. [数据存储架构（Local-first）](#8-数据存储架构local-first)
 9. [设置](#9-设置)
 10. [联系](#10-联系)
 
@@ -250,15 +256,22 @@ Handoff 相关：`agentResume.handoff.attachRecentVerbatim`、`agentResume.hando
 
 ---
 
-### 8. 数据存储架构
+### 8. 数据存储架构（无云端 · 纯本机）
+
+**结论：本插件没有云端，数据默认只写本机磁盘。**
+
+- **无**本插件自有服务器、云同步、云账号或远程数据库。
+- 面板数据（Catalog / Notes / ACP）默认全部在本机 **`~/.agent-resume-panel`**（`agentResume.panelHome`）。
+- CLI 对话正文在各 Agent **本机**目录；扩展只做本地索引与按需读取。
+- 备份与迁移 = 你自己拷贝本机文件夹（或系统备份 / 同步盘），插件不会替你上传。
 
 默认根目录：`agentResume.panelHome` = `~/.agent-resume-panel`。
 
 ```text
-panelHome/
-  catalog.db          # Session Catalog（SQLite）
-  notes/              # 笔记正文与 assets（权威）
-  acp/                # ACP 会话与附件
+~/.agent-resume-panel/          # 或自定义 panelHome
+  catalog.db                    # Session Catalog（SQLite，本机）
+  notes/                        # 笔记正文与 assets（本机文件）
+  acp/                          # ACP 会话与附件（本机）
 ```
 
 | 数据 | 位置 | 说明 |
@@ -321,9 +334,15 @@ panelHome/
 5. [Search, Session Manager & backup](#5-search-session-manager--backup)
 6. [LLM Assist & handoff](#6-llm-assist--handoff)
 7. [Resume targets & external tools](#7-resume-targets--external-tools)
-8. [Data & storage](#8-data--storage)
+8. [Data & storage (local-first)](#8-data--storage-local-first)
 9. [Settings](#9-settings)
 10. [Contact](#10-contact)
+
+> **No cloud · pure local storage**  
+> **This extension has no cloud backend, accounts, or remote database.** Panel data is stored only on your machine.  
+> Default directory: **`~/.agent-resume-panel`** (`agentResume.panelHome`) — `catalog.db`, `notes/`, `acp/`.  
+> Full CLI transcripts stay in each agent’s **local** native folders. Back up by copying those folders yourself.  
+> Optional LLM Assist only contacts a **third-party API you configure**; the extension itself still has no cloud service.
 
 ### 1. Overview
 
@@ -443,14 +462,16 @@ Configure under **Settings → LLM Assist**.
 
 ---
 
-### 8. Data & storage
+### 8. Data & storage (no cloud · pure local)
+
+**This plugin has no cloud.** All panel data is pure local storage under **`~/.agent-resume-panel`** by default. There is no extension-operated server, cloud sync, or account system. Copy that folder (plus agent native homes if needed) to back up.
 
 | What | Where |
 |------|--------|
-| CLI metadata, GTD, aliases, summaries, note **index** | `catalog.db` |
+| CLI metadata, GTD, aliases, summaries, note **index** | `~/.agent-resume-panel/catalog.db` |
 | Full transcripts | Agent native homes (not copied into SQLite) |
-| Note bodies & assets | `{panelHome}/notes/**` |
-| ACP data | `{panelHome}/acp/**` |
+| Note bodies & assets | `~/.agent-resume-panel/notes/**` |
+| ACP data | `~/.agent-resume-panel/acp/**` |
 | Legacy `session_notes` / `project_notes` | Migration source only |
 
 Refresh reconciles catalog with agents and notes with disk. Remove from Panel only sets `hidden`.

@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — with ACP Chat, GTD, multi-note Markdown files (disk + catalog index), project filters, favorites, native session rename, and read-only chat preview.",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -668,72 +668,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "agentResume.refreshNotes",
-        "title": "Refresh Notes",
-        "category": "Agent Resume",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "agentResume.filterNotes",
-        "title": "Filter Notes",
-        "category": "Agent Resume",
-        "icon": "$(filter)"
-      },
-      {
-        "command": "agentResume.clearNotesFilter",
-        "title": "Clear Notes Filter",
-        "category": "Agent Resume",
-        "icon": "$(clear-all)"
-      },
-      {
-        "command": "agentResume.newNote",
-        "title": "New Note…",
-        "category": "Agent Resume",
-        "icon": "$(add)"
-      },
-      {
-        "command": "agentResume.openNote",
-        "title": "Open Note",
-        "category": "Agent Resume",
-        "icon": "$(markdown)"
-      },
-      {
-        "command": "agentResume.deleteNote",
-        "title": "Delete Note",
-        "category": "Agent Resume",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "agentResume.renameNote",
-        "title": "Rename Note",
-        "category": "Agent Resume",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "agentResume.revealNoteInOS",
-        "title": "Reveal Note in File Explorer",
-        "category": "Agent Resume",
-        "icon": "$(folder-opened)"
-      },
-      {
-        "command": "agentResume.openNotesFolder",
-        "title": "Open Notes Folder",
-        "category": "Agent Resume",
-        "icon": "$(folder-library)"
-      },
-      {
-        "command": "agentResume.copyNotePath",
-        "title": "Copy Note Path",
-        "category": "Agent Resume",
-        "icon": "$(copy)"
-      },
-      {
-        "command": "agentResume.insertNoteImage",
-        "title": "Insert Image into Note",
-        "category": "Agent Resume",
-        "icon": "$(file-media)"
-      },
-      {
         "command": "agentResume.newSessionNote",
         "title": "New Session Note",
         "category": "Agent Resume"
@@ -1302,12 +1236,12 @@
       },
       {
         "command": "agentResume.openSessionNote",
-        "title": "Open Note",
+        "title": "Open Note…",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.openSessionNote",
-        "title": "打开笔记",
+        "title": "打开笔记…",
         "category": "Agent Resume"
       },
       {
@@ -1352,12 +1286,12 @@
       },
       {
         "command": "agentResume.deleteSessionNote",
-        "title": "Delete Note",
+        "title": "Delete Notes",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.deleteSessionNote",
-        "title": "删除笔记",
+        "title": "删除全部笔记",
         "category": "Agent Resume"
       },
       {
@@ -1402,12 +1336,12 @@
       },
       {
         "command": "agentResume.openProjectNote",
-        "title": "Open Project Note",
+        "title": "Open Project Note…",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.openProjectNote",
-        "title": "打开项目笔记",
+        "title": "打开项目笔记…",
         "category": "Agent Resume"
       },
       {
@@ -1452,12 +1386,12 @@
       },
       {
         "command": "agentResume.deleteProjectNote",
-        "title": "Delete Project Note",
+        "title": "Delete Project Notes",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.deleteProjectNote",
-        "title": "删除项目笔记",
+        "title": "删除全部项目笔记",
         "category": "Agent Resume"
       },
       {
@@ -1498,6 +1432,567 @@
       {
         "command": "agentResume.ru.deleteProjectNote",
         "title": "Delete Project Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume",
+        "icon": "$(markdown)"
+      },
+      {
+        "command": "agentResume.zh-cn.openNote",
+        "title": "打开笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "agentResume.zh-cn.renameNote",
+        "title": "重命名笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "agentResume.zh-cn.deleteNote",
+        "title": "删除笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "agentResume.zh-cn.revealNoteInOS",
+        "title": "在文件管理器中显示",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "agentResume.zh-cn.copyNotePath",
+        "title": "复制笔记路径",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentResume.zh-cn.newNote",
+        "title": "新建笔记…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentResume.zh-cn.filterNotes",
+        "title": "筛选笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "agentResume.zh-cn.clearNotesFilter",
+        "title": "清除筛选",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.zh-cn.refreshNotes",
+        "title": "刷新笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "agentResume.zh-cn.openNotesFolder",
+        "title": "打开笔记文件夹",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "agentResume.zh-cn.insertNoteImage",
+        "title": "插入图片到笔记",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ja.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ko.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.es.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.fr.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.de.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.pt-br.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.it.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.ru.insertNoteImage",
+        "title": "Insert Image into Note",
         "category": "Agent Resume"
       },
       {
@@ -2581,6 +3076,14 @@
         "label": "Hand Off to Another Agent"
       },
       {
+        "id": "agentResume.handoffTo",
+        "label": "Hand Off to Another Agent"
+      },
+      {
+        "id": "agentResume.handoffTo",
+        "label": "Hand Off to Another Agent"
+      },
+      {
         "id": "agentResume.projectMore",
         "label": "Show More"
       },
@@ -2944,27 +3447,252 @@
         },
         {
           "command": "agentResume.filterNotes",
-          "when": "view == agentResume.notes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@0"
         },
         {
           "command": "agentResume.clearNotesFilter",
-          "when": "view == agentResume.notes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@1"
         },
         {
           "command": "agentResume.newNote",
-          "when": "view == agentResume.notes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@2"
         },
         {
           "command": "agentResume.refreshNotes",
-          "when": "view == agentResume.notes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
           "group": "navigation@3"
         },
         {
           "command": "agentResume.openNotesFolder",
-          "when": "view == agentResume.notes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == en",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.zh-cn.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.zh-cn.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.zh-cn.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.zh-cn.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.zh-cn.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'zh-cn'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.ja.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.ja.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.ja.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.ja.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.ja.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ja'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.ko.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.ko.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.ko.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.ko.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.ko.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ko'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.es.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.es.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.es.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.es.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.es.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'es'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.fr.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.fr.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.fr.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.fr.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.fr.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'fr'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.de.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.de.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.de.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.de.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.de.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'de'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.pt-br.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.pt-br.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.pt-br.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.pt-br.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.pt-br.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'pt-br'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.it.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.it.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.it.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.it.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.it.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'it'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.ru.filterNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentResume.ru.clearNotesFilter",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentResume.ru.newNote",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentResume.ru.refreshNotes",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentResume.ru.openNotesFolder",
+          "when": "view == agentResume.notes && agentResume.uiLocale == 'ru'",
           "group": "navigation@4"
         },
         {
@@ -2976,32 +3704,302 @@
       "view/item/context": [
         {
           "command": "agentResume.openNote",
-          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
           "group": "inline@1"
         },
         {
           "command": "agentResume.renameNote",
-          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
           "group": "1_notes@1"
         },
         {
           "command": "agentResume.deleteNote",
-          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
           "group": "1_notes@2"
         },
         {
           "command": "agentResume.revealNoteInOS",
-          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
           "group": "1_notes@3"
         },
         {
           "command": "agentResume.copyNotePath",
-          "when": "view == agentResume.notes && viewItem == agentResume.notes.note",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == en",
           "group": "1_notes@4"
         },
         {
           "command": "agentResume.newNote",
-          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session)",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == en",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.zh-cn.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.zh-cn.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.zh-cn.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.zh-cn.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.zh-cn.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'zh-cn'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.zh-cn.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'zh-cn'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ja.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ja.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.ja.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.ja.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.ja.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ja'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.ja.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'ja'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ko.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ko.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.ko.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.ko.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.ko.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ko'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.ko.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'ko'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.es.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'es'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.es.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'es'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.es.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'es'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.es.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'es'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.es.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'es'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.es.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'es'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.fr.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.fr.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.fr.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.fr.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.fr.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'fr'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.fr.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'fr'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.de.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'de'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.de.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'de'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.de.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'de'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.de.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'de'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.de.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'de'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.de.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'de'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.pt-br.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.pt-br.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.pt-br.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.pt-br.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.pt-br.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'pt-br'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.pt-br.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'pt-br'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.it.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'it'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.it.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'it'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.it.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'it'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.it.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'it'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.it.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'it'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.it.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'it'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ru.openNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentResume.ru.renameNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
+          "group": "1_notes@1"
+        },
+        {
+          "command": "agentResume.ru.deleteNote",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
+          "group": "1_notes@2"
+        },
+        {
+          "command": "agentResume.ru.revealNoteInOS",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
+          "group": "1_notes@3"
+        },
+        {
+          "command": "agentResume.ru.copyNotePath",
+          "when": "view == agentResume.notes && viewItem == agentResume.notes.note && agentResume.uiLocale == 'ru'",
+          "group": "1_notes@4"
+        },
+        {
+          "command": "agentResume.ru.newNote",
+          "when": "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session) && agentResume.uiLocale == 'ru'",
           "group": "inline@1"
         },
         {

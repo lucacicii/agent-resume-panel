@@ -303,64 +303,64 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       void newProjectNoteCommand(notesStore, tree, acpTree, node, () => refreshNotesUi(tree));
     }),
-    vscode.commands.registerCommand("agentResume.openNote", (node?: unknown) => {
+    ...menuCommand("agentResume.openNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void openNoteCommand(notesStore, notesTree, node);
     }),
-    vscode.commands.registerCommand("agentResume.deleteNote", (node?: unknown) => {
+    ...menuCommand("agentResume.deleteNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void deleteNoteCommand(notesStore, notesTree, node, () => refreshNotesUi(tree));
     }),
-    vscode.commands.registerCommand("agentResume.renameNote", (node?: unknown) => {
+    ...menuCommand("agentResume.renameNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void renameNoteCommand(notesStore, notesTree, node, () => refreshNotesUi(tree));
     }),
-    vscode.commands.registerCommand("agentResume.newNote", (node?: unknown) => {
+    ...menuCommand("agentResume.newNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void newNoteFromNotesViewCommand(notesStore, tree, notesTree, node, () => refreshNotesUi(tree));
     }),
-    vscode.commands.registerCommand("agentResume.filterNotes", () => {
+    ...menuCommand("agentResume.filterNotes", () => {
       if (!notesTree) {
         return;
       }
       void filterNotesCommand(notesTree, notesTreeView);
     }),
-    vscode.commands.registerCommand("agentResume.clearNotesFilter", () => {
+    ...menuCommand("agentResume.clearNotesFilter", () => {
       if (!notesTree) {
         return;
       }
       void clearNotesFilterCommand(notesTree, notesTreeView);
     }),
-    vscode.commands.registerCommand("agentResume.refreshNotes", () => {
+    ...menuCommand("agentResume.refreshNotes", () => {
       void refreshNotesUi(tree, true);
     }),
-    vscode.commands.registerCommand("agentResume.revealNoteInOS", (node?: unknown) => {
+    ...menuCommand("agentResume.revealNoteInOS", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void revealNoteInOsCommand(notesStore, notesTree, node);
     }),
-    vscode.commands.registerCommand("agentResume.openNotesFolder", () => {
+    ...menuCommand("agentResume.openNotesFolder", () => {
       if (!notesStore) {
         return;
       }
       void openNotesFolderCommand(notesStore);
     }),
-    vscode.commands.registerCommand("agentResume.copyNotePath", (node?: unknown) => {
+    ...menuCommand("agentResume.copyNotePath", (node?: unknown) => {
       if (!notesStore || !notesTree) {
         return;
       }
       void copyNotePathCommand(notesStore, notesTree, node);
     }),
-    vscode.commands.registerCommand("agentResume.insertNoteImage", () => {
+    ...menuCommand("agentResume.insertNoteImage", () => {
       if (!notesStore) {
         return;
       }

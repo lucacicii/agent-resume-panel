@@ -48,7 +48,70 @@ function patchPackage(fileName) {
     group: "navigation@0"
   };
 
+  const notesContextEntries = [
+    {
+      command: "agentResume.openNote",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "inline@1"
+    },
+    {
+      command: "agentResume.renameNote",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@1"
+    },
+    {
+      command: "agentResume.deleteNote",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@2"
+    },
+    {
+      command: "agentResume.revealNoteInOS",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@3"
+    },
+    {
+      command: "agentResume.copyNotePath",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@4"
+    },
+    {
+      command: "agentResume.newNote",
+      when:
+        "view == agentResume.notes && (viewItem == agentResume.notes.project || viewItem == agentResume.notes.session)",
+      group: "inline@1"
+    }
+  ];
+
+  const notesTitleEntries = [
+    {
+      command: "agentResume.filterNotes",
+      when: "view == agentResume.notes",
+      group: "navigation@0"
+    },
+    {
+      command: "agentResume.clearNotesFilter",
+      when: "view == agentResume.notes",
+      group: "navigation@1"
+    },
+    {
+      command: "agentResume.newNote",
+      when: "view == agentResume.notes",
+      group: "navigation@2"
+    },
+    {
+      command: "agentResume.refreshNotes",
+      when: "view == agentResume.notes",
+      group: "navigation@3"
+    },
+    {
+      command: "agentResume.openNotesFolder",
+      when: "view == agentResume.notes",
+      group: "navigation@4"
+    }
+  ];
+
   pkg.contributes.menus["view/item/context"] = [
+    ...expandBlock(notesContextEntries),
     ...expandBlock(sessionBlocks.sessionMenuPrefix),
     ...expandBlock(sessionBlocks.mainSessionMenu),
     ...expandBlock(sessionBlocks.sessionMoreTrigger),
@@ -60,6 +123,18 @@ function patchPackage(fileName) {
     ...expandBlock(projectBlocks.mainProjectMenu),
     ...expandBlock(sessionBlocks.projectSortExtras),
     ...expandBlock([projectMoreTrigger])
+  ];
+
+  // Keep non-notes title menus, then append localized Notes title actions.
+  const previousTitle = pkg.contributes.menus["view/title"] ?? [];
+  pkg.contributes.menus["view/title"] = [
+    ...previousTitle.filter((entry) => !String(entry.when ?? "").includes("view == agentResume.notes")),
+    ...expandBlock(notesTitleEntries),
+    {
+      command: "agentResume.openSettings",
+      when: "view == agentResume.notes",
+      group: "navigation@5"
+    }
   ];
 
   assignLocalizedSubmenus(pkg, "agentResume.projectMore", projectBlocks.moreProjectMenu);
