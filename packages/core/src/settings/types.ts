@@ -44,6 +44,23 @@ export interface AgentHomesSettings {
   piHome?: string;
 }
 
+export type SessionSyncStalePolicy = "hide" | "purge";
+
+export interface AgentSessionSyncFilters {
+  showArchivedCodex?: boolean;
+  showArchivedOpenCode?: boolean;
+  showSubagentCodex?: boolean;
+  showSubagentGrok?: boolean;
+  hideCronAlma?: boolean;
+  hideChannelAlma?: boolean;
+  showIncognitoAlma?: boolean;
+}
+
+export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
+  maxItems?: number;
+  stalePolicy?: SessionSyncStalePolicy;
+}
+
 export interface MemorySettings {
   /** Scheduled jobs in Desktop; default false. */
   enabled?: boolean;
@@ -71,6 +88,7 @@ export interface PanelSettings {
   embedding: EmbeddingSettings;
   memory?: MemorySettings;
   agentHomes?: AgentHomesSettings;
+  sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
 }
 
@@ -93,5 +111,16 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     scheduleDailyHour: 22,
     scheduleWeeklyHour: 9,
     scheduleMonthlyHour: 9
+  },
+  sessionSync: {
+    maxItems: 10_000,
+    stalePolicy: "hide",
+    showArchivedCodex: false,
+    showArchivedOpenCode: false,
+    showSubagentCodex: false,
+    showSubagentGrok: false,
+    hideCronAlma: true,
+    hideChannelAlma: true,
+    showIncognitoAlma: false
   }
 };

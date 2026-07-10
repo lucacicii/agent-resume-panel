@@ -178,6 +178,30 @@
                   <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
                 </label>
                 <fieldset>
+                  <legend>Agent Sessions</legend>
+                  <label>Codex home <input name="codexHome" type="text" placeholder="~/.codex" /></label>
+                  <label>Claude home <input name="claudeHome" type="text" placeholder="~/.claude" /></label>
+                  <label>Antigravity home <input name="antigravityHome" type="text" placeholder="~/.gemini" /></label>
+                  <label>Grok home <input name="grokHome" type="text" placeholder="~/.grok" /></label>
+                  <label>Alma data directory <input name="almaDataDir" type="text" placeholder="~/Library/Application Support/alma" /></label>
+                  <label>OpenCode home <input name="opencodeHome" type="text" placeholder="~/.local/share/opencode" /></label>
+                  <label>Pi home <input name="piHome" type="text" placeholder="~/.pi/agent" /></label>
+                  <label>同步上限 <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" /></label>
+                  <label>Stale policy
+                    <select name="syncStalePolicy">
+                      <option value="hide">hide</option>
+                      <option value="purge">purge</option>
+                    </select>
+                  </label>
+                  <label class="check"><input name="showArchivedCodex" type="checkbox" />显示 Codex 归档</label>
+                  <label class="check"><input name="showSubagentCodex" type="checkbox" />显示 Codex 子 Agent</label>
+                  <label class="check"><input name="showArchivedOpenCode" type="checkbox" />显示 OpenCode 归档</label>
+                  <label class="check"><input name="showSubagentGrok" type="checkbox" />显示 Grok 子 Agent</label>
+                  <label class="check"><input name="hideCronAlma" type="checkbox" />隐藏 Alma cron</label>
+                  <label class="check"><input name="hideChannelAlma" type="checkbox" />隐藏 Alma channel</label>
+                  <label class="check"><input name="showIncognitoAlma" type="checkbox" />显示 Alma incognito</label>
+                </fieldset>
+                <fieldset>
                   <legend>定时（默认关）</legend>
                   <label class="check">
                     <input name="memoryEnabled" type="checkbox" />

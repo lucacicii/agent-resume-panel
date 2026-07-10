@@ -102,7 +102,7 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "npm run build:core && tsc -p ./",
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs && node scripts/generate-handoff-menu-contributions.test.mjs",
     "test:notes": "node scripts/note-uri.test.mjs",
     "watch": "tsc -watch -p ./",
@@ -197304,6 +197304,7 @@
     }
   },
   "dependencies": {
+    "@agent-resume/core": "0.1.0",
     "@agentclientprotocol/sdk": "^1.1.0",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",

@@ -31,15 +31,59 @@ import {
   runWeeklyDigest,
   saveSettings,
   searchMemoryByEmbedding,
+  sessionSyncOptionsFromSettings,
+  syncAgentSessions,
   summarizeSessionAction,
   type AgentCitation,
   type AgentProvider,
   type DigestProgressEvent,
-  type PanelSettings
+  type PanelSettings,
+  type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 
 let mainWindow: BrowserWindow | null = null;
+let sessionSyncTimer: NodeJS.Timeout | null = null;
+let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
+const SESSION_SYNC_INTERVAL_MS = 15_000;
+
+function syncSessions(): Promise<AgentSessionSyncResult> {
+  if (sessionSyncInFlight) return sessionSyncInFlight;
+  sessionSyncInFlight = loadSettings()
+    .then((settings) => syncAgentSessions(sessionSyncOptionsFromSettings(settings)))
+    .finally(() => {
+      sessionSyncInFlight = null;
+    });
+  return sessionSyncInFlight;
+}
+
+async function syncAndNotify(): Promise<AgentSessionSyncResult> {
+  const result = await syncSessions();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("sessions:synced", result);
+  }
+  return result;
+}
+
+function stopSessionSyncTimer(): void {
+  if (sessionSyncTimer) clearInterval(sessionSyncTimer);
+  sessionSyncTimer = null;
+}
+
+function startSessionSyncTimer(): void {
+  stopSessionSyncTimer();
+  if (!mainWindow || !mainWindow.isVisible() || mainWindow.isMinimized()) return;
+  sessionSyncTimer = setInterval(() => void syncAndNotify().catch(notifySessionSyncFailure), SESSION_SYNC_INTERVAL_MS);
+}
+
+function notifySessionSyncFailure(error: unknown): void {
+  mainWindow?.webContents.send("sessions:syncFailed", error instanceof Error ? error.message : String(error));
+}
+
+function resumeSessionSync(): void {
+  startSessionSyncTimer();
+  void syncAndNotify().catch(notifySessionSyncFailure);
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -59,7 +103,13 @@ function createWindow(): void {
   });
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
+  mainWindow.on("show", resumeSessionSync);
+  mainWindow.on("restore", resumeSessionSync);
+  mainWindow.on("hide", stopSessionSyncTimer);
+  mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("closed", () => {
+    stopSessionSyncTimer();
     mainWindow = null;
   });
 }
@@ -77,8 +127,12 @@ function registerIpc(): void {
   ipcMain.handle("settings:save", async (_event, settings: PanelSettings) => {
     const file = await saveSettings(settings);
     const schedulerEnabled = await refreshMemorySchedulerFromSettings();
-    return { file, settings: await loadSettings(), schedulerEnabled };
+    const saved = await loadSettings();
+    const sync = await syncAndNotify();
+    return { file, settings: saved, schedulerEnabled, sync };
   });
+
+  ipcMain.handle("sessions:sync", async () => syncAndNotify());
 
   ipcMain.handle("sessions:list", async (_event, limit?: number) => {
     const settings = await loadSettings();

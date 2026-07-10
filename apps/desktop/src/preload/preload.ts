@@ -10,7 +10,8 @@ import type {
   DailyDigestRefreshCheck,
   RunDailyDigestResult,
   RunMonthlyDigestResult,
-  RunWeeklyDigestResult
+  RunWeeklyDigestResult,
+  AgentSessionSyncResult
 } from "@agent-resume/core";
 
 export interface DesktopApi {
@@ -18,7 +19,10 @@ export interface DesktopApi {
   getSettings(): Promise<PanelSettings>;
   saveSettings(
     settings: PanelSettings
-  ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean }>;
+  ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  syncSessions(): Promise<AgentSessionSyncResult>;
+  onSessionsSynced(callback: (result: AgentSessionSyncResult) => void): () => void;
+  onSessionsSyncFailed(callback: (message: string) => void): () => void;
   listSessions(limit?: number): Promise<AgentSession[]>;
   listSessionsInRange(args: {
     fromMs: number;
@@ -212,6 +216,17 @@ const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
+  syncSessions: () => ipcRenderer.invoke("sessions:sync"),
+  onSessionsSynced: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, result: AgentSessionSyncResult) => callback(result);
+    ipcRenderer.on("sessions:synced", handler);
+    return () => ipcRenderer.removeListener("sessions:synced", handler);
+  },
+  onSessionsSyncFailed: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: string) => callback(message);
+    ipcRenderer.on("sessions:syncFailed", handler);
+    return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
+  },
   listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
   listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),

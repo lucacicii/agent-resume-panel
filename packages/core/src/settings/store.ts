@@ -36,6 +36,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.agentHomes,
       ...(partial.agentHomes || {})
     },
+    sessionSync: {
+      ...base.sessionSync,
+      ...(partial.sessionSync || {})
+    },
     desktop: {
       ...base.desktop,
       ...(partial.desktop || {})

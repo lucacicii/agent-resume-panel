@@ -86,7 +86,7 @@ let activeSessionKey = null;
 /** @type {{ provider: string, id: string, title: string } | null} */
 let activePreviewSession = null;
 /** @type {ReturnType<typeof setInterval> | null} */
-let sessionsRefreshTimer = null;
+let lastSessionSyncAt = 0;
 /** Fingerprint of last painted list (skip redraw when unchanged). */
 let sessionsListFingerprint = "";
 /** Prevent overlapping list loads. */
@@ -153,11 +153,12 @@ function scrollActiveSessionIntoView() {
 }
 
 /**
- * @param {{ quiet?: boolean }} [opts]
+ * @param {{ quiet?: boolean, preserveScroll?: boolean }} [opts]
  * quiet: auto-refresh — no full-list Loading flash; skip paint if unchanged
  */
 async function loadSessions(opts = {}) {
   const quiet = opts.quiet === true;
+  const preserveScroll = opts.preserveScroll === true;
   const list = $("sessionsList");
   const meta = $("sessionsMeta");
   if (!list || !meta) return;
@@ -169,6 +170,7 @@ async function loadSessions(opts = {}) {
     if (sessionsLoadInFlight) return;
   }
   sessionsLoadInFlight = true;
+  const previousScrollTop = list.scrollTop;
 
   if (!quiet) {
     list.innerHTML = "";
@@ -181,16 +183,17 @@ async function loadSessions(opts = {}) {
     sessionsCache = next;
 
     if (quiet && fp === sessionsListFingerprint) {
-      meta.textContent = `${sessionsCache.length} sessions · 自动刷新 ${SESSIONS_AUTO_REFRESH_MS / 1000}s · 点击预览`;
+      meta.textContent = sessionListMeta();
       // Still refresh active highlight / scroll target
-      scrollActiveSessionIntoView();
+      if (!preserveScroll) scrollActiveSessionIntoView();
       return;
     }
 
     sessionsListFingerprint = fp;
     renderSessionsList(sessionsCache);
-    meta.textContent = `${sessionsCache.length} sessions · 自动刷新 ${SESSIONS_AUTO_REFRESH_MS / 1000}s · 点击预览`;
-    scrollActiveSessionIntoView();
+    meta.textContent = sessionListMeta();
+    if (preserveScroll) list.scrollTop = previousScrollTop;
+    else scrollActiveSessionIntoView();
   } catch (error) {
     if (!quiet || !sessionsCache.length) {
       meta.textContent = error instanceof Error ? error.message : String(error);
@@ -200,21 +203,39 @@ async function loadSessions(opts = {}) {
   }
 }
 
+function sessionListMeta() {
+  const synced = lastSessionSyncAt ? ` · 最近同步 ${formatTime(lastSessionSyncAt)}` : "";
+  return `${sessionsCache.length} sessions · 可见时每 ${SESSIONS_AUTO_REFRESH_MS / 1000}s 同步${synced} · 点击预览`;
+}
+
 function startSessionsAutoRefresh() {
-  stopSessionsAutoRefresh();
-  sessionsRefreshTimer = setInterval(() => {
-    if (!isSessionsSheetOpen()) {
-      stopSessionsAutoRefresh();
-      return;
-    }
-    loadSessions({ quiet: true });
-  }, SESSIONS_AUTO_REFRESH_MS);
+  // The main process owns the visibility-aware timer.
 }
 
 function stopSessionsAutoRefresh() {
-  if (sessionsRefreshTimer != null) {
-    clearInterval(sessionsRefreshTimer);
-    sessionsRefreshTimer = null;
+  // The main process owns the visibility-aware timer.
+}
+
+async function refreshSessionViews(opts = {}) {
+  const quiet = opts.quiet !== false;
+  await Promise.all([
+    isSessionsSheetOpen() ? loadSessions({ quiet, preserveScroll: true }) : Promise.resolve(),
+    renderCalSessionList({ preserveScroll: true })
+  ]);
+}
+
+async function syncAndRefreshSessionViews(statusEl) {
+  if (statusEl) setStatus(statusEl, "正在同步 Agent sessions…");
+  try {
+    const result = await agentResume.syncSessions();
+    lastSessionSyncAt = result.syncedAt || Date.now();
+    await refreshSessionViews({ quiet: true });
+    const warning = result.warnings?.join(" · ") || "";
+    if (statusEl) setStatus(statusEl, warning || `已同步 ${result.sessionCount} sessions`, warning ? "error" : "ok");
+    return result;
+  } catch (error) {
+    if (statusEl) setStatus(statusEl, error instanceof Error ? error.message : String(error), "error");
+    throw error;
   }
 }
 
@@ -331,6 +352,7 @@ async function runSessionSummarize() {
       box.classList.remove("hidden");
       body.textContent = result.summary;
     }
+    await refreshSessionViews({ quiet: true });
     setStatus(status, "Summary 已生成并写入 catalog", "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
@@ -359,6 +381,7 @@ async function runSessionAutoRename() {
       (s) => s.provider === activePreviewSession.provider && s.id === activePreviewSession.id
     );
     if (cached) cached.title = result.title;
+    await refreshSessionViews({ quiet: true });
 
     let msg = `已重命名为「${result.title}」`;
     if (!result.nativeRenamed && result.nativeError) {
@@ -666,11 +689,12 @@ let calSessionCache = [];
 /** @type {string} */
 let calSessionListSeq = "";
 
-async function renderCalSessionList() {
+async function renderCalSessionList(opts = {}) {
   const listEl = $("calSessionList");
   const titleEl = $("calSessionTitle");
   const metaEl = $("calSessionMeta");
   if (!listEl) return;
+  const previousScrollTop = listEl.scrollTop;
 
   const range = focusSessionRange();
   if (!range) {
@@ -703,6 +727,7 @@ async function renderCalSessionList() {
     if (metaEl) metaEl.textContent = `${calSessionCache.length} 条 · 点击预览`;
     listEl.innerHTML = buildCalSessionListHtml(calSessionCache, range.type);
     wireCalSessionListClicks(listEl);
+    if (opts.preserveScroll) listEl.scrollTop = previousScrollTop;
   } catch (error) {
     if (calSessionListSeq !== seq) return;
     calSessionCache = [];
@@ -2286,8 +2311,11 @@ async function applyOneGtdItem(idx) {
 
 
 
+let loadedSettings = null;
+
 async function loadSettingsForm() {
   const s = await agentResume.getSettings();
+  loadedSettings = s;
   const form = $("settingsForm");
   form.panelHome.value = s.panelHome || "";
 
@@ -2311,6 +2339,22 @@ async function loadSettingsForm() {
   form.dailyHour.value = s.memory?.scheduleDailyHour ?? 22;
   form.weeklyHour.value = s.memory?.scheduleWeeklyHour ?? 9;
   form.monthlyHour.value = s.memory?.scheduleMonthlyHour ?? 9;
+  form.codexHome.value = s.agentHomes?.codexHome || "~/.codex";
+  form.claudeHome.value = s.agentHomes?.claudeHome || "~/.claude";
+  form.antigravityHome.value = s.agentHomes?.antigravityHome || "~/.gemini";
+  form.grokHome.value = s.agentHomes?.grokHome || "~/.grok";
+  form.almaDataDir.value = s.agentHomes?.almaDataDir || "~/Library/Application Support/alma";
+  form.opencodeHome.value = s.agentHomes?.opencodeHome || "~/.local/share/opencode";
+  form.piHome.value = s.agentHomes?.piHome || "~/.pi/agent";
+  form.syncMaxItems.value = s.sessionSync?.maxItems ?? 10000;
+  form.syncStalePolicy.value = s.sessionSync?.stalePolicy || "hide";
+  form.showArchivedCodex.checked = Boolean(s.sessionSync?.showArchivedCodex);
+  form.showSubagentCodex.checked = Boolean(s.sessionSync?.showSubagentCodex);
+  form.showArchivedOpenCode.checked = Boolean(s.sessionSync?.showArchivedOpenCode);
+  form.showSubagentGrok.checked = Boolean(s.sessionSync?.showSubagentGrok);
+  form.hideCronAlma.checked = s.sessionSync?.hideCronAlma !== false;
+  form.hideChannelAlma.checked = s.sessionSync?.hideChannelAlma !== false;
+  form.showIncognitoAlma.checked = Boolean(s.sessionSync?.showIncognitoAlma);
 }
 
 async function saveSettingsForm() {
@@ -2335,24 +2379,29 @@ async function saveSettingsForm() {
   const chatApiKey = form.chatApiKey.value;
 
   const settings = {
+    ...(loadedSettings || {}),
     panelHome: form.panelHome.value.trim() || undefined,
     llm: {
+      ...(loadedSettings?.llm || {}),
       baseUrl: llmBaseUrl,
       model: llmModel,
       apiKey: llmApiKey,
       outputLanguage: form.llmLang.value.trim() || "zh-CN"
     },
     chatLlm: {
+      ...(loadedSettings?.chatLlm || {}),
       baseUrl: chatBaseUrl || undefined,
       model: chatModel || undefined,
       apiKey: chatApiKey || undefined
     },
     embedding: {
+      ...(loadedSettings?.embedding || {}),
       baseUrl: form.embBaseUrl.value.trim() || undefined,
       model: form.embModel.value.trim() || "text-embedding-3-small",
       apiKey: form.embApiKey.value || undefined
     },
     memory: {
+      ...(loadedSettings?.memory || {}),
       enabled: form.memoryEnabled.checked,
       includeTranscripts: true,
       maxSessionsPerDigest: 40,
@@ -2360,10 +2409,35 @@ async function saveSettingsForm() {
       scheduleDailyHour: Number(form.dailyHour.value) || 22,
       scheduleWeeklyHour: Number(form.weeklyHour.value) || 9,
       scheduleMonthlyHour: Number(form.monthlyHour.value) || 9
+    },
+    agentHomes: {
+      ...(loadedSettings?.agentHomes || {}),
+      codexHome: form.codexHome.value.trim() || "~/.codex",
+      claudeHome: form.claudeHome.value.trim() || "~/.claude",
+      antigravityHome: form.antigravityHome.value.trim() || "~/.gemini",
+      grokHome: form.grokHome.value.trim() || "~/.grok",
+      almaDataDir: form.almaDataDir.value.trim() || "~/Library/Application Support/alma",
+      opencodeHome: form.opencodeHome.value.trim() || "~/.local/share/opencode",
+      piHome: form.piHome.value.trim() || "~/.pi/agent"
+    },
+    sessionSync: {
+      ...(loadedSettings?.sessionSync || {}),
+      maxItems: Math.max(1, Math.min(50000, Number(form.syncMaxItems.value) || 10000)),
+      stalePolicy: form.syncStalePolicy.value === "purge" ? "purge" : "hide",
+      showArchivedCodex: form.showArchivedCodex.checked,
+      showSubagentCodex: form.showSubagentCodex.checked,
+      showArchivedOpenCode: form.showArchivedOpenCode.checked,
+      showSubagentGrok: form.showSubagentGrok.checked,
+      hideCronAlma: form.hideCronAlma.checked,
+      hideChannelAlma: form.hideChannelAlma.checked,
+      showIncognitoAlma: form.showIncognitoAlma.checked
     }
   };
   try {
     const result = await agentResume.saveSettings(settings);
+    loadedSettings = result.settings;
+    if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
+    await refreshSessionViews({ quiet: true });
     const sched = result.schedulerEnabled ? " · scheduler ON" : " · scheduler OFF";
     setStatus(status, `Saved · ${result.file}${sched}`, "ok");
   } catch (error) {
@@ -2544,6 +2618,16 @@ function wire() {
   if (typeof agentResume.onDigestProgress === "function") {
     agentResume.onDigestProgress((event) => applyDigestProgress(event));
   }
+  if (typeof agentResume.onSessionsSynced === "function") {
+    agentResume.onSessionsSynced((result) => {
+      lastSessionSyncAt = result.syncedAt || Date.now();
+      void refreshSessionViews({ quiet: true });
+      if (result.warnings?.length) setStatus($("memoryStatus"), result.warnings.join(" · "), "error");
+    });
+  }
+  if (typeof agentResume.onSessionsSyncFailed === "function") {
+    agentResume.onSessionsSyncFailed((message) => setStatus($("memoryStatus"), message, "error"));
+  }
 
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -2576,13 +2660,15 @@ function wire() {
     el.addEventListener("click", () => closeSheet(el.dataset.closeSheet));
   });
 
-  $("btnRefreshSessions").addEventListener("click", () => loadSessions({ quiet: false }));
-  window.addEventListener("focus", () => {
-    if (isSessionsSheetOpen()) {
-      loadSessions({ quiet: true });
+  $("btnRefreshSessions").addEventListener("click", () => syncAndRefreshSessionViews($("sessionsMeta")).catch(() => undefined));
+  $("btnRefreshMemory").addEventListener("click", async () => {
+    try {
+      await syncAndRefreshSessionViews($("memoryStatus"));
+      await loadMemory();
+    } catch {
+      // Old catalog and memory data remain visible.
     }
   });
-  $("btnRefreshMemory").addEventListener("click", () => loadMemory());
   $("btnCalPrev").addEventListener("click", () => shiftCalMonth(-1));
   $("btnCalNext").addEventListener("click", () => shiftCalMonth(1));
   $("btnCalToday").addEventListener("click", () => goCalToday());
@@ -2722,6 +2808,7 @@ async function boot() {
   renderChat();
   await loadSettingsForm();
   await loadMemory();
+  void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);
 }
 
 boot().catch((error) => {

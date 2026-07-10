@@ -14,7 +14,10 @@ export type {
   EmbeddingSettings,
   MemorySettings,
   DesktopSettings,
-  AgentHomesSettings
+  AgentHomesSettings,
+  AgentSessionSyncSettings,
+  AgentSessionSyncFilters,
+  SessionSyncStalePolicy
 } from "./settings/types";
 export { DEFAULT_SETTINGS } from "./settings/types";
 export {
@@ -29,6 +32,17 @@ export { toAgentSession } from "./catalog/types";
 export { ensureCatalogSchema } from "./catalog/db";
 export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
 export { setUserTitleInCatalog, setSessionSummaryInCatalog } from "./catalog/mutations";
+export {
+  loadAllAgentSessions,
+  syncAgentSessions,
+  sessionSyncOptionsFromSettings
+} from "./sessionSync";
+export type {
+  AgentSessionSyncOptions,
+  AgentSessionSyncResult,
+  AgentSessionProviderSyncResult,
+  SyncableAgentProvider
+} from "./sessionSync";
 
 export type { ChatMessage, LlmRuntimeConfig, EmbeddingRuntimeConfig } from "./llm/types";
 export {

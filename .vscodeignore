@@ -5,6 +5,8 @@ node_modules/**
 !node_modules/zod/**
 !node_modules/marked/**
 !node_modules/dompurify/**
+!node_modules/@agent-resume/core/**
+!packages/core/dist/**
 src/**
 tsconfig.json
 *.vsix
