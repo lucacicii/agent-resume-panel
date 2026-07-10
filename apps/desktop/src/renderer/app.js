@@ -109,6 +109,28 @@ function renderSessionsList(sessions) {
   list.appendChild(frag);
 }
 
+/** Highlight active session row and scroll it to the center of the list. */
+function scrollActiveSessionIntoView() {
+  if (!activeSessionKey) return;
+  const list = $("sessionsList");
+  if (!list) return;
+  const rows = list.querySelectorAll(".session-row");
+  let target = null;
+  rows.forEach((el) => {
+    const on = el.dataset.key === activeSessionKey;
+    el.classList.toggle("active", on);
+    if (on) target = el;
+  });
+  if (target) {
+    // Double rAF: wait for sheet layout after open
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      });
+    });
+  }
+}
+
 /**
  * @param {{ quiet?: boolean }} [opts]
  * quiet: auto-refresh — no full-list Loading flash; skip paint if unchanged
@@ -118,7 +140,13 @@ async function loadSessions(opts = {}) {
   const list = $("sessionsList");
   const meta = $("sessionsMeta");
   if (!list || !meta) return;
-  if (sessionsLoadInFlight) return;
+  if (sessionsLoadInFlight) {
+    // Wait briefly for in-flight load so open-from-calendar can focus the row
+    for (let i = 0; i < 40 && sessionsLoadInFlight; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (sessionsLoadInFlight) return;
+  }
   sessionsLoadInFlight = true;
 
   if (!quiet) {
@@ -133,12 +161,15 @@ async function loadSessions(opts = {}) {
 
     if (quiet && fp === sessionsListFingerprint) {
       meta.textContent = `${sessionsCache.length} sessions · 自动刷新 ${SESSIONS_AUTO_REFRESH_MS / 1000}s · 点击预览`;
+      // Still refresh active highlight / scroll target
+      scrollActiveSessionIntoView();
       return;
     }
 
     sessionsListFingerprint = fp;
     renderSessionsList(sessionsCache);
     meta.textContent = `${sessionsCache.length} sessions · 自动刷新 ${SESSIONS_AUTO_REFRESH_MS / 1000}s · 点击预览`;
+    scrollActiveSessionIntoView();
   } catch (error) {
     if (!quiet || !sessionsCache.length) {
       meta.textContent = error instanceof Error ? error.message : String(error);
@@ -177,10 +208,9 @@ async function openSessionPreview(session, opts = {}) {
     id: session.id,
     title: session.title
   };
-  document.querySelectorAll(".session-row").forEach((el) => {
-    el.classList.toggle("active", el.dataset.key === activeSessionKey);
-  });
+  scrollActiveSessionIntoView();
   const pane = $("sessionPreview");
+  if (!pane) return;
   pane.innerHTML = `<p class="muted">Loading preview…</p>`;
   try {
     const { session: s, preview } = await agentResume.previewSession({
@@ -331,6 +361,9 @@ function openSheet(id) {
 }
 
 function closeSheet(id) {
+  if (id === "sheetGtd") {
+    snapshotGtdCache();
+  }
   const el = $(id);
   if (el) el.hidden = true;
   if (id === "sheetSessions") {
@@ -339,6 +372,7 @@ function closeSheet(id) {
 }
 
 function closeAllSheets() {
+  snapshotGtdCache();
   document.querySelectorAll(".sheet").forEach((el) => {
     el.hidden = true;
   });
@@ -357,6 +391,10 @@ let calView = (() => {
 let calEntries = [];
 /** @type {string | null} YYYY-MM-DD */
 let selectedDayKey = null;
+/** @type {{ type: 'day'|'week'|'month', key: string } | null} */
+let detailFocus = null;
+/** Week / month key currently generating (for button loading). */
+let generatingPeriodKey = null;
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -385,18 +423,273 @@ function getActivePeriods() {
 }
 
 function updatePeriodLabel() {
-  const el = $("currentPeriodLabel");
-  if (!el) return;
-  const p = getActivePeriods();
-  el.textContent = `日 ${p.day} · 周 ${p.week} · 月 ${p.month}`;
+  // Period chrome lived in gen-panel (removed); keep hook for callers.
 }
 
 function dayKeyFromDate(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Compare a valid YYYY-MM-DD key against the local calendar day. */
+function isFutureDayKey(dayKey, now = new Date()) {
+  if (typeof dayKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+    return false;
+  }
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return false;
+  }
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+  return parsed.getTime() > today.getTime();
+}
+
 function dayKeyFromMs(ms) {
   return dayKeyFromDate(new Date(ms));
+}
+
+/** @returns {{ fromMs: number, toMs: number } | null} */
+function validMsRange(fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return null;
+  }
+  return { fromMs, toMs };
+}
+
+/** Local day range [start, end) for YYYY-MM-DD. */
+function dayRangeFromKey(dayKey) {
+  if (typeof dayKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+    return null;
+  }
+  const [y, m, d] = dayKey.split("-").map(Number);
+  if (![y, m, d].every((n) => Number.isFinite(n))) return null;
+  const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+  const end = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  return validMsRange(start.getTime(), end.getTime());
+}
+
+/** Monday 00:00 of ISO week YYYY-Www (local). */
+function mondayOfIsoWeekLabel(weekLabel) {
+  const match = /^(\d{4})-W(\d{2})$/i.exec(weekLabel || "");
+  if (!match) return null;
+  const isoYear = Number(match[1]);
+  const isoWeek = Number(match[2]);
+  if (!Number.isFinite(isoYear) || !Number.isFinite(isoWeek) || isoWeek < 1 || isoWeek > 53) {
+    return null;
+  }
+  const jan4 = new Date(isoYear, 0, 4, 12, 0, 0, 0);
+  const day = jan4.getDay() || 7;
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() + (1 - day) + (isoWeek - 1) * 7);
+  monday.setHours(0, 0, 0, 0);
+  if (!Number.isFinite(monday.getTime())) return null;
+  return monday;
+}
+
+function weekRangeFromKey(weekLabel) {
+  const monday = mondayOfIsoWeekLabel(weekLabel);
+  if (!monday) return null;
+  const next = new Date(monday);
+  next.setDate(monday.getDate() + 7);
+  return validMsRange(monday.getTime(), next.getTime());
+}
+
+function monthRangeFromKey(monthLabel) {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthLabel || "");
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+  const end = new Date(y, m, 1, 0, 0, 0, 0);
+  return validMsRange(start.getTime(), end.getTime());
+}
+
+/**
+ * Range for current detailFocus (day / week / month).
+ * @returns {{ type: string, key: string, fromMs: number, toMs: number } | null}
+ */
+function focusSessionRange() {
+  const focus = detailFocus || (selectedDayKey ? { type: "day", key: selectedDayKey } : null);
+  if (!focus || !focus.key) return null;
+  if (focus.type === "day") {
+    const r = dayRangeFromKey(focus.key);
+    if (!r) return null;
+    return { type: "day", key: focus.key, ...r };
+  }
+  if (focus.type === "week") {
+    const r = weekRangeFromKey(focus.key);
+    if (!r) return null;
+    return { type: "week", key: focus.key, ...r };
+  }
+  if (focus.type === "month") {
+    const r = monthRangeFromKey(focus.key);
+    if (!r) return null;
+    return { type: "month", key: focus.key, ...r };
+  }
+  return null;
+}
+
+function calSessionRowHtml(s) {
+  return `
+    <button type="button" class="cal-session-row" data-provider="${escapeHtml(
+      s.provider
+    )}" data-id="${escapeHtml(s.id)}">
+      <div class="s-title">${escapeHtml(s.title || s.id)}</div>
+      <div class="s-meta">${escapeHtml(s.provider)} · ${escapeHtml(
+        basename(s.projectPath || "")
+      )} · ${escapeHtml(formatTime(s.updatedAt))}</div>
+    </button>`;
+}
+
+/**
+ * @param {any[]} sessions
+ * @param {"day"|"week"|"month"} type
+ */
+function buildCalSessionListHtml(sessions, type) {
+  if (!sessions.length) {
+    return `<p class="muted cal-session-empty">该范围内没有 session</p>`;
+  }
+
+  if (type === "day") {
+    return sessions.map((s) => calSessionRowHtml(s)).join("");
+  }
+
+  // Group by day (YYYY-MM-DD), days descending
+  /** @type {Map<string, any[]>} */
+  const byDay = new Map();
+  for (const s of sessions) {
+    const dk = dayKeyFromMs(s.updatedAt);
+    if (!byDay.has(dk)) byDay.set(dk, []);
+    byDay.get(dk).push(s);
+  }
+  const days = [...byDay.keys()].sort().reverse();
+
+  if (type === "week") {
+    return days
+      .map((dk) => {
+        const list = byDay.get(dk) || [];
+        list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        return `<div class="cal-session-group">
+          <div class="cal-session-group-title day">${escapeHtml(dk)} · ${list.length}</div>
+          ${list.map((s) => calSessionRowHtml(s)).join("")}
+        </div>`;
+      })
+      .join("");
+  }
+
+  // month: week → day
+  /** @type {Map<string, string[]>} weekLabel -> day keys */
+  const weekDays = new Map();
+  for (const dk of days) {
+    const [y, m, d] = dk.split("-").map(Number);
+    const w = isoWeekLabelFromDate(new Date(y, m - 1, d, 12, 0, 0, 0));
+    if (!weekDays.has(w)) weekDays.set(w, []);
+    weekDays.get(w).push(dk);
+  }
+  const weeks = [...weekDays.keys()].sort().reverse();
+
+  return weeks
+    .map((w) => {
+      const dks = (weekDays.get(w) || []).sort().reverse();
+      const weekCount = dks.reduce((n, dk) => n + (byDay.get(dk)?.length || 0), 0);
+      const dayBlocks = dks
+        .map((dk) => {
+          const list = byDay.get(dk) || [];
+          list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          return `<div class="cal-session-group">
+            <div class="cal-session-group-title day">${escapeHtml(dk)} · ${list.length}</div>
+            ${list.map((s) => calSessionRowHtml(s)).join("")}
+          </div>`;
+        })
+        .join("");
+      return `<div class="cal-session-group week-block">
+        <div class="cal-session-group-title week">${escapeHtml(w)} · ${weekCount}</div>
+        ${dayBlocks}
+      </div>`;
+    })
+    .join("");
+}
+
+function wireCalSessionListClicks(listEl) {
+  if (!listEl) return;
+  listEl.querySelectorAll(".cal-session-row").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const provider = btn.dataset.provider;
+      const id = btn.dataset.id;
+      if (!provider || !id) return;
+      const session =
+        calSessionCache.find((s) => s.provider === provider && s.id === id) || {
+          provider,
+          id,
+          title: btn.querySelector(".s-title")?.textContent || id,
+          projectPath: "",
+          updatedAt: 0
+        };
+      // Set active before list paint so renderSessionsList can mark .active
+      activeSessionKey = `${provider}:${id}`;
+      openSheet("sheetSessions");
+      await loadSessions({ quiet: true });
+      scrollActiveSessionIntoView();
+      await openSessionPreview(session);
+    });
+  });
+}
+
+/** @type {any[]} */
+let calSessionCache = [];
+/** @type {string} */
+let calSessionListSeq = "";
+
+async function renderCalSessionList() {
+  const listEl = $("calSessionList");
+  const titleEl = $("calSessionTitle");
+  const metaEl = $("calSessionMeta");
+  if (!listEl) return;
+
+  const range = focusSessionRange();
+  if (!range) {
+    delete listEl.dataset.view;
+    if (titleEl) titleEl.textContent = "Sessions";
+    if (metaEl) metaEl.textContent = "";
+    listEl.innerHTML = `<p class="muted cal-session-empty">选择日期 / 周 / 月后显示 session</p>`;
+    calSessionCache = [];
+    return;
+  }
+
+  listEl.dataset.view = range.type;
+
+  const label =
+    range.type === "day" ? `日 ${range.key}` : range.type === "week" ? `周 ${range.key}` : `月 ${range.key}`;
+  if (titleEl) titleEl.textContent = `Sessions · ${label}`;
+  if (metaEl) metaEl.textContent = "加载中…";
+
+  const seq = `${range.type}:${range.key}:${range.fromMs}:${range.toMs}`;
+  calSessionListSeq = seq;
+
+  try {
+    const sessions = await agentResume.listSessionsInRange({
+      fromMs: range.fromMs,
+      toMs: range.toMs,
+      limit: 500
+    });
+    if (calSessionListSeq !== seq) return; // stale
+    calSessionCache = sessions || [];
+    if (metaEl) metaEl.textContent = `${calSessionCache.length} 条 · 点击预览`;
+    listEl.innerHTML = buildCalSessionListHtml(calSessionCache, range.type);
+    wireCalSessionListClicks(listEl);
+  } catch (error) {
+    if (calSessionListSeq !== seq) return;
+    calSessionCache = [];
+    if (metaEl) metaEl.textContent = "";
+    listEl.innerHTML = `<p class="status error">${escapeHtml(
+      error instanceof Error ? error.message : String(error)
+    )}</p>`;
+  }
 }
 
 function monthRangeMs(year, month) {
@@ -408,10 +701,6 @@ function monthRangeMs(year, month) {
   return { fromMs: start.getTime(), toMs: end.getTime() };
 }
 
-function filterLevel() {
-  return $("memoryLevel").value;
-}
-
 function entryDayKey(entry) {
   if (entry.level === "daily" && typeof entry.id === "string" && entry.id.startsWith("daily:")) {
     return entry.id.slice("daily:".length);
@@ -419,14 +708,11 @@ function entryDayKey(entry) {
   return dayKeyFromMs(entry.periodStartMs);
 }
 
-function buildDayIndex(entries, levelFilter) {
+function buildDayIndex(entries) {
   /** @type {Record<string, { daily?: any, weeklies: any[], monthlies: any[] }>} */
   const map = {};
   for (const e of entries) {
     const level = e.level || "daily";
-    if (levelFilter !== "all" && level !== levelFilter) {
-      continue;
-    }
     const key = entryDayKey(e);
     if (!map[key]) {
       map[key] = { weeklies: [], monthlies: [] };
@@ -490,13 +776,325 @@ function applyCalPicker() {
   loadMemory();
 }
 
+function currentWeekLabel() {
+  return isoWeekLabelFromDate(new Date());
+}
+
+function currentMonthLabel() {
+  const n = new Date();
+  return `${n.getFullYear()}-${pad2(n.getMonth() + 1)}`;
+}
+
+function viewMonthLabel() {
+  return `${calView.year}-${pad2(calView.month + 1)}`;
+}
+
+function hasWeeklyDigest(weekLabel) {
+  const id = `weekly:${weekLabel}`;
+  return calEntries.some((e) => e.level === "weekly" && (e.id === id || String(e.id).includes(weekLabel)));
+}
+
+function hasMonthlyDigest(monthLabel) {
+  const id = `monthly:${monthLabel}`;
+  return calEntries.some((e) => e.level === "monthly" && (e.id === id || String(e.id).includes(monthLabel)));
+}
+
+function getWeeklyEntry(weekLabel) {
+  const id = `weekly:${weekLabel}`;
+  return calEntries.find((e) => e.level === "weekly" && (e.id === id || String(e.id).includes(weekLabel)));
+}
+
+function getMonthlyEntry(monthLabel) {
+  const id = `monthly:${monthLabel}`;
+  return calEntries.find((e) => e.level === "monthly" && (e.id === id || String(e.id).includes(monthLabel)));
+}
+
+function periodKeyFromEntry(entry) {
+  const level = entry.level || "daily";
+  const idKey = periodKeyFromMemoryId(level, entry.id || "");
+  if (level === "daily" && /^\d{4}-\d{2}-\d{2}$/.test(idKey)) return idKey;
+  if (level === "weekly" && /^\d{4}-W\d{2}$/i.test(idKey)) return idKey;
+  if (level === "monthly" && /^\d{4}-\d{2}$/.test(idKey)) return idKey;
+
+  const start = new Date(entry.periodStartMs);
+  if (!Number.isFinite(start.getTime())) return "";
+  if (level === "daily") return dayKeyFromDate(start);
+  if (level === "weekly") return isoWeekLabelFromDate(start);
+  if (level === "monthly") return dayKeyFromDate(start).slice(0, 7);
+  return "";
+}
+
+function digestCardHtml(e) {
+  const emb = e.embeddingJson ? " · embedding ✓" : "";
+  const level = e.level || "daily";
+  const id = e.id || "";
+  const periodKey = periodKeyFromEntry(e);
+  return `
+      <article class="digest-card" data-memory-id="${escapeHtml(id)}" data-level="${escapeHtml(level)}">
+        <header class="digest-card-head">
+          <div class="digest-card-title-row">
+            <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(
+              e.title || id
+            )}</h3>
+            <div class="digest-card-actions">
+              <button type="button" class="tool-btn dig-regen" data-level="${escapeHtml(
+                level
+              )}" data-id="${escapeHtml(id)}" data-period-key="${escapeHtml(periodKey)}">重新生成</button>
+              <button type="button" class="tool-btn dig-gtd" data-level="${escapeHtml(
+                level
+              )}" data-id="${escapeHtml(id)}">GTD分析</button>
+            </div>
+          </div>
+          <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
+        </header>
+        <pre class="digest-body">${escapeHtml(e.content)}</pre>
+      </article>`;
+}
+
+function wireDigestCardActions(root) {
+  if (!root) return;
+  root.querySelectorAll(".dig-regen").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      regenerateDigest(
+        btn.dataset.level || "daily",
+        btn.dataset.id || "",
+        btn.dataset.periodKey || ""
+      );
+    });
+  });
+  root.querySelectorAll(".dig-gtd").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openGtdFromDigest(btn.dataset.level || "daily", btn.dataset.id || "");
+    });
+  });
+}
+
+/** Parse period key from memory id: daily:YYYY-MM-DD | weekly:YYYY-Www | monthly:YYYY-MM */
+function periodKeyFromMemoryId(level, id) {
+  if (!id) return "";
+  const prefixes = ["daily:", "weekly:", "monthly:"];
+  for (const p of prefixes) {
+    if (id.startsWith(p)) return id.slice(p.length);
+  }
+  // fallback: strip known level prefix
+  if (level === "daily" && id.startsWith("daily:")) return id.slice(6);
+  if (level === "weekly" && id.startsWith("weekly:")) return id.slice(7);
+  if (level === "monthly" && id.startsWith("monthly:")) return id.slice(8);
+  return id;
+}
+
+function regenerateDigest(level, memoryId, explicitPeriodKey = "") {
+  const key = explicitPeriodKey || periodKeyFromMemoryId(level, memoryId);
+  if (!key) {
+    setGenFinal("无法解析 digest id", "error");
+    return;
+  }
+  if (level === "daily") {
+    if (weeklyMonthlyBusy) {
+      setGenFinal("周报/月报生成中，请稍候…", "error");
+      return;
+    }
+    if (generatingDays.has(key)) {
+      focusGeneratingDetail("day", key);
+      return;
+    }
+    selectedDayKey = key;
+    detailFocus = { type: "day", key };
+    updatePeriodLabel();
+    runDaily(key, { reasonMessage: "手动重新生成" });
+    return;
+  }
+  if (level === "weekly") {
+    if (generatingPeriodKey === `weekly:${key}`) {
+      focusGeneratingDetail("week", key);
+      return;
+    }
+    if (weeklyMonthlyBusy || generatingDays.size > 0) {
+      setGenFinal("有任务进行中，请稍候再重新生成周报…", "error");
+      return;
+    }
+    detailFocus = { type: "week", key };
+    runWeekly(key);
+    return;
+  }
+  if (level === "monthly") {
+    if (generatingPeriodKey === `monthly:${key}`) {
+      focusGeneratingDetail("month", key);
+      return;
+    }
+    if (weeklyMonthlyBusy || generatingDays.size > 0) {
+      setGenFinal("有任务进行中，请稍候再重新生成月报…", "error");
+      return;
+    }
+    detailFocus = { type: "month", key };
+    runMonthly(key);
+    return;
+  }
+  setGenFinal(`未知 level: ${level}`, "error");
+}
+
+/** Last scoped GTD source (from detail card). */
+let gtdScoped = /** @type {{ level: string, memoryId: string } | null} */ (null);
+
+/**
+ * Cache GTD analysis per digest id. Only refresh on「重新分析」.
+ * @type {Map<string, { level: string, proposals: any[], warnings: string[], statusText: string }>}
+ */
+const gtdCacheByMemoryId = new Map();
+
+/** Collect current DOM edits into cache for active scoped digest. */
+function snapshotGtdCache() {
+  if (!gtdScoped?.memoryId) return;
+  const root = $("gtdPreview");
+  if (!root) return;
+
+  const proposals = [];
+  root.querySelectorAll(".gtd-row").forEach((row) => {
+    const idx = Number(row.dataset.idx);
+    const edited = collectEditedGtdItem(idx);
+    const base = gtdPreviewItems[idx];
+    if (!edited) return;
+    proposals.push({
+      ...(base || {}),
+      provider: edited.provider,
+      sessionId: edited.sessionId,
+      title: edited.title,
+      projectPath: edited.projectPath,
+      previousGtd: edited.previousGtd,
+      proposedGtd: edited.gtd,
+      reason: edited.reason,
+      tasks: edited.tasks,
+      sourceMemoryIds: edited.sourceMemoryIds,
+      todolistPreview: edited.todolistMarkdown
+    });
+  });
+
+  const prev = gtdCacheByMemoryId.get(gtdScoped.memoryId);
+  const statusEl = $("gtdSyncStatus");
+  gtdCacheByMemoryId.set(gtdScoped.memoryId, {
+    level: gtdScoped.level,
+    proposals,
+    warnings: prev?.warnings || [],
+    statusText: statusEl?.textContent || prev?.statusText || ""
+  });
+}
+
+function restoreGtdCache(memoryId) {
+  const cached = gtdCacheByMemoryId.get(memoryId);
+  if (!cached) return false;
+  renderGtdPreview(cached.proposals, cached.warnings);
+  const status = $("gtdSyncStatus");
+  if (status) {
+    const text =
+      cached.statusText ||
+      `缓存预览 · ${cached.proposals.length} 项 · 源 ${cached.level}:${periodKeyFromMemoryId(
+        cached.level,
+        memoryId
+      )} · 点「重新分析」可刷新`;
+    // Prefer ok when we have items; keep error styling only if empty
+    setStatus(status, text, cached.proposals.length ? "ok" : "error");
+  }
+  return true;
+}
+
+/**
+ * Open GTD sheet for a digest. Uses cache unless forceAnalyze.
+ * @param {string} level
+ * @param {string} memoryId
+ * @param {{ forceAnalyze?: boolean }} [opts]
+ */
+async function openGtdFromDigest(level, memoryId, opts = {}) {
+  if (!memoryId) {
+    setGenFinal("缺少 digest id", "error");
+    return;
+  }
+  // Persist edits from previous open before switching source
+  snapshotGtdCache();
+
+  gtdScoped = { level, memoryId };
+  openSheet("sheetGtd");
+
+  if (!opts.forceAnalyze && gtdCacheByMemoryId.has(memoryId)) {
+    restoreGtdCache(memoryId);
+    return;
+  }
+  await previewGtdSync({ force: true });
+}
+
+function renderDigestEntries(entries) {
+  const detail = $("calDetail");
+  if (!detail) return;
+  if (!entries.length) {
+    detail.innerHTML = `<p class="empty-hint">暂无 digest。</p>`;
+    return;
+  }
+  detail.innerHTML = entries.map((e) => digestCardHtml(e)).join("");
+  wireDigestCardActions(detail);
+}
+
+function renderWeekDetail(weekLabel) {
+  // Viewing existing digest only — never show generation progress chrome.
+  const isGenerating = generatingPeriodKey === `weekly:${weekLabel}`;
+  if (!isGenerating) {
+    hideGenProgress();
+  }
+  const entry = getWeeklyEntry(weekLabel);
+  if (!entry) {
+    $("calDetail").innerHTML = `<p class="empty-hint">周报 ${escapeHtml(weekLabel)} 尚不存在。</p>`;
+    return;
+  }
+  renderDigestEntries([entry]);
+}
+
+function renderMonthDetail(monthLabel) {
+  const isGenerating = generatingPeriodKey === `monthly:${monthLabel}`;
+  if (!isGenerating) {
+    hideGenProgress();
+  }
+  const entry = getMonthlyEntry(monthLabel);
+  if (!entry) {
+    $("calDetail").innerHTML = `<p class="empty-hint">月报 ${escapeHtml(monthLabel)} 尚不存在。</p>`;
+    return;
+  }
+  renderDigestEntries([entry]);
+}
+
+function refreshDetailFocus() {
+  if (!detailFocus) {
+    if (selectedDayKey) renderDayDetail(selectedDayKey);
+    return;
+  }
+  const { type, key } = detailFocus;
+  // If focused period is still generating, keep the generating placeholder.
+  if (type === "day" && generatingDays.has(key)) {
+    showGeneratingDetail("day", key);
+    return;
+  }
+  if (type === "week" && generatingPeriodKey === `weekly:${key}`) {
+    showGeneratingDetail("week", key);
+    return;
+  }
+  if (type === "month" && generatingPeriodKey === `monthly:${key}`) {
+    showGeneratingDetail("month", key);
+    return;
+  }
+  if (type === "day") {
+    renderDayDetail(key);
+  } else if (type === "week") {
+    renderWeekDetail(key);
+  } else if (type === "month") {
+    renderMonthDetail(key);
+  }
+}
+
 function renderCalendar() {
   syncCalPickers();
   updatePeriodLabel();
   const grid = $("calendarGrid");
   grid.innerHTML = "";
-  const levelFilter = filterLevel();
-  const index = buildDayIndex(calEntries, levelFilter);
+  const index = buildDayIndex(calEntries);
 
   const first = new Date(calView.year, calView.month, 1);
   // Monday-based: getDay Sun=0 → convert
@@ -506,67 +1104,279 @@ function renderCalendar() {
   }
   const gridStart = new Date(calView.year, calView.month, 1 - startOffset);
   const todayKey = todayInputValue();
+  const thisWeek = currentWeekLabel();
 
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
-    const key = dayKeyFromDate(d);
-    const outside = d.getMonth() !== calView.month;
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className = "cal-cell";
-    if (outside) cell.classList.add("outside");
-    if (key === todayKey) cell.classList.add("today");
-    if (key === selectedDayKey) cell.classList.add("selected");
-    cell.dataset.day = key;
+  for (let row = 0; row < 6; row++) {
+    let weekLabelForRow = null;
+    for (let col = 0; col < 7; col++) {
+      const i = row * 7 + col;
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const key = dayKeyFromDate(d);
+      const outside = d.getMonth() !== calView.month;
+      if (col === 0) {
+        weekLabelForRow = isoWeekLabelFromDate(d);
+      }
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cal-cell";
+      if (outside) cell.classList.add("outside");
+      if (key === todayKey) cell.classList.add("today");
+      if (key === selectedDayKey) cell.classList.add("selected");
+      if (generatingDays.has(key)) cell.classList.add("generating");
+      cell.dataset.day = key;
+      if (generatingDays.has(key)) {
+        cell.title = `正在生成日报 ${key}…`;
+      }
 
-    const marks = document.createElement("div");
-    marks.className = "marks";
-    const bucket = index[key];
-    if (bucket?.daily) {
-      const m = document.createElement("span");
-      m.className = "mark daily";
-      m.textContent = "D";
-      m.title = bucket.daily.title || bucket.daily.id;
-      marks.appendChild(m);
-    }
-    if (bucket?.weeklies?.length) {
-      const m = document.createElement("span");
-      m.className = "mark weekly";
-      m.textContent = "W";
-      m.title = bucket.weeklies.map((w) => w.title || w.id).join(", ");
-      marks.appendChild(m);
-    }
-    if (bucket?.monthlies?.length) {
-      const m = document.createElement("span");
-      m.className = "mark monthly";
-      m.textContent = "M";
-      m.title = bucket.monthlies.map((x) => x.title || x.id).join(", ");
-      marks.appendChild(m);
+      const marks = document.createElement("div");
+      marks.className = "marks";
+      const bucket = index[key];
+      // Only show daily mark on date cells (week/month use side buttons).
+      if (bucket?.daily) {
+        const m = document.createElement("span");
+        m.className = "mark daily";
+        m.textContent = "D";
+        m.title = bucket.daily.title || bucket.daily.id;
+        marks.appendChild(m);
+      }
+
+      cell.innerHTML = `<span class="day-num">${d.getDate()}</span>`;
+      cell.appendChild(marks);
+      if (generatingDays.has(key)) {
+        const spin = document.createElement("span");
+        spin.className = "cal-cell-loading";
+        spin.setAttribute("aria-hidden", "true");
+        cell.appendChild(spin);
+      }
+      cell.addEventListener("click", () => selectDay(key));
+      grid.appendChild(cell);
     }
 
-    cell.innerHTML = `<span class="day-num">${d.getDate()}</span>`;
-    cell.appendChild(marks);
-    cell.addEventListener("click", () => selectDay(key));
-    grid.appendChild(cell);
+    // Week action button after Sunday
+    const weekBtn = document.createElement("button");
+    weekBtn.type = "button";
+    weekBtn.className = "cal-week-btn";
+    weekBtn.dataset.week = weekLabelForRow || "";
+    const wLabel = weekLabelForRow || "";
+    const weekShortLabel = /W\d{2}$/i.exec(wLabel)?.[0]?.toUpperCase() || "W--";
+    weekBtn.innerHTML = `<span class="cal-week-label">${escapeHtml(weekShortLabel)}</span>`;
+    const isFutureWeek = wLabel > thisWeek;
+    const hasW = hasWeeklyDigest(wLabel);
+    if (hasW) weekBtn.classList.add("has-digest");
+    if (isFutureWeek) weekBtn.classList.add("future");
+    if (generatingPeriodKey === `weekly:${wLabel}`) weekBtn.classList.add("generating");
+    weekBtn.title = isFutureWeek
+      ? `未来周 ${wLabel} 不生成`
+      : hasW
+        ? `周报 ${wLabel} · 点击查看（重新生成请用详情按钮）`
+        : `周报 ${wLabel} · 点击生成`;
+    weekBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onWeekButton(wLabel);
+    });
+    grid.appendChild(weekBtn);
+  }
+
+  // Month button state
+  const monthBtn = $("btnCalMonthDigest");
+  if (monthBtn) {
+    const mLabel = viewMonthLabel();
+    const thisMonth = currentMonthLabel();
+    const isFutureMonth = mLabel > thisMonth;
+    const hasM = hasMonthlyDigest(mLabel);
+    monthBtn.classList.toggle("has-digest", hasM);
+    monthBtn.classList.toggle("future", isFutureMonth);
+    monthBtn.classList.toggle("generating", generatingPeriodKey === `monthly:${mLabel}`);
+    monthBtn.disabled = isFutureMonth;
+    monthBtn.textContent = isFutureMonth ? "月报（未来）" : hasM ? `月报 · ${mLabel}` : `月报 · 生成`;
+    monthBtn.title = isFutureMonth
+      ? "未来月份不生成月报"
+      : hasM
+        ? `月报 ${mLabel} · 点击查看（重新生成请用详情按钮）`
+        : `月报 ${mLabel} · 点击生成`;
   }
 }
 
 function entriesForDay(dayKey) {
-  const levelFilter = filterLevel();
-  return calEntries.filter((e) => {
-    const level = e.level || "daily";
-    if (levelFilter !== "all" && level !== levelFilter) {
-      return false;
-    }
-    return entryDayKey(e) === dayKey;
-  });
+  return calEntries.filter((e) => entryDayKey(e) === dayKey);
 }
 
-function selectDay(dayKey) {
-  selectedDayKey = dayKey;
+function hasDailyDigest(dayKey) {
+  return calEntries.some((e) => (e.level || "daily") === "daily" && entryDayKey(e) === dayKey);
+}
+
+/**
+ * Jump right panel to a day/week/month that is currently generating.
+ * @param {"day"|"week"|"month"} type
+ * @param {string} key
+ */
+function focusGeneratingDetail(type, key) {
+  detailFocus = { type, key };
+  if (type === "day") {
+    selectedDayKey = key;
+  }
   updatePeriodLabel();
   renderCalendar();
+  renderCalSessionList();
+  showGeneratingDetail(type, key);
+  // Keep / restore progress strip on the right
+  if (lastProgressSnapshot) {
+    applyDigestProgress(lastProgressSnapshot, { skipDetail: true });
+  } else {
+    showGenProgress();
+    $("genProgress")?.classList.add("is-loading");
+    const line = $("genProgressLine");
+    if (line) {
+      const label = type === "day" ? "日报" : type === "week" ? "周报" : "月报";
+      line.textContent = `正在生成${label} ${key}…`;
+      line.classList.remove("is-ok", "is-error");
+    }
+  }
+}
+
+/**
+ * @param {"day"|"week"|"month"} type
+ * @param {string} key
+ */
+function showGeneratingDetail(type, key) {
+  const detail = $("calDetail");
+  if (!detail) return;
+  const label = type === "day" ? "日报" : type === "week" ? "周报" : "月报";
+  detail.innerHTML = `
+    <div class="detail-generating">
+      <p class="empty-hint">
+        正在生成<strong>${escapeHtml(label)}</strong>
+        <span class="detail-generating-key">${escapeHtml(key)}</span>
+      </p>
+      <p class="muted detail-generating-hint">进度见上方进度条与 session 明细。</p>
+    </div>`;
+}
+
+async function selectDay(dayKey) {
+  selectedDayKey = dayKey;
+  detailFocus = { type: "day", key: dayKey };
+  updatePeriodLabel();
+  renderCalendar();
+  renderCalSessionList();
+
+  // Already generating this day → jump to its detail + progress (no new job).
+  if (generatingDays.has(dayKey)) {
+    focusGeneratingDetail("day", dayKey);
+    return;
+  }
+
   renderDayDetail(dayKey);
+
+  // Future days: view only, never generate.
+  if (isFutureDayKey(dayKey)) {
+    return;
+  }
+
+  if (weeklyMonthlyBusy) {
+    setGenFinal("周报/月报生成中，请稍候再点日期…", "error");
+    return;
+  }
+
+  // Auto-generate only when sessions are new/updated (or daily missing with sessions).
+  try {
+    const check = await agentResume.needsDailyDigestRefresh(dayKey);
+    if (!check.needed) {
+      if (check.reason === "up_to_date") {
+        // Soft status; don't look like an error
+        showGenProgress();
+        const line = $("genProgressLine");
+        if (line) {
+          line.textContent = check.message || "日报已是最新";
+          line.classList.remove("is-error");
+          line.classList.add("is-ok");
+        }
+        const box = $("genProgress");
+        box?.classList.remove("is-error", "is-loading");
+        box?.classList.add("is-done");
+        hideGenSessionRow();
+      }
+      return;
+    }
+    runDaily(dayKey, { reasonMessage: check.message });
+  } catch (error) {
+    // Fallback: if check fails, only generate when no daily yet
+    if (!hasDailyDigest(dayKey)) {
+      runDaily(dayKey);
+    } else {
+      console.warn("needsDailyDigestRefresh failed", error);
+    }
+  }
+}
+
+function onWeekButton(weekLabel) {
+  if (!weekLabel) return;
+  detailFocus = { type: "week", key: weekLabel };
+  updatePeriodLabel();
+  renderCalendar();
+  renderCalSessionList();
+
+  // Already generating this week → jump detail + progress.
+  if (generatingPeriodKey === `weekly:${weekLabel}`) {
+    focusGeneratingDetail("week", weekLabel);
+    return;
+  }
+
+  const thisWeek = currentWeekLabel();
+  if (weekLabel > thisWeek) {
+    $("calDetail").innerHTML = `<p class="empty-hint">未来周不生成周报。</p>`;
+    return;
+  }
+
+  // Exists (including current week) → only show; regenerate via detail button.
+  if (hasWeeklyDigest(weekLabel)) {
+    hideGenProgress();
+    renderWeekDetail(weekLabel);
+    return;
+  }
+
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    $("calDetail").innerHTML = `<p class="empty-hint muted">周报 ${escapeHtml(
+      weekLabel
+    )} 尚未生成；当前有其他任务进行中，请稍候。</p>`;
+    setGenFinal("有任务进行中，请稍候再生成周报…", "error");
+    return;
+  }
+  runWeekly(weekLabel);
+}
+
+function onMonthButton() {
+  const monthLabel = viewMonthLabel();
+  detailFocus = { type: "month", key: monthLabel };
+  updatePeriodLabel();
+  renderCalendar();
+  renderCalSessionList();
+
+  if (generatingPeriodKey === `monthly:${monthLabel}`) {
+    focusGeneratingDetail("month", monthLabel);
+    return;
+  }
+
+  const thisMonth = currentMonthLabel();
+  if (monthLabel > thisMonth) {
+    $("calDetail").innerHTML = `<p class="empty-hint">未来月份不生成月报。</p>`;
+    return;
+  }
+
+  // Exists (including current month) → only show; regenerate via detail button.
+  if (hasMonthlyDigest(monthLabel)) {
+    hideGenProgress();
+    renderMonthDetail(monthLabel);
+    return;
+  }
+
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    $("calDetail").innerHTML = `<p class="empty-hint muted">月报 ${escapeHtml(
+      monthLabel
+    )} 尚未生成；当前有其他任务进行中，请稍候。</p>`;
+    setGenFinal("有任务进行中，请稍候再生成月报…", "error");
+    return;
+  }
+  runMonthly(monthLabel);
 }
 
 function renderDayDetail(dayKey) {
@@ -576,8 +1386,21 @@ function renderDayDetail(dayKey) {
   const weeklies = items.filter((e) => e.level === "weekly");
   const monthlies = items.filter((e) => e.level === "monthly");
 
+  // Viewing a finished day (not generating) → hide leftover progress UI.
+  if (!generatingDays.has(dayKey) && !weeklyMonthlyBusy) {
+    hideGenProgress();
+  }
+
   if (!items.length) {
-    detail.innerHTML = `<p class="empty-hint">这一天还没有 digest。可点上方「生成日报」。</p>`;
+    const isFuture = isFutureDayKey(dayKey);
+    const isGen = generatingDays.has(dayKey);
+    if (isFuture) {
+      detail.innerHTML = `<p class="empty-hint">未来日期不生成日报。</p>`;
+    } else if (isGen) {
+      detail.innerHTML = `<p class="empty-hint muted">正在生成日报，进度见上方…</p>`;
+    } else {
+      detail.innerHTML = `<p class="empty-hint">这一天还没有 digest。</p>`;
+    }
     return;
   }
 
@@ -587,22 +1410,8 @@ function renderDayDetail(dayKey) {
   }
   blocks.push(...weeklies, ...monthlies);
 
-  let html = "";
-  for (const e of blocks) {
-    const emb = e.embeddingJson ? " · embedding ✓" : "";
-    html += `
-      <article class="digest-card">
-        <header class="digest-card-head">
-          <h3><span class="badge ${escapeHtml(e.level)}">${escapeHtml(e.level)}</span>${escapeHtml(
-            e.title || e.id
-          )}</h3>
-          <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
-        </header>
-        <pre class="digest-body">${escapeHtml(e.content)}</pre>
-      </article>`;
-  }
-
-  detail.innerHTML = html;
+  detail.innerHTML = blocks.map((e) => digestCardHtml(e)).join("");
+  wireDigestCardActions(detail);
 }
 
 async function loadMemory() {
@@ -615,11 +1424,12 @@ async function loadMemory() {
       limit: 300
     });
     renderCalendar();
-    if (selectedDayKey) {
-      renderDayDetail(selectedDayKey);
+    if (detailFocus || selectedDayKey) {
+      refreshDetailFocus();
     } else {
-      $("calDetail").innerHTML = `<p class="muted">点击日历上的日期查看 digests，或生成该日日报。</p>`;
+      $("calDetail").innerHTML = `<p class="muted">点击日期 / 周报 / 月报按钮查看 digests。</p>`;
     }
+    renderCalSessionList();
   } catch (error) {
     $("calendarGrid").innerHTML = "";
     $("calDetail").innerHTML = `<p class="status error">${escapeHtml(
@@ -652,11 +1462,22 @@ function goCalToday() {
 }
 
 function formatSummaryEnsureStats(result) {
+  const parts = [];
+  const ed = result.ensuredDailies;
+  if (ed) {
+    parts.push(`补日报 +${ed.ok?.length || 0}/skip ${ed.skipped?.length || 0}${ed.failed?.length ? `/fail ${ed.failed.length}` : ""}`);
+  }
+  const ew = result.ensuredWeeklies;
+  if (ew) {
+    parts.push(`补周报 +${ew.ok?.length || 0}/skip ${ew.skipped?.length || 0}${ew.failed?.length ? `/fail ${ew.failed.length}` : ""}`);
+  }
   const summarized = result.summarizedCount ?? 0;
   const skipped = result.summarySkippedCount ?? 0;
   const failed = result.summaryFailed?.length ?? 0;
-  if (!summarized && !skipped && !failed) return "";
-  return ` · summarize +${summarized}/skip ${skipped}${failed ? `/fail ${failed}` : ""}`;
+  if (summarized || skipped || failed) {
+    parts.push(`summarize +${summarized}/skip ${skipped}${failed ? `/fail ${failed}` : ""}`);
+  }
+  return parts.length ? ` · ${parts.join(" · ")}` : "";
 }
 
 /** @type {Set<string>} */
@@ -669,6 +1490,22 @@ function showGenProgress() {
   box.classList.remove("is-done", "is-error");
 }
 
+/** Hide progress strip (e.g. when only viewing historical digests). */
+function hideGenProgress() {
+  const box = $("genProgress");
+  if (box) box.hidden = true;
+  box?.classList.remove("is-loading");
+  hideGenSessionRow();
+  const line = $("genProgressLine");
+  if (line) {
+    line.textContent = "";
+    line.classList.remove("is-ok", "is-error");
+  }
+  const bar = $("genProgressBar");
+  if (bar) bar.style.width = "0%";
+  lastProgressSnapshot = null;
+}
+
 function hideGenSessionRow() {
   const row = $("genProgressSessionRow");
   const barWrap = $("genProgressBarWrap");
@@ -677,10 +1514,15 @@ function hideGenSessionRow() {
   activeSummarizeSessions.clear();
 }
 
+/** @type {Record<string, unknown> | null} last progress for re-focus while loading */
+let lastProgressSnapshot = null;
+
 /**
  * @param {{ phase?: string, message?: string, index?: number, total?: number, session?: { provider?: string, id?: string, title?: string }, level?: string, periodLabel?: string }} event
+ * @param {{ skipDetail?: boolean }} [opts]
  */
-function applyDigestProgress(event) {
+function applyDigestProgress(event, opts = {}) {
+  lastProgressSnapshot = { ...event };
   const box = $("genProgress");
   const line = $("genProgressLine");
   const row = $("genProgressSessionRow");
@@ -689,15 +1531,27 @@ function applyDigestProgress(event) {
   const bar = $("genProgressBar");
   if (!box || !line) return;
 
+  const phase = event.phase || "";
   showGenProgress();
   box.classList.remove("is-done", "is-error");
+  box.classList.toggle("is-loading", phase !== "complete" && phase !== "error");
   line.classList.remove("is-ok", "is-error");
 
   if (event.message) {
     line.textContent = event.message;
   }
 
-  const phase = event.phase || "";
+  // If user is focused on a generating day/week/month, keep detail in "正在生成" state.
+  if (!opts.skipDetail && detailFocus) {
+    const { type, key } = detailFocus;
+    const genDay = type === "day" && generatingDays.has(key);
+    const genWeek = type === "week" && generatingPeriodKey === `weekly:${key}`;
+    const genMonth = type === "month" && generatingPeriodKey === `monthly:${key}`;
+    if (genDay || genWeek || genMonth) {
+      showGeneratingDetail(type, key);
+    }
+  }
+
   const sessionKey =
     event.session?.provider && event.session?.id
       ? `${event.session.provider}:${event.session.id}`
@@ -752,6 +1606,7 @@ function applyDigestProgress(event) {
 
   if (phase === "complete") {
     box.classList.add("is-done");
+    box.classList.remove("is-loading");
     line.classList.add("is-ok");
     if (bar) bar.style.width = "100%";
     if (barWrap) barWrap.hidden = false;
@@ -759,6 +1614,7 @@ function applyDigestProgress(event) {
 
   if (phase === "error") {
     box.classList.add("is-error");
+    box.classList.remove("is-loading");
     line.classList.add("is-error");
     hideGenSessionRow();
   }
@@ -771,109 +1627,230 @@ function setGenFinal(text, kind) {
   if (!line) return;
   line.textContent = text;
   line.classList.remove("is-ok", "is-error");
-  box?.classList.remove("is-done", "is-error");
+  box?.classList.remove("is-done", "is-error", "is-loading");
   if (kind === "ok") {
     line.classList.add("is-ok");
     box?.classList.add("is-done");
+    box?.classList.remove("is-loading");
   }
   if (kind === "error") {
     line.classList.add("is-error");
     box?.classList.add("is-error");
+    box?.classList.remove("is-loading");
     hideGenSessionRow();
   }
 }
 
-function setGenButtonsBusy(busy) {
-  for (const id of ["btnRunDaily", "btnRunWeekly", "btnRunMonthly"]) {
-    const btn = $(id);
-    if (btn) btn.disabled = !!busy;
+/** Days currently generating a daily digest (parallel OK). */
+const generatingDays = new Set();
+/** Weekly / monthly job in flight (single at a time). */
+let weeklyMonthlyBusy = false;
+
+function syncWeeklyMonthlyButtons() {
+  const busy = weeklyMonthlyBusy || generatingDays.size > 0;
+  // Never disable the period currently generating — user may re-click to focus detail.
+  document.querySelectorAll(".cal-week-btn:not(.future)").forEach((btn) => {
+    const selfBusy = generatingPeriodKey === `weekly:${btn.dataset.week}`;
+    btn.disabled = busy && !selfBusy;
+  });
+  const monthBtn = $("btnCalMonthDigest");
+  if (monthBtn && !monthBtn.classList.contains("future")) {
+    const mLabel = viewMonthLabel();
+    const selfBusy = generatingPeriodKey === `monthly:${mLabel}`;
+    monthBtn.disabled = busy && !selfBusy;
   }
 }
 
-async function runDaily() {
-  const { day } = getActivePeriods();
-  setGenButtonsBusy(true);
+function markDayGenerating(dayKey, on) {
+  if (on) {
+    generatingDays.add(dayKey);
+  } else {
+    generatingDays.delete(dayKey);
+  }
+  syncWeeklyMonthlyButtons();
+
+  const cell = document.querySelector(`.cal-cell[data-day="${dayKey}"]`);
+  if (!cell) {
+    if (on) renderCalendar();
+    return;
+  }
+  if (on) {
+    cell.classList.add("generating");
+    cell.title = `正在生成日报 ${dayKey}…`;
+    if (!cell.querySelector(".cal-cell-loading")) {
+      const spin = document.createElement("span");
+      spin.className = "cal-cell-loading";
+      spin.setAttribute("aria-hidden", "true");
+      cell.appendChild(spin);
+    }
+  } else {
+    cell.classList.remove("generating");
+    cell.title = "";
+    cell.querySelector(".cal-cell-loading")?.remove();
+  }
+}
+
+function formatParallelDailyStatus() {
+  const days = [...generatingDays].sort();
+  if (!days.length) return "";
+  if (days.length === 1) return `生成日报 ${days[0]}…`;
+  return `并行生成 ${days.length} 天日报：${days.join(" · ")}`;
+}
+
+/**
+ * @param {string} [dayKey]
+ * @param {{ reasonMessage?: string }} [opts]
+ */
+async function runDaily(dayKey, opts = {}) {
+  const day = dayKey || getActivePeriods().day;
+  if (generatingDays.has(day)) return;
+  if (weeklyMonthlyBusy) {
+    setGenFinal("周报/月报生成中，请稍候…", "error");
+    return;
+  }
+
+  markDayGenerating(day, true);
+  detailFocus = { type: "day", key: day };
+  selectedDayKey = day;
+  showGeneratingDetail("day", day);
   hideGenSessionRow();
+  const reason = opts.reasonMessage ? ` · ${opts.reasonMessage}` : "";
   applyDigestProgress({
     phase: "start",
     level: "daily",
     periodLabel: day,
-    message: `生成日报 ${day}…（先 summarize sessions，再从 summary 提取）`
+    message: formatParallelDailyStatus() + "（先 summarize sessions）" + reason
   });
   try {
-    const result = await agentResume.runDailyDigest(day);
+    const result = await agentResume.runDailyDigest({
+      date: day
+    });
     const ready = result.summaryReadyCount ?? result.snippetCount ?? 0;
-    setGenFinal(
-      `日报 OK · ${result.replaced ? "覆盖" : "新建"} · ${result.sessionCount} sessions · summary ${ready}${formatSummaryEnsureStats(
-        result
-      )}${result.embedded ? " · embedded" : ""}`,
-      "ok"
-    );
-    selectedDayKey = day;
-    const parts = day.split("-").map(Number);
-    if (parts.length === 3) {
-      calView = { year: parts[0], month: parts[1] - 1 };
+    const still = generatingDays.size > 1; // will delete self in finally after this check
+    const msg = `日报 ${day} OK · ${result.replaced ? "覆盖" : "新建"} · ${result.sessionCount} sessions · summary ${ready}${formatSummaryEnsureStats(
+      result
+    )}${result.embedded ? " · embedded" : ""}`;
+    if (still) {
+      // Other days still running — keep progress open with multi status
+      applyDigestProgress({
+        phase: "start",
+        level: "daily",
+        periodLabel: day,
+        message: `${msg} · 仍在生成：${[...generatingDays].filter((d) => d !== day).sort().join(" · ")}`
+      });
+    } else {
+      setGenFinal(msg, "ok");
     }
     await loadMemory();
-    renderDayDetail(day);
+    if (selectedDayKey === day) {
+      renderDayDetail(day);
+    }
   } catch (error) {
-    setGenFinal(error instanceof Error ? error.message : String(error), "error");
+    const err = error instanceof Error ? error.message : String(error);
+    if (generatingDays.size > 1) {
+      applyDigestProgress({
+        phase: "error",
+        level: "daily",
+        periodLabel: day,
+        message: `日报 ${day} 失败：${err} · 仍在生成：${[...generatingDays].filter((d) => d !== day).sort().join(" · ")}`
+      });
+    } else {
+      setGenFinal(`日报 ${day} 失败：${err}`, "error");
+    }
   } finally {
-    setGenButtonsBusy(false);
+    markDayGenerating(day, false);
+    if (generatingDays.size > 0) {
+      applyDigestProgress({
+        phase: "start",
+        level: "daily",
+        periodLabel: day,
+        message: formatParallelDailyStatus()
+      });
+    }
   }
 }
 
-async function runWeekly() {
-  const { week } = getActivePeriods();
-  setGenButtonsBusy(true);
+/**
+ * @param {string} [weekKey]
+ */
+async function runWeekly(weekKey) {
+  const week = weekKey || getActivePeriods().week;
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    setGenFinal("有任务进行中，请稍候再生成周报…", "error");
+    return;
+  }
+  weeklyMonthlyBusy = true;
+  generatingPeriodKey = `weekly:${week}`;
+  detailFocus = { type: "week", key: week };
+  syncWeeklyMonthlyButtons();
+  renderCalendar();
   hideGenSessionRow();
+  showGeneratingDetail("week", week);
   applyDigestProgress({
     phase: "start",
     level: "weekly",
     periodLabel: week,
-    message: `生成周报 ${week}…（无日报时会先 summarize sessions）`
+    message: `生成周报 ${week}…（先检查并补全本周日报）`
   });
   try {
     const result = await agentResume.runWeeklyDigest(week);
     setGenFinal(
-      `周报 OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (dailies ${
+      `周报 ${week} OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (dailies ${
         result.usedDailies
       })${formatSummaryEnsureStats(result)}${result.embedded ? " · embedded" : ""}`,
       "ok"
     );
     await loadMemory();
-    if (selectedDayKey) renderDayDetail(selectedDayKey);
   } catch (error) {
     setGenFinal(error instanceof Error ? error.message : String(error), "error");
   } finally {
-    setGenButtonsBusy(false);
+    generatingPeriodKey = null;
+    weeklyMonthlyBusy = false;
+    syncWeeklyMonthlyButtons();
+    renderCalendar();
+    refreshDetailFocus();
   }
 }
 
-async function runMonthly() {
-  const { month } = getActivePeriods();
-  setGenButtonsBusy(true);
+/**
+ * @param {string} [monthKey]
+ */
+async function runMonthly(monthKey) {
+  const month = monthKey || getActivePeriods().month;
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    setGenFinal("有任务进行中，请稍候再生成月报…", "error");
+    return;
+  }
+  weeklyMonthlyBusy = true;
+  generatingPeriodKey = `monthly:${month}`;
+  detailFocus = { type: "month", key: month };
+  syncWeeklyMonthlyButtons();
+  renderCalendar();
   hideGenSessionRow();
+  showGeneratingDetail("month", month);
   applyDigestProgress({
     phase: "start",
     level: "monthly",
     periodLabel: month,
-    message: `生成月报 ${month}…（无周报/日报时会先 summarize sessions）`
+    message: `生成月报 ${month}…（先检查并补全本月日报）`
   });
   try {
     const result = await agentResume.runMonthlyDigest(month);
     setGenFinal(
-      `月报 OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (W${
-        result.usedWeeklies
-      }/D${result.usedDailies})${formatSummaryEnsureStats(result)}${result.embedded ? " · embedded" : ""}`,
+      `月报 ${month} OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (dailies ${
+        result.usedDailies
+      })${formatSummaryEnsureStats(result)}${result.embedded ? " · embedded" : ""}`,
       "ok"
     );
     await loadMemory();
-    if (selectedDayKey) renderDayDetail(selectedDayKey);
   } catch (error) {
     setGenFinal(error instanceof Error ? error.message : String(error), "error");
   } finally {
-    setGenButtonsBusy(false);
+    generatingPeriodKey = null;
+    weeklyMonthlyBusy = false;
+    syncWeeklyMonthlyButtons();
+    renderCalendar();
+    refreshDetailFocus();
   }
 }
 
@@ -959,13 +1936,6 @@ async function runBackfill() {
 /** @type {any[]} */
 let gtdPreviewItems = [];
 
-function updateGtdApplyButton() {
-  const boxes = document.querySelectorAll("#gtdPreview input.gtd-check:checked");
-  $("btnGtdApply").disabled = boxes.length === 0;
-  $("btnGtdSelectAll").disabled = gtdPreviewItems.length === 0;
-  $("btnGtdSelectNone").disabled = gtdPreviewItems.length === 0;
-}
-
 function gtdOptionsHtml(selected) {
   return ["inbox", "next", "waiting", "someday", "reference"]
     .map(
@@ -975,31 +1945,45 @@ function gtdOptionsHtml(selected) {
     .join("");
 }
 
-function renderGtdPreview(proposals) {
+/**
+ * @param {any[]} proposals
+ * @param {string[]} [warnings]
+ */
+function renderGtdPreview(proposals, warnings) {
   gtdPreviewItems = (proposals || []).map((p) => ({ ...p }));
   const root = $("gtdPreview");
   root.innerHTML = "";
   if (!gtdPreviewItems.length) {
-    root.innerHTML = `<p class="muted">无提议。请先有 weekly/monthly digests，再分析。</p>`;
-    updateGtdApplyButton();
+    const warnHtml =
+      warnings?.length > 0
+        ? `<ul class="gtd-empty-warnings">${warnings
+            .map((w) => `<li>${escapeHtml(w)}</li>`)
+            .join("")}</ul>`
+        : "";
+    root.innerHTML = `<div class="muted gtd-empty">
+      <p>无 GTD 提议。</p>
+      ${warnHtml || "<p>可能原因：该 digest 周期内无关联 session，或模型未给出可落库的 session id。</p>"}
+      <p>可先确认当日有 session、日报已生成；或换 weekly/monthly 再试。</p>
+    </div>`;
     return;
   }
 
   gtdPreviewItems.forEach((p, idx) => {
     const row = document.createElement("div");
     row.className = "gtd-row";
+    row.dataset.idx = String(idx);
     const prev = p.previousGtd ? `@${p.previousGtd}` : "(none)";
+    // Expanded by default; click head to collapse/expand body.
     row.innerHTML = `
-      <div class="gtd-row-head">
-        <label>
-          <input type="checkbox" class="gtd-check" data-idx="${idx}" checked />
-          <span>
-            <strong>${escapeHtml(p.title || p.sessionId)}</strong>
-            <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(
-              String(p.sessionId).slice(0, 18)
-            )}… · was ${escapeHtml(prev)}</div>
-          </span>
-        </label>
+      <div class="gtd-row-head" role="button" tabindex="0" title="点击折叠/展开">
+        <span class="gtd-row-chevron" aria-hidden="true"></span>
+        <div class="gtd-row-title">
+          <strong>${escapeHtml(p.title || p.sessionId)}</strong>
+          <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(
+            String(p.sessionId).slice(0, 18)
+          )}… · was ${escapeHtml(prev)}</div>
+        </div>
+        <button type="button" class="tool-btn gtd-add-btn" data-idx="${idx}">添加GTD</button>
       </div>
       <div class="gtd-edit-grid">
         <label>GTD
@@ -1013,7 +1997,7 @@ function renderGtdPreview(proposals) {
             (p.tasks || []).join("\n")
           )}</textarea>
         </label>
-        <label>todolist.md（可编辑，应用时写入）
+        <label>todolist.md（可编辑，添加时写入）
           <textarea class="gtd-md md" data-idx="${idx}" rows="8">${escapeHtml(
             p.todolistPreview || ""
           )}</textarea>
@@ -1023,10 +2007,116 @@ function renderGtdPreview(proposals) {
     root.appendChild(row);
   });
 
-  root.querySelectorAll("input.gtd-check").forEach((el) => {
-    el.addEventListener("change", () => updateGtdApplyButton());
+  root.querySelectorAll(".gtd-row-head").forEach((head) => {
+    head.addEventListener("click", (e) => {
+      // Don't toggle when clicking 添加GTD
+      if (e.target.closest(".gtd-add-btn")) return;
+      const row = head.closest(".gtd-row");
+      if (!row) return;
+      row.classList.toggle("collapsed");
+    });
+    head.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        head.click();
+      }
+    });
   });
-  updateGtdApplyButton();
+
+  root.querySelectorAll(".gtd-add-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyOneGtdItem(Number(btn.dataset.idx));
+    });
+  });
+
+  root.querySelectorAll("textarea.gtd-md").forEach((ta) => {
+    ta.addEventListener("focus", () => {
+      if (ta.dataset.skipExpand === "1") return;
+      openGtdMdEditor(ta);
+    });
+    ta.setAttribute("title", "聚焦后打开大编辑窗口");
+  });
+}
+
+/** @type {HTMLTextAreaElement | null} */
+let gtdMdSourceTa = null;
+
+function ensureGtdMdOverlay() {
+  let overlay = $("gtdMdOverlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "gtdMdOverlay";
+  overlay.className = "gtd-md-overlay";
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <div class="gtd-md-overlay-backdrop" data-gtd-md-close></div>
+    <div class="gtd-md-overlay-panel" role="dialog" aria-label="todolist.md 编辑">
+      <div class="gtd-md-overlay-head">
+        <strong>todolist.md</strong>
+        <span class="muted gtd-md-overlay-hint">Esc 或点完成关闭</span>
+        <button type="button" class="tool-btn" data-gtd-md-close>完成</button>
+      </div>
+      <textarea class="gtd-md-overlay-ta" spellcheck="false"></textarea>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => closeGtdMdEditor();
+  overlay.querySelectorAll("[data-gtd-md-close]").forEach((el) => {
+    el.addEventListener("click", close);
+  });
+  overlay.querySelector(".gtd-md-overlay-ta")?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeGtdMdEditor();
+    }
+  });
+  return overlay;
+}
+
+/**
+ * Expand todolist.md into a large focused editor overlay.
+ * @param {HTMLTextAreaElement} sourceTa
+ */
+function openGtdMdEditor(sourceTa) {
+  if (!sourceTa) return;
+  gtdMdSourceTa = sourceTa;
+  const overlay = ensureGtdMdOverlay();
+  const big = overlay.querySelector(".gtd-md-overlay-ta");
+  if (!big) return;
+  big.value = sourceTa.value;
+  overlay.hidden = false;
+  // blur source so re-focus can open again later
+  sourceTa.blur();
+  requestAnimationFrame(() => {
+    big.focus();
+    // place caret at end
+    const len = big.value.length;
+    big.setSelectionRange(len, len);
+  });
+}
+
+function closeGtdMdEditor() {
+  const overlay = $("gtdMdOverlay");
+  if (!overlay || overlay.hidden) return;
+  const big = overlay.querySelector(".gtd-md-overlay-ta");
+  if (gtdMdSourceTa && big) {
+    gtdMdSourceTa.value = big.value;
+  }
+  overlay.hidden = true;
+  const back = gtdMdSourceTa;
+  gtdMdSourceTa = null;
+  // restore focus to small field without re-opening overlay
+  if (back) {
+    back.dataset.skipExpand = "1";
+    back.focus();
+    setTimeout(() => {
+      delete back.dataset.skipExpand;
+    }, 0);
+  }
 }
 
 function collectEditedGtdItem(idx) {
@@ -1055,82 +2145,122 @@ function collectEditedGtdItem(idx) {
   };
 }
 
-async function previewGtdSync() {
+/**
+ * Run LLM GTD analysis for current scoped digest and write cache.
+ * Called by「重新分析」or first open without cache.
+ * @param {{ force?: boolean }} [opts]
+ */
+async function previewGtdSync(opts = {}) {
   const status = $("gtdSyncStatus");
-  const ensureDigests = $("ensureDigests").checked;
-  setStatus(status, "Analyzing weekly/monthly digests (preview only)…");
-  $("btnGtdApply").disabled = true;
+  if (!gtdScoped?.memoryId) {
+    setStatus(status, "请先在详情卡片点击「GTD分析」，指定要分析的 digest。", "error");
+    return;
+  }
+  const { level, memoryId } = gtdScoped;
+
+  // Safety: non-force callers should not re-hit LLM if cache exists
+  if (!opts.force && gtdCacheByMemoryId.has(memoryId)) {
+    restoreGtdCache(memoryId);
+    return;
+  }
+
+  setStatus(status, `从当前 ${level} digest 分析 GTD…`);
   try {
-    const result = await agentResume.previewMemoryGtdSync({ ensureDigests });
-    renderGtdPreview(result.proposals);
-    setStatus(
-      status,
-      `可编辑预览 · ${result.proposals.length} 项` +
-        (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
-        (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
-        (result.ensureDigest?.ran ? " · daily generated" : "") +
-        " · 尚未落库",
-      result.proposals.length ? "ok" : "error"
-    );
+    // Always scoped; never auto-generate today's daily.
+    const result = await agentResume.previewMemoryGtdSync({
+      ensureDigests: false,
+      memoryIds: [memoryId]
+    });
+    renderGtdPreview(result.proposals, result.warnings);
+    const warnPreview =
+      result.warnings?.length > 0
+        ? ` · ${result.warnings.slice(0, 2).join("；")}${result.warnings.length > 2 ? "…" : ""}`
+        : "";
+    const statusText =
+      `可编辑预览 · ${result.proposals.length} 项 · 源 ${level}:${periodKeyFromMemoryId(level, memoryId)}` +
+      (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
+      (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
+      warnPreview +
+      " · 尚未落库（已缓存，重新分析可刷新）";
+    setStatus(status, statusText, result.proposals.length ? "ok" : "error");
+    gtdCacheByMemoryId.set(memoryId, {
+      level,
+      proposals: (result.proposals || []).map((p) => ({ ...p })),
+      warnings: result.warnings || [],
+      statusText
+    });
     if (result.warnings.length) {
       console.warn("gtd preview warnings", result.warnings);
     }
   } catch (error) {
     gtdPreviewItems = [];
     $("gtdPreview").innerHTML = "";
-    updateGtdApplyButton();
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
 }
 
-async function applyGtdSync() {
+/**
+ * Apply a single GTD proposal row.
+ * @param {number} idx
+ */
+async function applyOneGtdItem(idx) {
   const status = $("gtdSyncStatus");
-  const checks = [...document.querySelectorAll("#gtdPreview input.gtd-check:checked")];
-  if (!checks.length) {
-    setStatus(status, "请先勾选要应用的项", "error");
+  const item = collectEditedGtdItem(idx);
+  if (!item) {
+    setStatus(status, "无效的提议项", "error");
     return;
   }
 
-  const items = checks
-    .map((el) => collectEditedGtdItem(Number(el.dataset.idx)))
-    .filter(Boolean);
-
-  const ok = window.confirm(
-    `将按你编辑后的内容，对 ${items.length} 个 session 写入 GTD 并覆盖 todolist.md。\n操作标记为 AI。是否继续？`
-  );
-  if (!ok) {
-    return;
+  const btn = document.querySelector(`.gtd-add-btn[data-idx="${idx}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "添加中…";
   }
 
-  setStatus(status, `Applying ${items.length} item(s)…`);
+  setStatus(status, `正在添加 GTD：${item.title || item.sessionId}…`);
   try {
-    const result = await agentResume.applyMemoryGtdSync({ items });
+    const result = await agentResume.applyMemoryGtdSync({ items: [item] });
     const sample = result.applied[0]?.todolistPath || "";
-    setStatus(
-      status,
-      `已落库 ${result.applied.length}` +
-        (result.failed.length ? ` · failed ${result.failed.length}` : "") +
-        (sample ? ` · e.g. ${sample}` : ""),
-      result.applied.length ? "ok" : "error"
-    );
-    if (result.failed.length) {
-      console.warn("gtd apply failed", result.failed);
-    }
     if (result.applied.length) {
-      gtdPreviewItems = [];
-      $("gtdPreview").innerHTML = "";
-      updateGtdApplyButton();
+      setStatus(
+        status,
+        `已添加 GTD · ${item.title || item.sessionId}` + (sample ? ` · ${sample}` : ""),
+        "ok"
+      );
+      // Remove applied row from preview
+      const row = document.querySelector(`.gtd-row[data-idx="${idx}"]`);
+      if (row) row.remove();
+      gtdPreviewItems[idx] = null;
+      if (!document.querySelector("#gtdPreview .gtd-row")) {
+        $("gtdPreview").innerHTML = `<p class="muted">全部已添加。</p>`;
+        gtdPreviewItems = [];
+      }
+      // Keep cache in sync (remaining rows only)
+      snapshotGtdCache();
+      const cached = gtdScoped?.memoryId && gtdCacheByMemoryId.get(gtdScoped.memoryId);
+      if (cached) {
+        cached.statusText =
+          $("gtdSyncStatus")?.textContent ||
+          `可编辑预览 · ${cached.proposals.length} 项（已添加部分）`;
+      }
+    } else {
+      const err = result.failed?.[0]?.error || "落库失败";
+      setStatus(status, err, "error");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "添加GTD";
+      }
+    }
+    if (result.failed?.length) {
+      console.warn("gtd apply failed", result.failed);
     }
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "添加GTD";
+    }
   }
-}
-
-function gtdSelectAll(on) {
-  document.querySelectorAll("#gtdPreview input.gtd-check").forEach((el) => {
-    el.checked = on;
-  });
-  updateGtdApplyButton();
 }
 
 
@@ -1422,8 +2552,6 @@ function wire() {
     openSheet("sheetSessions");
   });
 
-  $("btnOpenGtd")?.addEventListener("click", () => openSheet("sheetGtd"));
-
   document.querySelectorAll("[data-close-sheet]").forEach((el) => {
     el.addEventListener("click", () => closeSheet(el.dataset.closeSheet));
   });
@@ -1435,25 +2563,14 @@ function wire() {
     }
   });
   $("btnRefreshMemory").addEventListener("click", () => loadMemory());
-  $("memoryLevel").addEventListener("change", () => {
-    renderCalendar();
-    if (selectedDayKey) {
-      renderDayDetail(selectedDayKey);
-    }
-  });
   $("btnCalPrev").addEventListener("click", () => shiftCalMonth(-1));
   $("btnCalNext").addEventListener("click", () => shiftCalMonth(1));
   $("btnCalToday").addEventListener("click", () => goCalToday());
   $("calYearSelect")?.addEventListener("change", () => applyCalPicker());
   $("calMonthSelect")?.addEventListener("change", () => applyCalPicker());
-  $("btnRunDaily").addEventListener("click", () => runDaily());
-  $("btnRunWeekly").addEventListener("click", () => runWeekly());
-  $("btnRunMonthly").addEventListener("click", () => runMonthly());
+  $("btnCalMonthDigest")?.addEventListener("click", () => onMonthButton());
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
-  $("btnGtdPreview").addEventListener("click", () => previewGtdSync());
-  $("btnGtdApply").addEventListener("click", () => applyGtdSync());
-  $("btnGtdSelectAll").addEventListener("click", () => gtdSelectAll(true));
-  $("btnGtdSelectNone").addEventListener("click", () => gtdSelectAll(false));
+  $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
   $("btnAgentSend").addEventListener("click", () => sendAgent());

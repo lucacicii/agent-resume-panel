@@ -7,6 +7,7 @@ import type {
   MemoryEntry,
   MemorySearchHit,
   PanelSettings,
+  DailyDigestRefreshCheck,
   RunDailyDigestResult,
   RunMonthlyDigestResult,
   RunWeeklyDigestResult
@@ -19,6 +20,11 @@ export interface DesktopApi {
     settings: PanelSettings
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean }>;
   listSessions(limit?: number): Promise<AgentSession[]>;
+  listSessionsInRange(args: {
+    fromMs: number;
+    toMs: number;
+    limit?: number;
+  }): Promise<AgentSession[]>;
   previewSession(args: {
     provider: string;
     id: string;
@@ -52,7 +58,10 @@ export interface DesktopApi {
     toMs?: number;
   }): Promise<MemoryEntry[]>;
   listDailyDigests(limit?: number): Promise<MemoryEntry[]>;
-  runDailyDigest(date?: string): Promise<RunDailyDigestResult>;
+  runDailyDigest(
+    dateOrOpts?: string | { date?: string; forceResummarize?: boolean }
+  ): Promise<RunDailyDigestResult>;
+  needsDailyDigestRefresh(date?: string): Promise<DailyDigestRefreshCheck>;
   runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
   runMonthlyDigest(monthKey?: string): Promise<RunMonthlyDigestResult>;
   onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
@@ -80,6 +89,7 @@ export interface DesktopApi {
   }>;
   previewMemoryGtdSync(args?: {
     ensureDigests?: boolean;
+    memoryIds?: string[];
   }): Promise<{
     previewId: string;
     proposals: Array<{
@@ -203,12 +213,19 @@ const api: DesktopApi = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
+  listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
   listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),
-  runDailyDigest: (date) => ipcRenderer.invoke("memory:runDaily", date),
+  runDailyDigest: (dateOrOpts) => {
+    if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
+      return ipcRenderer.invoke("memory:runDaily", { date: dateOrOpts });
+    }
+    return ipcRenderer.invoke("memory:runDaily", dateOrOpts);
+  },
+  needsDailyDigestRefresh: (date) => ipcRenderer.invoke("memory:needsDailyRefresh", date),
   runWeeklyDigest: (weekKey) => ipcRenderer.invoke("memory:runWeekly", weekKey),
   runMonthlyDigest: (monthKey) => ipcRenderer.invoke("memory:runMonthly", monthKey),
   onDigestProgress: (callback) => {

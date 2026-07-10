@@ -10,9 +10,14 @@ import { ensureSummariesForSessions } from "../session/ensureSummaries";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localDayRange as localDayRangeImpl } from "./period";
 import { DigestProgressCallback } from "./progress";
-import { buildDailySystemPrompt, buildDailyUserPrompt, formatSessionForDigest } from "./prompts";
+import {
+  buildDailySystemPrompt,
+  buildDailyUserPrompt,
+  formatSessionForDigest,
+  normalizeDigestMarkdown
+} from "./prompts";
 import { MemoryEntry } from "./schema";
-import { upsertMemoryJob } from "./store";
+import { getMemoryEntryById, listMemoryLinks, upsertMemoryJob } from "./store";
 
 export interface RunDailyDigestOptions {
   /** Override panel home (default from settings / ~/.agent-resume-panel). */
@@ -21,7 +26,7 @@ export interface RunDailyDigestOptions {
   date?: string;
   /** Skip embedding even if configured. */
   skipEmbedding?: boolean;
-  /** Re-summarize sessions even if session_summary exists. */
+  /** @deprecated Daily generation always reuses existing session summaries. */
   forceResummarize?: boolean;
   /** Progress for Desktop UI. */
   onProgress?: DigestProgressCallback;
@@ -71,6 +76,121 @@ export function localDayRange(dateStr?: string): {
   };
 }
 
+export type DailyDigestRefreshReason =
+  | "missing"
+  | "no_sessions"
+  | "new_sessions"
+  | "updated_sessions"
+  | "up_to_date";
+
+export interface DailyDigestRefreshCheck {
+  needed: boolean;
+  reason: DailyDigestRefreshReason;
+  sessionCount: number;
+  /** Sessions not linked on the existing daily digest. */
+  newSessionCount: number;
+  /** Sessions with updatedAt after the daily was written. */
+  updatedSessionCount: number;
+  digestCreatedAtMs?: number;
+  message: string;
+}
+
+/**
+ * Decide whether auto-click should regenerate the daily digest for a local day.
+ * Uses catalog session set + updated_at_ms vs digest created_at + memory_links.
+ */
+export async function needsDailyDigestRefresh(
+  options: { panelHome?: string; date?: string } = {}
+): Promise<DailyDigestRefreshCheck> {
+  const settings = await loadSettings(options.panelHome);
+  const panelHome = options.panelHome
+    ? resolvePanelHome(options.panelHome)
+    : effectivePanelHome(settings, options.panelHome);
+  const dbPath = options.panelHome
+    ? catalogDbPath(panelHome)
+    : catalogDbFromSettings(settings, options.panelHome);
+
+  await ensureCatalogSchema(dbPath);
+
+  const period = localDayRangeImpl(options.date);
+  const sessions = await listSessionsInRange(dbPath, period.startMs, period.endMs);
+  const sessionCount = sessions.length;
+  const entry = await getMemoryEntryById(dbPath, period.entryId);
+
+  if (!entry?.content?.trim()) {
+    if (!sessionCount) {
+      return {
+        needed: false,
+        reason: "no_sessions",
+        sessionCount: 0,
+        newSessionCount: 0,
+        updatedSessionCount: 0,
+        message: "当日无 session，跳过生成"
+      };
+    }
+    return {
+      needed: true,
+      reason: "missing",
+      sessionCount,
+      newSessionCount: sessionCount,
+      updatedSessionCount: 0,
+      message: `尚无日报 · ${sessionCount} sessions，将生成`
+    };
+  }
+
+  const links = await listMemoryLinks(dbPath, entry.id);
+  const linked = new Set(
+    links
+      .filter((l) => l.provider && l.agentSessionId)
+      .map((l) => `${l.provider}:${l.agentSessionId}`)
+  );
+
+  let newSessionCount = 0;
+  let updatedSessionCount = 0;
+  for (const s of sessions) {
+    const key = `${s.provider}:${s.id}`;
+    if (!linked.has(key)) {
+      newSessionCount += 1;
+    }
+    if (s.updatedAt > entry.createdAtMs) {
+      updatedSessionCount += 1;
+    }
+  }
+
+  if (newSessionCount > 0) {
+    return {
+      needed: true,
+      reason: "new_sessions",
+      sessionCount,
+      newSessionCount,
+      updatedSessionCount,
+      digestCreatedAtMs: entry.createdAtMs,
+      message: `检测到 ${newSessionCount} 个新 session，将重新生成日报`
+    };
+  }
+  if (updatedSessionCount > 0) {
+    return {
+      needed: true,
+      reason: "updated_sessions",
+      sessionCount,
+      newSessionCount: 0,
+      updatedSessionCount,
+      digestCreatedAtMs: entry.createdAtMs,
+      message: `检测到 ${updatedSessionCount} 个 session 有更新，将重新生成日报`
+    };
+  }
+
+  return {
+    needed: false,
+    reason: "up_to_date",
+    sessionCount,
+    newSessionCount: 0,
+    updatedSessionCount: 0,
+    digestCreatedAtMs: entry.createdAtMs,
+    message: `日报已是最新（${sessionCount} sessions）`
+  };
+}
+
 export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promise<RunDailyDigestResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
@@ -115,7 +235,9 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       sessions,
       settings,
       panelHome,
-      force: options.forceResummarize,
+      // Daily digests never regenerate an existing session summary. The option
+      // remains accepted for API compatibility with older callers.
+      force: false,
       jobKeyPrefix: `summarize:${jobKey}`,
       onProgress,
       progressLevel: "daily",
@@ -159,11 +281,11 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       llm,
       [
         { role: "system", content: buildDailySystemPrompt(language) },
-        { role: "user", content: buildDailyUserPrompt(dateLabel, lines) }
+        { role: "user", content: buildDailyUserPrompt(dateLabel, lines, language) }
       ],
       2000
     );
-    const content = chatResult.content;
+    const content = normalizeDigestMarkdown(chatResult.content);
     await recordLlmUsage(dbPath, {
       kind: "chat",
       source: "daily",

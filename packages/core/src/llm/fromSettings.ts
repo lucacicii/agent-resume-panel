@@ -15,7 +15,8 @@ export function llmConfigFromSettings(settings: PanelSettings): LlmRuntimeConfig
     model,
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
-    outputLanguage: settings.llm.outputLanguage
+    outputLanguage: settings.llm.outputLanguage,
+    requestTimeoutMs: settings.llm.requestTimeoutMs
   };
 }
 
@@ -37,7 +38,8 @@ export function chatLlmConfigFromSettings(settings: PanelSettings): LlmRuntimeCo
     model,
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
-    outputLanguage: settings.llm.outputLanguage
+    outputLanguage: settings.llm.outputLanguage,
+    requestTimeoutMs: settings.llm.requestTimeoutMs
   };
 }
 

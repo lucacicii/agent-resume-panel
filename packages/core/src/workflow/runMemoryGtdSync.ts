@@ -16,6 +16,8 @@ export interface RunMemoryGtdSyncOptions {
   panelHome?: string;
   /** If true (default), generate today's daily digest when missing/not ok. */
   ensureDigests?: boolean;
+  /** When set, only analyze these digests (e.g. current card). Skips ensureDigests if provided. */
+  memoryIds?: string[];
 }
 
 export interface GtdPreviewItem {
@@ -91,7 +93,9 @@ export async function previewMemoryGtdSync(
   const warnings: string[] = [];
   let ensureDigest: PreviewMemoryGtdSyncResult["ensureDigest"] = { ran: false };
 
-  if (options.ensureDigests !== false) {
+  const scoped = Boolean(options.memoryIds?.length);
+  // Scoped analysis uses an existing digest; do not auto-run today's daily unless asked.
+  if (!scoped && options.ensureDigests !== false) {
     const day = localDayRange();
     const status = await getMemoryJobStatus(dbPath, day.jobKey);
     if (status?.status !== "ok") {
@@ -102,7 +106,8 @@ export async function previewMemoryGtdSync(
 
   const { proposals, warnings: analyzeWarnings } = await analyzeMemoryForGtd({
     dbPath,
-    settings
+    settings,
+    memoryIds: options.memoryIds
   });
   warnings.push(...analyzeWarnings);
 

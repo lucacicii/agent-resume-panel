@@ -74,8 +74,14 @@ export {
   getMemoryEntryById
 } from "./memory/store";
 export type { MemoryLinkRow } from "./memory/store";
-export { runDailyDigest, localDayRange } from "./memory/daily";
-export type { RunDailyDigestOptions, RunDailyDigestResult } from "./memory/daily";
+export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./memory/daily";
+export { normalizeDigestMarkdown, digestLanguageLabels } from "./memory/prompts";
+export type {
+  RunDailyDigestOptions,
+  RunDailyDigestResult,
+  DailyDigestRefreshCheck,
+  DailyDigestRefreshReason
+} from "./memory/daily";
 export type {
   DigestLevel,
   DigestProgressPhase,
@@ -88,9 +94,15 @@ export {
   localWeekRange,
   localMonthRange,
   previousCompleteWeekRange,
-  previousCompleteMonthRange
+  previousCompleteMonthRange,
+  listDayLabelsInRange,
+  listWeekLabelsInRange
 } from "./memory/period";
 export type { PeriodRange } from "./memory/period";
+export { ensureDailiesForPeriod } from "./memory/ensureDailies";
+export type { EnsureDailiesOptions, EnsureLevelStats } from "./memory/ensureDailies";
+export { ensureWeekliesForPeriod } from "./memory/ensureWeeklies";
+export type { EnsureWeekliesOptions } from "./memory/ensureWeeklies";
 export { runWeeklyDigest } from "./memory/weekly";
 export type { RunWeeklyDigestOptions, RunWeeklyDigestResult } from "./memory/weekly";
 export { runMonthlyDigest } from "./memory/monthly";

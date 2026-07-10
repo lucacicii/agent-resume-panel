@@ -6,6 +6,8 @@ export interface LlmSettings {
   apiKey?: string;
   outputLanguage?: string;
   maxContextChars?: number;
+  /** Timeout for one tool-LLM request; defaults to five minutes. */
+  requestTimeoutMs?: number;
 }
 
 /**
@@ -77,7 +79,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
     outputLanguage: "zh-CN",
-    maxContextChars: 120_000
+    maxContextChars: 120_000,
+    requestTimeoutMs: 300_000
   },
   embedding: {
     model: "text-embedding-3-small"

@@ -5,10 +5,15 @@ import { recordLlmUsage } from "../usage/store";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { buildMonthlySourceLines } from "./context";
+import { ensureDailiesForPeriod, EnsureLevelStats } from "./ensureDailies";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localMonthRange } from "./period";
 import { DigestProgressCallback } from "./progress";
-import { buildMonthlySystemPrompt, buildMonthlyUserPrompt } from "./prompts";
+import {
+  buildMonthlySystemPrompt,
+  buildMonthlyUserPrompt,
+  normalizeDigestMarkdown
+} from "./prompts";
 import { MemoryEntry } from "./schema";
 import { upsertMemoryJob } from "./store";
 
@@ -17,8 +22,9 @@ export interface RunMonthlyDigestOptions {
   /** `YYYY-MM` or omit for current month. */
   monthKey?: string;
   skipEmbedding?: boolean;
-  /** Re-summarize sessions when falling back to session list. */
   forceResummarize?: boolean;
+  /** Re-generate dailies even if they exist. Default false. */
+  forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
 }
 
@@ -27,13 +33,26 @@ export interface RunMonthlyDigestResult {
   sourceCount: number;
   usedWeeklies: number;
   usedDailies: number;
-  summarizedCount: number;
-  summarySkippedCount: number;
-  summaryFailed: Array<{ key: string; error: string }>;
+  /** Dailies ensured for this calendar month only. */
+  ensuredDailies: EnsureLevelStats;
+  /**
+   * @deprecated Monthly no longer ensures weeklies; always empty stats for API compat.
+   */
+  ensuredWeeklies: EnsureLevelStats;
   jobKey: string;
   embedded: boolean;
   replaced: boolean;
+  summarizedCount: number;
+  summarySkippedCount: number;
+  summaryFailed: Array<{ key: string; error: string }>;
 }
+
+const EMPTY_ENSURE: EnsureLevelStats = {
+  planned: [],
+  ok: [],
+  skipped: [],
+  failed: []
+};
 
 export async function runMonthlyDigest(
   options: RunMonthlyDigestOptions = {}
@@ -57,7 +76,7 @@ export async function runMonthlyDigest(
       phase: "start",
       level: "monthly",
       periodLabel: period.label,
-      message: `生成月报 ${period.label}…（无周报/日报时会先 summarize sessions）`
+      message: `生成月报 ${period.label}…（先检查并补全本月日报）`
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -67,24 +86,24 @@ export async function runMonthlyDigest(
       );
     }
 
-    const maxSessions = Math.max(1, Math.min(settings.memory?.maxSessionsPerDigest ?? 40, 200));
-    const {
-      lines,
-      sourceCount,
-      usedWeeklies,
-      usedDailies,
-      summarizedCount,
-      summarySkippedCount,
-      summaryFailed
-    } = await buildMonthlySourceLines({
+    // Calendar month only — no ISO week cascade (avoids spanning two months).
+    const ensuredDailies = await ensureDailiesForPeriod({
       dbPath,
-      settings,
       startMs: period.startMs,
       endMs: period.endMs,
-      maxSessions,
       panelHome,
+      skipExisting: !options.forceEnsureLower,
+      skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
-      jobKeyPrefix: `summarize:${period.jobKey}`,
+      onProgress,
+      progressLevel: "monthly",
+      progressPeriodLabel: period.label
+    });
+
+    const { lines, sourceCount, usedWeeklies, usedDailies } = await buildMonthlySourceLines({
+      dbPath,
+      startMs: period.startMs,
+      endMs: period.endMs,
       onProgress,
       progressLevel: "monthly",
       progressPeriodLabel: period.label
@@ -94,11 +113,9 @@ export async function runMonthlyDigest(
       phase: "digest",
       level: "monthly",
       periodLabel: period.label,
-      message: usedWeeklies
-        ? `从 ${usedWeeklies} 篇周报提取月报…`
-        : usedDailies
-          ? `从 ${usedDailies} 篇日报提取月报…`
-          : `从 session summary 提取月报…`
+      message: usedDailies
+        ? `从本月 ${usedDailies} 篇日报提取月报…`
+        : `本月无日报，生成占位月报…`
     });
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
@@ -107,11 +124,11 @@ export async function runMonthlyDigest(
       llm,
       [
         { role: "system", content: buildMonthlySystemPrompt(language) },
-        { role: "user", content: buildMonthlyUserPrompt(period.label, rangeHint, lines) }
+        { role: "user", content: buildMonthlyUserPrompt(period.label, rangeHint, lines, language) }
       ],
       3000
     );
-    const content = chatResult.content;
+    const content = normalizeDigestMarkdown(chatResult.content);
     await recordLlmUsage(dbPath, {
       kind: "chat",
       source: "monthly",
@@ -152,16 +169,18 @@ export async function runMonthlyDigest(
       phase: "complete",
       level: "monthly",
       periodLabel: period.label,
-      message: `月报完成 · sources ${sourceCount}`
+      message: `月报完成 · dailies ${usedDailies} · 补全 +${ensuredDailies.ok.length}/skip ${ensuredDailies.skipped.length}`
     });
     return {
       entry,
       sourceCount,
       usedWeeklies,
       usedDailies,
-      summarizedCount,
-      summarySkippedCount,
-      summaryFailed,
+      ensuredDailies,
+      ensuredWeeklies: EMPTY_ENSURE,
+      summarizedCount: 0,
+      summarySkippedCount: 0,
+      summaryFailed: ensuredDailies.failed,
       jobKey: period.jobKey,
       embedded,
       replaced

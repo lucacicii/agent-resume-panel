@@ -5,10 +5,15 @@ import { recordLlmUsage } from "../usage/store";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { buildWeeklySourceLines } from "./context";
+import { ensureDailiesForPeriod, EnsureLevelStats } from "./ensureDailies";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localWeekRange } from "./period";
 import { DigestProgressCallback } from "./progress";
-import { buildWeeklySystemPrompt, buildWeeklyUserPrompt } from "./prompts";
+import {
+  buildWeeklySystemPrompt,
+  buildWeeklyUserPrompt,
+  normalizeDigestMarkdown
+} from "./prompts";
 import { MemoryEntry } from "./schema";
 import { upsertMemoryJob } from "./store";
 
@@ -17,8 +22,10 @@ export interface RunWeeklyDigestOptions {
   /** `YYYY-Www` or omit for current ISO week. */
   weekKey?: string;
   skipEmbedding?: boolean;
-  /** Re-summarize sessions when falling back to session list (no dailies). */
+  /** Re-summarize sessions when generating missing dailies. */
   forceResummarize?: boolean;
+  /** Re-generate dailies even if they exist. Default false. */
+  forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
 }
 
@@ -26,12 +33,14 @@ export interface RunWeeklyDigestResult {
   entry: MemoryEntry;
   sourceCount: number;
   usedDailies: number;
-  summarizedCount: number;
-  summarySkippedCount: number;
-  summaryFailed: Array<{ key: string; error: string }>;
+  ensuredDailies: EnsureLevelStats;
   jobKey: string;
   embedded: boolean;
   replaced: boolean;
+  /** @deprecated kept for UI that still reads summarize counts */
+  summarizedCount: number;
+  summarySkippedCount: number;
+  summaryFailed: Array<{ key: string; error: string }>;
 }
 
 export async function runWeeklyDigest(
@@ -56,7 +65,7 @@ export async function runWeeklyDigest(
       phase: "start",
       level: "weekly",
       periodLabel: period.label,
-      message: `生成周报 ${period.label}…（无日报时会先 summarize sessions）`
+      message: `生成周报 ${period.label}…（先检查并补全本周日报）`
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -66,23 +75,23 @@ export async function runWeeklyDigest(
       );
     }
 
-    const maxSessions = Math.max(1, Math.min(settings.memory?.maxSessionsPerDigest ?? 40, 200));
-    const {
-      lines,
-      sourceCount,
-      usedDailies,
-      summarizedCount,
-      summarySkippedCount,
-      summaryFailed
-    } = await buildWeeklySourceLines({
+    const ensuredDailies = await ensureDailiesForPeriod({
       dbPath,
-      settings,
       startMs: period.startMs,
       endMs: period.endMs,
-      maxSessions,
       panelHome,
+      skipExisting: !options.forceEnsureLower,
+      skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
-      jobKeyPrefix: `summarize:${period.jobKey}`,
+      onProgress,
+      progressLevel: "weekly",
+      progressPeriodLabel: period.label
+    });
+
+    const { lines, sourceCount, usedDailies } = await buildWeeklySourceLines({
+      dbPath,
+      startMs: period.startMs,
+      endMs: period.endMs,
       onProgress,
       progressLevel: "weekly",
       progressPeriodLabel: period.label
@@ -94,7 +103,7 @@ export async function runWeeklyDigest(
       periodLabel: period.label,
       message: usedDailies
         ? `从 ${usedDailies} 篇日报提取周报…`
-        : `从 session summary 提取周报…`
+        : `本周无日报，生成占位周报…`
     });
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
@@ -103,11 +112,11 @@ export async function runWeeklyDigest(
       llm,
       [
         { role: "system", content: buildWeeklySystemPrompt(language) },
-        { role: "user", content: buildWeeklyUserPrompt(period.label, rangeHint, lines) }
+        { role: "user", content: buildWeeklyUserPrompt(period.label, rangeHint, lines, language) }
       ],
       2500
     );
-    const content = chatResult.content;
+    const content = normalizeDigestMarkdown(chatResult.content);
     await recordLlmUsage(dbPath, {
       kind: "chat",
       source: "weekly",
@@ -148,15 +157,16 @@ export async function runWeeklyDigest(
       phase: "complete",
       level: "weekly",
       periodLabel: period.label,
-      message: `周报完成 · sources ${sourceCount}`
+      message: `周报完成 · dailies ${usedDailies} · 补全 +${ensuredDailies.ok.length}/skip ${ensuredDailies.skipped.length}`
     });
     return {
       entry,
       sourceCount,
       usedDailies,
-      summarizedCount,
-      summarySkippedCount,
-      summaryFailed,
+      ensuredDailies,
+      summarizedCount: 0,
+      summarySkippedCount: 0,
+      summaryFailed: ensuredDailies.failed,
       jobKey: period.jobKey,
       embedded,
       replaced

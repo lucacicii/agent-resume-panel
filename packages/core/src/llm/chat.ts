@@ -1,4 +1,9 @@
-import { buildChatCompletionsUrl, ChatMessage, LlmRuntimeConfig } from "./types";
+import {
+  buildChatCompletionsUrl,
+  ChatMessage,
+  DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+  LlmRuntimeConfig
+} from "./types";
 import { parseOpenAiUsage, TokenUsage } from "../usage/types";
 
 interface ChatCompletionResponse {
@@ -28,20 +33,32 @@ export async function chatCompletionDetailed(
 ): Promise<LlmCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
   const started = Date.now();
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.2
-    }),
-    signal: AbortSignal.timeout(120_000)
-  });
+  const configuredTimeout = Number(config.requestTimeoutMs);
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? Math.max(1_000, Math.floor(configuredTimeout))
+    : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.2
+      }),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
+    }
+    throw error;
+  }
 
   let payload: ChatCompletionResponse;
   try {

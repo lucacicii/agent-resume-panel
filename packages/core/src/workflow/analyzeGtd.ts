@@ -1,11 +1,11 @@
-import { getSessionById } from "../catalog/query";
-import { AgentProvider } from "../catalog/types";
+import { getSessionById, listSessionsInRange } from "../catalog/query";
+import { AgentProvider, AgentSession } from "../catalog/types";
 import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
-import { listMemoryLinks } from "../memory/store";
-import { listMemoryEntries } from "../memory/store";
+import { listMemoryLinks, getMemoryEntryById, listMemoryEntries } from "../memory/store";
+import { MemoryEntry } from "../memory/schema";
 import { PanelSettings } from "../settings/types";
-import { GtdProposal, GTD_STATUSES, isGtdStatus } from "../gtd/types";
+import { GtdProposal, isGtdStatus } from "../gtd/types";
 import { getSessionGtdStatus } from "../gtd/store";
 import { recordLlmUsage } from "../usage/store";
 
@@ -19,6 +19,8 @@ function truncate(text: string, max: number): string {
 export async function analyzeMemoryForGtd(input: {
   dbPath: string;
   settings: PanelSettings;
+  /** When set, only analyze these memory entry ids (scoped GTD). */
+  memoryIds?: string[];
 }): Promise<{ proposals: GtdProposal[]; warnings: string[]; raw?: string }> {
   const llm = llmConfigFromSettings(input.settings);
   if (!llm) {
@@ -27,52 +29,99 @@ export async function analyzeMemoryForGtd(input: {
     );
   }
 
-  // Prefer weekly + monthly for GTD triage; dailies as supporting context
-  const weeklies = await listMemoryEntries(input.dbPath, { level: "weekly", limit: 8 });
-  const monthlies = await listMemoryEntries(input.dbPath, { level: "monthly", limit: 6 });
-  const dailies = await listMemoryEntries(input.dbPath, { level: "daily", limit: 8 });
-  const digests = [...monthlies, ...weeklies, ...dailies];
+  const scopedWarnings: string[] = [];
+  let digests: MemoryEntry[] = [];
+
+  if (input.memoryIds?.length) {
+    for (const id of input.memoryIds) {
+      const entry = await getMemoryEntryById(input.dbPath, id);
+      if (entry) {
+        digests.push(entry);
+      } else {
+        scopedWarnings.push(`memory entry not found: ${id}`);
+      }
+    }
+  } else {
+    // Prefer weekly + monthly for GTD triage; dailies as supporting context
+    const weeklies = await listMemoryEntries(input.dbPath, { level: "weekly", limit: 8 });
+    const monthlies = await listMemoryEntries(input.dbPath, { level: "monthly", limit: 6 });
+    const dailies = await listMemoryEntries(input.dbPath, { level: "daily", limit: 8 });
+    digests = [...monthlies, ...weeklies, ...dailies];
+  }
 
   if (!digests.length) {
     return {
       proposals: [],
-      warnings: ["No digests found. Generate weekly/monthly (and daily) memory first."]
+      warnings: scopedWarnings.length
+        ? scopedWarnings
+        : ["No digests found. Generate weekly/monthly (and daily) memory first."]
     };
   }
 
-  const sessionKeys = new Map<
-    string,
-    { provider: string; sessionId: string; title: string; projectPath: string; summary?: string; gtd?: string }
-  >();
+  type SessionRow = {
+    provider: string;
+    sessionId: string;
+    title: string;
+    projectPath: string;
+    summary?: string;
+    gtd?: string;
+  };
+  const sessionKeys = new Map<string, SessionRow>();
 
+  async function addSession(session: AgentSession): Promise<void> {
+    const key = `${session.provider}:${session.id}`;
+    if (sessionKeys.has(key)) return;
+    const gtd = await getSessionGtdStatus(input.dbPath, session.provider, session.id);
+    sessionKeys.set(key, {
+      provider: session.provider,
+      sessionId: session.id,
+      title: session.title,
+      projectPath: session.projectPath,
+      summary: session.sessionSummary,
+      gtd: gtd || undefined
+    });
+  }
+
+  // 1) Sessions linked via memory_links
+  let linkCount = 0;
   for (const d of digests) {
     const links = await listMemoryLinks(input.dbPath, d.id);
     for (const link of links) {
-      if (!link.provider || !link.agentSessionId) {
-        continue;
-      }
-      const key = `${link.provider}:${link.agentSessionId}`;
-      if (sessionKeys.has(key)) {
-        continue;
-      }
+      if (!link.provider || !link.agentSessionId) continue;
       const session = await getSessionById(
         input.dbPath,
         link.provider as AgentProvider,
         link.agentSessionId
       );
-      if (!session) {
-        continue;
-      }
-      const gtd = await getSessionGtdStatus(input.dbPath, session.provider, session.id);
-      sessionKeys.set(key, {
-        provider: session.provider,
-        sessionId: session.id,
-        title: session.title,
-        projectPath: session.projectPath,
-        summary: session.sessionSummary,
-        gtd: gtd || undefined
-      });
+      if (!session) continue;
+      linkCount += 1;
+      await addSession(session);
     }
+  }
+
+  // 2) Fallback / enrich: catalog sessions in each digest's time range
+  // (critical for daily GTD when links are sparse or missing)
+  for (const d of digests) {
+    if (d.periodStartMs == null || d.periodEndMs == null) continue;
+    const inRange = await listSessionsInRange(
+      input.dbPath,
+      d.periodStartMs,
+      d.periodEndMs,
+      40
+    );
+    for (const session of inRange) {
+      await addSession(session);
+    }
+  }
+
+  if (!sessionKeys.size) {
+    scopedWarnings.push(
+      "该 digest 未关联到任何 catalog session（无 memory_links，且周期内无 session）。无法生成 GTD 提议。"
+    );
+  } else if (linkCount === 0) {
+    scopedWarnings.push(
+      `memory_links 为空，已按 digest 时间范围回退加载 ${sessionKeys.size} 个 session。`
+    );
   }
 
   const digestBlock = digests
@@ -82,37 +131,49 @@ export async function analyzeMemoryForGtd(input: {
     )
     .join("\n\n");
 
+  const sessionList = [...sessionKeys.values()];
   const sessionBlock =
-    [...sessionKeys.values()]
+    sessionList
       .map(
         (s) =>
           `- ${s.provider} | ${s.sessionId} | GTD=${s.gtd || "none"} | ${s.title} @ ${s.projectPath}${
             s.summary ? `\n  summary: ${truncate(s.summary, 400)}` : ""
           }`
       )
-      .join("\n") || "(no linked sessions from digests — still propose only if session ids appear in digests)";
+      .join("\n") || "(no sessions available)";
 
   const language = llm.outputLanguage || "zh-CN";
+  const scoped = Boolean(input.memoryIds?.length);
+  const digestIdsHint = digests.map((d) => d.id).join(", ");
   const system = [
     "You triage coding-agent sessions into GTD for a developer.",
     "Statuses allowed: inbox, next, waiting, someday, reference.",
     "Prefer next for actionable unfinished work; waiting for blocked; someday for low priority; reference for docs/knowledge; inbox only if unclear.",
-    "Prioritize insights from WEEKLY and MONTHLY digests; use daily digests as supporting detail.",
-    "sourceMemoryIds should prefer weekly:/monthly: ids when those drove the proposal.",
-    "Only include sessions that appear in the linked session list OR are clearly identified in digests with provider+id.",
-    "Return STRICT JSON only, no markdown fence:",
-    '{"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceMemoryIds":["weekly:...","monthly:..."]}]}',
+    scoped
+      ? "Analyze ONLY the provided digest(s) (daily/weekly/monthly all valid). Ground every proposal in that content."
+      : "Prioritize insights from WEEKLY and MONTHLY digests; use daily digests as supporting detail.",
+    `sourceMemoryIds should include these digest ids when relevant: ${digestIdsHint || "(from digests)"}.`,
+    "You MUST only use provider+sessionId pairs from the Linked sessions list below.",
+    "When the Linked sessions list is non-empty, produce at least one proposal per unfinished/active session when the digest mentions related work; use reference for pure knowledge sessions.",
+    "Return ONLY one JSON object. No markdown fences, no commentary before or after.",
+    'Schema: {"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceMemoryIds":["daily:..."]}]}',
+    "If Linked sessions is empty, return {\"items\":[]}.",
     `Write reason and tasks in language: ${language}.`
   ].join(" ");
 
   const user = [
-    "## Memory digests (monthly + weekly first, then daily)",
+    scoped
+      ? "## Memory digests (scoped — current selection only; daily is enough)"
+      : "## Memory digests (monthly + weekly first, then daily)",
     digestBlock,
     "",
-    "## Linked sessions (prefer these ids)",
+    "## Linked sessions (use ONLY these provider|sessionId values)",
     sessionBlock,
     "",
-    "Propose GTD updates and short task lists for sessions that still need work. Skip completed noise."
+    sessionList.length
+      ? `There are ${sessionList.length} session(s). Propose GTD + short tasks for those that still need work.`
+      : "No sessions linked — return {\"items\":[]}.",
+    "Reply with JSON only."
   ].join("\n");
 
   const chatResult = await chatCompletionDetailed(
@@ -137,8 +198,23 @@ export async function analyzeMemoryForGtd(input: {
   }
   const raw = chatResult.content;
 
-  const parsed = parseProposalsJson(raw);
-  const warnings: string[] = [];
+  const warnings: string[] = [...scopedWarnings];
+  let parsed: Array<{
+    provider: string;
+    sessionId: string;
+    gtd: string;
+    reason?: string;
+    tasks?: string[];
+    sourceMemoryIds?: string[];
+  }> = [];
+  try {
+    parsed = parseProposalsJson(raw);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    warnings.push(`LLM 返回的 JSON 无法解析: ${msg}`);
+    return { proposals: [], warnings, raw };
+  }
+
   const proposals: GtdProposal[] = [];
 
   for (const item of parsed) {
@@ -170,29 +246,139 @@ export async function analyzeMemoryForGtd(input: {
   return { proposals, warnings, raw };
 }
 
-function parseProposalsJson(raw: string): Array<{
+type ParsedProposal = {
   provider: string;
   sessionId: string;
   gtd: string;
   reason?: string;
   tasks?: string[];
   sourceMemoryIds?: string[];
-}> {
+};
+
+function parseProposalsJson(raw: string): ParsedProposal[] {
+  const candidates = collectJsonCandidates(raw);
+  let lastError: Error | undefined;
+
+  for (const candidate of candidates) {
+    for (const variant of [candidate, repairCommonJsonIssues(candidate)]) {
+      try {
+        const data = JSON.parse(variant) as unknown;
+        const items = extractItemsArray(data);
+        if (items) {
+          return mapProposalItems(items);
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+  }
+
+  const preview = raw.replace(/\s+/g, " ").trim().slice(0, 180);
+  throw new Error(
+    lastError
+      ? `${lastError.message} · raw≈ ${preview}`
+      : `No JSON object found · raw≈ ${preview}`
+  );
+}
+
+/** Pull plausible JSON object/array substrings from model output. */
+function collectJsonCandidates(raw: string): string[] {
+  const out: string[] = [];
   let text = raw.trim();
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) {
     text = fence[1].trim();
+    out.push(text);
   }
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    text = text.slice(start, end + 1);
+
+  out.push(text);
+
+  // Balanced {...} from each '{'
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    const slice = extractBalanced(text, i, "{", "}");
+    if (slice) out.push(slice);
   }
-  const data = JSON.parse(text) as { items?: unknown };
-  if (!Array.isArray(data.items)) {
-    return [];
+
+  // Balanced [...] (some models return a bare array of items)
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "[") continue;
+    const slice = extractBalanced(text, i, "[", "]");
+    if (slice) out.push(slice);
   }
-  return data.items
+
+  // Prefer longer candidates first (more complete JSON)
+  return [...new Set(out)].sort((a, b) => b.length - a.length);
+}
+
+function extractBalanced(
+  text: string,
+  start: number,
+  openCh: string,
+  closeCh: string
+): string | null {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === openCh) depth += 1;
+    if (ch === closeCh) {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function repairCommonJsonIssues(text: string): string {
+  return (
+    text
+      // trailing commas before } or ]
+      .replace(/,\s*([}\]])/g, "$1")
+      // smart quotes
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+  );
+}
+
+function extractItemsArray(data: unknown): unknown[] | null {
+  if (!data) return null;
+  if (Array.isArray(data)) {
+    // Bare array of proposals
+    return data;
+  }
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (Array.isArray(obj.items)) return obj.items;
+    if (Array.isArray(obj.proposals)) return obj.proposals;
+    // Single proposal object
+    if (obj.provider && (obj.sessionId || obj.session_id)) {
+      return [obj];
+    }
+  }
+  return null;
+}
+
+function mapProposalItems(items: unknown[]): ParsedProposal[] {
+  return items
     .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
     .map((x) => ({
       provider: String(x.provider || ""),
@@ -208,6 +394,3 @@ function parseProposalsJson(raw: string): Array<{
     }))
     .filter((x) => x.provider && x.sessionId);
 }
-
-// silence unused if tree-shaken
-void GTD_STATUSES;

@@ -210,9 +210,29 @@ body {
 }
 
 .sheet-body {
-  padding: 14px 16px 24px;
-  overflow: auto;
+  padding: 14px 16px 16px;
+  overflow: hidden;
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* GTD sheet: preview fills remaining viewport height */
+#sheetGtd .sheet-body > .muted,
+#sheetGtd .sheet-body > .form-row,
+#sheetGtd .sheet-body > .status {
+  flex: 0 0 auto;
+}
+
+#sheetGtd .gtd-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+  max-height: none;
+  overflow: auto;
+  align-content: start;
 }
 
 .sessions-split {
@@ -681,7 +701,7 @@ main {
 .cal-side {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 10px;
   min-width: 0;
   max-width: 100%;
   min-height: 0;
@@ -689,56 +709,26 @@ main {
   overflow: hidden;
 }
 
-.gen-panel {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 10px 12px;
-  min-width: 0;
+/* Progress lives in the right detail column */
+.cal-side > .detail-progress.gen-progress {
   flex: 0 0 auto;
+  margin-top: 0;
 }
 
-.gen-period {
-  margin: 0 0 8px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--text, inherit);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-.gen-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.gen-buttons .tool-btn {
-  flex: 1 1 auto;
-  min-width: 5rem;
-  white-space: nowrap;
-  font-size: 12px;
-  padding: 6px 10px;
-}
-
-.gen-buttons .tool-btn#btnOpenGtd {
-  flex: 1 1 100%;
-}
-
-.gen-hint {
-  margin: 0;
+.cal-hint {
+  margin: 8px 0 0;
   font-size: 11px;
+  line-height: 1.4;
 }
 
 .gen-progress {
-  margin-top: 10px;
-  padding: 10px 10px 9px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  margin-top: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
   min-width: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .gen-progress[hidden] {
@@ -746,10 +736,33 @@ main {
 }
 
 .gen-progress-line {
+  position: relative;
+  padding-left: 22px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--text);
   word-break: break-word;
+}
+
+.gen-progress-line::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0.25em;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.75s linear infinite;
+}
+
+.gen-progress:not(.is-loading) .gen-progress-line {
+  padding-left: 0;
+}
+
+.gen-progress:not(.is-loading) .gen-progress-line::before {
+  display: none;
 }
 
 .gen-progress-line.is-ok {
@@ -1096,14 +1109,142 @@ legend {
   max-width: 100%;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
+.cal-main .cal-weekdays,
+.cal-main .cal-grid,
+.cal-main .cal-month-actions,
+.cal-main .cal-legend,
+.cal-main .cal-hint {
+  flex: 0 0 auto;
+}
+
+.cal-session-panel {
+  flex: 1 1 auto;
+  min-height: 120px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cal-session-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.cal-session-panel-head strong {
+  font-size: 12px;
+}
+
+.cal-session-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.cal-session-empty {
+  margin: 8px 0;
+  font-size: 11px;
+}
+
+.cal-session-group {
+  margin: 0 0 8px;
+}
+
+/* Outer week block in month view — sticky title sticks while scrolling this week */
+.cal-session-group.week-block {
+  margin: 0 0 12px;
+}
+
+.cal-session-group-title {
+  margin: 0 0 4px;
+  padding: 3px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border-radius: 4px;
+}
+
+.cal-session-group-title.week {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  color: color-mix(in srgb, #a855f7 75%, var(--text));
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 8px;
+  margin: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, #a855f7 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, #a855f7 28%, var(--border));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--panel) 80%, transparent);
+}
+
+.cal-session-group-title.day {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  font-weight: 500;
+  padding: 4px 8px 4px 10px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+
+/* Month view has a second sticky layer above each day title. */
+.cal-session-list[data-view="month"] .cal-session-group-title.day {
+  top: 32px;
+}
+
+.cal-session-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 7px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.cal-session-row:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.cal-session-row .s-title {
+  font-weight: 600;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.cal-session-row .s-meta {
+  color: var(--muted);
+  margin-top: 2px;
+  font-size: 10px;
+}
+
 .cal-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(2.4rem, 2.8rem);
   gap: 4px;
   margin-bottom: 6px;
   font-size: 11px;
@@ -1111,12 +1252,95 @@ legend {
   text-align: center;
 }
 
+.cal-week-col-head {
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(2.4rem, 2.8rem);
   gap: 4px;
   width: 100%;
   min-width: 0;
+}
+
+.cal-week-btn {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)) !important;
+  border-radius: 8px;
+  padding: 2px 2px !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg)) !important;
+  color: var(--accent) !important;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: horizontal-tb;
+  line-height: 1.15;
+}
+
+.cal-week-btn:hover {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg)) !important;
+}
+
+.cal-week-btn.has-digest {
+  border-color: color-mix(in srgb, #a855f7 50%, var(--border)) !important;
+  color: #c084fc !important;
+  background: color-mix(in srgb, #a855f7 12%, var(--bg)) !important;
+}
+
+.cal-week-btn.future {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Keep clicks enabled so user can re-focus the right detail while loading */
+.cal-week-btn.generating,
+.cal-month-btn.generating {
+  cursor: wait;
+  opacity: 0.9;
+  position: relative;
+}
+
+.cal-week-btn.generating .cal-week-label {
+  opacity: 0.25;
+}
+
+.cal-week-btn.generating::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.7s linear infinite;
+  pointer-events: none;
+}
+
+.cal-month-actions {
+  display: flex;
+  justify-content: stretch;
+  margin-top: 8px;
+}
+
+.cal-month-btn {
+  width: 100%;
+  font-weight: 600;
+}
+
+.cal-month-btn.has-digest {
+  border-color: color-mix(in srgb, #14b8a6 50%, var(--border)) !important;
+  color: #2dd4bf !important;
 }
 
 .cal-cell {
@@ -1144,19 +1368,85 @@ legend {
   opacity: 0.4;
 }
 
+/* Today: red circular day number, white text */
 .cal-cell.today {
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: none;
 }
 
+.cal-cell.today .day-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55em;
+  height: 1.55em;
+  margin: 1px auto 0;
+  border-radius: 50%;
+  background: #e53935;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Selected day: cell highlight (can combine with today) */
 .cal-cell.selected {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.cal-cell.selected.today .day-num {
+  /* Keep red circle when today is also selected */
+  background: #e53935;
+  color: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.cal-cell.generating {
+  position: relative;
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg)) !important;
+  /* clicks still work → jump right detail while loading */
+  cursor: wait;
+}
+
+.cal-cell.generating .day-num {
+  opacity: 0.35;
+}
+
+.cal-cell.generating .marks {
+  opacity: 0.25;
+}
+
+.cal-cell-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cal-cell-loading::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.7s linear infinite;
+}
+
+@keyframes cal-cell-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .cal-cell .day-num {
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+  align-self: center;
 }
 
 .cal-cell .marks {
@@ -1253,7 +1543,32 @@ legend {
   font-size: 13px;
 }
 
-/* Bottom status rarely used (progress lives in gen-panel) */
+.detail-generating {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 2px;
+}
+
+.detail-generating .empty-hint {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.detail-generating-key {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.detail-generating-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Bottom status rarely used (progress lives in right column) */
 #tab-memory > #memoryStatus:empty {
   display: none;
 }
@@ -1302,6 +1617,27 @@ legend {
   overflow: auto;
 }
 
+/* When not in flex sheet layout, keep a sensible cap */
+.sheet-body:not(:has(.gtd-preview)) .gtd-preview {
+  max-height: 360px;
+}
+
+.gtd-empty {
+  padding: 8px 2px;
+  line-height: 1.45;
+}
+
+.gtd-empty p {
+  margin: 0 0 6px;
+}
+
+.gtd-empty-warnings {
+  margin: 6px 0 10px;
+  padding-left: 1.2em;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .gtd-preview:empty {
   display: none;
 }
@@ -1318,16 +1654,129 @@ legend {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  margin: -2px;
+  padding: 2px;
 }
 
-.gtd-row-head label {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+.gtd-row-head:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.gtd-row-chevron {
+  flex: 0 0 auto;
+  width: 0.55em;
+  height: 0.55em;
+  margin-top: 0.35em;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.gtd-row.collapsed .gtd-row-chevron {
+  transform: rotate(-45deg);
+  margin-top: 0.45em;
+}
+
+.gtd-row-title {
   flex: 1;
-  cursor: pointer;
+  min-width: 0;
   color: var(--text);
   font-size: 12px;
+}
+
+.gtd-row-title strong {
+  word-break: break-word;
+}
+
+.gtd-row.collapsed .gtd-edit-grid {
+  display: none;
+}
+
+.gtd-add-btn {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.gtd-add-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Large todolist.md editor when focused */
+.gtd-md-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.gtd-md-overlay[hidden] {
+  display: none !important;
+}
+
+.gtd-md-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.gtd-md-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(960px, 100%);
+  height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.gtd-md-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.gtd-md-overlay-head strong {
+  font-size: 14px;
+}
+
+.gtd-md-overlay-hint {
+  flex: 1;
+  font-size: 12px;
+}
+
+.gtd-md-overlay-ta {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  resize: none;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
 }
 
 .gtd-row .meta {
@@ -1376,14 +1825,38 @@ legend {
   z-index: 1;
 }
 
+.digest-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .digest-card-head h3 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.digest-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.digest-card-actions .tool-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .digest-card-head .meta-line {

@@ -23,6 +23,14 @@ export async function listSessionsInRange(
   endMs: number,
   limit = 2000
 ): Promise<AgentSession[]> {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return [];
+  }
+  const from = Math.floor(startMs);
+  const to = Math.floor(endMs);
+  if (to <= from) {
+    return [];
+  }
   const safeLimit = Math.max(1, Math.min(limit, 50_000));
   const rows = await runSqliteJson<CatalogSessionRow>(
     dbPath,
@@ -31,8 +39,8 @@ export async function listSessionsInRange(
       session_summary, session_summary_language, session_summary_at_ms
      FROM sessions
      WHERE hidden = 0
-       AND updated_at_ms >= ${Math.floor(startMs)}
-       AND updated_at_ms < ${Math.floor(endMs)}
+       AND updated_at_ms >= ${from}
+       AND updated_at_ms < ${to}
      ORDER BY updated_at_ms DESC
      LIMIT ${safeLimit};`
   );

@@ -136,3 +136,33 @@ function dateFromIsoWeek(isoYear: number, isoWeek: number): Date {
   monday.setDate(monday.getDate() + (isoWeek - 1) * 7);
   return monday;
 }
+
+/** Local calendar day labels YYYY-MM-DD for each day in [startMs, endMs). */
+export function listDayLabelsInRange(startMs: number, endMs: number): string[] {
+  const labels: string[] = [];
+  const d = new Date(startMs);
+  d.setHours(0, 0, 0, 0);
+  const end = Math.floor(endMs);
+  while (d.getTime() < end) {
+    labels.push(
+      `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    );
+    d.setDate(d.getDate() + 1);
+  }
+  return labels;
+}
+
+/** Distinct ISO week labels YYYY-Www covering [startMs, endMs). */
+export function listWeekLabelsInRange(startMs: number, endMs: number): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const day of listDayLabelsInRange(startMs, endMs)) {
+    const [y, m, d] = day.split("-").map(Number);
+    const week = localWeekRange(new Date(y, m - 1, d, 12, 0, 0, 0));
+    if (!seen.has(week.label)) {
+      seen.add(week.label);
+      labels.push(week.label);
+    }
+  }
+  return labels;
+}

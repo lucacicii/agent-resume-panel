@@ -17,12 +17,14 @@ import {
   listMemoryLinks,
   listScheduleRuns,
   listSessions,
+  listSessionsInRange,
   loadSessionPreview,
   loadSettings,
   previewBackfillMemoryDigests,
   resolvePanelHome,
   resolvePreviewHomes,
   runDailyDigest,
+  needsDailyDigestRefresh,
   applyMemoryGtdSync,
   previewMemoryGtdSync,
   runMonthlyDigest,
@@ -84,6 +86,25 @@ function registerIpc(): void {
     await ensureCatalogSchema(dbPath);
     return listSessions(dbPath, limit ?? 500);
   });
+
+  ipcMain.handle(
+    "sessions:listInRange",
+    async (
+      _event,
+      args?: { fromMs?: number; toMs?: number; limit?: number }
+    ) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const fromMs = Number(args?.fromMs);
+      const toMs = Number(args?.toMs);
+      // NaN is not null — must use isFinite or SQLite gets "updated_at_ms >= NaN"
+      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+        return [];
+      }
+      return listSessionsInRange(dbPath, fromMs, toMs, args?.limit ?? 2000);
+    }
+  );
 
   ipcMain.handle(
     "sessions:preview",
@@ -159,11 +180,29 @@ function registerIpc(): void {
     return listMemoryEntries(dbPath, { level: "daily", limit: limit ?? 30 });
   });
 
-  ipcMain.handle("memory:runDaily", async (event, date?: string) => {
-    const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("memory:digestProgress", progress);
-    };
-    return runDailyDigest({ date, onProgress: sendProgress });
+  ipcMain.handle(
+    "memory:runDaily",
+    async (
+      event,
+      args?: string | { date?: string; forceResummarize?: boolean }
+    ) => {
+      const opts =
+        typeof args === "string" || args === undefined
+          ? { date: args }
+          : args || {};
+      const sendProgress = (progress: DigestProgressEvent) => {
+        event.sender.send("memory:digestProgress", progress);
+      };
+      return runDailyDigest({
+        date: opts.date,
+        forceResummarize: opts.forceResummarize,
+        onProgress: sendProgress
+      });
+    }
+  );
+
+  ipcMain.handle("memory:needsDailyRefresh", async (_event, date?: string) => {
+    return needsDailyDigestRefresh({ date });
   });
 
   ipcMain.handle("memory:runWeekly", async (event, weekKey?: string) => {
@@ -234,9 +273,10 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "workflow:previewMemoryGtdSync",
-    async (_event, args?: { ensureDigests?: boolean }) => {
+    async (_event, args?: { ensureDigests?: boolean; memoryIds?: string[] }) => {
       return previewMemoryGtdSync({
-        ensureDigests: args?.ensureDigests
+        ensureDigests: args?.ensureDigests,
+        memoryIds: args?.memoryIds
       });
     }
   );

@@ -9,7 +9,11 @@ export interface LlmRuntimeConfig {
   apiKey: string;
   maxContextChars?: number;
   outputLanguage?: string;
+  /** Maximum time to wait for one chat completion request. */
+  requestTimeoutMs?: number;
 }
+
+export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 300_000;
 
 export interface EmbeddingRuntimeConfig {
   baseUrl: string;
