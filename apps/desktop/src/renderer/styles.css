@@ -72,12 +72,6 @@ body {
   align-items: center;
 }
 
-.home-meta {
-  margin: 4px 16px 0;
-  font-size: 11px;
-  flex: 0 0 auto;
-}
-
 .quiet-title {
   font-size: 15px;
   font-weight: 600;
@@ -715,12 +709,6 @@ main {
   margin-top: 0;
 }
 
-.cal-hint {
-  margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
 .gen-progress {
   margin-top: 0;
   padding: 12px 14px;
@@ -1117,8 +1105,7 @@ legend {
 .cal-main .cal-weekdays,
 .cal-main .cal-grid,
 .cal-main .cal-month-actions,
-.cal-main .cal-legend,
-.cal-main .cal-hint {
+.cal-main .cal-legend {
   flex: 0 0 auto;
 }
 

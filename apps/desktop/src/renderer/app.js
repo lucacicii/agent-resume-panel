@@ -79,11 +79,6 @@ function monthInputValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-async function loadPanelHome() {
-  const home = await agentResume.getPanelHome();
-  $("panelHomeLabel").textContent = `panelHome: ${home}`;
-}
-
 /** @type {any[]} */
 let sessionsCache = [];
 /** @type {string | null} */
@@ -2371,7 +2366,6 @@ async function saveSettingsForm() {
     const result = await agentResume.saveSettings(settings);
     const sched = result.schedulerEnabled ? " · scheduler ON" : " · scheduler OFF";
     setStatus(status, `Saved · ${result.file}${sched}`, "ok");
-    await loadPanelHome();
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -2726,7 +2720,6 @@ async function boot() {
   updatePeriodLabel();
   switchTab("memory");
   renderChat();
-  await loadPanelHome();
   await loadSettingsForm();
   await loadMemory();
 }
