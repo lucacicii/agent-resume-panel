@@ -1,4 +1,4 @@
-/* global agentResume */
+/* global agentResume, marked, DOMPurify */
 
 function $(id) {
   return document.getElementById(id);
@@ -32,6 +32,32 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function renderMarkdown(value) {
+  const source = String(value ?? "");
+  try {
+    if (typeof marked?.parse !== "function" || typeof DOMPurify?.sanitize !== "function") {
+      throw new Error("Markdown renderer is unavailable");
+    }
+
+    const parsed = marked.parse(source, { gfm: true, breaks: true });
+    const sanitized = DOMPurify.sanitize(parsed, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
+      FORBID_ATTR: ["style"],
+      ALLOW_UNKNOWN_PROTOCOLS: false
+    });
+    const template = document.createElement("template");
+    template.innerHTML = sanitized;
+    template.content.querySelectorAll("a[href]").forEach((link) => {
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+    });
+    return template.innerHTML;
+  } catch {
+    return `<pre class="markdown-fallback">${escapeHtml(source)}</pre>`;
+  }
 }
 
 function switchTab(name) {
@@ -847,7 +873,7 @@ function digestCardHtml(e) {
           </div>
           <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
         </header>
-        <pre class="digest-body">${escapeHtml(e.content)}</pre>
+        <div class="digest-body markdown-body">${renderMarkdown(e.content)}</div>
       </article>`;
 }
 

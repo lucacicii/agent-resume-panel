@@ -10,7 +10,9 @@
     "start": "electron ."
   },
   "dependencies": {
-    "@agent-resume/core": "0.1.0"
+    "@agent-resume/core": "0.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.6"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
