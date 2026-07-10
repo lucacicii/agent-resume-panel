@@ -11,56 +11,44 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="top">
-      <div>
-        <h1>Agent Resume Desktop</h1>
-        <p class="muted" id="panelHomeLabel">panelHome: …</p>
-      </div>
-      <nav class="tabs">
-        <button type="button" class="tab active" data-tab="sessions">Sessions</button>
-        <button type="button" class="tab" data-tab="memory">Memory</button>
-        <button type="button" class="tab" data-tab="agent">Agent</button>
-        <button type="button" class="tab" data-tab="settings">Settings</button>
+    <header class="top mac-top">
+      <nav class="tabs primary-tabs">
+        <button type="button" class="tab active" data-tab="memory">Memory</button>
+        <button type="button" class="tab" data-tab="ask">Ask</button>
       </nav>
+      <div class="top-actions">
+        <button type="button" class="ghost-btn" id="btnOpenSessions" title="Sessions 参考">Sessions</button>
+        <button type="button" class="icon-btn" id="btnOpenSettings" title="Settings">⚙</button>
+      </div>
     </header>
 
-    <main>
-      <section id="tab-sessions" class="panel active">
-        <div class="toolbar">
-          <h2>Sessions</h2>
-          <button type="button" id="btnRefreshSessions">Refresh</button>
-        </div>
-        <p class="muted" id="sessionsMeta"></p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Provider</th>
-                <th>Project</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody id="sessionsBody"></tbody>
-          </table>
-        </div>
-      </section>
+    <p class="muted home-meta" id="panelHomeLabel">panelHome: …</p>
 
-      <section id="tab-memory" class="panel">
+    <main>
+      <!-- Memory home -->
+      <section id="tab-memory" class="panel active">
         <div class="toolbar">
-          <h2>Memory</h2>
           <div class="row cal-nav">
-            <button type="button" id="btnCalPrev" title="上月">←</button>
+            <button type="button" id="btnCalPrev" title="上月">‹</button>
             <button type="button" id="btnCalToday">今天</button>
-            <button type="button" id="btnCalNext" title="下月">→</button>
+            <button type="button" id="btnCalNext" title="下月">›</button>
             <strong id="calMonthLabel">—</strong>
-            <select id="memoryLevel">
-              <option value="all">标记：全部</option>
+            <select id="memoryLevel" class="quiet-select">
+              <option value="all">全部标记</option>
               <option value="daily">仅日报</option>
               <option value="weekly">仅周报</option>
               <option value="monthly">仅月报</option>
             </select>
-            <button type="button" id="btnRefreshMemory">Refresh</button>
+            <button type="button" id="btnRefreshMemory" class="ghost-btn">刷新</button>
+            <div class="ops-wrap">
+              <button type="button" class="ghost-btn" id="btnMemoryOps" title="操作">⋯</button>
+              <div class="ops-menu" id="memoryOpsMenu" hidden>
+                <button type="button" data-ops="gen-today">生成本日日报</button>
+                <button type="button" data-ops="tools">生成 / 回填…</button>
+                <button type="button" data-ops="gtd">从周报/月报分析 GTD…</button>
+                <button type="button" data-ops="sessions">浏览 Sessions…</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -72,119 +60,42 @@
             <div id="calendarGrid" class="cal-grid"></div>
             <p class="muted cal-legend">
               <span class="dot daily"></span>日报
-              <span class="dot weekly"></span>周报(周一)
-              <span class="dot monthly"></span>月报(1日)
+              <span class="dot weekly"></span>周报
+              <span class="dot monthly"></span>月报
             </p>
           </div>
           <aside class="cal-detail" id="calDetail">
-            <p class="muted">点击日历上的日期查看 digests，或生成该日日报。</p>
+            <p class="muted">点击日期查看 digests。Sessions 从右上角或 ⋯ 进入。</p>
           </aside>
         </div>
-
         <p class="status" id="memoryStatus"></p>
-        <div id="digestList" class="digest-list search-results" hidden></div>
-
-        <details class="tools-fold" id="memoryTools">
-          <summary>工具：生成 · 回填 · 搜索 · GTD</summary>
-          <div class="card-grid">
-            <div class="card">
-              <h3>生成</h3>
-              <div class="form-row">
-                <label>Daily <input type="date" id="dailyDate" /></label>
-                <button type="button" id="btnRunDaily">生成 / 覆盖日报</button>
-              </div>
-              <div class="form-row">
-                <label>Weekly (YYYY-Www) <input type="text" id="weekKey" placeholder="留空=本周" /></label>
-                <button type="button" id="btnRunWeekly">生成 / 覆盖周报</button>
-              </div>
-              <div class="form-row">
-                <label>Monthly <input type="month" id="monthKey" /></label>
-                <button type="button" id="btnRunMonthly">生成 / 覆盖月报</button>
-              </div>
-              <p class="muted">周报优先吃区间内日报；月报优先周报。同 period 重跑会覆盖。</p>
-            </div>
-            <div class="card">
-              <h3>批量回填历史 digests</h3>
-              <p class="muted">
-                扫描 catalog 中所有 session 的日期，按日 → 周 → 月批量生成（会多次调用 LLM）。
-              </p>
-              <div class="form-row">
-                <label>
-                  最多处理天数
-                  <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
-                </label>
-                <label class="check">
-                  <input type="checkbox" id="backfillSkipExisting" checked />
-                  跳过已有成功 digest
-                </label>
-                <label class="check">
-                  <input type="checkbox" id="backfillSkipEmbedding" checked />
-                  跳过 embedding
-                </label>
-              </div>
-              <div class="form-row">
-                <button type="button" id="btnBackfillPreview">预览范围</button>
-                <button type="button" id="btnBackfillRun">开始批量生成</button>
-              </div>
-              <p class="status" id="backfillStatus"></p>
-            </div>
-            <div class="card">
-              <h3>语义搜索</h3>
-              <div class="form-row">
-                <input type="search" id="searchQuery" placeholder="例如：上周 payment 改了什么" />
-                <button type="button" id="btnSearch">搜索</button>
-              </div>
-              <p class="muted">结果以列表显示在下方；需配置 embedding。</p>
-            </div>
-            <div class="card">
-              <h3>Memory → GTD + todolist</h3>
-              <p class="muted">
-                先 <strong>分析预览</strong>（不写库、不写 md），勾选后点 <strong>应用选中</strong> 才写入 GTD 与
-                <code>todolist.md</code>（标明 AI）。
-              </p>
-              <div class="form-row">
-                <label class="check">
-                  <input type="checkbox" id="ensureDigests" checked />
-                  若今日尚无日报则先生成 daily
-                </label>
-                <button type="button" id="btnGtdPreview">1. 分析预览</button>
-                <button type="button" id="btnGtdApply" disabled>2. 应用选中（写 GTD + md）</button>
-              </div>
-              <div class="form-row">
-                <button type="button" id="btnGtdSelectAll" disabled>全选</button>
-                <button type="button" id="btnGtdSelectNone" disabled>全不选</button>
-              </div>
-              <div id="gtdPreview" class="gtd-preview"></div>
-              <p class="status" id="gtdSyncStatus"></p>
-            </div>
-          </div>
-        </details>
       </section>
 
-      <section id="tab-agent" class="panel">
+      <!-- Ask (merged Agent + semantic search) -->
+      <section id="tab-ask" class="panel">
         <div class="toolbar">
-          <h2>Meta-Agent</h2>
-          <button type="button" id="btnClearChat">Clear chat</button>
+          <h2 class="quiet-title">Ask</h2>
+          <button type="button" class="ghost-btn" id="btnClearChat">清空</button>
         </div>
         <p class="muted">
-          基于 Memory digests 回答（优先语义检索；无向量时用最近日报/周报）。不会改代码，可复制 resume 命令与 handoff brief。
+          用自然语言问记忆（自动语义检索 digests）。例如：上周做了什么？payment 卡在哪？
         </p>
         <div id="chatLog" class="chat-log"></div>
         <div class="chat-compose">
-          <textarea id="agentInput" rows="3" placeholder="例如：上周做了什么？payment 卡在哪？"></textarea>
-          <button type="button" id="btnAgentSend">Send</button>
+          <textarea id="agentInput" rows="3" placeholder="提问…"></textarea>
+          <button type="button" id="btnAgentSend">发送</button>
         </div>
         <p class="status" id="agentStatus"></p>
       </section>
 
+      <!-- Settings (not a primary tab) -->
       <section id="tab-settings" class="panel">
         <div class="toolbar">
-          <h2>Settings</h2>
-          <button type="button" id="btnSaveSettings">Save</button>
+          <h2 class="quiet-title">Settings</h2>
+          <button type="button" class="ghost-btn" id="btnSettingsBack">完成</button>
         </div>
         <p class="muted">
-          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。API key v0.1/v0.2
-          明文存储，注意本机安全。
+          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
         </p>
         <form id="settingsForm" class="form">
           <label>
@@ -192,32 +103,130 @@
             <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
           </label>
           <fieldset>
-            <legend>LLM (OpenAI-compatible chat)</legend>
+            <legend>LLM</legend>
             <label>Base URL <input name="llmBaseUrl" type="text" /></label>
             <label>Model <input name="llmModel" type="text" /></label>
             <label>API Key <input name="llmApiKey" type="password" autocomplete="off" /></label>
             <label>Output language <input name="llmLang" type="text" placeholder="zh-CN" /></label>
           </fieldset>
           <fieldset>
-            <legend>Embedding (OpenAI-compatible)</legend>
-            <label>Base URL (optional) <input name="embBaseUrl" type="text" placeholder="same as LLM" /></label>
+            <legend>Embedding</legend>
+            <label>Base URL (optional) <input name="embBaseUrl" type="text" /></label>
             <label>Model <input name="embModel" type="text" /></label>
             <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
           </fieldset>
           <fieldset>
-            <legend>Memory schedule (Desktop only)</legend>
+            <legend>定时（默认关）</legend>
             <label class="check">
               <input name="memoryEnabled" type="checkbox" />
-              启用定时分析（默认关；会读 transcript 并调用 LLM，产生费用）
+              启用定时 digests
             </label>
-            <label>Daily hour (0–23) <input name="dailyHour" type="number" min="0" max="23" /></label>
-            <label>Weekly hour (Monday) <input name="weeklyHour" type="number" min="0" max="23" /></label>
+            <label>Daily hour <input name="dailyHour" type="number" min="0" max="23" /></label>
+            <label>Weekly hour (Mon) <input name="weeklyHour" type="number" min="0" max="23" /></label>
             <label>Monthly hour (day 1) <input name="monthlyHour" type="number" min="0" max="23" /></label>
           </fieldset>
         </form>
+        <div class="form-row" style="margin-top: 12px">
+          <button type="button" id="btnSaveSettings">保存</button>
+        </div>
         <p class="status" id="settingsStatus"></p>
       </section>
     </main>
+
+    <!-- Hidden fields used by ops -->
+    <input type="date" id="dailyDate" hidden />
+    <input type="text" id="weekKey" hidden />
+    <input type="month" id="monthKey" hidden />
+
+    <!-- Sheet: generate / backfill -->
+    <div class="sheet" id="sheetTools" hidden>
+      <div class="sheet-backdrop" data-close-sheet="sheetTools"></div>
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h3>生成与回填</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetTools">关闭</button>
+        </div>
+        <div class="sheet-body">
+          <div class="card">
+            <h3>单次生成</h3>
+            <div class="form-row">
+              <label>Daily <input type="date" id="toolsDailyDate" /></label>
+              <button type="button" id="btnRunDaily">生成日报</button>
+            </div>
+            <div class="form-row">
+              <label>Weekly <input type="text" id="toolsWeekKey" placeholder="YYYY-Www 空=本周" /></label>
+              <button type="button" id="btnRunWeekly">生成周报</button>
+            </div>
+            <div class="form-row">
+              <label>Monthly <input type="month" id="toolsMonthKey" /></label>
+              <button type="button" id="btnRunMonthly">生成月报</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>批量回填</h3>
+            <div class="form-row">
+              <label>最多天数 <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" /></label>
+              <label class="check"><input type="checkbox" id="backfillSkipExisting" checked /> 跳过已有</label>
+              <label class="check"><input type="checkbox" id="backfillSkipEmbedding" checked /> 跳过 embedding</label>
+            </div>
+            <div class="form-row">
+              <button type="button" id="btnBackfillPreview">预览</button>
+              <button type="button" id="btnBackfillRun">开始回填</button>
+            </div>
+            <p class="status" id="backfillStatus"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet: GTD editable preview -->
+    <div class="sheet" id="sheetGtd" hidden>
+      <div class="sheet-backdrop" data-close-sheet="sheetGtd"></div>
+      <div class="sheet-panel sheet-wide">
+        <div class="sheet-head">
+          <h3>周报 / 月报 → GTD + todolist</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetGtd">关闭</button>
+        </div>
+        <div class="sheet-body">
+          <p class="muted">基于 weekly + monthly digests 分析。预览可编辑，确认后再落库。</p>
+          <div class="form-row">
+            <label class="check">
+              <input type="checkbox" id="ensureDigests" checked />
+              若今日尚无日报则先生成
+            </label>
+            <button type="button" id="btnGtdPreview">分析预览</button>
+            <button type="button" id="btnGtdSelectAll" disabled>全选</button>
+            <button type="button" id="btnGtdSelectNone" disabled>全不选</button>
+            <button type="button" id="btnGtdApply" disabled>应用选中</button>
+          </div>
+          <div id="gtdPreview" class="gtd-preview"></div>
+          <p class="status" id="gtdSyncStatus"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheet: Sessions reference + preview -->
+    <div class="sheet" id="sheetSessions" hidden>
+      <div class="sheet-backdrop" data-close-sheet="sheetSessions"></div>
+      <div class="sheet-panel sheet-wide">
+        <div class="sheet-head">
+          <h3>Sessions（参考）</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetSessions">关闭</button>
+        </div>
+        <div class="sheet-body sessions-split">
+          <div class="sessions-list-pane">
+            <div class="form-row">
+              <button type="button" class="ghost-btn" id="btnRefreshSessions">刷新列表</button>
+            </div>
+            <p class="muted" id="sessionsMeta"></p>
+            <div class="sessions-list" id="sessionsList"></div>
+          </div>
+          <div class="session-preview-pane" id="sessionPreview">
+            <p class="muted">点击左侧 session 查看对话预览（只读，类似扩展 Preview）。</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="./app.js"></script>
   </body>

@@ -52,6 +52,8 @@ export interface ApplyMemoryGtdSyncOptions {
     title?: string;
     projectPath?: string;
     previousGtd?: GtdStatus | null;
+    /** User-edited markdown; written as-is (AI footer ensured). */
+    todolistMarkdown?: string;
   }>;
 }
 
@@ -211,7 +213,8 @@ export async function applyMemoryGtdSync(
           reason: raw.reason || "",
           tasks: raw.tasks || [],
           sourceMemoryIds: raw.sourceMemoryIds || [],
-          previousStatus: previous
+          previousStatus: previous,
+          markdownBody: raw.todolistMarkdown
         });
 
         applied.push({

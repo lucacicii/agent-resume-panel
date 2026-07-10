@@ -26,14 +26,16 @@ export async function analyzeMemoryForGtd(input: {
     );
   }
 
-  const dailies = await listMemoryEntries(input.dbPath, { level: "daily", limit: 10 });
-  const weeklies = await listMemoryEntries(input.dbPath, { level: "weekly", limit: 4 });
-  const digests = [...weeklies, ...dailies];
+  // Prefer weekly + monthly for GTD triage; dailies as supporting context
+  const weeklies = await listMemoryEntries(input.dbPath, { level: "weekly", limit: 8 });
+  const monthlies = await listMemoryEntries(input.dbPath, { level: "monthly", limit: 6 });
+  const dailies = await listMemoryEntries(input.dbPath, { level: "daily", limit: 8 });
+  const digests = [...monthlies, ...weeklies, ...dailies];
 
   if (!digests.length) {
     return {
       proposals: [],
-      warnings: ["No digests found. Generate daily/weekly memory first."]
+      warnings: ["No digests found. Generate weekly/monthly (and daily) memory first."]
     };
   }
 
@@ -94,14 +96,16 @@ export async function analyzeMemoryForGtd(input: {
     "You triage coding-agent sessions into GTD for a developer.",
     "Statuses allowed: inbox, next, waiting, someday, reference.",
     "Prefer next for actionable unfinished work; waiting for blocked; someday for low priority; reference for docs/knowledge; inbox only if unclear.",
+    "Prioritize insights from WEEKLY and MONTHLY digests; use daily digests as supporting detail.",
+    "sourceMemoryIds should prefer weekly:/monthly: ids when those drove the proposal.",
     "Only include sessions that appear in the linked session list OR are clearly identified in digests with provider+id.",
     "Return STRICT JSON only, no markdown fence:",
-    '{"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceMemoryIds":["daily:..."]}]}',
+    '{"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceMemoryIds":["weekly:...","monthly:..."]}]}',
     `Write reason and tasks in language: ${language}.`
   ].join(" ");
 
   const user = [
-    "## Memory digests",
+    "## Memory digests (monthly + weekly first, then daily)",
     digestBlock,
     "",
     "## Linked sessions (prefer these ids)",

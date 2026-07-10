@@ -18,6 +18,18 @@ export interface DesktopApi {
     settings: PanelSettings
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean }>;
   listSessions(limit?: number): Promise<AgentSession[]>;
+  previewSession(args: {
+    provider: string;
+    id: string;
+  }): Promise<{
+    session: AgentSession;
+    preview: {
+      title: string;
+      messages: Array<{ role: string; text: string; timestamp?: string }>;
+      truncated?: boolean;
+      warning?: string;
+    };
+  }>;
   listMemory(opts?: {
     level?: string;
     limit?: number;
@@ -81,6 +93,7 @@ export interface DesktopApi {
       title?: string;
       projectPath?: string;
       previousGtd?: string | null;
+      todolistMarkdown?: string;
     }>;
   }): Promise<{
     applied: Array<{
@@ -124,6 +137,7 @@ const api: DesktopApi = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
+  previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
   listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),
   runDailyDigest: (date) => ipcRenderer.invoke("memory:runDaily", date),

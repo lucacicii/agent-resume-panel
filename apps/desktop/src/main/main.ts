@@ -13,9 +13,11 @@ import {
   listMemoryEntriesInRange,
   listMemoryLinks,
   listSessions,
+  loadSessionPreview,
   loadSettings,
   previewBackfillMemoryDigests,
   resolvePanelHome,
+  resolvePreviewHomes,
   runDailyDigest,
   applyMemoryGtdSync,
   previewMemoryGtdSync,
@@ -33,11 +35,13 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 800,
-    minHeight: 560,
+    width: 1120,
+    height: 780,
+    minWidth: 860,
+    minHeight: 600,
     title: "Agent Resume Desktop",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -74,6 +78,34 @@ function registerIpc(): void {
     await ensureCatalogSchema(dbPath);
     return listSessions(dbPath, limit ?? 500);
   });
+
+  ipcMain.handle(
+    "sessions:preview",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const session = await getSessionById(dbPath, args.provider, args.id);
+      if (!session) {
+        throw new Error(`Session not found: ${args.provider} ${args.id}`);
+      }
+      const homes = resolvePreviewHomes(settings);
+      try {
+        const preview = await loadSessionPreview(session, homes);
+        return { session, preview };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          session,
+          preview: {
+            title: session.title,
+            messages: [],
+            warning: message
+          }
+        };
+      }
+    }
+  );
 
   ipcMain.handle(
     "memory:list",
@@ -195,13 +227,15 @@ function registerIpc(): void {
           title?: string;
           projectPath?: string;
           previousGtd?: string | null;
+          todolistMarkdown?: string;
         }>;
       }
     ) => {
       return applyMemoryGtdSync({
         items: (args?.items || []).map((it) => ({
           ...it,
-          previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null
+          previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null,
+          todolistMarkdown: it.todolistMarkdown
         }))
       });
     }

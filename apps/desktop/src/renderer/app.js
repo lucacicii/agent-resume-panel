@@ -58,27 +58,116 @@ async function loadPanelHome() {
   $("panelHomeLabel").textContent = `panelHome: ${home}`;
 }
 
+/** @type {any[]} */
+let sessionsCache = [];
+/** @type {string | null} */
+let activeSessionKey = null;
+
 async function loadSessions() {
-  const body = $("sessionsBody");
-  body.innerHTML = "";
+  const list = $("sessionsList");
+  if (!list) return;
+  list.innerHTML = "";
   $("sessionsMeta").textContent = "Loading…";
   try {
-    const sessions = await agentResume.listSessions(500);
-    $("sessionsMeta").textContent = `${sessions.length} sessions`;
+    sessionsCache = await agentResume.listSessions(500);
+    $("sessionsMeta").textContent = `${sessionsCache.length} sessions · 点击查看预览`;
     const frag = document.createDocumentFragment();
-    for (const s of sessions) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(s.title)}</td>
-        <td class="provider">${escapeHtml(s.provider)}</td>
-        <td title="${escapeHtml(s.projectPath)}">${escapeHtml(basename(s.projectPath))}</td>
-        <td class="time">${escapeHtml(formatTime(s.updatedAt))}</td>
+    for (const s of sessionsCache) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "session-row";
+      btn.dataset.key = `${s.provider}:${s.id}`;
+      btn.innerHTML = `
+        <div class="s-title">${escapeHtml(s.title)}</div>
+        <div class="s-meta">${escapeHtml(s.provider)} · ${escapeHtml(basename(s.projectPath))} · ${escapeHtml(
+          formatTime(s.updatedAt)
+        )}</div>
       `;
-      frag.appendChild(tr);
+      btn.addEventListener("click", () => openSessionPreview(s));
+      frag.appendChild(btn);
     }
-    body.appendChild(frag);
+    list.appendChild(frag);
   } catch (error) {
     $("sessionsMeta").textContent = error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function openSessionPreview(session) {
+  activeSessionKey = `${session.provider}:${session.id}`;
+  document.querySelectorAll(".session-row").forEach((el) => {
+    el.classList.toggle("active", el.dataset.key === activeSessionKey);
+  });
+  const pane = $("sessionPreview");
+  pane.innerHTML = `<p class="muted">Loading preview…</p>`;
+  try {
+    const { session: s, preview } = await agentResume.previewSession({
+      provider: session.provider,
+      id: session.id
+    });
+    let html = `
+      <h3 style="margin:0 0 6px;font-size:14px">${escapeHtml(preview.title || s.title)}</h3>
+      <div class="muted" style="margin-bottom:10px;font-size:11px">
+        ${escapeHtml(s.provider)} · ${escapeHtml(s.id)} · ${escapeHtml(s.projectPath)}
+      </div>`;
+    if (preview.warning) {
+      html += `<p class="status error">${escapeHtml(preview.warning)}</p>`;
+    }
+    if (!preview.messages?.length) {
+      html += `<p class="muted">无消息可预览。</p>`;
+    } else {
+      for (const m of preview.messages) {
+        html += `
+          <div class="preview-msg ${escapeHtml(m.role)}">
+            <div class="role">${escapeHtml(m.role)}</div>
+            <div>${escapeHtml(m.text)}</div>
+          </div>`;
+      }
+      if (preview.truncated) {
+        html += `<p class="muted">（已截断）</p>`;
+      }
+    }
+    pane.innerHTML = html;
+  } catch (error) {
+    pane.innerHTML = `<p class="status error">${escapeHtml(
+      error instanceof Error ? error.message : String(error)
+    )}</p>`;
+  }
+}
+
+function openSheet(id) {
+  const el = $(id);
+  if (el) el.hidden = false;
+  if (id === "sheetSessions") {
+    loadSessions();
+  }
+}
+
+function closeSheet(id) {
+  const el = $(id);
+  if (el) el.hidden = true;
+}
+
+function closeAllSheets() {
+  document.querySelectorAll(".sheet").forEach((el) => {
+    el.hidden = true;
+  });
+}
+
+function syncToolDatesFromHidden() {
+  if ($("toolsDailyDate") && $("dailyDate").value) {
+    $("toolsDailyDate").value = $("dailyDate").value;
+  }
+}
+
+function syncHiddenFromTools() {
+  if ($("toolsDailyDate")?.value) {
+    $("dailyDate").value = $("toolsDailyDate").value;
+  }
+  if ($("toolsWeekKey")) {
+    $("weekKey").value = $("toolsWeekKey").value;
+  }
+  if ($("toolsMonthKey")?.value) {
+    $("monthKey").value = $("toolsMonthKey").value;
   }
 }
 
@@ -148,31 +237,8 @@ function buildDayIndex(entries, levelFilter) {
   return map;
 }
 
-function renderEntries(entries, scoreById) {
-  const list = $("digestList");
-  list.hidden = false;
-  list.innerHTML = "";
-  if (!entries.length) {
-    list.innerHTML = `<p class="muted">无搜索结果。</p>`;
-    return;
-  }
-  for (const e of entries) {
-    const card = document.createElement("article");
-    card.className = "digest-card";
-    const level = e.level || "daily";
-    const emb = e.embeddingJson ? " · embedding ✓" : "";
-    const score = scoreById && scoreById[e.id] != null ? scoreById[e.id] : null;
-    const scoreHtml =
-      score != null ? `<span class="score">score ${score.toFixed(3)}</span>` : "";
-    card.innerHTML = `
-      <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(
-        e.title || e.id
-      )}${scoreHtml}</h3>
-      <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
-      <pre>${escapeHtml(e.content)}</pre>
-    `;
-    list.appendChild(card);
-  }
+function renderEntries(_entries, _scoreById) {
+  // Semantic search merged into Ask; list UI removed.
 }
 
 function updateMonthLabel() {
@@ -253,6 +319,9 @@ function entriesForDay(dayKey) {
 function selectDay(dayKey) {
   selectedDayKey = dayKey;
   $("dailyDate").value = dayKey;
+  if ($("toolsDailyDate")) {
+    $("toolsDailyDate").value = dayKey;
+  }
   renderCalendar();
   renderDayDetail(dayKey);
 }
@@ -305,8 +374,6 @@ function renderDayDetail(dayKey) {
 }
 
 async function loadMemory() {
-  $("digestList").hidden = true;
-  $("digestList").innerHTML = "";
   setStatus($("memoryStatus"), "");
   try {
     const { fromMs, toMs } = monthRangeMs(calView.year, calView.month);
@@ -353,8 +420,12 @@ function goCalToday() {
 }
 
 async function runDaily() {
+  syncHiddenFromTools();
   const status = $("memoryStatus");
-  const date = $("dailyDate").value || undefined;
+  const date = $("toolsDailyDate")?.value || $("dailyDate").value || undefined;
+  if (date) {
+    $("dailyDate").value = date;
+  }
   setStatus(status, "Running daily digest…");
   try {
     const result = await agentResume.runDailyDigest(date);
@@ -379,8 +450,9 @@ async function runDaily() {
 }
 
 async function runWeekly() {
+  syncHiddenFromTools();
   const status = $("memoryStatus");
-  const weekKey = $("weekKey").value.trim() || undefined;
+  const weekKey = ($("toolsWeekKey")?.value || $("weekKey").value || "").trim() || undefined;
   setStatus(status, "Running weekly digest…");
   try {
     const result = await agentResume.runWeeklyDigest(weekKey);
@@ -398,8 +470,9 @@ async function runWeekly() {
 }
 
 async function runMonthly() {
+  syncHiddenFromTools();
   const status = $("memoryStatus");
-  const monthKey = $("monthKey").value || undefined;
+  const monthKey = $("toolsMonthKey")?.value || $("monthKey").value || undefined;
   setStatus(status, "Running monthly digest…");
   try {
     const result = await agentResume.runMonthlyDigest(monthKey);
@@ -505,12 +578,21 @@ function updateGtdApplyButton() {
   $("btnGtdSelectNone").disabled = gtdPreviewItems.length === 0;
 }
 
+function gtdOptionsHtml(selected) {
+  return ["inbox", "next", "waiting", "someday", "reference"]
+    .map(
+      (s) =>
+        `<option value="${s}" ${s === selected ? "selected" : ""}>@${s}</option>`
+    )
+    .join("");
+}
+
 function renderGtdPreview(proposals) {
-  gtdPreviewItems = proposals || [];
+  gtdPreviewItems = (proposals || []).map((p) => ({ ...p }));
   const root = $("gtdPreview");
   root.innerHTML = "";
   if (!gtdPreviewItems.length) {
-    root.innerHTML = `<p class="muted">无提议。可先生成 digests 后再分析。</p>`;
+    root.innerHTML = `<p class="muted">无提议。请先有 weekly/monthly digests，再分析。</p>`;
     updateGtdApplyButton();
     return;
   }
@@ -525,17 +607,30 @@ function renderGtdPreview(proposals) {
           <input type="checkbox" class="gtd-check" data-idx="${idx}" checked />
           <span>
             <strong>${escapeHtml(p.title || p.sessionId)}</strong>
-            <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(String(p.sessionId).slice(0, 16))}…
-              · ${escapeHtml(prev)} → <strong>@${escapeHtml(p.proposedGtd)}</strong>
-              · tasks ${p.tasks?.length || 0}</div>
+            <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(
+              String(p.sessionId).slice(0, 18)
+            )}… · was ${escapeHtml(prev)}</div>
           </span>
         </label>
       </div>
-      <div class="reason">${escapeHtml(p.reason || "")}</div>
-      <details>
-        <summary>预览 todolist.md（尚未写入磁盘）</summary>
-        <pre>${escapeHtml(p.todolistPreview || "")}</pre>
-      </details>
+      <div class="gtd-edit-grid">
+        <label>GTD
+          <select class="gtd-status" data-idx="${idx}">${gtdOptionsHtml(p.proposedGtd)}</select>
+        </label>
+        <label>Reason
+          <textarea class="gtd-reason" data-idx="${idx}" rows="2">${escapeHtml(p.reason || "")}</textarea>
+        </label>
+        <label>Tasks（每行一项）
+          <textarea class="gtd-tasks" data-idx="${idx}" rows="3">${escapeHtml(
+            (p.tasks || []).join("\n")
+          )}</textarea>
+        </label>
+        <label>todolist.md（可编辑，应用时写入）
+          <textarea class="gtd-md md" data-idx="${idx}" rows="8">${escapeHtml(
+            p.todolistPreview || ""
+          )}</textarea>
+        </label>
+      </div>
     `;
     root.appendChild(row);
   });
@@ -546,21 +641,47 @@ function renderGtdPreview(proposals) {
   updateGtdApplyButton();
 }
 
+function collectEditedGtdItem(idx) {
+  const p = gtdPreviewItems[idx];
+  if (!p) return null;
+  const root = $("gtdPreview");
+  const statusEl = root.querySelector(`select.gtd-status[data-idx="${idx}"]`);
+  const reasonEl = root.querySelector(`textarea.gtd-reason[data-idx="${idx}"]`);
+  const tasksEl = root.querySelector(`textarea.gtd-tasks[data-idx="${idx}"]`);
+  const mdEl = root.querySelector(`textarea.gtd-md[data-idx="${idx}"]`);
+  const tasks = (tasksEl?.value || "")
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return {
+    provider: p.provider,
+    sessionId: p.sessionId,
+    gtd: statusEl?.value || p.proposedGtd,
+    reason: reasonEl?.value || "",
+    tasks,
+    sourceMemoryIds: p.sourceMemoryIds || [],
+    title: p.title,
+    projectPath: p.projectPath,
+    previousGtd: p.previousGtd,
+    todolistMarkdown: mdEl?.value || p.todolistPreview || ""
+  };
+}
+
 async function previewGtdSync() {
   const status = $("gtdSyncStatus");
   const ensureDigests = $("ensureDigests").checked;
-  setStatus(status, "Analyzing memory (preview only, no writes)…");
+  setStatus(status, "Analyzing weekly/monthly digests (preview only)…");
   $("btnGtdApply").disabled = true;
   try {
     const result = await agentResume.previewMemoryGtdSync({ ensureDigests });
     renderGtdPreview(result.proposals);
     setStatus(
       status,
-      `Preview ready · ${result.proposals.length} proposal(s)` +
+      `可编辑预览 · ${result.proposals.length} 项` +
         (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
         (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
         (result.ensureDigest?.ran ? " · daily generated" : "") +
-        " · nothing written yet",
+        " · 尚未落库",
       result.proposals.length ? "ok" : "error"
     );
     if (result.warnings.length) {
@@ -583,22 +704,11 @@ async function applyGtdSync() {
   }
 
   const items = checks
-    .map((el) => gtdPreviewItems[Number(el.dataset.idx)])
-    .filter(Boolean)
-    .map((p) => ({
-      provider: p.provider,
-      sessionId: p.sessionId,
-      gtd: p.proposedGtd,
-      reason: p.reason,
-      tasks: p.tasks || [],
-      sourceMemoryIds: p.sourceMemoryIds || [],
-      title: p.title,
-      projectPath: p.projectPath,
-      previousGtd: p.previousGtd
-    }));
+    .map((el) => collectEditedGtdItem(Number(el.dataset.idx)))
+    .filter(Boolean);
 
   const ok = window.confirm(
-    `将对 ${items.length} 个 session 写入 GTD，并覆盖写入 notes/…/todolist.md。\n操作会标记为 AI 执行。是否继续？`
+    `将按你编辑后的内容，对 ${items.length} 个 session 写入 GTD 并覆盖 todolist.md。\n操作标记为 AI。是否继续？`
   );
   if (!ok) {
     return;
@@ -610,7 +720,7 @@ async function applyGtdSync() {
     const sample = result.applied[0]?.todolistPath || "";
     setStatus(
       status,
-      `Applied ${result.applied.length}` +
+      `已落库 ${result.applied.length}` +
         (result.failed.length ? ` · failed ${result.failed.length}` : "") +
         (sample ? ` · e.g. ${sample}` : ""),
       result.applied.length ? "ok" : "error"
@@ -618,7 +728,6 @@ async function applyGtdSync() {
     if (result.failed.length) {
       console.warn("gtd apply failed", result.failed);
     }
-    // clear preview after successful apply of selected
     if (result.applied.length) {
       gtdPreviewItems = [];
       $("gtdPreview").innerHTML = "";
@@ -636,40 +745,7 @@ function gtdSelectAll(on) {
   updateGtdApplyButton();
 }
 
-async function runSearch() {
-  const status = $("memoryStatus");
-  const query = $("searchQuery").value.trim();
-  if (!query) {
-    setStatus(status, "请输入搜索词", "error");
-    return;
-  }
-  const level = $("memoryLevel").value;
-  setStatus(status, "Searching…");
-  try {
-    const hits = await agentResume.searchMemory({
-      query,
-      level: level === "all" ? undefined : level,
-      limit: 20
-    });
-    const scoreById = {};
-    for (const h of hits) {
-      scoreById[h.entry.id] = h.score;
-    }
-    renderEntries(
-      hits.map((h) => h.entry),
-      scoreById
-    );
-    setStatus(
-      status,
-      hits.length
-        ? `Found ${hits.length} hit(s). Digests without embeddings are skipped.`
-        : "No hits. Generate digests with embedding configured, then retry.",
-      hits.length ? "ok" : "error"
-    );
-  } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
-  }
-}
+
 
 async function loadSettingsForm() {
   const s = await agentResume.getSettings();
@@ -906,8 +982,60 @@ function clearChat() {
 
 function wire() {
   document.querySelectorAll(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    btn.addEventListener("click", () => {
+      closeAllSheets();
+      closeOpsMenu();
+      switchTab(btn.dataset.tab);
+    });
   });
+
+  $("btnOpenSettings").addEventListener("click", () => {
+    closeAllSheets();
+    closeOpsMenu();
+    switchTab("settings");
+  });
+  $("btnSettingsBack").addEventListener("click", () => switchTab("memory"));
+  $("btnOpenSessions").addEventListener("click", () => {
+    closeOpsMenu();
+    openSheet("sheetSessions");
+  });
+
+  $("btnMemoryOps").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const menu = $("memoryOpsMenu");
+    menu.hidden = !menu.hidden;
+  });
+  document.addEventListener("click", () => closeOpsMenu());
+  $("memoryOpsMenu").addEventListener("click", (e) => e.stopPropagation());
+  $("memoryOpsMenu").querySelectorAll("button[data-ops]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ops = btn.dataset.ops;
+      closeOpsMenu();
+      if (ops === "gen-today") {
+        const today = todayInputValue();
+        $("dailyDate").value = today;
+        if ($("toolsDailyDate")) $("toolsDailyDate").value = today;
+        runDaily();
+      } else if (ops === "tools") {
+        if ($("toolsDailyDate") && !$("toolsDailyDate").value) {
+          $("toolsDailyDate").value = todayInputValue();
+        }
+        if ($("toolsMonthKey") && !$("toolsMonthKey").value) {
+          $("toolsMonthKey").value = monthInputValue();
+        }
+        openSheet("sheetTools");
+      } else if (ops === "gtd") {
+        openSheet("sheetGtd");
+      } else if (ops === "sessions") {
+        openSheet("sheetSessions");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-close-sheet]").forEach((el) => {
+    el.addEventListener("click", () => closeSheet(el.dataset.closeSheet));
+  });
+
   $("btnRefreshSessions").addEventListener("click", () => loadSessions());
   $("btnRefreshMemory").addEventListener("click", () => loadMemory());
   $("memoryLevel").addEventListener("change", () => {
@@ -922,12 +1050,6 @@ function wire() {
   $("btnRunDaily").addEventListener("click", () => runDaily());
   $("btnRunWeekly").addEventListener("click", () => runWeekly());
   $("btnRunMonthly").addEventListener("click", () => runMonthly());
-  $("btnSearch").addEventListener("click", () => runSearch());
-  $("searchQuery").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      runSearch();
-    }
-  });
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync());
   $("btnGtdApply").addEventListener("click", () => applyGtdSync());
@@ -945,18 +1067,26 @@ function wire() {
   });
 }
 
+function closeOpsMenu() {
+  const menu = $("memoryOpsMenu");
+  if (menu) menu.hidden = true;
+}
+
 async function boot() {
   wire();
-  $("dailyDate").value = todayInputValue();
-  $("monthKey").value = monthInputValue();
+  const today = todayInputValue();
+  $("dailyDate").value = today;
+  if ($("toolsDailyDate")) $("toolsDailyDate").value = today;
+  if ($("toolsMonthKey")) $("toolsMonthKey").value = monthInputValue();
+  if ($("monthKey")) $("monthKey").value = monthInputValue();
+  switchTab("memory");
   renderChat();
   await loadPanelHome();
   await loadSettingsForm();
-  await loadSessions();
   await loadMemory();
 }
 
 boot().catch((error) => {
   console.error(error);
-  $("sessionsMeta").textContent = error instanceof Error ? error.message : String(error);
+  setStatus($("memoryStatus"), error instanceof Error ? error.message : String(error), "error");
 });
