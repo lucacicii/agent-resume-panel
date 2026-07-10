@@ -3,6 +3,7 @@ import type {
   AgentCitation,
   AgentSession,
   AskMetaAgentResult,
+  DigestProgressEvent,
   MemoryEntry,
   MemorySearchHit,
   PanelSettings,
@@ -30,6 +31,20 @@ export interface DesktopApi {
       warning?: string;
     };
   }>;
+  summarizeSession(args: {
+    provider: string;
+    id: string;
+  }): Promise<{ summary: string; language: string; session: AgentSession }>;
+  autoRenameSession(args: {
+    provider: string;
+    id: string;
+  }): Promise<{
+    title: string;
+    previousTitle: string;
+    session: AgentSession;
+    nativeRenamed: boolean;
+    nativeError?: string;
+  }>;
   listMemory(opts?: {
     level?: string;
     limit?: number;
@@ -40,6 +55,7 @@ export interface DesktopApi {
   runDailyDigest(date?: string): Promise<RunDailyDigestResult>;
   runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
   runMonthlyDigest(monthKey?: string): Promise<RunMonthlyDigestResult>;
+  onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
   searchMemory(args: {
     query: string;
     level?: string;
@@ -130,6 +146,56 @@ export interface DesktopApi {
     monthly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
     sessionRowsScanned: number;
   }>;
+  usageSummary(args?: { days?: number }): Promise<{
+    days: number;
+    totalTokens: number;
+    promptTokens: number;
+    completionTokens: number;
+    chatTokens: number;
+    embeddingTokens: number;
+    eventCount: number;
+    bySource: Array<{ source: string; totalTokens: number; events: number }>;
+    byDay: Array<{ day: string; totalTokens: number; events: number; scheduleRuns: number }>;
+  }>;
+  usageListEvents(args?: {
+    limit?: number;
+    source?: string;
+    days?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      createdAtMs: number;
+      kind: string;
+      source: string;
+      jobKey?: string | null;
+      model?: string | null;
+      promptTokens?: number | null;
+      completionTokens?: number | null;
+      totalTokens?: number | null;
+      durationMs?: number | null;
+      ok: boolean;
+      error?: string | null;
+    }>
+  >;
+  usageListScheduleRuns(args?: {
+    limit?: number;
+    level?: string;
+    days?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      startedAtMs: number;
+      finishedAtMs?: number | null;
+      level: string;
+      periodKey: string;
+      trigger: string;
+      status: string;
+      error?: string | null;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }>
+  >;
 }
 
 const api: DesktopApi = {
@@ -138,11 +204,22 @@ const api: DesktopApi = {
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
   listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
+  summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
+  autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
   listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),
   runDailyDigest: (date) => ipcRenderer.invoke("memory:runDaily", date),
   runWeeklyDigest: (weekKey) => ipcRenderer.invoke("memory:runWeekly", weekKey),
   runMonthlyDigest: (monthKey) => ipcRenderer.invoke("memory:runMonthly", monthKey),
+  onDigestProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DigestProgressEvent) => {
+      callback(progress);
+    };
+    ipcRenderer.on("memory:digestProgress", handler);
+    return () => {
+      ipcRenderer.removeListener("memory:digestProgress", handler);
+    };
+  },
   searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   buildResumeCommand: (args) => ipcRenderer.invoke("agent:resumeCommand", args),
@@ -150,7 +227,10 @@ const api: DesktopApi = {
   previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),
   applyMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:applyMemoryGtdSync", args),
   previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
-  backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args)
+  backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
+  usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
+  usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
+  usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args)
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);

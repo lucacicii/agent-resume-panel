@@ -1,14 +1,15 @@
 import { ensureCatalogSchema } from "../catalog/db";
 import { listSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
-import { chatCompletion } from "../llm/chat";
+import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
+import { recordLlmUsage } from "../usage/store";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
-import { resolvePreviewHomes } from "../transcript/homes";
-import { loadSessionSnippet } from "../transcript/load";
+import { ensureSummariesForSessions } from "../session/ensureSummaries";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localDayRange as localDayRangeImpl } from "./period";
+import { DigestProgressCallback } from "./progress";
 import { buildDailySystemPrompt, buildDailyUserPrompt, formatSessionForDigest } from "./prompts";
 import { MemoryEntry } from "./schema";
 import { upsertMemoryJob } from "./store";
@@ -20,14 +21,31 @@ export interface RunDailyDigestOptions {
   date?: string;
   /** Skip embedding even if configured. */
   skipEmbedding?: boolean;
-  /** Override settings.memory.includeTranscripts. */
+  /** Re-summarize sessions even if session_summary exists. */
+  forceResummarize?: boolean;
+  /** Progress for Desktop UI. */
+  onProgress?: DigestProgressCallback;
+  /**
+   * @deprecated Transcript snippets are no longer used; digests extract from session summaries.
+   * Kept for API compatibility; ignored.
+   */
   includeTranscripts?: boolean;
 }
 
 export interface RunDailyDigestResult {
   entry: MemoryEntry;
   sessionCount: number;
-  /** Sessions that contributed a transcript excerpt (not only title/summary). */
+  /** Sessions that have a non-empty session_summary after ensure step. */
+  summaryReadyCount: number;
+  /** Newly summarized in this run. */
+  summarizedCount: number;
+  /** Already had summary and were skipped. */
+  summarySkippedCount: number;
+  /** Per-session summarize failures (digest still runs). */
+  summaryFailed: Array<{ key: string; error: string }>;
+  /**
+   * @deprecated Alias of summaryReadyCount for older callers.
+   */
   snippetCount: number;
   jobKey: string;
   embedded: boolean;
@@ -66,9 +84,17 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
 
   const period = localDayRangeImpl(options.date);
   const { startMs, endMs, label: dateLabel, jobKey, entryId } = period;
+  const onProgress = options.onProgress;
   await upsertMemoryJob(dbPath, jobKey, "running");
 
   try {
+    onProgress?.({
+      phase: "start",
+      level: "daily",
+      periodLabel: dateLabel,
+      message: `生成日报 ${dateLabel}…（先 summarize sessions）`
+    });
+
     const llm = llmConfigFromSettings(settings);
     if (!llm) {
       throw new Error(
@@ -77,9 +103,6 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     }
 
     const maxSessions = Math.max(1, Math.min(settings.memory?.maxSessionsPerDigest ?? 40, 200));
-    const includeTranscripts =
-      options.includeTranscripts ?? settings.memory?.includeTranscripts ?? true;
-    const snippetMaxChars = Math.max(400, Math.min(settings.memory?.snippetMaxChars ?? 2500, 12_000));
 
     let sessions = await listSessionsInRange(dbPath, startMs, endMs);
     const totalFound = sessions.length;
@@ -87,35 +110,32 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       sessions = sessions.slice(0, maxSessions);
     }
 
-    const homes = resolvePreviewHomes(settings, panelHome);
-    let snippetCount = 0;
+    const ensure = await ensureSummariesForSessions({
+      dbPath,
+      sessions,
+      settings,
+      panelHome,
+      force: options.forceResummarize,
+      jobKeyPrefix: `summarize:${jobKey}`,
+      onProgress,
+      progressLevel: "daily",
+      progressPeriodLabel: dateLabel
+    });
+    sessions = ensure.sessions;
 
     const lines: string[] = [];
+    let summaryReadyCount = 0;
     for (const session of sessions) {
-      let transcriptSnippet: string | undefined;
-      if (includeTranscripts && !session.sessionSummary?.trim()) {
-        const snippet = await loadSessionSnippet(session, homes, snippetMaxChars);
-        if (snippet) {
-          transcriptSnippet = snippet;
-          snippetCount += 1;
-        }
-      } else if (includeTranscripts && session.sessionSummary?.trim()) {
-        if (session.sessionSummary.trim().length < 80) {
-          const snippet = await loadSessionSnippet(session, homes, Math.min(snippetMaxChars, 1200));
-          if (snippet) {
-            transcriptSnippet = snippet;
-            snippetCount += 1;
-          }
-        }
+      const summary = session.sessionSummary?.trim();
+      if (summary) {
+        summaryReadyCount += 1;
       }
-
       lines.push(
         formatSessionForDigest({
           provider: session.provider,
           title: session.title,
           projectPath: session.projectPath,
           summary: session.sessionSummary,
-          transcriptSnippet,
           updatedAt: session.updatedAt
         })
       );
@@ -127,8 +147,15 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       );
     }
 
+    onProgress?.({
+      phase: "digest",
+      level: "daily",
+      periodLabel: dateLabel,
+      message: `从 summary 提取日报 ${dateLabel}…`
+    });
+
     const language = llm.outputLanguage || "zh-CN";
-    const content = await chatCompletion(
+    const chatResult = await chatCompletionDetailed(
       llm,
       [
         { role: "system", content: buildDailySystemPrompt(language) },
@@ -136,12 +163,37 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       ],
       2000
     );
+    const content = chatResult.content;
+    await recordLlmUsage(dbPath, {
+      kind: "chat",
+      source: "daily",
+      jobKey,
+      model: chatResult.model,
+      usage: chatResult.usage,
+      durationMs: chatResult.durationMs,
+      ok: true
+    });
 
-    const { embeddingJson, embedded } = await maybeEmbedContent(
-      settings,
-      content,
-      options.skipEmbedding
-    );
+    onProgress?.({
+      phase: "embed",
+      level: "daily",
+      periodLabel: dateLabel,
+      message: options.skipEmbedding ? "跳过 embedding…" : "写入 embedding…"
+    });
+
+    const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
+    const { embeddingJson, embedded } = embedResult;
+    if (embedded) {
+      await recordLlmUsage(dbPath, {
+        kind: "embedding",
+        source: "daily",
+        jobKey,
+        model: embedResult.model,
+        usage: embedResult.usage,
+        durationMs: embedResult.durationMs,
+        ok: true
+      });
+    }
 
     const entry: MemoryEntry = {
       id: entryId,
@@ -165,10 +217,21 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       jobKey
     );
 
+    onProgress?.({
+      phase: "complete",
+      level: "daily",
+      periodLabel: dateLabel,
+      message: `日报完成 · ${sessions.length} sessions`
+    });
+
     return {
       entry,
       sessionCount: sessions.length,
-      snippetCount,
+      summaryReadyCount,
+      summarizedCount: ensure.summarized,
+      summarySkippedCount: ensure.skipped,
+      summaryFailed: ensure.failed,
+      snippetCount: summaryReadyCount,
       jobKey,
       embedded,
       replaced
@@ -176,6 +239,12 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await upsertMemoryJob(dbPath, jobKey, "error", message);
+    onProgress?.({
+      phase: "error",
+      level: "daily",
+      periodLabel: dateLabel,
+      message
+    });
     throw error;
   }
 }

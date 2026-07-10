@@ -1,14 +1,61 @@
 import { listSessionsInRange } from "../catalog/query";
+import { ensureSummariesForSessions } from "../session/ensureSummaries";
+import { PanelSettings } from "../settings/types";
+import { DigestProgressCallback } from "./progress";
 import { formatSessionForDigest } from "./prompts";
 import { MemoryEntry, MemoryLevel } from "./schema";
 import { listMemoryEntriesInRange } from "./store";
 
+export interface BuildSourceContextOptions {
+  dbPath: string;
+  settings: PanelSettings;
+  startMs: number;
+  endMs: number;
+  maxSessions?: number;
+  panelHome?: string;
+  forceResummarize?: boolean;
+  jobKeyPrefix?: string;
+  onProgress?: DigestProgressCallback;
+  progressLevel?: "daily" | "weekly" | "monthly";
+  progressPeriodLabel?: string;
+}
+
+export interface WeeklySourceLinesResult {
+  lines: string[];
+  sourceCount: number;
+  usedDailies: number;
+  summarizedCount: number;
+  summarySkippedCount: number;
+  summaryFailed: Array<{ key: string; error: string }>;
+}
+
+export interface MonthlySourceLinesResult {
+  lines: string[];
+  sourceCount: number;
+  usedWeeklies: number;
+  usedDailies: number;
+  summarizedCount: number;
+  summarySkippedCount: number;
+  summaryFailed: Array<{ key: string; error: string }>;
+}
+
 export async function buildWeeklySourceLines(
-  dbPath: string,
-  startMs: number,
-  endMs: number,
-  maxSessions = 40
-): Promise<{ lines: string[]; sourceCount: number; usedDailies: number }> {
+  options: BuildSourceContextOptions
+): Promise<WeeklySourceLinesResult> {
+  const {
+    dbPath,
+    settings,
+    startMs,
+    endMs,
+    maxSessions = 40,
+    panelHome,
+    forceResummarize,
+    jobKeyPrefix,
+    onProgress,
+    progressLevel,
+    progressPeriodLabel
+  } = options;
+
   const dailies = await listMemoryEntriesInRange(dbPath, {
     level: "daily",
     startMs,
@@ -17,15 +64,39 @@ export async function buildWeeklySourceLines(
   });
 
   if (dailies.length) {
+    onProgress?.({
+      phase: "ensure_summaries",
+      level: progressLevel || "weekly",
+      periodLabel: progressPeriodLabel || "",
+      message: `使用已有 ${dailies.length} 篇日报聚合（无需 re-summarize sessions）`
+    });
     const lines = dailies.map(
-      (e, i) =>
-        `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 4000)}`
+      (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 4000)}`
     );
-    return { lines, sourceCount: dailies.length, usedDailies: dailies.length };
+    return {
+      lines,
+      sourceCount: dailies.length,
+      usedDailies: dailies.length,
+      summarizedCount: 0,
+      summarySkippedCount: 0,
+      summaryFailed: []
+    };
   }
 
-  const sessions = await listSessionsInRange(dbPath, startMs, endMs, maxSessions);
-  const lines = sessions.map((s) =>
+  const rawSessions = await listSessionsInRange(dbPath, startMs, endMs, maxSessions);
+  const ensure = await ensureSummariesForSessions({
+    dbPath,
+    sessions: rawSessions,
+    settings,
+    panelHome,
+    force: forceResummarize,
+    jobKeyPrefix: jobKeyPrefix || "summarize:weekly",
+    onProgress,
+    progressLevel: progressLevel || "weekly",
+    progressPeriodLabel
+  });
+
+  const lines = ensure.sessions.map((s) =>
     formatSessionForDigest({
       provider: s.provider,
       title: s.title,
@@ -34,15 +105,33 @@ export async function buildWeeklySourceLines(
       updatedAt: s.updatedAt
     })
   );
-  return { lines, sourceCount: sessions.length, usedDailies: 0 };
+  return {
+    lines,
+    sourceCount: ensure.sessions.length,
+    usedDailies: 0,
+    summarizedCount: ensure.summarized,
+    summarySkippedCount: ensure.skipped,
+    summaryFailed: ensure.failed
+  };
 }
 
 export async function buildMonthlySourceLines(
-  dbPath: string,
-  startMs: number,
-  endMs: number,
-  maxSessions = 40
-): Promise<{ lines: string[]; sourceCount: number; usedWeeklies: number; usedDailies: number }> {
+  options: BuildSourceContextOptions
+): Promise<MonthlySourceLinesResult> {
+  const {
+    dbPath,
+    settings,
+    startMs,
+    endMs,
+    maxSessions = 40,
+    panelHome,
+    forceResummarize,
+    jobKeyPrefix,
+    onProgress,
+    progressLevel,
+    progressPeriodLabel
+  } = options;
+
   const weeklies = await listMemoryEntriesInRange(dbPath, {
     level: "weekly",
     startMs,
@@ -51,10 +140,24 @@ export async function buildMonthlySourceLines(
   });
 
   if (weeklies.length) {
+    onProgress?.({
+      phase: "ensure_summaries",
+      level: progressLevel || "monthly",
+      periodLabel: progressPeriodLabel || "",
+      message: `使用已有 ${weeklies.length} 篇周报聚合`
+    });
     const lines = weeklies.map(
       (e, i) => `Weekly ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 5000)}`
     );
-    return { lines, sourceCount: weeklies.length, usedWeeklies: weeklies.length, usedDailies: 0 };
+    return {
+      lines,
+      sourceCount: weeklies.length,
+      usedWeeklies: weeklies.length,
+      usedDailies: 0,
+      summarizedCount: 0,
+      summarySkippedCount: 0,
+      summaryFailed: []
+    };
   }
 
   const dailies = await listMemoryEntriesInRange(dbPath, {
@@ -65,14 +168,40 @@ export async function buildMonthlySourceLines(
   });
 
   if (dailies.length) {
+    onProgress?.({
+      phase: "ensure_summaries",
+      level: progressLevel || "monthly",
+      periodLabel: progressPeriodLabel || "",
+      message: `使用已有 ${dailies.length} 篇日报聚合`
+    });
     const lines = dailies.map(
       (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 2500)}`
     );
-    return { lines, sourceCount: dailies.length, usedWeeklies: 0, usedDailies: dailies.length };
+    return {
+      lines,
+      sourceCount: dailies.length,
+      usedWeeklies: 0,
+      usedDailies: dailies.length,
+      summarizedCount: 0,
+      summarySkippedCount: 0,
+      summaryFailed: []
+    };
   }
 
-  const sessions = await listSessionsInRange(dbPath, startMs, endMs, maxSessions);
-  const lines = sessions.map((s) =>
+  const rawSessions = await listSessionsInRange(dbPath, startMs, endMs, maxSessions);
+  const ensure = await ensureSummariesForSessions({
+    dbPath,
+    sessions: rawSessions,
+    settings,
+    panelHome,
+    force: forceResummarize,
+    jobKeyPrefix: jobKeyPrefix || "summarize:monthly",
+    onProgress,
+    progressLevel: progressLevel || "monthly",
+    progressPeriodLabel
+  });
+
+  const lines = ensure.sessions.map((s) =>
     formatSessionForDigest({
       provider: s.provider,
       title: s.title,
@@ -81,7 +210,15 @@ export async function buildMonthlySourceLines(
       updatedAt: s.updatedAt
     })
   );
-  return { lines, sourceCount: sessions.length, usedWeeklies: 0, usedDailies: 0 };
+  return {
+    lines,
+    sourceCount: ensure.sessions.length,
+    usedWeeklies: 0,
+    usedDailies: 0,
+    summarizedCount: ensure.summarized,
+    summarySkippedCount: ensure.skipped,
+    summaryFailed: ensure.failed
+  };
 }
 
 function truncate(text: string, max: number): string {

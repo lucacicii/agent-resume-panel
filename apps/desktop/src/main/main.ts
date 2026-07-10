@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "node:path";
 import {
   askMetaAgent,
+  autoRenameSessionAction,
   backfillMemoryDigests,
   buildMemoryHandoffBrief,
   buildResumeCommandFromRef,
@@ -9,9 +10,12 @@ import {
   ensureCatalogSchema,
   getMemoryEntryById,
   getSessionById,
+  getUsageSummary,
+  listLlmUsageEvents,
   listMemoryEntries,
   listMemoryEntriesInRange,
   listMemoryLinks,
+  listScheduleRuns,
   listSessions,
   loadSessionPreview,
   loadSettings,
@@ -25,8 +29,10 @@ import {
   runWeeklyDigest,
   saveSettings,
   searchMemoryByEmbedding,
+  summarizeSessionAction,
   type AgentCitation,
   type AgentProvider,
+  type DigestProgressEvent,
   type PanelSettings
 } from "@agent-resume/core";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
@@ -108,6 +114,20 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
+    "sessions:summarize",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      return summarizeSessionAction({ provider: args.provider, id: args.id });
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:autoRename",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      return autoRenameSessionAction({ provider: args.provider, id: args.id });
+    }
+  );
+
+  ipcMain.handle(
     "memory:list",
     async (
       _event,
@@ -139,16 +159,25 @@ function registerIpc(): void {
     return listMemoryEntries(dbPath, { level: "daily", limit: limit ?? 30 });
   });
 
-  ipcMain.handle("memory:runDaily", async (_event, date?: string) => {
-    return runDailyDigest({ date });
+  ipcMain.handle("memory:runDaily", async (event, date?: string) => {
+    const sendProgress = (progress: DigestProgressEvent) => {
+      event.sender.send("memory:digestProgress", progress);
+    };
+    return runDailyDigest({ date, onProgress: sendProgress });
   });
 
-  ipcMain.handle("memory:runWeekly", async (_event, weekKey?: string) => {
-    return runWeeklyDigest({ weekKey });
+  ipcMain.handle("memory:runWeekly", async (event, weekKey?: string) => {
+    const sendProgress = (progress: DigestProgressEvent) => {
+      event.sender.send("memory:digestProgress", progress);
+    };
+    return runWeeklyDigest({ weekKey, onProgress: sendProgress });
   });
 
-  ipcMain.handle("memory:runMonthly", async (_event, monthKey?: string) => {
-    return runMonthlyDigest({ monthKey });
+  ipcMain.handle("memory:runMonthly", async (event, monthKey?: string) => {
+    const sendProgress = (progress: DigestProgressEvent) => {
+      event.sender.send("memory:digestProgress", progress);
+    };
+    return runMonthlyDigest({ monthKey, onProgress: sendProgress });
   });
 
   ipcMain.handle(
@@ -237,6 +266,45 @@ function registerIpc(): void {
           previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null,
           todolistMarkdown: it.todolistMarkdown
         }))
+      });
+    }
+  );
+
+  ipcMain.handle("usage:summary", async (_event, args?: { days?: number }) => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await ensureCatalogSchema(dbPath);
+    return getUsageSummary(dbPath, args?.days ?? 30);
+  });
+
+  ipcMain.handle(
+    "usage:listEvents",
+    async (_event, args?: { limit?: number; source?: string; days?: number }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const days = args?.days ?? 30;
+      const fromMs = Date.now() - days * 24 * 60 * 60 * 1000;
+      return listLlmUsageEvents(dbPath, {
+        fromMs,
+        source: args?.source,
+        limit: args?.limit ?? 100
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "usage:listScheduleRuns",
+    async (_event, args?: { limit?: number; level?: string; days?: number }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const days = args?.days ?? 30;
+      const fromMs = Date.now() - days * 24 * 60 * 60 * 1000;
+      return listScheduleRuns(dbPath, {
+        fromMs,
+        level: args?.level,
+        limit: args?.limit ?? 100
       });
     }
   );

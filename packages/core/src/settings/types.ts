@@ -1,3 +1,4 @@
+/** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
 export interface LlmSettings {
   baseUrl: string;
   model: string;
@@ -5,6 +6,16 @@ export interface LlmSettings {
   apiKey?: string;
   outputLanguage?: string;
   maxContextChars?: number;
+}
+
+/**
+ * Conversation / Meta-Agent chat model.
+ * Omitted fields fall back to the tool `llm` settings.
+ */
+export interface ChatLlmSettings {
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
 }
 
 export interface EmbeddingSettings {
@@ -51,7 +62,10 @@ export interface MemorySettings {
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
+  /** Tool LLM (summarize / rename / digests). */
   llm: LlmSettings;
+  /** Conversation model for Ask / Meta-Agent; falls back to llm. */
+  chatLlm?: ChatLlmSettings;
   embedding: EmbeddingSettings;
   memory?: MemorySettings;
   agentHomes?: AgentHomesSettings;

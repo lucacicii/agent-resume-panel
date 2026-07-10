@@ -27,45 +27,76 @@
     <main>
       <!-- Memory home -->
       <section id="tab-memory" class="panel active">
-        <div class="toolbar">
-          <div class="row cal-nav">
-            <button type="button" id="btnCalPrev" title="上月">‹</button>
-            <button type="button" id="btnCalToday">今天</button>
-            <button type="button" id="btnCalNext" title="下月">›</button>
-            <strong id="calMonthLabel">—</strong>
-            <select id="memoryLevel" class="quiet-select">
+        <div class="toolbar memory-toolbar">
+          <div class="cal-nav-left">
+            <button type="button" class="tool-btn" id="btnCalPrev" title="上月">‹</button>
+            <select id="calYearSelect" class="quiet-select tool-select cal-year-select" title="年" aria-label="年"></select>
+            <select id="calMonthSelect" class="quiet-select tool-select cal-month-select" title="月" aria-label="月">
+              <option value="0">1 月</option>
+              <option value="1">2 月</option>
+              <option value="2">3 月</option>
+              <option value="3">4 月</option>
+              <option value="4">5 月</option>
+              <option value="5">6 月</option>
+              <option value="6">7 月</option>
+              <option value="7">8 月</option>
+              <option value="8">9 月</option>
+              <option value="9">10 月</option>
+              <option value="10">11 月</option>
+              <option value="11">12 月</option>
+            </select>
+            <button type="button" class="tool-btn" id="btnCalNext" title="下月">›</button>
+            <button type="button" class="tool-btn" id="btnCalToday">今天</button>
+          </div>
+          <div class="cal-nav-right">
+            <select id="memoryLevel" class="quiet-select tool-select">
               <option value="all">全部标记</option>
               <option value="daily">仅日报</option>
               <option value="weekly">仅周报</option>
               <option value="monthly">仅月报</option>
             </select>
-            <button type="button" id="btnRefreshMemory" class="ghost-btn">刷新</button>
-            <div class="ops-wrap">
-              <button type="button" class="ghost-btn" id="btnMemoryOps" title="操作">⋯</button>
-              <div class="ops-menu" id="memoryOpsMenu" hidden>
-                <button type="button" data-ops="gen-today">生成本日日报</button>
-                <button type="button" data-ops="tools">生成 / 回填…</button>
-                <button type="button" data-ops="gtd">从周报/月报分析 GTD…</button>
-                <button type="button" data-ops="sessions">浏览 Sessions…</button>
-              </div>
-            </div>
+            <button type="button" class="tool-btn ghost-btn" id="btnRefreshMemory">刷新</button>
           </div>
         </div>
 
         <div class="cal-layout">
-          <div class="cal-main">
-            <div class="cal-weekdays">
-              <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          <div class="cal-left">
+            <div class="cal-main">
+              <div class="cal-weekdays">
+                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+              </div>
+              <div id="calendarGrid" class="cal-grid"></div>
+              <p class="muted cal-legend">
+                <span class="dot daily"></span>日报
+                <span class="dot weekly"></span>周报
+                <span class="dot monthly"></span>月报
+              </p>
             </div>
-            <div id="calendarGrid" class="cal-grid"></div>
-            <p class="muted cal-legend">
-              <span class="dot daily"></span>日报
-              <span class="dot weekly"></span>周报
-              <span class="dot monthly"></span>月报
-            </p>
+            <div class="gen-panel">
+              <h3 class="gen-period" id="currentPeriodLabel">日 — · 周 — · 月 —</h3>
+              <div class="gen-buttons">
+                <button type="button" class="tool-btn" id="btnRunDaily">生成日报</button>
+                <button type="button" class="tool-btn" id="btnRunWeekly">生成周报</button>
+                <button type="button" class="tool-btn" id="btnRunMonthly">生成月报</button>
+                <button type="button" class="tool-btn" id="btnOpenGtd">从周报 / 月报分析 GTD</button>
+              </div>
+              <p class="muted gen-hint">点击上方日历选择日期；日 / 周 / 月自动计算。同 period 再生成会覆盖。</p>
+              <div class="gen-progress" id="genProgress" hidden>
+                <div class="gen-progress-line" id="genProgressLine"></div>
+                <div class="gen-progress-session-row" id="genProgressSessionRow" hidden>
+                  <span class="gen-progress-pulse" aria-hidden="true"></span>
+                  <span class="gen-progress-session" id="genProgressSession"></span>
+                </div>
+                <div class="gen-progress-bar-wrap" id="genProgressBarWrap" hidden>
+                  <div class="gen-progress-bar" id="genProgressBar"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <aside class="cal-detail" id="calDetail">
-            <p class="muted">点击日期查看 digests。Sessions 从右上角或 ⋯ 进入。</p>
+          <aside class="cal-side">
+            <div class="cal-detail" id="calDetail">
+              <p class="muted">点击日期查看 digests。</p>
+            </div>
           </aside>
         </div>
         <p class="status" id="memoryStatus"></p>
@@ -88,96 +119,175 @@
         <p class="status" id="agentStatus"></p>
       </section>
 
-      <!-- Settings (not a primary tab) -->
+      <!-- Settings: left nav + right content -->
       <section id="tab-settings" class="panel">
         <div class="toolbar">
           <h2 class="quiet-title">Settings</h2>
           <button type="button" class="ghost-btn" id="btnSettingsBack">完成</button>
         </div>
-        <p class="muted">
-          写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
-        </p>
-        <form id="settingsForm" class="form">
-          <label>
-            Panel home
-            <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
-          </label>
-          <fieldset>
-            <legend>LLM</legend>
-            <label>Base URL <input name="llmBaseUrl" type="text" /></label>
-            <label>Model <input name="llmModel" type="text" /></label>
-            <label>API Key <input name="llmApiKey" type="password" autocomplete="off" /></label>
-            <label>Output language <input name="llmLang" type="text" placeholder="zh-CN" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>Embedding</legend>
-            <label>Base URL (optional) <input name="embBaseUrl" type="text" /></label>
-            <label>Model <input name="embModel" type="text" /></label>
-            <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
-          </fieldset>
-          <fieldset>
-            <legend>定时（默认关）</legend>
-            <label class="check">
-              <input name="memoryEnabled" type="checkbox" />
-              启用定时 digests
-            </label>
-            <label>Daily hour <input name="dailyHour" type="number" min="0" max="23" /></label>
-            <label>Weekly hour (Mon) <input name="weeklyHour" type="number" min="0" max="23" /></label>
-            <label>Monthly hour (day 1) <input name="monthlyHour" type="number" min="0" max="23" /></label>
-          </fieldset>
-        </form>
-        <div class="form-row" style="margin-top: 12px">
-          <button type="button" id="btnSaveSettings">保存</button>
+
+        <div class="settings-layout">
+          <aside class="settings-nav" aria-label="Settings menu">
+            <button type="button" class="settings-nav-item active" data-settings-pane="provider">
+              Provider
+            </button>
+            <button type="button" class="settings-nav-item" data-settings-pane="general">通用</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="usage">用量与日志</button>
+          </aside>
+
+          <div class="settings-main">
+            <form id="settingsForm" class="form settings-form">
+              <!-- Provider: tool LLM + chat LLM + embedding -->
+              <div id="settingsPaneProvider" class="settings-pane">
+                <p class="muted">
+                  写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
+                </p>
+
+                <fieldset>
+                  <legend>工具 LLM</legend>
+                  <p class="settings-tip">
+                    用于摘要、自动重命名、定时 digests 等工具任务。请使用<strong>便宜、快速</strong>的模型（如
+                    gpt-4o-mini、deepseek-chat），无需大型推理模型。
+                  </p>
+                  <label>Base URL <input name="llmBaseUrl" type="text" /></label>
+                  <label>Model <input name="llmModel" type="text" /></label>
+                  <label>API Key <input name="llmApiKey" type="password" autocomplete="off" /></label>
+                  <label>Output language <input name="llmLang" type="text" placeholder="zh-CN" /></label>
+                </fieldset>
+
+                <fieldset>
+                  <legend>对话模型</legend>
+                  <p class="settings-tip">
+                    用于 Ask / Meta-Agent 对话。默认填充工具模型，可单独改为更强的对话模型。
+                  </p>
+                  <label>Base URL <input name="chatBaseUrl" type="text" /></label>
+                  <label>Model <input name="chatModel" type="text" /></label>
+                  <label>API Key <input name="chatApiKey" type="password" autocomplete="off" /></label>
+                </fieldset>
+
+                <fieldset>
+                  <legend>Embedding</legend>
+                  <p class="settings-tip muted-tip">
+                    Base URL / API Key 可留空，将回落到工具 LLM 的配置。
+                  </p>
+                  <label>Base URL (optional) <input name="embBaseUrl" type="text" /></label>
+                  <label>Model <input name="embModel" type="text" /></label>
+                  <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
+                </fieldset>
+              </div>
+
+              <!-- General: panel home, schedule, backfill -->
+              <div id="settingsPaneGeneral" class="settings-pane" hidden>
+                <label>
+                  Panel home
+                  <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
+                </label>
+                <fieldset>
+                  <legend>定时（默认关）</legend>
+                  <label class="check">
+                    <input name="memoryEnabled" type="checkbox" />
+                    启用定时 digests
+                  </label>
+                  <label>Daily hour <input name="dailyHour" type="number" min="0" max="23" /></label>
+                  <label>Weekly hour (Mon) <input name="weeklyHour" type="number" min="0" max="23" /></label>
+                  <label>Monthly hour (day 1) <input name="monthlyHour" type="number" min="0" max="23" /></label>
+                </fieldset>
+                <fieldset>
+                  <legend>批量回填历史 digests</legend>
+                  <p class="muted" style="margin: 0 0 8px">
+                    扫描 catalog 全部 session 日期，按日→周→月批量生成（多次 LLM，较慢）。
+                  </p>
+                  <label>
+                    最多天数
+                    <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
+                  </label>
+                  <label class="check">
+                    <input type="checkbox" id="backfillSkipExisting" checked />
+                    跳过已有成功 digest
+                  </label>
+                  <label class="check">
+                    <input type="checkbox" id="backfillSkipEmbedding" checked />
+                    跳过 embedding
+                  </label>
+                  <div class="form-row" style="margin-top: 8px">
+                    <button type="button" id="btnBackfillPreview" class="tool-btn">预览范围</button>
+                    <button type="button" id="btnBackfillRun" class="tool-btn">开始回填</button>
+                  </div>
+                  <p class="status" id="backfillStatus"></p>
+                </fieldset>
+              </div>
+            </form>
+
+            <div id="settingsPaneUsage" class="settings-pane" hidden>
+              <div class="form-row">
+                <label>
+                  范围
+                  <select id="usageDays">
+                    <option value="7">近 7 天</option>
+                    <option value="30" selected>近 30 天</option>
+                    <option value="90">近 90 天</option>
+                  </select>
+                </label>
+                <button type="button" class="ghost-btn" id="btnUsageRefresh">刷新</button>
+              </div>
+              <div id="usageSummaryCards" class="usage-cards"></div>
+              <h3 class="section-h">按日</h3>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日期</th>
+                      <th>Tokens</th>
+                      <th>调用</th>
+                      <th>定时 runs</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usageByDayBody"></tbody>
+                </table>
+              </div>
+              <h3 class="section-h">定时执行日志</h3>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>Level</th>
+                      <th>Period</th>
+                      <th>Status</th>
+                      <th>Tokens</th>
+                      <th>Error</th>
+                    </tr>
+                  </thead>
+                  <tbody id="scheduleRunsBody"></tbody>
+                </table>
+              </div>
+              <h3 class="section-h">LLM 调用明细</h3>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>Kind</th>
+                      <th>Source</th>
+                      <th>Model</th>
+                      <th>Tokens</th>
+                      <th>ms</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usageEventsBody"></tbody>
+                </table>
+              </div>
+              <p class="status" id="usageStatus"></p>
+            </div>
+
+            <div id="settingsSaveBar" class="settings-save-bar">
+              <button type="button" id="btnSaveSettings">保存</button>
+              <p class="status" id="settingsStatus"></p>
+            </div>
+          </div>
         </div>
-        <p class="status" id="settingsStatus"></p>
       </section>
     </main>
-
-    <!-- Hidden fields used by ops -->
-    <input type="date" id="dailyDate" hidden />
-    <input type="text" id="weekKey" hidden />
-    <input type="month" id="monthKey" hidden />
-
-    <!-- Sheet: generate / backfill -->
-    <div class="sheet" id="sheetTools" hidden>
-      <div class="sheet-backdrop" data-close-sheet="sheetTools"></div>
-      <div class="sheet-panel">
-        <div class="sheet-head">
-          <h3>生成与回填</h3>
-          <button type="button" class="ghost-btn" data-close-sheet="sheetTools">关闭</button>
-        </div>
-        <div class="sheet-body">
-          <div class="card">
-            <h3>单次生成</h3>
-            <div class="form-row">
-              <label>Daily <input type="date" id="toolsDailyDate" /></label>
-              <button type="button" id="btnRunDaily">生成日报</button>
-            </div>
-            <div class="form-row">
-              <label>Weekly <input type="text" id="toolsWeekKey" placeholder="YYYY-Www 空=本周" /></label>
-              <button type="button" id="btnRunWeekly">生成周报</button>
-            </div>
-            <div class="form-row">
-              <label>Monthly <input type="month" id="toolsMonthKey" /></label>
-              <button type="button" id="btnRunMonthly">生成月报</button>
-            </div>
-          </div>
-          <div class="card">
-            <h3>批量回填</h3>
-            <div class="form-row">
-              <label>最多天数 <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" /></label>
-              <label class="check"><input type="checkbox" id="backfillSkipExisting" checked /> 跳过已有</label>
-              <label class="check"><input type="checkbox" id="backfillSkipEmbedding" checked /> 跳过 embedding</label>
-            </div>
-            <div class="form-row">
-              <button type="button" id="btnBackfillPreview">预览</button>
-              <button type="button" id="btnBackfillRun">开始回填</button>
-            </div>
-            <p class="status" id="backfillStatus"></p>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Sheet: GTD editable preview -->
     <div class="sheet" id="sheetGtd" hidden>
@@ -222,7 +332,7 @@
             <div class="sessions-list" id="sessionsList"></div>
           </div>
           <div class="session-preview-pane" id="sessionPreview">
-            <p class="muted">点击左侧 session 查看对话预览（只读，类似扩展 Preview）。</p>
+            <p class="muted">点击左侧 session 查看对话预览。支持 Summarize / Auto Rename（与 VS Code 扩展类似）。</p>
           </div>
         </div>
       </div>

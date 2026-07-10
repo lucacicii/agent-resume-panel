@@ -1,13 +1,17 @@
 import {
   catalogDbFromSettings,
+  ensureCatalogSchema,
+  finishScheduleRun,
   getMemoryJobStatus,
+  listLlmUsageEvents,
   loadSettings,
   localDayRange,
   previousCompleteMonthRange,
   previousCompleteWeekRange,
   runDailyDigest,
   runMonthlyDigest,
-  runWeeklyDigest
+  runWeeklyDigest,
+  startScheduleRun
 } from "@agent-resume/core";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -27,7 +31,6 @@ export function startMemoryScheduler(): void {
       console.error("[memory-scheduler]", err);
     });
   }, 60_000);
-  // Also evaluate shortly after start
   void tick().catch((err) => console.error("[memory-scheduler]", err));
 }
 
@@ -51,7 +54,6 @@ async function tick(): Promise<void> {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
-  // Fire once in the target hour (first minute window)
   if (minute > 2) {
     return;
   }
@@ -61,6 +63,7 @@ async function tick(): Promise<void> {
   const monthlyHour = clampHour(settings.memory?.scheduleMonthlyHour, 9);
 
   const dbPath = catalogDbFromSettings(settings);
+  await ensureCatalogSchema(dbPath);
 
   if (hour === dailyHour) {
     const day = localDayRange();
@@ -69,13 +72,13 @@ async function tick(): Promise<void> {
       const status = await getMemoryJobStatus(dbPath, day.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        console.log("[memory-scheduler] running daily", day.jobKey);
-        await runDailyDigest({ date: day.dateLabel });
+        await runLoggedSchedule(dbPath, "daily", day.jobKey, async () => {
+          await runDailyDigest({ date: day.dateLabel });
+        });
       }
     }
   }
 
-  // Monday = 1
   if (now.getDay() === 1 && hour === weeklyHour) {
     const week = previousCompleteWeekRange(now);
     const fireKey = `auto:${week.jobKey}:${now.toDateString()}`;
@@ -83,8 +86,9 @@ async function tick(): Promise<void> {
       const status = await getMemoryJobStatus(dbPath, week.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        console.log("[memory-scheduler] running weekly", week.jobKey);
-        await runWeeklyDigest({ weekKey: week.label });
+        await runLoggedSchedule(dbPath, "weekly", week.jobKey, async () => {
+          await runWeeklyDigest({ weekKey: week.label });
+        });
       }
     }
   }
@@ -96,10 +100,55 @@ async function tick(): Promise<void> {
       const status = await getMemoryJobStatus(dbPath, month.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        console.log("[memory-scheduler] running monthly", month.jobKey);
-        await runMonthlyDigest({ monthKey: month.label });
+        await runLoggedSchedule(dbPath, "monthly", month.jobKey, async () => {
+          await runMonthlyDigest({ monthKey: month.label });
+        });
       }
     }
+  }
+}
+
+async function runLoggedSchedule(
+  dbPath: string,
+  level: "daily" | "weekly" | "monthly",
+  periodKey: string,
+  fn: () => Promise<void>
+): Promise<void> {
+  const started = Date.now();
+  const runId = await startScheduleRun(dbPath, {
+    level,
+    periodKey,
+    trigger: "schedule"
+  });
+  console.log("[memory-scheduler] running", level, periodKey);
+  try {
+    await fn();
+    // sum usage events since start for this job
+    const events = await listLlmUsageEvents(dbPath, { fromMs: started, limit: 50 });
+    const related = events.filter(
+      (e) => e.jobKey === periodKey || e.source === level || e.source === "schedule"
+    );
+    let prompt = 0;
+    let completion = 0;
+    let total = 0;
+    for (const e of related) {
+      prompt += e.promptTokens || 0;
+      completion += e.completionTokens || 0;
+      total += e.totalTokens || 0;
+    }
+    await finishScheduleRun(dbPath, runId, {
+      status: "ok",
+      promptTokens: prompt,
+      completionTokens: completion,
+      totalTokens: total
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await finishScheduleRun(dbPath, runId, {
+      status: "error",
+      error: message
+    });
+    throw error;
   }
 }
 

@@ -14,6 +14,12 @@ export interface PanelSettingsFile {
     outputLanguage?: string;
     maxContextChars?: number;
   };
+  /** Conversation model; omitted fields fall back to llm at runtime. */
+  chatLlm?: {
+    baseUrl?: string;
+    model?: string;
+    apiKey?: string;
+  };
   embedding: {
     baseUrl?: string;
     model: string;
@@ -78,6 +84,10 @@ function mergeFile(partial: Partial<PanelSettingsFile> | null | undefined): Pane
   return {
     panelHome: partial.panelHome?.trim() || base.panelHome,
     llm: { ...base.llm, ...(partial.llm || {}) },
+    chatLlm:
+      partial.chatLlm || base.chatLlm
+        ? { ...(base.chatLlm || {}), ...(partial.chatLlm || {}) }
+        : undefined,
     embedding: { ...base.embedding, ...(partial.embedding || {}) },
     memory: { ...base.memory, ...(partial.memory || {}) },
     agentHomes: { ...base.agentHomes, ...(partial.agentHomes || {}) },

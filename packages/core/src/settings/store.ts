@@ -9,12 +9,21 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     return base;
   }
 
+  const chatLlm =
+    partial.chatLlm || base.chatLlm
+      ? {
+          ...(base.chatLlm || {}),
+          ...(partial.chatLlm || {})
+        }
+      : undefined;
+
   return {
     panelHome: partial.panelHome?.trim() || base.panelHome,
     llm: {
       ...base.llm,
       ...(partial.llm || {})
     },
+    chatLlm,
     embedding: {
       ...base.embedding,
       ...(partial.embedding || {})

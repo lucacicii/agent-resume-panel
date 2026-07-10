@@ -1,6 +1,7 @@
-import { embedTexts } from "../llm/embeddings";
+import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { PanelSettings } from "../settings/types";
+import { TokenUsage } from "../usage/types";
 import { MemoryEntry } from "./schema";
 import { insertMemoryEntry, upsertMemoryJob } from "./store";
 
@@ -8,7 +9,13 @@ export async function maybeEmbedContent(
   settings: PanelSettings,
   content: string,
   skipEmbedding?: boolean
-): Promise<{ embeddingJson: string | null; embedded: boolean }> {
+): Promise<{
+  embeddingJson: string | null;
+  embedded: boolean;
+  usage?: TokenUsage;
+  model?: string;
+  durationMs?: number;
+}> {
   if (skipEmbedding) {
     return { embeddingJson: null, embedded: false };
   }
@@ -19,8 +26,18 @@ export async function maybeEmbedContent(
   }
 
   try {
-    const [vector] = await embedTexts(emb, [content.slice(0, 8000)]);
-    return { embeddingJson: JSON.stringify(vector), embedded: true };
+    const result = await embedTextsDetailed(emb, [content.slice(0, 8000)]);
+    const vector = result.vectors[0];
+    if (!vector) {
+      return { embeddingJson: null, embedded: false };
+    }
+    return {
+      embeddingJson: JSON.stringify(vector),
+      embedded: true,
+      usage: result.usage,
+      model: result.model,
+      durationMs: result.durationMs
+    };
   } catch {
     return { embeddingJson: null, embedded: false };
   }

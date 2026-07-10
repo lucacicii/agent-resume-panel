@@ -1,7 +1,8 @@
-import { chatCompletion } from "../llm/chat";
+import { chatCompletionDetailed } from "../llm/chat";
 import { ChatMessage } from "../llm/types";
-import { llmConfigFromSettings } from "../llm/fromSettings";
-import { loadSettings } from "../settings/store";
+import { chatLlmConfigFromSettings } from "../llm/fromSettings";
+import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { recordLlmUsage } from "../usage/store";
 import { buildMetaAgentSystemPrompt, buildMetaAgentUserPrompt, formatSourceBlock } from "./prompts";
 import { retrieveAgentContext } from "./retrieve";
 import { AskMetaAgentOptions, AskMetaAgentResult } from "./types";
@@ -13,16 +14,19 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
   }
 
   const settings = await loadSettings(options.panelHome);
-  const llm = llmConfigFromSettings(settings);
+  const llm = chatLlmConfigFromSettings(settings);
   if (!llm) {
     throw new Error(
-      "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in settings.json."
+      "Conversation LLM is not configured. Set llm (or chatLlm) baseUrl, model, and apiKey in settings.json."
     );
   }
 
+  const dbPath = catalogDbFromSettings(settings, options.panelHome);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+
   const retrieved = await retrieveAgentContext({
     query,
-    panelHome: options.panelHome,
+    panelHome: options.panelHome || panelHome,
     limit: options.limit
   });
 
@@ -52,10 +56,22 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     }
   ];
 
-  const answer = await chatCompletion(llm, messages, 2000);
+  const result = await chatCompletionDetailed(llm, messages, 2000);
+  try {
+    await recordLlmUsage(dbPath, {
+      kind: "chat",
+      source: "ask",
+      model: result.model,
+      usage: result.usage,
+      durationMs: result.durationMs,
+      ok: true
+    });
+  } catch {
+    // non-fatal
+  }
 
   return {
-    answer,
+    answer: result.content,
     citations: retrieved.citations,
     fallback: retrieved.fallback,
     digests: retrieved.digests.map((d) => d.entry)

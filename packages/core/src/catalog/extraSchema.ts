@@ -40,4 +40,37 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+
+CREATE TABLE IF NOT EXISTS llm_usage_events (
+  id TEXT PRIMARY KEY,
+  created_at_ms INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  source TEXT NOT NULL,
+  job_key TEXT,
+  model TEXT,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  total_tokens INTEGER,
+  duration_ms INTEGER,
+  ok INTEGER NOT NULL DEFAULT 1,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_usage_created ON llm_usage_events(created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_source ON llm_usage_events(source, created_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS schedule_run_logs (
+  id TEXT PRIMARY KEY,
+  started_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER,
+  level TEXT NOT NULL,
+  period_key TEXT NOT NULL,
+  trigger TEXT NOT NULL DEFAULT 'schedule',
+  status TEXT NOT NULL,
+  error TEXT,
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
+  meta_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_runs_started ON schedule_run_logs(started_at_ms DESC);
 `;

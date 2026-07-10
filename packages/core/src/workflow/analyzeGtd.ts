@@ -1,12 +1,13 @@
 import { getSessionById } from "../catalog/query";
 import { AgentProvider } from "../catalog/types";
-import { chatCompletion } from "../llm/chat";
+import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { listMemoryLinks } from "../memory/store";
 import { listMemoryEntries } from "../memory/store";
 import { PanelSettings } from "../settings/types";
 import { GtdProposal, GTD_STATUSES, isGtdStatus } from "../gtd/types";
 import { getSessionGtdStatus } from "../gtd/store";
+import { recordLlmUsage } from "../usage/store";
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) {
@@ -114,7 +115,7 @@ export async function analyzeMemoryForGtd(input: {
     "Propose GTD updates and short task lists for sessions that still need work. Skip completed noise."
   ].join("\n");
 
-  const raw = await chatCompletion(
+  const chatResult = await chatCompletionDetailed(
     llm,
     [
       { role: "system", content: system },
@@ -122,6 +123,19 @@ export async function analyzeMemoryForGtd(input: {
     ],
     2500
   );
+  try {
+    await recordLlmUsage(input.dbPath, {
+      kind: "chat",
+      source: "gtd",
+      model: chatResult.model,
+      usage: chatResult.usage,
+      durationMs: chatResult.durationMs,
+      ok: true
+    });
+  } catch {
+    // non-fatal
+  }
+  const raw = chatResult.content;
 
   const parsed = parseProposalsJson(raw);
   const warnings: string[] = [];

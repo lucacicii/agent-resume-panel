@@ -1,4 +1,5 @@
 import { buildChatCompletionsUrl, ChatMessage, LlmRuntimeConfig } from "./types";
+import { parseOpenAiUsage, TokenUsage } from "../usage/types";
 
 interface ChatCompletionResponse {
   choices?: Array<{
@@ -6,17 +7,27 @@ interface ChatCompletionResponse {
       content?: string;
     };
   }>;
+  model?: string;
+  usage?: unknown;
   error?: {
     message?: string;
   };
 }
 
-export async function chatCompletion(
+export interface LlmCallResult {
+  content: string;
+  usage?: TokenUsage;
+  model?: string;
+  durationMs: number;
+}
+
+export async function chatCompletionDetailed(
   config: LlmRuntimeConfig,
   messages: ChatMessage[],
   maxTokens = 1024
-): Promise<string> {
+): Promise<LlmCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
+  const started = Date.now();
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -39,6 +50,8 @@ export async function chatCompletion(
     throw new Error(`LLM request failed with status ${response.status}.`);
   }
 
+  const durationMs = Date.now() - started;
+
   if (!response.ok) {
     const message = payload.error?.message || `LLM request failed with status ${response.status}.`;
     throw new Error(`${message} (endpoint: ${url})`);
@@ -49,5 +62,19 @@ export async function chatCompletion(
     throw new Error("LLM returned an empty response.");
   }
 
-  return content;
+  return {
+    content,
+    usage: parseOpenAiUsage(payload.usage),
+    model: payload.model || config.model,
+    durationMs
+  };
+}
+
+export async function chatCompletion(
+  config: LlmRuntimeConfig,
+  messages: ChatMessage[],
+  maxTokens = 1024
+): Promise<string> {
+  const result = await chatCompletionDetailed(config, messages, maxTokens);
+  return result.content;
 }

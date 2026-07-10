@@ -10,6 +10,7 @@ export { escapeSqlLiteral, runSqlite, runSqliteJson } from "./sqlite";
 export type {
   PanelSettings,
   LlmSettings,
+  ChatLlmSettings,
   EmbeddingSettings,
   MemorySettings,
   DesktopSettings,
@@ -27,6 +28,7 @@ export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/t
 export { toAgentSession } from "./catalog/types";
 export { ensureCatalogSchema } from "./catalog/db";
 export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
+export { setUserTitleInCatalog, setSessionSummaryInCatalog } from "./catalog/mutations";
 
 export type { ChatMessage, LlmRuntimeConfig, EmbeddingRuntimeConfig } from "./llm/types";
 export {
@@ -34,9 +36,31 @@ export {
   buildChatCompletionsUrl,
   buildEmbeddingsUrl
 } from "./llm/types";
-export { chatCompletion } from "./llm/chat";
-export { embedTexts } from "./llm/embeddings";
-export { llmConfigFromSettings, embeddingConfigFromSettings } from "./llm/fromSettings";
+export { chatCompletion, chatCompletionDetailed } from "./llm/chat";
+export type { LlmCallResult } from "./llm/chat";
+export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
+export type { EmbedCallResult } from "./llm/embeddings";
+export {
+  llmConfigFromSettings,
+  chatLlmConfigFromSettings,
+  embeddingConfigFromSettings
+} from "./llm/fromSettings";
+export {
+  recordLlmUsage,
+  listLlmUsageEvents,
+  listScheduleRuns,
+  getUsageSummary,
+  startScheduleRun,
+  finishScheduleRun
+} from "./usage/store";
+export type {
+  LlmUsageEvent,
+  LlmUsageKind,
+  LlmUsageSource,
+  ScheduleRunLog,
+  TokenUsage,
+  UsageSummary
+} from "./usage/types";
 
 export type { MemoryLevel, MemoryEntry, MemoryLink } from "./memory/schema";
 export { MEMORY_SCHEMA_SQL } from "./memory/schema";
@@ -52,6 +76,13 @@ export {
 export type { MemoryLinkRow } from "./memory/store";
 export { runDailyDigest, localDayRange } from "./memory/daily";
 export type { RunDailyDigestOptions, RunDailyDigestResult } from "./memory/daily";
+export type {
+  DigestLevel,
+  DigestProgressPhase,
+  DigestProgressEvent,
+  DigestProgressCallback,
+  DigestProgressSession
+} from "./memory/progress";
 export {
   localDayRange as localDayRangePeriod,
   localWeekRange,
@@ -130,3 +161,20 @@ export type {
   BackfillMemoryDigestsResult,
   BackfillLevelStats
 } from "./workflow/backfillDigests";
+
+export {
+  summarizeSessionAction,
+  autoRenameSessionAction
+} from "./session/actions";
+export type {
+  SessionActionOptions,
+  SummarizeSessionResult,
+  AutoRenameSessionResult
+} from "./session/actions";
+export { ensureSummariesForSessions } from "./session/ensureSummaries";
+export type {
+  EnsureSummariesOptions,
+  EnsureSummariesResult
+} from "./session/ensureSummaries";
+export { renameSessionNative } from "./session/rename";
+export type { RenameHomes } from "./session/rename";

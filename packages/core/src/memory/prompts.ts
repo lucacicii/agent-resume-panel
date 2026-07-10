@@ -4,7 +4,7 @@ export function buildDailySystemPrompt(outputLanguage: string): string {
     "Given a list of agent sessions updated on a single calendar day, write a concise daily digest.",
     "Include: what was worked on, key decisions or outcomes, blockers/open questions, and suggested next steps.",
     "Group by project when helpful. Use bullet points. Do not invent work that is not implied by the inputs.",
-    "When a session includes a Summary or Transcript excerpt, ground the digest in that evidence.",
+    "Each session line includes a precomputed Summary when available. Ground the digest in those summaries; do not invent work not implied by them.",
     `Write the digest in language: ${outputLanguage}.`
   ].join(" ");
 }
