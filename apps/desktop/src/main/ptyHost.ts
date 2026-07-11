@@ -8,6 +8,10 @@ import { safeHandle } from "./ipcUtils";
 
 let activePty: pty.IPty | null = null;
 let activeTerminalId = 0;
+let respawnOnExit = false;
+let lastSpawnCwd = process.cwd();
+let lastCols = 80;
+let lastRows = 24;
 
 function ensureSpawnHelperExecutable(): void {
   if (process.platform !== "darwin" && process.platform !== "linux") return;
@@ -124,7 +128,54 @@ function envWithPath(): Record<string, string> {
   return env;
 }
 
+function spawnInteractivePty(
+  shell: string,
+  cwd: string,
+  cols: number,
+  rows: number
+): pty.IPty {
+  return pty.spawn(shell, [], {
+    name: "xterm-256color",
+    cols,
+    rows,
+    cwd,
+    env: envWithPath()
+  });
+}
+
+function attachPtyHandlers(
+  ptyInstance: pty.IPty,
+  id: number,
+  shell: string,
+  win: BrowserWindow | null
+): void {
+  ptyInstance.onData((data) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("terminal:data", { id, data });
+    }
+  });
+  ptyInstance.onExit(() => {
+    activePty = null;
+    if (respawnOnExit && lastSpawnCwd) {
+      try {
+        activePty = spawnInteractivePty(shell, lastSpawnCwd, lastCols, lastRows);
+        attachPtyHandlers(activePty, id, shell, win);
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("terminal:respawned", { id });
+        }
+        return;
+      } catch (error) {
+        console.warn("terminal respawn failed:", error);
+      }
+    }
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("terminal:exit", { id });
+    }
+  });
+}
+
 function destroyActivePty(): void {
+  respawnOnExit = false;
   if (!activePty) return;
   try {
     activePty.kill();
@@ -142,24 +193,31 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       args: { cwd: string; command?: string; cols?: number; rows?: number }
     ) => {
       destroyActivePty();
+      respawnOnExit = true;
+
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
       const rows = Math.max(2, Math.floor(args.rows || 24));
       const cwd = resolveCwd(args.cwd);
-      const env = envWithPath();
+      lastSpawnCwd = cwd;
+      lastCols = cols;
+      lastRows = rows;
+
       const spawnOpts = {
         name: "xterm-256color",
         cols,
         rows,
         cwd,
-        env
+        env: envWithPath()
       };
 
       try {
-        if (args.command?.trim()) {
-          activePty = pty.spawn(shell, ["-lc", args.command.trim()], spawnOpts);
+        const command = args.command?.trim();
+        if (command) {
+          // Run resume/new command, then drop into an interactive shell so input keeps working.
+          activePty = pty.spawn(shell, ["-lc", `${command}; exec ${shell} -l`], spawnOpts);
         } else {
-          activePty = pty.spawn(shell, [], spawnOpts);
+          activePty = spawnInteractivePty(shell, cwd, cols, rows);
         }
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -168,18 +226,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
       const id = ++activeTerminalId;
       const win = getWindow();
-
-      activePty.onData((data) => {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send("terminal:data", { id, data });
-        }
-      });
-      activePty.onExit(() => {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send("terminal:exit", { id });
-        }
-        activePty = null;
-      });
+      attachPtyHandlers(activePty, id, shell, win);
 
       return { id };
     }
@@ -193,6 +240,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   safeHandle("terminal:resize", (_event, args: { cols: number; rows: number }) => {
     const cols = Math.max(2, Math.floor(args.cols || 80));
     const rows = Math.max(2, Math.floor(args.rows || 24));
+    lastCols = cols;
+    lastRows = rows;
     activePty?.resize(cols, rows);
     return { ok: true };
   });

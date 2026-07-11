@@ -788,9 +788,16 @@ async function spawnWorkbenchTerminal(cwd, command) {
     })
   );
   wbTerminalUnsubs.push(
+    agentResume.onTerminalRespawned((payload) => {
+      if (payload.id === wbTerminalId && wbTerminal) {
+        wbTerminal.write("\r\n\x1b[90m[已恢复交互式 shell]\x1b[0m\r\n");
+      }
+    })
+  );
+  wbTerminalUnsubs.push(
     agentResume.onTerminalExit((payload) => {
       if (payload.id === wbTerminalId && wbTerminal) {
-        wbTerminal.write("\r\n\x1b[90m[进程已退出]\x1b[0m\r\n");
+        wbTerminal.write("\r\n\x1b[90m[终端已关闭]\x1b[0m\r\n");
       }
     })
   );

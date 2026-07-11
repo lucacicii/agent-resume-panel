@@ -93,6 +93,7 @@ export interface DesktopApi {
   terminalDestroy(): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
+  onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   listMemory(opts?: {
     level?: string;
     limit?: number;
@@ -292,6 +293,11 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
     ipcRenderer.on("terminal:exit", handler);
     return () => ipcRenderer.removeListener("terminal:exit", handler);
+  },
+  onTerminalRespawned: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
+    ipcRenderer.on("terminal:respawned", handler);
+    return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
   getMemoryEntry: (memoryId) => ipcRenderer.invoke("memory:getEntry", memoryId),
