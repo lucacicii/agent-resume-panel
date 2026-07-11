@@ -2729,6 +2729,12 @@ code {
 }
 
 /* --- Workbench --- */
+#tab-workbench.panel:not(.active) {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 #tab-workbench.panel.active {
   display: flex;
   flex-direction: column;

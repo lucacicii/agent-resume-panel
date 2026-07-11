@@ -95,19 +95,27 @@ function syncAskChatCursor() {
   askChatOldestSortOrder = orders.length ? Math.min(...orders) : null;
 }
 
-async function switchTab(name) {
+let activePrimaryTab = "memory";
+
+function switchTab(name) {
+  if (!name || name === activePrimaryTab) return;
+  const leavingWorkbench = activePrimaryTab === "workbench" && name !== "workbench";
+  activePrimaryTab = name;
+
   if (name !== "ask") {
     hideCitationPreview();
   }
-  if (name !== "workbench") {
-    await destroyWorkbenchTerminal();
-  }
-  document.querySelectorAll(".tab").forEach((btn) => {
+
+  document.querySelectorAll(".primary-tabs .tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === name);
   });
-  document.querySelectorAll(".panel").forEach((panel) => {
+  document.querySelectorAll("main > .panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
+
+  if (leavingWorkbench) {
+    void destroyWorkbenchTerminal().catch((e) => console.warn("terminal cleanup", e));
+  }
   if (name === "ask") {
     void ensureAskChatVisible();
   }
@@ -480,6 +488,7 @@ let wbTerminalId = 0;
 let wbTerminalUnsubs = [];
 let wbContextSession = null;
 let wbLoaded = false;
+let wbResizeObserver = null;
 
 function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
@@ -645,20 +654,32 @@ function clearWorkbenchTerminalUnsubs() {
 }
 
 async function destroyWorkbenchTerminal() {
-  clearWorkbenchTerminalUnsubs();
-  if (wbTerminal) {
-    try {
-      wbTerminal.dispose();
-    } catch {
-      // ignore
+  try {
+    wbResizeObserver?.disconnect();
+    wbResizeObserver = null;
+    clearWorkbenchTerminalUnsubs();
+    if (wbTerminal) {
+      try {
+        wbTerminal.dispose();
+      } catch {
+        // ignore
+      }
+      wbTerminal = null;
+      wbFitAddon = null;
     }
-    wbTerminal = null;
-    wbFitAddon = null;
-  }
-  const host = $("wbTerminalHost");
-  if (host) host.innerHTML = "";
-  if (typeof agentResume.terminalDestroy === "function") {
-    await agentResume.terminalDestroy();
+    wbTerminalId = 0;
+    const host = $("wbTerminalHost");
+    if (host) host.innerHTML = "";
+    $("wbTerminalHint")?.classList.remove("hidden");
+    if (typeof agentResume.terminalDestroy === "function") {
+      try {
+        await agentResume.terminalDestroy();
+      } catch (e) {
+        console.warn("terminalDestroy IPC failed", e);
+      }
+    }
+  } catch (e) {
+    console.warn("destroyWorkbenchTerminal failed", e);
   }
 }
 
@@ -4231,7 +4252,7 @@ function wire() {
     agentResume.onSessionsSyncFailed((message) => setStatus($("memoryStatus"), message, "error"));
   }
 
-  document.querySelectorAll(".tab").forEach((btn) => {
+  document.querySelectorAll(".primary-tabs .tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       closeAllSheets();
       switchTab(btn.dataset.tab);
@@ -4307,7 +4328,9 @@ function wire() {
   if (typeof ResizeObserver !== "undefined") {
     const host = $("wbTerminalHost");
     if (host) {
-      new ResizeObserver(() => fitWorkbenchTerminal()).observe(host);
+      wbResizeObserver?.disconnect();
+      wbResizeObserver = new ResizeObserver(() => fitWorkbenchTerminal());
+      wbResizeObserver.observe(host);
     }
   }
 }
