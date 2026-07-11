@@ -50,8 +50,27 @@ import {
   type PanelSettings,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
-import { destroyPtyOnQuit, registerPtyIpc } from "./ptyHost";
+import { safeHandle } from "./ipcUtils";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
+
+function tryRegisterPtyIpc(): void {
+  try {
+    // Lazy-load so node-pty native binding issues do not block other IPC handlers.
+    const { registerPtyIpc } = require("./ptyHost") as typeof import("./ptyHost");
+    registerPtyIpc(() => mainWindow);
+  } catch (error) {
+    console.error("[desktop] node-pty unavailable — embedded terminal disabled.", error);
+  }
+}
+
+function tryDestroyPtyOnQuit(): void {
+  try {
+    const { destroyPtyOnQuit } = require("./ptyHost") as typeof import("./ptyHost");
+    destroyPtyOnQuit();
+  } catch {
+    // ignore
+  }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
@@ -232,7 +251,7 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("workbench:createScratchDir", async () => {
+  safeHandle("workbench:createScratchDir", async () => {
     const settings = await loadSettings();
     const home = effectivePanelHome(settings);
     const scratchBase = settings.workbench?.scratchDir?.trim() || path.join(home, "scratch");
@@ -242,7 +261,7 @@ function registerIpc(): void {
     return dir;
   });
 
-  ipcMain.handle(
+  safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       const settings = await loadSettings();
@@ -264,7 +283,7 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
+  safeHandle(
     "workbench:newSession",
     async (
       _event,
@@ -555,7 +574,7 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   registerIpc();
-  registerPtyIpc(() => mainWindow);
+  tryRegisterPtyIpc();
   try {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
@@ -574,7 +593,7 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   stopMemoryScheduler();
-  destroyPtyOnQuit();
+  tryDestroyPtyOnQuit();
   if (process.platform !== "darwin") {
     app.quit();
   }

@@ -1,5 +1,6 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow } from "electron";
 import * as pty from "node-pty";
+import { safeHandle } from "./ipcUtils";
 
 let activePty: pty.IPty | null = null;
 let activeTerminalId = 0;
@@ -15,7 +16,7 @@ function destroyActivePty(): void {
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle(
+  safeHandle(
     "terminal:spawn",
     async (
       _event,
@@ -65,19 +66,19 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     }
   );
 
-  ipcMain.handle("terminal:input", (_event, args: { data: string }) => {
+  safeHandle("terminal:input", (_event, args: { data: string }) => {
     activePty?.write(args.data);
     return { ok: true };
   });
 
-  ipcMain.handle("terminal:resize", (_event, args: { cols: number; rows: number }) => {
+  safeHandle("terminal:resize", (_event, args: { cols: number; rows: number }) => {
     const cols = Math.max(2, Math.floor(args.cols || 80));
     const rows = Math.max(2, Math.floor(args.rows || 24));
     activePty?.resize(cols, rows);
     return { ok: true };
   });
 
-  ipcMain.handle("terminal:destroy", () => {
+  safeHandle("terminal:destroy", () => {
     destroyActivePty();
     return { ok: true };
   });
