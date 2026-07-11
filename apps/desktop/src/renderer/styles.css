@@ -2784,7 +2784,7 @@ code {
 .wb-tree {
   flex: 1;
   overflow: auto;
-  padding: 4px 6px 10px;
+  padding: 6px 8px 12px;
   font-size: 13px;
 }
 
@@ -2795,7 +2795,12 @@ code {
 }
 
 .wb-tree-project {
-  margin: 2px 0;
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 90%, var(--bg));
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 5%, transparent);
+  overflow: hidden;
 }
 
 .wb-tree-project-head {
@@ -2803,19 +2808,61 @@ code {
   align-items: center;
   gap: 4px;
   width: 100%;
+  min-height: 30px;
+  padding: 4px 6px 4px 4px;
+  background: color-mix(in srgb, var(--panel) 72%, var(--text) 5%);
+  border-radius: 0;
+}
+
+.wb-tree-project:has(.wb-tree-sessions) .wb-tree-project-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+.wb-tree-project-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   color: var(--text);
   text-align: left;
-  padding: 4px 6px;
+  padding: 2px 6px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+  transition: background 0.15s ease;
 }
 
-.wb-tree-project-head:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+.wb-tree-project-toggle:hover {
+  background: color-mix(in srgb, var(--panel) 60%, var(--accent) 8%);
+}
+
+.wb-tree-project-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 80%, var(--bg));
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.wb-tree-project-add:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
 }
 
 .wb-tree-chevron {
@@ -2836,13 +2883,22 @@ code {
 .wb-tree-sessions {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 18px;
+  padding: 0;
+  background: color-mix(in srgb, var(--bg) 88%, var(--panel));
+  border-left: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .wb-tree-session.cal-session-row {
-  border-bottom: none;
-  padding: 5px 8px;
-  border-radius: 6px;
+  border: none;
+  margin: 0;
+  padding: 6px 8px 6px 12px;
+  border-radius: 0;
+  background: transparent;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wb-tree-session.cal-session-row:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
 }
 
 .wb-tree-session.cal-session-row .s-title {
@@ -2852,7 +2908,8 @@ code {
 }
 
 .wb-tree-session.cal-session-row.active {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+  background: color-mix(in srgb, var(--accent, #3b82f6) 16%, var(--panel));
+  box-shadow: inset 2px 0 0 var(--accent, #3b82f6);
 }
 
 .wb-main {

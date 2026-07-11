@@ -594,18 +594,35 @@ function renderWorkbenchTree(projects) {
     const li = document.createElement("li");
     li.className = "wb-tree-project";
 
-    const head = document.createElement("button");
-    head.type = "button";
+    const head = document.createElement("div");
     head.className = "wb-tree-project-head";
-    head.innerHTML = `
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "wb-tree-project-toggle";
+    toggle.innerHTML = `
       <span class="wb-tree-chevron">${expanded ? "▼" : "▶"}</span>
       <span class="wb-tree-project-label">${escapeHtml(basename(project.projectPath))}</span>
     `;
-    head.addEventListener("click", () => {
+    toggle.addEventListener("click", () => {
       wbTreeState.projectsExpanded[project.projectPath] = !expanded;
       saveWbTreeState();
       renderWorkbenchTree(projects);
     });
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "wb-tree-project-add";
+    addBtn.textContent = "+";
+    addBtn.title = "使用默认 Agent 新建 session";
+    addBtn.setAttribute("aria-label", "新建 session");
+    addBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void startWorkbenchNewSessionForProject(project.projectPath);
+    });
+
+    head.appendChild(toggle);
+    head.appendChild(addBtn);
     li.appendChild(head);
 
     if (expanded) {
@@ -1126,9 +1143,47 @@ function populateNewSessionProjects() {
   }
 }
 
+function defaultWorkbenchNewSessionProvider(settings = loadedSettings) {
+  return settings?.workbench?.defaultNewSessionProvider || "codex";
+}
+
+async function launchWorkbenchNewSession(cwd, provider, statusEl = $("wbStatus")) {
+  if (!cwd) throw new Error("请选择一个 project");
+  const useSystemTerminalOnly = provider === "system-terminal";
+  const result = await agentResume.workbenchNewSession({
+    cwd,
+    provider: useSystemTerminalOnly ? "codex" : provider,
+    useSystemTerminalOnly
+  });
+  if (result.mode === "external-system" || useSystemTerminalOnly) {
+    setStatus(statusEl, "已在系统终端中打开", "ok");
+    return;
+  }
+  const providerUsed = useSystemTerminalOnly ? "codex" : provider;
+  await openWorkbenchTerminal({
+    key: workbenchNewSessionKey(result.cwd, providerUsed),
+    title: `新 session · ${basename(result.cwd)}`,
+    cwd: result.cwd,
+    command: result.command
+  });
+  setStatus(statusEl, "");
+}
+
+async function startWorkbenchNewSessionForProject(projectPath) {
+  await refreshLoadedSettings();
+  const provider = defaultWorkbenchNewSessionProvider();
+  const status = $("wbStatus");
+  setStatus(status, "正在新建 session…");
+  try {
+    await launchWorkbenchNewSession(projectPath, provider, status);
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
 function openNewSessionSheet() {
   populateNewSessionProjects();
-  const provider = loadedSettings?.workbench?.defaultNewSessionProvider || "codex";
+  const provider = defaultWorkbenchNewSessionProvider();
   const sel = $("newSessionProvider");
   if (sel) sel.value = provider;
   openSheet("sheetNewSession");
@@ -1145,28 +1200,10 @@ async function confirmNewSession() {
       cwd = await agentResume.createScratchDir();
     } else {
       cwd = $("newSessionProject")?.value || "";
-      if (!cwd) throw new Error("请选择一个 project");
     }
-    const useSystemTerminalOnly = provider === "system-terminal";
-    const result = await agentResume.workbenchNewSession({
-      cwd,
-      provider: useSystemTerminalOnly ? "codex" : provider,
-      useSystemTerminalOnly
-    });
+    await launchWorkbenchNewSession(cwd, provider, $("wbStatus"));
     closeSheet("sheetNewSession");
     switchTab("workbench");
-    if (result.mode === "external-system" || useSystemTerminalOnly) {
-      setStatus($("wbStatus"), "已在系统终端中打开", "ok");
-      return;
-    }
-    const providerUsed = useSystemTerminalOnly ? "codex" : provider;
-    await openWorkbenchTerminal({
-      key: workbenchNewSessionKey(result.cwd, providerUsed),
-      title: `新 session · ${basename(result.cwd)}`,
-      cwd: result.cwd,
-      command: result.command
-    });
-    setStatus($("wbStatus"), "");
     setStatus(status, "", "");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
