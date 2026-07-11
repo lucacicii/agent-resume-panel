@@ -415,7 +415,7 @@
             "app"
           ],
           "default": "terminal",
-          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app uses Codex App."
+          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app opens the ChatGPT desktop app via codex:// deep link."
         },
         "agentResume.codexIdePanelResume.enabled": {
           "type": "boolean",
@@ -2146,52 +2146,52 @@
       },
       {
         "command": "agentResume.openInCodexApp",
-        "title": "Resume in Codex App",
+        "title": "Resume in ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.openInCodexApp",
-        "title": "在 Codex App 中恢复",
+        "title": "在 ChatGPT 中恢复",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ja.openInCodexApp",
-        "title": "Codex App で再開",
+        "title": "ChatGPT で再開",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ko.openInCodexApp",
-        "title": "Codex App에서 재개",
+        "title": "ChatGPT에서 재개",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.es.openInCodexApp",
-        "title": "Reanudar en Codex App",
+        "title": "Reanudar en ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.fr.openInCodexApp",
-        "title": "Reprendre dans Codex App",
+        "title": "Reprendre dans ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.de.openInCodexApp",
-        "title": "In Codex App fortsetzen",
+        "title": "In ChatGPT fortsetzen",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.pt-br.openInCodexApp",
-        "title": "Retomar no Codex App",
+        "title": "Retomar no ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.it.openInCodexApp",
-        "title": "Riprendi in Codex App",
+        "title": "Riprendi in ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ru.openInCodexApp",
-        "title": "Возобновить в Codex App",
+        "title": "Возобновить в ChatGPT",
         "category": "Agent Resume"
       },
       {
@@ -3096,32 +3096,32 @@
       },
       {
         "command": "agentResume.newCodexAppSession",
-        "title": "New Codex App Session",
+        "title": "New ChatGPT Session",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.newCodexAppSession",
-        "title": "新建 Codex App 会话",
+        "title": "新建 ChatGPT 会话",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ja.newCodexAppSession",
-        "title": "新しい Codex App セッション",
+        "title": "新しい ChatGPT セッション",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ko.newCodexAppSession",
-        "title": "새 Codex App 세션",
+        "title": "새 ChatGPT 세션",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.es.newCodexAppSession",
-        "title": "Nueva sesión de Codex App",
+        "title": "Nueva sesión de ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.fr.newCodexAppSession",
-        "title": "Nouvelle session Codex App",
+        "title": "Nouvelle session ChatGPT",
         "category": "Agent Resume"
       },
       {
@@ -3131,17 +3131,17 @@
       },
       {
         "command": "agentResume.pt-br.newCodexAppSession",
-        "title": "Nova sessão Codex App",
+        "title": "Nova sessão ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.it.newCodexAppSession",
-        "title": "Nuova sessione Codex App",
+        "title": "Nuova sessione ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ru.newCodexAppSession",
-        "title": "Новая сессия Codex App",
+        "title": "Новая сессия ChatGPT",
         "category": "Agent Resume"
       }
     ],

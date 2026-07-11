@@ -45,7 +45,7 @@ const nested = {
       "VS Code terminal can show Sixel/iTerm inline images when terminal.integrated.enableImages is enabled. Use Open in Ghostty for full Ghostty image workflows.",
     ghosttyOpenedCopyPaste: "Ghostty opened. Resume command copied; paste it into Ghostty and press Enter.",
     ghosttyAutoPasteFailed: "Ghostty opened and the resume command was copied, but auto paste failed: {0}",
-    openingCodexApp: "Opening {0} in Codex App.",
+    openingCodexApp: "Opening {0} in ChatGPT.",
     almaSwitchedThread: 'Switched Alma to "{0}".',
     almaOpenedNewChat: 'Opened a new Alma chat in "{0}".',
     uiLanguageChanged: "UI language updated."
@@ -59,13 +59,13 @@ const nested = {
   warning: {
     llmNotConfigured: "LLM is not configured. Set API base URL, model, and API key in Agent Resume Settings.",
     openWorkspaceBeforeNewSession: "Open a workspace folder before starting a new agent session.",
-    codexAppOnlyForCodex: "Open in Codex App is only available for Codex sessions.",
+    codexAppOnlyForCodex: "Open in ChatGPT is only available for Codex sessions.",
     claudePanelOnlyForClaude: "Resume in Claude Code Panel is only available for Claude sessions.",
     codexIdePanelOnlyForCodex: "Resume in Codex IDE Panel is only available for Codex sessions.",
     ghosttyNotForAlma: "Ghostty resume is not available for Alma sessions.",
     claudePanelResumeOnlyForClaude: "Claude Code panel resume is only available for Claude sessions.",
     codexIdePanelResumeOnlyForCodex: "Codex IDE panel resume is only available for Codex sessions.",
-    codexAppResumeOnlyForCodex: "Codex App resume is only available for Codex sessions.",
+    codexAppResumeOnlyForCodex: "ChatGPT resume is only available for Codex sessions.",
     unsupportedResumeTarget: "Unsupported resume target.",
     handoffCouldNotResolveSession: "Could not resolve a session to hand off.",
     handoffSameAgent: "Cannot hand off a session to the same agent.",
@@ -73,7 +73,7 @@ const nested = {
     claudeExtensionNotInstalled: "Claude Code extension is not installed. Install it to resume in the Claude Code panel.",
     codexExtensionNotInstalled: "Codex extension (openai.chatgpt) is not installed. Install it to resume in the Codex IDE panel.",
     codexIdePanelDisabled:
-      "Codex IDE panel resume is disabled. Enable agentResume.codexIdePanelResume.enabled in Settings, or use terminal/Codex App resume.",
+      "Codex IDE panel resume is disabled. Enable agentResume.codexIdePanelResume.enabled in Settings, or use terminal/ChatGPT resume.",
     codexIdePanelVersionMismatch:
       "Codex IDE panel resume is blocked: implementation version mismatch (extension code v{0}, settings v{1}). Update Agent Resume Panel or align agentResume.codexIdePanelResume.implementationVersion after verifying the new Codex routes.",
     codexIdePanelExperimental:
@@ -86,7 +86,7 @@ const nested = {
   },
   error: {
     failedOpenGhostty: "Failed to open Ghostty: {0}",
-    failedOpenCodexApp: "Failed to open Codex App: {0}",
+    failedOpenCodexApp: "Failed to open ChatGPT: {0}",
     failedOpenClaudePanel: "Failed to open Claude Code panel: {0}",
     failedOpenClaudePanelManual:
       "Failed to open Claude Code panel. Try opening Claude Code manually, then use Session history.",
@@ -149,8 +149,8 @@ const nested = {
     newSessionOpenCodeDescription: "Start a new OpenCode session",
     newSessionPiLabel: "$(symbol-method) Pi",
     newSessionPiDescription: "Start a new Pi session",
-    newSessionCodexAppLabel: "$(window) Codex App",
-    newSessionCodexAppDescription: "Start a new Codex App session",
+    newSessionCodexAppLabel: "$(window) ChatGPT",
+    newSessionCodexAppDescription: "Start a new ChatGPT session",
     newSessionGhosttyLabel: "$(terminal) Ghostty",
     newSessionGhosttyDescription: "Open this workspace in Ghostty",
     workspaceFolderTitle: "New Session",
@@ -167,8 +167,8 @@ const nested = {
     resumeWithClaudePanelDescription: "Resume in the Claude Code VS Code extension panel",
     resumeWithCodexIdePanelLabel: "Codex IDE Panel (Experimental)",
     resumeWithCodexIdePanelDescription: "Resume in the Codex VS Code extension panel",
-    resumeWithCodexAppLabel: "Codex App",
-    resumeWithCodexAppDescription: "Resume in Codex App via integrated terminal",
+    resumeWithCodexAppLabel: "ChatGPT",
+    resumeWithCodexAppDescription: "Resume in ChatGPT desktop app",
     handoffTargetTitle: "Hand Off to Another Agent",
     handoffTargetPlaceHolder: "Choose the target agent",
     acpAgentTitle: "Choose ACP Agent",
@@ -270,7 +270,7 @@ const nested = {
     newOpenCodeSession: "New OpenCode Session",
     newPiSession: "New Pi Session",
     newAlmaSession: "New Alma Thread",
-    newCodexAppSession: "New Codex App Session"
+    newCodexAppSession: "New ChatGPT Session"
   },
   "menu.session": {
     copyResumeCommand: "Copy Resume Command",
@@ -289,7 +289,7 @@ const nested = {
     configureProjectMenu: "Customize Project Menu",
     addFavorite: "Add to Favorites",
     removeFavorite: "Remove from Favorites",
-    resumeInCodexApp: "Resume in Codex App",
+    resumeInCodexApp: "Resume in ChatGPT",
     resumeInClaudeCodePanel: "Resume in Claude Code Panel",
     resumeInCodexIdePanel: "Resume in Codex IDE Panel (Experimental)",
     sort: {
@@ -594,7 +594,7 @@ const nested = {
   },
   terminal: {
     nameResume: "{0}: {1}",
-    nameCodexApp: "Codex App: {0}",
+    nameCodexApp: "ChatGPT: {0}",
     nameNewSession: "{0}: New Session",
     nameHandoff: "Handoff → {0}",
     providerLabelCodex: "Codex",

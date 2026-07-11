@@ -9,6 +9,7 @@ import {
   shouldResumeCodexInIdePanel
 } from "./codexIdePanel";
 import { buildNewSessionCommand, buildResumeCommand } from "./commandBuilder";
+import { openCodexAppSession } from "./codexApp";
 
 export { buildNewSessionCommand, buildResumeCommand };
 
@@ -51,27 +52,8 @@ export function openResumeTerminal(session: AgentSession, context?: vscode.Exten
 }
 
 export function openCodexAppResumeTerminal(session: AgentSession, context?: vscode.ExtensionContext): void {
-  if (session.provider !== "codex") {
-    return;
-  }
-
   void showImageSupportHint(context);
-
-  const terminal = vscode.window.createTerminal({
-    name: t("terminal.nameCodexApp", truncate(session.title, 28)),
-    cwd: session.projectPath || undefined,
-    location: terminalLocation(),
-    isTransient: false
-  });
-
-  terminal.show();
-  terminal.sendText(buildResumeCommand(session), true);
-  setTimeout(() => {
-    terminal.sendText("/app", false);
-    setTimeout(() => {
-      sendTerminalEnter(terminal);
-    }, 300);
-  }, 1200);
+  void openCodexAppSession(session);
 }
 
 export function openNewSessionTerminal(provider: AgentProvider, projectPath: string, context?: vscode.ExtensionContext): void {
@@ -141,13 +123,4 @@ function truncate(value: string, maxLength: number): string {
   }
 
   return `${value.slice(0, maxLength - 1)}...`;
-}
-
-function sendTerminalEnter(terminal: vscode.Terminal): void {
-  terminal.show(false);
-  void vscode.commands
-    .executeCommand("workbench.action.terminal.sendSequence", { text: "\u000D" })
-    .then(undefined, () => {
-      terminal.sendText("\n", false);
-    });
 }
