@@ -1,4 +1,4 @@
-/* global agentResume, marked, DOMPurify */
+/* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
 
 function $(id) {
   return document.getElementById(id);
@@ -40,9 +40,36 @@ function providerTagHtml(provider) {
   return `<span class="s-provider-tag" data-provider="${escapeHtml(p)}">${escapeHtml(p)}</span>`;
 }
 
+let markdownHighlightReady = false;
+
+function initMarkdownHighlight() {
+  if (markdownHighlightReady) return;
+  if (typeof marked?.use !== "function" || typeof hljs?.highlight !== "function") return;
+  marked.use({
+    renderer: {
+      code({ text, lang }) {
+        const language = String(lang ?? "").trim();
+        if (language && hljs.getLanguage(language)) {
+          try {
+            const highlighted = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+            return `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`;
+          } catch {
+            // fall through to auto-detect
+          }
+        }
+        const auto = hljs.highlightAuto(text);
+        const langClass = auto.language ? ` language-${escapeHtml(auto.language)}` : "";
+        return `<pre><code class="hljs${langClass}">${auto.value}</code></pre>`;
+      }
+    }
+  });
+  markdownHighlightReady = true;
+}
+
 function renderMarkdown(value) {
   const source = String(value ?? "");
   try {
+    initMarkdownHighlight();
     if (typeof marked?.parse !== "function" || typeof DOMPurify?.sanitize !== "function") {
       throw new Error("Markdown renderer is unavailable");
     }
@@ -1232,6 +1259,8 @@ let notesPendingOwner = null;
 let notesSheetMode = "create";
 /** @type {"edit" | "preview" | "view"} */
 let notesViewMode = "edit";
+/** @type {import("@codemirror/view").EditorView | null} */
+let notesCmView = null;
 
 function isNotesActive() {
   return !!document.querySelector('.tab[data-tab="notes"]')?.classList.contains("active");
@@ -1509,6 +1538,7 @@ function rewriteNoteImagePaths(markdown, noteDirAbs) {
 function renderNoteMarkdown(value, noteDirAbs) {
   const source = rewriteNoteImagePaths(String(value ?? ""), noteDirAbs);
   try {
+    initMarkdownHighlight();
     if (typeof marked?.parse !== "function" || typeof DOMPurify?.sanitize !== "function") {
       throw new Error("Markdown renderer is unavailable");
     }
@@ -1538,27 +1568,68 @@ function updateNotesPreview(content, noteAbsPath) {
   preview.innerHTML = renderNoteMarkdown(content, dir);
 }
 
+function getNotesEditorContent() {
+  if (notesCmView && typeof NotesCodeMirror?.getValue === "function") {
+    return NotesCodeMirror.getValue(notesCmView);
+  }
+  return "";
+}
+
+function setNotesEditorContent(text) {
+  mountNotesEditor();
+  if (notesCmView && typeof NotesCodeMirror?.setValue === "function") {
+    NotesCodeMirror.setValue(notesCmView, text ?? "");
+  }
+}
+
+function focusNotesEditor() {
+  if (notesCmView && typeof NotesCodeMirror?.focus === "function") {
+    NotesCodeMirror.focus(notesCmView);
+  }
+}
+
+function onNotesEditorChange(content) {
+  if (!notesViewShowsEditor()) return;
+  notesDirty = true;
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
+  updateNotesPreview(content, noteAbs);
+  scheduleNotesSave();
+}
+
+function mountNotesEditor() {
+  const host = $("notesEditorHost");
+  if (!host || notesCmView || typeof NotesCodeMirror?.mount !== "function") return;
+  notesCmView = NotesCodeMirror.mount(host, {
+    value: "",
+    placeholder: "编辑 Markdown…（⌘V 可粘贴图片）",
+    onChange: onNotesEditorChange,
+    onPasteImage: tryHandleNotesImagePaste
+  });
+}
+
+function tryHandleNotesImagePaste(event) {
+  if (!notesActiveId || !notesViewShowsEditor()) return false;
+  if (typeof agentResume.notesClipboardHasImage !== "function" || !agentResume.notesClipboardHasImage()) {
+    return false;
+  }
+  event.preventDefault();
+  void handleNotesImagePasteAsync();
+  return true;
+}
+
 function insertNoteImageSnippet(snippet) {
-  const editor = $("notesEditor");
-  if (!editor) return;
-  const start = editor.selectionStart;
-  const end = editor.selectionEnd;
-  const before = editor.value.slice(0, start);
-  const after = editor.value.slice(end);
-  editor.value = `${before}${snippet}${after}`;
-  editor.selectionStart = editor.selectionEnd = start + snippet.length;
+  mountNotesEditor();
+  if (!notesCmView || typeof NotesCodeMirror?.insertAtCursor !== "function") return;
+  NotesCodeMirror.insertAtCursor(notesCmView, snippet);
   notesDirty = true;
   scheduleNotesSave();
   const note = notesCache.find((n) => n.noteId === notesActiveId);
   const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-  updateNotesPreview(editor.value, noteAbs);
+  updateNotesPreview(getNotesEditorContent(), noteAbs);
 }
 
-async function handleNotesImagePaste(event) {
-  if (!notesActiveId || !notesViewShowsEditor()) return;
-  if (typeof agentResume.notesClipboardHasImage !== "function") return;
-  if (!agentResume.notesClipboardHasImage()) return;
-  event.preventDefault();
+async function handleNotesImagePasteAsync() {
   const status = $("notesStatus");
   try {
     const result = await agentResume.notesPasteImage({ noteId: notesActiveId });
@@ -1571,10 +1642,9 @@ async function handleNotesImagePaste(event) {
 }
 
 function refreshNotesPreviewFromEditor() {
-  const editor = $("notesEditor");
   const note = notesCache.find((n) => n.noteId === notesActiveId);
   const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-  updateNotesPreview(editor?.value ?? "", noteAbs);
+  updateNotesPreview(getNotesEditorContent(), noteAbs);
 }
 
 const NOTES_VIEW_LABELS = {
@@ -1625,7 +1695,7 @@ async function toggleNotesViewMode() {
   }
   setNotesViewMode(next);
   if (next === "edit") {
-    $("notesEditor")?.focus();
+    focusNotesEditor();
   }
 }
 
@@ -1647,9 +1717,8 @@ async function openNoteInEditor(noteId) {
     const { record, content } = await agentResume.notesRead({ noteId });
     notesActiveId = record.noteId;
     notesDirty = false;
-    const editor = $("notesEditor");
     const title = $("notesEditorTitle");
-    if (editor) editor.value = content;
+    setNotesEditorContent(content);
     if (title) title.textContent = record.filename;
     const noteAbs = notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${record.relMdPath}` : "";
     updateNotesPreview(content, noteAbs);
@@ -1673,8 +1742,7 @@ async function flushNotesSave() {
   }
   if (!notesDirty || !notesActiveId) return;
   const status = $("notesStatus");
-  const editor = $("notesEditor");
-  const content = editor?.value ?? "";
+  const content = getNotesEditorContent();
   setStatus(status, "保存中…");
   try {
     const updated = await agentResume.notesWrite({ noteId: notesActiveId, content });
@@ -1823,8 +1891,7 @@ async function handleNotesContextAction(action) {
         notesActiveId = "";
         notesDirty = false;
         showNotesEditor(false);
-        const editor = $("notesEditor");
-        if (editor) editor.value = "";
+        setNotesEditorContent("");
       }
       await loadNotes({ quiet: true });
       setStatus(status, "已删除", "ok");
@@ -5372,15 +5439,7 @@ function wire() {
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
   });
-  $("notesEditor")?.addEventListener("paste", (e) => void handleNotesImagePaste(e));
-  $("notesEditor")?.addEventListener("input", () => {
-    if (!notesViewShowsEditor()) return;
-    notesDirty = true;
-    const note = notesCache.find((n) => n.noteId === notesActiveId);
-    const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-    updateNotesPreview($("notesEditor")?.value ?? "", noteAbs);
-    scheduleNotesSave();
-  });
+  mountNotesEditor();
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#notesContextMenu") && !e.target.closest(".notes-tree-note") && !e.target.closest(".notes-tree-group-head")) {
       hideNotesContextMenu();
@@ -5500,6 +5559,7 @@ async function loadUsagePage() {
 }
 
 async function boot() {
+  initMarkdownHighlight();
   wire();
   selectedDayKey = todayInputValue();
   updatePeriodLabel();

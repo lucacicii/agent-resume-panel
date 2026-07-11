@@ -8,7 +8,10 @@ const vendorDest = path.join(dest, "vendor");
 
 fs.mkdirSync(dest, { recursive: true });
 for (const name of fs.readdirSync(src)) {
-  fs.copyFileSync(path.join(src, name), path.join(dest, name));
+  const from = path.join(src, name);
+  const to = path.join(dest, name);
+  if (fs.statSync(from).isDirectory()) continue;
+  fs.copyFileSync(from, to);
 }
 fs.mkdirSync(vendorDest, { recursive: true });
 fs.copyFileSync(

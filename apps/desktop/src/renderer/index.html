@@ -10,6 +10,8 @@
     <title>Agent Resume Desktop</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./vendor/xterm.css" />
+    <link rel="stylesheet" href="./vendor/github.min.css" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="./vendor/github-dark.min.css" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
     <header class="top mac-top">
@@ -156,7 +158,7 @@
                 </div>
               </div>
               <div class="notes-editor-layout mode-edit" id="notesEditorLayout">
-                <textarea id="notesEditor" class="notes-editor-ta" spellcheck="false" placeholder="编辑 Markdown…（⌘V 可粘贴图片）"></textarea>
+                <div id="notesEditorHost" class="notes-editor-host"></div>
                 <div id="notesPreview" class="notes-preview markdown-body"></div>
               </div>
             </div>
@@ -537,6 +539,8 @@
 
     <script src="./vendor/marked.umd.js"></script>
     <script src="./vendor/purify.min.js"></script>
+    <script src="./vendor/hljs-bundle.js"></script>
+    <script src="./vendor/notes-cm.js"></script>
     <script src="./vendor/xterm.js"></script>
     <script src="./vendor/xterm-addon-fit.js"></script>
     <script src="./vendor/xterm-addon-webgl.js"></script>
