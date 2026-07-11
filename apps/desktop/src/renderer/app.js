@@ -1687,6 +1687,61 @@ function setGenFinal(text, kind) {
   }
 }
 
+function isLlmConfigured(settings) {
+  const apiKey = settings?.llm?.apiKey?.trim();
+  const baseUrl = settings?.llm?.baseUrl?.trim();
+  const model = settings?.llm?.model?.trim();
+  return Boolean(apiKey && baseUrl && model);
+}
+
+function openLlmSettings() {
+  closeAllSheets();
+  switchTab("settings");
+  showSettingsPane("provider");
+}
+
+function showLlmRequiredDetail(digestLabel) {
+  const detail = $("calDetail");
+  if (!detail) return;
+  detail.innerHTML = `
+    <div class="detail-error">
+      <p class="empty-hint error">无法生成${escapeHtml(digestLabel)}：尚未配置工具 LLM</p>
+      <p class="muted">日历中的 session 来自本地索引；生成日报 / 周报 / 月报需要调用工具 LLM API（会先补全缺失的日报，再聚合为周报 / 月报）。</p>
+      <p class="muted">请在 <strong>Settings → Provider</strong> 填写 Base URL、Model、API Key，保存后重试。</p>
+      <button type="button" class="tool-btn" id="btnLlmSettings">去 Settings 配置</button>
+    </div>`;
+  $("btnLlmSettings")?.addEventListener("click", openLlmSettings);
+}
+
+/** @returns {Promise<boolean>} */
+async function ensureLlmReady(digestLabel) {
+  try {
+    const settings = await agentResume.getSettings();
+    if (isLlmConfigured(settings)) return true;
+  } catch {
+    // fall through to error UI
+  }
+  const msg = `无法生成${digestLabel}：请先在 Settings → Provider 配置工具 LLM（baseUrl / model / apiKey）`;
+  setGenFinal(msg, "error");
+  showLlmRequiredDetail(digestLabel);
+  return false;
+}
+
+function isLlmConfigError(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /LLM is not configured/i.test(msg);
+}
+
+function handleDigestError(digestLabel, error) {
+  const err = error instanceof Error ? error.message : String(error);
+  if (isLlmConfigError(error)) {
+    setGenFinal(`无法生成${digestLabel}：请先在 Settings → Provider 配置工具 LLM`, "error");
+    showLlmRequiredDetail(digestLabel);
+    return;
+  }
+  setGenFinal(`${digestLabel} 失败：${err}`, "error");
+}
+
 /** Days currently generating a daily digest (parallel OK). */
 const generatingDays = new Set();
 /** Weekly / monthly job in flight (single at a time). */
@@ -1754,6 +1809,7 @@ async function runDaily(dayKey, opts = {}) {
     setGenFinal("周报/月报生成中，请稍候…", "error");
     return;
   }
+  if (!(await ensureLlmReady("日报"))) return;
 
   markDayGenerating(day, true);
   detailFocus = { type: "day", key: day };
@@ -1800,6 +1856,8 @@ async function runDaily(dayKey, opts = {}) {
         periodLabel: day,
         message: `日报 ${day} 失败：${err} · 仍在生成：${[...generatingDays].filter((d) => d !== day).sort().join(" · ")}`
       });
+    } else if (isLlmConfigError(error)) {
+      handleDigestError("日报", error);
     } else {
       setGenFinal(`日报 ${day} 失败：${err}`, "error");
     }
@@ -1825,6 +1883,7 @@ async function runWeekly(weekKey) {
     setGenFinal("有任务进行中，请稍候再生成周报…", "error");
     return;
   }
+  if (!(await ensureLlmReady("周报"))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `weekly:${week}`;
   detailFocus = { type: "week", key: week };
@@ -1848,7 +1907,7 @@ async function runWeekly(weekKey) {
     );
     await loadMemory();
   } catch (error) {
-    setGenFinal(error instanceof Error ? error.message : String(error), "error");
+    handleDigestError("周报", error);
   } finally {
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
@@ -1867,6 +1926,7 @@ async function runMonthly(monthKey) {
     setGenFinal("有任务进行中，请稍候再生成月报…", "error");
     return;
   }
+  if (!(await ensureLlmReady("月报"))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `monthly:${month}`;
   detailFocus = { type: "month", key: month };
@@ -1890,7 +1950,7 @@ async function runMonthly(monthKey) {
     );
     await loadMemory();
   } catch (error) {
-    setGenFinal(error instanceof Error ? error.message : String(error), "error");
+    handleDigestError("月报", error);
   } finally {
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
