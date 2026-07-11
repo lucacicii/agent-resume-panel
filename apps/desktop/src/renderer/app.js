@@ -498,6 +498,7 @@ let wbTerminalIpcReady = false;
 let wbContextSession = null;
 let wbLoaded = false;
 let wbResizeObserver = null;
+let wbBlankTerminalSeq = 0;
 
 function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
@@ -668,10 +669,41 @@ async function ensureWorkbenchVisible() {
   }
   await loadWorkbenchSessions({ quiet: true });
   if (tree) tree.scrollTop = previousScrollTop;
+  await ensureDefaultWorkbenchTerminal();
   // Double rAF: panel was display:none while on other tabs — wait for layout before fit.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => fitWorkbenchTerminal());
   });
+}
+
+function defaultWorkbenchTerminalCwd() {
+  const scratch = loadedSettings?.workbench?.scratchDir?.trim();
+  if (scratch) return scratch;
+  const panelHome = loadedSettings?.panelHome?.trim();
+  if (panelHome) return panelHome;
+  return "~";
+}
+
+function workbenchBlankTerminalKey() {
+  return `term:${++wbBlankTerminalSeq}`;
+}
+
+function nextBlankTerminalTitle() {
+  const count = [...wbTerminalPanes.keys()].filter((k) => k.startsWith("term:")).length;
+  return `终端 ${count + 1}`;
+}
+
+async function openBlankWorkbenchTerminal() {
+  return openWorkbenchTerminal({
+    key: workbenchBlankTerminalKey(),
+    title: nextBlankTerminalTitle(),
+    cwd: defaultWorkbenchTerminalCwd()
+  });
+}
+
+async function ensureDefaultWorkbenchTerminal() {
+  if (wbTerminalPanes.size > 0) return;
+  await openBlankWorkbenchTerminal();
 }
 
 function workbenchSessionKey(session) {
@@ -760,7 +792,6 @@ function renderWorkbenchTerminalTabs() {
 function switchWorkbenchTerminalTab(key) {
   if (!wbTerminalPanes.has(key)) return;
   wbActiveTerminalKey = key;
-  wbActiveKey = key.startsWith("new:") ? wbActiveKey : key;
 
   for (const [paneKey, pane] of wbTerminalPanes) {
     const active = paneKey === key;
@@ -778,9 +809,11 @@ function switchWorkbenchTerminalTab(key) {
     }
   }
 
-  if (!key.startsWith("new:")) {
+  if (!key.startsWith("new:") && !key.startsWith("term:")) {
     wbActiveKey = key;
     highlightWorkbenchSession(key);
+  } else if (key.startsWith("term:")) {
+    highlightWorkbenchSession("");
   }
   renderWorkbenchTerminalTabs();
   updateWorkbenchTerminalHint();
@@ -4478,6 +4511,7 @@ function wire() {
   });
 
   $("btnWorkbenchNewSession")?.addEventListener("click", () => openNewSessionSheet());
+  $("btnWorkbenchNewTerminal")?.addEventListener("click", () => void openBlankWorkbenchTerminal());
   $("btnConfirmNewSession")?.addEventListener("click", () => void confirmNewSession());
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));

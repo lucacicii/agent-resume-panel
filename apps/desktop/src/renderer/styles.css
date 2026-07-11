@@ -2764,8 +2764,16 @@ code {
   padding: 10px 10px 6px;
 }
 
-.wb-new-btn {
-  width: 100%;
+.wb-sidebar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wb-sidebar-actions .tool-btn {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  padding: 6px 8px;
 }
 
 .wb-meta {
