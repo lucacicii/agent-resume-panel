@@ -558,7 +558,9 @@ function monthRangeFromKey(monthLabel) {
  * @returns {{ type: string, key: string, fromMs: number, toMs: number } | null}
  */
 function focusSessionRange() {
-  const focus = detailFocus || (selectedDayKey ? { type: "day", key: selectedDayKey } : null);
+  const focus =
+    detailFocus ||
+    (selectedDayKey ? { type: "day", key: selectedDayKey } : { type: "month", key: viewMonthLabel() });
   if (!focus || !focus.key) return null;
   if (focus.type === "day") {
     const r = dayRangeFromKey(focus.key);
@@ -701,7 +703,7 @@ async function renderCalSessionList(opts = {}) {
     delete listEl.dataset.view;
     if (titleEl) titleEl.textContent = "Sessions";
     if (metaEl) metaEl.textContent = "";
-    listEl.innerHTML = `<p class="muted cal-session-empty">选择日期 / 周 / 月后显示 session</p>`;
+    listEl.innerHTML = `<p class="muted cal-session-empty">切换月份或选择日期 / 周后显示 session</p>`;
     calSessionCache = [];
     return;
   }
@@ -819,6 +821,7 @@ function applyCalPicker() {
   if (!Number.isFinite(year) || !Number.isFinite(month)) return;
   if (calView.year === year && calView.month === month) return;
   calView = { year, month };
+  focusViewedMonth();
   loadMemory();
 }
 
@@ -833,6 +836,13 @@ function currentMonthLabel() {
 
 function viewMonthLabel() {
   return `${calView.year}-${pad2(calView.month + 1)}`;
+}
+
+/** Switch session list + detail to the calendar's viewed month. */
+function focusViewedMonth() {
+  detailFocus = { type: "month", key: viewMonthLabel() };
+  selectedDayKey = null;
+  updatePeriodLabel();
 }
 
 function hasWeeklyDigest(weekLabel) {
@@ -897,8 +907,54 @@ function digestCardHtml(e) {
       </article>`;
 }
 
-function wireDigestCardActions(root) {
+const FOCUS_DIGEST_LABELS = { day: "日报", week: "周报", month: "月报" };
+const FOCUS_DIGEST_LEVELS = { day: "daily", week: "weekly", month: "monthly" };
+
+function isFuturePeriod(type, key) {
+  if (type === "day") return isFutureDayKey(key);
+  if (type === "week") return key > currentWeekLabel();
+  if (type === "month") return key > currentMonthLabel();
+  return false;
+}
+
+function getFocusDigestEntry(type, key) {
+  if (type === "day") {
+    return entriesForDay(key).find((e) => e.level === "daily");
+  }
+  if (type === "week") return getWeeklyEntry(key);
+  if (type === "month") return getMonthlyEntry(key);
+  return undefined;
+}
+
+function startDigestGeneration(level, periodKey) {
+  if (level === "daily") {
+    selectedDayKey = periodKey;
+    detailFocus = { type: "day", key: periodKey };
+    updatePeriodLabel();
+    runDaily(periodKey);
+    return;
+  }
+  if (level === "weekly") {
+    selectedDayKey = null;
+    detailFocus = { type: "week", key: periodKey };
+    updatePeriodLabel();
+    runWeekly(periodKey);
+    return;
+  }
+  if (level === "monthly") {
+    focusViewedMonth();
+    runMonthly(periodKey);
+  }
+}
+
+function wireDigestPanelActions(root) {
   if (!root) return;
+  root.querySelectorAll(".dig-generate").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      startDigestGeneration(btn.dataset.level || "daily", btn.dataset.periodKey || "");
+    });
+  });
   root.querySelectorAll(".dig-regen").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -915,6 +971,59 @@ function wireDigestCardActions(root) {
       openGtdFromDigest(btn.dataset.level || "daily", btn.dataset.id || "");
     });
   });
+}
+
+/**
+ * Right panel: view or generate digest for the focused day / week / month.
+ * @param {"day"|"week"|"month"} type
+ * @param {string} key
+ */
+function renderFocusDigestDetail(type, key) {
+  const detail = $("calDetail");
+  if (!detail || !key) return;
+
+  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  const level = FOCUS_DIGEST_LEVELS[type] || "daily";
+
+  if (type === "day" && generatingDays.has(key)) {
+    showGeneratingDetail("day", key);
+    return;
+  }
+  if (type === "week" && generatingPeriodKey === `weekly:${key}`) {
+    showGeneratingDetail("week", key);
+    return;
+  }
+  if (type === "month" && generatingPeriodKey === `monthly:${key}`) {
+    showGeneratingDetail("month", key);
+    return;
+  }
+
+  if (!generatingDays.size && !weeklyMonthlyBusy) {
+    hideGenProgress();
+  }
+
+  if (isFuturePeriod(type, key)) {
+    detail.innerHTML = `<p class="empty-hint">未来${escapeHtml(label)}不可生成。</p>`;
+    return;
+  }
+
+  const entry = getFocusDigestEntry(type, key);
+  if (entry) {
+    renderDigestEntries([entry]);
+    return;
+  }
+
+  detail.innerHTML = `
+    <div class="digest-panel digest-panel-empty">
+      <header class="digest-panel-head">
+        <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(label)} · ${escapeHtml(key)}</h3>
+      </header>
+      <p class="empty-hint muted">尚未生成${escapeHtml(label)}。点击下方按钮在右侧面板生成（需配置工具 LLM）。</p>
+      <button type="button" class="tool-btn dig-generate" data-level="${escapeHtml(level)}" data-period-key="${escapeHtml(
+        key
+      )}">生成${escapeHtml(label)}</button>
+    </div>`;
+  wireDigestPanelActions(detail);
 }
 
 /** Parse period key from memory id: daily:YYYY-MM-DD | weekly:YYYY-Www | monthly:YYYY-MM */
@@ -1077,62 +1186,15 @@ function renderDigestEntries(entries) {
     return;
   }
   detail.innerHTML = entries.map((e) => digestCardHtml(e)).join("");
-  wireDigestCardActions(detail);
-}
-
-function renderWeekDetail(weekLabel) {
-  // Viewing existing digest only — never show generation progress chrome.
-  const isGenerating = generatingPeriodKey === `weekly:${weekLabel}`;
-  if (!isGenerating) {
-    hideGenProgress();
-  }
-  const entry = getWeeklyEntry(weekLabel);
-  if (!entry) {
-    $("calDetail").innerHTML = `<p class="empty-hint">周报 ${escapeHtml(weekLabel)} 尚不存在。</p>`;
-    return;
-  }
-  renderDigestEntries([entry]);
-}
-
-function renderMonthDetail(monthLabel) {
-  const isGenerating = generatingPeriodKey === `monthly:${monthLabel}`;
-  if (!isGenerating) {
-    hideGenProgress();
-  }
-  const entry = getMonthlyEntry(monthLabel);
-  if (!entry) {
-    $("calDetail").innerHTML = `<p class="empty-hint">月报 ${escapeHtml(monthLabel)} 尚不存在。</p>`;
-    return;
-  }
-  renderDigestEntries([entry]);
+  wireDigestPanelActions(detail);
 }
 
 function refreshDetailFocus() {
   if (!detailFocus) {
-    if (selectedDayKey) renderDayDetail(selectedDayKey);
+    if (selectedDayKey) renderFocusDigestDetail("day", selectedDayKey);
     return;
   }
-  const { type, key } = detailFocus;
-  // If focused period is still generating, keep the generating placeholder.
-  if (type === "day" && generatingDays.has(key)) {
-    showGeneratingDetail("day", key);
-    return;
-  }
-  if (type === "week" && generatingPeriodKey === `weekly:${key}`) {
-    showGeneratingDetail("week", key);
-    return;
-  }
-  if (type === "month" && generatingPeriodKey === `monthly:${key}`) {
-    showGeneratingDetail("month", key);
-    return;
-  }
-  if (type === "day") {
-    renderDayDetail(key);
-  } else if (type === "week") {
-    renderWeekDetail(key);
-  } else if (type === "month") {
-    renderMonthDetail(key);
-  }
+  renderFocusDigestDetail(detailFocus.type, detailFocus.key);
 }
 
 function renderCalendar() {
@@ -1212,10 +1274,10 @@ function renderCalendar() {
     if (isFutureWeek) weekBtn.classList.add("future");
     if (generatingPeriodKey === `weekly:${wLabel}`) weekBtn.classList.add("generating");
     weekBtn.title = isFutureWeek
-      ? `未来周 ${wLabel} 不生成`
+      ? `未来周 ${wLabel}`
       : hasW
-        ? `周报 ${wLabel} · 点击查看（重新生成请用详情按钮）`
-        : `周报 ${wLabel} · 点击生成`;
+        ? `周报 ${wLabel} · 点击查看（右侧面板可重新生成）`
+        : `周报 ${wLabel} · 点击查看 session，右侧面板生成`;
     weekBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       onWeekButton(wLabel);
@@ -1233,13 +1295,17 @@ function renderCalendar() {
     monthBtn.classList.toggle("has-digest", hasM);
     monthBtn.classList.toggle("future", isFutureMonth);
     monthBtn.classList.toggle("generating", generatingPeriodKey === `monthly:${mLabel}`);
+    monthBtn.classList.toggle(
+      "selected",
+      detailFocus?.type === "month" && detailFocus.key === mLabel
+    );
     monthBtn.disabled = isFutureMonth;
-    monthBtn.textContent = isFutureMonth ? "月报（未来）" : hasM ? `月报 · ${mLabel}` : `月报 · 生成`;
+    monthBtn.textContent = isFutureMonth ? "月（未来）" : `月 · ${mLabel}`;
     monthBtn.title = isFutureMonth
-      ? "未来月份不生成月报"
+      ? "未来月份"
       : hasM
-        ? `月报 ${mLabel} · 点击查看（重新生成请用详情按钮）`
-        : `月报 ${mLabel} · 点击生成`;
+        ? `月 ${mLabel} · 点击查看 session 与月报（右侧面板可重新生成）`
+        : `月 ${mLabel} · 点击查看 session，右侧面板生成月报`;
   }
 }
 
@@ -1298,166 +1364,30 @@ function showGeneratingDetail(type, key) {
     </div>`;
 }
 
-async function selectDay(dayKey) {
+function selectDay(dayKey) {
   selectedDayKey = dayKey;
   detailFocus = { type: "day", key: dayKey };
   updatePeriodLabel();
   renderCalendar();
   renderCalSessionList();
-
-  // Already generating this day → jump to its detail + progress (no new job).
-  if (generatingDays.has(dayKey)) {
-    focusGeneratingDetail("day", dayKey);
-    return;
-  }
-
-  renderDayDetail(dayKey);
-
-  // Future days: view only, never generate.
-  if (isFutureDayKey(dayKey)) {
-    return;
-  }
-
-  if (weeklyMonthlyBusy) {
-    setGenFinal("周报/月报生成中，请稍候再点日期…", "error");
-    return;
-  }
-
-  // Auto-generate only when sessions are new/updated (or daily missing with sessions).
-  try {
-    const check = await agentResume.needsDailyDigestRefresh(dayKey);
-    if (!check.needed) {
-      if (check.reason === "up_to_date") {
-        // Soft status; don't look like an error
-        showGenProgress();
-        const line = $("genProgressLine");
-        if (line) {
-          line.textContent = check.message || "日报已是最新";
-          line.classList.remove("is-error");
-          line.classList.add("is-ok");
-        }
-        const box = $("genProgress");
-        box?.classList.remove("is-error", "is-loading");
-        box?.classList.add("is-done");
-        hideGenSessionRow();
-      }
-      return;
-    }
-    runDaily(dayKey, { reasonMessage: check.message });
-  } catch (error) {
-    // Fallback: if check fails, only generate when no daily yet
-    if (!hasDailyDigest(dayKey)) {
-      runDaily(dayKey);
-    } else {
-      console.warn("needsDailyDigestRefresh failed", error);
-    }
-  }
+  renderFocusDigestDetail("day", dayKey);
 }
 
 function onWeekButton(weekLabel) {
   if (!weekLabel) return;
+  selectedDayKey = null;
   detailFocus = { type: "week", key: weekLabel };
   updatePeriodLabel();
   renderCalendar();
   renderCalSessionList();
-
-  // Already generating this week → jump detail + progress.
-  if (generatingPeriodKey === `weekly:${weekLabel}`) {
-    focusGeneratingDetail("week", weekLabel);
-    return;
-  }
-
-  const thisWeek = currentWeekLabel();
-  if (weekLabel > thisWeek) {
-    $("calDetail").innerHTML = `<p class="empty-hint">未来周不生成周报。</p>`;
-    return;
-  }
-
-  // Exists (including current week) → only show; regenerate via detail button.
-  if (hasWeeklyDigest(weekLabel)) {
-    hideGenProgress();
-    renderWeekDetail(weekLabel);
-    return;
-  }
-
-  if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    $("calDetail").innerHTML = `<p class="empty-hint muted">周报 ${escapeHtml(
-      weekLabel
-    )} 尚未生成；当前有其他任务进行中，请稍候。</p>`;
-    setGenFinal("有任务进行中，请稍候再生成周报…", "error");
-    return;
-  }
-  runWeekly(weekLabel);
+  renderFocusDigestDetail("week", weekLabel);
 }
 
 function onMonthButton() {
-  const monthLabel = viewMonthLabel();
-  detailFocus = { type: "month", key: monthLabel };
-  updatePeriodLabel();
+  focusViewedMonth();
   renderCalendar();
   renderCalSessionList();
-
-  if (generatingPeriodKey === `monthly:${monthLabel}`) {
-    focusGeneratingDetail("month", monthLabel);
-    return;
-  }
-
-  const thisMonth = currentMonthLabel();
-  if (monthLabel > thisMonth) {
-    $("calDetail").innerHTML = `<p class="empty-hint">未来月份不生成月报。</p>`;
-    return;
-  }
-
-  // Exists (including current month) → only show; regenerate via detail button.
-  if (hasMonthlyDigest(monthLabel)) {
-    hideGenProgress();
-    renderMonthDetail(monthLabel);
-    return;
-  }
-
-  if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    $("calDetail").innerHTML = `<p class="empty-hint muted">月报 ${escapeHtml(
-      monthLabel
-    )} 尚未生成；当前有其他任务进行中，请稍候。</p>`;
-    setGenFinal("有任务进行中，请稍候再生成月报…", "error");
-    return;
-  }
-  runMonthly(monthLabel);
-}
-
-function renderDayDetail(dayKey) {
-  const detail = $("calDetail");
-  const items = entriesForDay(dayKey);
-  const daily = items.find((e) => e.level === "daily");
-  const weeklies = items.filter((e) => e.level === "weekly");
-  const monthlies = items.filter((e) => e.level === "monthly");
-
-  // Viewing a finished day (not generating) → hide leftover progress UI.
-  if (!generatingDays.has(dayKey) && !weeklyMonthlyBusy) {
-    hideGenProgress();
-  }
-
-  if (!items.length) {
-    const isFuture = isFutureDayKey(dayKey);
-    const isGen = generatingDays.has(dayKey);
-    if (isFuture) {
-      detail.innerHTML = `<p class="empty-hint">未来日期不生成日报。</p>`;
-    } else if (isGen) {
-      detail.innerHTML = `<p class="empty-hint muted">正在生成日报，进度见上方…</p>`;
-    } else {
-      detail.innerHTML = `<p class="empty-hint">这一天还没有 digest。</p>`;
-    }
-    return;
-  }
-
-  const blocks = [];
-  if (daily) {
-    blocks.push(daily);
-  }
-  blocks.push(...weeklies, ...monthlies);
-
-  detail.innerHTML = blocks.map((e) => digestCardHtml(e)).join("");
-  wireDigestCardActions(detail);
+  renderFocusDigestDetail("month", viewMonthLabel());
 }
 
 async function loadMemory() {
@@ -1473,7 +1403,7 @@ async function loadMemory() {
     if (detailFocus || selectedDayKey) {
       refreshDetailFocus();
     } else {
-      $("calDetail").innerHTML = `<p class="muted">点击日期 / 周报 / 月报按钮查看 digests。</p>`;
+      $("calDetail").innerHTML = `<p class="muted">点击日期 / 周 / 月查看 session；在右侧面板生成 digest。</p>`;
     }
     renderCalSessionList();
   } catch (error) {
@@ -1496,6 +1426,7 @@ function shiftCalMonth(delta) {
     y += 1;
   }
   calView = { year: y, month: m };
+  focusViewedMonth();
   loadMemory();
 }
 
@@ -1503,6 +1434,7 @@ function goCalToday() {
   const n = new Date();
   calView = { year: n.getFullYear(), month: n.getMonth() };
   selectedDayKey = todayInputValue();
+  detailFocus = { type: "day", key: selectedDayKey };
   updatePeriodLabel();
   loadMemory();
 }
@@ -1844,8 +1776,8 @@ async function runDaily(dayKey, opts = {}) {
       setGenFinal(msg, "ok");
     }
     await loadMemory();
-    if (selectedDayKey === day) {
-      renderDayDetail(day);
+    if (detailFocus?.type === "day" && detailFocus.key === day) {
+      renderFocusDigestDetail("day", day);
     }
   } catch (error) {
     const err = error instanceof Error ? error.message : String(error);

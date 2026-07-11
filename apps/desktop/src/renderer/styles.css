@@ -1330,6 +1330,11 @@ legend {
   color: #2dd4bf !important;
 }
 
+.cal-month-btn.selected {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg)) !important;
+}
+
 .cal-cell {
   min-width: 0;
   width: 100%;
@@ -1804,6 +1809,34 @@ legend {
   font-size: 11px;
   max-height: 200px;
   overflow: auto;
+}
+
+.digest-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+}
+
+.digest-panel-head {
+  margin-bottom: 8px;
+}
+
+.digest-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.digest-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.digest-panel-empty .empty-hint {
+  margin: 0;
 }
 
 .digest-card {
