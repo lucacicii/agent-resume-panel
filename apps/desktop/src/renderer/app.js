@@ -3162,35 +3162,69 @@ function updateStreamingBubble(idx) {
   }
 }
 
+function assistantStatusLabel(turn) {
+  if (turn.streaming) {
+    return "正在输入…";
+  }
+  return turn.fallback ? "近期摘要" : "记忆检索";
+}
+
+function appendChatFooter(bubble, turn, turnIdx) {
+  const footer = document.createElement("div");
+  footer.className = "chat-footer";
+
+  const meta = document.createElement("span");
+  meta.className = "chat-footer-meta";
+  meta.textContent = assistantStatusLabel(turn);
+  footer.appendChild(meta);
+
+  if (!turn.streaming && turn.content) {
+    const btnCopy = document.createElement("button");
+    btnCopy.type = "button";
+    btnCopy.className = "chat-copy-btn";
+    btnCopy.textContent = "复制";
+    btnCopy.addEventListener("click", async () => {
+      await copyText(turn.content);
+      setStatus($("agentStatus"), "已复制回答", "ok");
+    });
+    footer.appendChild(btnCopy);
+  }
+
+  bubble.appendChild(footer);
+  bubble.dataset.turnIdx = String(turnIdx);
+}
+
 function renderChat() {
   const log = $("chatLog");
   log.innerHTML = "";
   if (!chatTurns.length) {
-    log.innerHTML = `<p class="muted">向 Meta-Agent 提问。先生成 Daily/Weekly digests 效果更好。</p>`;
+    log.innerHTML = `<div class="chat-empty-state">
+      <p class="chat-empty-title">开始对话</p>
+      <p class="chat-empty-hint">用自然语言问记忆。先生成 Daily/Weekly digests 效果更好。</p>
+    </div>`;
     return;
   }
 
   for (let i = 0; i < chatTurns.length; i++) {
     const turn = chatTurns[i];
+    const row = document.createElement("div");
+    row.className = `chat-message ${turn.role === "user" ? "chat-message-out" : "chat-message-in"}`;
+
     const bubble = document.createElement("div");
     bubble.className = `chat-bubble ${turn.role}${turn.streaming ? " streaming" : ""}`;
     bubble.dataset.turnIdx = String(i);
+
     if (turn.role === "user") {
       bubble.textContent = turn.content;
-      log.appendChild(bubble);
+      row.appendChild(bubble);
+      log.appendChild(row);
       continue;
     }
 
-    const meta = document.createElement("div");
-    meta.className = "chat-meta";
-    if (turn.streaming) {
-      meta.textContent = "Assistant · generating…";
-    } else {
-      meta.textContent = turn.fallback
-        ? "Assistant · fallback retrieval (recent digests)"
-        : "Assistant · memory retrieval";
-    }
-    bubble.appendChild(meta);
+    const sender = document.createElement("div");
+    sender.className = "chat-sender";
+    sender.textContent = "Memory Agent";
+    bubble.appendChild(sender);
 
     const body = document.createElement("div");
     body.className = "chat-body";
@@ -3205,7 +3239,9 @@ function renderChat() {
       cursor.className = "chat-stream-cursor";
       cursor.setAttribute("aria-hidden", "true");
       body.appendChild(cursor);
-      log.appendChild(bubble);
+      appendChatFooter(bubble, turn, i);
+      row.appendChild(bubble);
+      log.appendChild(row);
       continue;
     }
 
@@ -3218,20 +3254,9 @@ function renderChat() {
       bubble.appendChild(list);
     }
 
-    const actions = document.createElement("div");
-    actions.className = "chat-actions";
-
-    const btnCopy = document.createElement("button");
-    btnCopy.type = "button";
-    btnCopy.textContent = "Copy answer";
-    btnCopy.addEventListener("click", async () => {
-      await copyText(turn.content);
-      setStatus($("agentStatus"), "Answer copied", "ok");
-    });
-    actions.appendChild(btnCopy);
-
-    bubble.appendChild(actions);
-    log.appendChild(bubble);
+    appendChatFooter(bubble, turn, i);
+    row.appendChild(bubble);
+    log.appendChild(row);
   }
 
   log.scrollTop = log.scrollHeight;

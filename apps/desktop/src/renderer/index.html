@@ -101,20 +101,28 @@
       </section>
 
       <!-- Ask (merged Agent + semantic search) -->
-      <section id="tab-ask" class="panel">
-        <div class="toolbar">
+      <section id="tab-ask" class="panel ask-panel">
+        <div class="toolbar ask-toolbar">
           <h2 class="quiet-title">Ask</h2>
           <button type="button" class="ghost-btn" id="btnClearChat">清空</button>
         </div>
-        <p class="muted">
-          用自然语言问记忆（自动语义检索 digests）。例如：上周做了什么？payment 卡在哪？
-        </p>
-        <div id="chatLog" class="chat-log"></div>
-        <div class="chat-compose">
-          <textarea id="agentInput" rows="3" placeholder="提问…"></textarea>
-          <button type="button" id="btnAgentSend">发送</button>
+        <div class="ask-chat-shell">
+          <div id="chatLog" class="chat-log"></div>
+          <div class="chat-compose">
+            <div class="chat-compose-field">
+              <textarea id="agentInput" rows="1" placeholder="输入消息…"></textarea>
+            </div>
+            <button type="button" id="btnAgentSend" class="chat-send-btn" title="发送" aria-label="发送">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
+                />
+              </svg>
+            </button>
+          </div>
+          <p class="status ask-status" id="agentStatus"></p>
         </div>
-        <p class="status" id="agentStatus"></p>
       </section>
 
       <!-- Settings: left nav + right content -->
