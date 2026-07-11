@@ -3204,6 +3204,19 @@ code {
   padding: 8px 10px 4px;
 }
 
+.notes-toolbar-delete {
+  margin-left: auto;
+}
+
+.notes-toolbar-delete:not(:disabled) {
+  color: color-mix(in srgb, var(--text) 88%, #c44);
+}
+
+.notes-toolbar-delete:not(:disabled):hover {
+  background: color-mix(in srgb, #e05252 14%, transparent);
+  color: #d04040;
+}
+
 .notes-target-popover {
   position: absolute;
   top: calc(100% - 2px);
@@ -3310,11 +3323,20 @@ code {
   height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.notes-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .notes-icon-btn:hover {
@@ -3360,6 +3382,7 @@ code {
   flex: 1;
   overflow: auto;
   min-height: 0;
+  padding: 4px 0 8px;
 }
 
 .notes-list-empty {
@@ -3371,10 +3394,12 @@ code {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 100%;
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin: 0 8px 4px;
   padding: 10px 12px;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  border-radius: 8px;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -3589,23 +3614,6 @@ code {
   padding: 0;
   font-size: 14px;
   color: var(--muted);
-}
-
-.notes-status {
-  margin: 0;
-  padding: 4px 16px 8px;
-  font-size: 11px;
-  min-height: 20px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.notes-status.ok {
-  color: color-mix(in srgb, #3d9a5f 80%, var(--text));
-}
-
-.notes-status.error {
-  color: color-mix(in srgb, #d64545 80%, var(--text));
 }
 
 @media (max-width: 900px) {

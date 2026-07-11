@@ -1252,6 +1252,7 @@ let notesSearch = "";
 let notesSelectedFolder = { kind: "all" };
 let notesActiveId = "";
 let notesDirty = false;
+let notesSuppressEditorChange = false;
 let notesSaveTimer = null;
 let notesLoaded = false;
 let notesPanelHome = "";
@@ -1314,6 +1315,11 @@ function selectNotesFolder(folder) {
   renderNotesPanel();
 }
 
+function alertNotesError(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "未知错误");
+  window.alert(message);
+}
+
 function notesRelativeTime(ms) {
   const diff = Date.now() - ms;
   if (diff < 60_000) return "刚刚";
@@ -1366,6 +1372,7 @@ function filterNotesByFolder(notes) {
   );
 }
 
+/** Notes list order: most recently updated first (`updatedAtMs` descending). */
 function visibleNotesList() {
   return filterNotesBySearch(filterNotesByFolder(notesCache)).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
 }
@@ -1409,45 +1416,48 @@ function selectNotesFolderForOwner(owner) {
   }
 }
 
+function updateNotesToolbarState() {
+  const canDelete = Boolean(notesActiveId) && !notesCreateBusy;
+  const deleteBtn = $("btnNotesDelete");
+  if (deleteBtn) {
+    deleteBtn.toggleAttribute("disabled", !canDelete);
+  }
+}
+
 function setNotesCreateBusy(busy) {
   notesCreateBusy = busy;
   $("btnNotesNew")?.toggleAttribute("disabled", busy);
   $("btnNotesImport")?.toggleAttribute("disabled", busy);
   $("btnNotesNew")?.classList.toggle("is-busy", busy);
   $("btnNotesImport")?.classList.toggle("is-busy", busy);
+  updateNotesToolbarState();
 }
 
 async function createNoteWithOwner(owner) {
-  const status = $("notesStatus");
   setNotesCreateBusy(true);
-  setStatus(status, "创建中…");
   try {
     await flushNotesSave();
     const created = await agentResume.notesCreate(owner);
     selectNotesFolderForOwner(owner);
-    await loadNotes({ quiet: true });
+    await loadNotes();
     await openNoteInEditor(created.noteId);
     setNotesViewMode("edit");
     focusNotesEditor();
-    setStatus(status, "已创建", "ok");
     return created;
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
-    throw error;
+    alertNotesError(error);
   } finally {
     setNotesCreateBusy(false);
   }
 }
 
 async function importNotesWithOwner(owner) {
-  const status = $("notesStatus");
   setNotesCreateBusy(true);
-  setStatus(status, "导入中…");
   try {
     const result = await agentResume.notesImport(owner);
     if (result.imported > 0) {
       selectNotesFolderForOwner(owner);
-      await loadNotes({ quiet: true });
+      await loadNotes();
       const imported = notesCache
         .filter((n) => {
           if (owner.scope === "project") {
@@ -1463,16 +1473,12 @@ async function importNotesWithOwner(owner) {
       if (result.imported === 1 && imported[0]) {
         await openNoteInEditor(imported[0].noteId);
       }
-      setStatus(status, `已导入 ${result.imported} 条笔记`, "ok");
     } else if (result.errors?.length) {
-      setStatus(status, result.errors[0], "error");
-    } else {
-      setStatus(status, "未选择文件", "");
+      alertNotesError(result.errors[0]);
     }
     return result;
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
-    throw error;
+    alertNotesError(error);
   } finally {
     setNotesCreateBusy(false);
   }
@@ -1756,6 +1762,9 @@ function renderNotesList() {
     });
     list.appendChild(btn);
   }
+
+  const activeBtn = list.querySelector(`.notes-list-item[data-note-id="${CSS.escape(notesActiveId)}"]`);
+  activeBtn?.scrollIntoView({ block: "nearest" });
 }
 
 function noteDirFromAbs(absPath) {
@@ -1835,7 +1844,12 @@ function getNotesEditorContent() {
 function setNotesEditorContent(text) {
   mountNotesEditor();
   if (notesCmView && typeof NotesCodeMirror?.setValue === "function") {
-    NotesCodeMirror.setValue(notesCmView, text ?? "");
+    notesSuppressEditorChange = true;
+    try {
+      NotesCodeMirror.setValue(notesCmView, text ?? "");
+    } finally {
+      notesSuppressEditorChange = false;
+    }
   }
 }
 
@@ -1846,7 +1860,7 @@ function focusNotesEditor() {
 }
 
 function onNotesEditorChange() {
-  if (!notesViewShowsEditor()) return;
+  if (notesSuppressEditorChange || !notesViewShowsEditor()) return;
   notesDirty = true;
   scheduleNotesSave();
 }
@@ -1881,14 +1895,12 @@ function insertNoteImageSnippet(snippet) {
 }
 
 async function handleNotesImagePasteAsync() {
-  const status = $("notesStatus");
   try {
     const result = await agentResume.notesPasteImage({ noteId: notesActiveId });
     if (!result?.snippet) return;
     insertNoteImageSnippet(result.snippet);
-    setStatus(status, "已粘贴图片", "ok");
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertNotesError(error);
   }
 }
 
@@ -1938,15 +1950,61 @@ function showNotesEditor(show) {
   const empty = $("notesEmptyState");
   if (shell) shell.hidden = !show;
   if (empty) empty.hidden = show;
+  if (!show) {
+    notesActiveId = "";
+    notesDirty = false;
+  }
   if (show) renderNotesViewMode();
+  updateNotesToolbarState();
+}
+
+function shouldKeepNotesSelection(target) {
+  return Boolean(
+    target.closest(".notes-list-item") ||
+      target.closest("#notesEditorShell") ||
+      target.closest(".notes-list-toolbar") ||
+      target.closest("#notesTargetPopover") ||
+      target.closest("#notesContextMenu")
+  );
+}
+
+async function clearNotesSelection() {
+  if (!notesActiveId) return;
+  if (notesDirty) {
+    await flushNotesSave({ render: false });
+  }
+  showNotesEditor(false);
+  setNotesEditorContent("");
+  renderNotesList();
+}
+
+async function deleteActiveNote() {
+  if (!notesActiveId) return;
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  if (!note) return;
+  const ok = confirm(`删除笔记「${note.filename}」？将同时删除其 assets 文件夹。`);
+  if (!ok) return;
+  try {
+    await flushNotesSave({ render: false });
+    await agentResume.notesDelete({ noteId: note.noteId });
+    notesActiveId = "";
+    notesDirty = false;
+    showNotesEditor(false);
+    setNotesEditorContent("");
+    await loadNotes();
+  } catch (error) {
+    alertNotesError(error);
+  }
 }
 
 async function openNoteInEditor(noteId) {
   if (notesDirty && notesActiveId && notesActiveId !== noteId) {
-    await flushNotesSave();
+    await flushNotesSave({ render: false });
   }
-  const status = $("notesStatus");
-  setStatus(status, "加载中…");
+  notesActiveId = noteId;
+  updateNotesToolbarState();
+  renderNotesList();
+
   try {
     const { record, content } = await agentResume.notesRead({ noteId });
     notesActiveId = record.noteId;
@@ -1958,9 +2016,11 @@ async function openNoteInEditor(noteId) {
     updateNotesPreview(content, noteAbs);
     showNotesEditor(true);
     renderNotesPanel();
-    setStatus(status, "");
+    updateNotesToolbarState();
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    notesActiveId = "";
+    updateNotesToolbarState();
+    alertNotesError(error);
   }
 }
 
@@ -1969,32 +2029,28 @@ function scheduleNotesSave() {
   notesSaveTimer = setTimeout(() => void flushNotesSave(), 800);
 }
 
-async function flushNotesSave() {
+async function flushNotesSave({ render = true } = {}) {
   if (notesSaveTimer) {
     clearTimeout(notesSaveTimer);
     notesSaveTimer = null;
   }
   if (!notesDirty || !notesActiveId) return;
-  const status = $("notesStatus");
+  const saveId = notesActiveId;
   const content = getNotesEditorContent();
-  setStatus(status, "保存中…");
   try {
-    const updated = await agentResume.notesWrite({ noteId: notesActiveId, content });
+    const updated = await agentResume.notesWrite({ noteId: saveId, content });
     notesDirty = false;
-    const idx = notesCache.findIndex((n) => n.noteId === notesActiveId);
+    const idx = notesCache.findIndex((n) => n.noteId === saveId);
     if (idx >= 0) {
       notesCache[idx] = { ...notesCache[idx], ...updated };
     }
-    renderNotesPanel();
-    setStatus(status, "已保存", "ok");
+    if (render) renderNotesPanel();
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertNotesError(error);
   }
 }
 
-async function loadNotes({ quiet } = {}) {
-  const status = $("notesStatus");
-  if (!quiet) setStatus(status, "加载笔记…");
+async function loadNotes() {
   try {
     if (!notesPanelHome) {
       notesPanelHome = await agentResume.getPanelHome();
@@ -2002,9 +2058,8 @@ async function loadNotes({ quiet } = {}) {
     notesCache = await agentResume.notesList();
     notesLoaded = true;
     renderNotesPanel();
-    if (!quiet) setStatus(status, "");
   } catch (error) {
-    if (!quiet) setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertNotesError(error);
   }
 }
 
@@ -2017,7 +2072,7 @@ async function ensureNotesVisible() {
       // keep existing cache
     }
   }
-  await loadNotes({ quiet: notesLoaded });
+  await loadNotes();
 }
 
 function hideNotesContextMenu() {
@@ -2032,11 +2087,8 @@ function showNotesContextMenu(event, node) {
   if (!menu) return;
   const isNote = node.kind === "note";
   const isGroup = node.kind === "project" || node.kind === "session";
-  menu.querySelector('[data-notes-action="open"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
-  menu.querySelector('[data-notes-action="rename"]').hidden = !isNote;
-  menu.querySelector('[data-notes-action="delete"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="copyPath"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="reveal"]').hidden = !isNote;
   menu.hidden = false;
@@ -2079,12 +2131,7 @@ function ownerFromContextNode(node) {
 async function handleNotesContextAction(action) {
   const node = notesContextNode;
   hideNotesContextMenu();
-  const status = $("notesStatus");
   try {
-    if (action === "open" && node?.kind === "note") {
-      await openNoteInEditor(node.note.noteId);
-      return;
-    }
     if (action === "new") {
       const owner = ownerFromContextNode(node);
       if (owner) await createNoteWithOwner(owner);
@@ -2095,42 +2142,15 @@ async function handleNotesContextAction(action) {
       if (owner) await importNotesWithOwner(owner);
       return;
     }
-    if (action === "rename" && node?.kind === "note") {
-      const next = prompt("输入新文件名（可选 .md 后缀）", node.note.filename);
-      if (!next?.trim()) return;
-      await agentResume.notesRename({ noteId: node.note.noteId, filename: next.trim() });
-      await loadNotes({ quiet: true });
-      if (notesActiveId === node.note.noteId) {
-        const renamed = next.trim().endsWith(".md") ? next.trim() : `${next.trim()}.md`;
-        $("notesEditorTitle").textContent = renamed.endsWith(".md") ? renamed.slice(0, -3) : renamed;
-      }
-      setStatus(status, "已重命名", "ok");
-      return;
-    }
-    if (action === "delete" && node?.kind === "note") {
-      const ok = confirm(`删除笔记「${node.note.filename}」？将同时删除其 assets 文件夹。`);
-      if (!ok) return;
-      await agentResume.notesDelete({ noteId: node.note.noteId });
-      if (notesActiveId === node.note.noteId) {
-        notesActiveId = "";
-        notesDirty = false;
-        showNotesEditor(false);
-        setNotesEditorContent("");
-      }
-      await loadNotes({ quiet: true });
-      setStatus(status, "已删除", "ok");
-      return;
-    }
     if (action === "copyPath" && node?.kind === "note") {
-      const { path: p } = await agentResume.notesCopyPath({ noteId: node.note.noteId });
-      setStatus(status, `已复制：${p}`, "ok");
+      await agentResume.notesCopyPath({ noteId: node.note.noteId });
       return;
     }
     if (action === "reveal" && node?.kind === "note") {
       await agentResume.notesReveal({ noteId: node.note.noteId });
     }
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertNotesError(error);
   }
 }
 
@@ -5571,6 +5591,8 @@ function wire() {
     void handleNotesImportClick();
   });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
+  $("btnNotesDelete")?.addEventListener("click", () => void deleteActiveNote());
+  updateNotesToolbarState();
   $("notesViewSegmented")?.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => void switchNotesViewMode(btn.dataset.mode));
   });
@@ -5596,6 +5618,10 @@ function wire() {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
   });
   mountNotesEditor();
+  $("tab-notes")?.addEventListener("click", (e) => {
+    if (shouldKeepNotesSelection(e.target)) return;
+    void clearNotesSelection();
+  });
   document.addEventListener("click", (e) => {
     if (
       !e.target.closest("#notesTargetPopover") &&

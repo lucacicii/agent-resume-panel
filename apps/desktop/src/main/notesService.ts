@@ -151,7 +151,8 @@ export async function notesReveal(noteId: string): Promise<{ ok: boolean }> {
   if (!record) {
     throw new Error("Note not found.");
   }
-  shell.showItemInFolder(store.absolutePath(record));
+  const absPath = path.resolve(store.absolutePath(record));
+  shell.showItemInFolder(absPath);
   return { ok: true };
 }
 
