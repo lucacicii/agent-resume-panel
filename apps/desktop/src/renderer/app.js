@@ -2895,20 +2895,6 @@ function ensureCitationPopover() {
   });
   document.body.appendChild(popover);
 
-  const chatLog = $("chatLog");
-  if (chatLog && chatLog.dataset.citationScrollWired !== "1") {
-    chatLog.dataset.citationScrollWired = "1";
-    chatLog.addEventListener(
-      "scroll",
-      () => {
-        if (activeCitationChipEl && !citationPopoverEl?.hidden) {
-          positionCitationPopover(activeCitationChipEl);
-        }
-      },
-      { passive: true }
-    );
-  }
-
   citationPopoverEl = popover;
   return popover;
 }
@@ -3291,6 +3277,7 @@ function onChatLogScroll() {
   if (!log || !chatTurns.length) {
     return;
   }
+  hideCitationPreview();
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
   chatStickToBottom = atBottom;
   const { start, end } = findChatVisibleRange(log.scrollTop, log.clientHeight);
@@ -3476,9 +3463,9 @@ function buildChatTurnRow(turn, idx) {
   if (turn.citations?.length) {
     const list = document.createElement("div");
     list.className = "citation-list";
-    for (const c of turn.citations) {
-      list.appendChild(buildCitationChip(c));
-    }
+      for (const c of turn.citations) {
+        list.appendChild(buildCitationChip(c));
+      }
     bubble.appendChild(list);
   }
 
