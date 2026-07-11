@@ -68,6 +68,32 @@ function renderMarkdown(value) {
 
 /** @type {boolean} */
 let askChatLoadedFromDb = false;
+/** @type {boolean} */
+let askChatRendered = false;
+/** @type {boolean} */
+let askChatHasMoreOlder = false;
+/** @type {boolean} */
+let askChatLoadingOlder = false;
+/** @type {number | null} */
+let askChatOldestSortOrder = null;
+/** @type {Promise<void> | null} */
+let askChatLoadPromise = null;
+const ASK_CHAT_PAGE_SIZE = 40;
+
+function mapAskMessages(messages) {
+  return (messages || []).map((m) => ({
+    role: m.role,
+    content: m.content,
+    citations: m.citations || [],
+    fallback: m.fallback,
+    sortOrder: m.sortOrder
+  }));
+}
+
+function syncAskChatCursor() {
+  const orders = chatTurns.map((t) => t.sortOrder).filter((n) => Number.isFinite(n));
+  askChatOldestSortOrder = orders.length ? Math.min(...orders) : null;
+}
 
 function switchTab(name) {
   if (name !== "ask") {
@@ -79,8 +105,18 @@ function switchTab(name) {
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
-  if (name === "ask" && !askChatLoadedFromDb) {
-    void loadAskChat();
+  if (name === "ask") {
+    void ensureAskChatVisible();
+  }
+}
+
+async function ensureAskChatVisible() {
+  if (!askChatLoadedFromDb) {
+    await loadAskChat({ render: true });
+    return;
+  }
+  if (!askChatRendered) {
+    renderAskChat();
   }
 }
 
@@ -3278,6 +3314,9 @@ function onChatLogScroll() {
     return;
   }
   hideCitationPreview();
+  if (log.scrollTop < 72 && askChatHasMoreOlder && !askChatLoadingOlder) {
+    void loadOlderAskChat();
+  }
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
   chatStickToBottom = atBottom;
   const { start, end } = findChatVisibleRange(log.scrollTop, log.clientHeight);
@@ -3492,6 +3531,11 @@ function updateChatTurn(idx) {
   renderChatVirtual({ scrollToBottom: chatStickToBottom });
 }
 
+function renderAskChat() {
+  renderChatFull();
+  askChatRendered = true;
+}
+
 function renderChatFull() {
   resetChatRowHeights();
   chatStickToBottom = true;
@@ -3569,6 +3613,7 @@ async function sendAgent() {
       fallback: result.fallback
     };
     askChatLoadedFromDb = true;
+    askChatRendered = true;
     updateChatTurn(streamIdx);
     if (result.persistWarning) {
       setStatus($("agentStatus"), result.persistWarning, "error");
@@ -3592,26 +3637,86 @@ async function sendAgent() {
 }
 
 async function loadAskChat(options = {}) {
+  const render = options.render !== false;
   const force = options.force === true;
   if (askChatLoadedFromDb && !force) {
+    if (render && !askChatRendered) {
+      renderAskChat();
+    }
+    return;
+  }
+  if (askChatLoadPromise && !force) {
+    await askChatLoadPromise;
+    if (render && !askChatRendered) {
+      renderAskChat();
+    }
     return;
   }
   if (typeof agentResume.listAskChat !== "function") {
     return;
   }
+
+  askChatLoadPromise = (async () => {
+    try {
+      const result = await agentResume.listAskChat({ limit: ASK_CHAT_PAGE_SIZE });
+      chatTurns = mapAskMessages(result?.messages);
+      askChatHasMoreOlder = Boolean(result?.hasMore);
+      syncAskChatCursor();
+      askChatLoadedFromDb = true;
+      if (render) {
+        renderAskChat();
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setStatus($("agentStatus"), `加载对话失败：${msg}`, "error");
+    } finally {
+      askChatLoadPromise = null;
+    }
+  })();
+
+  await askChatLoadPromise;
+}
+
+async function loadOlderAskChat() {
+  if (
+    askChatLoadingOlder ||
+    !askChatHasMoreOlder ||
+    askChatOldestSortOrder == null ||
+    typeof agentResume.listOlderAskChat !== "function"
+  ) {
+    return;
+  }
+  const log = $("chatLog");
+  askChatLoadingOlder = true;
+  const prevScrollHeight = log?.scrollHeight ?? 0;
+  const prevScrollTop = log?.scrollTop ?? 0;
   try {
-    const messages = await agentResume.listAskChat();
-    chatTurns = (messages || []).map((m) => ({
-      role: m.role,
-      content: m.content,
-      citations: m.citations || [],
-      fallback: m.fallback
-    }));
-    askChatLoadedFromDb = true;
-    renderChatFull();
+    const result = await agentResume.listOlderAskChat({
+      beforeSortOrder: askChatOldestSortOrder,
+      limit: ASK_CHAT_PAGE_SIZE
+    });
+    const older = mapAskMessages(result?.messages);
+    if (!older.length) {
+      askChatHasMoreOlder = false;
+      return;
+    }
+    chatTurns = [...older, ...chatTurns];
+    askChatHasMoreOlder = Boolean(result?.hasMore);
+    syncAskChatCursor();
+    resetChatRowHeights();
+    chatVirtualLastRange = { start: -1, end: -1 };
+    renderChatVirtual();
+    if (log) {
+      requestAnimationFrame(() => {
+        log.scrollTop = log.scrollHeight - prevScrollHeight + prevScrollTop;
+        chatStickToBottom = false;
+      });
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    setStatus($("agentStatus"), `加载对话失败：${msg}`, "error");
+    setStatus($("agentStatus"), `加载更早消息失败：${msg}`, "error");
+  } finally {
+    askChatLoadingOlder = false;
   }
 }
 
@@ -3629,6 +3734,9 @@ async function clearChat() {
   }
   chatTurns = [];
   askChatLoadedFromDb = true;
+  askChatRendered = true;
+  askChatHasMoreOlder = false;
+  askChatOldestSortOrder = null;
   clearAskMarkdownCache();
   resetChatRowHeights();
   renderChatFull();
@@ -3828,6 +3936,7 @@ async function boot() {
   switchTab("memory");
   await loadSettingsForm();
   await loadMemory();
+  void loadAskChat({ render: false });
   void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);
 }
 

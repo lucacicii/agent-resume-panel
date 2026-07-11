@@ -82,7 +82,17 @@ export interface DesktopApi {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   }): Promise<AskMetaAgentResult>;
-  listAskChat(): Promise<AskChatMessage[]>;
+  listAskChat(args?: { limit?: number }): Promise<{
+    messages: AskChatMessage[];
+    hasMore: boolean;
+  }>;
+  listOlderAskChat(args: {
+    beforeSortOrder: number;
+    limit?: number;
+  }): Promise<{
+    messages: AskChatMessage[];
+    hasMore: boolean;
+  }>;
   clearAskChat(): Promise<{ ok: boolean }>;
   onAskStream(callback: (event: AskStreamEvent) => void): () => void;
   previewMemoryGtdSync(args?: {
@@ -251,7 +261,8 @@ const api: DesktopApi = {
   },
   searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
-  listAskChat: () => ipcRenderer.invoke("agent:listAskChat"),
+  listAskChat: (args) => ipcRenderer.invoke("agent:listAskChat", args),
+  listOlderAskChat: (args) => ipcRenderer.invoke("agent:listOlderAskChat", args),
   clearAskChat: () => ipcRenderer.invoke("agent:clearAskChat"),
   onAskStream: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {

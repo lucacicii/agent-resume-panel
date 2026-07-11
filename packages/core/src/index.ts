@@ -151,8 +151,11 @@ export {
   appendAskTurn,
   clearAskMessages,
   listAskMessages,
-  listAskMessagesForHistory
+  listAskMessagesForHistory,
+  listOlderAskMessages,
+  listRecentAskMessages
 } from "./agent/askStore";
+export type { AskChatListResult } from "./agent/askStore";
 export type { AskChatMessage } from "./agent/askStore";
 
 export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";

@@ -3,7 +3,8 @@ import * as path from "node:path";
 import {
   askMetaAgent,
   clearAskMessages,
-  listAskMessages,
+  listOlderAskMessages,
+  listRecentAskMessages,
   autoRenameSessionAction,
   backfillMemoryDigests,
   catalogDbFromSettings,
@@ -329,11 +330,25 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("agent:listAskChat", async () => {
+  ipcMain.handle("agent:listAskChat", async (_event, args?: { limit?: number }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    return listAskMessages(dbPath);
+    await ensureCatalogSchema(dbPath);
+    return listRecentAskMessages(dbPath, { limit: args?.limit });
   });
+
+  ipcMain.handle(
+    "agent:listOlderAskChat",
+    async (_event, args: { beforeSortOrder: number; limit?: number }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      return listOlderAskMessages(dbPath, {
+        beforeSortOrder: args.beforeSortOrder,
+        limit: args?.limit
+      });
+    }
+  );
 
   ipcMain.handle("agent:clearAskChat", async () => {
     const settings = await loadSettings();

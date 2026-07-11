@@ -10,6 +10,7 @@ export interface AskChatMessage {
   citations?: AgentCitation[];
   fallback?: boolean;
   createdAtMs: number;
+  sortOrder: number;
 }
 
 interface AskMessageRow {
@@ -44,8 +45,45 @@ function rowToMessage(row: AskMessageRow): AskChatMessage | undefined {
     content: row.content,
     citations: parseCitationsJson(row.citations_json),
     fallback: row.fallback ? true : undefined,
-    createdAtMs: row.created_at_ms
+    createdAtMs: row.created_at_ms,
+    sortOrder: row.sort_order
   };
+}
+
+export interface AskChatListResult {
+  messages: AskChatMessage[];
+  hasMore: boolean;
+}
+
+const DEFAULT_ASK_CHAT_PAGE = 40;
+const MAX_ASK_CHAT_PAGE = 100;
+
+function normalizeAskPageLimit(limit?: number): number {
+  return Math.max(1, Math.min(limit ?? DEFAULT_ASK_CHAT_PAGE, MAX_ASK_CHAT_PAGE));
+}
+
+async function listAskMessagesDescending(
+  dbPath: string,
+  sqlWhere: string,
+  limit: number
+): Promise<AskChatListResult> {
+  await ensureCatalogSchema(dbPath);
+  const page = normalizeAskPageLimit(limit);
+  const rows = await runSqliteJson<AskMessageRow>(
+    dbPath,
+    `SELECT id, role, content, citations_json, fallback, sort_order, created_at_ms
+     FROM ask_messages
+     ${sqlWhere}
+     ORDER BY sort_order DESC, created_at_ms DESC
+     LIMIT ${page + 1};`
+  );
+  const hasMore = rows.length > page;
+  const slice = hasMore ? rows.slice(0, page) : rows;
+  const messages = slice
+    .reverse()
+    .map(rowToMessage)
+    .filter((m): m is AskChatMessage => Boolean(m));
+  return { messages, hasMore };
 }
 
 async function nextSortOrderBase(dbPath: string): Promise<number> {
@@ -56,20 +94,34 @@ async function nextSortOrderBase(dbPath: string): Promise<number> {
   return rows[0]?.max_order ?? 0;
 }
 
+/** Latest messages for Ask UI (most recent first in query, returned chronological). */
+export async function listRecentAskMessages(
+  dbPath: string,
+  options?: { limit?: number }
+): Promise<AskChatListResult> {
+  return listAskMessagesDescending(dbPath, "", normalizeAskPageLimit(options?.limit));
+}
+
+/** Older messages before a sort_order cursor (for scroll-up pagination). */
+export async function listOlderAskMessages(
+  dbPath: string,
+  options: { beforeSortOrder: number; limit?: number }
+): Promise<AskChatListResult> {
+  const before = Math.max(0, Math.floor(options.beforeSortOrder));
+  return listAskMessagesDescending(
+    dbPath,
+    `WHERE sort_order < ${before}`,
+    normalizeAskPageLimit(options.limit)
+  );
+}
+
+/** @deprecated Use listRecentAskMessages */
 export async function listAskMessages(
   dbPath: string,
   options?: { limit?: number }
 ): Promise<AskChatMessage[]> {
-  await ensureCatalogSchema(dbPath);
-  const limit = Math.max(1, Math.min(options?.limit ?? 200, 500));
-  const rows = await runSqliteJson<AskMessageRow>(
-    dbPath,
-    `SELECT id, role, content, citations_json, fallback, sort_order, created_at_ms
-     FROM ask_messages
-     ORDER BY sort_order ASC, created_at_ms ASC
-     LIMIT ${limit};`
-  );
-  return rows.map(rowToMessage).filter((m): m is AskChatMessage => Boolean(m));
+  const result = await listRecentAskMessages(dbPath, options);
+  return result.messages;
 }
 
 /** Last N user/assistant turns for Meta-Agent prompt context. */
@@ -77,7 +129,7 @@ export async function listAskMessagesForHistory(
   dbPath: string,
   maxTurns = 6
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
-  const messages = await listAskMessages(dbPath, { limit: maxTurns * 2 });
+  const { messages } = await listRecentAskMessages(dbPath, { limit: maxTurns * 2 });
   return messages.map((m) => ({ role: m.role, content: m.content }));
 }
 
