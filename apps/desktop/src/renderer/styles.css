@@ -2423,14 +2423,27 @@ code {
   min-height: 0;
   overflow: auto;
   padding: 14px 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   background:
     radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--accent) 7%, transparent) 0%, transparent 42%),
     radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--accent) 5%, transparent) 0%, transparent 38%),
     var(--tg-chat-bg);
   overscroll-behavior: contain;
+}
+
+.chat-virtual-inner {
+  position: relative;
+  width: 100%;
+}
+
+.chat-virtual-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  will-change: transform;
 }
 
 .chat-empty-state {
@@ -2472,18 +2485,19 @@ code {
   padding: 8px 11px 6px;
   font-size: 14px;
   line-height: 1.42;
-  white-space: pre-wrap;
   word-break: break-word;
   box-shadow: 0 1px 1px color-mix(in srgb, #000 18%, transparent);
 }
 
 .chat-bubble.user {
+  white-space: pre-wrap;
   background: var(--tg-bubble-out);
   color: var(--tg-bubble-out-text);
   border-radius: 12px 12px 4px 12px;
 }
 
 .chat-bubble.assistant {
+  white-space: normal;
   background: var(--tg-bubble-in);
   color: var(--tg-bubble-in-text);
   border-radius: 12px 12px 12px 4px;
@@ -2504,6 +2518,65 @@ code {
 
 .chat-body {
   margin-bottom: 2px;
+  min-width: 0;
+}
+
+.chat-bubble .markdown-body {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble .markdown-body h1,
+.chat-bubble .markdown-body h2,
+.chat-bubble .markdown-body h3,
+.chat-bubble .markdown-body h4,
+.chat-bubble .markdown-body h5,
+.chat-bubble .markdown-body h6 {
+  color: inherit;
+  margin: 0.85em 0 0.4em;
+}
+
+.chat-bubble .markdown-body h1 {
+  font-size: 1.25em;
+}
+
+.chat-bubble .markdown-body h2 {
+  font-size: 1.15em;
+}
+
+.chat-bubble .markdown-body h3 {
+  font-size: 1.05em;
+}
+
+.chat-bubble .markdown-body p,
+.chat-bubble .markdown-body ul,
+.chat-bubble .markdown-body ol,
+.chat-bubble .markdown-body blockquote,
+.chat-bubble .markdown-body pre,
+.chat-bubble .markdown-body table,
+.chat-bubble .markdown-body hr {
+  margin: 0 0 0.65em;
+}
+
+.chat-bubble .markdown-body a {
+  color: var(--tg-sender);
+}
+
+.chat-bubble .markdown-body blockquote {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  border-left-color: color-mix(in srgb, var(--tg-sender) 65%, transparent);
+}
+
+.chat-bubble .markdown-body code {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.chat-bubble .markdown-body pre,
+.chat-bubble .markdown-body .markdown-fallback {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-color: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .chat-stream-cursor {

@@ -2823,6 +2823,17 @@ async function saveSettingsForm() {
 
 /** @type {Array<{ role: 'user'|'assistant', content: string, citations?: any[], fallback?: boolean, streaming?: boolean }>} */
 let chatTurns = [];
+/** @type {Map<string, string>} */
+const askMarkdownHtmlCache = new Map();
+const ASK_MARKDOWN_CACHE_MAX = 200;
+/** @type {number[]} */
+let chatRowHeights = [];
+let chatStickToBottom = true;
+let chatVirtualScrollWired = false;
+/** @type {{ start: number, end: number }} */
+let chatVirtualLastRange = { start: -1, end: -1 };
+const CHAT_VIRTUAL_GAP = 6;
+const CHAT_VIRTUAL_OVERSCAN_PX = 360;
 /** @type {number | null} */
 let activeAskStreamIdx = null;
 /** @type {(() => void) | null} */
@@ -3142,6 +3153,231 @@ function setAgentComposeEnabled(enabled) {
   if (sendBtn) sendBtn.disabled = !enabled;
 }
 
+function renderMarkdownCached(content) {
+  const source = String(content ?? "");
+  if (!source) {
+    return "";
+  }
+  if (askMarkdownHtmlCache.has(source)) {
+    const cached = askMarkdownHtmlCache.get(source);
+    askMarkdownHtmlCache.delete(source);
+    askMarkdownHtmlCache.set(source, cached);
+    return cached;
+  }
+  const html = renderMarkdown(source);
+  askMarkdownHtmlCache.set(source, html);
+  if (askMarkdownHtmlCache.size > ASK_MARKDOWN_CACHE_MAX) {
+    const oldest = askMarkdownHtmlCache.keys().next().value;
+    askMarkdownHtmlCache.delete(oldest);
+  }
+  return html;
+}
+
+function clearAskMarkdownCache() {
+  askMarkdownHtmlCache.clear();
+}
+
+function resetChatRowHeights() {
+  chatRowHeights = [];
+}
+
+function estimateChatRowHeight(turn) {
+  if (!turn) {
+    return 48;
+  }
+  const chars = turn.content?.length || 0;
+  const lines = Math.max(1, Math.ceil(chars / 46));
+  if (turn.role === "user") {
+    return Math.max(44, 28 + lines * 20);
+  }
+  let height = 62 + lines * 20;
+  if (turn.citations?.length) {
+    height += 12 + turn.citations.length * 34;
+  }
+  if (turn.streaming) {
+    height += 10;
+  }
+  return Math.min(Math.max(height, 52), 720);
+}
+
+function getChatRowHeight(idx) {
+  const cached = chatRowHeights[idx];
+  if (cached != null && cached > 0) {
+    return cached;
+  }
+  return estimateChatRowHeight(chatTurns[idx]);
+}
+
+function buildChatRowOffsets() {
+  const offsets = [];
+  let total = 0;
+  for (let i = 0; i < chatTurns.length; i++) {
+    offsets.push(total);
+    total += getChatRowHeight(i);
+    if (i < chatTurns.length - 1) {
+      total += CHAT_VIRTUAL_GAP;
+    }
+  }
+  return { offsets, total };
+}
+
+function findChatVisibleRange(scrollTop, viewportHeight) {
+  const n = chatTurns.length;
+  const layout = buildChatRowOffsets();
+  if (!n) {
+    return { ...layout, start: 0, end: -1 };
+  }
+
+  const top = Math.max(0, scrollTop - CHAT_VIRTUAL_OVERSCAN_PX);
+  const bottom = scrollTop + viewportHeight + CHAT_VIRTUAL_OVERSCAN_PX;
+
+  let start = 0;
+  for (let i = 0; i < n; i++) {
+    const rowBottom = layout.offsets[i] + getChatRowHeight(i);
+    if (rowBottom > top) {
+      start = i;
+      break;
+    }
+    start = i;
+  }
+
+  let end = start;
+  for (let i = start; i < n; i++) {
+    if (layout.offsets[i] >= bottom) {
+      break;
+    }
+    end = i;
+  }
+
+  if (activeAskStreamIdx != null) {
+    start = Math.min(start, activeAskStreamIdx);
+    end = Math.max(end, activeAskStreamIdx);
+  }
+
+  return { ...layout, start, end };
+}
+
+function chatEmptyStateHtml() {
+  return `<div class="chat-empty-state">
+      <p class="chat-empty-title">开始对话</p>
+      <p class="chat-empty-hint">用自然语言问记忆。先生成 Daily/Weekly digests 效果更好。</p>
+    </div>`;
+}
+
+function ensureChatVirtualShell(log) {
+  if (log.dataset.virtual === "1") {
+    return {
+      inner: log.querySelector(".chat-virtual-inner"),
+      window: log.querySelector(".chat-virtual-window")
+    };
+  }
+  log.innerHTML = "";
+  log.dataset.virtual = "1";
+  const inner = document.createElement("div");
+  inner.className = "chat-virtual-inner";
+  const win = document.createElement("div");
+  win.className = "chat-virtual-window";
+  inner.appendChild(win);
+  log.appendChild(inner);
+  if (!chatVirtualScrollWired) {
+    chatVirtualScrollWired = true;
+    log.addEventListener("scroll", onChatLogScroll, { passive: true });
+  }
+  return { inner, window: win };
+}
+
+function onChatLogScroll() {
+  const log = $("chatLog");
+  if (!log || !chatTurns.length) {
+    return;
+  }
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+  chatStickToBottom = atBottom;
+  const { start, end } = findChatVisibleRange(log.scrollTop, log.clientHeight);
+  if (start === chatVirtualLastRange.start && end === chatVirtualLastRange.end) {
+    return;
+  }
+  renderChatVirtual();
+}
+
+function scrollChatToBottom() {
+  const log = $("chatLog");
+  if (log) {
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+function renderChatVirtual(opts = {}) {
+  const log = $("chatLog");
+  if (!log) {
+    return;
+  }
+
+  if (!chatTurns.length) {
+    log.dataset.virtual = "";
+    log.innerHTML = chatEmptyStateHtml();
+    resetChatRowHeights();
+    return;
+  }
+
+  const { inner, window: win } = ensureChatVirtualShell(log);
+  if (!inner || !win) {
+    return;
+  }
+
+  const viewHeight = log.clientHeight || 0;
+  const layoutPreview = buildChatRowOffsets();
+  const scrollTop = opts.scrollToBottom
+    ? Math.max(0, layoutPreview.total - viewHeight + 8)
+    : log.scrollTop;
+  let { start, end, offsets, total } = findChatVisibleRange(scrollTop, viewHeight);
+
+  inner.style.height = `${total}px`;
+  win.style.transform = `translateY(${offsets[start] || 0}px)`;
+  win.replaceChildren();
+
+  let heightsChanged = false;
+  for (let i = start; i <= end; i++) {
+    const row = buildChatTurnRow(chatTurns[i], i);
+    win.appendChild(row);
+    const measured = row.offsetHeight;
+    if (measured > 0 && chatRowHeights[i] !== measured) {
+      chatRowHeights[i] = measured;
+      heightsChanged = true;
+    }
+  }
+
+  if (heightsChanged) {
+    const relayout = buildChatRowOffsets();
+    inner.style.height = `${relayout.total}px`;
+    win.style.transform = `translateY(${relayout.offsets[start] || 0}px)`;
+    total = relayout.total;
+  }
+
+  chatVirtualLastRange = { start, end };
+
+  if (opts.scrollToBottom) {
+    requestAnimationFrame(() => {
+      log.scrollTop = log.scrollHeight;
+      chatStickToBottom = true;
+    });
+  }
+}
+
+function setAssistantBodyContent(contentEl, content, streaming) {
+  if (!contentEl) {
+    return;
+  }
+  if (streaming) {
+    contentEl.classList.remove("markdown-body");
+    contentEl.innerHTML = "";
+    contentEl.textContent = content;
+    return;
+  }
+  contentEl.classList.add("markdown-body");
+  contentEl.innerHTML = renderMarkdownCached(content);
+}
+
 function updateStreamingBubble(idx) {
   const turn = chatTurns[idx];
   if (!turn || turn.role !== "assistant") {
@@ -3149,16 +3385,23 @@ function updateStreamingBubble(idx) {
   }
   const bubble = $("chatLog")?.querySelector(`[data-turn-idx="${idx}"]`);
   if (!bubble) {
+    renderChatVirtual({ scrollToBottom: chatStickToBottom });
     return;
   }
   const body = bubble.querySelector(".chat-body");
   const contentEl = body?.querySelector(".chat-body-text");
-  if (contentEl) {
-    contentEl.textContent = turn.content;
+  setAssistantBodyContent(contentEl, turn.content, true);
+  const row = bubble.closest(".chat-message");
+  if (row) {
+    const measured = row.offsetHeight;
+    if (measured > 0 && chatRowHeights[idx] !== measured) {
+      chatRowHeights[idx] = measured;
+      renderChatVirtual({ scrollToBottom: chatStickToBottom });
+      return;
+    }
   }
-  const log = $("chatLog");
-  if (log) {
-    log.scrollTop = log.scrollHeight;
+  if (chatStickToBottom) {
+    scrollChatToBottom();
   }
 }
 
@@ -3191,75 +3434,86 @@ function appendChatFooter(bubble, turn, turnIdx) {
   }
 
   bubble.appendChild(footer);
-  bubble.dataset.turnIdx = String(turnIdx);
 }
 
-function renderChat() {
-  const log = $("chatLog");
-  log.innerHTML = "";
-  if (!chatTurns.length) {
-    log.innerHTML = `<div class="chat-empty-state">
-      <p class="chat-empty-title">开始对话</p>
-      <p class="chat-empty-hint">用自然语言问记忆。先生成 Daily/Weekly digests 效果更好。</p>
-    </div>`;
+function buildChatTurnRow(turn, idx) {
+  const row = document.createElement("div");
+  row.className = `chat-message ${turn.role === "user" ? "chat-message-out" : "chat-message-in"}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble ${turn.role}${turn.streaming ? " streaming" : ""}`;
+  bubble.dataset.turnIdx = String(idx);
+
+  if (turn.role === "user") {
+    bubble.textContent = turn.content;
+    row.appendChild(bubble);
+    return row;
+  }
+
+  const sender = document.createElement("div");
+  sender.className = "chat-sender";
+  sender.textContent = "Memory Agent";
+  bubble.appendChild(sender);
+
+  const body = document.createElement("div");
+  body.className = "chat-body";
+  const contentEl = document.createElement("div");
+  contentEl.className = "chat-body-text";
+  setAssistantBodyContent(contentEl, turn.content, turn.streaming);
+  body.appendChild(contentEl);
+  bubble.appendChild(body);
+
+  if (turn.streaming) {
+    const cursor = document.createElement("span");
+    cursor.className = "chat-stream-cursor";
+    cursor.setAttribute("aria-hidden", "true");
+    body.appendChild(cursor);
+    appendChatFooter(bubble, turn, idx);
+    row.appendChild(bubble);
+    return row;
+  }
+
+  if (turn.citations?.length) {
+    const list = document.createElement("div");
+    list.className = "citation-list";
+    for (const c of turn.citations) {
+      list.appendChild(buildCitationChip(c));
+    }
+    bubble.appendChild(list);
+  }
+
+  appendChatFooter(bubble, turn, idx);
+  row.appendChild(bubble);
+  return row;
+}
+
+function appendChatTurn(idx) {
+  const turn = chatTurns[idx];
+  if (!turn) {
     return;
   }
+  chatRowHeights[idx] = estimateChatRowHeight(turn);
+  chatStickToBottom = true;
+  renderChatVirtual({ scrollToBottom: true });
+}
 
-  for (let i = 0; i < chatTurns.length; i++) {
-    const turn = chatTurns[i];
-    const row = document.createElement("div");
-    row.className = `chat-message ${turn.role === "user" ? "chat-message-out" : "chat-message-in"}`;
-
-    const bubble = document.createElement("div");
-    bubble.className = `chat-bubble ${turn.role}${turn.streaming ? " streaming" : ""}`;
-    bubble.dataset.turnIdx = String(i);
-
-    if (turn.role === "user") {
-      bubble.textContent = turn.content;
-      row.appendChild(bubble);
-      log.appendChild(row);
-      continue;
-    }
-
-    const sender = document.createElement("div");
-    sender.className = "chat-sender";
-    sender.textContent = "Memory Agent";
-    bubble.appendChild(sender);
-
-    const body = document.createElement("div");
-    body.className = "chat-body";
-    const contentEl = document.createElement("span");
-    contentEl.className = "chat-body-text";
-    contentEl.textContent = turn.content;
-    body.appendChild(contentEl);
-    bubble.appendChild(body);
-
-    if (turn.streaming) {
-      const cursor = document.createElement("span");
-      cursor.className = "chat-stream-cursor";
-      cursor.setAttribute("aria-hidden", "true");
-      body.appendChild(cursor);
-      appendChatFooter(bubble, turn, i);
-      row.appendChild(bubble);
-      log.appendChild(row);
-      continue;
-    }
-
-    if (turn.citations?.length) {
-      const list = document.createElement("div");
-      list.className = "citation-list";
-      for (const c of turn.citations) {
-        list.appendChild(buildCitationChip(c));
-      }
-      bubble.appendChild(list);
-    }
-
-    appendChatFooter(bubble, turn, i);
-    row.appendChild(bubble);
-    log.appendChild(row);
+function updateChatTurn(idx) {
+  if (!chatTurns[idx]) {
+    return;
   }
+  delete chatRowHeights[idx];
+  renderChatVirtual({ scrollToBottom: chatStickToBottom });
+}
 
-  log.scrollTop = log.scrollHeight;
+function renderChatFull() {
+  resetChatRowHeights();
+  chatStickToBottom = true;
+  chatVirtualLastRange = { start: -1, end: -1 };
+  const log = $("chatLog");
+  if (log) {
+    log.dataset.virtual = "";
+  }
+  renderChatVirtual({ scrollToBottom: true });
 }
 
 function detachAskStreamListener() {
@@ -3283,7 +3537,7 @@ async function sendAgent() {
 
   chatTurns.push({ role: "user", content: query });
   input.value = "";
-  renderChat();
+  appendChatTurn(chatTurns.length - 1);
   setAgentComposeEnabled(false);
   setStatus($("agentStatus"), "检索记忆…");
 
@@ -3300,7 +3554,7 @@ async function sendAgent() {
     streaming: true
   });
   activeAskStreamIdx = streamIdx;
-  renderChat();
+  appendChatTurn(streamIdx);
 
   detachAskStreamListener();
   if (typeof agentResume.onAskStream === "function") {
@@ -3328,7 +3582,7 @@ async function sendAgent() {
       fallback: result.fallback
     };
     askChatLoadedFromDb = true;
-    renderChat();
+    updateChatTurn(streamIdx);
     if (result.persistWarning) {
       setStatus($("agentStatus"), result.persistWarning, "error");
     } else {
@@ -3342,7 +3596,7 @@ async function sendAgent() {
     }
   } catch (error) {
     chatTurns.splice(streamIdx, 1);
-    renderChat();
+    renderChatFull();
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
   } finally {
     stopAskStreamListener();
@@ -3367,7 +3621,7 @@ async function loadAskChat(options = {}) {
       fallback: m.fallback
     }));
     askChatLoadedFromDb = true;
-    renderChat();
+    renderChatFull();
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     setStatus($("agentStatus"), `加载对话失败：${msg}`, "error");
@@ -3388,7 +3642,9 @@ async function clearChat() {
   }
   chatTurns = [];
   askChatLoadedFromDb = true;
-  renderChat();
+  clearAskMarkdownCache();
+  resetChatRowHeights();
+  renderChatFull();
   setStatus($("agentStatus"), "");
 }
 
@@ -3583,7 +3839,6 @@ async function boot() {
   selectedDayKey = todayInputValue();
   updatePeriodLabel();
   switchTab("memory");
-  await loadAskChat();
   await loadSettingsForm();
   await loadMemory();
   void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);
