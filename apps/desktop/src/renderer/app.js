@@ -311,6 +311,17 @@ async function syncAndRefreshSessionViews(statusEl) {
  * @param {any} session
  * @param {{ summary?: string, statusHtml?: string }} [opts]
  */
+async function openSessionSheetPreview(session) {
+  if (!session?.provider || !session?.id) return;
+  activeSessionKey = `${session.provider}:${session.id}`;
+  wbActiveKey = activeSessionKey;
+  highlightWorkbenchSession(activeSessionKey);
+  openSheet("sheetSessions");
+  await loadSessions({ quiet: true });
+  scrollActiveSessionIntoView();
+  await openSessionPreview(session);
+}
+
 async function openSessionPreview(session, opts = {}) {
   const paneId = opts.paneId || "sessionPreview";
   activeSessionKey = `${session.provider}:${session.id}`;
@@ -458,6 +469,8 @@ async function runSessionAutoRename(opts = {}) {
 
     const row = document.querySelector(`.session-row[data-key="${activeSessionKey}"] .s-title`);
     if (row) row.textContent = result.title;
+    const wbRow = document.querySelector(`.wb-tree-session[data-key="${activeSessionKey}"] .s-title`);
+    if (wbRow) wbRow.textContent = result.title;
     const cached = sessionsCache.find(
       (s) => s.provider === activePreviewSession.provider && s.id === activePreviewSession.id
     );
@@ -537,17 +550,41 @@ function highlightWorkbenchSession(key) {
   });
 }
 
-function renderWorkbenchTree(projects) {
+function scrollWorkbenchSessionIntoView() {
+  if (!wbActiveKey) return;
   const tree = $("wbTree");
-  const meta = $("wbMeta");
   if (!tree) return;
-  if (!projects.length) {
-    tree.innerHTML = `<p class="muted wb-empty">暂无 session</p>`;
-    if (meta) meta.textContent = "0 projects";
+  let target = null;
+  tree.querySelectorAll(".wb-tree-session").forEach((el) => {
+    if (el.dataset.key === wbActiveKey) target = el;
+  });
+  if (target) {
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    });
+  }
+}
+
+function updateWorkbenchMeta(projects) {
+  const meta = $("wbMeta");
+  if (!meta) return;
+  if (!projects?.length) {
+    meta.textContent = "0 projects";
     return;
   }
   const sessionCount = projects.reduce((n, p) => n + p.sessions.length, 0);
-  if (meta) meta.textContent = `${projects.length} projects · ${sessionCount} sessions`;
+  meta.textContent = `${projects.length} projects · ${sessionCount} sessions · 右键预览`;
+}
+
+function renderWorkbenchTree(projects) {
+  const tree = $("wbTree");
+  if (!tree) return;
+  if (!projects.length) {
+    tree.innerHTML = `<p class="muted wb-empty">暂无 session</p>`;
+    updateWorkbenchMeta(projects);
+    return;
+  }
+  updateWorkbenchMeta(projects);
 
   const frag = document.createDocumentFragment();
   const root = document.createElement("ul");
@@ -579,12 +616,16 @@ function renderWorkbenchTree(projects) {
         const key = `${s.provider}:${s.id}`;
         const sBtn = document.createElement("button");
         sBtn.type = "button";
-        sBtn.className = "wb-tree-session";
+        sBtn.className = "wb-tree-session cal-session-row";
         sBtn.dataset.key = key;
+        sBtn.dataset.provider = s.provider;
+        sBtn.dataset.id = s.id;
         if (wbActiveKey === key) sBtn.classList.add("active");
         sBtn.innerHTML = `
-          <div class="wb-tree-session-title">${escapeHtml(s.title)}</div>
-          <div class="wb-tree-session-meta">${providerTagHtml(s.provider)} · ${escapeHtml(formatTime(s.updatedAt))}</div>
+          <div class="s-title">${escapeHtml(s.title || s.id)}</div>
+          <div class="s-meta">${providerTagHtml(s.provider)} · ${escapeHtml(
+            basename(s.projectPath || "")
+          )} · ${escapeHtml(formatTime(s.updatedAt))}</div>
         `;
         sBtn.addEventListener("click", () => void openWorkbenchSession(s));
         sBtn.addEventListener("contextmenu", (e) => {
@@ -627,19 +668,6 @@ async function ensureWorkbenchVisible() {
   }
   await loadWorkbenchSessions({ quiet: true });
   requestAnimationFrame(() => fitWorkbenchTerminal());
-}
-
-function switchWorkbenchPane(name) {
-  const termPane = $("wbPaneTerminal");
-  const prevPane = $("wbPanePreview");
-  const termBtn = $("btnWbPaneTerminal");
-  const prevBtn = $("btnWbPanePreview");
-  const showTerminal = name === "terminal";
-  if (termPane) termPane.hidden = !showTerminal;
-  if (prevPane) prevPane.hidden = showTerminal;
-  termBtn?.classList.toggle("active", showTerminal);
-  prevBtn?.classList.toggle("active", !showTerminal);
-  if (showTerminal) requestAnimationFrame(() => fitWorkbenchTerminal());
 }
 
 function clearWorkbenchTerminalUnsubs() {
@@ -773,7 +801,7 @@ async function openWorkbenchSession(session) {
   wbActiveKey = `${session.provider}:${session.id}`;
   activeSessionKey = wbActiveKey;
   highlightWorkbenchSession(wbActiveKey);
-  switchWorkbenchPane("terminal");
+  scrollWorkbenchSessionIntoView();
   const status = $("wbStatus");
   setStatus(status, "正在打开终端…");
   try {
@@ -817,8 +845,7 @@ async function handleWorkbenchContextAction(action) {
   hideWorkbenchContextMenu();
   if (!session) return;
   if (action === "preview") {
-    switchWorkbenchPane("preview");
-    await openSessionPreview(session, { paneId: "wbSessionPreview", idPrefix: "wb" });
+    await openSessionSheetPreview(session);
     return;
   }
   if (action === "rename") {
@@ -906,7 +933,6 @@ async function confirmNewSession() {
     });
     closeSheet("sheetNewSession");
     switchTab("workbench");
-    switchWorkbenchPane("terminal");
     if (result.mode === "external-ghostty" || useGhosttyOnly) {
       setStatus($("wbStatus"), "已在外部 Ghostty 中打开", "ok");
       return;
@@ -1207,12 +1233,7 @@ function wireCalSessionListClicks(listEl) {
           projectPath: "",
           updatedAt: 0
         };
-      // Set active before list paint so renderSessionsList can mark .active
-      activeSessionKey = `${provider}:${id}`;
-      openSheet("sheetSessions");
-      await loadSessions({ quiet: true });
-      scrollActiveSessionIntoView();
-      await openSessionPreview(session);
+      await openSessionSheetPreview(session);
     });
   });
 }
@@ -4313,8 +4334,6 @@ function wire() {
 
   $("btnWorkbenchNewSession")?.addEventListener("click", () => openNewSessionSheet());
   $("btnConfirmNewSession")?.addEventListener("click", () => void confirmNewSession());
-  $("btnWbPaneTerminal")?.addEventListener("click", () => switchWorkbenchPane("terminal"));
-  $("btnWbPanePreview")?.addEventListener("click", () => switchWorkbenchPane("preview"));
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));
   });

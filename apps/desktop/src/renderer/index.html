@@ -140,18 +140,9 @@
             </div>
           </aside>
           <div class="wb-main">
-            <div class="wb-main-tabs">
-              <button type="button" class="wb-main-tab active" data-wb-pane="terminal" id="btnWbPaneTerminal">终端</button>
-              <button type="button" class="wb-main-tab" data-wb-pane="preview" id="btnWbPanePreview">预览</button>
-            </div>
-            <div class="wb-pane active" id="wbPaneTerminal">
+            <div class="wb-pane" id="wbPaneTerminal">
               <div class="wb-terminal-host" id="wbTerminalHost"></div>
               <p class="muted wb-terminal-hint" id="wbTerminalHint">选择左侧 session 以恢复终端</p>
-            </div>
-            <div class="wb-pane" id="wbPanePreview" hidden>
-              <div class="session-preview-pane wb-preview-pane" id="wbSessionPreview">
-                <p class="muted">右键 session 选择「预览」，或在此查看对话记录。</p>
-              </div>
             </div>
             <p class="status" id="wbStatus"></p>
           </div>
@@ -464,9 +455,9 @@
     </div>
 
     <div class="wb-context-menu" id="wbContextMenu" hidden>
+      <button type="button" data-wb-action="preview">预览</button>
       <button type="button" data-wb-action="rename">重命名</button>
       <button type="button" data-wb-action="remove">从面板移除</button>
-      <button type="button" data-wb-action="preview">预览</button>
     </div>
 
     <script src="./vendor/marked.umd.js"></script>

@@ -2831,37 +2831,20 @@ code {
   padding: 0 0 0 18px;
 }
 
-.wb-tree-session {
-  display: block;
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
+.wb-tree-session.cal-session-row {
+  border-bottom: none;
   padding: 5px 8px;
   border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
 }
 
-.wb-tree-session:hover {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-}
-
-.wb-tree-session.active {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
-}
-
-.wb-tree-session-title {
+.wb-tree-session.cal-session-row .s-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.wb-tree-session-meta {
-  font-size: 10px;
-  opacity: 0.65;
-  margin-top: 2px;
+.wb-tree-session.cal-session-row.active {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
 }
 
 .wb-main {
@@ -2872,39 +2855,12 @@ code {
   min-height: 0;
 }
 
-.wb-main-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.wb-main-tab {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 6px 6px 0 0;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.wb-main-tab.active {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-}
-
 .wb-pane {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
-}
-
-.wb-pane[hidden] {
-  display: none !important;
 }
 
 .wb-terminal-host {
@@ -2931,12 +2887,6 @@ code {
 
 .wb-terminal-hint.hidden {
   display: none;
-}
-
-.wb-preview-pane {
-  flex: 1;
-  overflow: auto;
-  padding: 12px 14px;
 }
 
 .wb-context-menu {

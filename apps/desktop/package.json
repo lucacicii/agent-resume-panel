@@ -5,8 +5,9 @@
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-renderer.cjs",
+    "build": "node scripts/fix-node-pty.mjs && tsc -p tsconfig.json && node scripts/copy-renderer.cjs",
     "dev": "npm run build && electron .",
+    "postinstall": "node scripts/fix-node-pty.mjs",
     "start": "electron ."
   },
   "dependencies": {

@@ -277,9 +277,9 @@ function registerIpc(): void {
         await openSessionInGhostty(session, settings, {
           writeText: (text) => Promise.resolve(clipboard.writeText(text))
         });
-        return { mode, external: true, command, cwd: session.projectPath };
+        return { mode, external: true, command, cwd: expandHome(session.projectPath) };
       }
-      return { mode, command, cwd: session.projectPath, session };
+      return { mode, command, cwd: expandHome(session.projectPath), session };
     }
   );
 
