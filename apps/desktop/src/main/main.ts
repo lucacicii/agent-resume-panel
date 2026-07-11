@@ -25,6 +25,8 @@ import {
   resolvePreviewHomes,
   runDailyDigest,
   needsDailyDigestRefresh,
+  needsWeeklyDigestRefresh,
+  needsMonthlyDigestRefresh,
   applyMemoryGtdSync,
   previewMemoryGtdSync,
   runMonthlyDigest,
@@ -45,7 +47,7 @@ import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./sched
 let mainWindow: BrowserWindow | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
-const SESSION_SYNC_INTERVAL_MS = 15_000;
+const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 function syncSessions(): Promise<AgentSessionSyncResult> {
   if (sessionSyncInFlight) return sessionSyncInFlight;
@@ -257,6 +259,14 @@ function registerIpc(): void {
 
   ipcMain.handle("memory:needsDailyRefresh", async (_event, date?: string) => {
     return needsDailyDigestRefresh({ date });
+  });
+
+  ipcMain.handle("memory:needsWeeklyRefresh", async (_event, weekKey?: string) => {
+    return needsWeeklyDigestRefresh({ weekKey });
+  });
+
+  ipcMain.handle("memory:needsMonthlyRefresh", async (_event, monthKey?: string) => {
+    return needsMonthlyDigestRefresh({ monthKey });
   });
 
   ipcMain.handle("memory:runWeekly", async (event, weekKey?: string) => {

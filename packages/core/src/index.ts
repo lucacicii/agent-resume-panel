@@ -89,6 +89,8 @@ export {
 } from "./memory/store";
 export type { MemoryLinkRow } from "./memory/store";
 export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./memory/daily";
+export type { PeriodDigestRefreshCheck } from "./memory/digestRefresh";
+export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./memory/digestRefresh";
 export { normalizeDigestMarkdown, digestLanguageLabels } from "./memory/prompts";
 export type {
   RunDailyDigestOptions,

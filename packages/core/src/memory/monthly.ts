@@ -5,7 +5,11 @@ import { recordLlmUsage } from "../usage/store";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { buildMonthlySourceLines } from "./context";
-import { ensureDailiesForPeriod, EnsureLevelStats } from "./ensureDailies";
+import { EnsureLevelStats } from "./ensureDailies";
+import {
+  ensureFreshDailiesForPeriod,
+  ensureFreshWeekliesForPeriod
+} from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localMonthRange } from "./period";
 import { DigestProgressCallback } from "./progress";
@@ -35,9 +39,7 @@ export interface RunMonthlyDigestResult {
   usedDailies: number;
   /** Dailies ensured for this calendar month only. */
   ensuredDailies: EnsureLevelStats;
-  /**
-   * @deprecated Monthly no longer ensures weeklies; always empty stats for API compat.
-   */
+  /** Weeklies refreshed in this calendar month before monthly aggregation. */
   ensuredWeeklies: EnsureLevelStats;
   jobKey: string;
   embedded: boolean;
@@ -46,13 +48,6 @@ export interface RunMonthlyDigestResult {
   summarySkippedCount: number;
   summaryFailed: Array<{ key: string; error: string }>;
 }
-
-const EMPTY_ENSURE: EnsureLevelStats = {
-  planned: [],
-  ok: [],
-  skipped: [],
-  failed: []
-};
 
 export async function runMonthlyDigest(
   options: RunMonthlyDigestOptions = {}
@@ -76,7 +71,7 @@ export async function runMonthlyDigest(
       phase: "start",
       level: "monthly",
       periodLabel: period.label,
-      message: `生成月报 ${period.label}…（先检查并补全本月日报）`
+      message: `生成月报 ${period.label}…（先更新本月日报与周报）`
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -86,13 +81,25 @@ export async function runMonthlyDigest(
       );
     }
 
-    // Calendar month only — no ISO week cascade (avoids spanning two months).
-    const ensuredDailies = await ensureDailiesForPeriod({
+    const ensuredDailies = await ensureFreshDailiesForPeriod({
       dbPath,
       startMs: period.startMs,
       endMs: period.endMs,
       panelHome,
-      skipExisting: !options.forceEnsureLower,
+      forceRefresh: options.forceEnsureLower,
+      skipEmbedding: options.skipEmbedding,
+      forceResummarize: options.forceResummarize,
+      onProgress,
+      progressLevel: "monthly",
+      progressPeriodLabel: period.label
+    });
+
+    const ensuredWeeklies = await ensureFreshWeekliesForPeriod({
+      dbPath,
+      startMs: period.startMs,
+      endMs: period.endMs,
+      panelHome,
+      forceRefresh: options.forceEnsureLower,
       skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
       onProgress,
@@ -169,7 +176,7 @@ export async function runMonthlyDigest(
       phase: "complete",
       level: "monthly",
       periodLabel: period.label,
-      message: `月报完成 · dailies ${usedDailies} · 补全 +${ensuredDailies.ok.length}/skip ${ensuredDailies.skipped.length}`
+      message: `月报完成 · dailies ${usedDailies} · 日报 +${ensuredDailies.ok.length} · 周报 +${ensuredWeeklies.ok.length}`
     });
     return {
       entry,
@@ -177,7 +184,7 @@ export async function runMonthlyDigest(
       usedWeeklies,
       usedDailies,
       ensuredDailies,
-      ensuredWeeklies: EMPTY_ENSURE,
+      ensuredWeeklies,
       summarizedCount: 0,
       summarySkippedCount: 0,
       summaryFailed: ensuredDailies.failed,

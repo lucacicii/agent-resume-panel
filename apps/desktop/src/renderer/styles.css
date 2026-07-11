@@ -1267,6 +1267,8 @@ legend {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 2px;
+  flex-wrap: wrap;
   writing-mode: horizontal-tb;
   line-height: 1.15;
 }
@@ -1280,6 +1282,24 @@ legend {
   border-color: color-mix(in srgb, #a855f7 50%, var(--border)) !important;
   color: #c084fc !important;
   background: color-mix(in srgb, #a855f7 12%, var(--bg)) !important;
+}
+
+.cal-week-btn.has-digest-stale {
+  border-color: color-mix(in srgb, #f97316 55%, #a855f7 30%) !important;
+  background: color-mix(in srgb, #f97316 10%, #a855f7 8%) !important;
+}
+
+.cal-week-btn .cal-period-stale,
+.cal-month-btn .cal-period-stale {
+  margin-left: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 700;
+  background: color-mix(in srgb, #f97316 32%, transparent);
+  color: #fdba74;
+  border: 1px solid color-mix(in srgb, #f97316 50%, transparent);
 }
 
 .cal-week-btn.future {
@@ -1328,6 +1348,11 @@ legend {
 .cal-month-btn.has-digest {
   border-color: color-mix(in srgb, #14b8a6 50%, var(--border)) !important;
   color: #2dd4bf !important;
+}
+
+.cal-month-btn.has-digest-stale {
+  border-color: color-mix(in srgb, #f97316 55%, #14b8a6 30%) !important;
+  background: color-mix(in srgb, #f97316 10%, var(--bg)) !important;
 }
 
 .cal-month-btn.selected {
@@ -1461,6 +1486,24 @@ legend {
   color: #93c5fd;
 }
 
+.cal-cell .mark.daily-stale {
+  background: color-mix(in srgb, #f97316 32%, transparent);
+  color: #fdba74;
+  border: 1px solid color-mix(in srgb, #f97316 50%, transparent);
+}
+
+.cal-cell .mark.daily-missing {
+  background: color-mix(in srgb, #f59e0b 28%, transparent);
+  color: #fbbf24;
+  border: 1px dashed color-mix(in srgb, #f59e0b 55%, transparent);
+}
+
+.cal-cell .mark.no-session {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
 .cal-cell .mark.weekly {
   background: color-mix(in srgb, #a855f7 35%, transparent);
   color: #d8b4fe;
@@ -1474,11 +1517,18 @@ legend {
 .cal-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 10px 14px;
   align-items: center;
   margin: 8px 0 0;
   font-size: 11px;
   flex: 0 0 auto;
+}
+
+.cal-legend-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .cal-legend .dot {
@@ -1492,6 +1542,17 @@ legend {
 
 .cal-legend .dot.daily {
   background: #3b82f6;
+}
+.cal-legend .dot.daily-stale {
+  background: #f97316;
+}
+.cal-legend .dot.daily-missing {
+  background: transparent;
+  border: 1px dashed #f59e0b;
+}
+.cal-legend .dot.no-session {
+  background: transparent;
+  border: 1px solid var(--muted);
 }
 .cal-legend .dot.weekly {
   background: #a855f7;
@@ -1837,6 +1898,25 @@ legend {
 
 .digest-panel-empty .empty-hint {
   margin: 0;
+  line-height: 1.55;
+}
+
+.digest-panel-quiet .empty-hint {
+  color: var(--muted);
+}
+
+.digest-stale-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #f97316 40%, var(--border));
+  background: color-mix(in srgb, #f97316 10%, var(--panel));
+}
+
+.digest-stale-banner p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .digest-card {

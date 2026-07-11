@@ -92,7 +92,7 @@ let sessionsListFingerprint = "";
 /** Prevent overlapping list loads. */
 let sessionsLoadInFlight = false;
 
-const SESSIONS_AUTO_REFRESH_MS = 15_000;
+const SESSIONS_AUTO_REFRESH_MS = 60_000;
 
 function isSessionsSheetOpen() {
   const sheet = $("sheetSessions");
@@ -205,7 +205,9 @@ async function loadSessions(opts = {}) {
 
 function sessionListMeta() {
   const synced = lastSessionSyncAt ? ` · 最近同步 ${formatTime(lastSessionSyncAt)}` : "";
-  return `${sessionsCache.length} sessions · 可见时每 ${SESSIONS_AUTO_REFRESH_MS / 1000}s 同步${synced} · 点击预览`;
+  const intervalLabel =
+    SESSIONS_AUTO_REFRESH_MS >= 60_000 ? "1 分钟" : `${SESSIONS_AUTO_REFRESH_MS / 1000}s`;
+  return `${sessionsCache.length} sessions · 可见时每 ${intervalLabel} 同步${synced} · 点击预览`;
 }
 
 function startSessionsAutoRefresh() {
@@ -220,7 +222,7 @@ async function refreshSessionViews(opts = {}) {
   const quiet = opts.quiet !== false;
   await Promise.all([
     isSessionsSheetOpen() ? loadSessions({ quiet, preserveScroll: true }) : Promise.resolve(),
-    renderCalSessionList({ preserveScroll: true })
+    refreshMonthSessionActivity({ preserveScroll: true })
   ]);
 }
 
@@ -433,6 +435,13 @@ let calView = (() => {
 
 /** @type {any[]} */
 let calEntries = [];
+/** Days in the viewed calendar month that have at least one session. */
+let calMonthSessionDays = new Set();
+/** Days whose daily digest is stale (new/updated sessions since digest). */
+let calDayStaleMap = new Map();
+/** Weeks / months whose digest is stale. */
+let calWeekStaleMap = new Map();
+let calMonthStaleMap = new Map();
 /** @type {string | null} YYYY-MM-DD */
 let selectedDayKey = null;
 /** @type {{ type: 'day'|'week'|'month', key: string } | null} */
@@ -730,6 +739,9 @@ async function renderCalSessionList(opts = {}) {
     listEl.innerHTML = buildCalSessionListHtml(calSessionCache, range.type);
     wireCalSessionListClicks(listEl);
     if (opts.preserveScroll) listEl.scrollTop = previousScrollTop;
+    if (detailFocus && !getFocusDigestEntry(detailFocus.type, detailFocus.key)) {
+      renderFocusDigestDetail(detailFocus.type, detailFocus.key);
+    }
   } catch (error) {
     if (calSessionListSeq !== seq) return;
     calSessionCache = [];
@@ -973,6 +985,65 @@ function wireDigestPanelActions(root) {
   });
 }
 
+const FOCUS_SCOPE_WORDS = { day: "这一天", week: "这一周", month: "这一月" };
+
+function periodRangeForType(type, key) {
+  if (type === "day") return dayRangeFromKey(key);
+  if (type === "week") return weekRangeFromKey(key);
+  if (type === "month") return monthRangeFromKey(key);
+  return null;
+}
+
+/** Whether the focused period has any catalog sessions. */
+function periodHasSessions(type, key) {
+  const focus = detailFocus;
+  const range = periodRangeForType(type, key);
+  if (!range) return false;
+
+  const focusMatches = focus?.type === type && focus?.key === key;
+  const loadedSeq = `${type}:${key}:${range.fromMs}:${range.toMs}`;
+  if (focusMatches && calSessionListSeq === loadedSeq) {
+    return calSessionCache.length > 0;
+  }
+
+  if (type === "day") {
+    return calMonthSessionDays.has(key);
+  }
+
+  for (let t = range.fromMs; t < range.toMs; t += 86400000) {
+    if (calMonthSessionDays.has(dayKeyFromMs(t))) return true;
+  }
+  return false;
+}
+
+function emptyDigestPanelHtml(type, key, hasSessions) {
+  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  const level = FOCUS_DIGEST_LEVELS[type] || "daily";
+  const scope = FOCUS_SCOPE_WORDS[type] || "本期";
+
+  const header = `
+      <header class="digest-panel-head">
+        <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(label)} · ${escapeHtml(key)}</h3>
+      </header>`;
+
+  if (!hasSessions) {
+    return `
+    <div class="digest-panel digest-panel-empty digest-panel-quiet">
+      ${header}
+      <p class="empty-hint muted">${escapeHtml(scope)}还没有 CLI 会话记录，暂时不必生成${escapeHtml(label)}。</p>
+    </div>`;
+  }
+
+  return `
+    <div class="digest-panel digest-panel-empty">
+      ${header}
+      <p class="empty-hint muted">${escapeHtml(scope)}有会话活动，${escapeHtml(label)}还没整理好。如果想汇总一下，可以点下方按钮（需先在 Settings 配置工具 LLM）。</p>
+      <button type="button" class="tool-btn dig-generate" data-level="${escapeHtml(level)}" data-period-key="${escapeHtml(
+        key
+      )}">生成${escapeHtml(label)}</button>
+    </div>`;
+}
+
 /**
  * Right panel: view or generate digest for the focused day / week / month.
  * @param {"day"|"week"|"month"} type
@@ -983,7 +1054,6 @@ function renderFocusDigestDetail(type, key) {
   if (!detail || !key) return;
 
   const label = FOCUS_DIGEST_LABELS[type] || "Digest";
-  const level = FOCUS_DIGEST_LEVELS[type] || "daily";
 
   if (type === "day" && generatingDays.has(key)) {
     showGeneratingDetail("day", key);
@@ -1003,26 +1073,25 @@ function renderFocusDigestDetail(type, key) {
   }
 
   if (isFuturePeriod(type, key)) {
-    detail.innerHTML = `<p class="empty-hint">未来${escapeHtml(label)}不可生成。</p>`;
+    detail.innerHTML = `<p class="empty-hint muted">未来的日期还无法生成${escapeHtml(label)}，等有活动后再来看看吧。</p>`;
     return;
   }
 
   const entry = getFocusDigestEntry(type, key);
   if (entry) {
-    renderDigestEntries([entry]);
+    const staleCheck =
+      type === "day"
+        ? calDayStaleMap.get(key)
+        : type === "week"
+          ? calWeekStaleMap.get(key)
+          : type === "month"
+            ? calMonthStaleMap.get(key)
+            : undefined;
+    renderDigestEntries([entry], staleCheck, type);
     return;
   }
 
-  detail.innerHTML = `
-    <div class="digest-panel digest-panel-empty">
-      <header class="digest-panel-head">
-        <h3><span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>${escapeHtml(label)} · ${escapeHtml(key)}</h3>
-      </header>
-      <p class="empty-hint muted">尚未生成${escapeHtml(label)}。点击下方按钮在右侧面板生成（需配置工具 LLM）。</p>
-      <button type="button" class="tool-btn dig-generate" data-level="${escapeHtml(level)}" data-period-key="${escapeHtml(
-        key
-      )}">生成${escapeHtml(label)}</button>
-    </div>`;
+  detail.innerHTML = emptyDigestPanelHtml(type, key, periodHasSessions(type, key));
   wireDigestPanelActions(detail);
 }
 
@@ -1178,14 +1247,40 @@ async function openGtdFromDigest(level, memoryId, opts = {}) {
   await previewGtdSync({ force: true });
 }
 
-function renderDigestEntries(entries) {
+function staleDigestHint(check, type = "day") {
+  if (!check) return "";
+  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  if (type === "day") {
+    if (check.reason === "new_sessions" && check.newSessionCount > 0) {
+      return `有 ${check.newSessionCount} 个新 session 还没写进日报，方便的话可以再生成一次同步一下。`;
+    }
+    if (check.reason === "updated_sessions" && check.updatedSessionCount > 0) {
+      return `有 ${check.updatedSessionCount} 个 session 在日报之后又更新了，方便的话可以再生成一次保持最新。`;
+    }
+    return check.message || "日报可能不是最新的，方便的话可以再生成一次。";
+  }
+  if (check.reason === "updated_sessions" && check.updatedSessionCount > 0) {
+    return `有 ${check.updatedSessionCount} 个 session 在${label}之后又更新了，方便的话可以再生成一次保持最新。`;
+  }
+  if (check.reason === "new_sessions" && check.newSessionCount > 0) {
+    return `底层日报有变化，${label}可能不是最新的。方便的话可以再生成一次同步一下。`;
+  }
+  return check.message || `${label}可能不是最新的，方便的话可以再生成一次。`;
+}
+
+function renderDigestEntries(entries, staleCheck, focusType = "day") {
   const detail = $("calDetail");
   if (!detail) return;
   if (!entries.length) {
     detail.innerHTML = `<p class="empty-hint">暂无 digest。</p>`;
     return;
   }
-  detail.innerHTML = entries.map((e) => digestCardHtml(e)).join("");
+  const banner = staleCheck
+    ? `<div class="digest-stale-banner">
+        <p class="muted">${escapeHtml(staleDigestHint(staleCheck, focusType))}</p>
+      </div>`
+    : "";
+  detail.innerHTML = banner + entries.map((e) => digestCardHtml(e)).join("");
   wireDigestPanelActions(detail);
 }
 
@@ -1239,14 +1334,7 @@ function renderCalendar() {
       const marks = document.createElement("div");
       marks.className = "marks";
       const bucket = index[key];
-      // Only show daily mark on date cells (week/month use side buttons).
-      if (bucket?.daily) {
-        const m = document.createElement("span");
-        m.className = "mark daily";
-        m.textContent = "D";
-        m.title = bucket.daily.title || bucket.daily.id;
-        marks.appendChild(m);
-      }
+      appendDayCellMark(marks, { dayKey: key, outside, dailyEntry: bucket?.daily });
 
       cell.innerHTML = `<span class="day-num">${d.getDate()}</span>`;
       cell.appendChild(marks);
@@ -1267,17 +1355,24 @@ function renderCalendar() {
     weekBtn.dataset.week = weekLabelForRow || "";
     const wLabel = weekLabelForRow || "";
     const weekShortLabel = /W\d{2}$/i.exec(wLabel)?.[0]?.toUpperCase() || "W--";
-    weekBtn.innerHTML = `<span class="cal-week-label">${escapeHtml(weekShortLabel)}</span>`;
     const isFutureWeek = wLabel > thisWeek;
     const hasW = hasWeeklyDigest(wLabel);
+    const staleW = calWeekStaleMap.get(wLabel);
     if (hasW) weekBtn.classList.add("has-digest");
+    if (staleW) weekBtn.classList.add("has-digest-stale");
     if (isFutureWeek) weekBtn.classList.add("future");
     if (generatingPeriodKey === `weekly:${wLabel}`) weekBtn.classList.add("generating");
+    const staleBadge = staleW
+      ? `<span class="cal-period-stale" title="${escapeHtml(staleW.message || "周报待更新")}">更</span>`
+      : "";
+    weekBtn.innerHTML = `<span class="cal-week-label">${escapeHtml(weekShortLabel)}</span>${staleBadge}`;
     weekBtn.title = isFutureWeek
       ? `未来周 ${wLabel}`
-      : hasW
-        ? `周报 ${wLabel} · 点击查看（右侧面板可重新生成）`
-        : `周报 ${wLabel} · 点击查看 session，右侧面板生成`;
+      : staleW
+        ? `周报 ${wLabel} · ${staleW.message || "待更新"}`
+        : hasW
+          ? `周报 ${wLabel} · 点击查看（右侧面板可重新生成）`
+          : `周报 ${wLabel} · 点击查看 session，右侧面板生成`;
     weekBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       onWeekButton(wLabel);
@@ -1292,7 +1387,9 @@ function renderCalendar() {
     const thisMonth = currentMonthLabel();
     const isFutureMonth = mLabel > thisMonth;
     const hasM = hasMonthlyDigest(mLabel);
+    const staleM = calMonthStaleMap.get(mLabel);
     monthBtn.classList.toggle("has-digest", hasM);
+    monthBtn.classList.toggle("has-digest-stale", Boolean(staleM));
     monthBtn.classList.toggle("future", isFutureMonth);
     monthBtn.classList.toggle("generating", generatingPeriodKey === `monthly:${mLabel}`);
     monthBtn.classList.toggle(
@@ -1300,12 +1397,19 @@ function renderCalendar() {
       detailFocus?.type === "month" && detailFocus.key === mLabel
     );
     monthBtn.disabled = isFutureMonth;
-    monthBtn.textContent = isFutureMonth ? "月（未来）" : `月 · ${mLabel}`;
+    const monthStaleBadge = staleM
+      ? `<span class="cal-period-stale" title="${escapeHtml(staleM.message || "月报待更新")}">更</span>`
+      : "";
+    monthBtn.innerHTML = isFutureMonth
+      ? "月（未来）"
+      : `月 · ${escapeHtml(mLabel)}${monthStaleBadge}`;
     monthBtn.title = isFutureMonth
       ? "未来月份"
-      : hasM
-        ? `月 ${mLabel} · 点击查看 session 与月报（右侧面板可重新生成）`
-        : `月 ${mLabel} · 点击查看 session，右侧面板生成月报`;
+      : staleM
+        ? `月 ${mLabel} · ${staleM.message || "待更新"}`
+        : hasM
+          ? `月 ${mLabel} · 点击查看 session 与月报（右侧面板可重新生成）`
+          : `月 ${mLabel} · 点击查看 session，右侧面板生成月报`;
   }
 }
 
@@ -1315,6 +1419,56 @@ function entriesForDay(dayKey) {
 
 function hasDailyDigest(dayKey) {
   return calEntries.some((e) => (e.level || "daily") === "daily" && entryDayKey(e) === dayKey);
+}
+
+/**
+ * Day-cell status tags (mutually exclusive):
+ * - daily (D): digest up to date
+ * - daily-stale (更): digest exists but sessions changed
+ * - daily-missing (未): has sessions, no digest
+ * - no-session (无): no sessions in catalog for this day
+ * Spinner (generating) is separate — no text tag while running.
+ * Outside-month / future days: no tag.
+ * @param {HTMLElement} marks
+ * @param {{ dayKey: string, outside: boolean, dailyEntry?: any }} ctx
+ */
+function appendDayCellMark(marks, ctx) {
+  const { dayKey, outside, dailyEntry } = ctx;
+  if (outside || isFutureDayKey(dayKey) || generatingDays.has(dayKey)) return;
+
+  if (dailyEntry) {
+    const stale = calDayStaleMap.get(dayKey);
+    const m = document.createElement("span");
+    if (stale) {
+      m.className = "mark daily-stale";
+      m.textContent = "更";
+      const parts = [];
+      if (stale.newSessionCount > 0) parts.push(`${stale.newSessionCount} 个新 session`);
+      if (stale.updatedSessionCount > 0) parts.push(`${stale.updatedSessionCount} 个有更新`);
+      m.title = `日报已有，${parts.join("、") || "session 有变化"} · ${dayKey}`;
+    } else {
+      m.className = "mark daily";
+      m.textContent = "D";
+      m.title = dailyEntry.title || dailyEntry.id || `日报已是最新 · ${dayKey}`;
+    }
+    marks.appendChild(m);
+    return;
+  }
+
+  if (calMonthSessionDays.has(dayKey)) {
+    const m = document.createElement("span");
+    m.className = "mark daily-missing";
+    m.textContent = "未";
+    m.title = `有 session，日报未生成 · ${dayKey}`;
+    marks.appendChild(m);
+    return;
+  }
+
+  const m = document.createElement("span");
+  m.className = "mark no-session";
+  m.textContent = "无";
+  m.title = `无 session · ${dayKey}`;
+  marks.appendChild(m);
 }
 
 /**
@@ -1390,15 +1544,119 @@ function onMonthButton() {
   renderFocusDigestDetail("month", viewMonthLabel());
 }
 
+function applyMonthSessions(sessions) {
+  calMonthSessionDays = new Set();
+  for (const s of sessions) {
+    if (s?.updatedAt) calMonthSessionDays.add(dayKeyFromMs(s.updatedAt));
+  }
+}
+
+function isStaleDigestCheck(check) {
+  return (
+    check?.needed &&
+    (check.reason === "new_sessions" || check.reason === "updated_sessions")
+  );
+}
+
+function weekLabelsWithDigest() {
+  const labels = new Set();
+  for (const e of calEntries) {
+    if (e.level !== "weekly") continue;
+    const wk = periodKeyFromEntry(e);
+    if (wk) labels.add(wk);
+  }
+  return [...labels];
+}
+
+async function refreshCalStaleMaps() {
+  calDayStaleMap = new Map();
+  calWeekStaleMap = new Map();
+  calMonthStaleMap = new Map();
+
+  const monthLabel = viewMonthLabel();
+  const days = new Set();
+  for (const e of calEntries) {
+    if ((e.level || "daily") !== "daily") continue;
+    const dk = entryDayKey(e);
+    if (dk.startsWith(monthLabel)) {
+      days.add(dk);
+    }
+  }
+
+  const tasks = [];
+
+  for (const day of days) {
+    tasks.push(
+      agentResume.needsDailyDigestRefresh(day).then((check) => {
+        if (isStaleDigestCheck(check)) calDayStaleMap.set(day, check);
+      })
+    );
+  }
+
+  for (const week of weekLabelsWithDigest()) {
+    tasks.push(
+      agentResume.needsWeeklyDigestRefresh(week).then((check) => {
+        if (isStaleDigestCheck(check)) calWeekStaleMap.set(week, check);
+      })
+    );
+  }
+
+  if (hasMonthlyDigest(monthLabel)) {
+    tasks.push(
+      agentResume.needsMonthlyDigestRefresh(monthLabel).then((check) => {
+        if (isStaleDigestCheck(check)) calMonthStaleMap.set(monthLabel, check);
+      })
+    );
+  }
+
+  await Promise.all(tasks.map((p) => p.catch(() => undefined)));
+}
+
+async function refreshMonthSessionActivity(opts = {}) {
+  const monthRange = monthRangeFromKey(viewMonthLabel());
+  if (!monthRange) return;
+  try {
+    const sessions = await agentResume.listSessionsInRange({
+      fromMs: monthRange.fromMs,
+      toMs: monthRange.toMs,
+      limit: 2000
+    });
+    applyMonthSessions(sessions);
+    await refreshCalStaleMaps();
+    renderCalendar();
+    if (detailFocus || selectedDayKey) {
+      refreshDetailFocus();
+    }
+    await renderCalSessionList({ preserveScroll: opts.preserveScroll !== false });
+  } catch {
+    // keep previous month activity markers on failure
+  }
+}
+
 async function loadMemory() {
   setStatus($("memoryStatus"), "");
   try {
     const { fromMs, toMs } = monthRangeMs(calView.year, calView.month);
-    calEntries = await agentResume.listMemory({
-      fromMs,
-      toMs,
-      limit: 300
-    });
+    const monthRange = monthRangeFromKey(viewMonthLabel());
+    const [entries, sessions] = await Promise.all([
+      agentResume.listMemory({
+        fromMs,
+        toMs,
+        limit: 300
+      }),
+      monthRange
+        ? agentResume.listSessionsInRange({
+            fromMs: monthRange.fromMs,
+            toMs: monthRange.toMs,
+            limit: 2000
+          })
+        : Promise.resolve([])
+    ]);
+    calEntries = entries;
+    applyMonthSessions(sessions);
+    calDayStaleMap = new Map();
+    calWeekStaleMap = new Map();
+    calMonthStaleMap = new Map();
     renderCalendar();
     if (detailFocus || selectedDayKey) {
       refreshDetailFocus();
@@ -1406,6 +1664,12 @@ async function loadMemory() {
       $("calDetail").innerHTML = `<p class="muted">点击日期 / 周 / 月查看 session；在右侧面板生成 digest。</p>`;
     }
     renderCalSessionList();
+    void refreshCalStaleMaps().then(() => {
+      renderCalendar();
+      if (detailFocus || selectedDayKey) {
+        refreshDetailFocus();
+      }
+    });
   } catch (error) {
     $("calendarGrid").innerHTML = "";
     $("calDetail").innerHTML = `<p class="status error">${escapeHtml(
@@ -1827,7 +2091,7 @@ async function runWeekly(weekKey) {
     phase: "start",
     level: "weekly",
     periodLabel: week,
-    message: `生成周报 ${week}…（先检查并补全本周日报）`
+    message: `生成周报 ${week}…（先逐个更新本周待刷新日报）`
   });
   try {
     const result = await agentResume.runWeeklyDigest(week);
@@ -1870,7 +2134,7 @@ async function runMonthly(monthKey) {
     phase: "start",
     level: "monthly",
     periodLabel: month,
-    message: `生成月报 ${month}…（先检查并补全本月日报）`
+    message: `生成月报 ${month}…（先更新本月日报，再更新周报）`
   });
   try {
     const result = await agentResume.runMonthlyDigest(month);

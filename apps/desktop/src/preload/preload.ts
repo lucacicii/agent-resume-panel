@@ -66,6 +66,8 @@ export interface DesktopApi {
     dateOrOpts?: string | { date?: string; forceResummarize?: boolean }
   ): Promise<RunDailyDigestResult>;
   needsDailyDigestRefresh(date?: string): Promise<DailyDigestRefreshCheck>;
+  needsWeeklyDigestRefresh(weekKey?: string): Promise<DailyDigestRefreshCheck>;
+  needsMonthlyDigestRefresh(monthKey?: string): Promise<DailyDigestRefreshCheck>;
   runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
   runMonthlyDigest(monthKey?: string): Promise<RunMonthlyDigestResult>;
   onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
@@ -241,6 +243,8 @@ const api: DesktopApi = {
     return ipcRenderer.invoke("memory:runDaily", dateOrOpts);
   },
   needsDailyDigestRefresh: (date) => ipcRenderer.invoke("memory:needsDailyRefresh", date),
+  needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("memory:needsWeeklyRefresh", weekKey),
+  needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("memory:needsMonthlyRefresh", monthKey),
   runWeeklyDigest: (weekKey) => ipcRenderer.invoke("memory:runWeekly", weekKey),
   runMonthlyDigest: (monthKey) => ipcRenderer.invoke("memory:runMonthly", monthKey),
   onDigestProgress: (callback) => {

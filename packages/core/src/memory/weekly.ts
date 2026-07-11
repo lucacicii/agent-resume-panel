@@ -5,7 +5,8 @@ import { recordLlmUsage } from "../usage/store";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { buildWeeklySourceLines } from "./context";
-import { ensureDailiesForPeriod, EnsureLevelStats } from "./ensureDailies";
+import { EnsureLevelStats } from "./ensureDailies";
+import { ensureFreshDailiesForPeriod } from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localWeekRange } from "./period";
 import { DigestProgressCallback } from "./progress";
@@ -65,7 +66,7 @@ export async function runWeeklyDigest(
       phase: "start",
       level: "weekly",
       periodLabel: period.label,
-      message: `生成周报 ${period.label}…（先检查并补全本周日报）`
+      message: `生成周报 ${period.label}…（先更新本周待刷新日报）`
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -75,12 +76,12 @@ export async function runWeeklyDigest(
       );
     }
 
-    const ensuredDailies = await ensureDailiesForPeriod({
+    const ensuredDailies = await ensureFreshDailiesForPeriod({
       dbPath,
       startMs: period.startMs,
       endMs: period.endMs,
       panelHome,
-      skipExisting: !options.forceEnsureLower,
+      forceRefresh: options.forceEnsureLower,
       skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
       onProgress,
