@@ -8,6 +8,15 @@
   --accent: #6aa8ff;
   --danger: #f07178;
   --ok: #7fd99a;
+  /* Agent brand accents (official / published brand palettes) */
+  --agent-codex: #10a37f; /* OpenAI Green */
+  --agent-claude: #d97757; /* Anthropic accent orange */
+  --agent-agy: #4992ea; /* Google Gemini blue */
+  --agent-grok: #b8b8b8; /* xAI monochrome silver */
+  --agent-alma: #7c6fe8; /* Alma app violet */
+  --agent-opencode: #656363; /* OpenCode logo gray */
+  --agent-pi: #e07a3a; /* Pi warm accent */
+  --agent-chat: var(--accent);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -19,6 +28,7 @@
     --text: #1a1d23;
     --muted: #5f6b7a;
     --accent: #2563eb;
+    --agent-chat: var(--accent);
   }
 }
 
@@ -259,6 +269,51 @@ body {
 .session-row:hover,
 .session-row.active {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.s-provider-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  vertical-align: baseline;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--muted);
+}
+
+.s-provider-tag[data-provider="codex"] {
+  background: var(--agent-codex);
+}
+
+.s-provider-tag[data-provider="claude"] {
+  background: var(--agent-claude);
+}
+
+.s-provider-tag[data-provider="agy"] {
+  background: var(--agent-agy);
+}
+
+.s-provider-tag[data-provider="grok"] {
+  background: color-mix(in srgb, var(--agent-grok) 35%, #4a4a4a);
+}
+
+.s-provider-tag[data-provider="alma"] {
+  background: var(--agent-alma);
+}
+
+.s-provider-tag[data-provider="opencode"] {
+  background: var(--agent-opencode);
+}
+
+.s-provider-tag[data-provider="pi"] {
+  background: var(--agent-pi);
+}
+
+.s-provider-tag[data-provider="chat"] {
+  background: var(--agent-chat);
 }
 
 .session-row .s-title {

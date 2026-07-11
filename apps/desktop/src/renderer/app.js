@@ -34,6 +34,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+/** Provider pill in session list meta line (codex, claude, grok, …). */
+function providerTagHtml(provider) {
+  const p = provider || "unknown";
+  return `<span class="s-provider-tag" data-provider="${escapeHtml(p)}">${escapeHtml(p)}</span>`;
+}
+
 function renderMarkdown(value) {
   const source = String(value ?? "");
   try {
@@ -119,7 +125,7 @@ function renderSessionsList(sessions) {
     }
     btn.innerHTML = `
       <div class="s-title">${escapeHtml(s.title)}</div>
-      <div class="s-meta">${escapeHtml(s.provider)} · ${escapeHtml(basename(s.projectPath))} · ${escapeHtml(
+      <div class="s-meta">${providerTagHtml(s.provider)} · ${escapeHtml(basename(s.projectPath))} · ${escapeHtml(
         formatTime(s.updatedAt)
       )}</div>
     `;
@@ -595,7 +601,7 @@ function calSessionRowHtml(s) {
       s.provider
     )}" data-id="${escapeHtml(s.id)}">
       <div class="s-title">${escapeHtml(s.title || s.id)}</div>
-      <div class="s-meta">${escapeHtml(s.provider)} · ${escapeHtml(
+      <div class="s-meta">${providerTagHtml(s.provider)} · ${escapeHtml(
         basename(s.projectPath || "")
       )} · ${escapeHtml(formatTime(s.updatedAt))}</div>
     </button>`;
