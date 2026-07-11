@@ -41,6 +41,11 @@ CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
 
+CREATE TABLE IF NOT EXISTS catalog_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS llm_usage_events (
   id TEXT PRIMARY KEY,
   created_at_ms INTEGER NOT NULL,

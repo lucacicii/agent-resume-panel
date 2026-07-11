@@ -118,6 +118,12 @@ function switchTab(name) {
   if (name === "workbench") {
     void ensureWorkbenchVisible();
   }
+  if (name === "notes") {
+    void ensureNotesVisible();
+  }
+  if (name !== "notes") {
+    void flushNotesSave();
+  }
 }
 
 async function ensureAskChatVisible() {
@@ -1205,6 +1211,631 @@ async function confirmNewSession() {
     closeSheet("sheetNewSession");
     switchTab("workbench");
     setStatus(status, "", "");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+// --- Notes ---
+
+const NOTES_TREE_STATE_KEY = "notes-tree-state";
+let notesCache = [];
+let notesFilter = "";
+let notesTreeState = { groupsExpanded: {}, rootsExpanded: { projects: true, sessions: true } };
+let notesActiveId = "";
+let notesDirty = false;
+let notesSaveTimer = null;
+let notesLoaded = false;
+let notesPanelHome = "";
+let notesContextNode = null;
+let notesPendingOwner = null;
+let notesSheetMode = "create";
+
+function isNotesActive() {
+  return !!document.querySelector('.tab[data-tab="notes"]')?.classList.contains("active");
+}
+
+function loadNotesTreeState() {
+  try {
+    const raw = localStorage.getItem(NOTES_TREE_STATE_KEY);
+    if (raw) {
+      notesTreeState = { groupsExpanded: {}, rootsExpanded: { projects: true, sessions: true }, ...JSON.parse(raw) };
+    }
+  } catch {
+    notesTreeState = { groupsExpanded: {}, rootsExpanded: { projects: true, sessions: true } };
+  }
+}
+
+function saveNotesTreeState() {
+  try {
+    localStorage.setItem(NOTES_TREE_STATE_KEY, JSON.stringify(notesTreeState));
+  } catch {
+    // ignore
+  }
+}
+
+function notesRelativeTime(ms) {
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  try {
+    return new Date(ms).toLocaleDateString();
+  } catch {
+    return "";
+  }
+}
+
+function filterNotesList(notes) {
+  if (!notesFilter.trim()) return notes;
+  const q = notesFilter.trim().toLowerCase();
+  const sessionsByKey = new Map(sessionsCache.map((s) => [`${s.provider}:${s.id}`, s]));
+  return notes.filter((note) => {
+    const session =
+      note.provider && note.agentSessionId
+        ? sessionsByKey.get(`${note.provider}:${note.agentSessionId}`)
+        : undefined;
+    const haystack = [
+      note.filename,
+      note.title,
+      note.contentPreview,
+      note.projectPath,
+      note.projectPath ? basename(note.projectPath) : undefined,
+      note.provider,
+      note.agentSessionId,
+      session?.title
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function groupKeyForNoteContext(kind, data) {
+  if (kind === "project") return `project:${data.projectPath}`;
+  if (kind === "session") return `session:${data.provider}:${data.sessionId}`;
+  return "";
+}
+
+function renderNotesTree() {
+  const tree = $("notesTree");
+  const meta = $("notesMeta");
+  if (!tree) return;
+
+  const notes = filterNotesList(notesCache);
+  tree.innerHTML = "";
+
+  if (meta) {
+    meta.textContent = notesFilter
+      ? `筛选：${notesFilter} · ${notes.length} 条`
+      : `${notesCache.length} 条笔记`;
+  }
+
+  if (!notes.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted notes-empty";
+    empty.textContent = notesFilter ? "没有匹配筛选的笔记" : "暂无笔记";
+    tree.appendChild(empty);
+    return;
+  }
+
+  const sessionsByKey = new Map(sessionsCache.map((s) => [`${s.provider}:${s.id}`, s]));
+  const root = document.createElement("ul");
+  root.className = "notes-tree-root";
+
+  const projectsRoot = document.createElement("li");
+  projectsRoot.innerHTML = `<div class="notes-tree-root-label">项目</div>`;
+  const projectsUl = document.createElement("ul");
+  projectsUl.className = "notes-tree-root";
+  projectsUl.style.listStyle = "none";
+  projectsUl.style.padding = "0";
+  projectsUl.style.margin = "0";
+
+  const byProject = new Map();
+  for (const note of notes) {
+    if (note.scope !== "project" || !note.projectPath) continue;
+    const list = byProject.get(note.projectPath) ?? [];
+    list.push(note);
+    byProject.set(note.projectPath, list);
+  }
+  [...byProject.entries()]
+    .map(([projectPath, projectNotes]) => ({
+      projectPath,
+      notes: projectNotes.sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+    }))
+    .sort((a, b) => (b.notes[0]?.updatedAtMs ?? 0) - (a.notes[0]?.updatedAtMs ?? 0))
+    .forEach((group) => {
+      projectsUl.appendChild(renderNotesGroup("project", group, sessionsByKey));
+    });
+  if (projectsUl.childElementCount) projectsRoot.appendChild(projectsUl);
+  else {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.style.fontSize = "12px";
+    empty.style.margin = "0 0 8px 2px";
+    empty.textContent = "无项目笔记";
+    projectsRoot.appendChild(empty);
+  }
+  root.appendChild(projectsRoot);
+
+  const sessionsRoot = document.createElement("li");
+  sessionsRoot.innerHTML = `<div class="notes-tree-root-label">会话</div>`;
+  const sessionsUl = document.createElement("ul");
+  sessionsUl.className = "notes-tree-root";
+  sessionsUl.style.listStyle = "none";
+  sessionsUl.style.padding = "0";
+  sessionsUl.style.margin = "0";
+
+  const bySession = new Map();
+  for (const note of notes) {
+    if (note.scope !== "session" || !note.provider || !note.agentSessionId) continue;
+    const key = `${note.provider}:${note.agentSessionId}`;
+    const list = bySession.get(key) ?? [];
+    list.push(note);
+    bySession.set(key, list);
+  }
+  [...bySession.entries()]
+    .map(([key, sessionNotes]) => {
+      const [provider, sessionId] = key.split(/:(.*)/);
+      const session = sessionsByKey.get(key);
+      return {
+        provider,
+        sessionId,
+        projectPath: sessionNotes[0]?.projectPath ?? session?.projectPath,
+        title: session?.title,
+        notes: sessionNotes.sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+      };
+    })
+    .sort((a, b) => (b.notes[0]?.updatedAtMs ?? 0) - (a.notes[0]?.updatedAtMs ?? 0))
+    .forEach((group) => {
+      sessionsUl.appendChild(renderNotesGroup("session", group, sessionsByKey));
+    });
+  if (sessionsUl.childElementCount) sessionsRoot.appendChild(sessionsUl);
+  else {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.style.fontSize = "12px";
+    empty.style.margin = "0 0 8px 2px";
+    empty.textContent = "无会话笔记";
+    sessionsRoot.appendChild(empty);
+  }
+  root.appendChild(sessionsRoot);
+
+  tree.appendChild(root);
+}
+
+function renderNotesGroup(kind, group, sessionsByKey) {
+  const li = document.createElement("li");
+  li.className = "notes-tree-group";
+  const gKey =
+    kind === "project"
+      ? groupKeyForNoteContext("project", group)
+      : groupKeyForNoteContext("session", group);
+  const expanded = notesTreeState.groupsExpanded[gKey] !== false;
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "notes-tree-group-head";
+  const label =
+    kind === "project"
+      ? basename(group.projectPath)
+      : sessionsByKey.get(`${group.provider}:${group.sessionId}`)?.title ||
+        group.title ||
+        group.sessionId;
+  const desc =
+    kind === "session"
+      ? [group.provider, group.projectPath ? basename(group.projectPath) : ""].filter(Boolean).join(" · ")
+      : "";
+  head.innerHTML = `
+    <span class="notes-tree-chevron">${expanded ? "▼" : "▶"}</span>
+    <span class="notes-tree-group-label" title="${escapeHtml(kind === "project" ? group.projectPath : label)}">${escapeHtml(label)}</span>
+    <span class="notes-tree-group-count">${group.notes.length}</span>
+  `;
+  if (desc) head.title = desc;
+  head.addEventListener("click", () => {
+    notesTreeState.groupsExpanded[gKey] = !expanded;
+    saveNotesTreeState();
+    renderNotesTree();
+  });
+  head.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showNotesContextMenu(e, { kind, ...group });
+  });
+  li.appendChild(head);
+
+  if (expanded) {
+    const ul = document.createElement("ul");
+    ul.className = "notes-tree-notes";
+    for (const note of group.notes) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "notes-tree-note";
+      if (note.noteId === notesActiveId) btn.classList.add("active");
+      btn.dataset.noteId = note.noteId;
+      btn.innerHTML = `
+        <span class="notes-tree-note-name" title="${escapeHtml(note.title || note.filename)}">${escapeHtml(note.filename)}</span>
+        <span class="notes-tree-note-time">${escapeHtml(notesRelativeTime(note.updatedAtMs))}</span>
+      `;
+      btn.addEventListener("click", () => void openNoteInEditor(note.noteId));
+      btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        showNotesContextMenu(e, { kind: "note", note });
+      });
+      ul.appendChild(btn);
+    }
+    li.appendChild(ul);
+  }
+  return li;
+}
+
+function noteDirFromAbs(absPath) {
+  const norm = absPath.replace(/\\/g, "/");
+  const idx = norm.lastIndexOf("/");
+  return idx >= 0 ? norm.slice(0, idx) : norm;
+}
+
+function resolveNoteAssetPath(noteDirAbs, src) {
+  const clean = src.trim().replace(/^<|>$/g, "");
+  if (!clean || /^[a-z]+:/i.test(clean)) return clean;
+  const base = noteDirAbs.replace(/\\/g, "/");
+  if (clean.startsWith("/")) return clean;
+  if (clean.startsWith("./")) return `${base}/${clean.slice(2)}`;
+  if (clean.startsWith("../")) {
+    const parts = base.split("/");
+    const rel = clean.split("/");
+    for (const seg of rel) {
+      if (seg === "..") parts.pop();
+      else if (seg !== ".") parts.push(seg);
+    }
+    return parts.join("/");
+  }
+  return `${base}/${clean}`;
+}
+
+function rewriteNoteImagePaths(markdown, noteDirAbs) {
+  return String(markdown ?? "").replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    const trimmed = src.trim();
+    if (/^(https?:|data:|file:)/i.test(trimmed)) return match;
+    const resolved = resolveNoteAssetPath(noteDirAbs, trimmed);
+    const fileUrl = resolved.startsWith("/") ? `file://${resolved}` : `file:///${resolved}`;
+    return `![${alt}](${fileUrl})`;
+  });
+}
+
+function renderNoteMarkdown(value, noteDirAbs) {
+  const source = rewriteNoteImagePaths(String(value ?? ""), noteDirAbs);
+  try {
+    if (typeof marked?.parse !== "function" || typeof DOMPurify?.sanitize !== "function") {
+      throw new Error("Markdown renderer is unavailable");
+    }
+    const parsed = marked.parse(source, { gfm: true, breaks: true });
+    const sanitized = DOMPurify.sanitize(parsed, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
+      FORBID_ATTR: ["style"],
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|file|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+    });
+    const template = document.createElement("template");
+    template.innerHTML = sanitized;
+    template.content.querySelectorAll("a[href]").forEach((link) => {
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+    });
+    return template.innerHTML;
+  } catch {
+    return `<pre class="markdown-fallback">${escapeHtml(source)}</pre>`;
+  }
+}
+
+function updateNotesPreview(content, noteAbsPath) {
+  const preview = $("notesPreview");
+  if (!preview) return;
+  const dir = noteDirFromAbs(noteAbsPath || "");
+  preview.innerHTML = renderNoteMarkdown(content, dir);
+}
+
+function showNotesEditor(show) {
+  const head = $("notesEditorHead");
+  const layout = $("notesEditorLayout");
+  const hint = $("notesHint");
+  if (head) head.hidden = !show;
+  if (layout) layout.hidden = !show;
+  if (hint) hint.hidden = show;
+}
+
+async function openNoteInEditor(noteId) {
+  if (notesDirty && notesActiveId && notesActiveId !== noteId) {
+    await flushNotesSave();
+  }
+  const status = $("notesStatus");
+  setStatus(status, "加载中…");
+  try {
+    const { record, content } = await agentResume.notesRead({ noteId });
+    notesActiveId = record.noteId;
+    notesDirty = false;
+    const editor = $("notesEditor");
+    const title = $("notesEditorTitle");
+    if (editor) editor.value = content;
+    if (title) title.textContent = record.filename;
+    const noteAbs = notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${record.relMdPath}` : "";
+    updateNotesPreview(content, noteAbs);
+    showNotesEditor(true);
+    renderNotesTree();
+    setStatus(status, "");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function scheduleNotesSave() {
+  if (notesSaveTimer) clearTimeout(notesSaveTimer);
+  notesSaveTimer = setTimeout(() => void flushNotesSave(), 800);
+}
+
+async function flushNotesSave() {
+  if (notesSaveTimer) {
+    clearTimeout(notesSaveTimer);
+    notesSaveTimer = null;
+  }
+  if (!notesDirty || !notesActiveId) return;
+  const status = $("notesStatus");
+  const editor = $("notesEditor");
+  const content = editor?.value ?? "";
+  setStatus(status, "保存中…");
+  try {
+    const updated = await agentResume.notesWrite({ noteId: notesActiveId, content });
+    notesDirty = false;
+    const idx = notesCache.findIndex((n) => n.noteId === notesActiveId);
+    if (idx >= 0) {
+      notesCache[idx] = { ...notesCache[idx], ...updated };
+    }
+    renderNotesTree();
+    setStatus(status, "已保存", "ok");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function loadNotes({ quiet } = {}) {
+  const status = $("notesStatus");
+  if (!quiet) setStatus(status, "加载笔记…");
+  try {
+    if (!notesPanelHome) {
+      notesPanelHome = await agentResume.getPanelHome();
+    }
+    notesCache = await agentResume.notesList();
+    notesLoaded = true;
+    renderNotesTree();
+    if (!quiet) setStatus(status, "");
+  } catch (error) {
+    if (!quiet) setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function ensureNotesVisible() {
+  loadNotesTreeState();
+  if (!sessionsCache.length) {
+    try {
+      sessionsCache = await agentResume.listSessions(2000);
+    } catch {
+      // keep existing cache
+    }
+  }
+  await loadNotes({ quiet: notesLoaded });
+}
+
+function hideNotesContextMenu() {
+  const menu = $("notesContextMenu");
+  if (menu) menu.hidden = true;
+  notesContextNode = null;
+}
+
+function showNotesContextMenu(event, node) {
+  notesContextNode = node;
+  const menu = $("notesContextMenu");
+  if (!menu) return;
+  const isNote = node.kind === "note";
+  const isGroup = node.kind === "project" || node.kind === "session";
+  menu.querySelector('[data-notes-action="open"]').hidden = !isNote;
+  menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
+  menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
+  menu.querySelector('[data-notes-action="rename"]').hidden = !isNote;
+  menu.querySelector('[data-notes-action="delete"]').hidden = !isNote;
+  menu.querySelector('[data-notes-action="copyPath"]').hidden = !isNote;
+  menu.querySelector('[data-notes-action="reveal"]').hidden = !isNote;
+  menu.hidden = false;
+  const x = Math.min(event.clientX, window.innerWidth - 200);
+  const y = Math.min(event.clientY, window.innerHeight - 220);
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+}
+
+function ownerFromContextNode(node) {
+  if (!node) return null;
+  if (node.kind === "project") {
+    return { scope: "project", projectPath: node.projectPath };
+  }
+  if (node.kind === "session") {
+    return {
+      scope: "session",
+      provider: node.provider,
+      sessionId: node.sessionId,
+      projectPath: node.projectPath
+    };
+  }
+  if (node.kind === "note" && node.note) {
+    const n = node.note;
+    if (n.scope === "project" && n.projectPath) {
+      return { scope: "project", projectPath: n.projectPath };
+    }
+    if (n.scope === "session" && n.provider && n.agentSessionId) {
+      return {
+        scope: "session",
+        provider: n.provider,
+        sessionId: n.agentSessionId,
+        projectPath: n.projectPath
+      };
+    }
+  }
+  return null;
+}
+
+async function handleNotesContextAction(action) {
+  const node = notesContextNode;
+  hideNotesContextMenu();
+  const status = $("notesStatus");
+  try {
+    if (action === "open" && node?.kind === "note") {
+      await openNoteInEditor(node.note.noteId);
+      return;
+    }
+    if (action === "new") {
+      const owner = ownerFromContextNode(node);
+      if (owner) {
+        const created = await agentResume.notesCreate(owner);
+        await loadNotes({ quiet: true });
+        await openNoteInEditor(created.noteId);
+      }
+      return;
+    }
+    if (action === "import") {
+      const owner = ownerFromContextNode(node);
+      if (!owner) return;
+      const result = await agentResume.notesImport(owner);
+      await loadNotes({ quiet: true });
+      if (result.imported > 0) {
+        setStatus(status, `已导入 ${result.imported} 条笔记`, "ok");
+      } else if (result.errors?.length) {
+        setStatus(status, result.errors[0], "error");
+      }
+      return;
+    }
+    if (action === "rename" && node?.kind === "note") {
+      const next = prompt("输入新文件名（可选 .md 后缀）", node.note.filename);
+      if (!next?.trim()) return;
+      await agentResume.notesRename({ noteId: node.note.noteId, filename: next.trim() });
+      await loadNotes({ quiet: true });
+      if (notesActiveId === node.note.noteId) {
+        $("notesEditorTitle").textContent = next.trim().endsWith(".md") ? next.trim() : `${next.trim()}.md`;
+      }
+      setStatus(status, "已重命名", "ok");
+      return;
+    }
+    if (action === "delete" && node?.kind === "note") {
+      const ok = confirm(`删除笔记「${node.note.filename}」？将同时删除其 assets 文件夹。`);
+      if (!ok) return;
+      await agentResume.notesDelete({ noteId: node.note.noteId });
+      if (notesActiveId === node.note.noteId) {
+        notesActiveId = "";
+        notesDirty = false;
+        showNotesEditor(false);
+        const editor = $("notesEditor");
+        if (editor) editor.value = "";
+      }
+      await loadNotes({ quiet: true });
+      setStatus(status, "已删除", "ok");
+      return;
+    }
+    if (action === "copyPath" && node?.kind === "note") {
+      const { path: p } = await agentResume.notesCopyPath({ noteId: node.note.noteId });
+      setStatus(status, `已复制：${p}`, "ok");
+      return;
+    }
+    if (action === "reveal" && node?.kind === "note") {
+      await agentResume.notesReveal({ noteId: node.note.noteId });
+    }
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function populateNewNoteSelectors() {
+  const projects = [...new Set(sessionsCache.map((s) => s.projectPath).filter(Boolean))].sort();
+  const projectSel = $("newNoteProject");
+  const sessionSel = $("newNoteSession");
+  if (projectSel) {
+    projectSel.innerHTML = "";
+    for (const p of projects) {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = basename(p);
+      projectSel.appendChild(opt);
+    }
+  }
+  if (sessionSel) {
+    sessionSel.innerHTML = "";
+    const sorted = [...sessionsCache].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const s of sorted.slice(0, 500)) {
+      const opt = document.createElement("option");
+      opt.value = `${s.provider}\t${s.id}`;
+      opt.textContent = `${s.title || s.id} · ${s.provider} · ${basename(s.projectPath)}`;
+      sessionSel.appendChild(opt);
+    }
+  }
+}
+
+function resolveOwnerFromNewNoteSheet() {
+  if (notesPendingOwner) return notesPendingOwner;
+  const kind = document.querySelector('input[name="newNoteKind"]:checked')?.value || "project";
+  if (kind === "project") {
+    const projectPath = $("newNoteProject")?.value;
+    if (!projectPath) throw new Error("请选择项目");
+    return { scope: "project", projectPath };
+  }
+  const raw = $("newNoteSession")?.value || "";
+  const [provider, sessionId] = raw.split("\t");
+  if (!provider || !sessionId) throw new Error("请选择会话");
+  const session = sessionsCache.find((s) => s.provider === provider && s.id === sessionId);
+  return {
+    scope: "session",
+    provider,
+    sessionId,
+    projectPath: session?.projectPath
+  };
+}
+
+function openNewNoteSheet(owner) {
+  notesSheetMode = "create";
+  notesPendingOwner = owner || null;
+  populateNewNoteSelectors();
+  const btn = $("btnConfirmNewNote");
+  if (btn) btn.textContent = "创建";
+  openSheet("sheetNewNote");
+}
+
+function openImportNoteSheet(owner) {
+  notesSheetMode = "import";
+  notesPendingOwner = owner || null;
+  populateNewNoteSelectors();
+  const btn = $("btnConfirmNewNote");
+  if (btn) btn.textContent = "导入";
+  openSheet("sheetNewNote");
+}
+
+async function confirmNewNote() {
+  const status = $("newNoteStatus");
+  setStatus(status, notesSheetMode === "import" ? "导入中…" : "创建中…");
+  try {
+    const owner = resolveOwnerFromNewNoteSheet();
+    if (notesSheetMode === "import") {
+      const result = await agentResume.notesImport(owner);
+      closeSheet("sheetNewNote");
+      notesPendingOwner = null;
+      notesSheetMode = "create";
+      await loadNotes({ quiet: true });
+      switchTab("notes");
+      setStatus(status, result.imported > 0 ? `已导入 ${result.imported} 条` : "未选择文件", result.imported > 0 ? "ok" : "");
+      return;
+    }
+    const created = await agentResume.notesCreate(owner);
+    closeSheet("sheetNewNote");
+    notesPendingOwner = null;
+    await loadNotes({ quiet: true });
+    switchTab("notes");
+    await openNoteInEditor(created.noteId);
+    setStatus(status, "");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -4530,6 +5161,7 @@ function wire() {
     agentResume.onSessionsSynced((result) => {
       lastSessionSyncAt = result.syncedAt || Date.now();
       void refreshSessionViews({ quiet: true });
+      if (notesLoaded) renderNotesTree();
       if (result.warnings?.length) setStatus($("memoryStatus"), result.warnings.join(" · "), "error");
     });
   }
@@ -4617,6 +5249,73 @@ function wire() {
       wbResizeObserver.observe(stack);
     }
   }
+
+  $("btnNotesFilter")?.addEventListener("click", () => {
+    const value = prompt("按文件名、标题、项目或会话筛选", notesFilter);
+    if (value == null) return;
+    notesFilter = value.trim();
+    renderNotesTree();
+  });
+  $("btnNotesClearFilter")?.addEventListener("click", () => {
+    notesFilter = "";
+    renderNotesTree();
+  });
+  $("btnNotesNew")?.addEventListener("click", () => openNewNoteSheet());
+  $("btnNotesImport")?.addEventListener("click", () => {
+    openImportNoteSheet(ownerFromContextNode(notesContextNode));
+  });
+  $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
+  $("btnNotesOpenFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
+  $("btnNotesSave")?.addEventListener("click", () => void flushNotesSave());
+  $("btnNotesInsertImage")?.addEventListener("click", async () => {
+    if (!notesActiveId) return;
+    const status = $("notesStatus");
+    try {
+      const result = await agentResume.notesInsertImage({ noteId: notesActiveId });
+      if (!result?.snippet) return;
+      const editor = $("notesEditor");
+      if (!editor) return;
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const before = editor.value.slice(0, start);
+      const after = editor.value.slice(end);
+      editor.value = `${before}${result.snippet}${after}`;
+      editor.selectionStart = editor.selectionEnd = start + result.snippet.length;
+      notesDirty = true;
+      scheduleNotesSave();
+      const note = notesCache.find((n) => n.noteId === notesActiveId);
+      const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
+      updateNotesPreview(editor.value, noteAbs);
+      setStatus(status, "已插入图片", "ok");
+    } catch (error) {
+      setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    }
+  });
+  $("btnConfirmNewNote")?.addEventListener("click", () => void confirmNewNote());
+  document.querySelectorAll('input[name="newNoteKind"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      const kind = document.querySelector('input[name="newNoteKind"]:checked')?.value;
+      const sessionSel = $("newNoteSession");
+      const projectSel = $("newNoteProject");
+      if (sessionSel) sessionSel.disabled = kind !== "session";
+      if (projectSel) projectSel.disabled = kind === "session";
+    });
+  });
+  document.querySelectorAll("[data-notes-action]").forEach((btn) => {
+    btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
+  });
+  $("notesEditor")?.addEventListener("input", () => {
+    notesDirty = true;
+    const note = notesCache.find((n) => n.noteId === notesActiveId);
+    const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
+    updateNotesPreview($("notesEditor")?.value ?? "", noteAbs);
+    scheduleNotesSave();
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#notesContextMenu") && !e.target.closest(".notes-tree-note") && !e.target.closest(".notes-tree-group-head")) {
+      hideNotesContextMenu();
+    }
+  });
 }
 
 function showSettingsPane(name) {

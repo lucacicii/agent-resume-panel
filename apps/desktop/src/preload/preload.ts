@@ -264,6 +264,64 @@ export interface DesktopApi {
       totalTokens: number;
     }>
   >;
+  notesList(): Promise<
+    Array<{
+      noteId: string;
+      scope: string;
+      provider?: string;
+      agentSessionId?: string;
+      projectPath?: string;
+      filename: string;
+      relDir: string;
+      relMdPath: string;
+      title?: string;
+      contentPreview?: string;
+      createdAtMs: number;
+      updatedAtMs: number;
+      fsMtimeMs?: number;
+    }>
+  >;
+  notesRead(args: { noteId: string }): Promise<{
+    record: {
+      noteId: string;
+      scope: string;
+      provider?: string;
+      agentSessionId?: string;
+      projectPath?: string;
+      filename: string;
+      relDir: string;
+      relMdPath: string;
+      title?: string;
+      contentPreview?: string;
+      createdAtMs: number;
+      updatedAtMs: number;
+      fsMtimeMs?: number;
+    };
+    content: string;
+  }>;
+  notesWrite(args: { noteId: string; content: string }): Promise<{
+    noteId: string;
+    filename: string;
+    updatedAtMs: number;
+  }>;
+  notesCreate(args: {
+    scope: "project" | "session";
+    projectPath?: string;
+    provider?: string;
+    sessionId?: string;
+  }): Promise<{ noteId: string; filename: string }>;
+  notesDelete(args: { noteId: string }): Promise<{ ok: boolean }>;
+  notesRename(args: { noteId: string; filename: string }): Promise<{ noteId: string; filename: string }>;
+  notesImport(owner: {
+    scope: "project" | "session";
+    projectPath?: string;
+    provider?: string;
+    sessionId?: string;
+  }): Promise<{ imported: number; skipped: number; errors: string[] }>;
+  notesInsertImage(args: { noteId: string }): Promise<{ snippet: string } | null>;
+  notesOpenFolder(): Promise<{ ok: boolean }>;
+  notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
+  notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
 }
 
 const api: DesktopApi = {
@@ -355,7 +413,18 @@ const api: DesktopApi = {
   backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
   usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
-  usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args)
+  usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args),
+  notesList: () => ipcRenderer.invoke("notes:list"),
+  notesRead: (args) => ipcRenderer.invoke("notes:read", args),
+  notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
+  notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
+  notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
+  notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
+  notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
+  notesInsertImage: (args) => ipcRenderer.invoke("notes:insertImage", args),
+  notesOpenFolder: () => ipcRenderer.invoke("notes:openFolder"),
+  notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
+  notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args)
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);

@@ -1,4 +1,4 @@
-export { expandHome, compactPath } from "./pathUtils";
+export { expandHome, compactPath, basenameOrPath, normalizeProjectPath } from "./pathUtils";
 export {
   DEFAULT_PANEL_HOME,
   resolvePanelHome,
@@ -173,8 +173,79 @@ export { writeSessionTodolistMd } from "./notes/todolist";
 export {
   sessionTodolistAbsPath,
   sessionTodolistRelMdPath,
-  sessionDirKey
+  sessionDirKey,
+  sessionNoteRelDir,
+  sessionNoteAbsDir,
+  NOTES_ROOT_SEGMENT,
+  notesRoot,
+  absFromRelMdPath,
+  relMdPathFromAbs,
+  isNotesMarkdownPath,
+  ownerRelDir,
+  ownerAbsDir,
+  noteRelMdPath,
+  noteAbsMdPath,
+  noteAbsAssetsDir,
+  ownerJsonPath,
+  serializeOwner,
+  parseOwnerJson,
+  projectDirKey,
+  type NoteScope,
+  type NoteOwner,
+  type ProjectNoteOwner,
+  type SessionNoteOwner,
+  type NoteOwnerJson
 } from "./notes/paths";
+export type { NoteRecord } from "./notes/catalogNotes";
+export {
+  listAllNotes,
+  getNoteById,
+  getNoteByRelPath,
+  listSessionNotes,
+  listProjectNotes,
+  upsertNoteRecord,
+  deleteNoteRecord,
+  deleteNotesByRelPaths,
+  loadSessionNoteFlags,
+  loadProjectNoteFlags,
+  getCatalogMeta,
+  setCatalogMeta,
+  listLegacySessionNotes,
+  listLegacyProjectNotes
+} from "./notes/catalogNotes";
+export { NotesStore, type ImportNotesResult } from "./notes/store";
+export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "./notes/reconcile";
+export {
+  parseNoteDocument,
+  buildNoteDocument,
+  extractTitle,
+  contentPreview,
+  type NoteFrontmatter,
+  type ParsedNoteDocument
+} from "./notes/frontmatter";
+export {
+  localDateString,
+  formatNoteFilename,
+  nextNoteFilename,
+  parseNoteFilename,
+  normalizeNoteFilename,
+  noteAssetsDirName,
+  noteStem,
+  rewriteAssetReferences,
+  uniqueNoteFilename
+} from "./notes/naming";
+export {
+  ensureOwnerDir,
+  listMarkdownFilenames,
+  writeNewNoteFile,
+  readNoteFile,
+  deleteNoteFiles,
+  renameNoteFiles,
+  ensureAssetsDir,
+  newNoteId,
+  pathExists,
+  fileMtimeMs
+} from "./notes/fs";
 export {
   runMemoryGtdSync,
   previewMemoryGtdSync,

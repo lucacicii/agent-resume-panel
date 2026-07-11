@@ -53,6 +53,20 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import {
+  invalidateNotesStore,
+  notesCopyPath,
+  notesCreate,
+  notesDelete,
+  notesImport,
+  notesInsertImage,
+  notesList,
+  notesOpenFolder,
+  notesRead,
+  notesRename,
+  notesReveal,
+  notesWrite
+} from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 
 function tryRegisterPtyIpc(): void {
@@ -192,6 +206,7 @@ function registerIpc(): void {
 
   ipcMain.handle("settings:save", async (_event, settings: PanelSettings) => {
     const file = await saveSettings(settings);
+    invalidateNotesStore();
     const schedulerEnabled = await refreshMemorySchedulerFromSettings();
     const saved = await loadSettings();
     const sync = await syncAndNotify();
@@ -637,6 +652,36 @@ function registerIpc(): void {
     }
   );
 
+  ipcMain.handle("notes:list", async () => notesList());
+  ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
+  ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) =>
+    notesWrite(args.noteId, args.content)
+  );
+  ipcMain.handle(
+    "notes:create",
+    async (
+      _event,
+      args: {
+        scope: "project" | "session";
+        projectPath?: string;
+        provider?: string;
+        sessionId?: string;
+      }
+    ) => notesCreate(args)
+  );
+  ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => notesDelete(args.noteId));
+  ipcMain.handle("notes:rename", async (_event, args: { noteId: string; filename: string }) =>
+    notesRename(args.noteId, args.filename)
+  );
+  ipcMain.handle("notes:import", async (_event, owner: import("@agent-resume/core").NoteOwner) =>
+    notesImport(owner)
+  );
+  ipcMain.handle("notes:insertImage", async (_event, args: { noteId: string }) =>
+    notesInsertImage(args.noteId)
+  );
+  ipcMain.handle("notes:openFolder", async () => notesOpenFolder());
+  ipcMain.handle("notes:reveal", async (_event, args: { noteId: string }) => notesReveal(args.noteId));
+  ipcMain.handle("notes:copyPath", async (_event, args: { noteId: string }) => notesCopyPath(args.noteId));
 }
 
 app.whenReady().then(async () => {

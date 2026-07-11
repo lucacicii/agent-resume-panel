@@ -13,6 +13,16 @@ export function expandHome(input: string): string {
   return input;
 }
 
+export function basenameOrPath(projectPath: string): string {
+  const normalized = path.normalize(projectPath);
+  const base = path.basename(normalized);
+  return base || normalized;
+}
+
+export function normalizeProjectPath(projectPath: string): string {
+  return path.resolve(projectPath);
+}
+
 export function compactPath(projectPath: string): string {
   const home = os.homedir();
   if (projectPath === home) {

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file: data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agent Resume Desktop</title>
@@ -17,6 +17,7 @@
         <button type="button" class="tab active" data-tab="memory">Memory</button>
         <button type="button" class="tab" data-tab="ask">Ask</button>
         <button type="button" class="tab" data-tab="workbench">工作台</button>
+        <button type="button" class="tab" data-tab="notes">笔记</button>
       </nav>
       <div class="top-actions">
         <button type="button" class="ghost-btn" id="btnOpenSessions" title="Sessions 参考">Sessions</button>
@@ -124,6 +125,43 @@
             </button>
           </div>
           <p class="status ask-status" id="agentStatus"></p>
+        </div>
+      </section>
+
+      <!-- Notes -->
+      <section id="tab-notes" class="panel notes-panel">
+        <div class="notes-layout">
+          <aside class="notes-sidebar">
+            <div class="notes-sidebar-head">
+              <div class="notes-toolbar">
+                <button type="button" class="tool-btn" id="btnNotesFilter" title="筛选笔记">筛选</button>
+                <button type="button" class="tool-btn" id="btnNotesClearFilter" title="清除筛选">清除</button>
+                <button type="button" class="tool-btn" id="btnNotesNew" title="新建笔记">+ 新建</button>
+                <button type="button" class="tool-btn" id="btnNotesImport" title="导入 Markdown">导入</button>
+                <button type="button" class="tool-btn" id="btnNotesRefresh" title="刷新">刷新</button>
+                <button type="button" class="tool-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">文件夹</button>
+              </div>
+            </div>
+            <p class="muted notes-meta" id="notesMeta"></p>
+            <div class="notes-tree" id="notesTree">
+              <p class="muted notes-empty">加载笔记…</p>
+            </div>
+          </aside>
+          <div class="notes-main">
+            <div class="notes-editor-head" id="notesEditorHead" hidden>
+              <strong id="notesEditorTitle"></strong>
+              <div class="notes-editor-actions">
+                <button type="button" class="ghost-btn" id="btnNotesInsertImage">插入图片</button>
+                <button type="button" class="ghost-btn" id="btnNotesSave">保存</button>
+              </div>
+            </div>
+            <div class="notes-editor-layout" id="notesEditorLayout" hidden>
+              <textarea id="notesEditor" class="notes-editor-ta" spellcheck="false" placeholder="编辑 Markdown…"></textarea>
+              <div id="notesPreview" class="notes-preview markdown-body"></div>
+            </div>
+            <p class="muted notes-hint" id="notesHint">选择左侧笔记以编辑</p>
+            <p class="status" id="notesStatus"></p>
+          </div>
         </div>
       </section>
 
@@ -453,6 +491,36 @@
             <button type="button" id="btnConfirmNewSession">创建</button>
           </div>
           <p class="status" id="newSessionStatus"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes-context-menu" id="notesContextMenu" hidden>
+      <button type="button" data-notes-action="open" hidden>打开</button>
+      <button type="button" data-notes-action="new" hidden>新建笔记</button>
+      <button type="button" data-notes-action="import" hidden>导入 Markdown</button>
+      <button type="button" data-notes-action="rename" hidden>重命名</button>
+      <button type="button" data-notes-action="delete" hidden>删除</button>
+      <button type="button" data-notes-action="copyPath" hidden>复制路径</button>
+      <button type="button" data-notes-action="reveal" hidden>在 Finder 中显示</button>
+    </div>
+
+    <div class="sheet" id="sheetNewNote" hidden>
+      <div class="sheet-backdrop" data-close-sheet="sheetNewNote"></div>
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h3>新建笔记</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetNewNote">关闭</button>
+        </div>
+        <div class="sheet-body">
+          <label class="check"><input type="radio" name="newNoteKind" value="project" checked /> 项目笔记</label>
+          <select id="newNoteProject" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px"></select>
+          <label class="check"><input type="radio" name="newNoteKind" value="session" /> 会话笔记</label>
+          <select id="newNoteSession" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px" disabled></select>
+          <div class="form-row" style="margin-top:16px">
+            <button type="button" id="btnConfirmNewNote">创建</button>
+          </div>
+          <p class="status" id="newNoteStatus"></p>
         </div>
       </div>
     </div>
