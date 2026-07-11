@@ -2863,6 +2863,87 @@ code {
   position: relative;
 }
 
+.wb-terminal-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.wb-terminal-tabs[hidden] {
+  display: none !important;
+}
+
+.wb-terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  max-width: 200px;
+}
+
+.wb-terminal-tab.active {
+  background: #0d1117;
+  border-color: color-mix(in srgb, var(--accent, #3b82f6) 35%, var(--border));
+}
+
+.wb-terminal-tab-label {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 5px 4px 5px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.wb-terminal-tab-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.wb-terminal-tab-close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.wb-terminal-stack {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-terminal-pane {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.wb-terminal-pane.active {
+  display: flex;
+}
+
 .wb-terminal-host {
   flex: 1;
   min-height: 0;

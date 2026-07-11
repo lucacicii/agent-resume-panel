@@ -88,9 +88,9 @@ export interface DesktopApi {
     cols?: number;
     rows?: number;
   }): Promise<{ id: number }>;
-  terminalInput(args: { data: string }): Promise<{ ok: boolean }>;
-  terminalResize(args: { cols: number; rows: number }): Promise<{ ok: boolean }>;
-  terminalDestroy(): Promise<{ ok: boolean }>;
+  terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
+  terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
+  terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -282,7 +282,7 @@ const api: DesktopApi = {
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
-  terminalDestroy: () => ipcRenderer.invoke("terminal:destroy"),
+  terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);

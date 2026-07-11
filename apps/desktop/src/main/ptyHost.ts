@@ -6,12 +6,17 @@ import * as pty from "node-pty";
 import { expandHome } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 
-let activePty: pty.IPty | null = null;
-let activeTerminalId = 0;
-let respawnOnExit = false;
-let lastSpawnCwd = process.cwd();
-let lastCols = 80;
-let lastRows = 24;
+interface PtySession {
+  pty: pty.IPty;
+  respawnOnExit: boolean;
+  lastSpawnCwd: string;
+  lastCols: number;
+  lastRows: number;
+  shell: string;
+}
+
+const ptySessions = new Map<number, PtySession>();
+let nextTerminalId = 0;
 
 function ensureSpawnHelperExecutable(): void {
   if (process.platform !== "darwin" && process.platform !== "linux") return;
@@ -146,7 +151,6 @@ function spawnInteractivePty(
 function attachPtyHandlers(
   ptyInstance: pty.IPty,
   id: number,
-  shell: string,
   win: BrowserWindow | null
 ): void {
   ptyInstance.onData((data) => {
@@ -155,11 +159,24 @@ function attachPtyHandlers(
     }
   });
   ptyInstance.onExit(() => {
-    activePty = null;
+    const session = ptySessions.get(id);
+    if (!session) return;
+
+    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell } = session;
+    ptySessions.delete(id);
+
     if (respawnOnExit && lastSpawnCwd) {
       try {
-        activePty = spawnInteractivePty(shell, lastSpawnCwd, lastCols, lastRows);
-        attachPtyHandlers(activePty, id, shell, win);
+        const newPty = spawnInteractivePty(shell, lastSpawnCwd, lastCols, lastRows);
+        ptySessions.set(id, {
+          pty: newPty,
+          respawnOnExit: true,
+          lastSpawnCwd,
+          lastCols,
+          lastRows,
+          shell
+        });
+        attachPtyHandlers(newPty, id, win);
         if (win && !win.isDestroyed()) {
           win.webContents.send("terminal:respawned", { id });
         }
@@ -168,21 +185,23 @@ function attachPtyHandlers(
         console.warn("terminal respawn failed:", error);
       }
     }
+
     if (win && !win.isDestroyed()) {
       win.webContents.send("terminal:exit", { id });
     }
   });
 }
 
-function destroyActivePty(): void {
-  respawnOnExit = false;
-  if (!activePty) return;
+function destroyPtyById(id: number): void {
+  const session = ptySessions.get(id);
+  if (!session) return;
+  session.respawnOnExit = false;
   try {
-    activePty.kill();
+    session.pty.kill();
   } catch {
     // ignore
   }
-  activePty = null;
+  ptySessions.delete(id);
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
@@ -192,16 +211,12 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       _event,
       args: { cwd: string; command?: string; cols?: number; rows?: number }
     ) => {
-      destroyActivePty();
-      respawnOnExit = true;
-
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
       const rows = Math.max(2, Math.floor(args.rows || 24));
       const cwd = resolveCwd(args.cwd);
-      lastSpawnCwd = cwd;
-      lastCols = cols;
-      lastRows = rows;
+      const id = ++nextTerminalId;
+      const win = getWindow();
 
       const spawnOpts = {
         name: "xterm-256color",
@@ -211,47 +226,60 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         env: envWithPath()
       };
 
+      let ptyInstance: pty.IPty;
       try {
         const command = args.command?.trim();
         if (command) {
-          // Run resume/new command, then drop into an interactive shell so input keeps working.
-          activePty = pty.spawn(shell, ["-lc", `${command}; exec ${shell} -l`], spawnOpts);
+          ptyInstance = pty.spawn(shell, ["-lc", `${command}; exec ${shell} -l`], spawnOpts);
         } else {
-          activePty = spawnInteractivePty(shell, cwd, cols, rows);
+          ptyInstance = spawnInteractivePty(shell, cwd, cols, rows);
         }
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`无法启动终端 (shell=${shell}, cwd=${cwd}): ${detail}`);
       }
 
-      const id = ++activeTerminalId;
-      const win = getWindow();
-      attachPtyHandlers(activePty, id, shell, win);
+      ptySessions.set(id, {
+        pty: ptyInstance,
+        respawnOnExit: true,
+        lastSpawnCwd: cwd,
+        lastCols: cols,
+        lastRows: rows,
+        shell
+      });
+      attachPtyHandlers(ptyInstance, id, win);
 
       return { id };
     }
   );
 
-  safeHandle("terminal:input", (_event, args: { data: string }) => {
-    activePty?.write(args.data);
+  safeHandle("terminal:input", (_event, args: { id: number; data: string }) => {
+    const session = ptySessions.get(Math.floor(args.id));
+    session?.pty.write(args.data);
     return { ok: true };
   });
 
-  safeHandle("terminal:resize", (_event, args: { cols: number; rows: number }) => {
+  safeHandle("terminal:resize", (_event, args: { id: number; cols: number; rows: number }) => {
+    const id = Math.floor(args.id);
+    const session = ptySessions.get(id);
     const cols = Math.max(2, Math.floor(args.cols || 80));
     const rows = Math.max(2, Math.floor(args.rows || 24));
-    lastCols = cols;
-    lastRows = rows;
-    activePty?.resize(cols, rows);
+    if (session) {
+      session.lastCols = cols;
+      session.lastRows = rows;
+      session.pty.resize(cols, rows);
+    }
     return { ok: true };
   });
 
-  safeHandle("terminal:destroy", () => {
-    destroyActivePty();
+  safeHandle("terminal:destroy", (_event, args: { id: number }) => {
+    destroyPtyById(Math.floor(args.id));
     return { ok: true };
   });
 }
 
 export function destroyPtyOnQuit(): void {
-  destroyActivePty();
+  for (const id of [...ptySessions.keys()]) {
+    destroyPtyById(id);
+  }
 }

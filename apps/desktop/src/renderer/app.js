@@ -491,10 +491,10 @@ const WB_TREE_STATE_KEY = "workbench-tree-state";
 let wbSessions = [];
 let wbActiveKey = "";
 let wbTreeState = { projectsExpanded: {}, projectsRootExpanded: true };
-let wbTerminal = null;
-let wbFitAddon = null;
-let wbTerminalId = 0;
-let wbTerminalUnsubs = [];
+/** @type {Map<string, { key: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string }>} */
+const wbTerminalPanes = new Map();
+let wbActiveTerminalKey = "";
+let wbTerminalIpcReady = false;
 let wbContextSession = null;
 let wbLoaded = false;
 let wbResizeObserver = null;
@@ -569,7 +569,9 @@ function updateWorkbenchMeta(projects) {
     return;
   }
   const sessionCount = projects.reduce((n, p) => n + p.sessions.length, 0);
-  meta.textContent = `${projects.length} projects · ${sessionCount} sessions · 右键预览`;
+  const tabCount = wbTerminalPanes.size;
+  const tabHint = tabCount ? ` · ${tabCount} 个终端` : "";
+  meta.textContent = `${projects.length} projects · ${sessionCount} sessions${tabHint} · 右键预览`;
 }
 
 function renderWorkbenchTree(projects) {
@@ -672,71 +674,188 @@ async function ensureWorkbenchVisible() {
   });
 }
 
-function clearWorkbenchTerminalUnsubs() {
-  for (const off of wbTerminalUnsubs) {
-    try {
-      off();
-    } catch {
-      // ignore
-    }
-  }
-  wbTerminalUnsubs = [];
+function workbenchSessionKey(session) {
+  return `${session.provider}:${session.id}`;
 }
 
-async function destroyWorkbenchTerminal() {
-  try {
-    wbResizeObserver?.disconnect();
-    wbResizeObserver = null;
-    clearWorkbenchTerminalUnsubs();
-    if (wbTerminal) {
-      try {
-        wbTerminal.dispose();
-      } catch {
-        // ignore
+function workbenchNewSessionKey(cwd, provider) {
+  return `new:${provider}:${cwd}`;
+}
+
+function getActiveWorkbenchTerminalPane() {
+  if (!wbActiveTerminalKey) return null;
+  return wbTerminalPanes.get(wbActiveTerminalKey) || null;
+}
+
+function updateWorkbenchTerminalHint() {
+  const hint = $("wbTerminalHint");
+  if (!hint) return;
+  hint.classList.toggle("hidden", wbTerminalPanes.size > 0);
+}
+
+function ensureWorkbenchTerminalIpc() {
+  if (wbTerminalIpcReady) return;
+  wbTerminalIpcReady = true;
+
+  agentResume.onTerminalData((payload) => {
+    for (const pane of wbTerminalPanes.values()) {
+      if (pane.ptyId === payload.id && pane.term) {
+        pane.term.write(payload.data);
       }
-      wbTerminal = null;
-      wbFitAddon = null;
     }
-    wbTerminalId = 0;
-    const host = $("wbTerminalHost");
-    if (host) host.innerHTML = "";
-    $("wbTerminalHint")?.classList.remove("hidden");
-    if (typeof agentResume.terminalDestroy === "function") {
-      try {
-        await agentResume.terminalDestroy();
-      } catch (e) {
-        console.warn("terminalDestroy IPC failed", e);
+  });
+  agentResume.onTerminalRespawned((payload) => {
+    for (const pane of wbTerminalPanes.values()) {
+      if (pane.ptyId === payload.id && pane.term) {
+        pane.term.write("\r\n\x1b[90m[已恢复交互式 shell]\x1b[0m\r\n");
       }
+    }
+  });
+  agentResume.onTerminalExit((payload) => {
+    for (const pane of wbTerminalPanes.values()) {
+      if (pane.ptyId === payload.id && pane.term) {
+        pane.term.write("\r\n\x1b[90m[终端已关闭]\x1b[0m\r\n");
+      }
+    }
+  });
+}
+
+function renderWorkbenchTerminalTabs() {
+  const tabsEl = $("wbTerminalTabs");
+  if (!tabsEl) return;
+  tabsEl.hidden = wbTerminalPanes.size === 0;
+  tabsEl.innerHTML = "";
+
+  for (const [key, pane] of wbTerminalPanes) {
+    const tab = document.createElement("div");
+    tab.className = "wb-terminal-tab";
+    tab.dataset.key = key;
+    if (key === wbActiveTerminalKey) tab.classList.add("active");
+
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "wb-terminal-tab-label";
+    label.textContent = pane.title || basename(pane.cwd);
+    label.title = pane.title || pane.cwd;
+    label.addEventListener("click", () => switchWorkbenchTerminalTab(key));
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "wb-terminal-tab-close";
+    closeBtn.setAttribute("aria-label", "关闭终端");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void closeWorkbenchTerminalTab(key);
+    });
+
+    tab.appendChild(label);
+    tab.appendChild(closeBtn);
+    tabsEl.appendChild(tab);
+  }
+
+  updateWorkbenchMeta(groupSessionsByProject(wbSessions));
+}
+
+function switchWorkbenchTerminalTab(key) {
+  if (!wbTerminalPanes.has(key)) return;
+  wbActiveTerminalKey = key;
+  wbActiveKey = key.startsWith("new:") ? wbActiveKey : key;
+
+  for (const [paneKey, pane] of wbTerminalPanes) {
+    const active = paneKey === key;
+    pane.paneEl.classList.toggle("active", active);
+    if (active) {
+      requestAnimationFrame(() => {
+        try {
+          pane.fitAddon?.fit();
+          pane.term?.focus();
+        } catch {
+          // ignore
+        }
+        fitWorkbenchTerminal();
+      });
+    }
+  }
+
+  if (!key.startsWith("new:")) {
+    wbActiveKey = key;
+    highlightWorkbenchSession(key);
+  }
+  renderWorkbenchTerminalTabs();
+  updateWorkbenchTerminalHint();
+}
+
+async function closeWorkbenchTerminalTab(key) {
+  const pane = wbTerminalPanes.get(key);
+  if (!pane) return;
+
+  try {
+    if (typeof agentResume.terminalDestroy === "function") {
+      await agentResume.terminalDestroy({ id: pane.ptyId });
     }
   } catch (e) {
-    console.warn("destroyWorkbenchTerminal failed", e);
+    console.warn("terminalDestroy IPC failed", e);
   }
+
+  try {
+    pane.term?.dispose();
+  } catch {
+    // ignore
+  }
+  pane.paneEl.remove();
+  wbTerminalPanes.delete(key);
+
+  if (wbActiveTerminalKey === key) {
+    const remaining = [...wbTerminalPanes.keys()];
+    wbActiveTerminalKey = remaining.length ? remaining[remaining.length - 1] : "";
+    if (wbActiveTerminalKey) {
+      switchWorkbenchTerminalTab(wbActiveTerminalKey);
+    } else {
+      wbActiveKey = "";
+      highlightWorkbenchSession("");
+    }
+  }
+
+  renderWorkbenchTerminalTabs();
+  updateWorkbenchTerminalHint();
 }
 
 function fitWorkbenchTerminal() {
-  if (!wbTerminal || !wbFitAddon || !isWorkbenchActive()) return;
+  const pane = getActiveWorkbenchTerminalPane();
+  if (!pane?.term || !pane.fitAddon || !isWorkbenchActive()) return;
   try {
-    wbFitAddon.fit();
-    const cols = wbTerminal.cols;
-    const rows = wbTerminal.rows;
-    if (cols > 0 && rows > 0) {
-      void agentResume.terminalResize({ cols, rows });
+    pane.fitAddon.fit();
+    const cols = pane.term.cols;
+    const rows = pane.term.rows;
+    if (cols > 0 && rows > 0 && pane.ptyId > 0) {
+      void agentResume.terminalResize({ id: pane.ptyId, cols, rows });
     }
   } catch {
     // ignore
   }
 }
 
-async function spawnWorkbenchTerminal(cwd, command) {
-  await destroyWorkbenchTerminal();
-  const host = $("wbTerminalHost");
+async function createWorkbenchTerminalPane(opts) {
+  const { key, title, cwd, command } = opts;
+  const stack = $("wbTerminalStack");
   const hint = $("wbTerminalHint");
-  if (!host || typeof Terminal === "undefined") {
+  if (!stack || typeof Terminal === "undefined") {
     setStatus($("wbStatus"), "终端组件未加载", "error");
-    return;
+    return null;
   }
+
+  ensureWorkbenchTerminalIpc();
   hint?.classList.add("hidden");
-  host.innerHTML = "";
+
+  const paneEl = document.createElement("div");
+  paneEl.className = "wb-terminal-pane";
+  paneEl.dataset.key = key;
+
+  const hostEl = document.createElement("div");
+  hostEl.className = "wb-terminal-host";
+  paneEl.appendChild(hostEl);
+  stack.appendChild(paneEl);
 
   const term = new Terminal({
     cursorBlink: true,
@@ -750,8 +869,8 @@ async function spawnWorkbenchTerminal(cwd, command) {
     allowProposedApi: true
   });
 
-  wbFitAddon = typeof FitAddon !== "undefined" ? new FitAddon.FitAddon() : null;
-  if (wbFitAddon) term.loadAddon(wbFitAddon);
+  const fitAddon = typeof FitAddon !== "undefined" ? new FitAddon.FitAddon() : null;
+  if (fitAddon) term.loadAddon(fitAddon);
   if (typeof WebglAddon !== "undefined") {
     try {
       term.loadAddon(new WebglAddon.WebglAddon());
@@ -760,49 +879,48 @@ async function spawnWorkbenchTerminal(cwd, command) {
     }
   }
 
-  term.open(host);
-  wbTerminal = term;
-  if (wbFitAddon) {
+  term.open(hostEl);
+  if (fitAddon) {
     try {
-      wbFitAddon.fit();
+      fitAddon.fit();
     } catch {
       // ignore
     }
   }
-  term.focus();
-
-  term.onData((data) => {
-    void agentResume.terminalInput({ data });
-  });
 
   const cols = Math.max(2, term.cols || 80);
   const rows = Math.max(2, term.rows || 24);
   const { id } = await agentResume.terminalSpawn({ cwd, command, cols, rows });
-  wbTerminalId = id;
 
-  wbTerminalUnsubs.push(
-    agentResume.onTerminalData((payload) => {
-      if (payload.id === wbTerminalId && wbTerminal) {
-        wbTerminal.write(payload.data);
-      }
-    })
-  );
-  wbTerminalUnsubs.push(
-    agentResume.onTerminalRespawned((payload) => {
-      if (payload.id === wbTerminalId && wbTerminal) {
-        wbTerminal.write("\r\n\x1b[90m[已恢复交互式 shell]\x1b[0m\r\n");
-      }
-    })
-  );
-  wbTerminalUnsubs.push(
-    agentResume.onTerminalExit((payload) => {
-      if (payload.id === wbTerminalId && wbTerminal) {
-        wbTerminal.write("\r\n\x1b[90m[终端已关闭]\x1b[0m\r\n");
-      }
-    })
-  );
+  const pane = {
+    key,
+    title: title || basename(cwd),
+    ptyId: id,
+    term,
+    fitAddon,
+    paneEl,
+    hostEl,
+    cwd
+  };
+  wbTerminalPanes.set(key, pane);
 
+  term.onData((data) => {
+    void agentResume.terminalInput({ id: pane.ptyId, data });
+  });
+
+  switchWorkbenchTerminalTab(key);
   requestAnimationFrame(() => fitWorkbenchTerminal());
+  return pane;
+}
+
+async function openWorkbenchTerminal(opts) {
+  const { key, title, cwd, command } = opts;
+  const existing = wbTerminalPanes.get(key);
+  if (existing) {
+    switchWorkbenchTerminalTab(key);
+    return existing;
+  }
+  return createWorkbenchTerminalPane({ key, title, cwd, command });
 }
 
 async function openWorkbenchSession(session) {
@@ -827,8 +945,13 @@ async function openWorkbenchSession(session) {
       $("wbTerminalHint")?.classList.remove("hidden");
       return;
     }
-    await spawnWorkbenchTerminal(result.cwd, result.command);
-    setStatus(status, `已恢复 · ${basename(result.cwd)}`, "ok");
+    await openWorkbenchTerminal({
+      key: workbenchSessionKey(session),
+      title: session.title,
+      cwd: result.cwd,
+      command: result.command
+    });
+    setStatus(status, "");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -869,6 +992,11 @@ async function handleWorkbenchContextAction(action) {
         title
       });
       await loadWorkbenchSessions({ quiet: true });
+      const pane = wbTerminalPanes.get(workbenchSessionKey(session));
+      if (pane) {
+        pane.title = title;
+        renderWorkbenchTerminalTabs();
+      }
       setStatus($("wbStatus"), "已重命名", "ok");
     } catch (error) {
       setStatus($("wbStatus"), error instanceof Error ? error.message : String(error), "error");
@@ -880,10 +1008,12 @@ async function handleWorkbenchContextAction(action) {
     if (!ok) return;
     try {
       await agentResume.hideSession({ provider: session.provider, id: session.id });
-      if (wbActiveKey === `${session.provider}:${session.id}`) {
+      const sessionKey = workbenchSessionKey(session);
+      if (wbTerminalPanes.has(sessionKey)) {
+        await closeWorkbenchTerminalTab(sessionKey);
+      }
+      if (wbActiveKey === sessionKey) {
         wbActiveKey = "";
-        await destroyWorkbenchTerminal();
-        $("wbTerminalHint")?.classList.remove("hidden");
       }
       await loadWorkbenchSessions({ quiet: true });
       await refreshSessionViews({ quiet: true });
@@ -946,8 +1076,14 @@ async function confirmNewSession() {
       setStatus($("wbStatus"), "已在外部 Ghostty 中打开", "ok");
       return;
     }
-    await spawnWorkbenchTerminal(result.cwd, result.command);
-    setStatus($("wbStatus"), `新 session · ${basename(result.cwd)}`, "ok");
+    const providerUsed = useGhosttyOnly ? "codex" : provider;
+    await openWorkbenchTerminal({
+      key: workbenchNewSessionKey(result.cwd, providerUsed),
+      title: `新 session · ${basename(result.cwd)}`,
+      cwd: result.cwd,
+      command: result.command
+    });
+    setStatus($("wbStatus"), "");
     setStatus(status, "", "");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
@@ -4354,11 +4490,11 @@ function wire() {
   });
   window.addEventListener("resize", () => fitWorkbenchTerminal());
   if (typeof ResizeObserver !== "undefined") {
-    const host = $("wbTerminalHost");
-    if (host) {
+    const stack = $("wbTerminalStack");
+    if (stack) {
       wbResizeObserver?.disconnect();
       wbResizeObserver = new ResizeObserver(() => fitWorkbenchTerminal());
-      wbResizeObserver.observe(host);
+      wbResizeObserver.observe(stack);
     }
   }
 }
