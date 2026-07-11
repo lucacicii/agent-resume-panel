@@ -2729,11 +2729,11 @@ code {
 }
 
 /* --- Workbench --- */
-.workbench-panel {
+#tab-workbench.panel.active {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   min-height: 0;
-  height: 100%;
 }
 
 .workbench-layout {

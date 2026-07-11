@@ -95,12 +95,12 @@ function syncAskChatCursor() {
   askChatOldestSortOrder = orders.length ? Math.min(...orders) : null;
 }
 
-function switchTab(name) {
+async function switchTab(name) {
   if (name !== "ask") {
     hideCitationPreview();
   }
   if (name !== "workbench") {
-    void destroyWorkbenchTerminal();
+    await destroyWorkbenchTerminal();
   }
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === name);
