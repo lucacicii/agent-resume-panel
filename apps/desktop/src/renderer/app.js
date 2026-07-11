@@ -534,6 +534,8 @@ let wbContextSession = null;
 let wbLoaded = false;
 let wbResizeObserver = null;
 let wbBlankTerminalSeq = 0;
+let wbTargetPopoverSearch = "";
+let wbCreateBusy = false;
 
 function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
@@ -779,7 +781,6 @@ async function loadWorkbenchSessions(opts = {}) {
       if (!hasProject) wbSelectedProject = { kind: "all" };
     }
     renderWorkbenchPanel();
-    populateNewSessionProjects();
   } catch (error) {
     if (!quiet) {
       list.innerHTML = `<p class="status error">${escapeHtml(
@@ -1239,6 +1240,7 @@ function shouldKeepWorkbenchSelection(target) {
     target.closest(".wb-list-item") ||
       target.closest("#wbTerminalShell") ||
       target.closest(".wb-list-toolbar") ||
+      target.closest("#wbTargetPopover") ||
       target.closest("#wbContextMenu")
   );
 }
@@ -1248,25 +1250,6 @@ function clearWorkbenchSelection() {
   wbActiveKey = "";
   highlightWorkbenchSession("");
   renderWorkbenchSessionList();
-}
-
-function populateNewSessionProjects() {
-  const select = $("newSessionProject");
-  if (!select) return;
-  const projects = groupSessionsByProject(wbSessions.length ? wbSessions : sessionsCache);
-  select.innerHTML = "";
-  for (const p of projects) {
-    const opt = document.createElement("option");
-    opt.value = p.projectPath;
-    opt.textContent = basename(p.projectPath);
-    select.appendChild(opt);
-  }
-  if (!select.options.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "（暂无 project）";
-    select.appendChild(opt);
-  }
 }
 
 function defaultWorkbenchNewSessionProvider(settings = loadedSettings) {
@@ -1293,47 +1276,94 @@ async function launchWorkbenchNewSession(cwd, provider) {
   });
 }
 
-async function startWorkbenchNewSessionForProject(projectPath) {
+function setWorkbenchCreateBusy(busy) {
+  wbCreateBusy = busy;
+  const btn = $("btnWorkbenchNewSession");
+  if (btn) btn.classList.toggle("is-busy", busy);
+}
+
+function hideWorkbenchTargetPopover() {
+  const pop = $("wbTargetPopover");
+  if (pop) pop.hidden = true;
+}
+
+function renderWorkbenchTargetList() {
+  const list = $("wbTargetList");
+  if (!list) return;
+  list.innerHTML = "";
+  const q = wbTargetPopoverSearch.trim().toLowerCase();
+
+  const scratchBtn = document.createElement("button");
+  scratchBtn.type = "button";
+  scratchBtn.className = "wb-target-item";
+  scratchBtn.textContent = "临时目录（新建）";
+  scratchBtn.title = "在工作台临时目录中新建 session";
+  scratchBtn.addEventListener("click", () => void pickWorkbenchTarget("scratch"));
+  if (!q || "临时目录".includes(q) || "scratch".includes(q)) {
+    list.appendChild(scratchBtn);
+  }
+
+  const projects = groupSessionsByProject(wbSessions.length ? wbSessions : sessionsCache);
+  const filtered = projects.filter(
+    (p) => !q || basename(p.projectPath).toLowerCase().includes(q) || p.projectPath.toLowerCase().includes(q)
+  );
+  for (const project of filtered) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wb-target-item";
+    btn.textContent = basename(project.projectPath);
+    btn.title = project.projectPath;
+    btn.addEventListener("click", () => void pickWorkbenchTarget(project.projectPath));
+    list.appendChild(btn);
+  }
+
+  if (!list.children.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted wb-target-empty";
+    empty.textContent = "没有匹配的项目";
+    list.appendChild(empty);
+  }
+}
+
+function openWorkbenchTargetPopover() {
+  wbTargetPopoverSearch = "";
+  const search = $("wbTargetSearch");
+  if (search) search.value = "";
+  const pop = $("wbTargetPopover");
+  if (pop) pop.hidden = false;
+  renderWorkbenchTargetList();
+  search?.focus();
+}
+
+async function pickWorkbenchTarget(target) {
+  hideWorkbenchTargetPopover();
+  if (wbCreateBusy) return;
+  setWorkbenchCreateBusy(true);
   await refreshLoadedSettings();
   const provider = defaultWorkbenchNewSessionProvider();
   try {
-    await launchWorkbenchNewSession(projectPath, provider);
+    const cwd = target === "scratch" ? await agentResume.createScratchDir() : target;
+    if (!cwd) throw new Error("请选择一个 project");
+    await launchWorkbenchNewSession(cwd, provider);
+    await loadWorkbenchSessions({ quiet: true });
   } catch (error) {
     alertWorkbenchError(error);
+  } finally {
+    setWorkbenchCreateBusy(false);
   }
 }
 
-function openNewSessionSheet() {
-  populateNewSessionProjects();
-  const provider = defaultWorkbenchNewSessionProvider();
-  const sel = $("newSessionProvider");
-  if (sel) sel.value = provider;
+async function startWorkbenchNewSessionForProject(projectPath) {
+  await pickWorkbenchTarget(projectPath);
+}
+
+async function handleWorkbenchNewSessionClick() {
+  if (wbCreateBusy) return;
   if (wbSelectedProject.kind === "project") {
-    const projectSel = $("newSessionProject");
-    if (projectSel) projectSel.value = wbSelectedProject.projectPath;
+    await startWorkbenchNewSessionForProject(wbSelectedProject.projectPath);
+    return;
   }
-  openSheet("sheetNewSession");
-}
-
-async function confirmNewSession() {
-  const status = $("newSessionStatus");
-  const target = document.querySelector('input[name="newSessionTarget"]:checked')?.value || "project";
-  const provider = $("newSessionProvider")?.value || "codex";
-  setStatus(status, "创建中…");
-  try {
-    let cwd = "";
-    if (target === "scratch") {
-      cwd = await agentResume.createScratchDir();
-    } else {
-      cwd = $("newSessionProject")?.value || "";
-    }
-    await launchWorkbenchNewSession(cwd, provider);
-    closeSheet("sheetNewSession");
-    switchTab("workbench");
-    setStatus(status, "", "");
-  } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
-  }
+  openWorkbenchTargetPopover();
 }
 
 // --- Notes ---
@@ -5649,7 +5679,14 @@ function wire() {
     }
   });
 
-  $("btnWorkbenchNewSession")?.addEventListener("click", () => openNewSessionSheet());
+  $("btnWorkbenchNewSession")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void handleWorkbenchNewSessionClick();
+  });
+  $("wbTargetSearch")?.addEventListener("input", (e) => {
+    wbTargetPopoverSearch = e.target.value ?? "";
+    renderWorkbenchTargetList();
+  });
   $("btnWorkbenchNewTerminal")?.addEventListener("click", () => void openBlankWorkbenchTerminal());
   $("btnWorkbenchRefresh")?.addEventListener("click", () => void loadWorkbenchSessions());
   $("btnWorkbenchRemove")?.addEventListener("click", () => void removeActiveWorkbenchSession());
@@ -5662,7 +5699,6 @@ function wire() {
     if (shouldKeepWorkbenchSelection(e.target)) return;
     clearWorkbenchSelection();
   });
-  $("btnConfirmNewSession")?.addEventListener("click", () => void confirmNewSession());
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));
   });
@@ -5720,7 +5756,10 @@ function wire() {
     });
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") hideNotesTargetPopover();
+    if (e.key === "Escape") {
+      hideNotesTargetPopover();
+      hideWorkbenchTargetPopover();
+    }
   });
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
@@ -5731,6 +5770,12 @@ function wire() {
     void clearNotesSelection();
   });
   document.addEventListener("click", (e) => {
+    if (
+      !e.target.closest("#wbTargetPopover") &&
+      !e.target.closest("#btnWorkbenchNewSession")
+    ) {
+      hideWorkbenchTargetPopover();
+    }
     if (
       !e.target.closest("#notesTargetPopover") &&
       !e.target.closest("#btnNotesNew") &&

@@ -262,6 +262,17 @@
                   </svg>
                 </button>
               </div>
+              <div class="wb-target-popover" id="wbTargetPopover" hidden>
+                <input
+                  type="search"
+                  class="wb-target-search"
+                  id="wbTargetSearch"
+                  placeholder="筛选项目…"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="wb-target-list" id="wbTargetList"></div>
+              </div>
             </div>
             <div class="wb-search-wrap">
               <input type="search" id="wbSearch" class="wb-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
@@ -577,39 +588,6 @@
           <div class="session-preview-pane" id="sessionPreview">
             <p class="muted">点击左侧 session 查看对话预览。支持 Summarize / Auto Rename（与 VS Code 扩展类似）。</p>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Workbench: new session modal -->
-    <div class="sheet" id="sheetNewSession" hidden>
-      <div class="sheet-backdrop" data-close-sheet="sheetNewSession"></div>
-      <div class="sheet-panel">
-        <div class="sheet-head">
-          <h3>新建 Session</h3>
-          <button type="button" class="ghost-btn" data-close-sheet="sheetNewSession">关闭</button>
-        </div>
-        <div class="sheet-body">
-          <label class="check"><input type="radio" name="newSessionTarget" value="project" checked /> 已有 Project</label>
-          <select id="newSessionProject" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px"></select>
-          <label class="check"><input type="radio" name="newSessionTarget" value="scratch" /> 临时目录</label>
-          <p class="muted" style="margin:4px 0 12px">临时目录路径可在 Settings → 通用 → 工作台 中配置。</p>
-          <label>
-            Agent
-            <select id="newSessionProvider" class="quiet-select tool-select" style="width:100%;margin-top:4px">
-              <option value="codex">Codex</option>
-              <option value="claude">Claude</option>
-              <option value="grok">Grok</option>
-              <option value="agy">Antigravity</option>
-              <option value="opencode">OpenCode</option>
-              <option value="pi">Pi</option>
-              <option value="system-terminal">系统终端（仅打开目录）</option>
-            </select>
-          </label>
-          <div class="form-row" style="margin-top:16px">
-            <button type="button" id="btnConfirmNewSession">创建</button>
-          </div>
-          <p class="status" id="newSessionStatus"></p>
         </div>
       </div>
     </div>

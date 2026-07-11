@@ -3075,7 +3075,8 @@ code {
   color: #d04040;
 }
 
-.notes-target-popover {
+.notes-target-popover,
+.wb-target-popover {
   position: absolute;
   top: calc(100% - 2px);
   left: 10px;
@@ -3091,7 +3092,8 @@ code {
   box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent);
 }
 
-.notes-target-popover[hidden] {
+.notes-target-popover[hidden],
+.wb-target-popover[hidden] {
   display: none !important;
 }
 
@@ -3118,7 +3120,8 @@ code {
   font-weight: 600;
 }
 
-.notes-target-search {
+.notes-target-search,
+.wb-target-search {
   width: 100%;
   box-sizing: border-box;
   border: none;
@@ -3129,12 +3132,14 @@ code {
   color: var(--text);
 }
 
-.notes-target-search:focus {
+.notes-target-search:focus,
+.wb-target-search:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 0;
 }
 
-.notes-target-list {
+.notes-target-list,
+.wb-target-list {
   max-height: 240px;
   overflow: auto;
   display: flex;
@@ -3142,7 +3147,8 @@ code {
   gap: 2px;
 }
 
-.notes-target-item {
+.notes-target-item,
+.wb-target-item {
   appearance: none;
   border: none;
   border-radius: 6px;
@@ -3162,11 +3168,13 @@ code {
   white-space: nowrap;
 }
 
-.notes-target-item:hover {
+.notes-target-item:hover,
+.wb-target-item:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
-.notes-target-empty {
+.notes-target-empty,
+.wb-target-empty {
   margin: 8px 4px;
   font-size: 12px;
   line-height: 1.4;
