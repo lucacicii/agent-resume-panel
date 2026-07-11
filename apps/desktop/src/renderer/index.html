@@ -148,18 +148,21 @@
             </div>
           </aside>
           <div class="notes-main">
-            <div class="notes-editor-head" id="notesEditorHead" hidden>
-              <strong id="notesEditorTitle"></strong>
-              <div class="notes-editor-actions">
-                <button type="button" class="ghost-btn" id="btnNotesInsertImage">插入图片</button>
-                <button type="button" class="ghost-btn" id="btnNotesSave">保存</button>
+            <div class="notes-editor-shell" id="notesEditorShell" hidden>
+              <div class="notes-editor-head">
+                <strong id="notesEditorTitle"></strong>
+                <div class="notes-editor-actions">
+                  <button type="button" class="ghost-btn" id="btnNotesToggleView" title="切换编辑/预览/查看">编辑模式</button>
+                </div>
+              </div>
+              <div class="notes-editor-layout mode-edit" id="notesEditorLayout">
+                <textarea id="notesEditor" class="notes-editor-ta" spellcheck="false" placeholder="编辑 Markdown…（⌘V 可粘贴图片）"></textarea>
+                <div id="notesPreview" class="notes-preview markdown-body"></div>
               </div>
             </div>
-            <div class="notes-editor-layout" id="notesEditorLayout" hidden>
-              <textarea id="notesEditor" class="notes-editor-ta" spellcheck="false" placeholder="编辑 Markdown…"></textarea>
-              <div id="notesPreview" class="notes-preview markdown-body"></div>
+            <div class="notes-empty-state" id="notesEmptyState">
+              <p class="muted notes-hint" id="notesHint">选择左侧笔记以编辑</p>
             </div>
-            <p class="muted notes-hint" id="notesHint">选择左侧笔记以编辑</p>
             <p class="status" id="notesStatus"></p>
           </div>
         </div>

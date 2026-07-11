@@ -3250,6 +3250,19 @@ code {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
+}
+
+.notes-editor-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notes-editor-shell[hidden] {
+  display: none !important;
 }
 
 .notes-editor-head {
@@ -3257,6 +3270,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 85%, var(--bg));
@@ -3275,15 +3289,45 @@ code {
   flex-shrink: 0;
 }
 
+#btnNotesToggleView {
+  font-size: 12px;
+  min-width: 72px;
+}
+
 .notes-editor-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
-  gap: 0;
+  overflow: hidden;
+}
+
+.notes-editor-layout.mode-edit {
+  grid-template-columns: 1fr;
+}
+
+.notes-editor-layout.mode-edit .notes-preview {
+  display: none;
+}
+
+.notes-editor-layout.mode-edit .notes-editor-ta {
+  border-right: none;
+}
+
+.notes-editor-layout.mode-preview {
+  grid-template-columns: 1fr 1fr;
+}
+
+.notes-editor-layout.mode-view {
+  grid-template-columns: 1fr;
+}
+
+.notes-editor-layout.mode-view .notes-editor-ta {
+  display: none;
 }
 
 .notes-editor-ta {
+  display: block;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -3296,21 +3340,34 @@ code {
   line-height: 1.5;
   background: var(--bg);
   color: var(--text);
+  overflow: auto;
+  box-sizing: border-box;
 }
 
 .notes-preview {
   overflow: auto;
   padding: 12px 14px;
   min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
 }
 
-.notes-hint {
+.notes-empty-state {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 0;
+}
+
+.notes-empty-state[hidden] {
+  display: none !important;
+}
+
+.notes-hint {
   margin: 0;
-  padding: 24px;
+  padding: 0;
+  font-size: 13px;
 }
 
 #notesStatus {

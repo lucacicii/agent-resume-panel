@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type {
   AgentSession,
   AskChatMessage,
@@ -318,7 +318,8 @@ export interface DesktopApi {
     provider?: string;
     sessionId?: string;
   }): Promise<{ imported: number; skipped: number; errors: string[] }>;
-  notesInsertImage(args: { noteId: string }): Promise<{ snippet: string } | null>;
+  notesClipboardHasImage(): boolean;
+  notesPasteImage(args: { noteId: string }): Promise<{ snippet: string } | null>;
   notesOpenFolder(): Promise<{ ok: boolean }>;
   notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
@@ -421,7 +422,8 @@ const api: DesktopApi = {
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
-  notesInsertImage: (args) => ipcRenderer.invoke("notes:insertImage", args),
+  notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
+  notesPasteImage: (args) => ipcRenderer.invoke("notes:pasteImage", args),
   notesOpenFolder: () => ipcRenderer.invoke("notes:openFolder"),
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
   notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args)

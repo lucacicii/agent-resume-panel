@@ -1,4 +1,4 @@
-import { clipboard, dialog, shell } from "electron";
+import { clipboard, dialog, nativeImage, shell } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -97,31 +97,37 @@ export async function notesImport(owner: NoteOwner): Promise<ImportNotesResult> 
   return store.importMarkdownFiles(owner, result.filePaths);
 }
 
-export async function notesInsertImage(noteId: string): Promise<{ snippet: string } | null> {
+export async function notesPasteImage(noteId: string): Promise<{ snippet: string } | null> {
+  const image = clipboard.readImage();
+  if (image.isEmpty()) {
+    return null;
+  }
+
   const store = await getNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
   }
-  const pick = await dialog.showOpenDialog({
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "Images",
-        extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"]
-      }
-    ]
-  });
-  if (pick.canceled || !pick.filePaths[0]) {
-    return null;
-  }
-  const source = pick.filePaths[0];
+
   const assetsDir = await store.ensureAssetsForNote(record);
-  const base = path.basename(source);
+  const base = `paste-${Date.now()}.png`;
   const dest = path.join(assetsDir, base);
-  await fs.copyFile(source, dest);
+  const png = imageToPngBuffer(image);
+  await fs.writeFile(dest, png);
   const rel = `./${noteAssetsDirName(record.filename)}/${base}`;
   return { snippet: `![${base}](${rel})` };
+}
+
+function imageToPngBuffer(image: Electron.NativeImage): Buffer {
+  const png = image.toPNG();
+  if (png.length > 0) {
+    return png;
+  }
+  const jpeg = image.toJPEG(92);
+  if (jpeg.length > 0) {
+    return nativeImage.createFromBuffer(jpeg).toPNG();
+  }
+  return png;
 }
 
 export async function notesOpenFolder(): Promise<{ ok: boolean }> {

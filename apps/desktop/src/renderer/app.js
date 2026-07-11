@@ -1230,6 +1230,8 @@ let notesPanelHome = "";
 let notesContextNode = null;
 let notesPendingOwner = null;
 let notesSheetMode = "create";
+/** @type {"edit" | "preview" | "view"} */
+let notesViewMode = "edit";
 
 function isNotesActive() {
   return !!document.querySelector('.tab[data-tab="notes"]')?.classList.contains("active");
@@ -1536,13 +1538,103 @@ function updateNotesPreview(content, noteAbsPath) {
   preview.innerHTML = renderNoteMarkdown(content, dir);
 }
 
-function showNotesEditor(show) {
-  const head = $("notesEditorHead");
+function insertNoteImageSnippet(snippet) {
+  const editor = $("notesEditor");
+  if (!editor) return;
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const before = editor.value.slice(0, start);
+  const after = editor.value.slice(end);
+  editor.value = `${before}${snippet}${after}`;
+  editor.selectionStart = editor.selectionEnd = start + snippet.length;
+  notesDirty = true;
+  scheduleNotesSave();
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
+  updateNotesPreview(editor.value, noteAbs);
+}
+
+async function handleNotesImagePaste(event) {
+  if (!notesActiveId || !notesViewShowsEditor()) return;
+  if (typeof agentResume.notesClipboardHasImage !== "function") return;
+  if (!agentResume.notesClipboardHasImage()) return;
+  event.preventDefault();
+  const status = $("notesStatus");
+  try {
+    const result = await agentResume.notesPasteImage({ noteId: notesActiveId });
+    if (!result?.snippet) return;
+    insertNoteImageSnippet(result.snippet);
+    setStatus(status, "已粘贴图片", "ok");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function refreshNotesPreviewFromEditor() {
+  const editor = $("notesEditor");
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
+  updateNotesPreview(editor?.value ?? "", noteAbs);
+}
+
+const NOTES_VIEW_LABELS = {
+  edit: "编辑模式",
+  preview: "预览视图",
+  view: "查看模式"
+};
+
+const NOTES_VIEW_NEXT = {
+  edit: "preview",
+  preview: "view",
+  view: "edit"
+};
+
+function notesViewShowsEditor(mode = notesViewMode) {
+  return mode === "edit" || mode === "preview";
+}
+
+function renderNotesViewMode() {
   const layout = $("notesEditorLayout");
-  const hint = $("notesHint");
-  if (head) head.hidden = !show;
-  if (layout) layout.hidden = !show;
-  if (hint) hint.hidden = show;
+  const btn = $("btnNotesToggleView");
+  if (layout) {
+    layout.classList.toggle("mode-edit", notesViewMode === "edit");
+    layout.classList.toggle("mode-preview", notesViewMode === "preview");
+    layout.classList.toggle("mode-view", notesViewMode === "view");
+  }
+  if (btn) {
+    btn.textContent = NOTES_VIEW_LABELS[notesViewMode];
+    const next = NOTES_VIEW_NEXT[notesViewMode];
+    btn.title = `当前为${NOTES_VIEW_LABELS[notesViewMode]}，点击切换为${NOTES_VIEW_LABELS[next]}`;
+  }
+}
+
+function setNotesViewMode(mode) {
+  if (mode === "preview" || mode === "view") {
+    notesViewMode = mode;
+  } else {
+    notesViewMode = "edit";
+  }
+  renderNotesViewMode();
+}
+
+async function toggleNotesViewMode() {
+  const next = NOTES_VIEW_NEXT[notesViewMode];
+  if (next === "preview" || next === "view") {
+    await flushNotesSave();
+    refreshNotesPreviewFromEditor();
+  }
+  setNotesViewMode(next);
+  if (next === "edit") {
+    $("notesEditor")?.focus();
+  }
+}
+
+function showNotesEditor(show) {
+  const shell = $("notesEditorShell");
+  const empty = $("notesEmptyState");
+  if (shell) shell.hidden = !show;
+  if (empty) empty.hidden = show;
+  if (show) renderNotesViewMode();
 }
 
 async function openNoteInEditor(noteId) {
@@ -5266,31 +5358,7 @@ function wire() {
   });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
   $("btnNotesOpenFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
-  $("btnNotesSave")?.addEventListener("click", () => void flushNotesSave());
-  $("btnNotesInsertImage")?.addEventListener("click", async () => {
-    if (!notesActiveId) return;
-    const status = $("notesStatus");
-    try {
-      const result = await agentResume.notesInsertImage({ noteId: notesActiveId });
-      if (!result?.snippet) return;
-      const editor = $("notesEditor");
-      if (!editor) return;
-      const start = editor.selectionStart;
-      const end = editor.selectionEnd;
-      const before = editor.value.slice(0, start);
-      const after = editor.value.slice(end);
-      editor.value = `${before}${result.snippet}${after}`;
-      editor.selectionStart = editor.selectionEnd = start + result.snippet.length;
-      notesDirty = true;
-      scheduleNotesSave();
-      const note = notesCache.find((n) => n.noteId === notesActiveId);
-      const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-      updateNotesPreview(editor.value, noteAbs);
-      setStatus(status, "已插入图片", "ok");
-    } catch (error) {
-      setStatus(status, error instanceof Error ? error.message : String(error), "error");
-    }
-  });
+  $("btnNotesToggleView")?.addEventListener("click", () => void toggleNotesViewMode());
   $("btnConfirmNewNote")?.addEventListener("click", () => void confirmNewNote());
   document.querySelectorAll('input[name="newNoteKind"]').forEach((radio) => {
     radio.addEventListener("change", () => {
@@ -5304,7 +5372,9 @@ function wire() {
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
   });
+  $("notesEditor")?.addEventListener("paste", (e) => void handleNotesImagePaste(e));
   $("notesEditor")?.addEventListener("input", () => {
+    if (!notesViewShowsEditor()) return;
     notesDirty = true;
     const note = notesCache.find((n) => n.noteId === notesActiveId);
     const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";

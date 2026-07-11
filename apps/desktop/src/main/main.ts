@@ -59,7 +59,7 @@ import {
   notesCreate,
   notesDelete,
   notesImport,
-  notesInsertImage,
+  notesPasteImage,
   notesList,
   notesOpenFolder,
   notesRead,
@@ -676,8 +676,8 @@ function registerIpc(): void {
   ipcMain.handle("notes:import", async (_event, owner: import("@agent-resume/core").NoteOwner) =>
     notesImport(owner)
   );
-  ipcMain.handle("notes:insertImage", async (_event, args: { noteId: string }) =>
-    notesInsertImage(args.noteId)
+  ipcMain.handle("notes:pasteImage", async (_event, args: { noteId: string }) =>
+    notesPasteImage(args.noteId)
   );
   ipcMain.handle("notes:openFolder", async () => notesOpenFolder());
   ipcMain.handle("notes:reveal", async (_event, args: { noteId: string }) => notesReveal(args.noteId));
