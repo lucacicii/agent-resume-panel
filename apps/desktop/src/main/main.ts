@@ -26,6 +26,8 @@ import {
   listSessionsInRange,
   loadSessionPreview,
   loadSettings,
+  openAlmaThreadInApp,
+  openChatGptAppSession,
   openProjectInSystemTerminal,
   openSessionInSystemTerminal,
   previewBackfillMemoryDigests,
@@ -87,6 +89,23 @@ function systemTerminalSettings(settings: PanelSettings) {
     externalAutoPasteDelayMs:
       settings.workbench?.externalAutoPasteDelayMs ?? settings.ghosttyAutoPasteDelayMs
   };
+}
+
+async function resolveSessionCwd(
+  projectPath: string | undefined,
+  settings: PanelSettings
+): Promise<string> {
+  const raw = projectPath?.trim() || "";
+  if (raw) {
+    const expanded = expandHome(raw);
+    try {
+      const stat = await fs.stat(expanded);
+      if (stat.isDirectory()) return expanded;
+    } catch {
+      // fall through to panel home
+    }
+  }
+  return effectivePanelHome(settings);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -290,13 +309,44 @@ function registerIpc(): void {
       }
       const mode = resolveWorkbenchTerminalMode(settings);
       const command = buildResumeCommand(session);
-      if (mode === "external-system") {
-        await openSessionInSystemTerminal(session, systemTerminalSettings(settings), {
-          writeText: (text) => Promise.resolve(clipboard.writeText(text))
-        });
-        return { mode, external: true, command, cwd: expandHome(session.projectPath) };
+      const cwd = await resolveSessionCwd(session.projectPath, settings);
+
+      if (session.provider === "alma") {
+        await openAlmaThreadInApp(session);
+        return { mode, external: true, alma: true, command, cwd };
       }
-      return { mode, command, cwd: expandHome(session.projectPath), session };
+
+      if (mode === "external-system") {
+        await openSessionInSystemTerminal(
+          { ...session, projectPath: cwd },
+          systemTerminalSettings(settings),
+          {
+            writeText: (text) => Promise.resolve(clipboard.writeText(text))
+          }
+        );
+        return { mode, external: true, command, cwd };
+      }
+      return { mode, command, cwd, session };
+    }
+  );
+
+  safeHandle(
+    "workbench:openCodexApp",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const session = await getSessionById(dbPath, args.provider, args.id);
+      if (!session) {
+        throw new Error(`Session not found: ${args.provider} ${args.id}`);
+      }
+      if (session.provider !== "codex") {
+        throw new Error("ChatGPT 打开仅适用于 Codex 会话。");
+      }
+
+      const mode = resolveWorkbenchTerminalMode(settings);
+      await openChatGptAppSession(session);
+      return { mode, external: true, chatgptApp: true, codexApp: true };
     }
   );
 

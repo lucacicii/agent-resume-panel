@@ -77,6 +77,18 @@ export interface DesktopApi {
     external?: boolean;
     session?: AgentSession;
   }>;
+  workbenchOpenCodexApp(args: {
+    provider: string;
+    id: string;
+  }): Promise<{
+    mode: string;
+    command?: string;
+    cwd: string;
+    external?: boolean;
+    codexApp?: boolean;
+    followUp?: string;
+    followUpDelayMs?: number;
+  }>;
   workbenchNewSession(args: {
     cwd: string;
     provider: string;
@@ -278,6 +290,7 @@ const api: DesktopApi = {
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
+  workbenchOpenCodexApp: (args) => ipcRenderer.invoke("workbench:openCodexApp", args),
   workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),

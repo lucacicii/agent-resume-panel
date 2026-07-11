@@ -11,7 +11,7 @@ import { storePendingResume } from "./pendingResume";
 export const CODEX_IDE_PANEL_IMPLEMENTATION_VERSION = 1;
 
 export const CODEX_IDE_PANEL_IMPLEMENTATION_NOTE =
-  "v1: openai-codex://route/local/{id} and {editorScheme}://openai.chatgpt/local/{id}";
+  "v1: codex://threads/{id}, openai-codex://route/local/{id}, and {editorScheme}://openai.chatgpt/local/{id}";
 
 const CODEX_EXTENSION_IDS = ["openai.chatgpt", "OpenAI.chatgpt"];
 const CODEX_OPEN_SIDEBAR_COMMAND = "chatgpt.openSidebar";
@@ -177,6 +177,11 @@ async function invokeCodexIdePanelOpen(sessionId: string, extensionId: string): 
     // Sidebar may already be visible; continue with route open attempts.
   }
 
+  const chatGptAppUri = vscode.Uri.parse(`codex://threads/${encodeURIComponent(sessionId)}`);
+  if (await tryOpenExternal(chatGptAppUri)) {
+    return true;
+  }
+
   const routeUri = buildCodexRouteUri(sessionId);
   if (await tryOpenUri(routeUri)) {
     return true;
@@ -209,6 +214,14 @@ async function tryOpenUri(uri: vscode.Uri): Promise<boolean> {
   try {
     await vscode.commands.executeCommand("vscode.open", uri);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryOpenExternal(uri: vscode.Uri): Promise<boolean> {
+  try {
+    return await vscode.env.openExternal(uri);
   } catch {
     return false;
   }

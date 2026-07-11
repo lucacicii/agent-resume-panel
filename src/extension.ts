@@ -858,7 +858,7 @@ function openSessionInCodexApp(tree: SessionTreeProvider, nodeOrSession: unknown
     return;
   }
 
-  openCodexAppResumeTerminal(session);
+  void openCodexAppResumeTerminal(session);
 }
 
 async function openSessionInClaudeCodePanel(

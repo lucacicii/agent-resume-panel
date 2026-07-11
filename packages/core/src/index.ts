@@ -215,10 +215,22 @@ export type {
   RenameSessionResult
 } from "./session/actions";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export { buildAlmaActivateCommand, openAlmaThreadInApp } from "./terminal/alma";
 export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";
-export { openProjectInSystemTerminal, openSessionInSystemTerminal } from "./terminal/systemTerminal";
+export {
+  openProjectInSystemTerminal,
+  openSessionInSystemTerminal
+} from "./terminal/systemTerminal";
 export type { SystemTerminalSettings, SystemTerminalLaunchMode } from "./terminal/systemTerminal";
+export {
+  openChatGptAppSession,
+  openChatGptAppProject,
+  openChatGptDeepLink,
+  buildChatGptThreadUrl,
+  buildChatGptNewTaskUrl,
+  CHATGPT_APP_URL_SCHEME
+} from "./terminal/chatgptApp";
 export { ensureSummariesForSessions } from "./session/ensureSummaries";
 export type {
   EnsureSummariesOptions,

@@ -989,14 +989,15 @@ async function openWorkbenchSession(session) {
   const externalMode = isWorkbenchExternalTerminalMode();
   setStatus(status, externalMode ? "正在打开系统终端…" : "正在打开终端…");
   try {
-    if (session.provider === "alma") {
-      setStatus(status, "Alma session 请使用系统终端或 Alma App 恢复", "error");
-      return;
-    }
     const result = await agentResume.workbenchOpenSession({
       provider: session.provider,
       id: session.id
     });
+    if (result.alma) {
+      setStatus(status, "已在 Alma App 中打开", "ok");
+      updateWorkbenchTerminalHint();
+      return;
+    }
     if (result.external || result.mode === "external-system") {
       setStatus(status, "已在系统终端中打开", "ok");
       updateWorkbenchTerminalHint();
@@ -1024,15 +1025,40 @@ function showWorkbenchContextMenu(session, x, y) {
   wbContextSession = session;
   const menu = $("wbContextMenu");
   if (!menu) return;
+  const codexBtn = menu.querySelector('[data-wb-action="codexApp"]');
+  if (codexBtn) codexBtn.hidden = session.provider !== "codex";
   menu.hidden = false;
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
+}
+
+async function openWorkbenchCodexApp(session) {
+  if (!session || session.provider !== "codex") return;
+  wbActiveKey = workbenchSessionKey(session);
+  activeSessionKey = wbActiveKey;
+  highlightWorkbenchSession(wbActiveKey);
+  scrollWorkbenchSessionIntoView();
+  const status = $("wbStatus");
+  setStatus(status, "正在打开 ChatGPT…");
+  try {
+    await agentResume.workbenchOpenCodexApp({
+      provider: session.provider,
+      id: session.id
+    });
+    setStatus(status, "已在 ChatGPT 中打开", "ok");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
 }
 
 async function handleWorkbenchContextAction(action) {
   const session = wbContextSession;
   hideWorkbenchContextMenu();
   if (!session) return;
+  if (action === "codexApp") {
+    await openWorkbenchCodexApp(session);
+    return;
+  }
   if (action === "preview") {
     await openSessionSheetPreview(session);
     return;
