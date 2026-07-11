@@ -2767,182 +2767,35 @@ code {
   border-top: 1px solid var(--border);
 }
 
-.wb-sidebar {
-  width: 268px;
-  flex-shrink: 0;
+.wb-detail {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
-}
-
-.wb-sidebar-head {
-  padding: 10px 10px 6px;
-}
-
-.wb-sidebar-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.wb-sidebar-actions .tool-btn {
-  flex: 1;
-  min-width: 0;
-  font-size: 11px;
-  padding: 6px 8px;
-}
-
-.wb-meta {
-  margin: 0 10px 6px;
-  font-size: 11px;
-}
-
-.wb-tree {
-  flex: 1;
-  overflow: auto;
-  padding: 6px 8px 12px;
-  font-size: 13px;
-}
-
-.wb-tree-root {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.wb-tree-project {
-  margin: 8px 0;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 90%, var(--bg));
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 5%, transparent);
-  overflow: hidden;
-}
-
-.wb-tree-project-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 6px 4px 4px;
-  background: color-mix(in srgb, var(--panel) 72%, var(--text) 5%);
-  border-radius: 0;
-}
-
-.wb-tree-project:has(.wb-tree-sessions) .wb-tree-project-head {
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-}
-
-.wb-tree-project-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  padding: 2px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: background 0.15s ease;
-}
-
-.wb-tree-project-toggle:hover {
-  background: color-mix(in srgb, var(--panel) 60%, var(--accent) 8%);
-}
-
-.wb-tree-project-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--panel) 80%, var(--bg));
-  color: var(--muted);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.wb-tree-project-add:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
-}
-
-.wb-tree-chevron {
-  width: 14px;
-  flex-shrink: 0;
-  opacity: 0.7;
-  font-size: 10px;
-}
-
-.wb-tree-project-label {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--bg);
 }
 
-.wb-tree-sessions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: color-mix(in srgb, var(--bg) 88%, var(--panel));
-  border-left: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
-}
-
-.wb-tree-session.cal-session-row {
-  border: none;
-  margin: 0;
-  padding: 6px 8px 6px 12px;
-  border-radius: 0;
-  background: transparent;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.wb-tree-session.cal-session-row:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
-}
-
-.wb-tree-session.cal-session-row .s-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-tree-session.cal-session-row.active {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 16%, var(--panel));
-  box-shadow: inset 2px 0 0 var(--accent, #3b82f6);
-}
-
-.wb-main {
+.wb-terminal-shell {
   flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.wb-pane {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
   position: relative;
+}
+
+.wb-toolbar-remove {
+  margin-left: auto;
+}
+
+.wb-toolbar-remove:not(:disabled) {
+  color: color-mix(in srgb, var(--text) 88%, #c44);
+}
+
+.wb-toolbar-remove:not(:disabled):hover {
+  background: color-mix(in srgb, #e05252 14%, transparent);
+  color: #d04040;
 }
 
 .wb-terminal-tabs {
@@ -3085,13 +2938,6 @@ code {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
-#wbStatus {
-  margin: 0;
-  padding: 4px 12px 8px;
-  font-size: 11px;
-  min-height: 22px;
-}
-
 /* --- Notes (Apple Notes style) --- */
 #tab-notes.panel:not(.active) {
   display: none !important;
@@ -3113,7 +2959,8 @@ code {
   border-top: 1px solid var(--border);
 }
 
-.notes-folders {
+.notes-folders,
+.wb-folders {
   width: 200px;
   flex-shrink: 0;
   display: flex;
@@ -3126,11 +2973,13 @@ code {
   background: color-mix(in srgb, var(--bg) 90%, var(--text) 10%);
 }
 
-.notes-folder-section {
+.notes-folder-section,
+.wb-folder-section {
   margin-top: 10px;
 }
 
-.notes-folder-section-label {
+.notes-folder-section-label,
+.wb-folder-section-label {
   padding: 4px 8px 6px;
   font-size: 11px;
   font-weight: 600;
@@ -3138,7 +2987,8 @@ code {
   color: var(--muted);
 }
 
-.notes-folder-row {
+.notes-folder-row,
+.wb-folder-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3154,16 +3004,19 @@ code {
   font-size: 13px;
 }
 
-.notes-folder-row:hover {
+.notes-folder-row:hover,
+.wb-folder-row:hover {
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-.notes-folder-row.active {
+.notes-folder-row.active,
+.wb-folder-row.active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   font-weight: 600;
 }
 
-.notes-folder-row-label {
+.notes-folder-row-label,
+.wb-folder-row-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -3171,18 +3024,21 @@ code {
   white-space: nowrap;
 }
 
-.notes-folder-row-count {
+.notes-folder-row-count,
+.wb-folder-row-count {
   flex-shrink: 0;
   font-size: 11px;
   color: var(--muted);
 }
 
-.notes-folders-empty {
+.notes-folders-empty,
+.wb-folders-empty {
   margin: 8px;
   font-size: 12px;
 }
 
-.notes-list-pane {
+.notes-list-pane,
+.wb-list-pane {
   width: min(320px, 32vw);
   flex-shrink: 0;
   display: flex;
@@ -3192,12 +3048,14 @@ code {
   background: color-mix(in srgb, var(--bg) 96%, var(--panel));
 }
 
-.notes-list-toolbar-wrap {
+.notes-list-toolbar-wrap,
+.wb-list-toolbar-wrap {
   position: relative;
   flex-shrink: 0;
 }
 
-.notes-list-toolbar {
+.notes-list-toolbar,
+.wb-list-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3314,7 +3172,8 @@ code {
   line-height: 1.4;
 }
 
-.notes-icon-btn {
+.notes-icon-btn,
+.wb-icon-btn {
   appearance: none;
   border: none;
   background: transparent;
@@ -3328,7 +3187,8 @@ code {
   justify-content: center;
 }
 
-.notes-icon-btn svg {
+.notes-icon-btn svg,
+.wb-icon-btn svg {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -3339,23 +3199,28 @@ code {
   stroke-linejoin: round;
 }
 
-.notes-icon-btn:hover {
+.notes-icon-btn:hover,
+.wb-icon-btn:hover {
   background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 .notes-icon-btn:disabled,
-.notes-icon-btn.is-busy {
+.notes-icon-btn.is-busy,
+.wb-icon-btn:disabled,
+.wb-icon-btn.is-busy {
   opacity: 0.45;
   cursor: default;
   pointer-events: none;
 }
 
-.notes-search-wrap {
+.notes-search-wrap,
+.wb-search-wrap {
   flex-shrink: 0;
   padding: 4px 10px 6px;
 }
 
-.notes-search {
+.notes-search,
+.wb-search {
   width: 100%;
   box-sizing: border-box;
   border: none;
@@ -3366,31 +3231,36 @@ code {
   color: var(--text);
 }
 
-.notes-search:focus {
+.notes-search:focus,
+.wb-search:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 0;
 }
 
-.notes-list-meta {
+.notes-list-meta,
+.wb-list-meta {
   margin: 0 12px 4px;
   font-size: 11px;
   color: var(--muted);
   flex-shrink: 0;
 }
 
-.notes-list {
+.notes-list,
+.wb-list {
   flex: 1;
   overflow: auto;
   min-height: 0;
   padding: 4px 0 8px;
 }
 
-.notes-list-empty {
+.notes-list-empty,
+.wb-list-empty {
   margin: 16px 12px;
   font-size: 12px;
 }
 
-.notes-list-item {
+.notes-list-item,
+.wb-list-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3406,22 +3276,26 @@ code {
   cursor: pointer;
 }
 
-.notes-list-item:hover {
+.notes-list-item:hover,
+.wb-list-item:hover {
   background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 
-.notes-list-item.active {
+.notes-list-item.active,
+.wb-list-item.active {
   background: color-mix(in srgb, #f5d565 28%, var(--bg));
 }
 
-.notes-list-item-top {
+.notes-list-item-top,
+.wb-list-item-top {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
 
-.notes-list-item-title {
+.notes-list-item-title,
+.wb-list-item-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
@@ -3431,13 +3305,15 @@ code {
   white-space: nowrap;
 }
 
-.notes-list-item-date {
+.notes-list-item-date,
+.wb-list-item-date {
   flex-shrink: 0;
   font-size: 11px;
   color: var(--muted);
 }
 
-.notes-list-item-preview {
+.notes-list-item-preview,
+.wb-list-item-preview {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

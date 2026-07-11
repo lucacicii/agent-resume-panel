@@ -216,29 +216,68 @@
         </div>
       </section>
 
-      <!-- Workbench: project tree + embedded terminal -->
+      <!-- Workbench: projects + session list + embedded terminal -->
       <section id="tab-workbench" class="panel workbench-panel">
         <div class="workbench-layout">
-          <aside class="wb-sidebar">
-            <div class="wb-sidebar-head">
-              <div class="wb-sidebar-actions">
-                <button type="button" class="tool-btn" id="btnWorkbenchNewSession">+ 新建 Session</button>
-                <button type="button" class="tool-btn" id="btnWorkbenchNewTerminal">+ 新建 Terminal</button>
+          <aside class="wb-folders" id="wbFolders">
+            <p class="muted wb-folders-empty">加载项目…</p>
+          </aside>
+          <aside class="wb-list-pane">
+            <div class="wb-list-toolbar-wrap">
+              <div class="wb-list-toolbar">
+                <button type="button" class="wb-icon-btn" id="btnWorkbenchNewSession" title="新建 Session" aria-label="新建 Session">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14" />
+                    <path d="M12 5v14" />
+                  </svg>
+                </button>
+                <button type="button" class="wb-icon-btn" id="btnWorkbenchNewTerminal" title="新建 Terminal" aria-label="新建 Terminal">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 19h8" />
+                    <path d="m4 17 6-6-6-6" />
+                  </svg>
+                </button>
+                <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" title="刷新" aria-label="刷新">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                    <path d="M21 3v5h-5" />
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                    <path d="M8 16H3v5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="wb-icon-btn wb-toolbar-remove"
+                  id="btnWorkbenchRemove"
+                  title="从面板移除"
+                  aria-label="从面板移除"
+                  disabled
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </button>
               </div>
             </div>
-            <p class="muted wb-meta" id="wbMeta"></p>
-            <div class="wb-tree" id="wbTree">
-              <p class="muted wb-empty">加载 sessions…</p>
+            <div class="wb-search-wrap">
+              <input type="search" id="wbSearch" class="wb-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
+            </div>
+            <p class="wb-list-meta" id="wbMeta"></p>
+            <div class="wb-list" id="wbList">
+              <p class="muted wb-list-empty">加载 sessions…</p>
             </div>
           </aside>
-          <div class="wb-main">
-            <div class="wb-pane" id="wbPaneTerminal">
+          <main class="wb-detail">
+            <div class="wb-terminal-shell" id="wbTerminalShell">
               <div class="wb-terminal-tabs" id="wbTerminalTabs" hidden></div>
               <div class="wb-terminal-stack" id="wbTerminalStack"></div>
-              <p class="muted wb-terminal-hint" id="wbTerminalHint">选择左侧 session 以恢复终端</p>
+              <p class="muted wb-terminal-hint" id="wbTerminalHint">选择 session 以恢复终端</p>
             </div>
-            <p class="status" id="wbStatus"></p>
-          </div>
+          </main>
         </div>
       </section>
 

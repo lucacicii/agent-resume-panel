@@ -498,7 +498,7 @@ async function runSessionAutoRename(opts = {}) {
 
     const row = document.querySelector(`.session-row[data-key="${activeSessionKey}"] .s-title`);
     if (row) row.textContent = result.title;
-    const wbRow = document.querySelector(`.wb-tree-session[data-key="${activeSessionKey}"] .s-title`);
+    const wbRow = document.querySelector(`.wb-list-item[data-key="${activeSessionKey}"] .wb-list-item-title`);
     if (wbRow) wbRow.textContent = result.title;
     const cached = sessionsCache.find(
       (s) => s.provider === activePreviewSession.provider && s.id === activePreviewSession.id
@@ -520,10 +520,12 @@ async function runSessionAutoRename(opts = {}) {
 
 // --- Workbench ---
 
-const WB_TREE_STATE_KEY = "workbench-tree-state";
+const WB_PROJECT_KEY = "workbench-selected-project";
 let wbSessions = [];
 let wbActiveKey = "";
-let wbTreeState = { projectsExpanded: {}, projectsRootExpanded: true };
+let wbSearch = "";
+/** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
+let wbSelectedProject = { kind: "all" };
 /** @type {Map<string, { key: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string }>} */
 const wbTerminalPanes = new Map();
 let wbActiveTerminalKey = "";
@@ -537,21 +539,81 @@ function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
 }
 
-function loadWbTreeState() {
+function wbProjectKey(folder) {
+  if (folder.kind === "all") return "all";
+  return `project:${folder.projectPath}`;
+}
+
+function isSameWbProject(a, b) {
+  return wbProjectKey(a) === wbProjectKey(b);
+}
+
+function loadWbProjectState() {
   try {
-    const raw = localStorage.getItem(WB_TREE_STATE_KEY);
-    if (raw) wbTreeState = { projectsExpanded: {}, projectsRootExpanded: true, ...JSON.parse(raw) };
+    const raw = localStorage.getItem(WB_PROJECT_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed?.kind === "project" && parsed.projectPath) {
+      wbSelectedProject = { kind: "project", projectPath: parsed.projectPath };
+    } else {
+      wbSelectedProject = { kind: "all" };
+    }
   } catch {
-    wbTreeState = { projectsExpanded: {}, projectsRootExpanded: true };
+    wbSelectedProject = { kind: "all" };
   }
 }
 
-function saveWbTreeState() {
+function saveWbProjectState() {
   try {
-    localStorage.setItem(WB_TREE_STATE_KEY, JSON.stringify(wbTreeState));
+    localStorage.setItem(WB_PROJECT_KEY, JSON.stringify(wbSelectedProject));
   } catch {
     // ignore
   }
+}
+
+function selectWorkbenchProject(folder) {
+  wbSelectedProject = folder;
+  saveWbProjectState();
+  renderWorkbenchPanel();
+}
+
+function alertWorkbenchError(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "未知错误");
+  window.alert(message);
+}
+
+function filterWorkbenchSessionsByProject(sessions) {
+  if (wbSelectedProject.kind === "all") return sessions;
+  return sessions.filter((s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath);
+}
+
+function filterWorkbenchSessionsBySearch(sessions) {
+  if (!wbSearch.trim()) return sessions;
+  const q = wbSearch.trim().toLowerCase();
+  return sessions.filter((s) => {
+    const haystack = [s.title, s.id, s.provider, s.projectPath, s.projectPath ? basename(s.projectPath) : ""]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function visibleWorkbenchSessions() {
+  return filterWorkbenchSessionsBySearch(filterWorkbenchSessionsByProject(wbSessions)).sort(
+    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+  );
+}
+
+function updateWorkbenchToolbarState() {
+  const btn = $("btnWorkbenchRemove");
+  if (!btn) return;
+  btn.disabled = !wbActiveKey;
+}
+
+function getActiveWorkbenchSession() {
+  if (!wbActiveKey) return null;
+  return wbSessions.find((s) => workbenchSessionKey(s) === wbActiveKey) || null;
 }
 
 function groupSessionsByProject(sessions) {
@@ -575,19 +637,17 @@ function groupSessionsByProject(sessions) {
 
 function highlightWorkbenchSession(key) {
   wbActiveKey = key || "";
-  document.querySelectorAll(".wb-tree-session").forEach((el) => {
+  document.querySelectorAll(".wb-list-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.key === wbActiveKey);
   });
+  updateWorkbenchToolbarState();
 }
 
 function scrollWorkbenchSessionIntoView() {
   if (!wbActiveKey) return;
-  const tree = $("wbTree");
-  if (!tree) return;
-  let target = null;
-  tree.querySelectorAll(".wb-tree-session").forEach((el) => {
-    if (el.dataset.key === wbActiveKey) target = el;
-  });
+  const list = $("wbList");
+  if (!list) return;
+  const target = list.querySelector(`.wb-list-item[data-key="${CSS.escape(wbActiveKey)}"]`);
   if (target) {
     requestAnimationFrame(() => {
       target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
@@ -595,117 +655,138 @@ function scrollWorkbenchSessionIntoView() {
   }
 }
 
-function updateWorkbenchMeta(projects) {
-  const meta = $("wbMeta");
-  if (!meta) return;
-  if (!projects?.length) {
-    meta.textContent = "0 projects";
-    return;
+function renderWorkbenchFolderRow(label, folder, options = {}) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "wb-folder-row";
+  if (isSameWbProject(wbSelectedProject, folder)) btn.classList.add("active");
+  btn.innerHTML = `
+    <span class="wb-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
+    ${options.count != null ? `<span class="wb-folder-row-count">${options.count}</span>` : ""}
+  `;
+  btn.addEventListener("click", () => selectWorkbenchProject(folder));
+  if (folder.kind === "project") {
+    btn.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      void startWorkbenchNewSessionForProject(folder.projectPath);
+    });
   }
-  const sessionCount = projects.reduce((n, p) => n + p.sessions.length, 0);
-  const tabCount = wbTerminalPanes.size;
-  const tabHint = tabCount ? ` · ${tabCount} 个终端` : "";
-  meta.textContent = `${projects.length} projects · ${sessionCount} sessions${tabHint} · 右键预览`;
+  return btn;
 }
 
-function renderWorkbenchTree(projects) {
-  const tree = $("wbTree");
-  if (!tree) return;
-  if (!projects.length) {
-    tree.innerHTML = `<p class="muted wb-empty">暂无 session</p>`;
-    updateWorkbenchMeta(projects);
+function renderWorkbenchFolders() {
+  const host = $("wbFolders");
+  if (!host) return;
+  host.innerHTML = "";
+
+  const projects = groupSessionsByProject(wbSessions);
+  const allBtn = renderWorkbenchFolderRow("全部 Sessions", { kind: "all" }, { count: wbSessions.length });
+  host.appendChild(allBtn);
+
+  if (projects.length) {
+    const section = document.createElement("div");
+    section.className = "wb-folder-section";
+    section.innerHTML = `<div class="wb-folder-section-label">项目</div>`;
+    for (const project of projects) {
+      const folder = { kind: "project", projectPath: project.projectPath };
+      section.appendChild(
+        renderWorkbenchFolderRow(basename(project.projectPath), folder, {
+          title: project.projectPath,
+          count: project.sessions.length
+        })
+      );
+    }
+    host.appendChild(section);
+  }
+
+  if (!projects.length && !wbSessions.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted wb-folders-empty";
+    empty.textContent = "暂无项目";
+    host.appendChild(empty);
+  }
+}
+
+function renderWorkbenchSessionList() {
+  const list = $("wbList");
+  const meta = $("wbMeta");
+  if (!list) return;
+
+  const sessions = visibleWorkbenchSessions();
+  list.innerHTML = "";
+
+  if (meta) {
+    const folderLabel =
+      wbSelectedProject.kind === "all" ? "全部 Sessions" : basename(wbSelectedProject.projectPath);
+    meta.textContent = wbSearch.trim()
+      ? `${folderLabel} · 搜索「${wbSearch.trim()}」· ${sessions.length} 条`
+      : `${folderLabel} · ${sessions.length} 条`;
+  }
+
+  if (!sessions.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted wb-list-empty";
+    empty.textContent = wbSearch.trim() ? "没有匹配的 session" : "此项目暂无 session";
+    list.appendChild(empty);
     return;
   }
-  updateWorkbenchMeta(projects);
 
-  const frag = document.createDocumentFragment();
-  const root = document.createElement("ul");
-  root.className = "wb-tree-root";
-
-  for (const project of projects) {
-    const expanded = wbTreeState.projectsExpanded[project.projectPath] !== false;
-    const li = document.createElement("li");
-    li.className = "wb-tree-project";
-
-    const head = document.createElement("div");
-    head.className = "wb-tree-project-head";
-
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "wb-tree-project-toggle";
-    toggle.innerHTML = `
-      <span class="wb-tree-chevron">${expanded ? "▼" : "▶"}</span>
-      <span class="wb-tree-project-label">${escapeHtml(basename(project.projectPath))}</span>
+  for (const s of sessions) {
+    const key = workbenchSessionKey(s);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wb-list-item";
+    if (wbActiveKey === key) btn.classList.add("active");
+    btn.dataset.key = key;
+    btn.dataset.provider = s.provider;
+    btn.dataset.id = s.id;
+    const preview = [providerTagHtml(s.provider), basename(s.projectPath || "")].filter(Boolean).join(" · ");
+    btn.innerHTML = `
+      <div class="wb-list-item-top">
+        <span class="wb-list-item-title">${escapeHtml(s.title || s.id)}</span>
+        <span class="wb-list-item-date">${escapeHtml(notesRelativeTime(s.updatedAt || 0))}</span>
+      </div>
+      <span class="wb-list-item-preview">${preview}</span>
     `;
-    toggle.addEventListener("click", () => {
-      wbTreeState.projectsExpanded[project.projectPath] = !expanded;
-      saveWbTreeState();
-      renderWorkbenchTree(projects);
+    btn.addEventListener("click", () => void openWorkbenchSession(s));
+    btn.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showWorkbenchContextMenu(s, e.clientX, e.clientY);
     });
-
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "wb-tree-project-add";
-    addBtn.textContent = "+";
-    addBtn.title = "使用默认 Agent 新建 session";
-    addBtn.setAttribute("aria-label", "新建 session");
-    addBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void startWorkbenchNewSessionForProject(project.projectPath);
-    });
-
-    head.appendChild(toggle);
-    head.appendChild(addBtn);
-    li.appendChild(head);
-
-    if (expanded) {
-      const sessionsUl = document.createElement("ul");
-      sessionsUl.className = "wb-tree-sessions";
-      for (const s of project.sessions) {
-        const key = `${s.provider}:${s.id}`;
-        const sBtn = document.createElement("button");
-        sBtn.type = "button";
-        sBtn.className = "wb-tree-session cal-session-row";
-        sBtn.dataset.key = key;
-        sBtn.dataset.provider = s.provider;
-        sBtn.dataset.id = s.id;
-        if (wbActiveKey === key) sBtn.classList.add("active");
-        sBtn.innerHTML = `
-          <div class="s-title">${escapeHtml(s.title || s.id)}</div>
-          <div class="s-meta">${providerTagHtml(s.provider)} · ${escapeHtml(
-            basename(s.projectPath || "")
-          )} · ${escapeHtml(formatTime(s.updatedAt))}</div>
-        `;
-        sBtn.addEventListener("click", () => void openWorkbenchSession(s));
-        sBtn.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          showWorkbenchContextMenu(s, e.clientX, e.clientY);
-        });
-        sessionsUl.appendChild(sBtn);
-      }
-      li.appendChild(sessionsUl);
-    }
-    root.appendChild(li);
+    list.appendChild(btn);
   }
-  frag.appendChild(root);
-  tree.innerHTML = "";
-  tree.appendChild(frag);
+
+  const activeBtn = list.querySelector(`.wb-list-item[data-key="${CSS.escape(wbActiveKey)}"]`);
+  activeBtn?.scrollIntoView({ block: "nearest" });
+}
+
+function renderWorkbenchPanel() {
+  renderWorkbenchFolders();
+  renderWorkbenchSessionList();
 }
 
 async function loadWorkbenchSessions(opts = {}) {
   const quiet = opts.quiet === true;
-  const tree = $("wbTree");
-  if (!tree) return;
-  if (!quiet) tree.innerHTML = `<p class="muted wb-empty">加载中…</p>`;
+  const list = $("wbList");
+  if (!list) return;
+  if (!quiet) list.innerHTML = `<p class="muted wb-list-empty">加载中…</p>`;
   try {
     wbSessions = await agentResume.listSessions(2000);
-    renderWorkbenchTree(groupSessionsByProject(wbSessions));
+    if (wbSelectedProject.kind === "project") {
+      const hasProject = wbSessions.some(
+        (s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath
+      );
+      if (!hasProject) wbSelectedProject = { kind: "all" };
+    }
+    renderWorkbenchPanel();
     populateNewSessionProjects();
   } catch (error) {
     if (!quiet) {
-      tree.innerHTML = `<p class="status error">${escapeHtml(
+      list.innerHTML = `<p class="status error">${escapeHtml(
         error instanceof Error ? error.message : String(error)
       )}</p>`;
+    } else {
+      alertWorkbenchError(error);
     }
   }
 }
@@ -721,15 +802,16 @@ async function refreshLoadedSettings() {
 }
 
 async function ensureWorkbenchVisible() {
-  const tree = $("wbTree");
-  const previousScrollTop = tree?.scrollTop ?? 0;
+  const list = $("wbList");
+  const previousScrollTop = list?.scrollTop ?? 0;
   if (!wbLoaded) {
-    loadWbTreeState();
+    loadWbProjectState();
     wbLoaded = true;
   }
   await refreshLoadedSettings();
   await loadWorkbenchSessions({ quiet: true });
-  if (tree) tree.scrollTop = previousScrollTop;
+  if (list) list.scrollTop = previousScrollTop;
+  updateWorkbenchToolbarState();
   await ensureDefaultWorkbenchTerminal();
   updateWorkbenchTerminalHint();
   // Double rAF: panel was display:none while on other tabs — wait for layout before fit.
@@ -857,8 +939,6 @@ function renderWorkbenchTerminalTabs() {
     tab.appendChild(closeBtn);
     tabsEl.appendChild(tab);
   }
-
-  updateWorkbenchMeta(groupSessionsByProject(wbSessions));
 }
 
 function switchWorkbenchTerminalTab(key) {
@@ -946,7 +1026,7 @@ async function createWorkbenchTerminalPane(opts) {
   const stack = $("wbTerminalStack");
   const hint = $("wbTerminalHint");
   if (!stack || typeof Terminal === "undefined") {
-    setStatus($("wbStatus"), "终端组件未加载", "error");
+    alertWorkbenchError("终端组件未加载");
     return null;
   }
 
@@ -1034,22 +1114,13 @@ async function openWorkbenchSession(session) {
   activeSessionKey = wbActiveKey;
   highlightWorkbenchSession(wbActiveKey);
   scrollWorkbenchSessionIntoView();
-  const status = $("wbStatus");
   await refreshLoadedSettings();
-  const externalMode = isWorkbenchExternalTerminalMode();
-  setStatus(status, externalMode ? "正在打开系统终端…" : "正在打开终端…");
   try {
     const result = await agentResume.workbenchOpenSession({
       provider: session.provider,
       id: session.id
     });
-    if (result.alma) {
-      setStatus(status, "已在 Alma App 中打开", "ok");
-      updateWorkbenchTerminalHint();
-      return;
-    }
-    if (result.external || result.mode === "external-system") {
-      setStatus(status, "已在系统终端中打开", "ok");
+    if (result.alma || result.external || result.mode === "external-system") {
       updateWorkbenchTerminalHint();
       return;
     }
@@ -1059,9 +1130,8 @@ async function openWorkbenchSession(session) {
       cwd: result.cwd,
       command: result.command
     });
-    setStatus(status, "");
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertWorkbenchError(error);
   }
 }
 
@@ -1088,16 +1158,13 @@ async function openWorkbenchCodexApp(session) {
   activeSessionKey = wbActiveKey;
   highlightWorkbenchSession(wbActiveKey);
   scrollWorkbenchSessionIntoView();
-  const status = $("wbStatus");
-  setStatus(status, "正在打开 ChatGPT…");
   try {
     await agentResume.workbenchOpenCodexApp({
       provider: session.provider,
       id: session.id
     });
-    setStatus(status, "已在 ChatGPT 中打开", "ok");
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertWorkbenchError(error);
   }
 }
 
@@ -1130,31 +1197,57 @@ async function handleWorkbenchContextAction(action) {
         pane.title = title;
         renderWorkbenchTerminalTabs();
       }
-      setStatus($("wbStatus"), "已重命名", "ok");
     } catch (error) {
-      setStatus($("wbStatus"), error instanceof Error ? error.message : String(error), "error");
+      alertWorkbenchError(error);
     }
     return;
   }
   if (action === "remove") {
-    const ok = window.confirm(`从面板移除「${session.title}」？（不会删除原生存储）`);
-    if (!ok) return;
-    try {
-      await agentResume.hideSession({ provider: session.provider, id: session.id });
-      const sessionKey = workbenchSessionKey(session);
-      if (wbTerminalPanes.has(sessionKey)) {
-        await closeWorkbenchTerminalTab(sessionKey);
-      }
-      if (wbActiveKey === sessionKey) {
-        wbActiveKey = "";
-      }
-      await loadWorkbenchSessions({ quiet: true });
-      await refreshSessionViews({ quiet: true });
-      setStatus($("wbStatus"), "已从面板移除", "ok");
-    } catch (error) {
-      setStatus($("wbStatus"), error instanceof Error ? error.message : String(error), "error");
-    }
+    await removeWorkbenchSession(session);
   }
+}
+
+async function removeWorkbenchSession(session) {
+  if (!session) return;
+  const ok = window.confirm(`从面板移除「${session.title}」？（不会删除原生存储）`);
+  if (!ok) return;
+  try {
+    await agentResume.hideSession({ provider: session.provider, id: session.id });
+    const sessionKey = workbenchSessionKey(session);
+    if (wbTerminalPanes.has(sessionKey)) {
+      await closeWorkbenchTerminalTab(sessionKey);
+    }
+    if (wbActiveKey === sessionKey) {
+      wbActiveKey = "";
+      highlightWorkbenchSession("");
+    }
+    await loadWorkbenchSessions({ quiet: true });
+    await refreshSessionViews({ quiet: true });
+  } catch (error) {
+    alertWorkbenchError(error);
+  }
+}
+
+async function removeActiveWorkbenchSession() {
+  const session = getActiveWorkbenchSession();
+  if (!session) return;
+  await removeWorkbenchSession(session);
+}
+
+function shouldKeepWorkbenchSelection(target) {
+  return Boolean(
+    target.closest(".wb-list-item") ||
+      target.closest("#wbTerminalShell") ||
+      target.closest(".wb-list-toolbar") ||
+      target.closest("#wbContextMenu")
+  );
+}
+
+function clearWorkbenchSelection() {
+  if (!wbActiveKey) return;
+  wbActiveKey = "";
+  highlightWorkbenchSession("");
+  renderWorkbenchSessionList();
 }
 
 function populateNewSessionProjects() {
@@ -1180,7 +1273,7 @@ function defaultWorkbenchNewSessionProvider(settings = loadedSettings) {
   return settings?.workbench?.defaultNewSessionProvider || "codex";
 }
 
-async function launchWorkbenchNewSession(cwd, provider, statusEl = $("wbStatus")) {
+async function launchWorkbenchNewSession(cwd, provider) {
   if (!cwd) throw new Error("请选择一个 project");
   const useSystemTerminalOnly = provider === "system-terminal";
   const result = await agentResume.workbenchNewSession({
@@ -1189,7 +1282,6 @@ async function launchWorkbenchNewSession(cwd, provider, statusEl = $("wbStatus")
     useSystemTerminalOnly
   });
   if (result.mode === "external-system" || useSystemTerminalOnly) {
-    setStatus(statusEl, "已在系统终端中打开", "ok");
     return;
   }
   const providerUsed = useSystemTerminalOnly ? "codex" : provider;
@@ -1199,18 +1291,15 @@ async function launchWorkbenchNewSession(cwd, provider, statusEl = $("wbStatus")
     cwd: result.cwd,
     command: result.command
   });
-  setStatus(statusEl, "");
 }
 
 async function startWorkbenchNewSessionForProject(projectPath) {
   await refreshLoadedSettings();
   const provider = defaultWorkbenchNewSessionProvider();
-  const status = $("wbStatus");
-  setStatus(status, "正在新建 session…");
   try {
-    await launchWorkbenchNewSession(projectPath, provider, status);
+    await launchWorkbenchNewSession(projectPath, provider);
   } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    alertWorkbenchError(error);
   }
 }
 
@@ -1219,6 +1308,10 @@ function openNewSessionSheet() {
   const provider = defaultWorkbenchNewSessionProvider();
   const sel = $("newSessionProvider");
   if (sel) sel.value = provider;
+  if (wbSelectedProject.kind === "project") {
+    const projectSel = $("newSessionProject");
+    if (projectSel) projectSel.value = wbSelectedProject.projectPath;
+  }
   openSheet("sheetNewSession");
 }
 
@@ -1234,7 +1327,7 @@ async function confirmNewSession() {
     } else {
       cwd = $("newSessionProject")?.value || "";
     }
-    await launchWorkbenchNewSession(cwd, provider, $("wbStatus"));
+    await launchWorkbenchNewSession(cwd, provider);
     closeSheet("sheetNewSession");
     switchTab("workbench");
     setStatus(status, "", "");
@@ -5558,13 +5651,28 @@ function wire() {
 
   $("btnWorkbenchNewSession")?.addEventListener("click", () => openNewSessionSheet());
   $("btnWorkbenchNewTerminal")?.addEventListener("click", () => void openBlankWorkbenchTerminal());
+  $("btnWorkbenchRefresh")?.addEventListener("click", () => void loadWorkbenchSessions());
+  $("btnWorkbenchRemove")?.addEventListener("click", () => void removeActiveWorkbenchSession());
+  updateWorkbenchToolbarState();
+  $("wbSearch")?.addEventListener("input", (e) => {
+    wbSearch = e.target.value ?? "";
+    renderWorkbenchSessionList();
+  });
+  $("tab-workbench")?.addEventListener("click", (e) => {
+    if (shouldKeepWorkbenchSelection(e.target)) return;
+    clearWorkbenchSelection();
+  });
   $("btnConfirmNewSession")?.addEventListener("click", () => void confirmNewSession());
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));
   });
   document.addEventListener("click", () => hideWorkbenchContextMenu());
   document.addEventListener("contextmenu", (e) => {
-    if (!e.target.closest(".wb-tree-session") && !e.target.closest("#wbContextMenu")) {
+    if (
+      !e.target.closest(".wb-list-item") &&
+      !e.target.closest(".wb-folder-row") &&
+      !e.target.closest("#wbContextMenu")
+    ) {
       hideWorkbenchContextMenu();
     }
   });
