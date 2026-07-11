@@ -261,16 +261,15 @@
                     终端模式
                     <select name="workbenchTerminalMode">
                       <option value="xterm">内嵌终端 (xterm.js)</option>
-                      <option value="external-ghostty">外部 Ghostty</option>
+                      <option value="external-system">系统默认终端</option>
                     </select>
                   </label>
-                  <label>Ghostty 可执行文件 <input name="ghosttyExecutable" type="text" placeholder="Ghostty" /></label>
                   <label>
-                    Ghostty 启动模式
-                    <select name="ghosttyLaunchMode">
-                      <option value="pasteCommand">pasteCommand</option>
-                      <option value="copyCommand">copyCommand</option>
-                      <option value="executeCommand">executeCommand</option>
+                    外部终端启动方式
+                    <select name="workbenchExternalLaunchMode">
+                      <option value="executeCommand">自动执行恢复命令</option>
+                      <option value="pasteCommand">打开后自动粘贴命令</option>
+                      <option value="copyCommand">仅复制命令到剪贴板</option>
                     </select>
                   </label>
                 </fieldset>
@@ -447,7 +446,7 @@
               <option value="agy">Antigravity</option>
               <option value="opencode">OpenCode</option>
               <option value="pi">Pi</option>
-              <option value="ghostty">Ghostty（仅打开目录）</option>
+              <option value="system-terminal">系统终端（仅打开目录）</option>
             </select>
           </label>
           <div class="form-row" style="margin-top:16px">

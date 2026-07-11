@@ -26,8 +26,8 @@ import {
   listSessionsInRange,
   loadSessionPreview,
   loadSettings,
-  openProjectInGhostty,
-  openSessionInGhostty,
+  openProjectInSystemTerminal,
+  openSessionInSystemTerminal,
   previewBackfillMemoryDigests,
   renameSessionAction,
   resolvePanelHome,
@@ -70,6 +70,23 @@ function tryDestroyPtyOnQuit(): void {
   } catch {
     // ignore
   }
+}
+
+function resolveWorkbenchTerminalMode(settings: PanelSettings): "xterm" | "external-system" {
+  const mode = settings.workbench?.terminalMode;
+  if (mode === "external-system" || mode === "external-ghostty") {
+    return "external-system";
+  }
+  return "xterm";
+}
+
+function systemTerminalSettings(settings: PanelSettings) {
+  return {
+    externalLaunchMode:
+      settings.workbench?.externalLaunchMode || settings.ghosttyLaunchMode || "executeCommand",
+    externalAutoPasteDelayMs:
+      settings.workbench?.externalAutoPasteDelayMs ?? settings.ghosttyAutoPasteDelayMs
+  };
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -271,10 +288,10 @@ function registerIpc(): void {
       if (!session) {
         throw new Error(`Session not found: ${args.provider} ${args.id}`);
       }
-      const mode = settings.workbench?.terminalMode || "xterm";
+      const mode = resolveWorkbenchTerminalMode(settings);
       const command = buildResumeCommand(session);
-      if (mode === "external-ghostty") {
-        await openSessionInGhostty(session, settings, {
+      if (mode === "external-system") {
+        await openSessionInSystemTerminal(session, systemTerminalSettings(settings), {
           writeText: (text) => Promise.resolve(clipboard.writeText(text))
         });
         return { mode, external: true, command, cwd: expandHome(session.projectPath) };
@@ -287,17 +304,17 @@ function registerIpc(): void {
     "workbench:newSession",
     async (
       _event,
-      args: { cwd: string; provider: AgentProvider; useGhosttyOnly?: boolean }
+      args: { cwd: string; provider: AgentProvider; useSystemTerminalOnly?: boolean }
     ) => {
       const settings = await loadSettings();
       const cwd = expandHome(args.cwd?.trim() || "");
       if (!cwd) {
         throw new Error("Working directory is required.");
       }
-      const mode = settings.workbench?.terminalMode || "xterm";
-      if (args.useGhosttyOnly || mode === "external-ghostty") {
-        await openProjectInGhostty(cwd, settings);
-        return { mode: "external-ghostty", cwd };
+      const mode = resolveWorkbenchTerminalMode(settings);
+      if (args.useSystemTerminalOnly || mode === "external-system") {
+        await openProjectInSystemTerminal(cwd);
+        return { mode: "external-system", cwd };
       }
       const command = buildNewSessionCommand(args.provider, cwd);
       return { mode, command, cwd };

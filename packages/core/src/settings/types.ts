@@ -35,13 +35,16 @@ export interface DesktopSettings {
   windowHeight?: number;
 }
 
-export type WorkbenchTerminalMode = "xterm" | "external-ghostty";
+export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
 
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/scratch */
   scratchDir?: string;
   defaultNewSessionProvider?: AgentProvider;
   terminalMode?: WorkbenchTerminalMode;
+  /** How external (system) terminal starts a resumed session. Default executeCommand. */
+  externalLaunchMode?: GhosttyLaunchMode;
+  externalAutoPasteDelayMs?: number;
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";

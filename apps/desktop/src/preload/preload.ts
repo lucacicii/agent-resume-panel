@@ -80,7 +80,7 @@ export interface DesktopApi {
   workbenchNewSession(args: {
     cwd: string;
     provider: string;
-    useGhosttyOnly?: boolean;
+    useSystemTerminalOnly?: boolean;
   }): Promise<{ mode: string; command?: string; cwd: string }>;
   terminalSpawn(args: {
     cwd: string;

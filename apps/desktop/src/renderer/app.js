@@ -660,6 +660,16 @@ async function loadWorkbenchSessions(opts = {}) {
   }
 }
 
+function isWorkbenchExternalTerminalMode(settings = loadedSettings) {
+  const mode = settings?.workbench?.terminalMode;
+  return mode === "external-system" || mode === "external-ghostty";
+}
+
+async function refreshLoadedSettings() {
+  loadedSettings = await agentResume.getSettings();
+  return loadedSettings;
+}
+
 async function ensureWorkbenchVisible() {
   const tree = $("wbTree");
   const previousScrollTop = tree?.scrollTop ?? 0;
@@ -667,9 +677,11 @@ async function ensureWorkbenchVisible() {
     loadWbTreeState();
     wbLoaded = true;
   }
+  await refreshLoadedSettings();
   await loadWorkbenchSessions({ quiet: true });
   if (tree) tree.scrollTop = previousScrollTop;
   await ensureDefaultWorkbenchTerminal();
+  updateWorkbenchTerminalHint();
   // Double rAF: panel was display:none while on other tabs — wait for layout before fit.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => fitWorkbenchTerminal());
@@ -703,6 +715,7 @@ async function openBlankWorkbenchTerminal() {
 
 async function ensureDefaultWorkbenchTerminal() {
   if (wbTerminalPanes.size > 0) return;
+  if (isWorkbenchExternalTerminalMode()) return;
   await openBlankWorkbenchTerminal();
 }
 
@@ -722,7 +735,16 @@ function getActiveWorkbenchTerminalPane() {
 function updateWorkbenchTerminalHint() {
   const hint = $("wbTerminalHint");
   if (!hint) return;
-  hint.classList.toggle("hidden", wbTerminalPanes.size > 0);
+  if (wbTerminalPanes.size > 0) {
+    hint.classList.add("hidden");
+    return;
+  }
+  hint.classList.remove("hidden");
+  if (isWorkbenchExternalTerminalMode()) {
+    hint.textContent = "终端模式：系统默认终端。点击左侧 session 在外部终端中恢复。";
+  } else {
+    hint.textContent = "选择左侧 session 以恢复终端";
+  }
 }
 
 function ensureWorkbenchTerminalIpc() {
@@ -963,19 +985,21 @@ async function openWorkbenchSession(session) {
   highlightWorkbenchSession(wbActiveKey);
   scrollWorkbenchSessionIntoView();
   const status = $("wbStatus");
-  setStatus(status, "正在打开终端…");
+  await refreshLoadedSettings();
+  const externalMode = isWorkbenchExternalTerminalMode();
+  setStatus(status, externalMode ? "正在打开系统终端…" : "正在打开终端…");
   try {
     if (session.provider === "alma") {
-      setStatus(status, "Alma session 请使用外部 Ghostty 或 Alma App 恢复", "error");
+      setStatus(status, "Alma session 请使用系统终端或 Alma App 恢复", "error");
       return;
     }
     const result = await agentResume.workbenchOpenSession({
       provider: session.provider,
       id: session.id
     });
-    if (result.external) {
-      setStatus(status, "已在外部 Ghostty 中打开", "ok");
-      $("wbTerminalHint")?.classList.remove("hidden");
+    if (result.external || result.mode === "external-system") {
+      setStatus(status, "已在系统终端中打开", "ok");
+      updateWorkbenchTerminalHint();
       return;
     }
     await openWorkbenchTerminal({
@@ -1097,19 +1121,19 @@ async function confirmNewSession() {
       cwd = $("newSessionProject")?.value || "";
       if (!cwd) throw new Error("请选择一个 project");
     }
-    const useGhosttyOnly = provider === "ghostty";
+    const useSystemTerminalOnly = provider === "system-terminal";
     const result = await agentResume.workbenchNewSession({
       cwd,
-      provider: useGhosttyOnly ? "codex" : provider,
-      useGhosttyOnly
+      provider: useSystemTerminalOnly ? "codex" : provider,
+      useSystemTerminalOnly
     });
     closeSheet("sheetNewSession");
     switchTab("workbench");
-    if (result.mode === "external-ghostty" || useGhosttyOnly) {
-      setStatus($("wbStatus"), "已在外部 Ghostty 中打开", "ok");
+    if (result.mode === "external-system" || useSystemTerminalOnly) {
+      setStatus($("wbStatus"), "已在系统终端中打开", "ok");
       return;
     }
-    const providerUsed = useGhosttyOnly ? "codex" : provider;
+    const providerUsed = useSystemTerminalOnly ? "codex" : provider;
     await openWorkbenchTerminal({
       key: workbenchNewSessionKey(result.cwd, providerUsed),
       title: `新 session · ${basename(result.cwd)}`,
@@ -3444,13 +3468,13 @@ async function loadSettingsForm() {
     form.workbenchDefaultProvider.value = s.workbench?.defaultNewSessionProvider || "codex";
   }
   if (form.workbenchTerminalMode) {
-    form.workbenchTerminalMode.value = s.workbench?.terminalMode || "xterm";
+    const mode = s.workbench?.terminalMode || "xterm";
+    form.workbenchTerminalMode.value =
+      mode === "external-ghostty" ? "external-system" : mode;
   }
-  if (form.ghosttyExecutable) {
-    form.ghosttyExecutable.value = s.ghosttyExecutable || "Ghostty";
-  }
-  if (form.ghosttyLaunchMode) {
-    form.ghosttyLaunchMode.value = s.ghosttyLaunchMode || "pasteCommand";
+  if (form.workbenchExternalLaunchMode) {
+    form.workbenchExternalLaunchMode.value =
+      s.workbench?.externalLaunchMode || s.ghosttyLaunchMode || "executeCommand";
   }
 }
 
@@ -3530,13 +3554,12 @@ async function saveSettingsForm() {
       showIncognitoAlma: form.showIncognitoAlma.checked
     },
     workbench: {
-      ...(loadedSettings?.workbench || {}),
       scratchDir: form.workbenchScratchDir?.value.trim() || undefined,
       defaultNewSessionProvider: form.workbenchDefaultProvider?.value || "codex",
-      terminalMode: form.workbenchTerminalMode?.value === "external-ghostty" ? "external-ghostty" : "xterm"
-    },
-    ghosttyExecutable: form.ghosttyExecutable?.value.trim() || undefined,
-    ghosttyLaunchMode: form.ghosttyLaunchMode?.value || "pasteCommand"
+      terminalMode:
+        form.workbenchTerminalMode?.value === "external-system" ? "external-system" : "xterm",
+      externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand"
+    }
   };
   try {
     const result = await agentResume.saveSettings(settings);

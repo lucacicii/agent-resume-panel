@@ -217,6 +217,8 @@ export type {
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
 export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";
+export { openProjectInSystemTerminal, openSessionInSystemTerminal } from "./terminal/systemTerminal";
+export type { SystemTerminalSettings, SystemTerminalLaunchMode } from "./terminal/systemTerminal";
 export { ensureSummariesForSessions } from "./session/ensureSummaries";
 export type {
   EnsureSummariesOptions,

@@ -43,7 +43,14 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     desktop: {
       ...base.desktop,
       ...(partial.desktop || {})
-    }
+    },
+    workbench: {
+      ...base.workbench,
+      ...(partial.workbench || {})
+    },
+    ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
+    ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
+    ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
   };
 }
 
@@ -69,7 +76,12 @@ export async function loadSettings(panelHomeHint?: string): Promise<PanelSetting
   try {
     const raw = await fs.readFile(file, "utf8");
     const parsed = JSON.parse(raw) as Partial<PanelSettings>;
-    return mergeSettings(parsed);
+    const merged = mergeSettings(parsed);
+    const effectiveHome = resolvePanelHome(merged.panelHome?.trim() || home);
+    if (!panelHomeHint && effectiveHome !== home) {
+      return loadSettings(effectiveHome);
+    }
+    return merged;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
