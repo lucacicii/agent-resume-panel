@@ -83,6 +83,7 @@ export async function retrieveAgentContext(options: {
       title: entry.title || entry.id,
       score,
       periodStartMs: entry.periodStartMs,
+      contentPreview: truncate(entry.content, 600),
       session: first
         ? {
             provider: first.provider as AgentProvider,

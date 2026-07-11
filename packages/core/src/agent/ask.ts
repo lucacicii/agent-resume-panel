@@ -4,8 +4,9 @@ import { chatLlmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { recordLlmUsage } from "../usage/store";
 import { buildMetaAgentSystemPrompt, buildMetaAgentUserPrompt, formatSourceBlock } from "./prompts";
+import { appendAskTurn, listAskMessagesForHistory } from "./askStore";
 import { retrieveAgentContext } from "./retrieve";
-import { AskMetaAgentOptions, AskMetaAgentResult } from "./types";
+import type { AskMetaAgentOptions, AskMetaAgentResult } from "./types";
 
 export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMetaAgentResult> {
   const query = options.query?.trim();
@@ -23,6 +24,11 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
 
   const dbPath = catalogDbFromSettings(settings, options.panelHome);
   const panelHome = effectivePanelHome(settings, options.panelHome);
+
+  const history =
+    options.history && options.history.length > 0
+      ? options.history.slice(-6)
+      : await listAskMessagesForHistory(dbPath, 6);
 
   options.onStream?.({ phase: "retrieving" });
 
@@ -44,7 +50,6 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     )
     .join("\n\n");
 
-  const history = (options.history || []).slice(-6);
   const historyBlock = history.length
     ? history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
     : undefined;
@@ -79,12 +84,24 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     // non-fatal
   }
 
-  const answer = {
+  const answer: AskMetaAgentResult = {
     answer: result.content,
     citations: retrieved.citations,
     fallback: retrieved.fallback,
     digests: retrieved.digests.map((d) => d.entry)
   };
+
+  try {
+    await appendAskTurn(dbPath, {
+      userContent: query,
+      assistantContent: result.content,
+      citations: retrieved.citations,
+      fallback: retrieved.fallback
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    answer.persistWarning = `对话保存失败：${message}`;
+  }
 
   options.onStream?.({ phase: "done" });
   return answer;

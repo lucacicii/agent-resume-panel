@@ -2,10 +2,10 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "node:path";
 import {
   askMetaAgent,
+  clearAskMessages,
+  listAskMessages,
   autoRenameSessionAction,
   backfillMemoryDigests,
-  buildMemoryHandoffBrief,
-  buildResumeCommandFromRef,
   catalogDbFromSettings,
   ensureCatalogSchema,
   getMemoryEntryById,
@@ -14,7 +14,6 @@ import {
   listLlmUsageEvents,
   listMemoryEntries,
   listMemoryEntriesInRange,
-  listMemoryLinks,
   listScheduleRuns,
   listSessions,
   listSessionsInRange,
@@ -36,7 +35,6 @@ import {
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
   summarizeSessionAction,
-  type AgentCitation,
   type AgentProvider,
   type DigestProgressEvent,
   type PanelSettings,
@@ -229,6 +227,21 @@ function registerIpc(): void {
     }
   );
 
+  ipcMain.handle("memory:getEntry", async (_event, memoryId?: string) => {
+    const id = typeof memoryId === "string" ? memoryId.trim() : "";
+    if (!id) {
+      return null;
+    }
+    try {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      return (await getMemoryEntryById(dbPath, id)) ?? null;
+    } catch (error) {
+      console.error("memory:getEntry failed:", error);
+      return null;
+    }
+  });
+
   ipcMain.handle("memory:listDaily", async (_event, limit?: number) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
@@ -316,30 +329,18 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "agent:resumeCommand",
-    async (
-      _event,
-      args: { provider: AgentProvider; id: string }
-    ) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      const session = await getSessionById(dbPath, args.provider, args.id);
-      if (!session) {
-        throw new Error(`Session not found: ${args.provider} ${args.id}`);
-      }
-      return {
-        command: buildResumeCommandFromRef({
-          provider: session.provider,
-          id: session.id,
-          projectPath: session.projectPath,
-          title: session.title
-        }),
-        session
-      };
-    }
-  );
+  ipcMain.handle("agent:listAskChat", async () => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    return listAskMessages(dbPath);
+  });
+
+  ipcMain.handle("agent:clearAskChat", async () => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await clearAskMessages(dbPath);
+    return { ok: true };
+  });
 
   ipcMain.handle(
     "workflow:previewMemoryGtdSync",
@@ -453,74 +454,17 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "agent:handoffBrief",
-    async (
-      _event,
-      args: {
-        query?: string;
-        answer?: string;
-        citations: AgentCitation[];
-      }
-    ) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-
-      const digests = [];
-      for (const c of args.citations || []) {
-        const entry = await getMemoryEntryById(dbPath, c.memoryId);
-        if (entry) {
-          digests.push(entry);
-        }
-      }
-
-      // Enrich citations with links if missing session
-      const citations: AgentCitation[] = [];
-      for (const c of args.citations || []) {
-        if (c.session) {
-          citations.push(c);
-          continue;
-        }
-        const links = await listMemoryLinks(dbPath, c.memoryId);
-        const first = links.find((l) => l.provider && l.agentSessionId);
-        citations.push({
-          ...c,
-          session: first
-            ? {
-                provider: first.provider as AgentProvider,
-                id: first.agentSessionId as string,
-                projectPath: first.projectPath || ""
-              }
-            : undefined
-        });
-      }
-
-      const target = citations.find((c) => c.session)?.session;
-      const resumeCommand = target
-        ? buildResumeCommandFromRef({
-            provider: target.provider,
-            id: target.id,
-            projectPath: target.projectPath
-          })
-        : undefined;
-
-      const markdown = buildMemoryHandoffBrief({
-        query: args.query,
-        answer: args.answer,
-        citations,
-        digests,
-        targetSession: target,
-        resumeCommand
-      });
-
-      return { markdown, resumeCommand, targetSession: target };
-    }
-  );
 }
 
 app.whenReady().then(async () => {
   registerIpc();
+  try {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await ensureCatalogSchema(dbPath);
+  } catch (error) {
+    console.error("Failed to ensure catalog schema on startup:", error);
+  }
   createWindow();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {

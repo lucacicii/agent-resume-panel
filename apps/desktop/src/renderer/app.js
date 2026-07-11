@@ -66,13 +66,22 @@ function renderMarkdown(value) {
   }
 }
 
+/** @type {boolean} */
+let askChatLoadedFromDb = false;
+
 function switchTab(name) {
+  if (name !== "ask") {
+    hideCitationPreview();
+  }
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === name);
   });
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
+  if (name === "ask" && !askChatLoadedFromDb) {
+    void loadAskChat();
+  }
 }
 
 function todayInputValue() {
@@ -2819,6 +2828,297 @@ let activeAskStreamIdx = null;
 /** @type {(() => void) | null} */
 let activeAskStreamOff = null;
 
+/** @type {Map<string, any>} */
+const citationPreviewCache = new Map();
+/** @type {ReturnType<typeof setTimeout> | null} */
+let citationPreviewHideTimer = null;
+/** @type {number} */
+let citationPreviewHoverCount = 0;
+/** @type {any | null} */
+let activeCitationPreview = null;
+/** @type {HTMLElement | null} */
+let activeCitationChipEl = null;
+/** @type {HTMLElement | null} */
+let citationPopoverEl = null;
+
+function citationLevelToFocusType(level) {
+  if (level === "weekly") return "week";
+  if (level === "monthly") return "month";
+  return "day";
+}
+
+function citationToFocus(citation) {
+  const level = citation?.level || "daily";
+  const periodKey = periodKeyFromMemoryId(level, citation?.memoryId || "");
+  if (!periodKey) return null;
+  return { type: citationLevelToFocusType(level), key: periodKey, level };
+}
+
+function truncateDigestPreview(content, max = 900) {
+  const t = String(content || "").trim();
+  if (!t) return "";
+  if (t.length <= max) return t;
+  return `${t.slice(0, max)}…`;
+}
+
+function ensureCitationPopover() {
+  if (citationPopoverEl) {
+    return citationPopoverEl;
+  }
+  const popover = document.createElement("div");
+  popover.id = "citationPopover";
+  popover.className = "citation-popover";
+  popover.hidden = true;
+  popover.innerHTML = `
+    <div class="citation-popover-content">
+      <div class="citation-preview-head"></div>
+      <div class="citation-preview-body"></div>
+      <button type="button" class="citation-preview-open ghost-btn">在 Memory 中查看</button>
+    </div>`;
+  popover.addEventListener("mouseenter", () => bumpCitationPreviewHover(1));
+  popover.addEventListener("mouseleave", () => bumpCitationPreviewHover(-1));
+  popover.querySelector(".citation-preview-open")?.addEventListener("click", () => {
+    if (activeCitationPreview) {
+      void openCitationInMemory(activeCitationPreview);
+    }
+  });
+  document.body.appendChild(popover);
+
+  const chatLog = $("chatLog");
+  if (chatLog && chatLog.dataset.citationScrollWired !== "1") {
+    chatLog.dataset.citationScrollWired = "1";
+    chatLog.addEventListener(
+      "scroll",
+      () => {
+        if (activeCitationChipEl && !citationPopoverEl?.hidden) {
+          positionCitationPopover(activeCitationChipEl);
+        }
+      },
+      { passive: true }
+    );
+  }
+
+  citationPopoverEl = popover;
+  return popover;
+}
+
+function positionCitationPopover(anchor) {
+  const popover = ensureCitationPopover();
+  const rect = anchor.getBoundingClientRect();
+  const gap = 8;
+  const margin = 8;
+
+  popover.hidden = false;
+  popover.style.visibility = "hidden";
+  const popRect = popover.getBoundingClientRect();
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+
+  let left = rect.right + gap;
+  let placement = "right";
+  if (left + popRect.width > viewportW - margin) {
+    left = rect.left - gap - popRect.width;
+    placement = "left";
+  }
+  left = Math.max(margin, Math.min(left, viewportW - popRect.width - margin));
+
+  let top = rect.top;
+  if (top + popRect.height > viewportH - margin) {
+    top = viewportH - popRect.height - margin;
+  }
+  top = Math.max(margin, top);
+
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.top = `${Math.round(top)}px`;
+  popover.dataset.placement = placement;
+  popover.style.visibility = "";
+}
+
+function setActiveCitationChip(chip) {
+  if (activeCitationChipEl && activeCitationChipEl !== chip) {
+    activeCitationChipEl.classList.remove("is-active");
+  }
+  activeCitationChipEl = chip;
+  if (chip) {
+    chip.classList.add("is-active");
+  }
+}
+
+function clearCitationPreviewHover() {
+  citationPreviewHoverCount = 0;
+  if (citationPreviewHideTimer) {
+    clearTimeout(citationPreviewHideTimer);
+    citationPreviewHideTimer = null;
+  }
+}
+
+function bumpCitationPreviewHover(delta) {
+  citationPreviewHoverCount = Math.max(0, citationPreviewHoverCount + delta);
+  if (citationPreviewHoverCount > 0) {
+    if (citationPreviewHideTimer) {
+      clearTimeout(citationPreviewHideTimer);
+      citationPreviewHideTimer = null;
+    }
+    return;
+  }
+  if (citationPreviewHideTimer) {
+    clearTimeout(citationPreviewHideTimer);
+  }
+  citationPreviewHideTimer = setTimeout(() => hideCitationPreview(), 450);
+}
+
+function hideCitationPreview() {
+  clearCitationPreviewHover();
+  activeCitationPreview = null;
+  setActiveCitationChip(null);
+  if (citationPopoverEl) {
+    citationPopoverEl.hidden = true;
+  }
+}
+
+async function resolveCitationEntry(citation) {
+  const memoryId = citation?.memoryId;
+  if (!memoryId) {
+    return null;
+  }
+  if (citationPreviewCache.has(memoryId)) {
+    return citationPreviewCache.get(memoryId);
+  }
+  if (citation.contentPreview) {
+    const previewEntry = {
+      id: memoryId,
+      level: citation.level || "daily",
+      title: citation.title || memoryId,
+      content: citation.contentPreview
+    };
+    citationPreviewCache.set(memoryId, previewEntry);
+    return previewEntry;
+  }
+  const fromCal = calEntries.find((e) => e.id === memoryId);
+  if (fromCal?.content) {
+    citationPreviewCache.set(memoryId, fromCal);
+    return fromCal;
+  }
+  if (typeof agentResume.getMemoryEntry === "function") {
+    const entry = await agentResume.getMemoryEntry(memoryId);
+    if (entry) {
+      citationPreviewCache.set(memoryId, entry);
+      return entry;
+    }
+  }
+  return null;
+}
+
+async function showCitationPreview(anchor, citation) {
+  setActiveCitationChip(anchor);
+  activeCitationPreview = citation;
+
+  const popover = ensureCitationPopover();
+  positionCitationPopover(anchor);
+  const head = popover.querySelector(".citation-preview-head");
+  const body = popover.querySelector(".citation-preview-body");
+  if (head) head.textContent = "加载中…";
+  if (body) body.innerHTML = "";
+
+  const level = citation?.level || "daily";
+  const focusType = citationLevelToFocusType(level);
+  const levelLabel = FOCUS_DIGEST_LABELS[focusType] || level;
+
+  try {
+    const entry = await resolveCitationEntry(citation);
+    if (activeCitationPreview !== citation) return;
+    const title = entry?.title || citation.title || citation.memoryId || "引用";
+    if (head) {
+      head.innerHTML = `<span class="badge ${escapeHtml(level)}">${escapeHtml(levelLabel)}</span> ${escapeHtml(title)}`;
+    }
+    const preview = entry?.content ? truncateDigestPreview(entry.content) : "";
+    if (body) {
+      body.innerHTML = preview
+        ? renderMarkdown(preview)
+        : `<p class="muted">暂无预览内容${citation.memoryId ? `（${escapeHtml(citation.memoryId)}）` : ""}</p>`;
+    }
+    if (activeCitationChipEl) {
+      positionCitationPopover(activeCitationChipEl);
+    }
+  } catch (error) {
+    if (activeCitationPreview !== citation) return;
+    const msg = error instanceof Error ? error.message : String(error);
+    if (head) {
+      head.textContent = citation.title || citation.memoryId || "引用";
+    }
+    if (body) {
+      body.innerHTML = `<p class="muted">预览加载失败：${escapeHtml(msg)}</p>`;
+    }
+    if (activeCitationChipEl) {
+      positionCitationPopover(activeCitationChipEl);
+    }
+  }
+}
+
+async function openCitationInMemory(citation) {
+  const focus = citationToFocus(citation);
+  if (!focus) {
+    setStatus($("agentStatus"), "无法解析引用报告", "error");
+    return;
+  }
+  hideCitationPreview();
+  closeAllSheets();
+  switchTab("memory");
+
+  if (focus.type === "day") {
+    const [y, m] = focus.key.split("-").map(Number);
+    if (Number.isFinite(y) && Number.isFinite(m)) {
+      calView = { year: y, month: m - 1 };
+    }
+    selectedDayKey = focus.key;
+    detailFocus = { type: "day", key: focus.key };
+  } else if (focus.type === "week") {
+    const monday = mondayOfIsoWeekLabel(focus.key);
+    if (monday) {
+      calView = { year: monday.getFullYear(), month: monday.getMonth() };
+    }
+    selectedDayKey = null;
+    detailFocus = { type: "week", key: focus.key };
+  } else if (focus.type === "month") {
+    const [y, m] = focus.key.split("-").map(Number);
+    if (Number.isFinite(y) && Number.isFinite(m)) {
+      calView = { year: y, month: m - 1 };
+    }
+    selectedDayKey = null;
+    detailFocus = { type: "month", key: focus.key };
+  }
+
+  updatePeriodLabel();
+  try {
+    await loadMemory();
+    renderCalendar();
+    await renderCalSessionList();
+    renderFocusDigestDetail(focus.type, focus.key);
+    setStatus($("memoryStatus"), `已打开 ${FOCUS_DIGEST_LABELS[focus.type] || ""} ${focus.key}`, "ok");
+  } catch (error) {
+    setStatus($("memoryStatus"), error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function buildCitationChip(citation) {
+  const chip = document.createElement("span");
+  chip.className = "citation-chip";
+  const sess = citation.session
+    ? ` · ${citation.session.provider}/${String(citation.session.id).slice(0, 10)}…`
+    : "";
+  const score = citation.score != null ? ` · ${Number(citation.score).toFixed(3)}` : "";
+  const focusType = citationLevelToFocusType(citation.level || "daily");
+  const levelLabel = FOCUS_DIGEST_LABELS[focusType] || citation.level || "daily";
+  chip.textContent = `[${citation.index}] ${levelLabel} · ${citation.title || citation.memoryId}${score}${sess}`;
+  chip.title = "悬停预览";
+  chip.addEventListener("mouseenter", () => {
+    bumpCitationPreviewHover(1);
+    void showCitationPreview(chip, citation);
+  });
+  chip.addEventListener("mouseleave", () => bumpCitationPreviewHover(-1));
+  return chip;
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -2913,14 +3213,7 @@ function renderChat() {
       const list = document.createElement("div");
       list.className = "citation-list";
       for (const c of turn.citations) {
-        const chip = document.createElement("div");
-        chip.className = "citation-chip";
-        const sess = c.session
-          ? ` · ${c.session.provider}/${String(c.session.id).slice(0, 10)}…`
-          : "";
-        const score = c.score != null ? ` · ${Number(c.score).toFixed(3)}` : "";
-        chip.textContent = `[${c.index}] ${c.level} · ${c.title}${score}${sess}`;
-        list.appendChild(chip);
+        list.appendChild(buildCitationChip(c));
       }
       bubble.appendChild(list);
     }
@@ -2936,46 +3229,6 @@ function renderChat() {
       setStatus($("agentStatus"), "Answer copied", "ok");
     });
     actions.appendChild(btnCopy);
-
-    const session = (turn.citations || []).find((c) => c.session)?.session;
-    const btnResume = document.createElement("button");
-    btnResume.type = "button";
-    btnResume.textContent = "Copy resume cmd";
-    btnResume.disabled = !session;
-    btnResume.title = session ? "" : "No linked session on citations (daily digests with links work best)";
-    btnResume.addEventListener("click", async () => {
-      if (!session) return;
-      try {
-        const res = await agentResume.buildResumeCommand({
-          provider: session.provider,
-          id: session.id
-        });
-        await copyText(res.command);
-        setStatus($("agentStatus"), "Resume command copied", "ok");
-      } catch (error) {
-        setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
-      }
-    });
-    actions.appendChild(btnResume);
-
-    const btnBrief = document.createElement("button");
-    btnBrief.type = "button";
-    btnBrief.textContent = "Copy handoff brief";
-    btnBrief.addEventListener("click", async () => {
-      try {
-        const prevUser = [...chatTurns].slice(0, i).reverse().find((t) => t.role === "user");
-        const res = await agentResume.buildHandoffBrief({
-          query: prevUser?.content,
-          answer: turn.content,
-          citations: turn.citations || []
-        });
-        await copyText(res.markdown);
-        setStatus($("agentStatus"), "Handoff brief copied", "ok");
-      } catch (error) {
-        setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
-      }
-    });
-    actions.appendChild(btnBrief);
 
     bubble.appendChild(actions);
     log.appendChild(bubble);
@@ -3049,14 +3302,19 @@ async function sendAgent() {
       citations: result.citations || [],
       fallback: result.fallback
     };
+    askChatLoadedFromDb = true;
     renderChat();
-    setStatus(
-      $("agentStatus"),
-      result.fallback
-        ? `完成 · ${result.citations?.length || 0} 条来源 · fallback 检索`
-        : `完成 · ${result.citations?.length || 0} 条来源`,
-      "ok"
-    );
+    if (result.persistWarning) {
+      setStatus($("agentStatus"), result.persistWarning, "error");
+    } else {
+      setStatus(
+        $("agentStatus"),
+        result.fallback
+          ? `完成 · ${result.citations?.length || 0} 条来源 · fallback 检索`
+          : `完成 · ${result.citations?.length || 0} 条来源`,
+        "ok"
+      );
+    }
   } catch (error) {
     chatTurns.splice(streamIdx, 1);
     renderChat();
@@ -3067,11 +3325,44 @@ async function sendAgent() {
   }
 }
 
-function clearChat() {
+async function loadAskChat(options = {}) {
+  const force = options.force === true;
+  if (askChatLoadedFromDb && !force) {
+    return;
+  }
+  if (typeof agentResume.listAskChat !== "function") {
+    return;
+  }
+  try {
+    const messages = await agentResume.listAskChat();
+    chatTurns = (messages || []).map((m) => ({
+      role: m.role,
+      content: m.content,
+      citations: m.citations || [],
+      fallback: m.fallback
+    }));
+    askChatLoadedFromDb = true;
+    renderChat();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    setStatus($("agentStatus"), `加载对话失败：${msg}`, "error");
+  }
+}
+
+async function clearChat() {
   if (activeAskStreamIdx != null) {
     return;
   }
+  try {
+    if (typeof agentResume.clearAskChat === "function") {
+      await agentResume.clearAskChat();
+    }
+  } catch (error) {
+    setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
+    return;
+  }
   chatTurns = [];
+  askChatLoadedFromDb = true;
   renderChat();
   setStatus($("agentStatus"), "");
 }
@@ -3144,9 +3435,9 @@ function wire() {
   $("btnAgentSend").addEventListener("click", () => sendAgent());
   $("btnClearChat").addEventListener("click", () => clearChat());
   $("agentInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendAgent();
+      void sendAgent();
     }
   });
 }
@@ -3267,7 +3558,7 @@ async function boot() {
   selectedDayKey = todayInputValue();
   updatePeriodLabel();
   switchTab("memory");
-  renderChat();
+  await loadAskChat();
   await loadSettingsForm();
   await loadMemory();
   void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);

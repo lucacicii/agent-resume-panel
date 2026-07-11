@@ -1,3 +1,4 @@
+import { ensureCatalogSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import { MemoryEntry, MemoryLevel } from "./schema";
 
@@ -192,6 +193,7 @@ export async function getMemoryEntryById(
   dbPath: string,
   id: string
 ): Promise<MemoryEntry | undefined> {
+  await ensureCatalogSchema(dbPath);
   const rows = await runSqliteJson<MemoryEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms

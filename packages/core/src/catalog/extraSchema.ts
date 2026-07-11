@@ -73,4 +73,15 @@ CREATE TABLE IF NOT EXISTS schedule_run_logs (
   meta_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_started ON schedule_run_logs(started_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS ask_messages (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  citations_json TEXT,
+  fallback INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ask_messages_order ON ask_messages(sort_order ASC);
 `;

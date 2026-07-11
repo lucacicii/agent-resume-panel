@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  AgentCitation,
   AgentSession,
+  AskChatMessage,
   AskMetaAgentResult,
   AskStreamEvent,
   DigestProgressEvent,
@@ -62,6 +62,7 @@ export interface DesktopApi {
     fromMs?: number;
     toMs?: number;
   }): Promise<MemoryEntry[]>;
+  getMemoryEntry(memoryId: string): Promise<MemoryEntry | null>;
   listDailyDigests(limit?: number): Promise<MemoryEntry[]>;
   runDailyDigest(
     dateOrOpts?: string | { date?: string; forceResummarize?: boolean }
@@ -81,20 +82,9 @@ export interface DesktopApi {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   }): Promise<AskMetaAgentResult>;
+  listAskChat(): Promise<AskChatMessage[]>;
+  clearAskChat(): Promise<{ ok: boolean }>;
   onAskStream(callback: (event: AskStreamEvent) => void): () => void;
-  buildResumeCommand(args: {
-    provider: string;
-    id: string;
-  }): Promise<{ command: string; session: AgentSession }>;
-  buildHandoffBrief(args: {
-    query?: string;
-    answer?: string;
-    citations: AgentCitation[];
-  }): Promise<{
-    markdown: string;
-    resumeCommand?: string;
-    targetSession?: { provider: string; id: string; projectPath: string };
-  }>;
   previewMemoryGtdSync(args?: {
     ensureDigests?: boolean;
     memoryIds?: string[];
@@ -237,6 +227,7 @@ const api: DesktopApi = {
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
+  getMemoryEntry: (memoryId) => ipcRenderer.invoke("memory:getEntry", memoryId),
   listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),
   runDailyDigest: (dateOrOpts) => {
     if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
@@ -260,6 +251,8 @@ const api: DesktopApi = {
   },
   searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
+  listAskChat: () => ipcRenderer.invoke("agent:listAskChat"),
+  clearAskChat: () => ipcRenderer.invoke("agent:clearAskChat"),
   onAskStream: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {
       callback(streamEvent);
@@ -269,8 +262,6 @@ const api: DesktopApi = {
       ipcRenderer.removeListener("agent:askStream", handler);
     };
   },
-  buildResumeCommand: (args) => ipcRenderer.invoke("agent:resumeCommand", args),
-  buildHandoffBrief: (args) => ipcRenderer.invoke("agent:handoffBrief", args),
   previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),
   applyMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:applyMemoryGtdSync", args),
   previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),

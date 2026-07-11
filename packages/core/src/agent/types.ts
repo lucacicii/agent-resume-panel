@@ -8,19 +8,14 @@ export interface AgentCitation {
   title: string;
   score?: number;
   periodStartMs?: number;
+  /** Truncated digest body for Ask citation hover (no extra DB read). */
+  contentPreview?: string;
   /** Best-effort linked session from memory_links (usually daily digests). */
   session?: {
     provider: AgentProvider;
     id: string;
     projectPath: string;
   };
-}
-
-export interface AgentSessionRef {
-  provider: AgentProvider;
-  id: string;
-  projectPath: string;
-  title?: string;
 }
 
 export type AskStreamPhase = "retrieving" | "generating" | "chunk" | "done";
@@ -48,13 +43,6 @@ export interface AskMetaAgentResult {
   /** True when embedding search failed/empty and recent digests were used. */
   fallback: boolean;
   digests: MemoryEntry[];
-}
-
-export interface BuildHandoffBriefOptions {
-  query?: string;
-  answer?: string;
-  citations: AgentCitation[];
-  digests: MemoryEntry[];
-  targetSession?: AgentSessionRef;
-  resumeCommand?: string;
+  /** Set when the answer was generated but DB persistence failed. */
+  persistWarning?: string;
 }

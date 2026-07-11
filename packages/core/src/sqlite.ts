@@ -1,7 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { spawn } from "node:child_process";
 
 /** Wait for locks (ms) when VS Code extension / other processes hold catalog.db */
 const SQLITE_BUSY_TIMEOUT_MS = 15_000;
@@ -24,6 +21,46 @@ function isBusyError(error: unknown): boolean {
   );
 }
 
+function runSqlite3Once(
+  dbPath: string,
+  sql: string,
+  options?: { json?: boolean; maxBuffer?: number }
+): Promise<string> {
+  const args: string[] = [];
+  if (options?.json) {
+    args.push("-json");
+  }
+  // SQL via stdin avoids ARG_MAX limits when inserting long Ask replies / digests.
+  args.push("-cmd", `.timeout ${SQLITE_BUSY_TIMEOUT_MS}`, dbPath);
+  const maxBuffer = options?.maxBuffer ?? (options?.json ? 20 * 1024 * 1024 : 1024 * 1024);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("sqlite3", args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk);
+      if (stdout.length > maxBuffer) {
+        child.kill();
+        reject(new Error("sqlite3 stdout exceeded maxBuffer."));
+      }
+    });
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
+      reject(new Error(stderr.trim() || `sqlite3 exited with code ${code ?? "unknown"}.`));
+    });
+    child.stdin.on("error", reject);
+    child.stdin.end(sql);
+  });
+}
+
 /**
  * Invoke sqlite3 CLI with busy timeout + retries.
  * Shared catalog.db is often opened by the VS Code extension at the same time.
@@ -33,19 +70,10 @@ async function execSqlite3(
   sql: string,
   options?: { json?: boolean; maxBuffer?: number }
 ): Promise<string> {
-  const args: string[] = [];
-  if (options?.json) {
-    args.push("-json");
-  }
-  // .timeout is milliseconds for sqlite3 shell busy handler
-  args.push("-cmd", `.timeout ${SQLITE_BUSY_TIMEOUT_MS}`, dbPath, sql);
-
   let lastError: unknown;
   for (let attempt = 1; attempt <= SQLITE_MAX_ATTEMPTS; attempt++) {
     try {
-      const { stdout } = await execFileAsync("sqlite3", args, {
-        maxBuffer: options?.maxBuffer ?? (options?.json ? 20 * 1024 * 1024 : 1024 * 1024)
-      });
+      const stdout = await runSqlite3Once(dbPath, sql, options);
       return stdout || "";
     } catch (error) {
       lastError = error;

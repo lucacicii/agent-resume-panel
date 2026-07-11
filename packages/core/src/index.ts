@@ -139,18 +139,21 @@ export {
 
 export type {
   AgentCitation,
-  AgentSessionRef,
   AskMetaAgentOptions,
   AskMetaAgentResult,
   AskStreamEvent,
-  AskStreamPhase,
-  BuildHandoffBriefOptions
+  AskStreamPhase
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
 export { askMetaAgent } from "./agent/ask";
-export { buildResumeCommand, buildResumeCommandFromRef } from "./agent/resumeCommand";
-export { buildMemoryHandoffBrief } from "./agent/brief";
+export {
+  appendAskTurn,
+  clearAskMessages,
+  listAskMessages,
+  listAskMessagesForHistory
+} from "./agent/askStore";
+export type { AskChatMessage } from "./agent/askStore";
 
 export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
 export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
