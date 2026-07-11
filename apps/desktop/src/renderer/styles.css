@@ -498,8 +498,8 @@ body {
 }
 
 .settings-nav {
-  flex: 0 0 168px;
-  width: 168px;
+  flex: 0 0 180px;
+  width: 180px;
   border-right: 1px solid var(--border);
   padding: 12px 10px;
   display: flex;
@@ -584,6 +584,23 @@ body {
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.settings-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-path-display {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
 }
 
 .settings-tip.muted-tip {
@@ -3500,11 +3517,6 @@ code {
 
 .notes-editor-layout.mode-edit .notes-editor-host {
   border-right: none;
-}
-
-.notes-editor-layout.mode-preview {
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
 }
 
 .notes-editor-layout.mode-view {

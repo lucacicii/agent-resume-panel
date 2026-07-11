@@ -142,7 +142,6 @@
                 <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记">+</button>
                 <button type="button" class="notes-icon-btn" id="btnNotesImport" title="导入 Markdown">↓</button>
                 <button type="button" class="notes-icon-btn" id="btnNotesRefresh" title="刷新">↻</button>
-                <button type="button" class="notes-icon-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">⌁</button>
               </div>
               <div class="notes-target-popover" id="notesTargetPopover" hidden>
                 <div class="notes-target-tabs" role="tablist" aria-label="笔记目标">
@@ -167,7 +166,6 @@
                 <h1 class="notes-detail-title" id="notesEditorTitle"></h1>
                 <div class="notes-segmented" id="notesViewSegmented" role="tablist" aria-label="视图模式">
                   <button type="button" role="tab" data-mode="edit">编辑</button>
-                  <button type="button" role="tab" data-mode="preview">分栏</button>
                   <button type="button" role="tab" data-mode="view">查看</button>
                 </div>
               </div>
@@ -222,6 +220,7 @@
             <button type="button" class="settings-nav-item active" data-settings-pane="provider">
               Provider
             </button>
+            <button type="button" class="settings-nav-item" data-settings-pane="data">数据与存储</button>
             <button type="button" class="settings-nav-item" data-settings-pane="general">通用</button>
             <button type="button" class="settings-nav-item" data-settings-pane="usage">用量与日志</button>
           </aside>
@@ -267,14 +266,32 @@
                 </fieldset>
               </div>
 
-              <!-- General: panel home, schedule, backfill -->
-              <div id="settingsPaneGeneral" class="settings-pane" hidden>
-                <label>
-                  Panel home
-                  <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
-                </label>
+              <!-- Data & storage: paths and open-in-Finder actions -->
+              <div id="settingsPaneData" class="settings-pane" hidden>
                 <fieldset>
-                  <legend>Agent Sessions</legend>
+                  <legend>应用数据</legend>
+                  <p class="settings-tip muted-tip">
+                    <code>catalog.db</code>、<code>acp/</code>、<code>notes/</code> 均存放在 Panel home 下。
+                  </p>
+                  <label>
+                    Panel home
+                    <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
+                  </label>
+                  <p class="settings-tip muted-tip">打开操作使用已保存的路径；修改后请先点保存。</p>
+                  <div class="settings-path-row">
+                    <button type="button" id="btnSettingsOpenPanelHome" class="tool-btn">打开 Panel home</button>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>笔记</legend>
+                  <p class="settings-tip">笔记以 Markdown 文件存储，可用 Finder / Obsidian 直接编辑。</p>
+                  <div class="settings-path-row">
+                    <code id="settingsNotesRootPath" class="settings-path-display"></code>
+                    <button type="button" id="btnSettingsOpenNotesFolder" class="tool-btn">打开笔记文件夹</button>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>Agent 数据目录</legend>
                   <label>Codex home <input name="codexHome" type="text" placeholder="~/.codex" /></label>
                   <label>Claude home <input name="claudeHome" type="text" placeholder="~/.claude" /></label>
                   <label>Antigravity home <input name="antigravityHome" type="text" placeholder="~/.gemini" /></label>
@@ -282,6 +299,20 @@
                   <label>Alma data directory <input name="almaDataDir" type="text" placeholder="~/Library/Application Support/alma" /></label>
                   <label>OpenCode home <input name="opencodeHome" type="text" placeholder="~/.local/share/opencode" /></label>
                   <label>Pi home <input name="piHome" type="text" placeholder="~/.pi/agent" /></label>
+                </fieldset>
+                <fieldset>
+                  <legend>工作台目录</legend>
+                  <label>
+                    临时目录（新建 Session）
+                    <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
+                  </label>
+                </fieldset>
+              </div>
+
+              <!-- General: sync policy, workbench behavior, schedule, backfill -->
+              <div id="settingsPaneGeneral" class="settings-pane" hidden>
+                <fieldset>
+                  <legend>Agent Sessions</legend>
                   <label>同步上限 <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" /></label>
                   <label>Stale policy
                     <select name="syncStalePolicy">
@@ -299,10 +330,6 @@
                 </fieldset>
                 <fieldset>
                   <legend>工作台</legend>
-                  <label>
-                    临时目录（新建 Session）
-                    <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
-                  </label>
                   <label>
                     默认新建 Agent
                     <select name="workbenchDefaultProvider">

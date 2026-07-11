@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   catalogDbFromSettings,
   effectivePanelHome,
+  expandHome,
   loadSettings,
   noteAssetsDirName,
   NotesStore,
@@ -134,6 +135,13 @@ export async function notesOpenFolder(): Promise<{ ok: boolean }> {
   const store = await getNotesStore();
   const root = notesRoot(store.getPanelHome());
   await shell.openPath(root);
+  return { ok: true };
+}
+
+export async function settingsOpenPanelHome(): Promise<{ ok: boolean }> {
+  const settings = await loadSettings();
+  const home = expandHome(effectivePanelHome(settings));
+  await shell.openPath(home);
   return { ok: true };
 }
 

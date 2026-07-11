@@ -62,6 +62,7 @@ import {
   notesPasteImage,
   notesList,
   notesOpenFolder,
+  settingsOpenPanelHome,
   notesRead,
   notesRename,
   notesReveal,
@@ -680,6 +681,7 @@ function registerIpc(): void {
     notesPasteImage(args.noteId)
   );
   ipcMain.handle("notes:openFolder", async () => notesOpenFolder());
+  ipcMain.handle("settings:openPanelHome", async () => settingsOpenPanelHome());
   ipcMain.handle("notes:reveal", async (_event, args: { noteId: string }) => notesReveal(args.noteId));
   ipcMain.handle("notes:copyPath", async (_event, args: { noteId: string }) => notesCopyPath(args.noteId));
 }

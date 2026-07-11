@@ -321,6 +321,7 @@ export interface DesktopApi {
   notesClipboardHasImage(): boolean;
   notesPasteImage(args: { noteId: string }): Promise<{ snippet: string } | null>;
   notesOpenFolder(): Promise<{ ok: boolean }>;
+  settingsOpenPanelHome(): Promise<{ ok: boolean }>;
   notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
 }
@@ -425,6 +426,7 @@ const api: DesktopApi = {
   notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
   notesPasteImage: (args) => ipcRenderer.invoke("notes:pasteImage", args),
   notesOpenFolder: () => ipcRenderer.invoke("notes:openFolder"),
+  settingsOpenPanelHome: () => ipcRenderer.invoke("settings:openPanelHome"),
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
   notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args)
 };

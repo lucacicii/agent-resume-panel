@@ -1261,7 +1261,7 @@ let notesTargetPopoverMode = "create";
 let notesTargetPopoverKind = "project";
 let notesTargetPopoverSearch = "";
 let notesCreateBusy = false;
-/** @type {"edit" | "preview" | "view"} */
+/** @type {"edit" | "view"} */
 let notesViewMode = "edit";
 /** @type {import("@codemirror/view").EditorView | null} */
 let notesCmView = null;
@@ -1845,12 +1845,9 @@ function focusNotesEditor() {
   }
 }
 
-function onNotesEditorChange(content) {
+function onNotesEditorChange() {
   if (!notesViewShowsEditor()) return;
   notesDirty = true;
-  const note = notesCache.find((n) => n.noteId === notesActiveId);
-  const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-  updateNotesPreview(content, noteAbs);
   scheduleNotesSave();
 }
 
@@ -1881,9 +1878,6 @@ function insertNoteImageSnippet(snippet) {
   NotesCodeMirror.insertAtCursor(notesCmView, snippet);
   notesDirty = true;
   scheduleNotesSave();
-  const note = notesCache.find((n) => n.noteId === notesActiveId);
-  const noteAbs = note && notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${note.relMdPath}` : "";
-  updateNotesPreview(getNotesEditorContent(), noteAbs);
 }
 
 async function handleNotesImagePasteAsync() {
@@ -1905,7 +1899,7 @@ function refreshNotesPreviewFromEditor() {
 }
 
 function notesViewShowsEditor(mode = notesViewMode) {
-  return mode === "edit" || mode === "preview";
+  return mode === "edit";
 }
 
 function renderNotesViewMode() {
@@ -1913,7 +1907,6 @@ function renderNotesViewMode() {
   const segmented = $("notesViewSegmented");
   if (layout) {
     layout.classList.toggle("mode-edit", notesViewMode === "edit");
-    layout.classList.toggle("mode-preview", notesViewMode === "preview");
     layout.classList.toggle("mode-view", notesViewMode === "view");
   }
   segmented?.querySelectorAll("[data-mode]").forEach((btn) => {
@@ -1924,17 +1917,13 @@ function renderNotesViewMode() {
 }
 
 function setNotesViewMode(mode) {
-  if (mode === "preview" || mode === "view") {
-    notesViewMode = mode;
-  } else {
-    notesViewMode = "edit";
-  }
+  notesViewMode = mode === "view" ? "view" : "edit";
   renderNotesViewMode();
 }
 
 async function switchNotesViewMode(mode) {
   if (mode === notesViewMode) return;
-  if (mode === "preview" || mode === "view") {
+  if (mode === "view") {
     await flushNotesSave();
     refreshNotesPreviewFromEditor();
   }
@@ -4417,6 +4406,17 @@ async function applyOneGtdItem(idx) {
 
 let loadedSettings = null;
 
+function resolvePanelHomeForDisplay(raw) {
+  const trimmed = raw?.trim();
+  return trimmed || "~/.agent-resume-panel";
+}
+
+function updateSettingsNotesRootDisplay() {
+  const panelHome = $("settingsForm")?.panelHome?.value ?? "";
+  const el = $("settingsNotesRootPath");
+  if (el) el.textContent = `${resolvePanelHomeForDisplay(panelHome)}/notes`;
+}
+
 async function loadSettingsForm() {
   const s = await agentResume.getSettings();
   loadedSettings = s;
@@ -4474,6 +4474,7 @@ async function loadSettingsForm() {
     form.workbenchExternalLaunchMode.value =
       s.workbench?.externalLaunchMode || s.ghosttyLaunchMode || "executeCommand";
   }
+  updateSettingsNotesRootDisplay();
 }
 
 async function saveSettingsForm() {
@@ -5520,6 +5521,9 @@ function wire() {
   $("calMonthSelect")?.addEventListener("change", () => applyCalPicker());
   $("btnCalMonthDigest")?.addEventListener("click", () => onMonthButton());
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
+  $("settingsForm")?.panelHome?.addEventListener("input", () => updateSettingsNotesRootDisplay());
+  $("btnSettingsOpenNotesFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
+  $("btnSettingsOpenPanelHome")?.addEventListener("click", () => void agentResume.settingsOpenPanelHome());
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
@@ -5567,7 +5571,6 @@ function wire() {
     void handleNotesImportClick();
   });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
-  $("btnNotesOpenFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
   $("notesViewSegmented")?.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => void switchNotesViewMode(btn.dataset.mode));
   });
@@ -5613,11 +5616,13 @@ function wire() {
 
 function showSettingsPane(name) {
   const provider = $("settingsPaneProvider");
+  const data = $("settingsPaneData");
   const general = $("settingsPaneGeneral");
   const usage = $("settingsPaneUsage");
   const form = $("settingsForm");
   const saveBar = $("settingsSaveBar");
   if (provider) provider.hidden = name !== "provider";
+  if (data) data.hidden = name !== "data";
   if (general) general.hidden = name !== "general";
   if (usage) usage.hidden = name !== "usage";
   if (form) form.hidden = name === "usage";
