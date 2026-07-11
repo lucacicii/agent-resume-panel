@@ -1,4 +1,4 @@
-import { chatCompletionDetailed } from "../llm/chat";
+import { chatCompletionStream } from "../llm/chat";
 import { ChatMessage } from "../llm/types";
 import { chatLlmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
@@ -23,6 +23,8 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
 
   const dbPath = catalogDbFromSettings(settings, options.panelHome);
   const panelHome = effectivePanelHome(settings, options.panelHome);
+
+  options.onStream?.({ phase: "retrieving" });
 
   const retrieved = await retrieveAgentContext({
     query,
@@ -56,7 +58,14 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     }
   ];
 
-  const result = await chatCompletionDetailed(llm, messages, 2000);
+  options.onStream?.({ phase: "generating" });
+
+  const result = await chatCompletionStream(llm, messages, 2000, {
+    onChunk: async (delta) => {
+      options.onStream?.({ phase: "chunk", delta });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  });
   try {
     await recordLlmUsage(dbPath, {
       kind: "chat",
@@ -70,10 +79,13 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     // non-fatal
   }
 
-  return {
+  const answer = {
     answer: result.content,
     citations: retrieved.citations,
     fallback: retrieved.fallback,
     digests: retrieved.digests.map((d) => d.entry)
   };
+
+  options.onStream?.({ phase: "done" });
+  return answer;
 }

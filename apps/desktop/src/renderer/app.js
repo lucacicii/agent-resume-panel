@@ -1771,6 +1771,7 @@ let lastProgressSnapshot = null;
  */
 function applyDigestProgress(event, opts = {}) {
   lastProgressSnapshot = { ...event };
+  syncCalendarFromDigestProgress(event);
   const box = $("genProgress");
   const line = $("genProgressLine");
   const row = $("genProgressSessionRow");
@@ -1964,6 +1965,107 @@ function syncWeeklyMonthlyButtons() {
   }
 }
 
+function updateDayCellMarks(dayKey) {
+  const cell = document.querySelector(`.cal-cell[data-day="${dayKey}"]`);
+  if (!cell) return;
+  const marks = cell.querySelector(".marks");
+  if (!marks) return;
+  marks.innerHTML = "";
+  const outside = cell.classList.contains("outside");
+  const bucket = buildDayIndex(calEntries)[dayKey];
+  appendDayCellMark(marks, { dayKey, outside, dailyEntry: bucket?.daily });
+}
+
+function extractDayKeyFromProgressMessage(message) {
+  if (typeof message !== "string") return null;
+  const match = message.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  return match?.[1] || null;
+}
+
+function resolveProgressDayKey(event) {
+  if (event.dayKey && /^\d{4}-\d{2}-\d{2}$/.test(event.dayKey)) {
+    return event.dayKey;
+  }
+  if (event.level === "daily" && /^\d{4}-\d{2}-\d{2}$/.test(event.periodLabel || "")) {
+    return event.periodLabel;
+  }
+  return extractDayKeyFromProgressMessage(event.message);
+}
+
+async function refreshDayCalendarState(dayKey) {
+  const range = dayRangeFromKey(dayKey);
+  if (!range) return;
+  try {
+    const entries = await agentResume.listMemory({
+      fromMs: range.fromMs,
+      toMs: range.toMs,
+      limit: 20
+    });
+    calEntries = calEntries.filter(
+      (e) => !((e.level || "daily") === "daily" && entryDayKey(e) === dayKey)
+    );
+    for (const e of entries) {
+      if ((e.level || "daily") === "daily" && entryDayKey(e) === dayKey) {
+        calEntries.push(e);
+      }
+    }
+    const check = await agentResume.needsDailyDigestRefresh(dayKey);
+    if (isStaleDigestCheck(check)) {
+      calDayStaleMap.set(dayKey, check);
+    } else {
+      calDayStaleMap.delete(dayKey);
+    }
+    updateDayCellMarks(dayKey);
+    if (detailFocus?.type === "day" && detailFocus.key === dayKey) {
+      renderFocusDigestDetail("day", dayKey);
+    }
+  } catch {
+    updateDayCellMarks(dayKey);
+  }
+}
+
+/**
+ * Keep calendar day tags in sync while weekly/monthly jobs cascade through dailies.
+ * @param {{ phase?: string, level?: string, dayKey?: string, message?: string }} event
+ */
+function syncCalendarFromDigestProgress(event) {
+  const dayKey = resolveProgressDayKey(event);
+  if (!dayKey) return;
+
+  const phase = event.phase || "";
+  const dailyActivePhases = new Set([
+    "start",
+    "ensure_summaries",
+    "session_start",
+    "session_done",
+    "session_skip",
+    "session_fail",
+    "digest",
+    "embed"
+  ]);
+  const inCascade =
+    weeklyMonthlyBusy || event.level === "daily" || /日报/.test(event.message || "");
+
+  if (dailyActivePhases.has(phase) && inCascade) {
+    if (phase === "ensure_summaries" && !event.message?.includes(dayKey)) {
+      return;
+    }
+    markDayGenerating(dayKey, true);
+    return;
+  }
+
+  if (phase === "complete" && inCascade) {
+    markDayGenerating(dayKey, false);
+    void refreshDayCalendarState(dayKey);
+    return;
+  }
+
+  if (phase === "error" && inCascade) {
+    markDayGenerating(dayKey, false);
+    void refreshDayCalendarState(dayKey);
+  }
+}
+
 function markDayGenerating(dayKey, on) {
   if (on) {
     generatingDays.add(dayKey);
@@ -1974,12 +2076,14 @@ function markDayGenerating(dayKey, on) {
 
   const cell = document.querySelector(`.cal-cell[data-day="${dayKey}"]`);
   if (!cell) {
-    if (on) renderCalendar();
+    renderCalendar();
     return;
   }
   if (on) {
     cell.classList.add("generating");
     cell.title = `正在生成日报 ${dayKey}…`;
+    const marks = cell.querySelector(".marks");
+    if (marks) marks.innerHTML = "";
     if (!cell.querySelector(".cal-cell-loading")) {
       const spin = document.createElement("span");
       spin.className = "cal-cell-loading";
@@ -1990,6 +2094,7 @@ function markDayGenerating(dayKey, on) {
     cell.classList.remove("generating");
     cell.title = "";
     cell.querySelector(".cal-cell-loading")?.remove();
+    updateDayCellMarks(dayKey);
   }
 }
 
@@ -2707,8 +2812,12 @@ async function saveSettingsForm() {
   }
 }
 
-/** @type {Array<{ role: 'user'|'assistant', content: string, citations?: any[], fallback?: boolean }>} */
+/** @type {Array<{ role: 'user'|'assistant', content: string, citations?: any[], fallback?: boolean, streaming?: boolean }>} */
 let chatTurns = [];
+/** @type {number | null} */
+let activeAskStreamIdx = null;
+/** @type {(() => void) | null} */
+let activeAskStreamOff = null;
 
 async function copyText(text) {
   try {
@@ -2726,6 +2835,33 @@ async function copyText(text) {
   }
 }
 
+function setAgentComposeEnabled(enabled) {
+  const input = $("agentInput");
+  const sendBtn = $("btnAgentSend");
+  if (input) input.disabled = !enabled;
+  if (sendBtn) sendBtn.disabled = !enabled;
+}
+
+function updateStreamingBubble(idx) {
+  const turn = chatTurns[idx];
+  if (!turn || turn.role !== "assistant") {
+    return;
+  }
+  const bubble = $("chatLog")?.querySelector(`[data-turn-idx="${idx}"]`);
+  if (!bubble) {
+    return;
+  }
+  const body = bubble.querySelector(".chat-body");
+  const contentEl = body?.querySelector(".chat-body-text");
+  if (contentEl) {
+    contentEl.textContent = turn.content;
+  }
+  const log = $("chatLog");
+  if (log) {
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
 function renderChat() {
   const log = $("chatLog");
   log.innerHTML = "";
@@ -2737,7 +2873,8 @@ function renderChat() {
   for (let i = 0; i < chatTurns.length; i++) {
     const turn = chatTurns[i];
     const bubble = document.createElement("div");
-    bubble.className = `chat-bubble ${turn.role}`;
+    bubble.className = `chat-bubble ${turn.role}${turn.streaming ? " streaming" : ""}`;
+    bubble.dataset.turnIdx = String(i);
     if (turn.role === "user") {
       bubble.textContent = turn.content;
       log.appendChild(bubble);
@@ -2746,14 +2883,31 @@ function renderChat() {
 
     const meta = document.createElement("div");
     meta.className = "chat-meta";
-    meta.textContent = turn.fallback
-      ? "Assistant · fallback retrieval (recent digests)"
-      : "Assistant · memory retrieval";
+    if (turn.streaming) {
+      meta.textContent = "Assistant · generating…";
+    } else {
+      meta.textContent = turn.fallback
+        ? "Assistant · fallback retrieval (recent digests)"
+        : "Assistant · memory retrieval";
+    }
     bubble.appendChild(meta);
 
     const body = document.createElement("div");
-    body.textContent = turn.content;
+    body.className = "chat-body";
+    const contentEl = document.createElement("span");
+    contentEl.className = "chat-body-text";
+    contentEl.textContent = turn.content;
+    body.appendChild(contentEl);
     bubble.appendChild(body);
+
+    if (turn.streaming) {
+      const cursor = document.createElement("span");
+      cursor.className = "chat-stream-cursor";
+      cursor.setAttribute("aria-hidden", "true");
+      body.appendChild(cursor);
+      log.appendChild(bubble);
+      continue;
+    }
 
     if (turn.citations?.length) {
       const list = document.createElement("div");
@@ -2830,47 +2984,93 @@ function renderChat() {
   log.scrollTop = log.scrollHeight;
 }
 
+function detachAskStreamListener() {
+  if (activeAskStreamOff) {
+    activeAskStreamOff();
+    activeAskStreamOff = null;
+  }
+}
+
+function stopAskStreamListener() {
+  detachAskStreamListener();
+  activeAskStreamIdx = null;
+}
+
 async function sendAgent() {
   const input = $("agentInput");
   const query = input.value.trim();
-  if (!query) {
+  if (!query || activeAskStreamIdx != null) {
     return;
   }
 
   chatTurns.push({ role: "user", content: query });
   input.value = "";
   renderChat();
-  setStatus($("agentStatus"), "Thinking…");
+  setAgentComposeEnabled(false);
+  setStatus($("agentStatus"), "检索记忆…");
 
   const history = chatTurns
     .filter((t) => t.role === "user" || t.role === "assistant")
     .slice(0, -1)
     .map((t) => ({ role: t.role, content: t.content }));
 
+  const streamIdx = chatTurns.length;
+  chatTurns.push({
+    role: "assistant",
+    content: "",
+    citations: [],
+    streaming: true
+  });
+  activeAskStreamIdx = streamIdx;
+  renderChat();
+
+  detachAskStreamListener();
+  if (typeof agentResume.onAskStream === "function") {
+    activeAskStreamOff = agentResume.onAskStream((event) => {
+      if (activeAskStreamIdx !== streamIdx) {
+        return;
+      }
+      if (event.phase === "retrieving") {
+        setStatus($("agentStatus"), "检索记忆…");
+      } else if (event.phase === "generating") {
+        setStatus($("agentStatus"), "生成回答…");
+      } else if (event.phase === "chunk" && event.delta) {
+        chatTurns[streamIdx].content += event.delta;
+        updateStreamingBubble(streamIdx);
+      }
+    });
+  }
+
   try {
     const result = await agentResume.askAgent({ query, history });
-    chatTurns.push({
+    chatTurns[streamIdx] = {
       role: "assistant",
       content: result.answer,
       citations: result.citations || [],
       fallback: result.fallback
-    });
+    };
     renderChat();
     setStatus(
       $("agentStatus"),
       result.fallback
-        ? `Done · ${result.citations?.length || 0} sources · fallback retrieval`
-        : `Done · ${result.citations?.length || 0} sources`,
+        ? `完成 · ${result.citations?.length || 0} 条来源 · fallback 检索`
+        : `完成 · ${result.citations?.length || 0} 条来源`,
       "ok"
     );
   } catch (error) {
-    chatTurns.pop();
+    chatTurns.splice(streamIdx, 1);
     renderChat();
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
+  } finally {
+    stopAskStreamListener();
+    setAgentComposeEnabled(true);
   }
 }
 
 function clearChat() {
+  if (activeAskStreamIdx != null) {
+    return;
+  }
   chatTurns = [];
   renderChat();
   setStatus($("agentStatus"), "");

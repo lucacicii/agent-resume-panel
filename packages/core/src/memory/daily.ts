@@ -212,6 +212,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       phase: "start",
       level: "daily",
       periodLabel: dateLabel,
+      dayKey: dateLabel,
       message: `生成日报 ${dateLabel}…（先 summarize sessions）`
     });
 
@@ -273,6 +274,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       phase: "digest",
       level: "daily",
       periodLabel: dateLabel,
+      dayKey: dateLabel,
       message: `从 summary 提取日报 ${dateLabel}…`
     });
 
@@ -300,6 +302,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       phase: "embed",
       level: "daily",
       periodLabel: dateLabel,
+      dayKey: dateLabel,
       message: options.skipEmbedding ? "跳过 embedding…" : "写入 embedding…"
     });
 
@@ -343,6 +346,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       phase: "complete",
       level: "daily",
       periodLabel: dateLabel,
+      dayKey: dateLabel,
       message: `日报完成 · ${sessions.length} sessions`
     });
 
@@ -365,6 +369,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       phase: "error",
       level: "daily",
       periodLabel: dateLabel,
+      dayKey: dateLabel,
       message
     });
     throw error;

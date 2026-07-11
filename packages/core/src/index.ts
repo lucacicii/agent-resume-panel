@@ -50,7 +50,8 @@ export {
   buildChatCompletionsUrl,
   buildEmbeddingsUrl
 } from "./llm/types";
-export { chatCompletion, chatCompletionDetailed } from "./llm/chat";
+export { chatCompletion, chatCompletionDetailed, chatCompletionStream } from "./llm/chat";
+export type { ChatStreamCallbacks } from "./llm/chat";
 export type { LlmCallResult } from "./llm/chat";
 export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
 export type { EmbedCallResult } from "./llm/embeddings";
@@ -141,6 +142,8 @@ export type {
   AgentSessionRef,
   AskMetaAgentOptions,
   AskMetaAgentResult,
+  AskStreamEvent,
+  AskStreamPhase,
   BuildHandoffBriefOptions
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";

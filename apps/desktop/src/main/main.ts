@@ -297,7 +297,7 @@ function registerIpc(): void {
   ipcMain.handle(
     "agent:ask",
     async (
-      _event,
+      event,
       args: {
         query: string;
         history?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -305,7 +305,13 @@ function registerIpc(): void {
     ) => {
       return askMetaAgent({
         query: args.query,
-        history: args.history
+        history: args.history,
+        onStream: async (streamEvent) => {
+          event.sender.send("agent:askStream", streamEvent);
+          if (streamEvent.phase === "chunk") {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
+        }
       });
     }
   );

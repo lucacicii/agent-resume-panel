@@ -24,6 +24,8 @@ export interface DigestProgressEvent {
   phase: DigestProgressPhase;
   level: DigestLevel;
   periodLabel: string;
+  /** Local day YYYY-MM-DD when cascading daily digests (weekly/monthly runs). */
+  dayKey?: string;
   /** Human-readable status line for UI. */
   message?: string;
   /** 1-based progress through sessions when ensuring summaries. */

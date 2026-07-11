@@ -23,6 +23,14 @@ export interface AgentSessionRef {
   title?: string;
 }
 
+export type AskStreamPhase = "retrieving" | "generating" | "chunk" | "done";
+
+export interface AskStreamEvent {
+  phase: AskStreamPhase;
+  /** Present when phase is "chunk". */
+  delta?: string;
+}
+
 export interface AskMetaAgentOptions {
   query: string;
   /** Prior turns (user/assistant only); last 6 used. */
@@ -30,6 +38,8 @@ export interface AskMetaAgentOptions {
   panelHome?: string;
   /** Max digests in context. Default 8. */
   limit?: number;
+  /** Optional streaming progress callback (desktop Ask tab). */
+  onStream?: (event: AskStreamEvent) => void | Promise<void>;
 }
 
 export interface AskMetaAgentResult {

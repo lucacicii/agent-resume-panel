@@ -3,6 +3,7 @@ import type {
   AgentCitation,
   AgentSession,
   AskMetaAgentResult,
+  AskStreamEvent,
   DigestProgressEvent,
   MemoryEntry,
   MemorySearchHit,
@@ -80,6 +81,7 @@ export interface DesktopApi {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
   }): Promise<AskMetaAgentResult>;
+  onAskStream(callback: (event: AskStreamEvent) => void): () => void;
   buildResumeCommand(args: {
     provider: string;
     id: string;
@@ -258,6 +260,15 @@ const api: DesktopApi = {
   },
   searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
+  onAskStream: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {
+      callback(streamEvent);
+    };
+    ipcRenderer.on("agent:askStream", handler);
+    return () => {
+      ipcRenderer.removeListener("agent:askStream", handler);
+    };
+  },
   buildResumeCommand: (args) => ipcRenderer.invoke("agent:resumeCommand", args),
   buildHandoffBrief: (args) => ipcRenderer.invoke("agent:handoffBrief", args),
   previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),

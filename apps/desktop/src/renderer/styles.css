@@ -2344,6 +2344,26 @@ code {
   border: 1px solid var(--border);
 }
 
+.chat-bubble.assistant.streaming {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.chat-stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: chat-stream-blink 1s step-end infinite;
+}
+
+@keyframes chat-stream-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 .chat-meta {
   font-size: 11px;
   color: var(--muted);

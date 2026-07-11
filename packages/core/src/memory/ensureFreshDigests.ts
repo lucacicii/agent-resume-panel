@@ -106,6 +106,7 @@ export async function ensureFreshDailiesForPeriod(
       phase: "ensure_summaries",
       level: parentLevel,
       periodLabel: parentLabel,
+      dayKey: day,
       message: `更新日报 ${i}/${total} · ${day}`,
       index: i,
       total
@@ -121,6 +122,7 @@ export async function ensureFreshDailiesForPeriod(
             ...ev,
             level: parentLevel,
             periodLabel: parentLabel,
+            dayKey: day,
             message: ev.message ? `日报 ${day} · ${ev.message}` : `日报 ${day}`
           });
         }
