@@ -11,8 +11,12 @@
   },
   "dependencies": {
     "@agent-resume/core": "0.1.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
     "dompurify": "^3.4.11",
-    "marked": "^18.0.6"
+    "marked": "^18.0.6",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",

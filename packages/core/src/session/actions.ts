@@ -1,4 +1,4 @@
-import { setSessionSummaryInCatalog, setUserTitleInCatalog } from "../catalog/mutations";
+import { hideSessionsInCatalog, setSessionSummaryInCatalog, setUserTitleInCatalog } from "../catalog/mutations";
 import { getSessionById } from "../catalog/query";
 import { ensureCatalogSchema } from "../catalog/db";
 import { AgentProvider, AgentSession } from "../catalog/types";
@@ -141,4 +141,62 @@ export async function autoRenameSessionAction(
     }).catch(() => undefined);
     throw error;
   }
+}
+
+export interface RenameSessionResult {
+  session: AgentSession;
+  nativeRenamed: boolean;
+  nativeError?: string;
+}
+
+/** Manual rename: update catalog title, then push to native agent store. */
+export async function renameSessionAction(
+  opts: SessionActionOptions & { title: string }
+): Promise<RenameSessionResult> {
+  const title = opts.title.trim();
+  if (!title) {
+    throw new Error("Session title cannot be empty.");
+  }
+
+  const settings = await loadSettings();
+  const dbPath = catalogDbFromSettings(settings);
+  await ensureCatalogSchema(dbPath);
+  const session = await getSessionById(dbPath, opts.provider, opts.id);
+  if (!session) {
+    throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
+  }
+  const homes = resolvePreviewHomes(settings);
+
+  if (session.provider !== "chat") {
+    await setUserTitleInCatalog(dbPath, session.provider, session.id, title);
+  }
+
+  let nativeRenamed = false;
+  let nativeError: string | undefined;
+  try {
+    await renameSessionNative(session, title, homes);
+    nativeRenamed = true;
+  } catch (error) {
+    nativeError = error instanceof Error ? error.message : String(error);
+    if (session.provider === "chat") {
+      throw error;
+    }
+  }
+
+  return {
+    session: { ...session, title },
+    nativeRenamed,
+    nativeError
+  };
+}
+
+export async function hideSessionAction(opts: SessionActionOptions): Promise<void> {
+  const settings = await loadSettings();
+  const dbPath = catalogDbFromSettings(settings);
+  await ensureCatalogSchema(dbPath);
+  const session = await getSessionById(dbPath, opts.provider, opts.id);
+  if (!session) {
+    throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
+  }
+  await hideSessionsInCatalog(dbPath, [session]);
 }

@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain } from "electron";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   askMetaAgent,
@@ -7,11 +8,16 @@ import {
   listRecentAskMessages,
   autoRenameSessionAction,
   backfillMemoryDigests,
+  buildNewSessionCommand,
+  buildResumeCommand,
   catalogDbFromSettings,
+  effectivePanelHome,
   ensureCatalogSchema,
+  expandHome,
   getMemoryEntryById,
   getSessionById,
   getUsageSummary,
+  hideSessionAction,
   listLlmUsageEvents,
   listMemoryEntries,
   listMemoryEntriesInRange,
@@ -20,7 +26,10 @@ import {
   listSessionsInRange,
   loadSessionPreview,
   loadSettings,
+  openProjectInGhostty,
+  openSessionInGhostty,
   previewBackfillMemoryDigests,
+  renameSessionAction,
   resolvePanelHome,
   resolvePreviewHomes,
   runDailyDigest,
@@ -41,6 +50,7 @@ import {
   type PanelSettings,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
+import { destroyPtyOnQuit, registerPtyIpc } from "./ptyHost";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 
 let mainWindow: BrowserWindow | null = null;
@@ -200,6 +210,78 @@ function registerIpc(): void {
     "sessions:autoRename",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       return autoRenameSessionAction({ provider: args.provider, id: args.id });
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:rename",
+    async (_event, args: { provider: AgentProvider; id: string; title: string }) => {
+      return renameSessionAction({
+        provider: args.provider,
+        id: args.id,
+        title: args.title
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:hide",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      await hideSessionAction({ provider: args.provider, id: args.id });
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle("workbench:createScratchDir", async () => {
+    const settings = await loadSettings();
+    const home = effectivePanelHome(settings);
+    const scratchBase = settings.workbench?.scratchDir?.trim() || path.join(home, "scratch");
+    const base = expandHome(scratchBase);
+    const dir = path.join(base, `session-${Date.now()}`);
+    await fs.mkdir(dir, { recursive: true });
+    return dir;
+  });
+
+  ipcMain.handle(
+    "workbench:openSession",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      const session = await getSessionById(dbPath, args.provider, args.id);
+      if (!session) {
+        throw new Error(`Session not found: ${args.provider} ${args.id}`);
+      }
+      const mode = settings.workbench?.terminalMode || "xterm";
+      const command = buildResumeCommand(session);
+      if (mode === "external-ghostty") {
+        await openSessionInGhostty(session, settings, {
+          writeText: (text) => Promise.resolve(clipboard.writeText(text))
+        });
+        return { mode, external: true, command, cwd: session.projectPath };
+      }
+      return { mode, command, cwd: session.projectPath, session };
+    }
+  );
+
+  ipcMain.handle(
+    "workbench:newSession",
+    async (
+      _event,
+      args: { cwd: string; provider: AgentProvider; useGhosttyOnly?: boolean }
+    ) => {
+      const settings = await loadSettings();
+      const cwd = expandHome(args.cwd?.trim() || "");
+      if (!cwd) {
+        throw new Error("Working directory is required.");
+      }
+      const mode = settings.workbench?.terminalMode || "xterm";
+      if (args.useGhosttyOnly || mode === "external-ghostty") {
+        await openProjectInGhostty(cwd, settings);
+        return { mode: "external-ghostty", cwd };
+      }
+      const command = buildNewSessionCommand(args.provider, cwd);
+      return { mode, command, cwd };
     }
   );
 
@@ -473,6 +555,7 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   registerIpc();
+  registerPtyIpc(() => mainWindow);
   try {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
@@ -491,6 +574,7 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   stopMemoryScheduler();
+  destroyPtyOnQuit();
   if (process.platform !== "darwin") {
     app.quit();
   }

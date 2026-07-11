@@ -1,3 +1,5 @@
+import type { AgentProvider } from "../catalog/types";
+
 /** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
 export interface LlmSettings {
   baseUrl: string;
@@ -32,6 +34,17 @@ export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
 }
+
+export type WorkbenchTerminalMode = "xterm" | "external-ghostty";
+
+export interface WorkbenchSettings {
+  /** Scratch directory for temporary new sessions. Default: {panelHome}/scratch */
+  scratchDir?: string;
+  defaultNewSessionProvider?: AgentProvider;
+  terminalMode?: WorkbenchTerminalMode;
+}
+
+export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
 
 /** Agent CLI data homes (same defaults as the VS Code extension). */
 export interface AgentHomesSettings {
@@ -90,6 +103,10 @@ export interface PanelSettings {
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
+  workbench?: WorkbenchSettings;
+  ghosttyExecutable?: string;
+  ghosttyLaunchMode?: GhosttyLaunchMode;
+  ghosttyAutoPasteDelayMs?: number;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {

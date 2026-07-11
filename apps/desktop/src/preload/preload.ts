@@ -56,6 +56,43 @@ export interface DesktopApi {
     nativeRenamed: boolean;
     nativeError?: string;
   }>;
+  renameSession(args: {
+    provider: string;
+    id: string;
+    title: string;
+  }): Promise<{
+    session: AgentSession;
+    nativeRenamed: boolean;
+    nativeError?: string;
+  }>;
+  hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
+  createScratchDir(): Promise<string>;
+  workbenchOpenSession(args: {
+    provider: string;
+    id: string;
+  }): Promise<{
+    mode: string;
+    command?: string;
+    cwd: string;
+    external?: boolean;
+    session?: AgentSession;
+  }>;
+  workbenchNewSession(args: {
+    cwd: string;
+    provider: string;
+    useGhosttyOnly?: boolean;
+  }): Promise<{ mode: string; command?: string; cwd: string }>;
+  terminalSpawn(args: {
+    cwd: string;
+    command?: string;
+    cols?: number;
+    rows?: number;
+  }): Promise<{ id: number }>;
+  terminalInput(args: { data: string }): Promise<{ ok: boolean }>;
+  terminalResize(args: { cols: number; rows: number }): Promise<{ ok: boolean }>;
+  terminalDestroy(): Promise<{ ok: boolean }>;
+  onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
+  onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   listMemory(opts?: {
     level?: string;
     limit?: number;
@@ -236,6 +273,26 @@ const api: DesktopApi = {
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
+  renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
+  hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
+  createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
+  workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
+  workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
+  terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
+  terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
+  terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
+  terminalDestroy: () => ipcRenderer.invoke("terminal:destroy"),
+  onTerminalData: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
+      callback(payload);
+    ipcRenderer.on("terminal:data", handler);
+    return () => ipcRenderer.removeListener("terminal:data", handler);
+  },
+  onTerminalExit: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
+    ipcRenderer.on("terminal:exit", handler);
+    return () => ipcRenderer.removeListener("terminal:exit", handler);
+  },
   listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
   getMemoryEntry: (memoryId) => ipcRenderer.invoke("memory:getEntry", memoryId),
   listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),

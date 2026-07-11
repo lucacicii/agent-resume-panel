@@ -14,6 +14,9 @@ export type {
   EmbeddingSettings,
   MemorySettings,
   DesktopSettings,
+  WorkbenchSettings,
+  WorkbenchTerminalMode,
+  GhosttyLaunchMode,
   AgentHomesSettings,
   AgentSessionSyncSettings,
   AgentSessionSyncFilters,
@@ -31,7 +34,7 @@ export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/t
 export { toAgentSession } from "./catalog/types";
 export { ensureCatalogSchema } from "./catalog/db";
 export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
-export { setUserTitleInCatalog, setSessionSummaryInCatalog } from "./catalog/mutations";
+export { setUserTitleInCatalog, setSessionSummaryInCatalog, hideSessionsInCatalog } from "./catalog/mutations";
 export {
   loadAllAgentSessions,
   syncAgentSessions,
@@ -201,13 +204,19 @@ export type {
 
 export {
   summarizeSessionAction,
-  autoRenameSessionAction
+  autoRenameSessionAction,
+  renameSessionAction,
+  hideSessionAction
 } from "./session/actions";
 export type {
   SessionActionOptions,
   SummarizeSessionResult,
-  AutoRenameSessionResult
+  AutoRenameSessionResult,
+  RenameSessionResult
 } from "./session/actions";
+export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
+export type { GhosttySettings } from "./terminal/ghostty";
 export { ensureSummariesForSessions } from "./session/ensureSummaries";
 export type {
   EnsureSummariesOptions,

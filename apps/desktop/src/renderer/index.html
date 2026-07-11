@@ -9,12 +9,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agent Resume Desktop</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./vendor/xterm.css" />
   </head>
   <body>
     <header class="top mac-top">
       <nav class="tabs primary-tabs">
         <button type="button" class="tab active" data-tab="memory">Memory</button>
         <button type="button" class="tab" data-tab="ask">Ask</button>
+        <button type="button" class="tab" data-tab="workbench">工作台</button>
       </nav>
       <div class="top-actions">
         <button type="button" class="ghost-btn" id="btnOpenSessions" title="Sessions 参考">Sessions</button>
@@ -125,6 +127,37 @@
         </div>
       </section>
 
+      <!-- Workbench: project tree + embedded terminal -->
+      <section id="tab-workbench" class="panel workbench-panel">
+        <div class="workbench-layout">
+          <aside class="wb-sidebar">
+            <div class="wb-sidebar-head">
+              <button type="button" class="tool-btn wb-new-btn" id="btnWorkbenchNewSession">+ 新建 Session</button>
+            </div>
+            <p class="muted wb-meta" id="wbMeta"></p>
+            <div class="wb-tree" id="wbTree">
+              <p class="muted wb-empty">加载 sessions…</p>
+            </div>
+          </aside>
+          <div class="wb-main">
+            <div class="wb-main-tabs">
+              <button type="button" class="wb-main-tab active" data-wb-pane="terminal" id="btnWbPaneTerminal">终端</button>
+              <button type="button" class="wb-main-tab" data-wb-pane="preview" id="btnWbPanePreview">预览</button>
+            </div>
+            <div class="wb-pane active" id="wbPaneTerminal">
+              <div class="wb-terminal-host" id="wbTerminalHost"></div>
+              <p class="muted wb-terminal-hint" id="wbTerminalHint">选择左侧 session 以恢复终端</p>
+            </div>
+            <div class="wb-pane" id="wbPanePreview" hidden>
+              <div class="session-preview-pane wb-preview-pane" id="wbSessionPreview">
+                <p class="muted">右键 session 选择「预览」，或在此查看对话记录。</p>
+              </div>
+            </div>
+            <p class="status" id="wbStatus"></p>
+          </div>
+        </div>
+      </section>
+
       <!-- Settings: left nav + right content -->
       <section id="tab-settings" class="panel">
         <div class="toolbar">
@@ -211,6 +244,40 @@
                   <label class="check"><input name="hideCronAlma" type="checkbox" />隐藏 Alma cron</label>
                   <label class="check"><input name="hideChannelAlma" type="checkbox" />隐藏 Alma channel</label>
                   <label class="check"><input name="showIncognitoAlma" type="checkbox" />显示 Alma incognito</label>
+                </fieldset>
+                <fieldset>
+                  <legend>工作台</legend>
+                  <label>
+                    临时目录（新建 Session）
+                    <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
+                  </label>
+                  <label>
+                    默认新建 Agent
+                    <select name="workbenchDefaultProvider">
+                      <option value="codex">Codex</option>
+                      <option value="claude">Claude</option>
+                      <option value="grok">Grok</option>
+                      <option value="agy">Antigravity</option>
+                      <option value="opencode">OpenCode</option>
+                      <option value="pi">Pi</option>
+                    </select>
+                  </label>
+                  <label>
+                    终端模式
+                    <select name="workbenchTerminalMode">
+                      <option value="xterm">内嵌终端 (xterm.js)</option>
+                      <option value="external-ghostty">外部 Ghostty</option>
+                    </select>
+                  </label>
+                  <label>Ghostty 可执行文件 <input name="ghosttyExecutable" type="text" placeholder="Ghostty" /></label>
+                  <label>
+                    Ghostty 启动模式
+                    <select name="ghosttyLaunchMode">
+                      <option value="pasteCommand">pasteCommand</option>
+                      <option value="copyCommand">copyCommand</option>
+                      <option value="executeCommand">executeCommand</option>
+                    </select>
+                  </label>
                 </fieldset>
                 <fieldset>
                   <legend>定时（默认关）</legend>
@@ -363,8 +430,50 @@
       </div>
     </div>
 
+    <!-- Workbench: new session modal -->
+    <div class="sheet" id="sheetNewSession" hidden>
+      <div class="sheet-backdrop" data-close-sheet="sheetNewSession"></div>
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h3>新建 Session</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetNewSession">关闭</button>
+        </div>
+        <div class="sheet-body">
+          <label class="check"><input type="radio" name="newSessionTarget" value="project" checked /> 已有 Project</label>
+          <select id="newSessionProject" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px"></select>
+          <label class="check"><input type="radio" name="newSessionTarget" value="scratch" /> 临时目录</label>
+          <p class="muted" style="margin:4px 0 12px">临时目录路径可在 Settings → 通用 → 工作台 中配置。</p>
+          <label>
+            Agent
+            <select id="newSessionProvider" class="quiet-select tool-select" style="width:100%;margin-top:4px">
+              <option value="codex">Codex</option>
+              <option value="claude">Claude</option>
+              <option value="grok">Grok</option>
+              <option value="agy">Antigravity</option>
+              <option value="opencode">OpenCode</option>
+              <option value="pi">Pi</option>
+              <option value="ghostty">Ghostty（仅打开目录）</option>
+            </select>
+          </label>
+          <div class="form-row" style="margin-top:16px">
+            <button type="button" id="btnConfirmNewSession">创建</button>
+          </div>
+          <p class="status" id="newSessionStatus"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="wb-context-menu" id="wbContextMenu" hidden>
+      <button type="button" data-wb-action="rename">重命名</button>
+      <button type="button" data-wb-action="remove">从面板移除</button>
+      <button type="button" data-wb-action="preview">预览</button>
+    </div>
+
     <script src="./vendor/marked.umd.js"></script>
     <script src="./vendor/purify.min.js"></script>
+    <script src="./vendor/xterm.js"></script>
+    <script src="./vendor/xterm-addon-fit.js"></script>
+    <script src="./vendor/xterm-addon-webgl.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

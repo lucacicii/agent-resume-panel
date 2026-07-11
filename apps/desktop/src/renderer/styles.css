@@ -2727,3 +2727,248 @@ code {
   background: var(--tg-compose-bg);
   min-height: 22px;
 }
+
+/* --- Workbench --- */
+.workbench-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.workbench-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+.wb-sidebar {
+  width: 268px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
+}
+
+.wb-sidebar-head {
+  padding: 10px 10px 6px;
+}
+
+.wb-new-btn {
+  width: 100%;
+}
+
+.wb-meta {
+  margin: 0 10px 6px;
+  font-size: 11px;
+}
+
+.wb-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 6px 10px;
+  font-size: 13px;
+}
+
+.wb-tree-root {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-tree-project {
+  margin: 2px 0;
+}
+
+.wb-tree-project-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wb-tree-project-head:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.wb-tree-chevron {
+  width: 14px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  font-size: 10px;
+}
+
+.wb-tree-project-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tree-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 18px;
+}
+
+.wb-tree-session {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.wb-tree-session:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.wb-tree-session.active {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+}
+
+.wb-tree-session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-tree-session-meta {
+  font-size: 10px;
+  opacity: 0.65;
+  margin-top: 2px;
+}
+
+.wb-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-main-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-main-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.wb-main-tab.active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.wb-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.wb-pane[hidden] {
+  display: none !important;
+}
+
+.wb-terminal-host {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+  background: #0d1117;
+}
+
+.wb-terminal-host .xterm {
+  height: 100%;
+}
+
+.wb-terminal-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 20px;
+  text-align: center;
+}
+
+.wb-terminal-hint.hidden {
+  display: none;
+}
+
+.wb-preview-pane {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.wb-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 160px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-context-menu[hidden] {
+  display: none !important;
+}
+
+.wb-context-menu button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.wb-context-menu button:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+#wbStatus {
+  margin: 0;
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  min-height: 22px;
+}
