@@ -1256,8 +1256,11 @@ let notesSaveTimer = null;
 let notesLoaded = false;
 let notesPanelHome = "";
 let notesContextNode = null;
-let notesPendingOwner = null;
-let notesSheetMode = "create";
+/** @type {"create" | "import"} */
+let notesTargetPopoverMode = "create";
+let notesTargetPopoverKind = "project";
+let notesTargetPopoverSearch = "";
+let notesCreateBusy = false;
 /** @type {"edit" | "preview" | "view"} */
 let notesViewMode = "edit";
 /** @type {import("@codemirror/view").EditorView | null} */
@@ -1386,6 +1389,206 @@ function ownerFromSelectedFolder() {
     };
   }
   return null;
+}
+
+function resolveNoteOwner(contextNode) {
+  return ownerFromContextNode(contextNode ?? notesContextNode) || ownerFromSelectedFolder() || null;
+}
+
+function selectNotesFolderForOwner(owner) {
+  if (owner.scope === "project" && owner.projectPath) {
+    selectNotesFolder({ kind: "project", projectPath: owner.projectPath });
+    return;
+  }
+  if (owner.scope === "session" && owner.provider && owner.sessionId) {
+    selectNotesFolder({
+      kind: "session",
+      provider: owner.provider,
+      sessionId: owner.sessionId
+    });
+  }
+}
+
+function setNotesCreateBusy(busy) {
+  notesCreateBusy = busy;
+  $("btnNotesNew")?.toggleAttribute("disabled", busy);
+  $("btnNotesImport")?.toggleAttribute("disabled", busy);
+  $("btnNotesNew")?.classList.toggle("is-busy", busy);
+  $("btnNotesImport")?.classList.toggle("is-busy", busy);
+}
+
+async function createNoteWithOwner(owner) {
+  const status = $("notesStatus");
+  setNotesCreateBusy(true);
+  setStatus(status, "创建中…");
+  try {
+    await flushNotesSave();
+    const created = await agentResume.notesCreate(owner);
+    selectNotesFolderForOwner(owner);
+    await loadNotes({ quiet: true });
+    await openNoteInEditor(created.noteId);
+    setNotesViewMode("edit");
+    focusNotesEditor();
+    setStatus(status, "已创建", "ok");
+    return created;
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    throw error;
+  } finally {
+    setNotesCreateBusy(false);
+  }
+}
+
+async function importNotesWithOwner(owner) {
+  const status = $("notesStatus");
+  setNotesCreateBusy(true);
+  setStatus(status, "导入中…");
+  try {
+    const result = await agentResume.notesImport(owner);
+    if (result.imported > 0) {
+      selectNotesFolderForOwner(owner);
+      await loadNotes({ quiet: true });
+      const imported = notesCache
+        .filter((n) => {
+          if (owner.scope === "project") {
+            return n.scope === "project" && n.projectPath === owner.projectPath;
+          }
+          return (
+            n.scope === "session" &&
+            n.provider === owner.provider &&
+            n.agentSessionId === owner.sessionId
+          );
+        })
+        .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      if (result.imported === 1 && imported[0]) {
+        await openNoteInEditor(imported[0].noteId);
+      }
+      setStatus(status, `已导入 ${result.imported} 条笔记`, "ok");
+    } else if (result.errors?.length) {
+      setStatus(status, result.errors[0], "error");
+    } else {
+      setStatus(status, "未选择文件", "");
+    }
+    return result;
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+    throw error;
+  } finally {
+    setNotesCreateBusy(false);
+  }
+}
+
+function hideNotesTargetPopover() {
+  const pop = $("notesTargetPopover");
+  if (pop) pop.hidden = true;
+}
+
+function renderNotesTargetList() {
+  const list = $("notesTargetList");
+  if (!list) return;
+  list.innerHTML = "";
+  const q = notesTargetPopoverSearch.trim().toLowerCase();
+
+  if (notesTargetPopoverKind === "project") {
+    const projects = [...new Set(sessionsCache.map((s) => s.projectPath).filter(Boolean))].sort();
+    const filtered = projects.filter(
+      (p) => !q || basename(p).toLowerCase().includes(q) || p.toLowerCase().includes(q)
+    );
+    if (!filtered.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted notes-target-empty";
+      empty.textContent = "暂无可用项目，请先同步 Sessions";
+      list.appendChild(empty);
+      return;
+    }
+    for (const projectPath of filtered) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "notes-target-item";
+      btn.textContent = basename(projectPath);
+      btn.title = projectPath;
+      btn.addEventListener("click", () => void pickNotesTarget({ scope: "project", projectPath }));
+      list.appendChild(btn);
+    }
+    return;
+  }
+
+  const sorted = [...sessionsCache].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const filtered = sorted.filter((s) => {
+    if (!q) return true;
+    const hay = [s.title, s.id, s.provider, s.projectPath, basename(s.projectPath)]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+    return hay.includes(q);
+  });
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted notes-target-empty";
+    empty.textContent = "暂无可用会话，请先同步 Sessions";
+    list.appendChild(empty);
+    return;
+  }
+  for (const s of filtered.slice(0, 500)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "notes-target-item";
+    btn.textContent = `${s.title || s.id} · ${s.provider}`;
+    btn.title = [s.provider, s.projectPath].filter(Boolean).join(" · ");
+    btn.addEventListener("click", () =>
+      void pickNotesTarget({
+        scope: "session",
+        provider: s.provider,
+        sessionId: s.id,
+        projectPath: s.projectPath
+      })
+    );
+    list.appendChild(btn);
+  }
+}
+
+function openNotesTargetPopover(mode) {
+  notesTargetPopoverMode = mode;
+  notesTargetPopoverKind = "project";
+  notesTargetPopoverSearch = "";
+  const search = $("notesTargetSearch");
+  if (search) search.value = "";
+  const pop = $("notesTargetPopover");
+  if (pop) pop.hidden = false;
+  $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.targetKind === "project");
+  });
+  renderNotesTargetList();
+  search?.focus();
+}
+
+async function pickNotesTarget(owner) {
+  hideNotesTargetPopover();
+  if (notesTargetPopoverMode === "import") {
+    await importNotesWithOwner(owner);
+  } else {
+    await createNoteWithOwner(owner);
+  }
+}
+
+async function handleNotesNewClick() {
+  if (notesCreateBusy) return;
+  const owner = resolveNoteOwner();
+  if (owner) {
+    await createNoteWithOwner(owner);
+    return;
+  }
+  openNotesTargetPopover("create");
+}
+
+async function handleNotesImportClick() {
+  if (notesCreateBusy) return;
+  const owner = resolveNoteOwner();
+  if (owner) {
+    await importNotesWithOwner(owner);
+    return;
+  }
+  openNotesTargetPopover("import");
 }
 
 function renderNotesPanel() {
@@ -1895,23 +2098,12 @@ async function handleNotesContextAction(action) {
     }
     if (action === "new") {
       const owner = ownerFromContextNode(node);
-      if (owner) {
-        const created = await agentResume.notesCreate(owner);
-        await loadNotes({ quiet: true });
-        await openNoteInEditor(created.noteId);
-      }
+      if (owner) await createNoteWithOwner(owner);
       return;
     }
     if (action === "import") {
       const owner = ownerFromContextNode(node);
-      if (!owner) return;
-      const result = await agentResume.notesImport(owner);
-      await loadNotes({ quiet: true });
-      if (result.imported > 0) {
-        setStatus(status, `已导入 ${result.imported} 条笔记`, "ok");
-      } else if (result.errors?.length) {
-        setStatus(status, result.errors[0], "error");
-      }
+      if (owner) await importNotesWithOwner(owner);
       return;
     }
     if (action === "rename" && node?.kind === "note") {
@@ -1948,96 +2140,6 @@ async function handleNotesContextAction(action) {
     if (action === "reveal" && node?.kind === "note") {
       await agentResume.notesReveal({ noteId: node.note.noteId });
     }
-  } catch (error) {
-    setStatus(status, error instanceof Error ? error.message : String(error), "error");
-  }
-}
-
-function populateNewNoteSelectors() {
-  const projects = [...new Set(sessionsCache.map((s) => s.projectPath).filter(Boolean))].sort();
-  const projectSel = $("newNoteProject");
-  const sessionSel = $("newNoteSession");
-  if (projectSel) {
-    projectSel.innerHTML = "";
-    for (const p of projects) {
-      const opt = document.createElement("option");
-      opt.value = p;
-      opt.textContent = basename(p);
-      projectSel.appendChild(opt);
-    }
-  }
-  if (sessionSel) {
-    sessionSel.innerHTML = "";
-    const sorted = [...sessionsCache].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    for (const s of sorted.slice(0, 500)) {
-      const opt = document.createElement("option");
-      opt.value = `${s.provider}\t${s.id}`;
-      opt.textContent = `${s.title || s.id} · ${s.provider} · ${basename(s.projectPath)}`;
-      sessionSel.appendChild(opt);
-    }
-  }
-}
-
-function resolveOwnerFromNewNoteSheet() {
-  if (notesPendingOwner) return notesPendingOwner;
-  const kind = document.querySelector('input[name="newNoteKind"]:checked')?.value || "project";
-  if (kind === "project") {
-    const projectPath = $("newNoteProject")?.value;
-    if (!projectPath) throw new Error("请选择项目");
-    return { scope: "project", projectPath };
-  }
-  const raw = $("newNoteSession")?.value || "";
-  const [provider, sessionId] = raw.split("\t");
-  if (!provider || !sessionId) throw new Error("请选择会话");
-  const session = sessionsCache.find((s) => s.provider === provider && s.id === sessionId);
-  return {
-    scope: "session",
-    provider,
-    sessionId,
-    projectPath: session?.projectPath
-  };
-}
-
-function openNewNoteSheet(owner) {
-  notesSheetMode = "create";
-  notesPendingOwner = owner || null;
-  populateNewNoteSelectors();
-  const btn = $("btnConfirmNewNote");
-  if (btn) btn.textContent = "创建";
-  openSheet("sheetNewNote");
-}
-
-function openImportNoteSheet(owner) {
-  notesSheetMode = "import";
-  notesPendingOwner = owner || null;
-  populateNewNoteSelectors();
-  const btn = $("btnConfirmNewNote");
-  if (btn) btn.textContent = "导入";
-  openSheet("sheetNewNote");
-}
-
-async function confirmNewNote() {
-  const status = $("newNoteStatus");
-  setStatus(status, notesSheetMode === "import" ? "导入中…" : "创建中…");
-  try {
-    const owner = resolveOwnerFromNewNoteSheet();
-    if (notesSheetMode === "import") {
-      const result = await agentResume.notesImport(owner);
-      closeSheet("sheetNewNote");
-      notesPendingOwner = null;
-      notesSheetMode = "create";
-      await loadNotes({ quiet: true });
-      switchTab("notes");
-      setStatus(status, result.imported > 0 ? `已导入 ${result.imported} 条` : "未选择文件", result.imported > 0 ? "ok" : "");
-      return;
-    }
-    const created = await agentResume.notesCreate(owner);
-    closeSheet("sheetNewNote");
-    notesPendingOwner = null;
-    await loadNotes({ quiet: true });
-    switchTab("notes");
-    await openNoteInEditor(created.noteId);
-    setStatus(status, "");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -5456,32 +5558,49 @@ function wire() {
     notesSearch = e.target.value ?? "";
     renderNotesPanel();
   });
-  $("btnNotesNew")?.addEventListener("click", () =>
-    openNewNoteSheet(ownerFromContextNode(notesContextNode) || ownerFromSelectedFolder())
-  );
-  $("btnNotesImport")?.addEventListener("click", () => {
-    openImportNoteSheet(ownerFromContextNode(notesContextNode) || ownerFromSelectedFolder());
+  $("btnNotesNew")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void handleNotesNewClick();
+  });
+  $("btnNotesImport")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void handleNotesImportClick();
   });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
   $("btnNotesOpenFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
   $("notesViewSegmented")?.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => void switchNotesViewMode(btn.dataset.mode));
   });
-  $("btnConfirmNewNote")?.addEventListener("click", () => void confirmNewNote());
-  document.querySelectorAll('input[name="newNoteKind"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      const kind = document.querySelector('input[name="newNoteKind"]:checked')?.value;
-      const sessionSel = $("newNoteSession");
-      const projectSel = $("newNoteProject");
-      if (sessionSel) sessionSel.disabled = kind !== "session";
-      if (projectSel) projectSel.disabled = kind === "session";
+  $("notesTargetSearch")?.addEventListener("input", (e) => {
+    notesTargetPopoverSearch = e.target.value ?? "";
+    renderNotesTargetList();
+  });
+  $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      notesTargetPopoverKind = btn.dataset.targetKind || "project";
+      $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.targetKind === notesTargetPopoverKind);
+      });
+      renderNotesTargetList();
+      $("notesTargetSearch")?.focus();
     });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideNotesTargetPopover();
   });
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
   });
   mountNotesEditor();
   document.addEventListener("click", (e) => {
+    if (
+      !e.target.closest("#notesTargetPopover") &&
+      !e.target.closest("#btnNotesNew") &&
+      !e.target.closest("#btnNotesImport")
+    ) {
+      hideNotesTargetPopover();
+    }
     if (
       !e.target.closest("#notesContextMenu") &&
       !e.target.closest(".notes-list-item") &&

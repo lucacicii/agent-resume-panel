@@ -137,11 +137,21 @@
             <p class="muted notes-folders-empty">加载文件夹…</p>
           </aside>
           <aside class="notes-list-pane">
-            <div class="notes-list-toolbar">
-              <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记">+</button>
-              <button type="button" class="notes-icon-btn" id="btnNotesImport" title="导入 Markdown">↓</button>
-              <button type="button" class="notes-icon-btn" id="btnNotesRefresh" title="刷新">↻</button>
-              <button type="button" class="notes-icon-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">⌁</button>
+            <div class="notes-list-toolbar-wrap">
+              <div class="notes-list-toolbar">
+                <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记">+</button>
+                <button type="button" class="notes-icon-btn" id="btnNotesImport" title="导入 Markdown">↓</button>
+                <button type="button" class="notes-icon-btn" id="btnNotesRefresh" title="刷新">↻</button>
+                <button type="button" class="notes-icon-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">⌁</button>
+              </div>
+              <div class="notes-target-popover" id="notesTargetPopover" hidden>
+                <div class="notes-target-tabs" role="tablist" aria-label="笔记目标">
+                  <button type="button" role="tab" data-target-kind="project" class="active">项目</button>
+                  <button type="button" role="tab" data-target-kind="session">会话</button>
+                </div>
+                <input type="search" class="notes-target-search" id="notesTargetSearch" placeholder="筛选…" autocomplete="off" spellcheck="false" />
+                <div class="notes-target-list" id="notesTargetList"></div>
+              </div>
             </div>
             <div class="notes-search-wrap">
               <input type="search" id="notesSearch" class="notes-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
@@ -512,26 +522,6 @@
       <button type="button" data-notes-action="delete" hidden>删除</button>
       <button type="button" data-notes-action="copyPath" hidden>复制路径</button>
       <button type="button" data-notes-action="reveal" hidden>在 Finder 中显示</button>
-    </div>
-
-    <div class="sheet" id="sheetNewNote" hidden>
-      <div class="sheet-backdrop" data-close-sheet="sheetNewNote"></div>
-      <div class="sheet-panel">
-        <div class="sheet-head">
-          <h3>新建笔记</h3>
-          <button type="button" class="ghost-btn" data-close-sheet="sheetNewNote">关闭</button>
-        </div>
-        <div class="sheet-body">
-          <label class="check"><input type="radio" name="newNoteKind" value="project" checked /> 项目笔记</label>
-          <select id="newNoteProject" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px"></select>
-          <label class="check"><input type="radio" name="newNoteKind" value="session" /> 会话笔记</label>
-          <select id="newNoteSession" class="quiet-select tool-select" style="width:100%;margin:8px 0 12px" disabled></select>
-          <div class="form-row" style="margin-top:16px">
-            <button type="button" id="btnConfirmNewNote">创建</button>
-          </div>
-          <p class="status" id="newNoteStatus"></p>
-        </div>
-      </div>
     </div>
 
     <div class="wb-context-menu" id="wbContextMenu" hidden>
