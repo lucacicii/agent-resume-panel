@@ -133,28 +133,32 @@
       <!-- Notes -->
       <section id="tab-notes" class="panel notes-panel">
         <div class="notes-layout">
-          <aside class="notes-sidebar">
-            <div class="notes-sidebar-head">
-              <div class="notes-toolbar">
-                <button type="button" class="tool-btn" id="btnNotesFilter" title="筛选笔记">筛选</button>
-                <button type="button" class="tool-btn" id="btnNotesClearFilter" title="清除筛选">清除</button>
-                <button type="button" class="tool-btn" id="btnNotesNew" title="新建笔记">+ 新建</button>
-                <button type="button" class="tool-btn" id="btnNotesImport" title="导入 Markdown">导入</button>
-                <button type="button" class="tool-btn" id="btnNotesRefresh" title="刷新">刷新</button>
-                <button type="button" class="tool-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">文件夹</button>
-              </div>
+          <aside class="notes-folders" id="notesFolders">
+            <p class="muted notes-folders-empty">加载文件夹…</p>
+          </aside>
+          <aside class="notes-list-pane">
+            <div class="notes-list-toolbar">
+              <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记">+</button>
+              <button type="button" class="notes-icon-btn" id="btnNotesImport" title="导入 Markdown">↓</button>
+              <button type="button" class="notes-icon-btn" id="btnNotesRefresh" title="刷新">↻</button>
+              <button type="button" class="notes-icon-btn" id="btnNotesOpenFolder" title="打开笔记文件夹">⌁</button>
             </div>
-            <p class="muted notes-meta" id="notesMeta"></p>
-            <div class="notes-tree" id="notesTree">
-              <p class="muted notes-empty">加载笔记…</p>
+            <div class="notes-search-wrap">
+              <input type="search" id="notesSearch" class="notes-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
+            </div>
+            <p class="notes-list-meta" id="notesMeta"></p>
+            <div class="notes-list" id="notesList">
+              <p class="muted notes-list-empty">加载笔记…</p>
             </div>
           </aside>
-          <div class="notes-main">
+          <main class="notes-detail">
             <div class="notes-editor-shell" id="notesEditorShell" hidden>
-              <div class="notes-editor-head">
-                <strong id="notesEditorTitle"></strong>
-                <div class="notes-editor-actions">
-                  <button type="button" class="ghost-btn" id="btnNotesToggleView" title="切换编辑/预览/查看">编辑模式</button>
+              <div class="notes-detail-head">
+                <h1 class="notes-detail-title" id="notesEditorTitle"></h1>
+                <div class="notes-segmented" id="notesViewSegmented" role="tablist" aria-label="视图模式">
+                  <button type="button" role="tab" data-mode="edit">编辑</button>
+                  <button type="button" role="tab" data-mode="preview">分栏</button>
+                  <button type="button" role="tab" data-mode="view">查看</button>
                 </div>
               </div>
               <div class="notes-editor-layout mode-edit" id="notesEditorLayout">
@@ -163,10 +167,10 @@
               </div>
             </div>
             <div class="notes-empty-state" id="notesEmptyState">
-              <p class="muted notes-hint" id="notesHint">选择左侧笔记以编辑</p>
+              <p class="muted notes-hint" id="notesHint">选择或创建一条笔记</p>
             </div>
-            <p class="status" id="notesStatus"></p>
-          </div>
+            <p class="notes-status" id="notesStatus"></p>
+          </main>
         </div>
       </section>
 
