@@ -99,7 +99,6 @@ let activePrimaryTab = "memory";
 
 function switchTab(name) {
   if (!name || name === activePrimaryTab) return;
-  const leavingWorkbench = activePrimaryTab === "workbench" && name !== "workbench";
   activePrimaryTab = name;
 
   if (name !== "ask") {
@@ -113,9 +112,6 @@ function switchTab(name) {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
 
-  if (leavingWorkbench) {
-    void destroyWorkbenchTerminal().catch((e) => console.warn("terminal cleanup", e));
-  }
   if (name === "ask") {
     void ensureAskChatVisible();
   }
@@ -662,12 +658,18 @@ async function loadWorkbenchSessions(opts = {}) {
 }
 
 async function ensureWorkbenchVisible() {
+  const tree = $("wbTree");
+  const previousScrollTop = tree?.scrollTop ?? 0;
   if (!wbLoaded) {
     loadWbTreeState();
     wbLoaded = true;
   }
   await loadWorkbenchSessions({ quiet: true });
-  requestAnimationFrame(() => fitWorkbenchTerminal());
+  if (tree) tree.scrollTop = previousScrollTop;
+  // Double rAF: panel was display:none while on other tabs — wait for layout before fit.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => fitWorkbenchTerminal());
+  });
 }
 
 function clearWorkbenchTerminalUnsubs() {
