@@ -9,6 +9,7 @@ import {
   deleteNoteRecord,
   getNoteById,
   listAllNotes,
+  listLibraryNotes,
   listProjectNotes,
   listSessionNotes,
   loadProjectNoteFlags,
@@ -20,7 +21,8 @@ import {
   buildNoteDocument,
   contentPreview,
   extractTitle,
-  parseNoteDocument
+  parseNoteDocument,
+  type NoteFrontmatter
 } from "./frontmatter";
 import {
   nextNoteFilename,
@@ -111,6 +113,10 @@ export class NotesStore {
     return listProjectNotes(this.dbPath, projectPath);
   }
 
+  async listLibraryNotes(): Promise<NoteRecord[]> {
+    return listLibraryNotes(this.dbPath);
+  }
+
   async getNote(noteId: string): Promise<NoteRecord | undefined> {
     return getNoteById(this.dbPath, noteId);
   }
@@ -162,6 +168,10 @@ export class NotesStore {
     return this.createNote(owner, body);
   }
 
+  async createLibraryNote(body = ""): Promise<NoteRecord> {
+    return this.createNote({ scope: "library" }, body);
+  }
+
   async createNote(owner: NoteOwner, body = ""): Promise<NoteRecord> {
     const ownerDir = await ensureOwnerDir(this.panelHome, owner);
     const existing = await listMarkdownFilenames(ownerDir);
@@ -182,7 +192,12 @@ export class NotesStore {
       scope: owner.scope,
       provider: owner.scope === "session" ? owner.provider : undefined,
       agentSessionId: owner.scope === "session" ? owner.sessionId : undefined,
-      projectPath: owner.scope === "project" ? owner.projectPath : owner.projectPath,
+      projectPath:
+        owner.scope === "project"
+          ? owner.projectPath
+          : owner.scope === "session"
+            ? owner.projectPath
+            : undefined,
       filename,
       relDir: ownerRelDir(owner),
       relMdPath: path.join("notes", ownerRelDir(owner), filename),
@@ -214,14 +229,20 @@ export class NotesStore {
         const doc = parseNoteDocument(raw);
         const noteId = newNoteId();
         const createdAtMs = Date.now();
-        const fm = {
+        const fm: NoteFrontmatter = {
           id: noteId,
           scope: owner.scope,
-          createdAt: new Date(createdAtMs).toISOString(),
-          projectPath: owner.scope === "project" ? owner.projectPath : owner.projectPath,
-          provider: owner.scope === "session" ? owner.provider : undefined,
-          sessionId: owner.scope === "session" ? owner.sessionId : undefined
+          createdAt: new Date(createdAtMs).toISOString()
         };
+        if (owner.scope === "project") {
+          fm.projectPath = owner.projectPath;
+        } else if (owner.scope === "session") {
+          fm.provider = owner.provider;
+          fm.sessionId = owner.sessionId;
+          if (owner.projectPath) {
+            fm.projectPath = owner.projectPath;
+          }
+        }
         let body = doc.body;
         body = rewriteAssetReferences(body, sourceBase.endsWith(".md") ? sourceBase : `${sourceBase}.md`, filename);
         const sourceStemAssets = `${noteStem(sourceBase)}.assets`;
@@ -246,7 +267,12 @@ export class NotesStore {
           scope: owner.scope,
           provider: owner.scope === "session" ? owner.provider : undefined,
           agentSessionId: owner.scope === "session" ? owner.sessionId : undefined,
-          projectPath: owner.scope === "project" ? owner.projectPath : owner.projectPath,
+          projectPath:
+            owner.scope === "project"
+              ? owner.projectPath
+              : owner.scope === "session"
+                ? owner.projectPath
+                : undefined,
           filename,
           relDir: ownerRelDir(owner),
           relMdPath: path.join("notes", ownerRelDir(owner), filename),
@@ -281,6 +307,83 @@ export class NotesStore {
     await deleteNoteRecord(this.dbPath, noteId);
     this.cachedNotes = this.cachedNotes.filter((n) => n.noteId !== noteId);
     await this.rebuildFlagsFromCache();
+  }
+
+  async moveNote(noteId: string, newOwner: NoteOwner): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    if (record.filename === "todolist.md") {
+      throw new Error("Cannot move session to-do list.");
+    }
+
+    const currentOwner = recordToOwner(record);
+    if (ownersEqual(currentOwner, newOwner)) {
+      return record;
+    }
+
+    const oldOwnerDir = path.join(this.panelHome, "notes", record.relDir);
+    const newOwnerDir = await ensureOwnerDir(this.panelHome, newOwner);
+    const existing = await listMarkdownFilenames(newOwnerDir);
+    let newFilename = record.filename;
+    if (existing.includes(newFilename)) {
+      newFilename = uniqueNoteFilename(newFilename, existing);
+    }
+
+    const oldMd = path.join(oldOwnerDir, record.filename);
+    const newMd = path.join(newOwnerDir, newFilename);
+    const raw = await fs.readFile(oldMd, "utf8");
+    const doc = parseNoteDocument(raw);
+    let body = doc.body;
+    if (newFilename !== record.filename) {
+      body = parseNoteDocument(rewriteAssetReferences(raw, record.filename, newFilename)).body;
+    }
+
+    const fm = frontmatterForOwner(doc.frontmatter.id || record.noteId, newOwner, doc.frontmatter.createdAt);
+    await fs.writeFile(newMd, buildNoteDocument(fm, body), "utf8");
+
+    const oldAssets = path.join(oldOwnerDir, noteAssetsDirName(record.filename));
+    const newAssets = path.join(newOwnerDir, noteAssetsDirName(newFilename));
+    if (await pathExists(oldAssets)) {
+      if (await pathExists(newAssets)) {
+        throw new Error(`Assets folder already exists: ${noteAssetsDirName(newFilename)}`);
+      }
+      try {
+        await fs.rename(oldAssets, newAssets);
+      } catch {
+        await copyDirectoryRecursive(oldAssets, newAssets);
+        await fs.rm(oldAssets, { recursive: true, force: true });
+      }
+    }
+
+    await fs.rm(oldMd, { force: true });
+
+    const mtime = await fileMtimeMs(newMd);
+    const updated: NoteRecord = {
+      noteId: record.noteId,
+      scope: newOwner.scope,
+      provider: newOwner.scope === "session" ? newOwner.provider : undefined,
+      agentSessionId: newOwner.scope === "session" ? newOwner.sessionId : undefined,
+      projectPath:
+        newOwner.scope === "project"
+          ? newOwner.projectPath
+          : newOwner.scope === "session"
+            ? newOwner.projectPath
+            : undefined,
+      filename: newFilename,
+      relDir: ownerRelDir(newOwner),
+      relMdPath: path.join("notes", ownerRelDir(newOwner), newFilename),
+      title: extractTitle(body),
+      contentPreview: contentPreview(body),
+      createdAtMs: record.createdAtMs,
+      updatedAtMs: mtime,
+      fsMtimeMs: mtime
+    };
+    await upsertNoteRecord(this.dbPath, updated);
+    this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
+    await this.rebuildFlagsFromCache();
+    return updated;
   }
 
   async renameNote(noteId: string, desiredName: string): Promise<NoteRecord> {
@@ -393,6 +496,62 @@ export class NotesStore {
       }
     }
   }
+}
+
+function recordToOwner(record: NoteRecord): NoteOwner {
+  if (record.scope === "library") {
+    return { scope: "library" };
+  }
+  if (record.scope === "project" && record.projectPath) {
+    return { scope: "project", projectPath: record.projectPath };
+  }
+  if (record.scope === "session" && record.provider && record.agentSessionId) {
+    return {
+      scope: "session",
+      provider: record.provider as AgentProvider,
+      sessionId: record.agentSessionId,
+      projectPath: record.projectPath
+    };
+  }
+  throw new Error("Invalid note record owner.");
+}
+
+function ownersEqual(a: NoteOwner, b: NoteOwner): boolean {
+  if (a.scope !== b.scope) {
+    return false;
+  }
+  if (a.scope === "library") {
+    return true;
+  }
+  if (a.scope === "project" && b.scope === "project") {
+    return normalizeProjectPath(a.projectPath) === normalizeProjectPath(b.projectPath);
+  }
+  if (a.scope === "session" && b.scope === "session") {
+    return a.provider === b.provider && a.sessionId === b.sessionId;
+  }
+  return false;
+}
+
+function frontmatterForOwner(
+  noteId: string,
+  owner: NoteOwner,
+  createdAt?: string
+): NoteFrontmatter {
+  const fm: NoteFrontmatter = {
+    id: noteId,
+    scope: owner.scope,
+    createdAt
+  };
+  if (owner.scope === "project") {
+    fm.projectPath = owner.projectPath;
+  } else if (owner.scope === "session") {
+    fm.provider = owner.provider;
+    fm.sessionId = owner.sessionId;
+    if (owner.projectPath) {
+      fm.projectPath = owner.projectPath;
+    }
+  }
+  return fm;
 }
 
 async function copyDirectoryRecursive(src: string, dest: string): Promise<void> {

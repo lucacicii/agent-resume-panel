@@ -3099,18 +3099,92 @@ code {
   border-top: 1px solid var(--border);
 }
 
-.notes-folders,
-.wb-folders {
+.sidebar-folders-pane {
   width: 200px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   min-height: 0;
-  overflow: auto;
-  padding: 8px 6px 12px;
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 90%, var(--text) 10%);
+  transition: width 0.18s ease;
+}
+
+.sidebar-folders-pane.is-collapsed {
+  width: 40px;
+}
+
+.sidebar-folders-header {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 6px 4px 2px;
+}
+
+.sidebar-folders-pane.is-collapsed .sidebar-folders-header {
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.notes-folders,
+.wb-folders {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px 6px 12px;
+}
+
+.sidebar-folders-pane.is-collapsed .notes-folders,
+.sidebar-folders-pane.is-collapsed .wb-folders {
+  display: none;
+}
+
+.sidebar-collapse-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sidebar-collapse-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-collapse-toggle svg .sidebar-collapse-panel {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.28;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.sidebar-collapse-toggle.is-active {
+  color: var(--text);
+}
+
+.sidebar-collapse-toggle.is-active svg .sidebar-collapse-panel {
+  opacity: 0.42;
 }
 
 .notes-folder-section,
@@ -3673,10 +3747,6 @@ code {
 }
 
 @media (max-width: 900px) {
-  .notes-folders {
-    display: none;
-  }
-
   .notes-list-pane {
     width: min(260px, 38vw);
   }

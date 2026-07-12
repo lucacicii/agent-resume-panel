@@ -48,7 +48,7 @@ export async function writeNewNoteFile(options: {
   };
   if (owner.scope === "project") {
     fm.projectPath = owner.projectPath;
-  } else {
+  } else if (owner.scope === "session") {
     fm.provider = owner.provider;
     fm.sessionId = owner.sessionId;
     if (owner.projectPath) {

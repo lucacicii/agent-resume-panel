@@ -101,6 +101,16 @@ export async function listSessionNotes(
   return rows.map(mapRow);
 }
 
+export async function listLibraryNotes(dbPath: string): Promise<NoteRecord[]> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT * FROM notes
+     WHERE scope = 'library'
+     ORDER BY updated_at_ms DESC;`
+  );
+  return rows.map(mapRow);
+}
+
 export async function listProjectNotes(dbPath: string, projectPath: string): Promise<NoteRecord[]> {
   const normalized = normalizeProjectPath(projectPath);
   const rows = await runSqliteJson<NoteRow>(

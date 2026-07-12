@@ -6,7 +6,11 @@ import { noteAssetsDirName } from "./naming";
 
 export const NOTES_ROOT_SEGMENT = "notes";
 
-export type NoteScope = "session" | "project";
+export type NoteScope = "library" | "session" | "project";
+
+export interface LibraryNoteOwner {
+  scope: "library";
+}
 
 export interface ProjectNoteOwner {
   scope: "project";
@@ -20,7 +24,9 @@ export interface SessionNoteOwner {
   projectPath?: string;
 }
 
-export type NoteOwner = ProjectNoteOwner | SessionNoteOwner;
+export type NoteOwner = LibraryNoteOwner | ProjectNoteOwner | SessionNoteOwner;
+
+export const LIBRARY_REL_DIR = "library";
 
 export interface NoteOwnerJson {
   scope: NoteScope;
@@ -65,6 +71,9 @@ export function sessionTodolistAbsPath(panelHome: string, provider: string, sess
 }
 
 export function ownerRelDir(owner: NoteOwner): string {
+  if (owner.scope === "library") {
+    return LIBRARY_REL_DIR;
+  }
   if (owner.scope === "project") {
     return path.join("projects", projectDirKey(owner.projectPath));
   }
@@ -118,6 +127,9 @@ export function ownerJsonPath(ownerDir: string): string {
 }
 
 export function serializeOwner(owner: NoteOwner): NoteOwnerJson {
+  if (owner.scope === "library") {
+    return { scope: "library" };
+  }
   if (owner.scope === "project") {
     return { scope: "project", projectPath: normalizeProjectPath(owner.projectPath) };
   }
@@ -134,6 +146,9 @@ export function parseOwnerJson(raw: unknown): NoteOwner | undefined {
     return undefined;
   }
   const obj = raw as NoteOwnerJson;
+  if (obj.scope === "library") {
+    return { scope: "library" };
+  }
   if (obj.scope === "project" && typeof obj.projectPath === "string" && obj.projectPath.trim()) {
     return { scope: "project", projectPath: normalizeProjectPath(obj.projectPath) };
   }

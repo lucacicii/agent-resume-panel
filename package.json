@@ -1694,6 +1694,11 @@
         "icon": "$(plus)"
       },
       {
+        "command": "agentResume.moveNote",
+        "title": "Move Note…",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.zh-cn.newNote",
         "title": "新建笔记…",
         "category": "Agent Resume",

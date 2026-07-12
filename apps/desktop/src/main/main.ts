@@ -62,6 +62,7 @@ import {
   notesImport,
   notesPasteImage,
   notesList,
+  notesMove,
   notesOpenFolder,
   settingsOpenPanelHome,
   notesRead,
@@ -675,12 +676,17 @@ function registerIpc(): void {
     async (
       _event,
       args: {
-        scope: "project" | "session";
+        scope: "library" | "project" | "session";
         projectPath?: string;
         provider?: string;
         sessionId?: string;
       }
     ) => notesCreate(args)
+  );
+  ipcMain.handle(
+    "notes:move",
+    async (_event, args: { noteId: string; owner: import("@agent-resume/core").NoteOwner }) =>
+      notesMove(args.noteId, args.owner)
   );
   ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => notesDelete(args.noteId));
   ipcMain.handle("notes:rename", async (_event, args: { noteId: string; filename: string }) =>

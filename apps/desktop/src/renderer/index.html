@@ -133,8 +133,26 @@
       <!-- Notes -->
       <section id="tab-notes" class="panel notes-panel">
         <div class="notes-layout">
-          <aside class="notes-folders" id="notesFolders">
-            <p class="muted notes-folders-empty">加载文件夹…</p>
+          <aside class="sidebar-folders-pane notes-folders-pane" id="notesFoldersPane">
+            <div class="sidebar-folders-header">
+              <button
+                type="button"
+                class="sidebar-collapse-toggle"
+                id="btnNotesToggleFolders"
+                title="隐藏侧栏"
+                aria-label="隐藏侧栏"
+                aria-expanded="true"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
+                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
+                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
+                </svg>
+              </button>
+            </div>
+            <div class="notes-folders" id="notesFolders">
+              <p class="muted notes-folders-empty">加载文件夹…</p>
+            </div>
           </aside>
           <aside class="notes-list-pane">
             <div class="notes-list-toolbar-wrap">
@@ -180,7 +198,8 @@
               </div>
               <div class="notes-target-popover" id="notesTargetPopover" hidden>
                 <div class="notes-target-tabs" role="tablist" aria-label="笔记目标">
-                  <button type="button" role="tab" data-target-kind="project" class="active">项目</button>
+                  <button type="button" role="tab" data-target-kind="library" class="active">独立笔记</button>
+                  <button type="button" role="tab" data-target-kind="project">项目</button>
                   <button type="button" role="tab" data-target-kind="session">会话</button>
                 </div>
                 <input type="search" class="notes-target-search" id="notesTargetSearch" placeholder="筛选…" autocomplete="off" spellcheck="false" />
@@ -219,8 +238,26 @@
       <!-- Workbench: projects + session list + embedded terminal -->
       <section id="tab-workbench" class="panel workbench-panel">
         <div class="workbench-layout">
-          <aside class="wb-folders" id="wbFolders">
-            <p class="muted wb-folders-empty">加载项目…</p>
+          <aside class="sidebar-folders-pane wb-folders-pane" id="wbFoldersPane">
+            <div class="sidebar-folders-header">
+              <button
+                type="button"
+                class="sidebar-collapse-toggle"
+                id="btnWbToggleFolders"
+                title="隐藏侧栏"
+                aria-label="隐藏侧栏"
+                aria-expanded="true"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
+                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
+                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
+                </svg>
+              </button>
+            </div>
+            <div class="wb-folders" id="wbFolders">
+              <p class="muted wb-folders-empty">加载项目…</p>
+            </div>
           </aside>
           <aside class="wb-list-pane">
             <div class="wb-list-toolbar-wrap">
@@ -619,6 +656,7 @@
     <div class="notes-context-menu" id="notesContextMenu" hidden>
       <button type="button" data-notes-action="new" hidden>新建笔记</button>
       <button type="button" data-notes-action="import" hidden>导入 Markdown</button>
+      <button type="button" data-notes-action="move" hidden>更改归属…</button>
       <button type="button" data-notes-action="copyPath" hidden>复制路径</button>
       <button type="button" data-notes-action="reveal" hidden>在 Finder 中显示</button>
     </div>

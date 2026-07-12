@@ -313,15 +313,24 @@ export interface DesktopApi {
     updatedAtMs: number;
   }>;
   notesCreate(args: {
-    scope: "project" | "session";
+    scope: "library" | "project" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
   }): Promise<{ noteId: string; filename: string }>;
+  notesMove(args: {
+    noteId: string;
+    owner: {
+      scope: "library" | "project" | "session";
+      projectPath?: string;
+      provider?: string;
+      sessionId?: string;
+    };
+  }): Promise<{ noteId: string; filename: string; scope: string }>;
   notesDelete(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesRename(args: { noteId: string; filename: string }): Promise<{ noteId: string; filename: string }>;
   notesImport(owner: {
-    scope: "project" | "session";
+    scope: "library" | "project" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
@@ -429,6 +438,7 @@ const api: DesktopApi = {
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
+  notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),

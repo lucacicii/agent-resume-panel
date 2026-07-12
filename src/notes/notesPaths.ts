@@ -16,6 +16,7 @@ export {
   parseOwnerJson,
   type NoteScope,
   type NoteOwner,
+  type LibraryNoteOwner,
   type ProjectNoteOwner,
   type SessionNoteOwner,
   type NoteOwnerJson

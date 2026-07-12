@@ -126,7 +126,9 @@ export async function reconcileNotesIndex(dbPath: string, panelHome: string): Pr
       projectPath:
         owner.scope === "project"
           ? owner.projectPath
-          : owner.projectPath ?? doc.frontmatter.projectPath,
+          : owner.scope === "session"
+            ? owner.projectPath ?? doc.frontmatter.projectPath
+            : undefined,
       filename: entry.filename,
       relDir: ownerRelDir(owner),
       relMdPath: entry.relMdPath,
@@ -157,6 +159,14 @@ interface ScannedNote {
 async function scanNoteMarkdownFiles(panelHome: string): Promise<ScannedNote[]> {
   const root = notesRoot(panelHome);
   const results: ScannedNote[] = [];
+
+  const libraryRoot = path.join(root, "library");
+  try {
+    const owner: NoteOwner = { scope: "library" };
+    await collectMarkdown(libraryRoot, owner, results);
+  } catch {
+    // no library yet
+  }
 
   const projectsRoot = path.join(root, "projects");
   try {

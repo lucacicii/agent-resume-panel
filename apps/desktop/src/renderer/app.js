@@ -1698,9 +1698,13 @@ async function handleWorkbenchNewNoteClick() {
 // --- Notes ---
 
 const NOTES_FOLDER_KEY = "notes-selected-folder";
+const NOTES_FOLDERS_COLLAPSED_KEY = "notes-folders-collapsed";
+const WB_FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
+let notesFoldersCollapsed = false;
+let wbFoldersCollapsed = false;
 let notesCache = [];
 let notesSearch = "";
-/** @type {{ kind: "all" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string }} */
+/** @type {{ kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string }} */
 let notesSelectedFolder = { kind: "all" };
 let notesActiveId = "";
 let notesDirty = false;
@@ -1711,10 +1715,11 @@ let notesPanelHome = "";
 let notesContextNode = null;
 let notesTitleEditing = false;
 let notesTitleEditCancelled = false;
-/** @type {"create" | "import"} */
+/** @type {"create" | "import" | "move"} */
 let notesTargetPopoverMode = "create";
-let notesTargetPopoverKind = "project";
+let notesTargetPopoverKind = "library";
 let notesTargetPopoverSearch = "";
+let notesMoveNoteId = "";
 let notesCreateBusy = false;
 /** @type {"edit" | "view"} */
 let notesViewMode = "edit";
@@ -1730,7 +1735,12 @@ function loadNotesFolderState() {
     const raw = localStorage.getItem(NOTES_FOLDER_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.kind === "all" || parsed?.kind === "project" || parsed?.kind === "session") {
+      if (
+        parsed?.kind === "all" ||
+        parsed?.kind === "library" ||
+        parsed?.kind === "project" ||
+        parsed?.kind === "session"
+      ) {
         notesSelectedFolder = parsed;
       }
     }
@@ -1744,6 +1754,62 @@ function saveNotesFolderState() {
     localStorage.setItem(NOTES_FOLDER_KEY, JSON.stringify(notesSelectedFolder));
   } catch {
     // ignore
+  }
+}
+
+function updateSidebarCollapseToggle(btn, collapsed) {
+  if (!btn) return;
+  const label = collapsed ? "显示侧栏" : "隐藏侧栏";
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.classList.toggle("is-active", collapsed);
+}
+
+function setNotesFoldersCollapsed(collapsed, { persist = true } = {}) {
+  notesFoldersCollapsed = collapsed;
+  $("notesFoldersPane")?.classList.toggle("is-collapsed", collapsed);
+  updateSidebarCollapseToggle($("btnNotesToggleFolders"), collapsed);
+  if (persist) {
+    try {
+      localStorage.setItem(NOTES_FOLDERS_COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function setWbFoldersCollapsed(collapsed, { persist = true } = {}) {
+  wbFoldersCollapsed = collapsed;
+  $("wbFoldersPane")?.classList.toggle("is-collapsed", collapsed);
+  updateSidebarCollapseToggle($("btnWbToggleFolders"), collapsed);
+  if (persist) {
+    try {
+      localStorage.setItem(WB_FOLDERS_COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function toggleNotesFoldersCollapsed() {
+  setNotesFoldersCollapsed(!notesFoldersCollapsed);
+}
+
+function toggleWbFoldersCollapsed() {
+  setWbFoldersCollapsed(!wbFoldersCollapsed);
+}
+
+function loadSidebarFoldersCollapsedState() {
+  const narrow = window.matchMedia("(max-width: 900px)").matches;
+  try {
+    const notesRaw = localStorage.getItem(NOTES_FOLDERS_COLLAPSED_KEY);
+    const wbRaw = localStorage.getItem(WB_FOLDERS_COLLAPSED_KEY);
+    setNotesFoldersCollapsed(notesRaw != null ? notesRaw === "1" : narrow, { persist: notesRaw != null });
+    setWbFoldersCollapsed(wbRaw != null ? wbRaw === "1" : false, { persist: wbRaw != null });
+  } catch {
+    setNotesFoldersCollapsed(narrow, { persist: false });
+    setWbFoldersCollapsed(false, { persist: false });
   }
 }
 
@@ -1901,6 +1967,7 @@ function beginNotesTitleEdit() {
 
 function notesFolderKey(folder) {
   if (folder.kind === "all") return "all";
+  if (folder.kind === "library") return "library";
   if (folder.kind === "project") return `project:${folder.projectPath}`;
   return `session:${folder.provider}:${folder.sessionId}`;
 }
@@ -1961,6 +2028,9 @@ function filterNotesBySearch(notes) {
 
 function filterNotesByFolder(notes) {
   if (notesSelectedFolder.kind === "all") return notes;
+  if (notesSelectedFolder.kind === "library") {
+    return notes.filter((n) => n.scope === "library");
+  }
   if (notesSelectedFolder.kind === "project") {
     return notes.filter((n) => n.scope === "project" && n.projectPath === notesSelectedFolder.projectPath);
   }
@@ -1978,6 +2048,9 @@ function visibleNotesList() {
 }
 
 function ownerFromSelectedFolder() {
+  if (notesSelectedFolder.kind === "library") {
+    return { scope: "library" };
+  }
   if (notesSelectedFolder.kind === "project") {
     return { scope: "project", projectPath: notesSelectedFolder.projectPath };
   }
@@ -2003,6 +2076,10 @@ function resolveNoteOwner(contextNode) {
 }
 
 function selectNotesFolderForOwner(owner) {
+  if (owner.scope === "library") {
+    selectNotesFolder({ kind: "library" });
+    return;
+  }
   if (owner.scope === "project" && owner.projectPath) {
     selectNotesFolder({ kind: "project", projectPath: owner.projectPath });
     return;
@@ -2062,6 +2139,9 @@ async function importNotesWithOwner(owner) {
       await loadNotes();
       const imported = notesCache
         .filter((n) => {
+          if (owner.scope === "library") {
+            return n.scope === "library";
+          }
           if (owner.scope === "project") {
             return n.scope === "project" && n.projectPath === owner.projectPath;
           }
@@ -2096,6 +2176,17 @@ function renderNotesTargetList() {
   if (!list) return;
   list.innerHTML = "";
   const q = notesTargetPopoverSearch.trim().toLowerCase();
+
+  if (notesTargetPopoverKind === "library") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "notes-target-item";
+    btn.textContent = "独立笔记区";
+    btn.title = "不关联项目或会话的个人笔记";
+    btn.addEventListener("click", () => void pickNotesTarget({ scope: "library" }));
+    list.appendChild(btn);
+    return;
+  }
 
   if (notesTargetPopoverKind === "project") {
     const projects = [...new Set(sessionsCache.map((s) => s.projectPath).filter(Boolean))].sort();
@@ -2155,23 +2246,47 @@ function renderNotesTargetList() {
   }
 }
 
-function openNotesTargetPopover(mode) {
+function openNotesTargetPopover(mode, { noteId = "" } = {}) {
   notesTargetPopoverMode = mode;
-  notesTargetPopoverKind = "project";
+  notesTargetPopoverKind = "library";
   notesTargetPopoverSearch = "";
+  notesMoveNoteId = noteId;
   const search = $("notesTargetSearch");
   if (search) search.value = "";
   const pop = $("notesTargetPopover");
   if (pop) pop.hidden = false;
   $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.targetKind === "project");
+    btn.classList.toggle("active", btn.dataset.targetKind === "library");
   });
   renderNotesTargetList();
-  search?.focus();
+  if (notesTargetPopoverKind !== "library") {
+    search?.focus();
+  }
+}
+
+async function moveNoteWithOwner(noteId, owner) {
+  if (!noteId) return;
+  setNotesCreateBusy(true);
+  try {
+    await flushNotesSave();
+    const updated = await agentResume.notesMove({ noteId, owner });
+    selectNotesFolderForOwner(owner);
+    await loadNotes();
+    await openNoteInEditor(updated.noteId);
+  } catch (error) {
+    alertNotesError(error);
+  } finally {
+    setNotesCreateBusy(false);
+    notesMoveNoteId = "";
+  }
 }
 
 async function pickNotesTarget(owner) {
   hideNotesTargetPopover();
+  if (notesTargetPopoverMode === "move") {
+    await moveNoteWithOwner(notesMoveNoteId, owner);
+    return;
+  }
   if (notesTargetPopoverMode === "import") {
     await importNotesWithOwner(owner);
   } else {
@@ -2233,6 +2348,21 @@ function renderNotesFolders() {
 
   const allBtn = renderNotesFolderRow("全部笔记", { kind: "all" }, { count: searched.length });
   host.appendChild(allBtn);
+
+  const libraryNotes = searched
+    .filter((n) => n.scope === "library")
+    .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  const librarySection = document.createElement("div");
+  librarySection.className = "notes-folder-section";
+  librarySection.innerHTML = `<div class="notes-folder-section-label">独立笔记</div>`;
+  librarySection.appendChild(
+    renderNotesFolderRow("独立笔记区", { kind: "library" }, {
+      title: "不关联项目或会话的个人笔记",
+      count: libraryNotes.length,
+      context: { kind: "library", notes: libraryNotes }
+    })
+  );
+  host.appendChild(librarySection);
 
   const byProject = new Map();
   for (const note of notesCache) {
@@ -2327,9 +2457,11 @@ function renderNotesList() {
     const folderLabel =
       notesSelectedFolder.kind === "all"
         ? "全部笔记"
-        : notesSelectedFolder.kind === "project"
-          ? basename(notesSelectedFolder.projectPath)
-          : notesSelectedFolder.sessionId;
+        : notesSelectedFolder.kind === "library"
+          ? "独立笔记区"
+          : notesSelectedFolder.kind === "project"
+            ? basename(notesSelectedFolder.projectPath)
+            : notesSelectedFolder.sessionId;
     meta.textContent = notesSearch.trim()
       ? `${folderLabel} · 搜索「${notesSearch.trim()}」· ${notes.length} 条`
       : `${folderLabel} · ${notes.length} 条`;
@@ -2688,9 +2820,11 @@ function showNotesContextMenu(event, node) {
   const menu = $("notesContextMenu");
   if (!menu) return;
   const isNote = node.kind === "note";
-  const isGroup = node.kind === "project" || node.kind === "session";
+  const isGroup = node.kind === "library" || node.kind === "project" || node.kind === "session";
+  const canMove = isNote && node.note?.filename !== "todolist.md";
   menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
+  menu.querySelector('[data-notes-action="move"]').hidden = !canMove;
   menu.querySelector('[data-notes-action="copyPath"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="reveal"]').hidden = !isNote;
   menu.hidden = false;
@@ -2702,6 +2836,9 @@ function showNotesContextMenu(event, node) {
 
 function ownerFromContextNode(node) {
   if (!node) return null;
+  if (node.kind === "library") {
+    return { scope: "library" };
+  }
   if (node.kind === "project") {
     return { scope: "project", projectPath: node.projectPath };
   }
@@ -2715,6 +2852,9 @@ function ownerFromContextNode(node) {
   }
   if (node.kind === "note" && node.note) {
     const n = node.note;
+    if (n.scope === "library") {
+      return { scope: "library" };
+    }
     if (n.scope === "project" && n.projectPath) {
       return { scope: "project", projectPath: n.projectPath };
     }
@@ -2742,6 +2882,10 @@ async function handleNotesContextAction(action) {
     if (action === "import") {
       const owner = ownerFromContextNode(node);
       if (owner) await importNotesWithOwner(owner);
+      return;
+    }
+    if (action === "move" && node?.kind === "note") {
+      openNotesTargetPopover("move", { noteId: node.note.noteId });
       return;
     }
     if (action === "copyPath" && node?.kind === "note") {
@@ -6096,6 +6240,10 @@ function wire() {
     agentResume.onSessionsSyncFailed((message) => setStatus($("memoryStatus"), message, "error"));
   }
 
+  loadSidebarFoldersCollapsedState();
+  $("btnNotesToggleFolders")?.addEventListener("click", () => toggleNotesFoldersCollapsed());
+  $("btnWbToggleFolders")?.addEventListener("click", () => toggleWbFoldersCollapsed());
+
   document.querySelectorAll(".primary-tabs .tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       closeAllSheets();
@@ -6272,7 +6420,7 @@ function wire() {
   $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      notesTargetPopoverKind = btn.dataset.targetKind || "project";
+      notesTargetPopoverKind = btn.dataset.targetKind || "library";
       $("notesTargetPopover")?.querySelectorAll("[data-target-kind]").forEach((tab) => {
         tab.classList.toggle("active", tab.dataset.targetKind === notesTargetPopoverKind);
       });
@@ -6290,7 +6438,10 @@ function wire() {
     }
   });
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
-    btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void handleNotesContextAction(btn.dataset.notesAction);
+    });
   });
   mountNotesEditor();
   bindNotesTitleEdit($("notesEditorTitle"));
@@ -6314,7 +6465,8 @@ function wire() {
     if (
       !e.target.closest("#notesTargetPopover") &&
       !e.target.closest("#btnNotesNew") &&
-      !e.target.closest("#btnNotesImport")
+      !e.target.closest("#btnNotesImport") &&
+      !e.target.closest("#notesContextMenu")
     ) {
       hideNotesTargetPopover();
     }

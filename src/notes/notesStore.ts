@@ -17,6 +17,19 @@ export class NotesStore extends CoreNotesStore {
     }
     return updated;
   }
+
+  async moveNote(
+    noteId: string,
+    owner: Parameters<CoreNotesStore["moveNote"]>[1]
+  ): Promise<NoteRecord> {
+    const record = await this.getNote(noteId);
+    const oldAbs = record ? this.absolutePath(record) : "";
+    const updated = await super.moveNote(noteId, owner);
+    if (oldAbs) {
+      await rebindNoteEditors(oldAbs, this.absolutePath(updated));
+    }
+    return updated;
+  }
 }
 
 async function rebindNoteEditors(oldAbs: string, newAbs: string): Promise<void> {

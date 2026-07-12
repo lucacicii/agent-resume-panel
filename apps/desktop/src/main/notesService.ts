@@ -53,12 +53,15 @@ export async function notesWrite(noteId: string, content: string): Promise<NoteR
 }
 
 export async function notesCreate(args: {
-  scope: "project" | "session";
+  scope: "library" | "project" | "session";
   projectPath?: string;
   provider?: string;
   sessionId?: string;
 }): Promise<NoteRecord> {
   const store = await getNotesStore();
+  if (args.scope === "library") {
+    return store.createLibraryNote();
+  }
   if (args.scope === "project") {
     if (!args.projectPath?.trim()) {
       throw new Error("projectPath is required.");
@@ -73,6 +76,11 @@ export async function notesCreate(args: {
     id: args.sessionId,
     projectPath: args.projectPath || ""
   });
+}
+
+export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteRecord> {
+  const store = await getNotesStore();
+  return store.moveNote(noteId, owner);
 }
 
 export async function notesDelete(noteId: string): Promise<{ ok: boolean }> {

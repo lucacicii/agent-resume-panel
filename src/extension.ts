@@ -58,6 +58,7 @@ import {
   filterNotesCommand,
   importNotesCommand,
   insertNoteImageCommand,
+  moveNoteCommand,
   newNoteFromNotesViewCommand,
   newProjectNoteCommand,
   newSessionNoteCommand,
@@ -327,6 +328,12 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       void newNoteFromNotesViewCommand(notesStore, tree, notesTree, node, () => refreshNotesUi(tree));
+    }),
+    ...menuCommand("agentResume.moveNote", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void moveNoteCommand(notesStore, tree, notesTree, node, () => refreshNotesUi(tree));
     }),
     ...menuCommand("agentResume.importNotes", (node?: unknown) => {
       if (!notesStore || !notesTree) {

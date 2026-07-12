@@ -192,9 +192,11 @@ export {
   projectDirKey,
   type NoteScope,
   type NoteOwner,
+  type LibraryNoteOwner,
   type ProjectNoteOwner,
   type SessionNoteOwner,
-  type NoteOwnerJson
+  type NoteOwnerJson,
+  LIBRARY_REL_DIR
 } from "./notes/paths";
 export type { NoteRecord } from "./notes/catalogNotes";
 export {
@@ -202,6 +204,7 @@ export {
   getNoteById,
   getNoteByRelPath,
   listSessionNotes,
+  listLibraryNotes,
   listProjectNotes,
   upsertNoteRecord,
   deleteNoteRecord,

@@ -1,6 +1,6 @@
 export interface NoteFrontmatter {
   id?: string;
-  scope?: "session" | "project";
+  scope?: "library" | "session" | "project";
   projectPath?: string;
   provider?: string;
   sessionId?: string;
@@ -99,7 +99,7 @@ function parseSimpleYaml(text: string): NoteFrontmatter {
         fm.id = value;
         break;
       case "scope":
-        if (value === "session" || value === "project") {
+        if (value === "library" || value === "session" || value === "project") {
           fm.scope = value;
         }
         break;
