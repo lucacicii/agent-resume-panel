@@ -341,6 +341,8 @@ export interface DesktopApi {
   settingsOpenPanelHome(): Promise<{ ok: boolean }>;
   notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
+  listProjectAliases(): Promise<Record<string, string>>;
+  setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
 }
 
 const api: DesktopApi = {
@@ -447,7 +449,9 @@ const api: DesktopApi = {
   notesOpenFolder: () => ipcRenderer.invoke("notes:openFolder"),
   settingsOpenPanelHome: () => ipcRenderer.invoke("settings:openPanelHome"),
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
-  notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args)
+  notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args),
+  listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
+  setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args)
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);

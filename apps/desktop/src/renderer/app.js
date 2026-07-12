@@ -312,8 +312,113 @@ function stopSessionsAutoRefresh() {
   // The main process owns the visibility-aware timer.
 }
 
+async function refreshProjectAliases() {
+  if (typeof agentResume.listProjectAliases !== "function") {
+    projectAliasMap = {};
+    return;
+  }
+  try {
+    projectAliasMap = await agentResume.listProjectAliases();
+  } catch {
+    // keep existing map
+  }
+}
+
+function projectFolderBaseName(projectPath) {
+  if (!projectPath || projectPath === "(no project)") return projectPath || "";
+  return basename(projectPath);
+}
+
+function projectDisplayTitle(projectPath) {
+  const alias = projectAliasMap[projectPath]?.trim();
+  const base = projectFolderBaseName(projectPath);
+  return alias || base;
+}
+
+function projectFolderRowInnerHtml(prefix, projectPath, options = {}) {
+  const title = projectDisplayTitle(projectPath);
+  const base = projectFolderBaseName(projectPath);
+  const hasAlias = Boolean(projectAliasMap[projectPath]?.trim());
+  const tooltip = options.title || projectPath;
+  const descHtml = hasAlias
+    ? `<span class="${prefix}-folder-row-desc">${escapeHtml(base)}</span>`
+    : "";
+  const countHtml =
+    options.count != null ? `<span class="${prefix}-folder-row-count">${options.count}</span>` : "";
+  return `
+    <span class="${prefix}-folder-row-text" title="${escapeHtml(tooltip)}">
+      <span class="${prefix}-folder-row-label">${escapeHtml(title)}</span>
+      ${descHtml}
+    </span>
+    ${countHtml}
+  `;
+}
+
+async function applyProjectAliasUpdate(projectPath, alias) {
+  const base = projectFolderBaseName(projectPath);
+  const trimmed = (alias || "").trim();
+  const toSave = !trimmed || trimmed === base ? "" : trimmed;
+  await agentResume.setProjectAlias({ projectPath, alias: toSave });
+  await refreshProjectAliases();
+  renderWorkbenchFolders();
+  if (notesLoaded) renderNotesFolders();
+}
+
+function configureRenameDialog(mode) {
+  const title = $("wbRenameTitle");
+  const autoBtn = $("btnWbRenameAuto");
+  const input = $("wbRenameInput");
+  const status = $("wbRenameStatus");
+  if (mode === "project") {
+    if (title) title.textContent = "重命名项目";
+    if (autoBtn) autoBtn.hidden = true;
+    if (input) input.setAttribute("aria-label", "项目显示名");
+    if (status) {
+      status.hidden = false;
+      status.textContent = "仅改显示名，不影响磁盘路径";
+    }
+  } else {
+    if (title) title.textContent = "重命名 Session";
+    if (autoBtn) autoBtn.hidden = false;
+    if (input) input.setAttribute("aria-label", "Session 标题");
+  }
+}
+
+function showProjectRenamePrompt(projectPath) {
+  return new Promise((resolve) => {
+    const dialog = $("wbRenameDialog");
+    const input = $("wbRenameInput");
+    if (!dialog || !input) {
+      resolve(null);
+      return;
+    }
+    const base = projectFolderBaseName(projectPath);
+    const current = projectAliasMap[projectPath]?.trim() || base;
+    wbRenamePending = { kind: "project", projectPath, resolve };
+    resetWorkbenchRenameDialogUi();
+    configureRenameDialog("project");
+    input.value = current;
+    dialog.hidden = false;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  });
+}
+
+async function promptRenameProject(projectPath) {
+  const outcome = await showProjectRenamePrompt(projectPath);
+  if (!outcome?.title) return;
+  try {
+    await applyProjectAliasUpdate(projectPath, outcome.title);
+  } catch (error) {
+    alert(error instanceof Error ? error.message : String(error));
+  }
+}
+
 async function refreshSessionViews(opts = {}) {
   const quiet = opts.quiet !== false;
+  await refreshProjectAliases();
   await Promise.all([
     isSessionsSheetOpen() ? loadSessions({ quiet, preserveScroll: true }) : Promise.resolve(),
     isWorkbenchActive() ? loadWorkbenchSessions({ quiet }) : Promise.resolve(),
@@ -521,6 +626,8 @@ async function runSessionAutoRename(opts = {}) {
 // --- Workbench ---
 
 const WB_PROJECT_KEY = "workbench-selected-project";
+/** @type {Record<string, string>} */
+let projectAliasMap = {};
 let wbSessions = [];
 let wbActiveKey = "";
 let wbSearch = "";
@@ -668,10 +775,14 @@ function renderWorkbenchFolderRow(label, folder, options = {}) {
   btn.type = "button";
   btn.className = "wb-folder-row";
   if (isSameWbProject(wbSelectedProject, folder)) btn.classList.add("active");
-  btn.innerHTML = `
+  const inner =
+    folder.kind === "project" && folder.projectPath
+      ? projectFolderRowInnerHtml("wb", folder.projectPath, options)
+      : `
     <span class="wb-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
     ${options.count != null ? `<span class="wb-folder-row-count">${options.count}</span>` : ""}
   `;
+  btn.innerHTML = inner;
   btn.addEventListener("click", () => selectWorkbenchProject(folder));
   if (folder.kind === "project") {
     btn.addEventListener("contextmenu", (e) => {
@@ -698,7 +809,7 @@ function renderWorkbenchFolders() {
     for (const project of projects) {
       const folder = { kind: "project", projectPath: project.projectPath };
       section.appendChild(
-        renderWorkbenchFolderRow(basename(project.projectPath), folder, {
+        renderWorkbenchFolderRow(projectDisplayTitle(project.projectPath), folder, {
           title: project.projectPath,
           count: project.sessions.length
         })
@@ -1195,7 +1306,7 @@ async function applyWorkbenchSessionTitleUpdate(session, title) {
 
 async function runWorkbenchSessionAutoRename() {
   const pending = wbRenamePending;
-  if (!pending?.session) return;
+  if (pending?.kind !== "session" || !pending?.session) return;
   setWorkbenchRenameBusy(true);
   const status = $("wbRenameStatus");
   if (status) {
@@ -1234,7 +1345,8 @@ function showWorkbenchSessionRenamePrompt(session) {
       resolve(null);
       return;
     }
-    wbRenamePending = { session, resolve };
+    wbRenamePending = { kind: "session", session, resolve };
+    configureRenameDialog("session");
     resetWorkbenchRenameDialogUi();
     input.value = session.title || "";
     dialog.hidden = false;
@@ -1254,6 +1366,7 @@ function showWorkbenchContextMenu(node, x, y) {
   const session = isSession ? node.session : null;
   menu.querySelector('[data-wb-action="newSession"]').hidden = !isProject;
   menu.querySelector('[data-wb-action="newNote"]').hidden = !(isProject || isSession);
+  menu.querySelector('[data-wb-action="renameProject"]').hidden = !isProject;
   menu.querySelector('[data-wb-action="codexApp"]').hidden = !isSession || session?.provider !== "codex";
   menu.querySelector('[data-wb-action="preview"]').hidden = !isSession;
   menu.querySelector('[data-wb-action="rename"]').hidden = !isSession;
@@ -1284,6 +1397,10 @@ async function handleWorkbenchContextAction(action) {
   hideWorkbenchContextMenu();
   if (action === "newSession" && node?.kind === "project") {
     await startWorkbenchNewSessionForProject(node.projectPath);
+    return;
+  }
+  if (action === "renameProject" && node?.kind === "project") {
+    await promptRenameProject(node.projectPath);
     return;
   }
   if (action === "newNote") {
@@ -1518,7 +1635,7 @@ function resolveWorkbenchNoteOwner() {
 }
 
 function workbenchNoteOwnerLabel(owner) {
-  if (owner.scope === "project") return basename(owner.projectPath);
+  if (owner.scope === "project") return projectDisplayTitle(owner.projectPath);
   const session = wbSessions.find((s) => s.provider === owner.provider && s.id === owner.sessionId);
   return session?.title || owner.sessionId;
 }
@@ -2324,10 +2441,14 @@ function renderNotesFolderRow(label, folder, options = {}) {
   btn.type = "button";
   btn.className = "notes-folder-row";
   if (isSameNotesFolder(notesSelectedFolder, folder)) btn.classList.add("active");
-  btn.innerHTML = `
+  const inner =
+    folder.kind === "project" && folder.projectPath
+      ? projectFolderRowInnerHtml("notes", folder.projectPath, options)
+      : `
     <span class="notes-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
     ${options.count != null ? `<span class="notes-folder-row-count">${options.count}</span>` : ""}
   `;
+  btn.innerHTML = inner;
   btn.addEventListener("click", () => selectNotesFolder(folder));
   if (options.context) {
     btn.addEventListener("contextmenu", (e) => {
@@ -2385,7 +2506,7 @@ function renderNotesFolders() {
     for (const group of projectGroups) {
       const folder = { kind: "project", projectPath: group.projectPath };
       section.appendChild(
-        renderNotesFolderRow(basename(group.projectPath), folder, {
+        renderNotesFolderRow(projectDisplayTitle(group.projectPath), folder, {
           title: group.projectPath,
           count: group.notes.length,
           context: { kind: "project", projectPath: group.projectPath, notes: group.notes }
@@ -2789,6 +2910,7 @@ async function loadNotes() {
     if (!notesPanelHome) {
       notesPanelHome = await agentResume.getPanelHome();
     }
+    await refreshProjectAliases();
     notesCache = await agentResume.notesList();
     notesLoaded = true;
     renderNotesPanel();
@@ -2822,8 +2944,10 @@ function showNotesContextMenu(event, node) {
   const isNote = node.kind === "note";
   const isGroup = node.kind === "library" || node.kind === "project" || node.kind === "session";
   const canMove = isNote && node.note?.filename !== "todolist.md";
+  const isProject = node.kind === "project";
   menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
+  menu.querySelector('[data-notes-action="renameProject"]').hidden = !isProject;
   menu.querySelector('[data-notes-action="move"]').hidden = !canMove;
   menu.querySelector('[data-notes-action="copyPath"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="reveal"]').hidden = !isNote;
@@ -2877,6 +3001,10 @@ async function handleNotesContextAction(action) {
     if (action === "new") {
       const owner = ownerFromContextNode(node);
       if (owner) await createNoteWithOwner(owner);
+      return;
+    }
+    if (action === "renameProject" && node?.kind === "project" && node.projectPath) {
+      await promptRenameProject(node.projectPath);
       return;
     }
     if (action === "import") {
@@ -6352,17 +6480,21 @@ function wire() {
   });
   $("wbContextMenu")?.addEventListener("click", (e) => e.stopPropagation());
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
-    btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void handleWorkbenchContextAction(btn.dataset.wbAction);
+    });
   });
   document.addEventListener("click", () => hideWorkbenchContextMenu());
   $("btnWbRenameAuto")?.addEventListener("click", () => void runWorkbenchSessionAutoRename());
   $("btnWbRenameConfirm")?.addEventListener("click", () => {
     const title = $("wbRenameInput")?.value.trim();
     if (!title) {
-      alertWorkbenchError("标题不能为空");
+      alertWorkbenchError(wbRenamePending?.kind === "project" ? "名称不能为空" : "标题不能为空");
       return;
     }
-    closeWorkbenchRenameDialog({ kind: "manual", title });
+    const kind = wbRenamePending?.kind === "project" ? "project" : "manual";
+    closeWorkbenchRenameDialog({ kind, title });
   });
   document.querySelectorAll("[data-wb-rename-cancel]").forEach((btn) => {
     btn.addEventListener("click", () => closeWorkbenchRenameDialog(null));
@@ -6596,6 +6728,7 @@ async function loadUsagePage() {
 async function boot() {
   initMarkdownHighlight();
   wire();
+  await refreshProjectAliases();
   selectedDayKey = todayInputValue();
   updatePeriodLabel();
   switchTab("memory");

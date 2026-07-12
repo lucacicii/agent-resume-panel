@@ -25,8 +25,10 @@ import {
   listScheduleRuns,
   listSessions,
   listSessionsInRange,
+  loadProjectAliasesMap,
   loadSessionPreview,
   loadSettings,
+  setProjectAliasInCatalog,
   openAlmaThreadInApp,
   openChatGptAppSession,
   openProjectInSystemTerminal,
@@ -702,6 +704,24 @@ function registerIpc(): void {
   ipcMain.handle("settings:openPanelHome", async () => settingsOpenPanelHome());
   ipcMain.handle("notes:reveal", async (_event, args: { noteId: string }) => notesReveal(args.noteId));
   ipcMain.handle("notes:copyPath", async (_event, args: { noteId: string }) => notesCopyPath(args.noteId));
+
+  ipcMain.handle("projects:listAliases", async () => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await ensureCatalogSchema(dbPath);
+    return loadProjectAliasesMap(dbPath);
+  });
+
+  ipcMain.handle(
+    "projects:setAlias",
+    async (_event, args: { projectPath: string; alias: string }) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      await setProjectAliasInCatalog(dbPath, args.projectPath, args.alias);
+      return { ok: true };
+    }
+  );
 }
 
 app.whenReady().then(async () => {

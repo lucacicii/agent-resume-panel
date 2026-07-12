@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS projects (
+  project_path TEXT PRIMARY KEY,
+  alias TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS llm_usage_events (
   id TEXT PRIMARY KEY,
   created_at_ms INTEGER NOT NULL,

@@ -3229,13 +3229,33 @@ code {
   font-weight: 600;
 }
 
+.notes-folder-row-text,
+.wb-folder-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
 .notes-folder-row-label,
 .wb-folder-row-label {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.notes-folder-row-desc,
+.wb-folder-row-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .notes-folder-row-count,

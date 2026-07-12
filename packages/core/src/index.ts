@@ -36,6 +36,12 @@ export { ensureCatalogSchema } from "./catalog/db";
 export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
 export { setUserTitleInCatalog, setSessionSummaryInCatalog, hideSessionsInCatalog } from "./catalog/mutations";
 export {
+  loadProjectAliasesMap,
+  getProjectAliasFromCatalog,
+  setProjectAliasInCatalog,
+  upsertProjectAliasesBatch
+} from "./catalog/projects";
+export {
   loadAllAgentSessions,
   syncAgentSessions,
   sessionSyncOptionsFromSettings
