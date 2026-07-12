@@ -56,8 +56,8 @@
           </div>
         </div>
 
-        <div class="cal-layout">
-          <div class="cal-left">
+        <div class="memory-layout">
+          <aside class="memory-cal-pane">
             <div class="cal-main">
               <div class="cal-weekdays">
                 <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
@@ -75,18 +75,28 @@
                 <span class="cal-legend-group"><span class="dot weekly"></span>周报
                 <span class="dot monthly"></span>月报</span>
               </p>
-              <div class="cal-session-panel">
-                <div class="cal-session-panel-head">
-                  <strong id="calSessionTitle">Sessions</strong>
-                  <span class="muted" id="calSessionMeta"></span>
-                </div>
-                <div id="calSessionList" class="cal-session-list">
-                  <p class="muted cal-session-empty">切换月份或选择日期 / 周后显示 session</p>
-                </div>
+            </div>
+          </aside>
+
+          <aside class="memory-session-pane">
+            <div class="cal-session-panel">
+              <div class="cal-session-panel-head">
+                <strong id="calSessionTitle">Sessions</strong>
+                <span class="muted" id="calSessionMeta"></span>
+              </div>
+              <div id="calSessionList" class="cal-session-list">
+                <p class="muted cal-session-empty">切换月份或选择日期 / 周后显示 session</p>
               </div>
             </div>
-          </div>
-          <aside class="cal-side">
+          </aside>
+
+          <main class="memory-detail-pane">
+            <div class="memory-detail-head">
+              <strong id="calDetailTitle">报告详情</strong>
+              <button type="button" class="tool-btn ghost-btn memory-detail-back" id="btnCalDetailBack" hidden>
+                返回报告
+              </button>
+            </div>
             <div class="detail-progress gen-progress" id="genProgress" hidden>
               <div class="gen-progress-line" id="genProgressLine"></div>
               <div class="gen-progress-session-row" id="genProgressSessionRow" hidden>
@@ -98,9 +108,9 @@
               </div>
             </div>
             <div class="cal-detail" id="calDetail">
-              <p class="muted">点击日期 / 周 / 月查看 session；在右侧面板生成 digest。</p>
+              <p class="muted">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>
             </div>
-          </aside>
+          </main>
         </div>
         <p class="status" id="memoryStatus"></p>
       </section>

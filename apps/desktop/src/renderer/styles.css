@@ -771,32 +771,77 @@ main {
   margin-bottom: 10px;
 }
 
-.cal-left {
+.memory-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.memory-cal-pane {
+  width: 280px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 0;
   min-height: 0;
-  height: 100%;
+  padding: 8px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
   overflow: auto;
   overscroll-behavior: contain;
 }
 
-.cal-side {
+.memory-session-pane {
+  width: min(300px, 32vw);
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  max-width: 100%;
   min-height: 0;
-  height: 100%;
-  overflow: hidden;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 94%, var(--panel));
 }
 
-/* Progress lives in the right detail column */
-.cal-side > .detail-progress.gen-progress {
+.memory-detail-pane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.memory-detail-head {
   flex: 0 0 auto;
-  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.memory-detail-head strong {
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-detail-back {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.memory-detail-pane > .detail-progress.gen-progress {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
 }
 
 .gen-progress {
@@ -1138,38 +1183,39 @@ legend {
   overflow: visible;
 }
 
-.cal-layout {
-  display: grid;
-  /* Left: calendar + generate · Right: digests only */
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 12px;
-  margin-bottom: 0;
-  align-items: stretch;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
-  box-sizing: border-box;
-  overflow: hidden;
+@media (max-width: 1099px) {
+  .memory-cal-pane {
+    width: 240px;
+  }
+
+  .memory-session-pane {
+    width: min(260px, 30vw);
+  }
 }
 
-@media (max-width: 900px) {
-  .cal-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+@media (max-width: 899px) {
+  .memory-layout {
+    flex-direction: column;
     overflow: auto;
   }
 
-  .cal-left {
-    height: auto;
-    max-height: none;
-    overflow: visible;
+  .memory-cal-pane {
+    width: 100%;
+    max-height: 38vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
 
-  .cal-main {
-    max-height: min(42vh, 320px);
-    flex: 0 1 auto;
+  .memory-session-pane {
+    width: 100%;
+    max-height: 32vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .memory-detail-pane {
+    min-height: 280px;
+    flex: 1 1 auto;
   }
 
   .cal-nav-right {
@@ -1185,8 +1231,7 @@ legend {
   padding: 10px;
   min-width: 0;
   max-width: 100%;
-  min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1201,14 +1246,12 @@ legend {
 
 .cal-session-panel {
   flex: 1 1 auto;
-  min-height: 120px;
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  padding: 8px 8px 10px;
 }
 
 .cal-session-panel-head {
@@ -1305,6 +1348,11 @@ legend {
 
 .cal-session-row:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.cal-session-row.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
 }
 
 .cal-session-row .s-title {
@@ -1652,9 +1700,9 @@ legend {
 }
 
 .cal-detail {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
+  border: none;
+  border-radius: 0;
+  background: transparent;
   padding: 12px 14px;
   min-width: 0;
   max-width: 100%;
@@ -1664,6 +1712,10 @@ legend {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.memory-detail-pane .cal-detail .session-preview-head {
+  margin-bottom: 8px;
 }
 
 .cal-detail h3 {

@@ -605,6 +605,18 @@ async function runSessionAutoRename(opts = {}) {
     if (row) row.textContent = result.title;
     const wbRow = document.querySelector(`.wb-list-item[data-key="${activeSessionKey}"] .wb-list-item-title`);
     if (wbRow) wbRow.textContent = result.title;
+    const calRow = document.querySelector(
+      `.cal-session-row[data-provider="${activePreviewSession.provider}"][data-id="${activePreviewSession.id}"] .s-title`
+    );
+    if (calRow) calRow.textContent = result.title;
+    if (
+      calDetailMode === "session" &&
+      calDetailSessionKey?.provider === activePreviewSession.provider &&
+      calDetailSessionKey?.id === activePreviewSession.id
+    ) {
+      const detailTitle = $("calDetailTitle");
+      if (detailTitle) detailTitle.textContent = result.title;
+    }
     const cached = sessionsCache.find(
       (s) => s.provider === activePreviewSession.provider && s.id === activePreviewSession.id
     );
@@ -3077,6 +3089,10 @@ let calMonthStaleMap = new Map();
 let selectedDayKey = null;
 /** @type {{ type: 'day'|'week'|'month', key: string } | null} */
 let detailFocus = null;
+/** @type {"digest"|"session"} */
+let calDetailMode = "digest";
+/** @type {{ provider: string, id: string } | null} */
+let calDetailSessionKey = null;
 /** Week / month key currently generating (for button loading). */
 let generatingPeriodKey = null;
 
@@ -3316,9 +3332,12 @@ function wireCalSessionListClicks(listEl) {
           projectPath: "",
           updatedAt: 0
         };
-      await openSessionSheetPreview(session);
+      await openCalSessionDetail(session);
     });
   });
+  if (calDetailMode === "session" && calDetailSessionKey) {
+    highlightCalSessionRow(calDetailSessionKey);
+  }
 }
 
 /** @type {any[]} */
@@ -3548,6 +3567,62 @@ function digestCardHtml(e) {
 const FOCUS_DIGEST_LABELS = { day: "日报", week: "周报", month: "月报" };
 const FOCUS_DIGEST_LEVELS = { day: "daily", week: "weekly", month: "monthly" };
 
+function enterCalDigestDetailMode(type, key) {
+  calDetailMode = "digest";
+  calDetailSessionKey = null;
+  highlightCalSessionRow(null);
+  const titleEl = $("calDetailTitle");
+  const backBtn = $("btnCalDetailBack");
+  if (titleEl) {
+    const label = FOCUS_DIGEST_LABELS[type] || "报告";
+    titleEl.textContent = key ? `${label} · ${key}` : "报告详情";
+  }
+  if (backBtn) backBtn.hidden = true;
+}
+
+function enterCalSessionDetailMode(session) {
+  calDetailMode = "session";
+  calDetailSessionKey = { provider: session.provider, id: session.id };
+  const titleEl = $("calDetailTitle");
+  const backBtn = $("btnCalDetailBack");
+  if (titleEl) titleEl.textContent = session.title || session.id;
+  if (backBtn) backBtn.hidden = false;
+  highlightCalSessionRow(calDetailSessionKey);
+}
+
+function highlightCalSessionRow(key) {
+  document.querySelectorAll(".cal-session-row").forEach((row) => {
+    const active = Boolean(key && row.dataset.provider === key.provider && row.dataset.id === key.id);
+    row.classList.toggle("active", active);
+  });
+}
+
+function returnToCalDigestDetail() {
+  if (!detailFocus) {
+    calDetailMode = "digest";
+    calDetailSessionKey = null;
+    highlightCalSessionRow(null);
+    const titleEl = $("calDetailTitle");
+    if (titleEl) titleEl.textContent = "报告详情";
+    $("btnCalDetailBack")?.setAttribute("hidden", "");
+    const detail = $("calDetail");
+    if (detail) {
+      detail.innerHTML =
+        "<p class=\"muted\">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>";
+    }
+    return;
+  }
+  enterCalDigestDetailMode(detailFocus.type, detailFocus.key);
+  renderFocusDigestDetail(detailFocus.type, detailFocus.key);
+}
+
+async function openCalSessionDetail(session) {
+  if (!session?.provider || !session?.id) return;
+  enterCalSessionDetailMode(session);
+  activeSessionKey = `${session.provider}:${session.id}`;
+  await openSessionPreview(session, { paneId: "calDetail", idPrefix: "cal" });
+}
+
 function isFuturePeriod(type, key) {
   if (type === "day") return isFutureDayKey(key);
   if (type === "week") return key > currentWeekLabel();
@@ -3678,6 +3753,8 @@ function emptyDigestPanelHtml(type, key, hasSessions) {
 function renderFocusDigestDetail(type, key) {
   const detail = $("calDetail");
   if (!detail || !key) return;
+
+  enterCalDigestDetailMode(type, key);
 
   const label = FOCUS_DIGEST_LABELS[type] || "Digest";
 
@@ -3911,6 +3988,7 @@ function renderDigestEntries(entries, staleCheck, focusType = "day") {
 }
 
 function refreshDetailFocus() {
+  if (calDetailMode === "session") return;
   if (!detailFocus) {
     if (selectedDayKey) renderFocusDigestDetail("day", selectedDayKey);
     return;
@@ -4133,6 +4211,7 @@ function focusGeneratingDetail(type, key) {
 function showGeneratingDetail(type, key) {
   const detail = $("calDetail");
   if (!detail) return;
+  enterCalDigestDetailMode(type, key);
   const label = type === "day" ? "日报" : type === "week" ? "周报" : "月报";
   detail.innerHTML = `
     <div class="detail-generating">
@@ -4287,7 +4366,11 @@ async function loadMemory() {
     if (detailFocus || selectedDayKey) {
       refreshDetailFocus();
     } else {
-      $("calDetail").innerHTML = `<p class="muted">点击日期 / 周 / 月查看 session；在右侧面板生成 digest。</p>`;
+      $("calDetail").innerHTML =
+        `<p class="muted">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>`;
+      const titleEl = $("calDetailTitle");
+      if (titleEl) titleEl.textContent = "报告详情";
+      $("btnCalDetailBack")?.setAttribute("hidden", "");
     }
     renderCalSessionList();
     void refreshCalStaleMaps().then(() => {
@@ -6418,6 +6501,7 @@ function wire() {
   $("calYearSelect")?.addEventListener("change", () => applyCalPicker());
   $("calMonthSelect")?.addEventListener("change", () => applyCalPicker());
   $("btnCalMonthDigest")?.addEventListener("click", () => onMonthButton());
+  $("btnCalDetailBack")?.addEventListener("click", () => returnToCalDigestDetail());
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
   $("settingsForm")?.panelHome?.addEventListener("input", () => updateSettingsNotesRootDisplay());
   $("btnSettingsOpenNotesFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
