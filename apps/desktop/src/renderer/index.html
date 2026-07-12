@@ -632,6 +632,29 @@
       <button type="button" data-wb-action="remove" hidden>从面板移除</button>
     </div>
 
+    <div class="wb-note-created-overlay" id="wbRenameDialog" hidden>
+      <div class="wb-note-created-backdrop" data-wb-rename-cancel></div>
+      <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbRenameTitle">
+        <div class="wb-rename-head">
+          <p class="wb-note-created-title" id="wbRenameTitle">重命名 Session</p>
+          <button type="button" class="wb-rename-auto-btn" id="btnWbRenameAuto">自动重命名</button>
+        </div>
+        <p class="wb-rename-status muted" id="wbRenameStatus" hidden></p>
+        <input
+          type="text"
+          class="wb-rename-input"
+          id="wbRenameInput"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Session 标题"
+        />
+        <div class="wb-note-created-actions">
+          <button type="button" class="wb-note-created-btn" data-wb-rename-cancel>取消</button>
+          <button type="button" class="wb-note-created-btn primary" id="btnWbRenameConfirm">确定</button>
+        </div>
+      </div>
+    </div>
+
     <div class="wb-note-created-overlay" id="wbNoteCreatedDialog" hidden>
       <div class="wb-note-created-backdrop"></div>
       <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbNoteCreatedTitle">

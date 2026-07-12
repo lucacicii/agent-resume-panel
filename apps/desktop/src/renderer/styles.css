@@ -3018,6 +3018,66 @@ code {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.wb-rename-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wb-rename-head .wb-note-created-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-rename-auto-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wb-rename-auto-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.wb-rename-auto-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  text-decoration: none;
+}
+
+.wb-rename-status {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wb-rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, var(--text) 6%);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.wb-rename-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  outline: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  outline-offset: 0;
+}
+
 /* --- Notes (Apple Notes style) --- */
 #tab-notes.panel:not(.active) {
   display: none !important;
@@ -3463,6 +3523,27 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+}
+
+.notes-detail-title-input {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  border: none;
+  border-bottom: 2px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 0 2px;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.notes-detail-title-input:focus {
+  border-bottom-color: var(--accent);
 }
 
 .notes-segmented {

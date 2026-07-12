@@ -275,6 +275,7 @@ export type {
 
 export {
   summarizeSessionAction,
+  suggestSessionRenameAction,
   autoRenameSessionAction,
   renameSessionAction,
   hideSessionAction
@@ -282,6 +283,7 @@ export {
 export type {
   SessionActionOptions,
   SummarizeSessionResult,
+  SuggestSessionRenameResult,
   AutoRenameSessionResult,
   RenameSessionResult
 } from "./session/actions";

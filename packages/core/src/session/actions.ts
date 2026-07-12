@@ -29,6 +29,11 @@ export interface AutoRenameSessionResult {
   nativeError?: string;
 }
 
+export interface SuggestSessionRenameResult {
+  title: string;
+  previousTitle: string;
+}
+
 async function loadSessionContext(opts: SessionActionOptions) {
   const settings = await loadSettings();
   const dbPath = catalogDbFromSettings(settings);
@@ -85,13 +90,23 @@ export async function summarizeSessionAction(
   }
 }
 
+/** Suggest a session title via LLM without persisting changes. */
+export async function suggestSessionRenameAction(
+  opts: SessionActionOptions
+): Promise<SuggestSessionRenameResult> {
+  const result = await autoRenameSessionAction({ ...opts, persist: false });
+  return { title: result.title, previousTitle: result.previousTitle };
+}
+
 /**
  * Suggest a title via LLM, update catalog user_title, then push to native agent store.
  * Catalog update always runs first (display title). Native failures are reported but do not roll back.
+ * Set `persist: false` to only return a suggested title without saving.
  */
 export async function autoRenameSessionAction(
-  opts: SessionActionOptions
+  opts: SessionActionOptions & { persist?: boolean }
 ): Promise<AutoRenameSessionResult> {
+  const persist = opts.persist !== false;
   const { dbPath, session, llm, homes, preview } = await loadSessionContext(opts);
   const previousTitle = session.title;
 
@@ -100,12 +115,21 @@ export async function autoRenameSessionAction(
     await recordLlmUsage(dbPath, {
       kind: "chat",
       source: "rename",
-      jobKey: `rename:${session.provider}:${session.id}`,
+      jobKey: `${persist ? "rename" : "rename-suggest"}:${session.provider}:${session.id}`,
       model: result.model,
       usage: result.usage,
       durationMs: result.durationMs,
       ok: true
     });
+
+    if (!persist) {
+      return {
+        title: result.title,
+        previousTitle,
+        session,
+        nativeRenamed: false
+      };
+    }
 
     if (session.provider !== "chat") {
       await setUserTitleInCatalog(dbPath, session.provider, session.id, result.title);

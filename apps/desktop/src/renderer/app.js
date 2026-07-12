@@ -539,6 +539,7 @@ let wbCreateBusy = false;
 let wbNoteTargetPopoverKind = "project";
 let wbNoteTargetPopoverSearch = "";
 let wbNoteCreatedPending = null;
+let wbRenamePending = null;
 let wbMetaRestoreTimer = null;
 
 function isWorkbenchActive() {
@@ -1147,6 +1148,103 @@ function hideWorkbenchContextMenu() {
   wbContextNode = null;
 }
 
+function resetWorkbenchRenameDialogUi() {
+  setWorkbenchRenameBusy(false);
+  const status = $("wbRenameStatus");
+  if (status) {
+    status.hidden = true;
+    status.textContent = "";
+  }
+}
+
+function setWorkbenchRenameBusy(busy) {
+  const autoBtn = $("btnWbRenameAuto");
+  const confirmBtn = $("btnWbRenameConfirm");
+  const input = $("wbRenameInput");
+  autoBtn?.toggleAttribute("disabled", busy);
+  confirmBtn?.toggleAttribute("disabled", busy);
+  input?.toggleAttribute("disabled", busy);
+  document.querySelectorAll("[data-wb-rename-cancel]").forEach((btn) => {
+    btn.toggleAttribute("disabled", busy);
+  });
+  if (autoBtn) autoBtn.textContent = busy ? "正在自动重命名…" : "自动重命名";
+}
+
+function closeWorkbenchRenameDialog(outcome = null) {
+  const pending = wbRenamePending;
+  wbRenamePending = null;
+  const dialog = $("wbRenameDialog");
+  if (dialog) dialog.hidden = true;
+  resetWorkbenchRenameDialogUi();
+  pending?.resolve(outcome);
+}
+
+async function applyWorkbenchSessionTitleUpdate(session, title) {
+  const cached = wbSessions.find((s) => s.provider === session.provider && s.id === session.id);
+  if (cached) cached.title = title;
+  const sessionsCached = sessionsCache.find((s) => s.provider === session.provider && s.id === session.id);
+  if (sessionsCached) sessionsCached.title = title;
+  await loadWorkbenchSessions({ quiet: true });
+  await refreshSessionViews({ quiet: true });
+  const pane = wbTerminalPanes.get(workbenchSessionKey(session));
+  if (pane) {
+    pane.title = title;
+    renderWorkbenchTerminalTabs();
+  }
+}
+
+async function runWorkbenchSessionAutoRename() {
+  const pending = wbRenamePending;
+  if (!pending?.session) return;
+  setWorkbenchRenameBusy(true);
+  const status = $("wbRenameStatus");
+  if (status) {
+    status.hidden = false;
+    status.textContent = "正在根据对话内容生成标题…";
+  }
+  try {
+    const result = await agentResume.autoRenameSession({
+      provider: pending.session.provider,
+      id: pending.session.id,
+      persist: false
+    });
+    const input = $("wbRenameInput");
+    if (input) input.value = result.title || "";
+    if (status) {
+      status.hidden = false;
+      status.textContent = "已填入建议标题，可编辑后点确定保存";
+    }
+    setWorkbenchRenameBusy(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.select();
+    });
+  } catch (error) {
+    if (status) status.hidden = true;
+    setWorkbenchRenameBusy(false);
+    alertWorkbenchError(error);
+  }
+}
+
+function showWorkbenchSessionRenamePrompt(session) {
+  return new Promise((resolve) => {
+    const dialog = $("wbRenameDialog");
+    const input = $("wbRenameInput");
+    if (!dialog || !input) {
+      resolve(null);
+      return;
+    }
+    wbRenamePending = { session, resolve };
+    resetWorkbenchRenameDialogUi();
+    input.value = session.title || "";
+    dialog.hidden = false;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  });
+}
+
 function showWorkbenchContextMenu(node, x, y) {
   wbContextNode = node;
   const menu = $("wbContextMenu");
@@ -1204,22 +1302,15 @@ async function handleWorkbenchContextAction(action) {
     return;
   }
   if (action === "rename") {
-    const next = window.prompt("重命名 Session", session.title);
-    if (next == null) return;
-    const title = next.trim();
-    if (!title) return;
+    const outcome = await showWorkbenchSessionRenamePrompt(session);
+    if (!outcome) return;
     try {
-      await agentResume.renameSession({
+      const result = await agentResume.renameSession({
         provider: session.provider,
         id: session.id,
-        title
+        title: outcome.title
       });
-      await loadWorkbenchSessions({ quiet: true });
-      const pane = wbTerminalPanes.get(workbenchSessionKey(session));
-      if (pane) {
-        pane.title = title;
-        renderWorkbenchTerminalTabs();
-      }
+      await applyWorkbenchSessionTitleUpdate(session, result.session?.title || outcome.title);
     } catch (error) {
       alertWorkbenchError(error);
     }
@@ -1265,7 +1356,8 @@ function shouldKeepWorkbenchSelection(target) {
       target.closest("#wbTargetPopover") ||
       target.closest("#wbNoteTargetPopover") ||
       target.closest("#wbContextMenu") ||
-      target.closest("#wbNoteCreatedDialog")
+      target.closest("#wbNoteCreatedDialog") ||
+      target.closest("#wbRenameDialog")
   );
 }
 
@@ -1617,6 +1709,8 @@ let notesSaveTimer = null;
 let notesLoaded = false;
 let notesPanelHome = "";
 let notesContextNode = null;
+let notesTitleEditing = false;
+let notesTitleEditCancelled = false;
 /** @type {"create" | "import"} */
 let notesTargetPopoverMode = "create";
 let notesTargetPopoverKind = "project";
@@ -1657,6 +1751,152 @@ function noteDisplayTitle(note) {
   if (note.title?.trim()) return note.title.trim();
   const name = note.filename || "";
   return name.endsWith(".md") ? name.slice(0, -3) : name;
+}
+
+function createNotesTitleElement(text = "") {
+  const h1 = document.createElement("h1");
+  h1.className = "notes-detail-title";
+  h1.id = "notesEditorTitle";
+  h1.title = "双击编辑标题";
+  h1.textContent = text;
+  bindNotesTitleEdit(h1);
+  return h1;
+}
+
+function bindNotesTitleEdit(el) {
+  if (!el || el.dataset.titleEditBound === "1") return;
+  el.dataset.titleEditBound = "1";
+  el.title = "双击编辑标题";
+  el.addEventListener("dblclick", () => beginNotesTitleEdit());
+}
+
+function setNotesEditorTitleText(note) {
+  cancelNotesTitleEdit();
+  const title = $("notesEditorTitle");
+  if (title && !title.classList.contains("notes-detail-title-input")) {
+    title.textContent = note ? noteDisplayTitle(note) : "";
+  }
+}
+
+function validateNotesTitleInput(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return "名称不能为空";
+  if (/[\\/]/.test(trimmed)) return "名称不能包含路径分隔符";
+  return "";
+}
+
+function cancelNotesTitleEdit() {
+  if (!notesTitleEditing) return;
+  notesTitleEditCancelled = true;
+  const input = $("notesEditorTitle");
+  const head = input?.closest(".notes-detail-head");
+  if (!input?.classList.contains("notes-detail-title-input") || !head) {
+    notesTitleEditing = false;
+    return;
+  }
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  const h1 = createNotesTitleElement(note ? noteDisplayTitle(note) : input.value);
+  input.replaceWith(h1);
+  notesTitleEditing = false;
+}
+
+async function finishNotesTitleEdit(save) {
+  if (!notesTitleEditing) return;
+  const input = $("notesEditorTitle");
+  const head = input?.closest(".notes-detail-head");
+  if (!input?.classList.contains("notes-detail-title-input") || !head) {
+    notesTitleEditing = false;
+    return;
+  }
+
+  const previous = notesCache.find((n) => n.noteId === notesActiveId);
+  const previousLabel = previous ? noteDisplayTitle(previous) : input.value;
+  notesTitleEditing = false;
+
+  if (!save) {
+    const h1 = createNotesTitleElement(previousLabel);
+    input.replaceWith(h1);
+    return;
+  }
+
+  const validationError = validateNotesTitleInput(input.value);
+  if (validationError) {
+    alertNotesError(validationError);
+    notesTitleEditing = true;
+    input.focus();
+    input.select();
+    return;
+  }
+
+  const nextName = input.value.trim();
+  if (!notesActiveId || !previous) {
+    const h1 = createNotesTitleElement(previousLabel);
+    input.replaceWith(h1);
+    return;
+  }
+
+  if (nextName === previousLabel) {
+    const h1 = createNotesTitleElement(previousLabel);
+    input.replaceWith(h1);
+    return;
+  }
+
+  try {
+    await flushNotesSave({ render: false });
+    const updated = await agentResume.notesRename({ noteId: notesActiveId, filename: nextName });
+    const idx = notesCache.findIndex((n) => n.noteId === notesActiveId);
+    if (idx >= 0) {
+      notesCache[idx] = { ...notesCache[idx], ...updated };
+    }
+    const h1 = createNotesTitleElement(noteDisplayTitle(notesCache[idx] ?? updated));
+    input.replaceWith(h1);
+    renderNotesPanel();
+  } catch (error) {
+    notesTitleEditing = true;
+    alertNotesError(error);
+    input.focus();
+    input.select();
+  }
+}
+
+function beginNotesTitleEdit() {
+  if (!notesActiveId || notesTitleEditing || notesCreateBusy) return;
+  const titleEl = $("notesEditorTitle");
+  if (!titleEl || titleEl.classList.contains("notes-detail-title-input")) return;
+  const note = notesCache.find((n) => n.noteId === notesActiveId);
+  if (!note) return;
+
+  notesTitleEditing = true;
+  notesTitleEditCancelled = false;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "notes-detail-title notes-detail-title-input";
+  input.id = "notesEditorTitle";
+  input.value = noteDisplayTitle(note);
+  input.setAttribute("aria-label", "笔记标题");
+  input.spellcheck = false;
+
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void finishNotesTitleEdit(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      notesTitleEditCancelled = true;
+      void finishNotesTitleEdit(false);
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (notesTitleEditCancelled) {
+      notesTitleEditCancelled = false;
+      return;
+    }
+    void finishNotesTitleEdit(true);
+  });
 }
 
 function notesFolderKey(folder) {
@@ -2313,6 +2553,7 @@ function showNotesEditor(show) {
   if (shell) shell.hidden = !show;
   if (empty) empty.hidden = show;
   if (!show) {
+    cancelNotesTitleEdit();
     notesActiveId = "";
     notesDirty = false;
   }
@@ -2371,9 +2612,8 @@ async function openNoteInEditor(noteId) {
     const { record, content } = await agentResume.notesRead({ noteId });
     notesActiveId = record.noteId;
     notesDirty = false;
-    const title = $("notesEditorTitle");
     setNotesEditorContent(content);
-    if (title) title.textContent = noteDisplayTitle(record);
+    setNotesEditorTitleText(record);
     const noteAbs = notesPanelHome ? `${notesPanelHome.replace(/\/$/, "")}/${record.relMdPath}` : "";
     updateNotesPreview(content, noteAbs);
     showNotesEditor(true);
@@ -5962,10 +6202,32 @@ function wire() {
     if (shouldKeepWorkbenchSelection(e.target)) return;
     clearWorkbenchSelection();
   });
+  $("wbContextMenu")?.addEventListener("click", (e) => e.stopPropagation());
   document.querySelectorAll("[data-wb-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleWorkbenchContextAction(btn.dataset.wbAction));
   });
   document.addEventListener("click", () => hideWorkbenchContextMenu());
+  $("btnWbRenameAuto")?.addEventListener("click", () => void runWorkbenchSessionAutoRename());
+  $("btnWbRenameConfirm")?.addEventListener("click", () => {
+    const title = $("wbRenameInput")?.value.trim();
+    if (!title) {
+      alertWorkbenchError("标题不能为空");
+      return;
+    }
+    closeWorkbenchRenameDialog({ kind: "manual", title });
+  });
+  document.querySelectorAll("[data-wb-rename-cancel]").forEach((btn) => {
+    btn.addEventListener("click", () => closeWorkbenchRenameDialog(null));
+  });
+  $("wbRenameInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("btnWbRenameConfirm")?.click();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeWorkbenchRenameDialog(null);
+    }
+  });
   document.addEventListener("contextmenu", (e) => {
     if (
       !e.target.closest(".wb-list-item") &&
@@ -6024,12 +6286,14 @@ function wire() {
       hideWorkbenchTargetPopover();
       hideWorkbenchNoteTargetPopover();
       hideWorkbenchNoteCreatedDialog();
+      closeWorkbenchRenameDialog(null);
     }
   });
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", () => void handleNotesContextAction(btn.dataset.notesAction));
   });
   mountNotesEditor();
+  bindNotesTitleEdit($("notesEditorTitle"));
   $("tab-notes")?.addEventListener("click", (e) => {
     if (shouldKeepNotesSelection(e.target)) return;
     void clearNotesSelection();

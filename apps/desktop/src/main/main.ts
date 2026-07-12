@@ -7,6 +7,7 @@ import {
   listOlderAskMessages,
   listRecentAskMessages,
   autoRenameSessionAction,
+  suggestSessionRenameAction,
   backfillMemoryDigests,
   buildNewSessionCommand,
   buildResumeCommand,
@@ -279,8 +280,19 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "sessions:autoRename",
+    async (_event, args: { provider: AgentProvider; id: string; persist?: boolean }) => {
+      return autoRenameSessionAction({
+        provider: args.provider,
+        id: args.id,
+        persist: args.persist
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:suggestRename",
     async (_event, args: { provider: AgentProvider; id: string }) => {
-      return autoRenameSessionAction({ provider: args.provider, id: args.id });
+      return suggestSessionRenameAction({ provider: args.provider, id: args.id });
     }
   );
 

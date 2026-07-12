@@ -49,12 +49,20 @@ export interface DesktopApi {
   autoRenameSession(args: {
     provider: string;
     id: string;
+    persist?: boolean;
   }): Promise<{
     title: string;
     previousTitle: string;
     session: AgentSession;
     nativeRenamed: boolean;
     nativeError?: string;
+  }>;
+  suggestSessionRename(args: {
+    provider: string;
+    id: string;
+  }): Promise<{
+    title: string;
+    previousTitle: string;
   }>;
   renameSession(args: {
     provider: string;
@@ -346,6 +354,7 @@ const api: DesktopApi = {
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
+  suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
