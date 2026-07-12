@@ -781,12 +781,13 @@ main {
 }
 
 .memory-cal-pane {
-  width: 280px;
+  width: min(340px, 30vw);
+  max-width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 8px;
+  padding: 6px;
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 96%, var(--panel));
   overflow: auto;
@@ -794,7 +795,8 @@ main {
 }
 
 .memory-session-pane {
-  width: min(300px, 32vw);
+  width: min(260px, 26vw);
+  max-width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1185,11 +1187,13 @@ legend {
 
 @media (max-width: 1099px) {
   .memory-cal-pane {
-    width: 240px;
+    width: min(300px, 32vw);
+    max-width: 320px;
   }
 
   .memory-session-pane {
-    width: min(260px, 30vw);
+    width: min(240px, 24vw);
+    max-width: 260px;
   }
 }
 
@@ -1201,13 +1205,15 @@ legend {
 
   .memory-cal-pane {
     width: 100%;
-    max-height: 38vh;
+    max-width: none;
+    max-height: 42vh;
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
 
   .memory-session-pane {
     width: 100%;
+    max-width: none;
     max-height: 32vh;
     border-right: none;
     border-bottom: 1px solid var(--border);
@@ -1237,11 +1243,39 @@ legend {
   flex-direction: column;
 }
 
+.memory-cal-pane .cal-main {
+  padding: 8px;
+}
+
 .cal-main .cal-weekdays,
 .cal-main .cal-grid,
 .cal-main .cal-month-actions,
 .cal-main .cal-legend {
   flex: 0 0 auto;
+}
+
+.memory-cal-pane .cal-grid,
+.memory-cal-pane .cal-weekdays {
+  gap: 5px;
+}
+
+.memory-cal-pane .cal-weekdays,
+.memory-cal-pane .cal-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(2.15rem, 2.5rem);
+}
+
+.memory-cal-pane .cal-grid {
+  grid-auto-rows: minmax(48px, auto);
+}
+
+.memory-cal-pane .cal-cell {
+  min-height: 48px;
+}
+
+.memory-cal-pane .cal-week-btn {
+  min-height: 48px;
+  padding: 1px !important;
+  font-size: 10px;
 }
 
 .cal-session-panel {
@@ -1333,38 +1367,47 @@ legend {
 }
 
 .cal-session-row {
-  display: block;
-  width: 100%;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin: 0 8px 4px;
+  padding: 10px 12px;
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
   background: transparent;
   color: var(--text);
-  padding: 7px 6px;
+  text-align: left;
   cursor: pointer;
-  font-size: 11px;
-  border-radius: 6px;
 }
 
 .cal-session-row:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 
 .cal-session-row.active {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  font-weight: 600;
+  background: color-mix(in srgb, #f5d565 28%, var(--bg));
 }
 
 .cal-session-row .s-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
-  font-size: 12px;
-  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cal-session-row .s-meta {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--muted);
-  margin-top: 2px;
-  font-size: 10px;
 }
 
 .cal-weekdays {
@@ -1604,11 +1647,27 @@ legend {
   align-self: center;
 }
 
+/* 月外 / 未来 / 生成中等无 tag 时，日期居中 */
+.cal-cell:not(:has(.marks .mark)) {
+  justify-content: center;
+  align-items: center;
+}
+
+.cal-cell:not(:has(.marks .mark)) .marks {
+  display: none;
+}
+
+.cal-cell:not(:has(.marks .mark)) .day-num {
+  margin: 0;
+}
+
 .cal-cell .marks {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
   margin-top: auto;
+  align-self: stretch;
+  justify-content: center;
 }
 
 .cal-cell .mark {
@@ -1654,19 +1713,20 @@ legend {
 
 .cal-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
   margin: 8px 0 0;
   font-size: 11px;
   flex: 0 0 auto;
+  line-height: 1.4;
 }
 
 .cal-legend-group {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 
 .cal-legend .dot {
