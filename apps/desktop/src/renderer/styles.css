@@ -2938,6 +2938,86 @@ code {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
+.wb-note-created-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.wb-note-created-overlay[hidden] {
+  display: none !important;
+}
+
+.wb-note-created-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.wb-note-created-panel {
+  position: relative;
+  z-index: 1;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.wb-note-created-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wb-note-created-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text) 78%, transparent);
+}
+
+.wb-note-created-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.wb-note-created-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wb-note-created-btn:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.wb-note-created-btn.primary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+}
+
+.wb-note-created-btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 /* --- Notes (Apple Notes style) --- */
 #tab-notes.panel:not(.active) {
   display: none !important;
@@ -3076,7 +3156,8 @@ code {
 }
 
 .notes-target-popover,
-.wb-target-popover {
+.wb-target-popover,
+.wb-note-target-popover {
   position: absolute;
   top: calc(100% - 2px);
   left: 10px;
@@ -3093,16 +3174,19 @@ code {
 }
 
 .notes-target-popover[hidden],
-.wb-target-popover[hidden] {
+.wb-target-popover[hidden],
+.wb-note-target-popover[hidden] {
   display: none !important;
 }
 
-.notes-target-tabs {
+.notes-target-tabs,
+.wb-note-target-tabs {
   display: flex;
   gap: 4px;
 }
 
-.notes-target-tabs button {
+.notes-target-tabs button,
+.wb-note-target-tabs button {
   flex: 1;
   appearance: none;
   border: 1px solid var(--border);
@@ -3114,14 +3198,16 @@ code {
   cursor: pointer;
 }
 
-.notes-target-tabs button.active {
+.notes-target-tabs button.active,
+.wb-note-target-tabs button.active {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   font-weight: 600;
 }
 
 .notes-target-search,
-.wb-target-search {
+.wb-target-search,
+.wb-note-target-search {
   width: 100%;
   box-sizing: border-box;
   border: none;
@@ -3133,13 +3219,15 @@ code {
 }
 
 .notes-target-search:focus,
-.wb-target-search:focus {
+.wb-target-search:focus,
+.wb-note-target-search:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 0;
 }
 
 .notes-target-list,
-.wb-target-list {
+.wb-target-list,
+.wb-note-target-list {
   max-height: 240px;
   overflow: auto;
   display: flex;
@@ -3148,7 +3236,8 @@ code {
 }
 
 .notes-target-item,
-.wb-target-item {
+.wb-target-item,
+.wb-note-target-item {
   appearance: none;
   border: none;
   border-radius: 6px;
@@ -3169,12 +3258,14 @@ code {
 }
 
 .notes-target-item:hover,
-.wb-target-item:hover {
+.wb-target-item:hover,
+.wb-note-target-item:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .notes-target-empty,
-.wb-target-empty {
+.wb-target-empty,
+.wb-note-target-empty {
   margin: 8px 4px;
   font-size: 12px;
   line-height: 1.4;

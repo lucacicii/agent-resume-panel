@@ -530,12 +530,16 @@ let wbSelectedProject = { kind: "all" };
 const wbTerminalPanes = new Map();
 let wbActiveTerminalKey = "";
 let wbTerminalIpcReady = false;
-let wbContextSession = null;
+let wbContextNode = null;
 let wbLoaded = false;
 let wbResizeObserver = null;
 let wbBlankTerminalSeq = 0;
 let wbTargetPopoverSearch = "";
 let wbCreateBusy = false;
+let wbNoteTargetPopoverKind = "project";
+let wbNoteTargetPopoverSearch = "";
+let wbNoteCreatedPending = null;
+let wbMetaRestoreTimer = null;
 
 function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
@@ -608,9 +612,10 @@ function visibleWorkbenchSessions() {
 }
 
 function updateWorkbenchToolbarState() {
-  const btn = $("btnWorkbenchRemove");
-  if (!btn) return;
-  btn.disabled = !wbActiveKey;
+  const removeBtn = $("btnWorkbenchRemove");
+  if (removeBtn) removeBtn.disabled = !wbActiveKey;
+  const noteBtn = $("btnWorkbenchNewNote");
+  if (noteBtn) noteBtn.toggleAttribute("disabled", notesCreateBusy || wbCreateBusy);
 }
 
 function getActiveWorkbenchSession() {
@@ -670,7 +675,7 @@ function renderWorkbenchFolderRow(label, folder, options = {}) {
   if (folder.kind === "project") {
     btn.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      void startWorkbenchNewSessionForProject(folder.projectPath);
+      showWorkbenchContextMenu({ kind: "project", projectPath: folder.projectPath }, e.clientX, e.clientY);
     });
   }
   return btn;
@@ -753,7 +758,7 @@ function renderWorkbenchSessionList() {
     btn.addEventListener("click", () => void openWorkbenchSession(s));
     btn.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      showWorkbenchContextMenu(s, e.clientX, e.clientY);
+      showWorkbenchContextMenu({ kind: "session", session: s }, e.clientX, e.clientY);
     });
     list.appendChild(btn);
   }
@@ -1139,15 +1144,22 @@ async function openWorkbenchSession(session) {
 function hideWorkbenchContextMenu() {
   const menu = $("wbContextMenu");
   if (menu) menu.hidden = true;
-  wbContextSession = null;
+  wbContextNode = null;
 }
 
-function showWorkbenchContextMenu(session, x, y) {
-  wbContextSession = session;
+function showWorkbenchContextMenu(node, x, y) {
+  wbContextNode = node;
   const menu = $("wbContextMenu");
   if (!menu) return;
-  const codexBtn = menu.querySelector('[data-wb-action="codexApp"]');
-  if (codexBtn) codexBtn.hidden = session.provider !== "codex";
+  const isProject = node.kind === "project";
+  const isSession = node.kind === "session";
+  const session = isSession ? node.session : null;
+  menu.querySelector('[data-wb-action="newSession"]').hidden = !isProject;
+  menu.querySelector('[data-wb-action="newNote"]').hidden = !(isProject || isSession);
+  menu.querySelector('[data-wb-action="codexApp"]').hidden = !isSession || session?.provider !== "codex";
+  menu.querySelector('[data-wb-action="preview"]').hidden = !isSession;
+  menu.querySelector('[data-wb-action="rename"]').hidden = !isSession;
+  menu.querySelector('[data-wb-action="remove"]').hidden = !isSession;
   menu.hidden = false;
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
@@ -1170,8 +1182,18 @@ async function openWorkbenchCodexApp(session) {
 }
 
 async function handleWorkbenchContextAction(action) {
-  const session = wbContextSession;
+  const node = wbContextNode;
   hideWorkbenchContextMenu();
+  if (action === "newSession" && node?.kind === "project") {
+    await startWorkbenchNewSessionForProject(node.projectPath);
+    return;
+  }
+  if (action === "newNote") {
+    const owner = ownerFromWorkbenchContext(node);
+    if (owner) await createWorkbenchNoteWithChoice(owner);
+    return;
+  }
+  const session = node?.kind === "session" ? node.session : null;
   if (!session) return;
   if (action === "codexApp") {
     await openWorkbenchCodexApp(session);
@@ -1241,7 +1263,9 @@ function shouldKeepWorkbenchSelection(target) {
       target.closest("#wbTerminalShell") ||
       target.closest(".wb-list-toolbar") ||
       target.closest("#wbTargetPopover") ||
-      target.closest("#wbContextMenu")
+      target.closest("#wbNoteTargetPopover") ||
+      target.closest("#wbContextMenu") ||
+      target.closest("#wbNoteCreatedDialog")
   );
 }
 
@@ -1280,6 +1304,7 @@ function setWorkbenchCreateBusy(busy) {
   wbCreateBusy = busy;
   const btn = $("btnWorkbenchNewSession");
   if (btn) btn.classList.toggle("is-busy", busy);
+  updateWorkbenchToolbarState();
 }
 
 function hideWorkbenchTargetPopover() {
@@ -1326,6 +1351,7 @@ function renderWorkbenchTargetList() {
 }
 
 function openWorkbenchTargetPopover() {
+  hideWorkbenchNoteTargetPopover();
   wbTargetPopoverSearch = "";
   const search = $("wbTargetSearch");
   if (search) search.value = "";
@@ -1364,6 +1390,217 @@ async function handleWorkbenchNewSessionClick() {
     return;
   }
   openWorkbenchTargetPopover();
+}
+
+function ownerFromWorkbenchContext(node) {
+  if (!node) return null;
+  if (node.kind === "project" && node.projectPath) {
+    return { scope: "project", projectPath: node.projectPath };
+  }
+  if (node.kind === "session" && node.session) {
+    const s = node.session;
+    return {
+      scope: "session",
+      provider: s.provider,
+      sessionId: s.id,
+      projectPath: s.projectPath
+    };
+  }
+  return null;
+}
+
+function resolveWorkbenchNoteOwner() {
+  const session = getActiveWorkbenchSession();
+  if (session) {
+    return {
+      scope: "session",
+      provider: session.provider,
+      sessionId: session.id,
+      projectPath: session.projectPath
+    };
+  }
+  if (wbSelectedProject.kind === "project") {
+    return { scope: "project", projectPath: wbSelectedProject.projectPath };
+  }
+  return null;
+}
+
+function workbenchNoteOwnerLabel(owner) {
+  if (owner.scope === "project") return basename(owner.projectPath);
+  const session = wbSessions.find((s) => s.provider === owner.provider && s.id === owner.sessionId);
+  return session?.title || owner.sessionId;
+}
+
+async function invokeNotesCreateFromOwner(owner) {
+  if (owner.scope === "project") {
+    return agentResume.notesCreate({ scope: "project", projectPath: owner.projectPath });
+  }
+  return agentResume.notesCreate({
+    scope: "session",
+    provider: owner.provider,
+    sessionId: owner.sessionId,
+    projectPath: owner.projectPath
+  });
+}
+
+function hideWorkbenchNoteCreatedDialog() {
+  const dialog = $("wbNoteCreatedDialog");
+  if (dialog) dialog.hidden = true;
+  wbNoteCreatedPending = null;
+}
+
+function showWorkbenchNoteCreatedDialog(owner, noteId) {
+  wbNoteCreatedPending = { owner, noteId };
+  const dialog = $("wbNoteCreatedDialog");
+  const message = $("wbNoteCreatedMessage");
+  if (message) {
+    message.textContent = `已在「${workbenchNoteOwnerLabel(owner)}」创建笔记。接下来要做什么？`;
+  }
+  if (dialog) dialog.hidden = false;
+}
+
+function showWorkbenchNoteCreatedToast(label) {
+  const meta = $("wbMeta");
+  if (!meta) return;
+  meta.textContent = `已在「${label}」创建笔记`;
+  clearTimeout(wbMetaRestoreTimer);
+  wbMetaRestoreTimer = setTimeout(() => {
+    renderWorkbenchSessionList();
+  }, 3000);
+}
+
+async function handleWorkbenchNoteCreatedChoice(goEdit) {
+  const pending = wbNoteCreatedPending;
+  hideWorkbenchNoteCreatedDialog();
+  if (!pending) return;
+  if (goEdit) {
+    switchTab("notes");
+    selectNotesFolderForOwner(pending.owner);
+    await loadNotes();
+    await openNoteInEditor(pending.noteId);
+    setNotesViewMode("edit");
+    focusNotesEditor();
+    return;
+  }
+  showWorkbenchNoteCreatedToast(workbenchNoteOwnerLabel(pending.owner));
+}
+
+async function createWorkbenchNoteWithChoice(owner) {
+  if (notesCreateBusy || !owner) return;
+  setNotesCreateBusy(true);
+  try {
+    await flushNotesSave();
+    const created = await invokeNotesCreateFromOwner(owner);
+    await loadNotes();
+    showWorkbenchNoteCreatedDialog(owner, created.noteId);
+  } catch (error) {
+    alertNotesError(error);
+  } finally {
+    setNotesCreateBusy(false);
+  }
+}
+
+function hideWorkbenchNoteTargetPopover() {
+  const pop = $("wbNoteTargetPopover");
+  if (pop) pop.hidden = true;
+}
+
+function renderWorkbenchNoteTargetList() {
+  const list = $("wbNoteTargetList");
+  if (!list) return;
+  list.innerHTML = "";
+  const q = wbNoteTargetPopoverSearch.trim().toLowerCase();
+  const sessionSource = wbSessions.length ? wbSessions : sessionsCache;
+
+  if (wbNoteTargetPopoverKind === "project") {
+    const projects = [...new Set(sessionSource.map((s) => s.projectPath).filter(Boolean))].sort();
+    const filtered = projects.filter(
+      (p) => !q || basename(p).toLowerCase().includes(q) || p.toLowerCase().includes(q)
+    );
+    if (!filtered.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted wb-note-target-empty";
+      empty.textContent = "暂无可用项目，请先同步 Sessions";
+      list.appendChild(empty);
+      return;
+    }
+    for (const projectPath of filtered) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wb-note-target-item";
+      btn.textContent = basename(projectPath);
+      btn.title = projectPath;
+      btn.addEventListener("click", () => void pickWorkbenchNoteTarget({ scope: "project", projectPath }));
+      list.appendChild(btn);
+    }
+    return;
+  }
+
+  let sorted = [...sessionSource].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  if (wbSelectedProject.kind === "project") {
+    sorted = sorted.filter((s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath);
+  }
+  const filtered = sorted.filter((s) => {
+    if (!q) return true;
+    const hay = [s.title, s.id, s.provider, s.projectPath, basename(s.projectPath)]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+    return hay.includes(q);
+  });
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted wb-note-target-empty";
+    empty.textContent = "暂无可用会话，请先同步 Sessions";
+    list.appendChild(empty);
+    return;
+  }
+  for (const s of filtered.slice(0, 500)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wb-note-target-item";
+    btn.textContent = `${s.title || s.id} · ${s.provider}`;
+    btn.title = [s.provider, s.projectPath].filter(Boolean).join(" · ");
+    btn.addEventListener("click", () =>
+      void pickWorkbenchNoteTarget({
+        scope: "session",
+        provider: s.provider,
+        sessionId: s.id,
+        projectPath: s.projectPath
+      })
+    );
+    list.appendChild(btn);
+  }
+}
+
+function openWorkbenchNoteTargetPopover() {
+  hideWorkbenchTargetPopover();
+  wbNoteTargetPopoverKind = "project";
+  wbNoteTargetPopoverSearch = "";
+  const search = $("wbNoteTargetSearch");
+  if (search) search.value = "";
+  const pop = $("wbNoteTargetPopover");
+  if (pop) pop.hidden = false;
+  $("wbNoteTargetPopover")?.querySelectorAll("[data-wb-note-target-kind]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.wbNoteTargetKind === "project");
+  });
+  renderWorkbenchNoteTargetList();
+  search?.focus();
+}
+
+async function pickWorkbenchNoteTarget(owner) {
+  hideWorkbenchNoteTargetPopover();
+  await createWorkbenchNoteWithChoice(owner);
+}
+
+async function handleWorkbenchNewNoteClick() {
+  if (notesCreateBusy || wbCreateBusy) return;
+  const owner = resolveWorkbenchNoteOwner();
+  if (owner) {
+    await createWorkbenchNoteWithChoice(owner);
+    return;
+  }
+  openWorkbenchNoteTargetPopover();
 }
 
 // --- Notes ---
@@ -1553,7 +1790,9 @@ function setNotesCreateBusy(busy) {
   $("btnNotesImport")?.toggleAttribute("disabled", busy);
   $("btnNotesNew")?.classList.toggle("is-busy", busy);
   $("btnNotesImport")?.classList.toggle("is-busy", busy);
+  $("btnWorkbenchNewNote")?.classList.toggle("is-busy", busy);
   updateNotesToolbarState();
+  updateWorkbenchToolbarState();
 }
 
 async function createNoteWithOwner(owner) {
@@ -5687,9 +5926,33 @@ function wire() {
     wbTargetPopoverSearch = e.target.value ?? "";
     renderWorkbenchTargetList();
   });
+  $("btnWorkbenchNewNote")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void handleWorkbenchNewNoteClick();
+  });
   $("btnWorkbenchNewTerminal")?.addEventListener("click", () => void openBlankWorkbenchTerminal());
   $("btnWorkbenchRefresh")?.addEventListener("click", () => void loadWorkbenchSessions());
   $("btnWorkbenchRemove")?.addEventListener("click", () => void removeActiveWorkbenchSession());
+  $("wbNoteTargetSearch")?.addEventListener("input", (e) => {
+    wbNoteTargetPopoverSearch = e.target.value ?? "";
+    renderWorkbenchNoteTargetList();
+  });
+  $("wbNoteTargetPopover")?.querySelectorAll("[data-wb-note-target-kind]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      wbNoteTargetPopoverKind = btn.dataset.wbNoteTargetKind || "project";
+      $("wbNoteTargetPopover")?.querySelectorAll("[data-wb-note-target-kind]").forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.wbNoteTargetKind === wbNoteTargetPopoverKind);
+      });
+      renderWorkbenchNoteTargetList();
+      $("wbNoteTargetSearch")?.focus();
+    });
+  });
+  $("btnWbNoteGoEdit")?.addEventListener("click", () => void handleWorkbenchNoteCreatedChoice(true));
+  $("btnWbNoteStay")?.addEventListener("click", () => void handleWorkbenchNoteCreatedChoice(false));
+  $("wbNoteCreatedDialog")?.querySelector(".wb-note-created-backdrop")?.addEventListener("click", () =>
+    hideWorkbenchNoteCreatedDialog()
+  );
   updateWorkbenchToolbarState();
   $("wbSearch")?.addEventListener("input", (e) => {
     wbSearch = e.target.value ?? "";
@@ -5759,6 +6022,8 @@ function wire() {
     if (e.key === "Escape") {
       hideNotesTargetPopover();
       hideWorkbenchTargetPopover();
+      hideWorkbenchNoteTargetPopover();
+      hideWorkbenchNoteCreatedDialog();
     }
   });
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
@@ -5775,6 +6040,12 @@ function wire() {
       !e.target.closest("#btnWorkbenchNewSession")
     ) {
       hideWorkbenchTargetPopover();
+    }
+    if (
+      !e.target.closest("#wbNoteTargetPopover") &&
+      !e.target.closest("#btnWorkbenchNewNote")
+    ) {
+      hideWorkbenchNoteTargetPopover();
     }
     if (
       !e.target.closest("#notesTargetPopover") &&
