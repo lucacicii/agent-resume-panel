@@ -1,5 +1,9 @@
 .vscode/**
 .git/**
+apps/**
+packages/**
+scripts/**
+package-vscode.json
 node_modules/**
 !node_modules/@agentclientprotocol/**
 !node_modules/zod/**

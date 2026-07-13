@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.5]
+
+#### 变更
+
+- **Codex 恢复方式**：右键 **在 ChatGPT 中恢复**、**Resume with… → ChatGPT** 与 **新建 ChatGPT 会话** 改为通过 `codex://threads/{id}` / `codex://threads/new?path=` 深链打开 ChatGPT 桌面应用，替代原先的终端 / app 启动方式。
+- **Codex IDE 面板恢复**：实验性面板恢复优先尝试 ChatGPT 深链。
+- **文案**：菜单与提示由「Codex App」统一为 **ChatGPT**（含 10 种 UI 语言）。
+
 ### [2.6.4]
 
 #### 变更
@@ -327,6 +335,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.5]
+
+#### Changed
+
+- **Codex resume**: **Resume in ChatGPT**, **Resume with… → ChatGPT**, and **New ChatGPT Session** now open the ChatGPT desktop app via `codex://threads/{id}` / `codex://threads/new?path=` deep links instead of the previous terminal / app launch path.
+- **Codex IDE panel resume**: Experimental panel resume tries the ChatGPT deep link first.
+- **Copy**: Menus and prompts renamed from “Codex App” to **ChatGPT** (all 10 UI languages).
 
 ### [2.6.4]
 
