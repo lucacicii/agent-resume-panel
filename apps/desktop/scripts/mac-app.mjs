@@ -120,6 +120,20 @@ export function packMacApp() {
   return appBundle;
 }
 
+export function stageMacDmgContents(appBundle, stagingDir) {
+  if (!appBundle || !fs.existsSync(appBundle)) {
+    throw new Error(`Missing app bundle: ${appBundle}`);
+  }
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  fs.mkdirSync(stagingDir, { recursive: true });
+  fs.cpSync(appBundle, path.join(stagingDir, path.basename(appBundle)), {
+    recursive: true,
+    preserveTimestamps: true,
+    verbatimSymlinks: true
+  });
+  fs.symlinkSync("/Applications", path.join(stagingDir, "Applications"), "dir");
+}
+
 export function createMacDmg(appBundle) {
   if (process.platform !== "darwin") {
     throw new Error("DMG packaging is only supported on macOS.");
@@ -127,12 +141,18 @@ export function createMacDmg(appBundle) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const dmgName = `Agent Resume-${pkg.version}.dmg`;
   const dmgPath = path.join(releaseRoot, dmgName);
+  const dmgStagingDir = path.join(releaseRoot, "dmg-root");
   fs.rmSync(dmgPath, { force: true });
   console.log("Creating DMG...");
-  execFileSync(
-    "hdiutil",
-    ["create", "-volname", "Agent Resume", "-srcfolder", appBundle, "-ov", "-format", "UDZO", dmgPath],
-    { stdio: "inherit" }
-  );
+  stageMacDmgContents(appBundle, dmgStagingDir);
+  try {
+    execFileSync(
+      "hdiutil",
+      ["create", "-volname", "Agent Resume", "-srcfolder", dmgStagingDir, "-ov", "-format", "UDZO", dmgPath],
+      { stdio: "inherit" }
+    );
+  } finally {
+    fs.rmSync(dmgStagingDir, { recursive: true, force: true });
+  }
   return dmgPath;
 }
