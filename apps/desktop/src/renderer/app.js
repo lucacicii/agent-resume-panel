@@ -1707,7 +1707,7 @@ function renderWorkbenchTargetList() {
     scratchBtn.className = "wb-target-item";
     scratchBtn.textContent = "临时目录（新建）";
     scratchBtn.title = "在工作台临时目录中新建 session";
-    scratchBtn.addEventListener("click", () => void pickWorkbenchTarget("scratch"));
+    scratchBtn.addEventListener("click", () => void pickWorkbenchTarget("scratch", wbTargetPopoverMode));
     if (!q || "临时目录".includes(q) || "scratch".includes(q)) {
       list.appendChild(scratchBtn);
     }
@@ -1723,7 +1723,7 @@ function renderWorkbenchTargetList() {
     btn.className = "wb-target-item";
     btn.textContent = basename(project.projectPath);
     btn.title = project.projectPath;
-    btn.addEventListener("click", () => void pickWorkbenchTarget(project.projectPath));
+    btn.addEventListener("click", () => void pickWorkbenchTarget(project.projectPath, wbTargetPopoverMode));
     list.appendChild(btn);
   }
 
@@ -1746,7 +1746,7 @@ function openWorkbenchTargetPopover(mode = "session") {
   search?.focus();
 }
 
-async function pickWorkbenchTarget(target) {
+async function pickWorkbenchTarget(target, mode = wbTargetPopoverMode) {
   hideWorkbenchTargetPopover();
   if (wbCreateBusy) return;
   setWorkbenchCreateBusy(true);
@@ -1755,7 +1755,7 @@ async function pickWorkbenchTarget(target) {
   try {
     const cwd = target === "scratch" ? await agentResume.createScratchDir() : target;
     if (!cwd) throw new Error("请选择一个 project");
-    if (wbTargetPopoverMode === "terminal") {
+    if (mode === "terminal") {
       wbSelectedProject = { kind: "project", projectPath: cwd };
       saveWbProjectState();
       renderWorkbenchPanel();
@@ -1772,7 +1772,7 @@ async function pickWorkbenchTarget(target) {
 }
 
 async function startWorkbenchNewSessionForProject(projectPath) {
-  await pickWorkbenchTarget(projectPath);
+  await pickWorkbenchTarget(projectPath, "session");
 }
 
 async function handleWorkbenchNewSessionClick() {
