@@ -1,4 +1,5 @@
-import { app, BrowserWindow, clipboard, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, nativeImage } from "electron";
+import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -127,6 +128,44 @@ async function resolveSessionCwd(
   return effectivePanelHome(settings);
 }
 
+function appResourcesDir(): string {
+  return path.join(app.getAppPath(), "dist", "resources");
+}
+
+function appIconPath(): string {
+  const resourcesDir = appResourcesDir();
+  if (process.platform === "darwin") {
+    const icnsPath = path.join(resourcesDir, "icon.icns");
+    if (existsSync(icnsPath)) return icnsPath;
+  }
+  return path.join(resourcesDir, "icon.png");
+}
+
+function loadAppIcon(): Electron.NativeImage | undefined {
+  const iconPath = appIconPath();
+  if (!existsSync(iconPath)) {
+    console.warn("[desktop] App icon not found:", iconPath, "(resources dir:", appResourcesDir(), ")");
+    return undefined;
+  }
+  let image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) {
+    image = nativeImage.createFromBuffer(readFileSync(iconPath));
+  }
+  if (image.isEmpty()) {
+    console.warn("[desktop] App icon could not be loaded:", iconPath);
+    return undefined;
+  }
+  return image;
+}
+
+function applyAppIcon(): void {
+  const icon = loadAppIcon();
+  if (!icon) return;
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(icon);
+  }
+}
+
 let mainWindow: BrowserWindow | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
@@ -171,12 +210,14 @@ function resumeSessionSync(): void {
 }
 
 function createWindow(): void {
+  const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
     width: 1120,
     height: 780,
     minWidth: 860,
     minHeight: 600,
     title: "Agent Resume Desktop",
+    ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
     webPreferences: {
@@ -189,7 +230,10 @@ function createWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
-  mainWindow.on("show", resumeSessionSync);
+  mainWindow.on("show", () => {
+    applyAppIcon();
+    resumeSessionSync();
+  });
   mainWindow.on("restore", resumeSessionSync);
   mainWindow.on("hide", stopSessionSyncTimer);
   mainWindow.on("minimize", stopSessionSyncTimer);
@@ -725,6 +769,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  applyAppIcon();
   registerIpc();
   tryRegisterPtyIpc();
   try {

@@ -3,6 +3,8 @@ node_modules/
 # Build output
 out/
 dist/
+apps/desktop/release/
+apps/desktop/.dev-app-stamp
 
 # Packaged VS Code extension artifacts
 *.vsix

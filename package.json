@@ -112,6 +112,7 @@
     "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\"",
     "build:core": "npm run build -w @agent-resume/core",
     "build:desktop": "npm run build -w @agent-resume/desktop",
+    "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
     "dev:desktop": "npm run build:core && npm run dev -w @agent-resume/desktop"
   },
   "devDependencies": {
