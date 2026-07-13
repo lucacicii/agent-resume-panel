@@ -36,11 +36,14 @@ export interface DesktopSettings {
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
+export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/scratch */
   scratchDir?: string;
   defaultNewSessionProvider?: AgentProvider;
+  /** Editor used by the workbench project context menu. Default auto. */
+  projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
   externalLaunchMode?: GhosttyLaunchMode;
@@ -142,5 +145,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     hideCronAlma: true,
     hideChannelAlma: true,
     showIncognitoAlma: false
+  },
+  workbench: {
+    projectEditor: "auto"
   }
 };

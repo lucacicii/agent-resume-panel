@@ -656,6 +656,7 @@ let wbBlankTerminalSeq = 0;
 let wbTargetPopoverSearch = "";
 let wbCreateBusy = false;
 let wbRenamePending = null;
+let wbProjectEditorInfo = null;
 
 function isWorkbenchActive() {
   return !!document.querySelector('.tab[data-tab="workbench"]')?.classList.contains("active");
@@ -922,7 +923,14 @@ function isWorkbenchExternalTerminalMode(settings = loadedSettings) {
 
 async function refreshLoadedSettings() {
   loadedSettings = await agentResume.getSettings();
+  wbProjectEditorInfo = null;
   return loadedSettings;
+}
+
+async function refreshWorkbenchProjectEditor() {
+  if (typeof agentResume.workbenchGetProjectEditor !== "function") return null;
+  wbProjectEditorInfo = await agentResume.workbenchGetProjectEditor();
+  return wbProjectEditorInfo;
 }
 
 async function ensureWorkbenchVisible() {
@@ -1363,7 +1371,7 @@ function showWorkbenchSessionRenamePrompt(session) {
   });
 }
 
-function showWorkbenchContextMenu(node, x, y) {
+async function showWorkbenchContextMenu(node, x, y) {
   wbContextNode = node;
   const menu = $("wbContextMenu");
   if (!menu) return;
@@ -1371,6 +1379,8 @@ function showWorkbenchContextMenu(node, x, y) {
   const isSession = node.kind === "session";
   const session = isSession ? node.session : null;
   menu.querySelector('[data-wb-action="newSession"]').hidden = !isProject;
+  const editorButton = menu.querySelector('[data-wb-action="openProjectEditor"]');
+  if (editorButton) editorButton.hidden = true;
   menu.querySelector('[data-wb-action="mountNote"]').hidden = !(isProject || isSession);
   menu.querySelector('[data-wb-action="renameProject"]').hidden = !isProject;
   menu.querySelector('[data-wb-action="codexApp"]').hidden = !isSession || session?.provider !== "codex";
@@ -1380,6 +1390,27 @@ function showWorkbenchContextMenu(node, x, y) {
   menu.hidden = false;
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
+
+  if (isProject && editorButton) {
+    try {
+      const info = wbProjectEditorInfo || (await refreshWorkbenchProjectEditor());
+      if (wbContextNode !== node || menu.hidden) return;
+      const labels = {
+        vscode: "VS Code",
+        vscodium: "VSCodium",
+        cursor: "Cursor",
+        windsurf: "Windsurf"
+      };
+      const selected = info?.selected;
+      const label = info?.editor?.label || labels[selected];
+      if (label && (selected !== "auto" || info?.available)) {
+        editorButton.textContent = `在 ${label} 中打开`;
+        editorButton.hidden = false;
+      }
+    } catch {
+      // Keep the optional action hidden when editor detection fails.
+    }
+  }
 }
 
 async function openWorkbenchCodexApp(session) {
@@ -1403,6 +1434,14 @@ async function handleWorkbenchContextAction(action) {
   hideWorkbenchContextMenu();
   if (action === "newSession" && node?.kind === "project") {
     await startWorkbenchNewSessionForProject(node.projectPath);
+    return;
+  }
+  if (action === "openProjectEditor" && node?.kind === "project") {
+    try {
+      await agentResume.workbenchOpenProjectInEditor({ projectPath: node.projectPath });
+    } catch (error) {
+      alertWorkbenchError(error);
+    }
     return;
   }
   if (action === "renameProject" && node?.kind === "project") {
@@ -5298,6 +5337,9 @@ async function loadSettingsForm() {
   if (form.workbenchDefaultProvider) {
     form.workbenchDefaultProvider.value = s.workbench?.defaultNewSessionProvider || "codex";
   }
+  if (form.workbenchProjectEditor) {
+    form.workbenchProjectEditor.value = s.workbench?.projectEditor || "auto";
+  }
   if (form.workbenchTerminalMode) {
     const mode = s.workbench?.terminalMode || "xterm";
     form.workbenchTerminalMode.value =
@@ -5386,8 +5428,10 @@ async function saveSettingsForm() {
       showIncognitoAlma: form.showIncognitoAlma.checked
     },
     workbench: {
+      ...(loadedSettings?.workbench || {}),
       scratchDir: form.workbenchScratchDir?.value.trim() || undefined,
       defaultNewSessionProvider: form.workbenchDefaultProvider?.value || "codex",
+      projectEditor: form.workbenchProjectEditor?.value || "auto",
       terminalMode:
         form.workbenchTerminalMode?.value === "external-system" ? "external-system" : "xterm",
       externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand"
@@ -5396,6 +5440,7 @@ async function saveSettingsForm() {
   try {
     const result = await agentResume.saveSettings(settings);
     loadedSettings = result.settings;
+    wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
     const sched = result.schedulerEnabled ? " · scheduler ON" : " · scheduler OFF";

@@ -32,10 +32,12 @@ import {
   setProjectAliasInCatalog,
   openAlmaThreadInApp,
   openChatGptAppSession,
+  openProjectInEditor,
   openProjectInSystemTerminal,
   openSessionInSystemTerminal,
   previewBackfillMemoryDigests,
   renameSessionAction,
+  resolveProjectEditor,
   resolvePanelHome,
   resolvePreviewHomes,
   runDailyDigest,
@@ -54,6 +56,7 @@ import {
   type AgentProvider,
   type DigestProgressEvent,
   type PanelSettings,
+  type WorkbenchProjectEditor,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
@@ -381,6 +384,27 @@ function registerIpc(): void {
     await fs.mkdir(dir, { recursive: true });
     return dir;
   });
+
+  safeHandle("workbench:getProjectEditor", async () => {
+    const settings = await loadSettings();
+    const selected = settings.workbench?.projectEditor || "auto";
+    const editor = await resolveProjectEditor(selected);
+    return {
+      selected,
+      available: Boolean(editor),
+      editor
+    };
+  });
+
+  safeHandle(
+    "workbench:openProjectInEditor",
+    async (_event, args: { projectPath: string }) => {
+      const settings = await loadSettings();
+      const selected: WorkbenchProjectEditor = settings.workbench?.projectEditor || "auto";
+      const editor = await openProjectInEditor(args.projectPath, selected);
+      return { ok: true, editor };
+    }
+  );
 
   safeHandle(
     "workbench:openSession",

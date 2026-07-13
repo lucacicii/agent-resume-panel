@@ -15,6 +15,7 @@ export type {
   MemorySettings,
   DesktopSettings,
   WorkbenchSettings,
+  WorkbenchProjectEditor,
   WorkbenchTerminalMode,
   GhosttyLaunchMode,
   AgentHomesSettings,
@@ -305,6 +306,12 @@ export type {
   RenameSessionResult
 } from "./session/actions";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export {
+  openProjectInEditor,
+  projectEditorLabel,
+  resolveProjectEditor
+} from "./terminal/projectEditor";
+export type { ProjectEditor, ProjectEditorId } from "./terminal/projectEditor";
 export { buildAlmaActivateCommand, openAlmaThreadInApp } from "./terminal/alma";
 export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";

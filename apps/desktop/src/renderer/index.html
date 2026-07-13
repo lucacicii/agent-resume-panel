@@ -482,6 +482,16 @@
                     </select>
                   </label>
                   <label>
+                    项目编辑器
+                    <select name="workbenchProjectEditor">
+                      <option value="auto">自动检测</option>
+                      <option value="vscode">VS Code</option>
+                      <option value="vscodium">VSCodium</option>
+                      <option value="cursor">Cursor</option>
+                      <option value="windsurf">Windsurf</option>
+                    </select>
+                  </label>
+                  <label>
                     终端模式
                     <select name="workbenchTerminalMode">
                       <option value="xterm">内嵌终端 (xterm.js)</option>
@@ -659,6 +669,7 @@
 
     <div class="wb-context-menu" id="wbContextMenu" hidden>
       <button type="button" data-wb-action="newSession" hidden>新建 Session</button>
+      <button type="button" data-wb-action="openProjectEditor" hidden>在编辑器中打开</button>
       <button type="button" data-wb-action="mountNote" hidden>挂载笔记</button>
       <button type="button" data-wb-action="renameProject" hidden>重命名项目</button>
       <button type="button" data-wb-action="codexApp" hidden>在 ChatGPT 中打开</button>
