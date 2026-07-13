@@ -2,8 +2,14 @@ import { AgentProvider } from "../catalog/types";
 import { MemoryEntry } from "../memory/schema";
 
 export interface AgentCitation {
+  /** Missing on persisted citations created before note sources were supported. */
+  source?: "memory" | "note";
   index: number;
-  memoryId: string;
+  memoryId?: string;
+  noteId?: string;
+  relMdPath?: string;
+  scope?: string;
+  heading?: string;
   level: string;
   title: string;
   score?: number;
@@ -18,12 +24,18 @@ export interface AgentCitation {
   };
 }
 
-export type AskStreamPhase = "retrieving" | "generating" | "chunk" | "done";
+export type AskStreamPhase = "retrieving" | "indexing_notes" | "generating" | "chunk" | "done";
 
 export interface AskStreamEvent {
   phase: AskStreamPhase;
   /** Present when phase is "chunk". */
   delta?: string;
+  message?: string;
+  current?: number;
+  total?: number;
+  noteTitle?: string;
+  chunkCurrent?: number;
+  chunkTotal?: number;
 }
 
 export interface AskMetaAgentOptions {

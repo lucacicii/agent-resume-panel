@@ -74,6 +74,7 @@ import {
   notesWrite
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
+import { scheduleNotesIndex, startNotesIndexer, stopNotesIndexer } from "./noteIndexer";
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -204,6 +205,14 @@ function notifySessionSyncFailure(error: unknown): void {
   mainWindow?.webContents.send("sessions:syncFailed", error instanceof Error ? error.message : String(error));
 }
 
+function startDesktopNotesIndexer(): void {
+  startNotesIndexer((progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("notes:indexProgress", progress);
+    }
+  });
+}
+
 function resumeSessionSync(): void {
   startSessionSyncTimer();
   void syncAndNotify().catch(notifySessionSyncFailure);
@@ -259,6 +268,7 @@ function registerIpc(): void {
     const schedulerEnabled = await refreshMemorySchedulerFromSettings();
     const saved = await loadSettings();
     const sync = await syncAndNotify();
+    scheduleNotesIndex();
     return { file, settings: saved, schedulerEnabled, sync };
   });
 
@@ -714,9 +724,11 @@ function registerIpc(): void {
 
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
-  ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) =>
-    notesWrite(args.noteId, args.content)
-  );
+  ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) => {
+    const result = await notesWrite(args.noteId, args.content);
+    scheduleNotesIndex();
+    return result;
+  });
   ipcMain.handle(
     "notes:create",
     async (
@@ -727,20 +739,35 @@ function registerIpc(): void {
         provider?: string;
         sessionId?: string;
       }
-    ) => notesCreate(args)
+    ) => {
+      const result = await notesCreate(args);
+      scheduleNotesIndex();
+      return result;
+    }
   );
   ipcMain.handle(
     "notes:move",
-    async (_event, args: { noteId: string; owner: import("@agent-resume/core").NoteOwner }) =>
-      notesMove(args.noteId, args.owner)
+    async (_event, args: { noteId: string; owner: import("@agent-resume/core").NoteOwner }) => {
+      const result = await notesMove(args.noteId, args.owner);
+      scheduleNotesIndex();
+      return result;
+    }
   );
-  ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => notesDelete(args.noteId));
-  ipcMain.handle("notes:rename", async (_event, args: { noteId: string; filename: string }) =>
-    notesRename(args.noteId, args.filename)
-  );
-  ipcMain.handle("notes:import", async (_event, owner: import("@agent-resume/core").NoteOwner) =>
-    notesImport(owner)
-  );
+  ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => {
+    const result = await notesDelete(args.noteId);
+    scheduleNotesIndex();
+    return result;
+  });
+  ipcMain.handle("notes:rename", async (_event, args: { noteId: string; filename: string }) => {
+    const result = await notesRename(args.noteId, args.filename);
+    scheduleNotesIndex();
+    return result;
+  });
+  ipcMain.handle("notes:import", async (_event, owner: import("@agent-resume/core").NoteOwner) => {
+    const result = await notesImport(owner);
+    scheduleNotesIndex();
+    return result;
+  });
   ipcMain.handle("notes:pasteImage", async (_event, args: { noteId: string }) =>
     notesPasteImage(args.noteId)
   );
@@ -780,16 +807,19 @@ app.whenReady().then(async () => {
     console.error("Failed to ensure catalog schema on startup:", error);
   }
   createWindow();
+  startDesktopNotesIndexer();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      startDesktopNotesIndexer();
     }
   });
 });
 
 app.on("window-all-closed", () => {
   stopMemoryScheduler();
+  stopNotesIndexer();
   tryDestroyPtyOnQuit();
   if (process.platform !== "darwin") {
     app.quit();

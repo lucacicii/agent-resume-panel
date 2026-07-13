@@ -223,6 +223,14 @@ export {
   listLegacyProjectNotes
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
+export { ensureNotesVectorIndex, chunkNoteMarkdown } from "./notes/vectorIndex";
+export type {
+  NoteIndexProgressCallback,
+  NoteIndexProgressEvent,
+  NoteIndexProgressPhase
+} from "./notes/vectorIndex";
+export { searchNotesByEmbedding } from "./notes/search";
+export type { NoteSearchHit } from "./notes/search";
 export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "./notes/reconcile";
 export {
   parseNoteDocument,

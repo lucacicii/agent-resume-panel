@@ -41,6 +41,33 @@ CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
 
+CREATE TABLE IF NOT EXISTS note_chunks (
+  chunk_id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  rel_md_path TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  title TEXT,
+  heading TEXT,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  embedding_json TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_chunks_note ON note_chunks(note_id);
+CREATE INDEX IF NOT EXISTS idx_note_chunks_updated ON note_chunks(updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS note_vector_index (
+  note_id TEXT PRIMARY KEY,
+  rel_md_path TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  title TEXT,
+  source_mtime_ms INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  embedding_key TEXT NOT NULL,
+  indexed_at_ms INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

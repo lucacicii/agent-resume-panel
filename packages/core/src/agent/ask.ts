@@ -3,7 +3,12 @@ import { ChatMessage } from "../llm/types";
 import { chatLlmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { recordLlmUsage } from "../usage/store";
-import { buildMetaAgentSystemPrompt, buildMetaAgentUserPrompt, formatSourceBlock } from "./prompts";
+import {
+  buildMetaAgentSystemPrompt,
+  buildMetaAgentUserPrompt,
+  formatNoteSourceBlock,
+  formatSourceBlock
+} from "./prompts";
 import { appendAskTurn, listAskMessagesForHistory } from "./askStore";
 import { retrieveAgentContext } from "./retrieve";
 import type { AskMetaAgentOptions, AskMetaAgentResult } from "./types";
@@ -35,7 +40,17 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
   const retrieved = await retrieveAgentContext({
     query,
     panelHome: options.panelHome || panelHome,
-    limit: options.limit
+    limit: options.limit,
+    onNoteIndexProgress: (progress) =>
+      options.onStream?.({
+        phase: "indexing_notes",
+        message: progress.message,
+        current: progress.current,
+        total: progress.total,
+        noteTitle: progress.noteTitle,
+        chunkCurrent: progress.chunkCurrent,
+        chunkTotal: progress.chunkTotal
+      })
   });
 
   const sourcesBlock = retrieved.digests
@@ -50,6 +65,20 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     )
     .join("\n\n");
 
+  const notesBlock = retrieved.notes
+    .map((note, i) =>
+      formatNoteSourceBlock({
+        index: i + 1,
+        title: note.title || note.relMdPath,
+        relMdPath: note.relMdPath,
+        scope: note.scope,
+        heading: note.heading,
+        content: note.content,
+        score: note.score
+      })
+    )
+    .join("\n\n");
+
   const historyBlock = history.length
     ? history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
     : undefined;
@@ -59,7 +88,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     { role: "system", content: buildMetaAgentSystemPrompt(language) },
     {
       role: "user",
-      content: buildMetaAgentUserPrompt({ query, sourcesBlock, historyBlock })
+      content: buildMetaAgentUserPrompt({ query, sourcesBlock, notesBlock, historyBlock })
     }
   ];
 

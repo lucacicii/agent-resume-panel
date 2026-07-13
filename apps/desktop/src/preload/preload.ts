@@ -7,6 +7,7 @@ import type {
   DigestProgressEvent,
   MemoryEntry,
   MemorySearchHit,
+  NoteIndexProgressEvent,
   PanelSettings,
   DailyDigestRefreshCheck,
   RunDailyDigestResult,
@@ -153,6 +154,7 @@ export interface DesktopApi {
   }>;
   clearAskChat(): Promise<{ ok: boolean }>;
   onAskStream(callback: (event: AskStreamEvent) => void): () => void;
+  onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
   previewMemoryGtdSync(args?: {
     ensureDigests?: boolean;
     memoryIds?: string[];
@@ -427,6 +429,15 @@ const api: DesktopApi = {
     ipcRenderer.on("agent:askStream", handler);
     return () => {
       ipcRenderer.removeListener("agent:askStream", handler);
+    };
+  },
+  onNotesIndexProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: NoteIndexProgressEvent) => {
+      callback(progress);
+    };
+    ipcRenderer.on("notes:indexProgress", handler);
+    return () => {
+      ipcRenderer.removeListener("notes:indexProgress", handler);
     };
   },
   previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),

@@ -2857,6 +2857,67 @@ code {
   min-height: 22px;
 }
 
+.ask-index-progress {
+  padding: 7px 12px 5px;
+  background: var(--tg-compose-bg);
+}
+
+.ask-index-progress[hidden] {
+  display: none !important;
+}
+
+.ask-index-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+#askIndexProgressText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#askIndexProgressCount {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-index-progress-track {
+  height: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.ask-index-progress-bar {
+  width: 0%;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.ask-index-progress.is-scanning .ask-index-progress-bar {
+  width: 32%;
+  animation: ask-index-scan 1.2s ease-in-out infinite;
+}
+
+.ask-index-progress.is-error .ask-index-progress-bar {
+  background: var(--danger);
+}
+
+@keyframes ask-index-scan {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+
 /* --- Workbench --- */
 #tab-workbench.panel:not(.active) {
   display: none !important;

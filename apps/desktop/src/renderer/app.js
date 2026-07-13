@@ -5422,6 +5422,62 @@ const CHAT_VIRTUAL_OVERSCAN_PX = 360;
 let activeAskStreamIdx = null;
 /** @type {(() => void) | null} */
 let activeAskStreamOff = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let askIndexProgressHideTimer = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let askBackgroundStatusClearTimer = null;
+
+function hideAskIndexProgress(delayMs = 0) {
+  if (askIndexProgressHideTimer) {
+    clearTimeout(askIndexProgressHideTimer);
+    askIndexProgressHideTimer = null;
+  }
+  const hide = () => {
+    const progress = $("askIndexProgress");
+    if (progress) progress.hidden = true;
+  };
+  if (delayMs > 0) {
+    askIndexProgressHideTimer = setTimeout(hide, delayMs);
+  } else {
+    hide();
+  }
+}
+
+function applyAskIndexProgress(event) {
+  const progress = $("askIndexProgress");
+  const text = $("askIndexProgressText");
+  const count = $("askIndexProgressCount");
+  const bar = $("askIndexProgressBar");
+  if (!progress || !text || !count || !bar || !event) return;
+
+  if (askIndexProgressHideTimer) {
+    clearTimeout(askIndexProgressHideTimer);
+    askIndexProgressHideTimer = null;
+  }
+  progress.hidden = false;
+  progress.classList.toggle("is-scanning", event.phase === "scanning");
+  progress.classList.toggle("is-error", event.phase === "error");
+  text.textContent = event.noteTitle
+    ? `${event.message || "正在索引笔记…"} · ${event.noteTitle}`
+    : event.message || "正在索引笔记…";
+
+  const total = Number(event.total) || 0;
+  const current = Math.max(0, Number(event.current) || 0);
+  let ratio = total > 0 ? current / total : 0;
+  if (event.phase === "embedding" && total > 0 && event.chunkTotal) {
+    ratio = (current + Math.min(1, (Number(event.chunkCurrent) || 0) / event.chunkTotal)) / total;
+  }
+  if (event.phase === "complete") ratio = 1;
+  bar.style.width = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+  const displayCurrent = event.phase === "embedding" ? current + 1 : current;
+  count.textContent = total > 0 ? `${Math.min(displayCurrent, total)}/${total}` : "";
+
+  if (event.phase === "complete") {
+    hideAskIndexProgress(1600);
+  } else if (event.phase === "error") {
+    hideAskIndexProgress(5000);
+  }
+}
 
 /** @type {Map<string, any>} */
 const citationPreviewCache = new Map();
@@ -5443,6 +5499,7 @@ function citationLevelToFocusType(level) {
 }
 
 function citationToFocus(citation) {
+  if (citation?.source === "note" || citation?.level === "note") return null;
   const level = citation?.level || "daily";
   const periodKey = periodKeyFromMemoryId(level, citation?.memoryId || "");
   if (!periodKey) return null;
@@ -5558,23 +5615,27 @@ function hideCitationPreview() {
 }
 
 async function resolveCitationEntry(citation) {
-  const memoryId = citation?.memoryId;
-  if (!memoryId) {
+  const sourceId = citation?.source === "note" ? citation?.noteId : citation?.memoryId;
+  if (!sourceId) {
     return null;
   }
-  if (citationPreviewCache.has(memoryId)) {
-    return citationPreviewCache.get(memoryId);
+  if (citationPreviewCache.has(sourceId)) {
+    return citationPreviewCache.get(sourceId);
   }
   if (citation.contentPreview) {
     const previewEntry = {
-      id: memoryId,
+      id: sourceId,
       level: citation.level || "daily",
-      title: citation.title || memoryId,
+      title: citation.title || sourceId,
       content: citation.contentPreview
     };
-    citationPreviewCache.set(memoryId, previewEntry);
+    citationPreviewCache.set(sourceId, previewEntry);
     return previewEntry;
   }
+  if (citation?.source === "note" || citation?.level === "note") {
+    return null;
+  }
+  const memoryId = citation.memoryId;
   const fromCal = calEntries.find((e) => e.id === memoryId);
   if (fromCal?.content) {
     citationPreviewCache.set(memoryId, fromCal);
@@ -5602,13 +5663,18 @@ async function showCitationPreview(anchor, citation) {
   if (body) body.innerHTML = "";
 
   const level = citation?.level || "daily";
+  const isNote = citation?.source === "note" || level === "note";
   const focusType = citationLevelToFocusType(level);
-  const levelLabel = FOCUS_DIGEST_LABELS[focusType] || level;
+  const levelLabel = isNote ? "笔记" : FOCUS_DIGEST_LABELS[focusType] || level;
+  const openButton = popover.querySelector(".citation-preview-open");
+  if (openButton) {
+    openButton.textContent = isNote ? "在 Notes 中查看" : "在 Memory 中查看";
+  }
 
   try {
     const entry = await resolveCitationEntry(citation);
     if (activeCitationPreview !== citation) return;
-    const title = entry?.title || citation.title || citation.memoryId || "引用";
+    const title = entry?.title || citation.title || citation.noteId || citation.memoryId || "引用";
     if (head) {
       head.innerHTML = `<span class="badge ${escapeHtml(level)}">${escapeHtml(levelLabel)}</span> ${escapeHtml(title)}`;
     }
@@ -5616,7 +5682,7 @@ async function showCitationPreview(anchor, citation) {
     if (body) {
       body.innerHTML = preview
         ? renderMarkdown(preview)
-        : `<p class="muted">暂无预览内容${citation.memoryId ? `（${escapeHtml(citation.memoryId)}）` : ""}</p>`;
+        : `<p class="muted">暂无预览内容${citation.noteId || citation.memoryId ? `（${escapeHtml(citation.noteId || citation.memoryId)}）` : ""}</p>`;
     }
     if (activeCitationChipEl) {
       positionCitationPopover(activeCitationChipEl);
@@ -5625,7 +5691,7 @@ async function showCitationPreview(anchor, citation) {
     if (activeCitationPreview !== citation) return;
     const msg = error instanceof Error ? error.message : String(error);
     if (head) {
-      head.textContent = citation.title || citation.memoryId || "引用";
+      head.textContent = citation.title || citation.noteId || citation.memoryId || "引用";
     }
     if (body) {
       body.innerHTML = `<p class="muted">预览加载失败：${escapeHtml(msg)}</p>`;
@@ -5637,6 +5703,18 @@ async function showCitationPreview(anchor, citation) {
 }
 
 async function openCitationInMemory(citation) {
+  if (citation?.source === "note" || citation?.level === "note") {
+    if (!citation.noteId) {
+      setStatus($("agentStatus"), "无法解析笔记引用", "error");
+      return;
+    }
+    hideCitationPreview();
+    closeAllSheets();
+    switchTab("notes");
+    await loadNotes();
+    await openNoteInEditor(citation.noteId);
+    return;
+  }
   const focus = citationToFocus(citation);
   if (!focus) {
     setStatus($("agentStatus"), "无法解析引用报告", "error");
@@ -5688,9 +5766,12 @@ function buildCitationChip(citation) {
     ? ` · ${citation.session.provider}/${String(citation.session.id).slice(0, 10)}…`
     : "";
   const score = citation.score != null ? ` · ${Number(citation.score).toFixed(3)}` : "";
+  const isNote = citation?.source === "note" || citation?.level === "note";
   const focusType = citationLevelToFocusType(citation.level || "daily");
-  const levelLabel = FOCUS_DIGEST_LABELS[focusType] || citation.level || "daily";
-  chip.textContent = `[${citation.index}] ${levelLabel} · ${citation.title || citation.memoryId}${score}${sess}`;
+  const levelLabel = isNote ? "笔记" : FOCUS_DIGEST_LABELS[focusType] || citation.level || "daily";
+  const indexLabel = isNote ? `N${citation.index}` : citation.index;
+  const heading = isNote && citation.heading ? ` · ${citation.heading}` : "";
+  chip.textContent = `[${indexLabel}] ${levelLabel} · ${citation.title || citation.noteId || citation.memoryId}${heading}${score}${sess}`;
   chip.title = "悬停预览";
   chip.addEventListener("mouseenter", () => {
     bumpCitationPreviewHover(1);
@@ -6143,7 +6224,11 @@ async function sendAgent() {
       }
       if (event.phase === "retrieving") {
         setStatus($("agentStatus"), "检索记忆…");
+      } else if (event.phase === "indexing_notes") {
+        applyAskIndexProgress(event);
+        setStatus($("agentStatus"), event.message || "正在索引笔记…");
       } else if (event.phase === "generating") {
+        hideAskIndexProgress();
         setStatus($("agentStatus"), "生成回答…");
       } else if (event.phase === "chunk" && event.delta) {
         chatTurns[streamIdx].content += event.delta;
@@ -6180,6 +6265,7 @@ async function sendAgent() {
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
   } finally {
     stopAskStreamListener();
+    hideAskIndexProgress(800);
     setAgentComposeEnabled(true);
   }
 }
@@ -6294,6 +6380,27 @@ async function clearChat() {
 function wire() {
   if (typeof agentResume.onDigestProgress === "function") {
     agentResume.onDigestProgress((event) => applyDigestProgress(event));
+  }
+  if (typeof agentResume.onNotesIndexProgress === "function") {
+    agentResume.onNotesIndexProgress((event) => {
+      applyAskIndexProgress(event);
+      if (activeAskStreamIdx == null) {
+        if (askBackgroundStatusClearTimer) {
+          clearTimeout(askBackgroundStatusClearTimer);
+          askBackgroundStatusClearTimer = null;
+        }
+        setStatus(
+          $("agentStatus"),
+          event.message || "正在索引笔记…",
+          event.phase === "error" ? "error" : event.phase === "complete" ? "ok" : undefined
+        );
+        if (event.phase === "complete") {
+          askBackgroundStatusClearTimer = setTimeout(() => {
+            if (activeAskStreamIdx == null) setStatus($("agentStatus"), "");
+          }, 1800);
+        }
+      }
+    });
   }
   if (typeof agentResume.onSessionsSynced === "function") {
     agentResume.onSessionsSynced((result) => {

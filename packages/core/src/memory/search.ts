@@ -16,6 +16,8 @@ export interface SearchMemoryOptions {
   minScore?: number;
   /** Max candidates scanned from DB (default 200). */
   candidateLimit?: number;
+  /** Reuse a query embedding already computed by a combined retrieval pipeline. */
+  queryVector?: number[];
 }
 
 export interface MemorySearchHit {
@@ -41,14 +43,19 @@ export async function searchMemoryByEmbedding(
 
   await ensureCatalogSchema(dbPath);
 
-  const emb = embeddingConfigFromSettings(settings);
-  if (!emb) {
-    throw new Error(
-      "Embedding is not configured. Set embedding.model (and llm/embedding API key) in settings.json."
-    );
+  let queryVector = options.queryVector;
+  if (!queryVector) {
+    const emb = embeddingConfigFromSettings(settings);
+    if (!emb) {
+      throw new Error(
+        "Embedding is not configured. Set embedding.model (and llm/embedding API key) in settings.json."
+      );
+    }
+    [queryVector] = await embedTexts(emb, [query.slice(0, 8000)]);
   }
-
-  const [queryVector] = await embedTexts(emb, [query.slice(0, 8000)]);
+  if (!queryVector) {
+    return [];
+  }
   const candidates = await listMemoryEntries(dbPath, {
     level: options.level,
     limit: options.candidateLimit ?? 200
