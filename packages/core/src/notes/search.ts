@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import { ensureCatalogSchema } from "../catalog/db";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
@@ -6,13 +7,23 @@ import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../sett
 import { runSqliteJson } from "../sqlite";
 import { recordLlmUsage } from "../usage/store";
 import { cosineSimilarity, parseEmbeddingJson } from "../memory/cosine";
+import { listAllNotes } from "./catalogNotes";
+import { parseNoteDocument } from "./frontmatter";
+import { absFromRelMdPath } from "./paths";
+import {
+  NoteSearchPlan,
+  planNoteSearchDeterministically
+} from "./queryPlan";
+import { reconcileNotesIndex } from "./reconcile";
 import { ensureNotesVectorIndex } from "./vectorIndex";
 import type { NoteIndexProgressCallback } from "./vectorIndex";
 
 const DEFAULT_LIMIT = 6;
+const DEFAULT_EXACT_LIMIT = 50;
 const DEFAULT_CANDIDATE_LIMIT = 10000;
 const DEFAULT_MIN_SCORE = 0.15;
 const CANDIDATE_PAGE_SIZE = 200;
+const EXACT_EXCERPT_CHARS = 360;
 
 interface NoteChunkRow {
   chunk_id: string;
@@ -38,6 +49,130 @@ export interface NoteSearchHit {
   content: string;
   updatedAtMs: number;
   score: number;
+  matchType?: "exact" | "semantic";
+  matchedTerms?: string[];
+  exactMatchTotal?: number;
+}
+
+export function isNotesOnlyQuery(query: string): boolean {
+  return planNoteSearchDeterministically(query).notesOnly;
+}
+
+export function extractExactNoteSearchTerms(query: string): string[] {
+  const plan = planNoteSearchDeterministically(query);
+  return plan.mode === "exact" ? plan.terms : [];
+}
+
+function rowToHit(row: NoteChunkRow, score: number): NoteSearchHit {
+  return {
+    chunkId: row.chunk_id,
+    noteId: row.note_id,
+    relMdPath: row.rel_md_path,
+    scope: row.scope,
+    title: row.title ?? undefined,
+    heading: row.heading ?? undefined,
+    chunkIndex: row.chunk_index,
+    content: row.content,
+    updatedAtMs: row.updated_at_ms,
+    score
+  };
+}
+
+function exactExcerpt(content: string, terms: string[]): string {
+  const lowerTerms = terms.map((term) => term.toLowerCase());
+  const matchingLines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      const lower = line.toLowerCase();
+      return lowerTerms.some((term) => lower.includes(term));
+    });
+  const excerpt = [...new Set(matchingLines)].join("\n").trim();
+  if (excerpt) {
+    return excerpt.slice(0, EXACT_EXCERPT_CHARS);
+  }
+  const lower = content.toLowerCase();
+  const firstIndex = lowerTerms.reduce((best, term) => {
+    const index = lower.indexOf(term);
+    return index >= 0 && (best < 0 || index < best) ? index : best;
+  }, -1);
+  if (firstIndex < 0) {
+    return content.slice(0, EXACT_EXCERPT_CHARS);
+  }
+  const start = Math.max(0, firstIndex - 120);
+  return content.slice(start, start + EXACT_EXCERPT_CHARS).trim();
+}
+
+function exactNoteExcerpt(
+  note: { title?: string; filename: string; relMdPath: string },
+  body: string,
+  plan: NoteSearchPlan
+): string {
+  const bodyExcerpt = exactExcerpt(body, plan.terms);
+  const lowerBody = body.toLocaleLowerCase();
+  if (plan.terms.some((term) => lowerBody.includes(term.toLocaleLowerCase()))) {
+    return bodyExcerpt;
+  }
+  const metadata: string[] = [];
+  if (plan.fields.includes("title") && note.title) metadata.push(`title: ${note.title}`);
+  if (plan.fields.includes("filename")) metadata.push(`filename: ${note.filename}`);
+  if (plan.fields.includes("path")) metadata.push(`path: ${note.relMdPath}`);
+  return metadata.join("\n").slice(0, EXACT_EXCERPT_CHARS) || bodyExcerpt;
+}
+
+async function searchExactNotesFromDisk(
+  dbPath: string,
+  panelHome: string,
+  plan: NoteSearchPlan,
+  limit: number
+): Promise<NoteSearchHit[]> {
+  await reconcileNotesIndex(dbPath, panelHome);
+  const notes = await listAllNotes(dbPath);
+  const lowerTerms = plan.terms.map((term) => term.toLocaleLowerCase());
+  const hits: NoteSearchHit[] = [];
+  let totalMatches = 0;
+  for (const note of notes) {
+    try {
+      const raw = await fs.readFile(absFromRelMdPath(panelHome, note.relMdPath), "utf8");
+      const body = parseNoteDocument(raw).body;
+      const fieldValues = plan.fields.map((field) => {
+        if (field === "content") return body;
+        if (field === "title") return note.title || "";
+        if (field === "filename") return note.filename;
+        return note.relMdPath;
+      });
+      const haystack = fieldValues
+        .filter(Boolean)
+        .join("\n")
+        .toLocaleLowerCase();
+      const matches = lowerTerms.map((term) => haystack.includes(term));
+      if (plan.operator === "all" ? !matches.every(Boolean) : !matches.some(Boolean)) {
+        continue;
+      }
+      totalMatches += 1;
+      if (hits.length < limit) {
+        hits.push({
+          chunkId: `exact:${note.noteId}`,
+          noteId: note.noteId,
+          relMdPath: note.relMdPath,
+          scope: note.scope,
+          title: note.title,
+          chunkIndex: 0,
+          content: exactNoteExcerpt(note, body, plan),
+          updatedAtMs: note.updatedAtMs,
+          score: 1,
+          matchType: "exact",
+          matchedTerms: plan.terms
+        });
+      }
+    } catch {
+      // A temporarily unreadable note should not prevent other exact matches.
+    }
+  }
+  for (const hit of hits) {
+    hit.exactMatchTotal = totalMatches;
+  }
+  return hits;
 }
 
 export async function searchNotesByEmbedding(options: {
@@ -48,6 +183,7 @@ export async function searchNotesByEmbedding(options: {
   minScore?: number;
   queryVector?: number[];
   onIndexProgress?: NoteIndexProgressCallback;
+  plan?: NoteSearchPlan;
 }): Promise<NoteSearchHit[]> {
   const query = options.query?.trim();
   if (!query) {
@@ -60,14 +196,19 @@ export async function searchNotesByEmbedding(options: {
   const dbPath = options.panelHome
     ? catalogDbPath(panelHome)
     : catalogDbFromSettings(settings, options.panelHome);
+  await ensureCatalogSchema(dbPath);
+  const plan = options.plan ?? planNoteSearchDeterministically(query);
+  if (plan.mode === "exact") {
+    const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, DEFAULT_EXACT_LIMIT));
+    return searchExactNotesFromDisk(dbPath, panelHome, plan, exactLimit);
+  }
+
   const embedding = embeddingConfigFromSettings(settings);
   if (!embedding) {
     throw new Error(
       "Embedding is not configured. Set embedding.model (and llm/embedding API key) in settings.json."
     );
   }
-
-  await ensureCatalogSchema(dbPath);
   await ensureNotesVectorIndex({
     dbPath,
     panelHome,
@@ -77,7 +218,7 @@ export async function searchNotesByEmbedding(options: {
 
   let queryVector = options.queryVector;
   if (!queryVector) {
-    const queryResult = await embedTextsDetailed(embedding, [query.slice(0, 8000)]);
+    const queryResult = await embedTextsDetailed(embedding, [plan.semanticQuery.slice(0, 8000)]);
     try {
       await recordLlmUsage(dbPath, {
         kind: "embedding",
@@ -118,18 +259,7 @@ export async function searchNotesByEmbedding(options: {
       if (score == null || score < (options.minScore ?? DEFAULT_MIN_SCORE)) {
         continue;
       }
-      hits.push({
-        chunkId: row.chunk_id,
-        noteId: row.note_id,
-        relMdPath: row.rel_md_path,
-        scope: row.scope,
-        title: row.title ?? undefined,
-        heading: row.heading ?? undefined,
-        chunkIndex: row.chunk_index,
-        content: row.content,
-        updatedAtMs: row.updated_at_ms,
-        score
-      });
+      hits.push({ ...rowToHit(row, score), matchType: "semantic" });
     }
     if (rows.length < pageSize) {
       break;

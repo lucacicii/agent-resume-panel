@@ -11,11 +11,14 @@ import { NoteSearchHit, searchNotesByEmbedding } from "../notes/search";
 import type { NoteIndexProgressCallback } from "../notes/vectorIndex";
 import { recordLlmUsage } from "../usage/store";
 import { AgentCitation } from "./types";
+import { resolveNoteSearchPlan } from "./noteIntent";
 
 const DEFAULT_LIMIT = 8;
 const CONTENT_CHARS = 2000;
 const DEFAULT_NOTE_LIMIT = 6;
+const EXACT_NOTE_LIMIT = 50;
 const NOTE_CONTEXT_CHARS = 8000;
+const EXACT_NOTE_CONTEXT_CHARS = 18000;
 
 export interface RetrievedDigest {
   entry: MemoryEntry;
@@ -27,6 +30,7 @@ export interface RetrieveAgentContextResult {
   notes: NoteSearchHit[];
   citations: AgentCitation[];
   fallback: boolean;
+  noteMatchTotal?: number;
   dbPath: string;
 }
 
@@ -57,10 +61,18 @@ export async function retrieveAgentContext(options: {
   let digests: RetrievedDigest[] = [];
   let notes: NoteSearchHit[] = [];
   let fallback = false;
+  let noteMatchTotal: number | undefined;
   let queryVector: number[] | undefined;
+  const noteSearchPlan = await resolveNoteSearchPlan({
+    query: options.query,
+    settings,
+    dbPath
+  });
+  const exactNoteSearch = noteSearchPlan.mode === "exact";
+  const notesOnly = noteSearchPlan.notesOnly;
 
   const embedding = embeddingConfigFromSettings(settings);
-  if (embedding) {
+  if (embedding && !(exactNoteSearch && notesOnly)) {
     try {
       const result = await embedTextsDetailed(embedding, [options.query.slice(0, 8000)]);
       queryVector = result.vectors[0];
@@ -82,50 +94,55 @@ export async function retrieveAgentContext(options: {
     }
   }
 
-  try {
-    if (!queryVector) {
-      throw new Error("Query embedding is unavailable.");
-    }
-    const hits = await searchMemoryByEmbedding({
-      panelHome: options.panelHome,
-      query: options.query,
-      limit,
-      queryVector
-    });
-    if (hits.length) {
-      digests = hits.map((h) => ({ entry: h.entry, score: h.score }));
-    } else {
+  if (!notesOnly) {
+    try {
+      if (!queryVector) {
+        throw new Error("Query embedding is unavailable.");
+      }
+      const hits = await searchMemoryByEmbedding({
+        panelHome: options.panelHome,
+        query: options.query,
+        limit,
+        queryVector
+      });
+      if (hits.length) {
+        digests = hits.map((h) => ({ entry: h.entry, score: h.score }));
+      } else {
+        fallback = true;
+      }
+    } catch {
       fallback = true;
     }
-  } catch {
-    fallback = true;
-  }
 
-  if (!digests.length) {
-    fallback = true;
-    const dailies = await listMemoryEntries(dbPath, { level: "daily", limit: Math.ceil(limit / 2) });
-    const weeklies = await listMemoryEntries(dbPath, { level: "weekly", limit: Math.ceil(limit / 2) });
-    const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
-    digests = merged.slice(0, limit).map((entry) => ({ entry }));
+    if (!digests.length) {
+      fallback = true;
+      const dailies = await listMemoryEntries(dbPath, { level: "daily", limit: Math.ceil(limit / 2) });
+      const weeklies = await listMemoryEntries(dbPath, { level: "weekly", limit: Math.ceil(limit / 2) });
+      const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
+      digests = merged.slice(0, limit).map((entry) => ({ entry }));
+    }
   }
 
   try {
-    if (!queryVector) {
+    if (!queryVector && !exactNoteSearch) {
       throw new Error("Query embedding is unavailable.");
     }
     const hits = await searchNotesByEmbedding({
       panelHome: options.panelHome,
       query: options.query,
-      limit: DEFAULT_NOTE_LIMIT,
+      limit: exactNoteSearch ? EXACT_NOTE_LIMIT : DEFAULT_NOTE_LIMIT,
       queryVector,
-      onIndexProgress: options.onNoteIndexProgress
+      onIndexProgress: options.onNoteIndexProgress,
+      plan: noteSearchPlan
     });
-    let remaining = NOTE_CONTEXT_CHARS;
+    noteMatchTotal = exactNoteSearch ? (hits[0]?.exactMatchTotal ?? 0) : undefined;
+    let remaining = exactNoteSearch ? EXACT_NOTE_CONTEXT_CHARS : NOTE_CONTEXT_CHARS;
     for (const hit of hits) {
       if (remaining <= 0) {
         break;
       }
-      const content = truncate(hit.content, Math.min(CONTENT_CHARS, remaining));
+      const maxContent = hit.matchType === "exact" ? 500 : CONTENT_CHARS;
+      const content = truncate(hit.content, Math.min(maxContent, remaining));
       notes.push({ ...hit, content });
       remaining -= content.length;
     }
@@ -180,5 +197,5 @@ export async function retrieveAgentContext(options: {
     entry: { ...d.entry, content: truncate(d.entry.content, CONTENT_CHARS) }
   }));
 
-  return { digests, notes, citations, fallback, dbPath };
+  return { digests, notes, citations, fallback, noteMatchTotal, dbPath };
 }

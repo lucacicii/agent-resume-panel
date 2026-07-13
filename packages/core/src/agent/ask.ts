@@ -74,10 +74,14 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
         scope: note.scope,
         heading: note.heading,
         content: note.content,
-        score: note.score
+        score: note.score,
+        matchType: note.matchType
       })
     )
     .join("\n\n");
+  const notesSummary = retrieved.noteMatchTotal != null
+    ? `Exact note search matched ${retrieved.noteMatchTotal} notes; ${retrieved.notes.length} note sources are included in this prompt. Do not claim the included list is complete when these numbers differ.`
+    : undefined;
 
   const historyBlock = history.length
     ? history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
@@ -88,7 +92,13 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     { role: "system", content: buildMetaAgentSystemPrompt(language) },
     {
       role: "user",
-      content: buildMetaAgentUserPrompt({ query, sourcesBlock, notesBlock, historyBlock })
+      content: buildMetaAgentUserPrompt({
+        query,
+        sourcesBlock,
+        notesBlock,
+        notesSummary,
+        historyBlock
+      })
     }
   ];
 

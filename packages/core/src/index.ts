@@ -231,6 +231,18 @@ export type {
   NoteIndexProgressPhase
 } from "./notes/vectorIndex";
 export { searchNotesByEmbedding } from "./notes/search";
+export { extractExactNoteSearchTerms, isNotesOnlyQuery } from "./notes/search";
+export {
+  normalizeLlmNoteSearchPlan,
+  planNoteSearchDeterministically,
+  shouldAnalyzeNoteSearchWithLlm
+} from "./notes/queryPlan";
+export type {
+  NoteSearchField,
+  NoteSearchMode,
+  NoteSearchOperator,
+  NoteSearchPlan
+} from "./notes/queryPlan";
 export type { NoteSearchHit } from "./notes/search";
 export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "./notes/reconcile";
 export {

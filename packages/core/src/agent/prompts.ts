@@ -4,6 +4,7 @@ export function buildMetaAgentSystemPrompt(outputLanguage: string): string {
     "Answer ONLY using the Memory Sources and Note Sources provided. If sources are insufficient, say you do not know from the available memory and notes.",
     "Do not invent sessions, file paths, or decisions not supported by sources.",
     "Cite Memory Sources as [1], [2] and Note Sources as [N1], [N2], matching the source indices.",
+    "When Note Sources are marked exact, do not substitute Memory Sources or infer additional matches; list every exact Note Source provided.",
     "Be concise; use bullet points when listing work items.",
     `Write in language: ${outputLanguage}.`
   ].join(" ");
@@ -13,6 +14,7 @@ export function buildMetaAgentUserPrompt(input: {
   query: string;
   sourcesBlock: string;
   notesBlock?: string;
+  notesSummary?: string;
   historyBlock?: string;
 }): string {
   const parts = [
@@ -21,6 +23,7 @@ export function buildMetaAgentUserPrompt(input: {
     "",
     "Note Sources:",
     input.notesBlock || "(none)",
+    input.notesSummary || "",
     ""
   ];
 
@@ -51,8 +54,10 @@ export function formatNoteSourceBlock(input: {
   content: string;
   heading?: string;
   score?: number;
+  matchType?: "exact" | "semantic";
 }): string {
   const scorePart = input.score != null ? ` score=${input.score.toFixed(3)}` : "";
   const headingPart = input.heading ? ` · ${input.heading}` : "";
-  return `[N${input.index}] note · ${input.title} · ${input.relMdPath} · scope=${input.scope}${headingPart}${scorePart}\n${input.content}`;
+  const matchPart = input.matchType === "exact" ? " · exact-match" : "";
+  return `[N${input.index}] note · ${input.title} · ${input.relMdPath} · scope=${input.scope}${headingPart}${matchPart}${scorePart}\n${input.content}`;
 }
