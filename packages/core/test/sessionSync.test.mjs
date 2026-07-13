@@ -81,6 +81,12 @@ test("syncs seven providers, preserves local enhancements, and isolates provider
   assert.equal(rows[0].title, "Codex native updated");
   assert.equal(rows[0].user_title, "Pinned title");
 
+  sqlite(options.dbPath, "UPDATE sessions SET hidden=1 WHERE provider='codex' AND agent_session_id='codex-1';");
+  await syncAgentSessions(options);
+  assert.ok(!(await listSessions(options.dbPath, 100)).some((item) => item.id === "codex-1"));
+  const hiddenRows = await runSqliteJson(options.dbPath, "SELECT hidden FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
+  assert.equal(hiddenRows[0].hidden, 1);
+
   await writeFile(opencodeDb, "not a sqlite database", "utf8");
   const failed = await syncAgentSessions(options);
   assert.equal(failed.providers.find((item) => item.provider === "opencode")?.status, "error");

@@ -177,7 +177,7 @@ async function upsertProvider(dbPath: string, provider: SyncableAgentProvider, s
     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
       title=excluded.title, project_path=excluded.project_path, updated_at_ms=excluded.updated_at_ms,
       archived=excluded.archived, message_count=excluded.message_count, model=excluded.model,
-      branch=excluded.branch, source=excluded.source, hidden=0, last_synced_at_ms=excluded.last_synced_at_ms,
+      branch=excluded.branch, source=excluded.source, last_synced_at_ms=excluded.last_synced_at_ms,
       transcript_kind=excluded.transcript_kind, transcript_refs=excluded.transcript_refs`));
   }
 }
