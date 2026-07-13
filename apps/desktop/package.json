@@ -10,6 +10,8 @@
     "pack:mac": "node scripts/pack-mac.mjs",
     "dev:raw": "npm run build && electron .",
     "postinstall": "node scripts/fix-node-pty.mjs",
+    "test:mac-app": "node scripts/mac-app.test.mjs",
+    "test:node-pty": "node scripts/fix-node-pty.test.mjs",
     "start": "electron ."
   },
   "dependencies": {

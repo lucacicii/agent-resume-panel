@@ -22,14 +22,28 @@ function ensureSpawnHelperExecutable(): void {
   if (process.platform !== "darwin" && process.platform !== "linux") return;
   try {
     const entry = require.resolve("node-pty");
-    const helperPath = path.resolve(
-      path.dirname(entry),
-      `../prebuilds/${process.platform}-${process.arch}/spawn-helper`
-    );
-    if (!fs.existsSync(helperPath)) return;
-    const mode = fs.statSync(helperPath).mode;
-    if ((mode & 0o111) === 0) {
-      fs.chmodSync(helperPath, mode | 0o755);
+    const moduleRoot = path.resolve(path.dirname(entry), "..");
+    const writableRoot = moduleRoot
+      .replace("app.asar", "app.asar.unpacked")
+      .replace("node_modules.asar", "node_modules.asar.unpacked");
+    const helpers = [
+      path.join(writableRoot, "build", "Release", "spawn-helper"),
+      path.join(writableRoot, "build", "Debug", "spawn-helper")
+    ];
+    const prebuildsRoot = path.join(writableRoot, "prebuilds");
+    if (fs.existsSync(prebuildsRoot)) {
+      for (const dir of fs.readdirSync(prebuildsRoot, { withFileTypes: true })) {
+        if (dir.isDirectory() && dir.name.startsWith(`${process.platform}-`)) {
+          helpers.push(path.join(prebuildsRoot, dir.name, "spawn-helper"));
+        }
+      }
+    }
+    for (const helperPath of helpers) {
+      if (!fs.existsSync(helperPath)) continue;
+      const mode = fs.statSync(helperPath).mode;
+      if ((mode & 0o111) === 0) {
+        fs.chmodSync(helperPath, mode | 0o755);
+      }
     }
   } catch {
     // spawn will surface a descriptive error if helper is still unusable
@@ -148,6 +162,10 @@ function spawnInteractivePty(
   });
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function attachPtyHandlers(
   ptyInstance: pty.IPty,
   id: number,
@@ -230,7 +248,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       try {
         const command = args.command?.trim();
         if (command) {
-          ptyInstance = pty.spawn(shell, ["-lc", `${command}; exec ${shell} -l`], spawnOpts);
+          ptyInstance = pty.spawn(shell, ["-ic", `${command}; exec ${shellQuote(shell)}`], spawnOpts);
         } else {
           ptyInstance = spawnInteractivePty(shell, cwd, cols, rows);
         }

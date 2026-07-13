@@ -7,20 +7,22 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
 const stampFile = path.join(root, ".dev-app-stamp");
 const iconPath = path.join(root, "dist", "resources", "icon.icns");
+const targetArch = "universal";
+const appBundlePath = path.join(
+  releaseRoot,
+  `Agent Resume-darwin-${targetArch}`,
+  "Agent Resume.app"
+);
 
 export const desktopRoot = root;
+export const macTargetArch = targetArch;
 
 export function runDesktopBuild() {
   execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
 }
 
 export function findAppBundle() {
-  if (!fs.existsSync(releaseRoot)) return null;
-  for (const entry of fs.readdirSync(releaseRoot)) {
-    const candidate = path.join(releaseRoot, entry, "Agent Resume.app");
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
+  return fs.existsSync(appBundlePath) ? appBundlePath : null;
 }
 
 function walkLatestMtime(target, latest = { value: 0 }) {
@@ -51,11 +53,19 @@ function latestRepackMtime() {
   return Math.max(...repackInputs().map((input) => walkLatestMtime(input)));
 }
 
+export function isBuildStampCurrent(rawStamp, sourceMtime, arch = targetArch) {
+  try {
+    const stamp = JSON.parse(rawStamp);
+    return stamp?.version === 1 && stamp.arch === arch && stamp.sourceMtime >= sourceMtime;
+  } catch {
+    return false;
+  }
+}
+
 export function needsRepack() {
   if (!findAppBundle()) return true;
   if (!fs.existsSync(stampFile)) return true;
-  const stamp = Number(fs.readFileSync(stampFile, "utf8"));
-  return latestRepackMtime() > stamp;
+  return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime());
 }
 
 function materializeNodeModules() {
@@ -89,11 +99,12 @@ export function packMacApp() {
       ".",
       "Agent Resume",
       `--platform=darwin`,
-      `--arch=${process.arch === "arm64" ? "arm64" : "x64"}`,
+      `--arch=${targetArch}`,
       `--icon=${iconPath}`,
       `--out=${releaseRoot}`,
       "--overwrite",
-      "--asar",
+      "--asar.unpackDir=node_modules/node-pty",
+      "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
       "--prune=true"
     ],
     { cwd: root, stdio: "inherit", env: { ...process.env, ELECTRON_RUN_AS_NODE: "" } }
@@ -102,7 +113,10 @@ export function packMacApp() {
   if (!appBundle) {
     throw new Error("Packaging finished but Agent Resume.app was not found under release/");
   }
-  fs.writeFileSync(stampFile, String(latestRepackMtime()));
+  fs.writeFileSync(
+    stampFile,
+    JSON.stringify({ version: 1, arch: targetArch, sourceMtime: latestRepackMtime() })
+  );
   return appBundle;
 }
 
