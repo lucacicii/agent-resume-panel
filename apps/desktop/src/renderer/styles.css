@@ -2950,6 +2950,26 @@ code {
   background: var(--bg);
 }
 
+.wb-detail-head {
+  flex: 0 0 auto;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
+}
+
+.wb-detail-project-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .wb-terminal-shell {
   flex: 1;
   display: flex;
@@ -3393,6 +3413,19 @@ code {
 .wb-folder-row.active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   font-weight: 600;
+}
+
+.wb-folder-activity-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 18%, transparent);
+}
+
+.wb-folder-row.has-wb-activity:not(.active) .wb-folder-activity-dot {
+  opacity: 0.85;
 }
 
 .notes-folder-row-text,

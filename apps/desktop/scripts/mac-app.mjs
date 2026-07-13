@@ -41,6 +41,7 @@ function walkLatestMtime(target, latest = { value: 0 }) {
 function repackInputs() {
   return [
     path.join(root, "src"),
+    path.join(root, "dist", "renderer"),
     path.join(root, "package.json"),
     path.join(root, "scripts"),
     path.join(root, "..", "..", "resources", "app-icon.png"),
