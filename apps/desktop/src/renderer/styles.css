@@ -3091,13 +3091,6 @@ code {
   font-weight: 600;
 }
 
-.wb-note-created-message {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: color-mix(in srgb, var(--text) 78%, transparent);
-}
-
 .wb-note-created-actions {
   display: flex;
   gap: 8px;
@@ -3422,8 +3415,7 @@ code {
 }
 
 .notes-target-popover,
-.wb-target-popover,
-.wb-note-target-popover {
+.wb-target-popover {
   position: absolute;
   top: calc(100% - 2px);
   left: 10px;
@@ -3440,19 +3432,16 @@ code {
 }
 
 .notes-target-popover[hidden],
-.wb-target-popover[hidden],
-.wb-note-target-popover[hidden] {
+.wb-target-popover[hidden] {
   display: none !important;
 }
 
-.notes-target-tabs,
-.wb-note-target-tabs {
+.notes-target-tabs {
   display: flex;
   gap: 4px;
 }
 
-.notes-target-tabs button,
-.wb-note-target-tabs button {
+.notes-target-tabs button {
   flex: 1;
   appearance: none;
   border: 1px solid var(--border);
@@ -3464,16 +3453,14 @@ code {
   cursor: pointer;
 }
 
-.notes-target-tabs button.active,
-.wb-note-target-tabs button.active {
+.notes-target-tabs button.active {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   font-weight: 600;
 }
 
 .notes-target-search,
-.wb-target-search,
-.wb-note-target-search {
+.wb-target-search {
   width: 100%;
   box-sizing: border-box;
   border: none;
@@ -3485,15 +3472,13 @@ code {
 }
 
 .notes-target-search:focus,
-.wb-target-search:focus,
-.wb-note-target-search:focus {
+.wb-target-search:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 0;
 }
 
 .notes-target-list,
-.wb-target-list,
-.wb-note-target-list {
+.wb-target-list {
   max-height: 240px;
   overflow: auto;
   display: flex;
@@ -3502,8 +3487,7 @@ code {
 }
 
 .notes-target-item,
-.wb-target-item,
-.wb-note-target-item {
+.wb-target-item {
   appearance: none;
   border: none;
   border-radius: 6px;
@@ -3524,14 +3508,12 @@ code {
 }
 
 .notes-target-item:hover,
-.wb-target-item:hover,
-.wb-note-target-item:hover {
+.wb-target-item:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .notes-target-empty,
-.wb-target-empty,
-.wb-note-target-empty {
+.wb-target-empty {
   margin: 8px 4px;
   font-size: 12px;
   line-height: 1.4;

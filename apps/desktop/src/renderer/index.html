@@ -278,15 +278,6 @@
                     <path d="M12 5v14" />
                   </svg>
                 </button>
-                <button type="button" class="wb-icon-btn" id="btnWorkbenchNewNote" title="新建笔记" aria-label="新建笔记">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                    <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-                    <path d="M10 9H8" />
-                    <path d="M16 13H8" />
-                    <path d="M16 17H8" />
-                  </svg>
-                </button>
                 <button type="button" class="wb-icon-btn" id="btnWorkbenchNewTerminal" title="新建 Terminal" aria-label="新建 Terminal">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 19h8" />
@@ -328,21 +319,6 @@
                   spellcheck="false"
                 />
                 <div class="wb-target-list" id="wbTargetList"></div>
-              </div>
-              <div class="wb-note-target-popover" id="wbNoteTargetPopover" hidden>
-                <div class="wb-note-target-tabs" role="tablist" aria-label="笔记目标">
-                  <button type="button" role="tab" data-wb-note-target-kind="project" class="active">项目</button>
-                  <button type="button" role="tab" data-wb-note-target-kind="session">会话</button>
-                </div>
-                <input
-                  type="search"
-                  class="wb-note-target-search"
-                  id="wbNoteTargetSearch"
-                  placeholder="筛选…"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-                <div class="wb-note-target-list" id="wbNoteTargetList"></div>
               </div>
             </div>
             <div class="wb-search-wrap">
@@ -674,7 +650,7 @@
 
     <div class="wb-context-menu" id="wbContextMenu" hidden>
       <button type="button" data-wb-action="newSession" hidden>新建 Session</button>
-      <button type="button" data-wb-action="newNote" hidden>新建笔记</button>
+      <button type="button" data-wb-action="mountNote" hidden>挂载笔记</button>
       <button type="button" data-wb-action="renameProject" hidden>重命名项目</button>
       <button type="button" data-wb-action="codexApp" hidden>在 ChatGPT 中打开</button>
       <button type="button" data-wb-action="preview" hidden>预览</button>
@@ -701,18 +677,6 @@
         <div class="wb-note-created-actions">
           <button type="button" class="wb-note-created-btn" data-wb-rename-cancel>取消</button>
           <button type="button" class="wb-note-created-btn primary" id="btnWbRenameConfirm">确定</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="wb-note-created-overlay" id="wbNoteCreatedDialog" hidden>
-      <div class="wb-note-created-backdrop"></div>
-      <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbNoteCreatedTitle">
-        <p class="wb-note-created-title" id="wbNoteCreatedTitle">笔记已创建</p>
-        <p class="wb-note-created-message" id="wbNoteCreatedMessage"></p>
-        <div class="wb-note-created-actions">
-          <button type="button" class="wb-note-created-btn primary" id="btnWbNoteGoEdit">去编辑</button>
-          <button type="button" class="wb-note-created-btn" id="btnWbNoteStay">留在此页</button>
         </div>
       </div>
     </div>
