@@ -1172,6 +1172,11 @@ function getActiveWorkbenchTerminalPane() {
   return detail.terminalPanes.get(detail.activeTerminalKey) || null;
 }
 
+function getActiveWorkbenchTerminalKey() {
+  const detail = getWorkbenchProjectDetail();
+  return detail?.activeTerminalKey || "";
+}
+
 function updateWorkbenchTerminalHint() {
   const hint = $("wbTerminalHint");
   if (!hint) return;
@@ -1340,6 +1345,13 @@ async function closeWorkbenchTerminalTab(key) {
   renderWorkbenchTerminalTabs();
   renderWorkbenchFolders();
   updateWorkbenchTerminalHint();
+}
+
+async function closeActiveWorkbenchTerminal() {
+  const key = getActiveWorkbenchTerminalKey();
+  if (!key) return false;
+  await closeWorkbenchTerminalTab(key);
+  return true;
 }
 
 function fitWorkbenchTerminal() {
@@ -7211,6 +7223,19 @@ function wire() {
     if (isFindShortcut(e) && canOpenNotesFind()) {
       e.preventDefault();
       openNotesFind();
+      return;
+    }
+    if (
+      e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      e.key?.toLowerCase() === "w" &&
+      isWorkbenchActive() &&
+      $("wbRenameDialog")?.hidden !== false &&
+      $("wbTargetPopover")?.hidden !== false
+    ) {
+      e.preventDefault();
+      void closeActiveWorkbenchTerminal();
       return;
     }
     if (e.key === "Escape") {
