@@ -3868,6 +3868,27 @@ code {
   white-space: nowrap;
 }
 
+.wb-session-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-session-activity-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 18%, transparent);
+}
+
+.wb-list-item.has-wb-activity:not(.active) .wb-session-activity-dot {
+  opacity: 0.85;
+}
+
 .notes-list-item-date,
 .wb-list-item-date {
   flex-shrink: 0;

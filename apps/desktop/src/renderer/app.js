@@ -362,6 +362,10 @@ function projectActivityDotHtml() {
   return '<span class="wb-folder-activity-dot" aria-hidden="true"></span>';
 }
 
+function workbenchSessionActivityDotHtml() {
+  return '<span class="wb-session-activity-dot" aria-hidden="true"></span>';
+}
+
 function projectPinIconHtml() {
   return '<span class="project-pin-icon" aria-hidden="true">★</span>';
 }
@@ -756,6 +760,17 @@ function hasWorkbenchProjectActivity(projectPath) {
   return Boolean(detail && (detail.terminalPanes.size > 0 || Boolean(detail.activeSessionKey)));
 }
 
+function hasWorkbenchSessionActivity(session) {
+  const key = workbenchSessionKey(session);
+  if (!key) return false;
+  if (wbActiveKey === key) return true;
+  for (const detail of wbProjectDetails.values()) {
+    if (detail.activeSessionKey === key) return true;
+    if (detail.terminalPanes.has(key)) return true;
+  }
+  return false;
+}
+
 function isSameWbProject(a, b) {
   return wbProjectKey(a) === wbProjectKey(b);
 }
@@ -872,13 +887,31 @@ function groupSessionsByProject(sessions) {
     );
 }
 
+function syncWorkbenchListItemActivity(el) {
+  const key = el.dataset.key || "";
+  const hasActivity = wbSessions.some(
+    (s) => workbenchSessionKey(s) === key && hasWorkbenchSessionActivity(s)
+  );
+  el.classList.toggle("has-wb-activity", hasActivity);
+  const wrap = el.querySelector(".wb-session-title-wrap");
+  if (!wrap) return;
+  const dot = wrap.querySelector(".wb-session-activity-dot");
+  if (hasActivity && !dot) {
+    wrap.insertAdjacentHTML("afterbegin", workbenchSessionActivityDotHtml());
+  } else if (!hasActivity && dot) {
+    dot.remove();
+  }
+}
+
 function highlightWorkbenchSession(key) {
   wbActiveKey = key || "";
   const detail = getWorkbenchProjectDetail();
   if (detail) detail.activeSessionKey = wbActiveKey;
   document.querySelectorAll(".wb-list-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.key === wbActiveKey);
+    syncWorkbenchListItemActivity(el);
   });
+  renderWorkbenchFolders();
   updateWorkbenchToolbarState();
 }
 
@@ -980,17 +1013,22 @@ function renderWorkbenchSessionList() {
 
   for (const s of sessions) {
     const key = workbenchSessionKey(s);
+    const hasActivity = hasWorkbenchSessionActivity(s);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "wb-list-item";
     if (wbActiveKey === key) btn.classList.add("active");
+    if (hasActivity) btn.classList.add("has-wb-activity");
     btn.dataset.key = key;
     btn.dataset.provider = s.provider;
     btn.dataset.id = s.id;
     const preview = [providerTagHtml(s.provider), basename(s.projectPath || "")].filter(Boolean).join(" · ");
     btn.innerHTML = `
       <div class="wb-list-item-top">
-        <span class="wb-list-item-title">${escapeHtml(s.title || s.id)}</span>
+        <span class="wb-session-title-wrap">
+          ${hasActivity ? workbenchSessionActivityDotHtml() : ""}
+          <span class="wb-list-item-title">${escapeHtml(s.title || s.id)}</span>
+        </span>
         <span class="wb-list-item-date">${escapeHtml(notesRelativeTime(s.updatedAt || 0))}</span>
       </div>
       <span class="wb-list-item-preview">${preview}</span>
