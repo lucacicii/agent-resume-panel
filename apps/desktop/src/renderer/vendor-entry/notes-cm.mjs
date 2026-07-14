@@ -20,10 +20,11 @@ import {
   indentOnInput,
   bracketMatching
 } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   EditorView,
+  Decoration,
   highlightActiveLineGutter,
   highlightSpecialChars,
   keymap,
@@ -47,6 +48,28 @@ const codeLanguages = [
   LanguageDescription.of({ name: "yaml", alias: ["yml"], support: yaml() }),
   LanguageDescription.of({ name: "go", support: go() })
 ];
+
+const setFindHighlight = StateEffect.define();
+
+const findHighlightField = StateField.define({
+  create() {
+    return Decoration.none;
+  },
+  update(value, transaction) {
+    value = value.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (effect.is(setFindHighlight)) {
+        const range = effect.value;
+        if (!range || range.from === range.to) return Decoration.none;
+        return Decoration.set([
+          Decoration.mark({ class: "cm-notes-find-current" }).range(range.from, range.to)
+        ]);
+      }
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
 
 function notesEditorTheme() {
   return EditorView.theme({
@@ -74,6 +97,11 @@ function notesEditorTheme() {
     },
     ".cm-activeLineGutter": {
       backgroundColor: "color-mix(in srgb, var(--accent) 8%, transparent)"
+    },
+    ".cm-notes-find-current": {
+      backgroundColor: "color-mix(in srgb, var(--accent) 34%, transparent)",
+      outline: "1px solid color-mix(in srgb, var(--accent) 70%, transparent)",
+      borderRadius: "2px"
     }
   });
 }
@@ -98,6 +126,7 @@ function buildExtensions(options) {
     highlightActiveLineGutter(),
     highlightSpecialChars(),
     history(),
+    findHighlightField,
     indentOnInput(),
     bracketMatching(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -147,9 +176,13 @@ globalThis.NotesCodeMirror = {
     if (!view) return;
     view.dispatch({
       selection: { anchor: from, head: to },
-      effects: EditorView.scrollIntoView(from, { y: "center" })
+      effects: [setFindHighlight.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })]
     });
     if (options.focus !== false) view.focus();
+  },
+  clearFindHighlight(view) {
+    if (!view) return;
+    view.dispatch({ effects: setFindHighlight.of(null) });
   },
   insertAtCursor(view, text) {
     if (!view || !text) return;

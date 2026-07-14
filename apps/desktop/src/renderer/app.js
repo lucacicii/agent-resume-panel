@@ -2779,6 +2779,12 @@ function selectNotesEditorRange(from, to, options = {}) {
   }
 }
 
+function clearNotesFindHighlight() {
+  if (notesCmView && typeof NotesCodeMirror?.clearFindHighlight === "function") {
+    NotesCodeMirror.clearFindHighlight(notesCmView);
+  }
+}
+
 function isFindShortcut(event) {
   return (event.metaKey || event.ctrlKey) && !event.altKey && event.key?.toLowerCase() === "f";
 }
@@ -2808,11 +2814,13 @@ function updateNotesFindCount() {
   if (!notesFindQuery.trim()) {
     count.textContent = "0/0";
     count.classList.remove("is-empty");
+    clearNotesFindHighlight();
     return;
   }
   if (!notesFindMatches.length) {
     count.textContent = "0/0";
     count.classList.add("is-empty");
+    clearNotesFindHighlight();
     return;
   }
   count.textContent = `${notesFindIndex + 1}/${notesFindMatches.length}`;
@@ -2864,6 +2872,7 @@ function closeNotesFind({ focusEditor = true } = {}) {
   notesFindIndex = -1;
   const bar = $("notesFindBar");
   if (bar) bar.hidden = true;
+  clearNotesFindHighlight();
   updateNotesFindCount();
   if (focusEditor) focusNotesEditor();
 }
