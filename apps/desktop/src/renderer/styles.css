@@ -4117,6 +4117,59 @@ code {
   box-sizing: border-box;
 }
 
+.notes-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 12px 0;
+  border-radius: 8px;
+  cursor: zoom-in;
+}
+
+.notes-preview img:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.notes-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: grid;
+  place-items: center;
+  padding: 54px 24px 24px;
+  background: rgba(0, 0, 0, 0.84);
+}
+
+.notes-image-preview[hidden] {
+  display: none !important;
+}
+
+.notes-image-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.42);
+}
+
+.notes-image-preview-close {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.notes-image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .notes-empty-state {
   flex: 1;
   display: flex;

@@ -2739,6 +2739,40 @@ function updateNotesPreview(content, noteAbsPath) {
   if (!preview) return;
   const dir = noteDirFromAbs(noteAbsPath || "");
   preview.innerHTML = renderNoteMarkdown(content, dir);
+  enhanceNotesPreviewImages(preview);
+}
+
+function enhanceNotesPreviewImages(preview) {
+  preview.querySelectorAll("img").forEach((img) => {
+    img.tabIndex = 0;
+    img.setAttribute("role", "button");
+    img.title = "点击放大";
+  });
+}
+
+function openNotesImagePreview(img) {
+  const overlay = $("notesImagePreview");
+  const previewImg = $("notesImagePreviewImg");
+  if (!overlay || !previewImg) return;
+  previewImg.src = img.currentSrc || img.src;
+  previewImg.alt = img.alt || "";
+  overlay.hidden = false;
+  document.body.classList.add("notes-image-preview-open");
+  $("btnNotesImagePreviewClose")?.focus();
+}
+
+function closeNotesImagePreview() {
+  const overlay = $("notesImagePreview");
+  const previewImg = $("notesImagePreviewImg");
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  if (previewImg) previewImg.removeAttribute("src");
+  document.body.classList.remove("notes-image-preview-open");
+}
+
+function isNotesImagePreviewOpen() {
+  const overlay = $("notesImagePreview");
+  return Boolean(overlay && !overlay.hidden);
 }
 
 function getNotesEditorContent() {
@@ -6988,6 +7022,22 @@ function wire() {
   });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
   $("btnNotesDelete")?.addEventListener("click", () => void deleteActiveNote());
+  $("notesPreview")?.addEventListener("click", (e) => {
+    const img = e.target?.closest?.("img");
+    if (!img) return;
+    e.preventDefault();
+    openNotesImagePreview(img);
+  });
+  $("notesPreview")?.addEventListener("keydown", (e) => {
+    const img = e.target?.closest?.("img");
+    if (!img || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    openNotesImagePreview(img);
+  });
+  $("notesImagePreview")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeNotesImagePreview();
+  });
+  $("btnNotesImagePreviewClose")?.addEventListener("click", closeNotesImagePreview);
   updateNotesToolbarState();
   $("notesViewSegmented")?.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => void switchNotesViewMode(btn.dataset.mode));
@@ -7014,6 +7064,10 @@ function wire() {
       return;
     }
     if (e.key === "Escape") {
+      if (isNotesImagePreviewOpen()) {
+        closeNotesImagePreview();
+        return;
+      }
       if (notesFindOpen) {
         closeNotesFind();
         return;
