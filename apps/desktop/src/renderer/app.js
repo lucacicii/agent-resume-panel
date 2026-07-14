@@ -324,6 +324,10 @@ async function refreshProjectAliases() {
   }
 }
 
+function refreshPinnedProjects() {
+  pinnedProjects = loadPinnedProjects();
+}
+
 function projectFolderBaseName(projectPath) {
   if (!projectPath || projectPath === "(no project)") return projectPath || "";
   return basename(projectPath);
@@ -356,6 +360,10 @@ function projectFolderRowInnerHtml(prefix, projectPath, options = {}) {
 
 function projectActivityDotHtml() {
   return '<span class="wb-folder-activity-dot" aria-hidden="true"></span>';
+}
+
+function projectPinIconHtml() {
+  return '<span class="project-pin-icon" aria-hidden="true">★</span>';
 }
 
 async function applyProjectAliasUpdate(projectPath, alias) {
@@ -642,8 +650,10 @@ async function runSessionAutoRename(opts = {}) {
 // --- Workbench ---
 
 const WB_PROJECT_KEY = "workbench-selected-project";
+const PINNED_PROJECTS_KEY = "pinned-projects";
 /** @type {Record<string, string>} */
 let projectAliasMap = {};
+let pinnedProjects = [];
 let wbSessions = [];
 let wbActiveKey = "";
 let wbSearch = "";
@@ -673,6 +683,51 @@ function wbProjectKey(folder) {
 
 function wbProjectKeyFromPath(projectPath) {
   return `project:${projectPath || "(no project)"}`;
+}
+
+function normalizeProjectPath(projectPath) {
+  return projectPath || "(no project)";
+}
+
+function loadPinnedProjects() {
+  try {
+    const raw = localStorage.getItem(PINNED_PROJECTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set();
+    return parsed
+      .map((value) => normalizeProjectPath(String(value || "")))
+      .filter((value) => {
+        if (!value || seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+  } catch {
+    return [];
+  }
+}
+
+function savePinnedProjects() {
+  try {
+    localStorage.setItem(PINNED_PROJECTS_KEY, JSON.stringify(pinnedProjects));
+  } catch {
+    // ignore
+  }
+}
+
+function isProjectPinned(projectPath) {
+  return pinnedProjects.includes(normalizeProjectPath(projectPath));
+}
+
+function setProjectPinned(projectPath, pinned) {
+  const normalized = normalizeProjectPath(projectPath);
+  const current = new Set(pinnedProjects);
+  if (pinned) current.add(normalized);
+  else current.delete(normalized);
+  pinnedProjects = [...current];
+  savePinnedProjects();
+  renderWorkbenchFolders();
+  if (notesLoaded) renderNotesFolders();
 }
 
 function currentWorkbenchProjectKey() {
@@ -808,9 +863,12 @@ function groupSessionsByProject(sessions) {
       sessions: list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     }))
     .sort(
-      (a, b) =>
-        (b.sessions[0]?.updatedAt || 0) - (a.sessions[0]?.updatedAt || 0) ||
-        a.projectPath.localeCompare(b.projectPath)
+      (a, b) => {
+        const pinnedDiff = Number(isProjectPinned(b.projectPath)) - Number(isProjectPinned(a.projectPath));
+        return pinnedDiff ||
+          (b.sessions[0]?.updatedAt || 0) - (a.sessions[0]?.updatedAt || 0) ||
+          a.projectPath.localeCompare(b.projectPath);
+      }
     );
 }
 
@@ -842,10 +900,12 @@ function renderWorkbenchFolderRow(label, folder, options = {}) {
   btn.className = "wb-folder-row";
   if (isSameWbProject(wbSelectedProject, folder)) btn.classList.add("active");
   const hasActivity = folder.kind === "project" && hasWorkbenchProjectActivity(folder.projectPath);
+  const isPinned = folder.kind === "project" && isProjectPinned(folder.projectPath);
   if (hasActivity) btn.classList.add("has-wb-activity");
+  if (isPinned) btn.classList.add("is-pinned");
   const inner =
     folder.kind === "project" && folder.projectPath
-      ? `${hasActivity ? projectActivityDotHtml() : ""}${projectFolderRowInnerHtml("wb", folder.projectPath, options)}`
+      ? `${isPinned ? projectPinIconHtml() : ""}${hasActivity ? projectActivityDotHtml() : ""}${projectFolderRowInnerHtml("wb", folder.projectPath, options)}`
       : `
     <span class="wb-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
     ${options.count != null ? `<span class="wb-folder-row-count">${options.count}</span>` : ""}
@@ -961,6 +1021,7 @@ async function loadWorkbenchSessions(opts = {}) {
   const quiet = opts.quiet === true;
   const list = $("wbList");
   if (!list) return;
+  refreshPinnedProjects();
   if (!quiet) list.innerHTML = `<p class="muted wb-list-empty">加载中…</p>`;
   try {
     wbSessions = await agentResume.listSessions(2000);
@@ -1507,6 +1568,8 @@ async function showWorkbenchContextMenu(node, x, y) {
   const isProject = node.kind === "project";
   const isSession = node.kind === "session";
   const session = isSession ? node.session : null;
+  menu.querySelector('[data-wb-action="pinProject"]').hidden = !isProject || isProjectPinned(node.projectPath);
+  menu.querySelector('[data-wb-action="unpinProject"]').hidden = !isProject || !isProjectPinned(node.projectPath);
   menu.querySelector('[data-wb-action="newSession"]').hidden = !isProject;
   const editorButton = menu.querySelector('[data-wb-action="openProjectEditor"]');
   if (editorButton) editorButton.hidden = true;
@@ -1563,6 +1626,14 @@ async function handleWorkbenchContextAction(action) {
   hideWorkbenchContextMenu();
   if (action === "newSession" && node?.kind === "project") {
     await startWorkbenchNewSessionForProject(node.projectPath);
+    return;
+  }
+  if (action === "pinProject" && node?.kind === "project") {
+    setProjectPinned(node.projectPath, true);
+    return;
+  }
+  if (action === "unpinProject" && node?.kind === "project") {
+    setProjectPinned(node.projectPath, false);
     return;
   }
   if (action === "openProjectEditor" && node?.kind === "project") {
@@ -2157,6 +2228,10 @@ function alertNotesError(error) {
   window.alert(message);
 }
 
+function noteDeleteConfirmText(note) {
+  return `删除笔记「${note.filename}」？将同时删除其 assets 文件夹。`;
+}
+
 function notesRelativeTime(ms) {
   const diff = Date.now() - ms;
   if (diff < 60_000) return "刚刚";
@@ -2493,9 +2568,11 @@ function renderNotesFolderRow(label, folder, options = {}) {
   btn.type = "button";
   btn.className = "notes-folder-row";
   if (isSameNotesFolder(notesSelectedFolder, folder)) btn.classList.add("active");
+  const isPinned = folder.kind === "project" && isProjectPinned(folder.projectPath);
+  if (isPinned) btn.classList.add("is-pinned");
   const inner =
     folder.kind === "project" && folder.projectPath
-      ? projectFolderRowInnerHtml("notes", folder.projectPath, options)
+      ? `${isPinned ? projectPinIconHtml() : ""}${projectFolderRowInnerHtml("notes", folder.projectPath, options)}`
       : `
     <span class="notes-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
     ${options.count != null ? `<span class="notes-folder-row-count">${options.count}</span>` : ""}
@@ -2549,7 +2626,12 @@ function renderNotesFolders() {
       projectPath,
       notes: projectNotes.sort((a, b) => b.updatedAtMs - a.updatedAtMs)
     }))
-    .sort((a, b) => (b.notes[0]?.updatedAtMs ?? 0) - (a.notes[0]?.updatedAtMs ?? 0));
+    .sort((a, b) => {
+      const pinnedDiff = Number(isProjectPinned(b.projectPath)) - Number(isProjectPinned(a.projectPath));
+      return pinnedDiff ||
+        (b.notes[0]?.updatedAtMs ?? 0) - (a.notes[0]?.updatedAtMs ?? 0) ||
+        a.projectPath.localeCompare(b.projectPath);
+    });
 
   if (projectGroups.length) {
     const section = document.createElement("div");
@@ -3041,23 +3123,34 @@ async function clearNotesSelection() {
   renderNotesList();
 }
 
-async function deleteActiveNote() {
-  if (!notesActiveId) return;
-  const note = notesCache.find((n) => n.noteId === notesActiveId);
+async function deleteNoteById(noteId) {
+  if (!noteId) return;
+  const note = notesCache.find((n) => n.noteId === noteId);
   if (!note) return;
-  const ok = confirm(`删除笔记「${note.filename}」？将同时删除其 assets 文件夹。`);
+  const ok = confirm(noteDeleteConfirmText(note));
   if (!ok) return;
   try {
-    await flushNotesSave({ render: false });
+    if (notesActiveId && notesActiveId !== note.noteId) {
+      await flushNotesSave({ render: false });
+    } else if (notesSaveTimer) {
+      clearTimeout(notesSaveTimer);
+      notesSaveTimer = null;
+    }
     await agentResume.notesDelete({ noteId: note.noteId });
-    notesActiveId = "";
-    notesDirty = false;
-    showNotesEditor(false);
-    setNotesEditorContent("");
+    if (notesActiveId === note.noteId) {
+      notesActiveId = "";
+      notesDirty = false;
+      showNotesEditor(false);
+      setNotesEditorContent("");
+    }
     await loadNotes();
   } catch (error) {
     alertNotesError(error);
   }
+}
+
+async function deleteActiveNote() {
+  await deleteNoteById(notesActiveId);
 }
 
 async function openNoteInEditor(noteId) {
@@ -3108,7 +3201,9 @@ async function flushNotesSave({ render = true } = {}) {
     }
     if (render) renderNotesPanel();
   } catch (error) {
+    notesDirty = true;
     alertNotesError(error);
+    throw error;
   }
 }
 
@@ -3117,6 +3212,7 @@ async function loadNotes() {
     if (!notesPanelHome) {
       notesPanelHome = await agentResume.getPanelHome();
     }
+    refreshPinnedProjects();
     await refreshProjectAliases();
     notesCache = await agentResume.notesList();
     notesLoaded = true;
@@ -3128,6 +3224,7 @@ async function loadNotes() {
 
 async function ensureNotesVisible() {
   loadNotesFolderState();
+  refreshPinnedProjects();
   if (!sessionsCache.length) {
     try {
       sessionsCache = await agentResume.listSessions(2000);
@@ -3152,12 +3249,15 @@ function showNotesContextMenu(event, node) {
   const isGroup = node.kind === "library" || node.kind === "project" || node.kind === "session";
   const canMove = isNote && node.note?.filename !== "todolist.md";
   const isProject = node.kind === "project";
+  menu.querySelector('[data-notes-action="pinProject"]').hidden = !isProject || isProjectPinned(node.projectPath);
+  menu.querySelector('[data-notes-action="unpinProject"]').hidden = !isProject || !isProjectPinned(node.projectPath);
   menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="renameProject"]').hidden = !isProject;
   menu.querySelector('[data-notes-action="move"]').hidden = !canMove;
   menu.querySelector('[data-notes-action="copyPath"]').hidden = !isNote;
   menu.querySelector('[data-notes-action="reveal"]').hidden = !isNote;
+  menu.querySelector('[data-notes-action="delete"]').hidden = !isNote;
   menu.hidden = false;
   const x = Math.min(event.clientX, window.innerWidth - 200);
   const y = Math.min(event.clientY, window.innerHeight - 220);
@@ -3214,6 +3314,14 @@ async function handleNotesContextAction(action) {
       await promptRenameProject(node.projectPath);
       return;
     }
+    if (action === "pinProject" && node?.kind === "project" && node.projectPath) {
+      setProjectPinned(node.projectPath, true);
+      return;
+    }
+    if (action === "unpinProject" && node?.kind === "project" && node.projectPath) {
+      setProjectPinned(node.projectPath, false);
+      return;
+    }
     if (action === "import") {
       const owner = ownerFromContextNode(node);
       if (owner) await importNotesWithOwner(owner);
@@ -3229,6 +3337,10 @@ async function handleNotesContextAction(action) {
     }
     if (action === "reveal" && node?.kind === "note") {
       await agentResume.notesReveal({ noteId: node.note.noteId });
+      return;
+    }
+    if (action === "delete" && node?.kind === "note") {
+      await deleteNoteById(node.note.noteId);
     }
   } catch (error) {
     alertNotesError(error);
@@ -7230,6 +7342,7 @@ async function loadUsagePage() {
 async function boot() {
   initMarkdownHighlight();
   wire();
+  refreshPinnedProjects();
   await refreshProjectAliases();
   selectedDayKey = todayInputValue();
   updatePeriodLabel();

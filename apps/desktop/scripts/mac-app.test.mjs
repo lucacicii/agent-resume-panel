@@ -6,15 +6,43 @@ import { isBuildStampCurrent, macTargetArch, stageMacDmgContents } from "./mac-a
 
 assert.equal(macTargetArch, "universal");
 assert.equal(
-  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "universal", sourceMtime: 200 }), 200),
+  isBuildStampCurrent(
+    JSON.stringify({
+      version: 1,
+      arch: "universal",
+      bundleId: "com.thunder-luc.agent-resume",
+      sourceMtime: 200
+    }),
+    200
+  ),
   true
 );
 assert.equal(
-  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "universal", sourceMtime: 199 }), 200),
+  isBuildStampCurrent(
+    JSON.stringify({
+      version: 1,
+      arch: "universal",
+      bundleId: "com.thunder-luc.agent-resume",
+      sourceMtime: 199
+    }),
+    200
+  ),
   false
 );
 assert.equal(
-  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "arm64", sourceMtime: 200 }), 200),
+  isBuildStampCurrent(
+    JSON.stringify({
+      version: 1,
+      arch: "arm64",
+      bundleId: "com.thunder-luc.agent-resume",
+      sourceMtime: 200
+    }),
+    200
+  ),
+  false
+);
+assert.equal(
+  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "universal", sourceMtime: 200 }), 200),
   false
 );
 assert.equal(isBuildStampCurrent("200", 200), false);

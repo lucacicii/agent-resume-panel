@@ -8,6 +8,7 @@ const releaseRoot = path.join(root, "release");
 const stampFile = path.join(root, ".dev-app-stamp");
 const iconPath = path.join(root, "dist", "resources", "icon.icns");
 const targetArch = "universal";
+const bundleId = "com.thunder-luc.agent-resume";
 const appBundlePath = path.join(
   releaseRoot,
   `Agent Resume-darwin-${targetArch}`,
@@ -57,7 +58,12 @@ function latestRepackMtime() {
 export function isBuildStampCurrent(rawStamp, sourceMtime, arch = targetArch) {
   try {
     const stamp = JSON.parse(rawStamp);
-    return stamp?.version === 1 && stamp.arch === arch && stamp.sourceMtime >= sourceMtime;
+    return (
+      stamp?.version === 1 &&
+      stamp.arch === arch &&
+      stamp.bundleId === bundleId &&
+      stamp.sourceMtime >= sourceMtime
+    );
   } catch {
     return false;
   }
@@ -67,6 +73,15 @@ export function needsRepack() {
   if (!findAppBundle()) return true;
   if (!fs.existsSync(stampFile)) return true;
   return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime());
+}
+
+function signMacApp(appBundle) {
+  const identity = process.env.AGENT_RESUME_CODESIGN_IDENTITY || "-";
+  console.log(`Signing macOS app with identity: ${identity}`);
+  execFileSync("codesign", ["--force", "--deep", "--sign", identity, appBundle], {
+    cwd: root,
+    stdio: "inherit"
+  });
 }
 
 function materializeNodeModules() {
@@ -101,6 +116,8 @@ export function packMacApp() {
       "Agent Resume",
       `--platform=darwin`,
       `--arch=${targetArch}`,
+      `--app-bundle-id=${bundleId}`,
+      "--app-category-type=public.app-category.developer-tools",
       `--icon=${iconPath}`,
       `--out=${releaseRoot}`,
       "--overwrite",
@@ -114,9 +131,10 @@ export function packMacApp() {
   if (!appBundle) {
     throw new Error("Packaging finished but Agent Resume.app was not found under release/");
   }
+  signMacApp(appBundle);
   fs.writeFileSync(
     stampFile,
-    JSON.stringify({ version: 1, arch: targetArch, sourceMtime: latestRepackMtime() })
+    JSON.stringify({ version: 1, arch: targetArch, bundleId, sourceMtime: latestRepackMtime() })
   );
   return appBundle;
 }

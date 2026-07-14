@@ -3538,6 +3538,18 @@ code {
   opacity: 0.85;
 }
 
+.project-pin-icon {
+  flex: 0 0 auto;
+  color: #f59e0b;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.notes-folder-row.is-pinned:not(.active),
+.wb-folder-row.is-pinned:not(.active) {
+  color: color-mix(in srgb, var(--text) 92%, #f59e0b);
+}
+
 .notes-folder-row-text,
 .wb-folder-row-text {
   flex: 1;
