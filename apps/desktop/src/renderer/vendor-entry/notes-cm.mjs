@@ -137,6 +137,20 @@ globalThis.NotesCodeMirror = {
   focus(view) {
     view?.focus?.();
   },
+  getSelectedText(view) {
+    if (!view) return "";
+    const range = view.state.selection.main;
+    if (range.empty) return "";
+    return view.state.doc.sliceString(range.from, range.to);
+  },
+  selectRange(view, from, to, options = {}) {
+    if (!view) return;
+    view.dispatch({
+      selection: { anchor: from, head: to },
+      effects: EditorView.scrollIntoView(from, { y: "center" })
+    });
+    if (options.focus !== false) view.focus();
+  },
   insertAtCursor(view, text) {
     if (!view || !text) return;
     const pos = view.state.selection.main.head;

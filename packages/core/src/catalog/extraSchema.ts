@@ -122,4 +122,25 @@ CREATE TABLE IF NOT EXISTS ask_messages (
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ask_messages_order ON ask_messages(sort_order ASC);
+
+CREATE TABLE IF NOT EXISTS ask_note_audit (
+  id TEXT PRIMARY KEY,
+  trace_id TEXT NOT NULL,
+  ask_message_id TEXT,
+  action TEXT NOT NULL,
+  status TEXT NOT NULL,
+  note_id TEXT,
+  rel_md_path TEXT,
+  note_title TEXT,
+  actor TEXT NOT NULL,
+  request_json TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  error TEXT,
+  created_at_ms INTEGER NOT NULL,
+  completed_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_ask_note_audit_created ON ask_note_audit(created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_ask_note_audit_trace ON ask_note_audit(trace_id);
+CREATE INDEX IF NOT EXISTS idx_ask_note_audit_note ON ask_note_audit(note_id, created_at_ms DESC);
 `;

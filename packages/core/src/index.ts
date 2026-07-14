@@ -167,6 +167,12 @@ export {
 } from "./agent/askStore";
 export type { AskChatListResult } from "./agent/askStore";
 export type { AskChatMessage } from "./agent/askStore";
+export {
+  insertAskNoteAudit,
+  listAskNoteAudit,
+  updateAskNoteAuditStatus
+} from "./agent/noteAudit";
+export type { AskNoteAuditEvent, AskNoteAuditStatus } from "./agent/noteAudit";
 
 export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
 export { GTD_STATUSES, isGtdStatus } from "./gtd/types";

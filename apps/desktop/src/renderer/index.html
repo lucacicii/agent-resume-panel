@@ -119,6 +119,7 @@
       <section id="tab-ask" class="panel ask-panel">
         <div class="toolbar ask-toolbar">
           <h2 class="quiet-title">Ask</h2>
+          <button type="button" class="ghost-btn" id="btnAskAudit">追踪</button>
           <button type="button" class="ghost-btn" id="btnClearChat">清空</button>
         </div>
         <div class="ask-chat-shell">
@@ -145,6 +146,15 @@
               <div class="ask-index-progress-bar" id="askIndexProgressBar"></div>
             </div>
           </div>
+          <section class="ask-audit-panel" id="askAuditPanel" hidden>
+            <div class="ask-audit-head">
+              <strong>Ask 笔记追踪</strong>
+              <button type="button" class="ghost-btn" id="btnAskAuditRefresh">刷新</button>
+            </div>
+            <div class="ask-audit-list" id="askAuditList">
+              <p class="muted">暂无追踪记录</p>
+            </div>
+          </section>
           <p class="status ask-status" id="agentStatus"></p>
         </div>
       </section>
@@ -241,6 +251,26 @@
                   <button type="button" role="tab" data-mode="edit">编辑</button>
                   <button type="button" role="tab" data-mode="view">查看</button>
                 </div>
+              </div>
+              <div class="notes-find-bar" id="notesFindBar" hidden>
+                <input type="search" id="notesFindInput" class="notes-find-input" placeholder="查找当前笔记" autocomplete="off" spellcheck="false" />
+                <span class="notes-find-count" id="notesFindCount">0/0</span>
+                <button type="button" class="notes-find-btn" id="btnNotesFindPrev" title="上一个" aria-label="上一个">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m18 15-6-6-6 6" />
+                  </svg>
+                </button>
+                <button type="button" class="notes-find-btn" id="btnNotesFindNext" title="下一个" aria-label="下一个">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <button type="button" class="notes-find-btn" id="btnNotesFindClose" title="关闭查找" aria-label="关闭查找">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
               </div>
               <div class="notes-editor-layout mode-edit" id="notesEditorLayout">
                 <div id="notesEditorHost" class="notes-editor-host"></div>

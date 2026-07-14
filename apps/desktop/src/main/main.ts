@@ -6,6 +6,7 @@ import {
   askMetaAgent,
   clearAskMessages,
   listOlderAskMessages,
+  listAskNoteAudit,
   listRecentAskMessages,
   autoRenameSessionAction,
   suggestSessionRenameAction,
@@ -54,6 +55,7 @@ import {
   syncAgentSessions,
   summarizeSessionAction,
   type AgentProvider,
+  type AskNoteAuditStatus,
   type DigestProgressEvent,
   type PanelSettings,
   type WorkbenchProjectEditor,
@@ -633,6 +635,24 @@ function registerIpc(): void {
     await clearAskMessages(dbPath);
     return { ok: true };
   });
+
+  ipcMain.handle(
+    "agent:listAskNoteAudit",
+    async (
+      _event,
+      args?: {
+        limit?: number;
+        noteId?: string;
+        traceId?: string;
+        status?: AskNoteAuditStatus;
+      }
+    ) => {
+      const settings = await loadSettings();
+      const dbPath = catalogDbFromSettings(settings);
+      await ensureCatalogSchema(dbPath);
+      return listAskNoteAudit(dbPath, args);
+    }
+  );
 
   ipcMain.handle(
     "workflow:previewMemoryGtdSync",

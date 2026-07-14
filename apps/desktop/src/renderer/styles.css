@@ -2536,6 +2536,11 @@ code {
   margin-bottom: 8px;
 }
 
+.ask-toolbar .ghost-btn.active {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  color: var(--accent);
+}
+
 .ask-chat-shell {
   flex: 1;
   min-height: 0;
@@ -2911,6 +2916,111 @@ code {
 
 .ask-index-progress.is-error .ask-index-progress-bar {
   background: var(--danger);
+}
+
+.ask-audit-panel {
+  flex: 0 0 auto;
+  max-height: min(34vh, 260px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: var(--tg-compose-bg);
+}
+
+.ask-audit-panel[hidden] {
+  display: none !important;
+}
+
+.ask-audit-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ask-audit-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-audit-empty {
+  margin: 6px 2px 2px;
+  font-size: 12px;
+}
+
+.ask-audit-item {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+.ask-audit-item-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ask-audit-action {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.ask-audit-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ask-audit-item-meta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ask-audit-status {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+.ask-audit-item[data-status="applied"] .ask-audit-status {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
+}
+
+.ask-audit-item[data-status="failed"] .ask-audit-status {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.ask-audit-error {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
 }
 
 @keyframes ask-index-scan {
@@ -3859,6 +3969,78 @@ code {
 .notes-segmented button.active {
   background: var(--accent);
   color: #fff;
+}
+
+.notes-find-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+}
+
+.notes-find-bar[hidden] {
+  display: none !important;
+}
+
+.notes-find-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.notes-find-input:focus {
+  border-color: var(--accent);
+}
+
+.notes-find-count {
+  min-width: 42px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.notes-find-count.is-empty {
+  color: var(--danger);
+}
+
+.notes-find-btn {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.notes-find-btn:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.notes-find-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .notes-editor-layout {

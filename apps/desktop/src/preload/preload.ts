@@ -2,6 +2,7 @@ import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type {
   AgentSession,
   AskChatMessage,
+  AskNoteAuditEvent,
   AskMetaAgentResult,
   AskStreamEvent,
   DigestProgressEvent,
@@ -168,6 +169,12 @@ export interface DesktopApi {
     hasMore: boolean;
   }>;
   clearAskChat(): Promise<{ ok: boolean }>;
+  listAskNoteAudit(args?: {
+    limit?: number;
+    noteId?: string;
+    traceId?: string;
+    status?: string;
+  }): Promise<AskNoteAuditEvent[]>;
   onAskStream(callback: (event: AskStreamEvent) => void): () => void;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
   previewMemoryGtdSync(args?: {
@@ -439,6 +446,7 @@ const api: DesktopApi = {
   listAskChat: (args) => ipcRenderer.invoke("agent:listAskChat", args),
   listOlderAskChat: (args) => ipcRenderer.invoke("agent:listOlderAskChat", args),
   clearAskChat: () => ipcRenderer.invoke("agent:clearAskChat"),
+  listAskNoteAudit: (args) => ipcRenderer.invoke("agent:listAskNoteAudit", args),
   onAskStream: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {
       callback(streamEvent);

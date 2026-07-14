@@ -1891,6 +1891,10 @@ let notesCreateBusy = false;
 let notesViewMode = "edit";
 /** @type {import("@codemirror/view").EditorView | null} */
 let notesCmView = null;
+let notesFindOpen = false;
+let notesFindQuery = "";
+let notesFindMatches = [];
+let notesFindIndex = -1;
 
 function isNotesActive() {
   return !!document.querySelector('.tab[data-tab="notes"]')?.classList.contains("active");
@@ -2762,10 +2766,120 @@ function focusNotesEditor() {
   }
 }
 
+function getNotesEditorSelectionText() {
+  if (notesCmView && typeof NotesCodeMirror?.getSelectedText === "function") {
+    return NotesCodeMirror.getSelectedText(notesCmView);
+  }
+  return "";
+}
+
+function selectNotesEditorRange(from, to, options = {}) {
+  if (notesCmView && typeof NotesCodeMirror?.selectRange === "function") {
+    NotesCodeMirror.selectRange(notesCmView, from, to, options);
+  }
+}
+
+function isFindShortcut(event) {
+  return (event.metaKey || event.ctrlKey) && !event.altKey && event.key?.toLowerCase() === "f";
+}
+
+function canOpenNotesFind() {
+  return isNotesActive() && Boolean(notesActiveId) && notesViewShowsEditor();
+}
+
+function findNotesMatches(query) {
+  const needle = query.trim();
+  if (!needle) return [];
+  const content = getNotesEditorContent();
+  const haystack = content.toLowerCase();
+  const lowerNeedle = needle.toLowerCase();
+  const matches = [];
+  let from = haystack.indexOf(lowerNeedle);
+  while (from !== -1) {
+    matches.push({ from, to: from + needle.length });
+    from = haystack.indexOf(lowerNeedle, from + Math.max(needle.length, 1));
+  }
+  return matches;
+}
+
+function updateNotesFindCount() {
+  const count = $("notesFindCount");
+  if (!count) return;
+  if (!notesFindQuery.trim()) {
+    count.textContent = "0/0";
+    count.classList.remove("is-empty");
+    return;
+  }
+  if (!notesFindMatches.length) {
+    count.textContent = "0/0";
+    count.classList.add("is-empty");
+    return;
+  }
+  count.textContent = `${notesFindIndex + 1}/${notesFindMatches.length}`;
+  count.classList.remove("is-empty");
+}
+
+function selectNotesFindMatch(index, options = {}) {
+  if (!notesFindMatches.length) {
+    notesFindIndex = -1;
+    updateNotesFindCount();
+    return;
+  }
+  notesFindIndex = ((index % notesFindMatches.length) + notesFindMatches.length) % notesFindMatches.length;
+  const match = notesFindMatches[notesFindIndex];
+  selectNotesEditorRange(match.from, match.to, options);
+  updateNotesFindCount();
+}
+
+function updateNotesFindResults({ select = false } = {}) {
+  notesFindQuery = $("notesFindInput")?.value ?? "";
+  notesFindMatches = findNotesMatches(notesFindQuery);
+  notesFindIndex = notesFindMatches.length ? Math.min(Math.max(notesFindIndex, 0), notesFindMatches.length - 1) : -1;
+  if (select && notesFindMatches.length) {
+    selectNotesFindMatch(notesFindIndex >= 0 ? notesFindIndex : 0, { focus: false });
+  } else {
+    updateNotesFindCount();
+  }
+}
+
+function openNotesFind() {
+  if (!canOpenNotesFind()) return;
+  notesFindOpen = true;
+  const bar = $("notesFindBar");
+  const input = $("notesFindInput");
+  if (bar) bar.hidden = false;
+  if (!input) return;
+  const selected = getNotesEditorSelectionText().trim();
+  if (selected && !selected.includes("\n")) {
+    input.value = selected;
+  }
+  updateNotesFindResults({ select: Boolean(input.value.trim()) });
+  input.focus();
+  input.select();
+}
+
+function closeNotesFind({ focusEditor = true } = {}) {
+  notesFindOpen = false;
+  notesFindMatches = [];
+  notesFindIndex = -1;
+  const bar = $("notesFindBar");
+  if (bar) bar.hidden = true;
+  updateNotesFindCount();
+  if (focusEditor) focusNotesEditor();
+}
+
+function navigateNotesFind(delta, options = {}) {
+  if (!notesFindOpen) openNotesFind();
+  updateNotesFindResults();
+  if (!notesFindMatches.length) return;
+  selectNotesFindMatch(notesFindIndex + delta, options);
+}
+
 function onNotesEditorChange() {
   if (notesSuppressEditorChange || !notesViewShowsEditor()) return;
   notesDirty = true;
   scheduleNotesSave();
+  if (notesFindOpen) updateNotesFindResults();
 }
 
 function mountNotesEditor() {
@@ -2834,6 +2948,7 @@ function renderNotesViewMode() {
 function setNotesViewMode(mode) {
   notesViewMode = mode === "view" ? "view" : "edit";
   renderNotesViewMode();
+  if (!notesViewShowsEditor()) closeNotesFind({ focusEditor: false });
 }
 
 async function switchNotesViewMode(mode) {
@@ -2855,6 +2970,7 @@ function showNotesEditor(show) {
   if (empty) empty.hidden = show;
   if (!show) {
     cancelNotesTitleEdit();
+    closeNotesFind({ focusEditor: false });
     notesActiveId = "";
     notesDirty = false;
   }
@@ -5612,6 +5728,10 @@ let activeAskStreamOff = null;
 let askIndexProgressHideTimer = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let askBackgroundStatusClearTimer = null;
+/** @type {boolean} */
+let askAuditLoaded = false;
+/** @type {boolean} */
+let askAuditLoading = false;
 
 function hideAskIndexProgress(delayMs = 0) {
   if (askIndexProgressHideTimer) {
@@ -5662,6 +5782,94 @@ function applyAskIndexProgress(event) {
     hideAskIndexProgress(1600);
   } else if (event.phase === "error") {
     hideAskIndexProgress(5000);
+  }
+}
+
+function askAuditStatusLabel(status) {
+  const labels = {
+    proposed: "待确认",
+    confirmed: "已确认",
+    applied: "已执行",
+    rejected: "已拒绝",
+    failed: "失败"
+  };
+  return labels[status] || status || "未知";
+}
+
+function askAuditActionLabel(action) {
+  const labels = {
+    "note.create": "新建笔记",
+    "note.append": "追加内容",
+    "note.write": "修改笔记",
+    "note.rename": "重命名",
+    "note.move": "移动笔记",
+    "note.delete": "删除笔记"
+  };
+  return labels[action] || action || "笔记操作";
+}
+
+function renderAskAuditList(events) {
+  const list = $("askAuditList");
+  if (!list) return;
+  if (!events?.length) {
+    list.innerHTML = `<p class="muted ask-audit-empty">暂无追踪记录</p>`;
+    return;
+  }
+  list.innerHTML = events
+    .map((event) => {
+      const title = event.noteTitle || event.relMdPath || event.noteId || "未指定笔记";
+      const meta = [formatTime(event.createdAtMs), event.actor || "ask", event.traceId ? `trace ${event.traceId.slice(0, 8)}` : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const error = event.error ? `<div class="ask-audit-error">${escapeHtml(event.error)}</div>` : "";
+      return `<article class="ask-audit-item" data-status="${escapeHtml(event.status || "")}">
+        <div class="ask-audit-item-main">
+          <span class="ask-audit-action">${escapeHtml(askAuditActionLabel(event.action))}</span>
+          <span class="ask-audit-note">${escapeHtml(title)}</span>
+        </div>
+        <div class="ask-audit-item-meta">
+          <span class="ask-audit-status">${escapeHtml(askAuditStatusLabel(event.status))}</span>
+          <span>${escapeHtml(meta)}</span>
+        </div>
+        ${error}
+      </article>`;
+    })
+    .join("");
+}
+
+async function loadAskAudit() {
+  if (askAuditLoading || typeof agentResume.listAskNoteAudit !== "function") {
+    return;
+  }
+  askAuditLoading = true;
+  const list = $("askAuditList");
+  if (list) {
+    list.innerHTML = `<p class="muted ask-audit-empty">加载追踪记录…</p>`;
+  }
+  try {
+    const events = await agentResume.listAskNoteAudit({ limit: 80 });
+    renderAskAuditList(events || []);
+    askAuditLoaded = true;
+  } catch (error) {
+    if (list) {
+      list.innerHTML = `<p class="status error ask-audit-empty">${escapeHtml(
+        error instanceof Error ? error.message : String(error)
+      )}</p>`;
+    }
+  } finally {
+    askAuditLoading = false;
+  }
+}
+
+function toggleAskAuditPanel(forceOpen) {
+  const panel = $("askAuditPanel");
+  const button = $("btnAskAudit");
+  if (!panel) return;
+  const open = forceOpen ?? panel.hidden;
+  panel.hidden = !open;
+  button?.classList.toggle("active", open);
+  if (open && !askAuditLoaded) {
+    void loadAskAudit();
   }
 }
 
@@ -6445,6 +6653,9 @@ async function sendAgent() {
         "ok"
       );
     }
+    if (!$("askAuditPanel")?.hidden) {
+      void loadAskAudit();
+    }
   } catch (error) {
     chatTurns.splice(streamIdx, 1);
     renderChatFull();
@@ -6659,6 +6870,8 @@ function wire() {
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
   $("btnAgentSend").addEventListener("click", () => sendAgent());
+  $("btnAskAudit")?.addEventListener("click", () => toggleAskAuditPanel());
+  $("btnAskAuditRefresh")?.addEventListener("click", () => loadAskAudit());
   $("btnClearChat").addEventListener("click", () => clearChat());
   $("agentInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -6743,6 +6956,19 @@ function wire() {
     notesSearch = e.target.value ?? "";
     renderNotesPanel();
   });
+  $("notesFindInput")?.addEventListener("input", () => updateNotesFindResults({ select: true }));
+  $("notesFindInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      navigateNotesFind(e.shiftKey ? -1 : 1, { focus: false });
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeNotesFind();
+    }
+  });
+  $("btnNotesFindPrev")?.addEventListener("click", () => navigateNotesFind(-1));
+  $("btnNotesFindNext")?.addEventListener("click", () => navigateNotesFind(1));
+  $("btnNotesFindClose")?.addEventListener("click", () => closeNotesFind());
   $("btnNotesNew")?.addEventListener("click", (e) => {
     e.stopPropagation();
     void handleNotesNewClick();
@@ -6773,7 +6999,16 @@ function wire() {
     });
   });
   document.addEventListener("keydown", (e) => {
+    if (isFindShortcut(e) && canOpenNotesFind()) {
+      e.preventDefault();
+      openNotesFind();
+      return;
+    }
     if (e.key === "Escape") {
+      if (notesFindOpen) {
+        closeNotesFind();
+        return;
+      }
       hideNotesTargetPopover();
       hideWorkbenchTargetPopover();
       closeWorkbenchRenameDialog(null);
