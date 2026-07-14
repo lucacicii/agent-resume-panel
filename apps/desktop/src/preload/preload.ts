@@ -2,6 +2,7 @@ import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type {
   AgentSession,
   AskChatMessage,
+  AskThread,
   AskNoteAuditEvent,
   AskMetaAgentResult,
   AskStreamEvent,
@@ -156,19 +157,25 @@ export interface DesktopApi {
   askAgent(args: {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
+    threadId?: string;
   }): Promise<AskMetaAgentResult>;
-  listAskChat(args?: { limit?: number }): Promise<{
+  listAskChat(args?: { limit?: number; threadId?: string }): Promise<{
     messages: AskChatMessage[];
     hasMore: boolean;
   }>;
   listOlderAskChat(args: {
     beforeSortOrder: number;
     limit?: number;
+    threadId?: string;
   }): Promise<{
     messages: AskChatMessage[];
     hasMore: boolean;
   }>;
-  clearAskChat(): Promise<{ ok: boolean }>;
+  clearAskChat(args?: { threadId?: string }): Promise<{ ok: boolean }>;
+  listAskThreads(): Promise<AskThread[]>;
+  createAskThread(args: { title: string }): Promise<AskThread>;
+  renameAskThread(args: { id: string; title: string }): Promise<{ ok: boolean }>;
+  deleteAskThread(args: { id: string }): Promise<{ ok: boolean }>;
   listAskNoteAudit(args?: {
     limit?: number;
     noteId?: string;
@@ -445,7 +452,11 @@ const api: DesktopApi = {
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   listAskChat: (args) => ipcRenderer.invoke("agent:listAskChat", args),
   listOlderAskChat: (args) => ipcRenderer.invoke("agent:listOlderAskChat", args),
-  clearAskChat: () => ipcRenderer.invoke("agent:clearAskChat"),
+  clearAskChat: (args) => ipcRenderer.invoke("agent:clearAskChat", args),
+  listAskThreads: () => ipcRenderer.invoke("agent:listThreads"),
+  createAskThread: (args) => ipcRenderer.invoke("agent:createThread", args),
+  renameAskThread: (args) => ipcRenderer.invoke("agent:renameThread", args),
+  deleteAskThread: (args) => ipcRenderer.invoke("agent:deleteThread", args),
   listAskNoteAudit: (args) => ipcRenderer.invoke("agent:listAskNoteAudit", args),
   onAskStream: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {

@@ -33,7 +33,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
   const history =
     options.history && options.history.length > 0
       ? options.history.slice(-6)
-      : await listAskMessagesForHistory(dbPath, 6);
+      : await listAskMessagesForHistory(dbPath, 6, options.threadId);
 
   options.onStream?.({ phase: "retrieving" });
 
@@ -135,7 +135,8 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
       userContent: query,
       assistantContent: result.content,
       citations: retrieved.citations,
-      fallback: retrieved.fallback
+      fallback: retrieved.fallback,
+      threadId: options.threadId
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

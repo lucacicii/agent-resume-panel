@@ -50,6 +50,16 @@ CREATE TABLE IF NOT EXISTS sync_state (
 ALTER TABLE sync_state ADD COLUMN status TEXT;
 ALTER TABLE sync_state ADD COLUMN session_count INTEGER;
 ALTER TABLE sync_state ADD COLUMN warning TEXT;
+
+CREATE TABLE IF NOT EXISTS ask_threads (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ask_threads_updated ON ask_threads(updated_at_ms DESC);
+ALTER TABLE ask_messages ADD COLUMN thread_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_ask_messages_thread ON ask_messages(thread_id);
 `;
 
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {

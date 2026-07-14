@@ -47,6 +47,7 @@ export interface AskMetaAgentOptions {
   limit?: number;
   /** Optional streaming progress callback (desktop Ask tab). */
   onStream?: (event: AskStreamEvent) => void | Promise<void>;
+  threadId?: string;
 }
 
 export interface AskMetaAgentResult {

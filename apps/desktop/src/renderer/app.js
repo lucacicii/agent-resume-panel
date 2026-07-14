@@ -107,6 +107,13 @@ let askChatOldestSortOrder = null;
 let askChatLoadPromise = null;
 const ASK_CHAT_PAGE_SIZE = 40;
 
+/** @type {any[]} */
+let askThreads = [];
+/** @type {string | null} */
+let activeAskThreadId = null;
+/** @type {boolean} */
+let askSidebarCollapsed = false;
+
 function mapAskMessages(messages) {
   return (messages || []).map((m) => ({
     role: m.role,
@@ -6794,6 +6801,17 @@ async function sendAgent() {
     return;
   }
 
+  // Auto-rename thread if it is still named "新对话"
+  const activeThread = askThreads.find((t) => t.id === activeAskThreadId);
+  if (activeThread && activeThread.title === "新对话") {
+    const newTitle = query.slice(0, 30);
+    activeThread.title = newTitle;
+    void agentResume.renameAskThread({ id: activeAskThreadId, title: newTitle }).then(() => {
+      renderAskThreadsSidebar();
+      updateAskChatTitleHeader();
+    });
+  }
+
   chatTurns.push({ role: "user", content: query });
   input.value = "";
   appendChatTurn(chatTurns.length - 1);
@@ -6837,7 +6855,7 @@ async function sendAgent() {
   }
 
   try {
-    const result = await agentResume.askAgent({ query, history });
+    const result = await agentResume.askAgent({ query, history, threadId: activeAskThreadId });
     chatTurns[streamIdx] = {
       role: "assistant",
       content: result.answer,
@@ -6875,6 +6893,32 @@ async function sendAgent() {
 async function loadAskChat(options = {}) {
   const render = options.render !== false;
   const force = options.force === true;
+
+  if (askThreads.length === 0 || force) {
+    try {
+      askThreads = await agentResume.listAskThreads();
+      if (askThreads.length > 0) {
+        const savedId = localStorage.getItem("activeAskThreadId");
+        if (savedId && askThreads.some((t) => t.id === savedId)) {
+          activeAskThreadId = savedId;
+        } else {
+          activeAskThreadId = askThreads[0].id;
+          localStorage.setItem("activeAskThreadId", activeAskThreadId);
+        }
+      } else {
+        const thread = await agentResume.createAskThread({ title: "新对话" });
+        askThreads = [thread];
+        activeAskThreadId = thread.id;
+        localStorage.setItem("activeAskThreadId", thread.id);
+      }
+      renderAskThreadsSidebar();
+      updateAskChatTitleHeader();
+    } catch (error) {
+      setStatus($("agentStatus"), `加载对话列表失败：${error.message || error}`, "error");
+      return;
+    }
+  }
+
   if (askChatLoadedFromDb && !force) {
     if (render && !askChatRendered) {
       renderAskChat();
@@ -6894,7 +6938,7 @@ async function loadAskChat(options = {}) {
 
   askChatLoadPromise = (async () => {
     try {
-      const result = await agentResume.listAskChat({ limit: ASK_CHAT_PAGE_SIZE });
+      const result = await agentResume.listAskChat({ limit: ASK_CHAT_PAGE_SIZE, threadId: activeAskThreadId });
       chatTurns = mapAskMessages(result?.messages);
       askChatHasMoreOlder = Boolean(result?.hasMore);
       syncAskChatCursor();
@@ -6929,7 +6973,8 @@ async function loadOlderAskChat() {
   try {
     const result = await agentResume.listOlderAskChat({
       beforeSortOrder: askChatOldestSortOrder,
-      limit: ASK_CHAT_PAGE_SIZE
+      limit: ASK_CHAT_PAGE_SIZE,
+      threadId: activeAskThreadId
     });
     const older = mapAskMessages(result?.messages);
     if (!older.length) {
@@ -6962,7 +7007,7 @@ async function clearChat() {
   }
   try {
     if (typeof agentResume.clearAskChat === "function") {
-      await agentResume.clearAskChat();
+      await agentResume.clearAskChat({ threadId: activeAskThreadId });
     }
   } catch (error) {
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
@@ -6977,6 +7022,176 @@ async function clearChat() {
   resetChatRowHeights();
   renderChatFull();
   setStatus($("agentStatus"), "");
+}
+
+function loadAskSidebarCollapsedState() {
+  const collapsedVal = localStorage.getItem("askSidebarCollapsed");
+  const narrow = window.innerWidth < 760;
+  setAskSidebarCollapsed(collapsedVal != null ? collapsedVal === "1" : narrow, { persist: collapsedVal != null });
+}
+
+function setAskSidebarCollapsed(collapsed, { persist = true } = {}) {
+  askSidebarCollapsed = collapsed;
+  $("askSidebarPane")?.classList.toggle("is-collapsed", collapsed);
+  const btn = $("btnAskToggleSidebar");
+  if (btn) {
+    btn.setAttribute("aria-expanded", String(!collapsed));
+    btn.title = collapsed ? "显示侧栏" : "隐藏侧栏";
+  }
+  if (persist) {
+    localStorage.setItem("askSidebarCollapsed", collapsed ? "1" : "0");
+  }
+}
+
+function toggleAskSidebarCollapsed() {
+  setAskSidebarCollapsed(!askSidebarCollapsed);
+}
+
+async function handleNewAskChat() {
+  try {
+    const thread = await agentResume.createAskThread({ title: "新对话" });
+    askThreads.unshift(thread);
+    activeAskThreadId = thread.id;
+    localStorage.setItem("activeAskThreadId", thread.id);
+
+    chatTurns = [];
+    resetChatRowHeights();
+    chatVirtualLastRange = { start: -1, end: -1 };
+
+    renderAskThreadsSidebar();
+    updateAskChatTitleHeader();
+    renderChatFull();
+
+    $("agentInput")?.focus();
+  } catch (error) {
+    setStatus($("agentStatus"), `创建对话失败：${error.message || error}`, "error");
+  }
+}
+
+function openAskRenameDialog() {
+  const thread = askThreads.find((t) => t.id === activeAskThreadId);
+  if (!thread) return;
+  const dialog = $("askRenameDialog");
+  const input = $("askRenameInput");
+  if (dialog && input) {
+    input.value = thread.title;
+    dialog.hidden = false;
+    input.focus();
+    input.select();
+  }
+}
+
+function closeAskRenameDialog() {
+  const dialog = $("askRenameDialog");
+  if (dialog) dialog.hidden = true;
+}
+
+async function confirmAskRename() {
+  const input = $("askRenameInput");
+  const title = input?.value.trim();
+  if (!title) return;
+
+  try {
+    await agentResume.renameAskThread({ id: activeAskThreadId, title });
+    const thread = askThreads.find((t) => t.id === activeAskThreadId);
+    if (thread) {
+      thread.title = title;
+    }
+    closeAskRenameDialog();
+    renderAskThreadsSidebar();
+    updateAskChatTitleHeader();
+  } catch (error) {
+    setStatus($("agentStatus"), `重命名失败：${error.message || error}`, "error");
+  }
+}
+
+function updateAskChatTitleHeader() {
+  const thread = askThreads.find((t) => t.id === activeAskThreadId);
+  const titleHeader = $("askChatTitle");
+  if (titleHeader) {
+    titleHeader.textContent = thread ? thread.title : "Ask";
+  }
+}
+
+function renderAskThreadsSidebar() {
+  const list = $("askSidebarList");
+  if (!list) return;
+  list.innerHTML = "";
+
+  for (const t of askThreads) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `ask-thread-row${t.id === activeAskThreadId ? " active" : ""}`;
+    row.addEventListener("click", () => selectAskThread(t.id));
+
+    const label = document.createElement("span");
+    label.className = "ask-thread-row-label";
+    label.textContent = t.title;
+    label.title = t.title;
+    row.appendChild(label);
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "ask-thread-row-delete";
+    delBtn.title = "删除对话";
+    delBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="pointer-events: none;">
+        <path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      </svg>
+    `;
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void deleteAskThreadConfirm(t.id);
+    });
+    row.appendChild(delBtn);
+
+    list.appendChild(row);
+  }
+}
+
+async function selectAskThread(threadId) {
+  if (threadId === activeAskThreadId) return;
+  activeAskThreadId = threadId;
+  localStorage.setItem("activeAskThreadId", threadId);
+
+  renderAskThreadsSidebar();
+  updateAskChatTitleHeader();
+
+  askChatLoadedFromDb = false;
+  askChatRendered = false;
+  await loadAskChat({ force: true });
+}
+
+async function deleteAskThreadConfirm(threadId) {
+  const thread = askThreads.find((t) => t.id === threadId);
+  if (!thread) return;
+  if (!confirm(`确定要删除对话 "${thread.title}" 吗？`)) return;
+
+  try {
+    await agentResume.deleteAskThread({ id: threadId });
+    askThreads = askThreads.filter((t) => t.id !== threadId);
+
+    if (activeAskThreadId === threadId) {
+      if (askThreads.length > 0) {
+        activeAskThreadId = askThreads[0].id;
+        localStorage.setItem("activeAskThreadId", activeAskThreadId);
+      } else {
+        activeAskThreadId = null;
+        localStorage.removeItem("activeAskThreadId");
+        await handleNewAskChat();
+        return;
+      }
+    }
+
+    renderAskThreadsSidebar();
+    updateAskChatTitleHeader();
+
+    askChatLoadedFromDb = false;
+    askChatRendered = false;
+    await loadAskChat({ force: true });
+  } catch (error) {
+    setStatus($("agentStatus"), `删除失败：${error.message || error}`, "error");
+  }
 }
 
 function wire() {
@@ -7074,10 +7289,29 @@ function wire() {
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
+  loadAskSidebarCollapsedState();
+  $("btnAskNewChat")?.addEventListener("click", () => handleNewAskChat());
+  $("btnAskToggleSidebar")?.addEventListener("click", () => toggleAskSidebarCollapsed());
+  $("btnAskRenameChat")?.addEventListener("click", () => openAskRenameDialog());
+  $("btnAskRenameConfirm")?.addEventListener("click", () => confirmAskRename());
+  document.querySelectorAll("[data-ask-rename-cancel]").forEach((el) => {
+    el.addEventListener("click", () => closeAskRenameDialog());
+  });
+  $("askRenameInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      confirmAskRename();
+    }
+  });
+
   $("btnAgentSend").addEventListener("click", () => sendAgent());
   $("btnAskAudit")?.addEventListener("click", () => toggleAskAuditPanel());
   $("btnAskAuditRefresh")?.addEventListener("click", () => loadAskAudit());
-  $("btnClearChat").addEventListener("click", () => clearChat());
+  $("btnClearChat").addEventListener("click", () => {
+    if (activeAskThreadId) {
+      void deleteAskThreadConfirm(activeAskThreadId);
+    }
+  });
   $("agentInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

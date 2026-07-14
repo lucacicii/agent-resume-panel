@@ -163,10 +163,13 @@ export {
   listAskMessages,
   listAskMessagesForHistory,
   listOlderAskMessages,
-  listRecentAskMessages
+  listRecentAskMessages,
+  listAskThreads,
+  createAskThread,
+  renameAskThread,
+  deleteAskThread
 } from "./agent/askStore";
-export type { AskChatListResult } from "./agent/askStore";
-export type { AskChatMessage } from "./agent/askStore";
+export type { AskChatListResult, AskChatMessage, AskThread } from "./agent/askStore";
 export {
   insertAskNoteAudit,
   listAskNoteAudit,

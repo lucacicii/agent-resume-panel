@@ -8,6 +8,10 @@ import {
   listOlderAskMessages,
   listAskNoteAudit,
   listRecentAskMessages,
+  listAskThreads,
+  createAskThread,
+  renameAskThread,
+  deleteAskThread,
   autoRenameSessionAction,
   suggestSessionRenameAction,
   backfillMemoryDigests,
@@ -594,11 +598,13 @@ function registerIpc(): void {
       args: {
         query: string;
         history?: Array<{ role: "user" | "assistant"; content: string }>;
+        threadId?: string;
       }
     ) => {
       return askMetaAgent({
         query: args.query,
         history: args.history,
+        threadId: args.threadId,
         onStream: async (streamEvent) => {
           event.sender.send("agent:askStream", streamEvent);
           if (streamEvent.phase === "chunk") {
@@ -609,30 +615,57 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("agent:listAskChat", async (_event, args?: { limit?: number }) => {
+  ipcMain.handle("agent:listAskChat", async (_event, args?: { limit?: number; threadId?: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
     await ensureCatalogSchema(dbPath);
-    return listRecentAskMessages(dbPath, { limit: args?.limit });
+    return listRecentAskMessages(dbPath, { limit: args?.limit, threadId: args?.threadId });
   });
 
   ipcMain.handle(
     "agent:listOlderAskChat",
-    async (_event, args: { beforeSortOrder: number; limit?: number }) => {
+    async (_event, args: { beforeSortOrder: number; limit?: number; threadId?: string }) => {
       const settings = await loadSettings();
       const dbPath = catalogDbFromSettings(settings);
       await ensureCatalogSchema(dbPath);
       return listOlderAskMessages(dbPath, {
         beforeSortOrder: args.beforeSortOrder,
-        limit: args?.limit
+        limit: args?.limit,
+        threadId: args?.threadId
       });
     }
   );
 
-  ipcMain.handle("agent:clearAskChat", async () => {
+  ipcMain.handle("agent:clearAskChat", async (_event, args?: { threadId?: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    await clearAskMessages(dbPath);
+    await clearAskMessages(dbPath, args?.threadId);
+    return { ok: true };
+  });
+
+  ipcMain.handle("agent:listThreads", async () => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    return listAskThreads(dbPath);
+  });
+
+  ipcMain.handle("agent:createThread", async (_event, args: { title: string }) => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    return createAskThread(dbPath, args);
+  });
+
+  ipcMain.handle("agent:renameThread", async (_event, args: { id: string; title: string }) => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await renameAskThread(dbPath, args.id, args.title);
+    return { ok: true };
+  });
+
+  ipcMain.handle("agent:deleteThread", async (_event, args: { id: string }) => {
+    const settings = await loadSettings();
+    const dbPath = catalogDbFromSettings(settings);
+    await deleteAskThread(dbPath, args.id);
     return { ok: true };
   });
 
