@@ -13,6 +13,9 @@ import { openCodexAppSession } from "./codexApp";
 
 export { buildNewSessionCommand, buildResumeCommand };
 
+const resumeTerminals = new Map<string, vscode.Terminal>();
+let closeTerminalListener: vscode.Disposable | undefined;
+
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
   if (session.provider === "alma") {
     void openAlmaThread(session);
@@ -40,6 +43,15 @@ export function openSessionResume(session: AgentSession, context?: vscode.Extens
 export function openResumeTerminal(session: AgentSession, context?: vscode.ExtensionContext): void {
   void showImageSupportHint(context);
 
+  const terminalKey = resumeTerminalKey(session);
+  const existingTerminal = resumeTerminals.get(terminalKey);
+  if (existingTerminal) {
+    existingTerminal.show();
+    return;
+  }
+
+  ensureCloseTerminalListener();
+
   const terminal = vscode.window.createTerminal({
     name: t("terminal.nameResume", providerLabel(session.provider), truncate(session.title, 32)),
     cwd: session.projectPath || undefined,
@@ -47,6 +59,7 @@ export function openResumeTerminal(session: AgentSession, context?: vscode.Exten
     isTransient: false
   });
 
+  resumeTerminals.set(terminalKey, terminal);
   terminal.show();
   terminal.sendText(buildResumeCommand(session), true);
 }
@@ -80,6 +93,25 @@ function terminalLocation(): vscode.TerminalOptions["location"] {
   return {
     viewColumn: vscode.ViewColumn.Beside
   };
+}
+
+function ensureCloseTerminalListener(): void {
+  if (closeTerminalListener) {
+    return;
+  }
+
+  closeTerminalListener = vscode.window.onDidCloseTerminal((closedTerminal) => {
+    for (const [key, terminal] of resumeTerminals) {
+      if (terminal === closedTerminal) {
+        resumeTerminals.delete(key);
+        break;
+      }
+    }
+  });
+}
+
+function resumeTerminalKey(session: AgentSession): string {
+  return `${session.provider}:${session.id}`;
 }
 
 async function showImageSupportHint(context?: vscode.ExtensionContext): Promise<void> {
