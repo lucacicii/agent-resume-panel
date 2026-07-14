@@ -22,7 +22,7 @@ if (process.platform === "darwin") {
   const appBundle = needsRepack() ? packMacApp() : findAppBundle();
   if (!appBundle) throw new Error("Failed to locate Agent Resume.app");
   console.log(`Launching ${appBundle}`);
-  spawnSync("open", [appBundle], { stdio: "inherit" });
+  spawnSync("open", ["-n", appBundle], { stdio: "inherit" });
 } else {
   runRawElectron();
 }
