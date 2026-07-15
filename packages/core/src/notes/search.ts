@@ -6,7 +6,7 @@ import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { runSqliteJson } from "../sqlite";
 import { recordLlmUsage } from "../usage/store";
-import { cosineSimilarity, parseEmbeddingJson } from "../memory/cosine";
+import { cosineSimilarity, parseEmbeddingJson } from "../report/cosine";
 import { listAllNotes } from "./catalogNotes";
 import { parseNoteDocument } from "./frontmatter";
 import { absFromRelMdPath } from "./paths";

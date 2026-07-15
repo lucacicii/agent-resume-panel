@@ -1,8 +1,8 @@
 import { ensureCatalogSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
-import { MemoryEntry, MemoryLevel } from "./schema";
+import { ReportEntry, ReportLevel } from "./schema";
 
-interface MemoryEntryRow {
+interface ReportEntryRow {
   id: string;
   level: string;
   period_start_ms: number;
@@ -13,7 +13,7 @@ interface MemoryEntryRow {
   created_at_ms: number;
 }
 
-function rowToEntry(row: MemoryEntryRow): MemoryEntry {
+function rowToEntry(row: ReportEntryRow): ReportEntry {
   return {
     id: row.id,
     level: row.level,
@@ -26,19 +26,19 @@ function rowToEntry(row: MemoryEntryRow): MemoryEntry {
   };
 }
 
-export async function listMemoryEntries(
+export async function listReportEntries(
   dbPath: string,
-  options?: { level?: MemoryLevel | string; limit?: number }
-): Promise<MemoryEntry[]> {
+  options?: { level?: ReportLevel | string; limit?: number }
+): Promise<ReportEntry[]> {
   const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
   const levelClause = options?.level
     ? `WHERE level = '${escapeSqlLiteral(options.level)}'`
     : "";
 
-  const rows = await runSqliteJson<MemoryEntryRow>(
+  const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
-     FROM memory_entries
+     FROM report_entries
      ${levelClause}
      ORDER BY period_start_ms DESC, created_at_ms DESC
      LIMIT ${limit};`
@@ -48,24 +48,24 @@ export async function listMemoryEntries(
 }
 
 /** Entries whose period_start falls in [startMs, endMs). */
-export async function listMemoryEntriesInRange(
+export async function listReportEntriesInRange(
   dbPath: string,
   options: {
-    level?: MemoryLevel | string;
+    level?: ReportLevel | string;
     startMs: number;
     endMs: number;
     limit?: number;
   }
-): Promise<MemoryEntry[]> {
+): Promise<ReportEntry[]> {
   const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
   const levelClause = options.level
     ? `AND level = '${escapeSqlLiteral(options.level)}'`
     : "";
 
-  const rows = await runSqliteJson<MemoryEntryRow>(
+  const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
-     FROM memory_entries
+     FROM report_entries
      WHERE period_start_ms >= ${Math.floor(options.startMs)}
        AND period_start_ms < ${Math.floor(options.endMs)}
        ${levelClause}
@@ -76,7 +76,7 @@ export async function listMemoryEntriesInRange(
   return rows.map(rowToEntry);
 }
 
-export async function getMemoryJobStatus(
+export async function getReportJobStatus(
   dbPath: string,
   jobKey: string
 ): Promise<{ status: string; lastError: string | null; updatedAtMs: number } | undefined> {
@@ -86,7 +86,7 @@ export async function getMemoryJobStatus(
     updated_at_ms: number;
   }>(
     dbPath,
-    `SELECT status, last_error, updated_at_ms FROM memory_jobs
+    `SELECT status, last_error, updated_at_ms FROM report_jobs
      WHERE job_key = '${escapeSqlLiteral(jobKey)}' LIMIT 1;`
   );
   const row = rows[0];
@@ -96,14 +96,14 @@ export async function getMemoryJobStatus(
   return { status: row.status, lastError: row.last_error, updatedAtMs: row.updated_at_ms };
 }
 
-export async function insertMemoryEntry(
+export async function insertReportEntry(
   dbPath: string,
-  entry: MemoryEntry,
+  entry: ReportEntry,
   links: Array<{ provider: string; agentSessionId: string; projectPath: string }>
 ): Promise<{ replaced: boolean }> {
   const existing = await runSqliteJson<{ id: string }>(
     dbPath,
-    `SELECT id FROM memory_entries WHERE id = '${escapeSqlLiteral(entry.id)}' LIMIT 1;`
+    `SELECT id FROM report_entries WHERE id = '${escapeSqlLiteral(entry.id)}' LIMIT 1;`
   );
   const replaced = existing.length > 0;
 
@@ -113,7 +113,7 @@ export async function insertMemoryEntry(
 
   await runSqlite(
     dbPath,
-    `INSERT OR REPLACE INTO memory_entries
+    `INSERT OR REPLACE INTO report_entries
       (id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms)
      VALUES (
       '${escapeSqlLiteral(entry.id)}',
@@ -127,12 +127,12 @@ export async function insertMemoryEntry(
      );`
   );
 
-  await runSqlite(dbPath, `DELETE FROM memory_links WHERE memory_id = '${escapeSqlLiteral(entry.id)}';`);
+  await runSqlite(dbPath, `DELETE FROM report_links WHERE report_id = '${escapeSqlLiteral(entry.id)}';`);
 
   for (const link of links) {
     await runSqlite(
       dbPath,
-      `INSERT INTO memory_links (memory_id, provider, agent_session_id, project_path)
+      `INSERT INTO report_links (report_id, provider, agent_session_id, project_path)
        VALUES (
         '${escapeSqlLiteral(entry.id)}',
         '${escapeSqlLiteral(link.provider)}',
@@ -145,7 +145,7 @@ export async function insertMemoryEntry(
   return { replaced };
 }
 
-export async function upsertMemoryJob(
+export async function upsertReportJob(
   dbPath: string,
   jobKey: string,
   status: string,
@@ -155,49 +155,49 @@ export async function upsertMemoryJob(
   const now = Date.now();
   await runSqlite(
     dbPath,
-    `INSERT OR REPLACE INTO memory_jobs (job_key, status, last_error, updated_at_ms)
+    `INSERT OR REPLACE INTO report_jobs (job_key, status, last_error, updated_at_ms)
      VALUES ('${escapeSqlLiteral(jobKey)}', '${escapeSqlLiteral(status)}', ${errSql}, ${now});`
   );
 }
 
-export interface MemoryLinkRow {
-  memoryId: string;
+export interface ReportLinkRow {
+  reportId: string;
   provider: string | null;
   agentSessionId: string | null;
   projectPath: string | null;
 }
 
-export async function listMemoryLinks(dbPath: string, memoryId: string): Promise<MemoryLinkRow[]> {
+export async function listReportLinks(dbPath: string, reportId: string): Promise<ReportLinkRow[]> {
   const rows = await runSqliteJson<{
-    memory_id: string;
+    report_id: string;
     provider: string | null;
     agent_session_id: string | null;
     project_path: string | null;
   }>(
     dbPath,
-    `SELECT memory_id, provider, agent_session_id, project_path
-     FROM memory_links
-     WHERE memory_id = '${escapeSqlLiteral(memoryId)}'
+    `SELECT report_id, provider, agent_session_id, project_path
+     FROM report_links
+     WHERE report_id = '${escapeSqlLiteral(reportId)}'
      LIMIT 50;`
   );
 
   return rows.map((row) => ({
-    memoryId: row.memory_id,
+    reportId: row.report_id,
     provider: row.provider,
     agentSessionId: row.agent_session_id,
     projectPath: row.project_path
   }));
 }
 
-export async function getMemoryEntryById(
+export async function getReportEntryById(
   dbPath: string,
   id: string
-): Promise<MemoryEntry | undefined> {
+): Promise<ReportEntry | undefined> {
   await ensureCatalogSchema(dbPath);
-  const rows = await runSqliteJson<MemoryEntryRow>(
+  const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
-     FROM memory_entries
+     FROM report_entries
      WHERE id = '${escapeSqlLiteral(id)}'
      LIMIT 1;`
   );

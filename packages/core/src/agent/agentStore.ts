@@ -3,7 +3,7 @@ import { ensureCatalogSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteTransaction } from "../sqlite";
 import { AgentCitation } from "./types";
 
-export interface AskChatMessage {
+export interface AgentChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -35,7 +35,7 @@ function parseCitationsJson(raw: string | null | undefined): AgentCitation[] | u
   }
 }
 
-function rowToMessage(row: AskMessageRow): AskChatMessage | undefined {
+function rowToMessage(row: AskMessageRow): AgentChatMessage | undefined {
   if (row.role !== "user" && row.role !== "assistant") {
     return undefined;
   }
@@ -50,8 +50,8 @@ function rowToMessage(row: AskMessageRow): AskChatMessage | undefined {
   };
 }
 
-export interface AskChatListResult {
-  messages: AskChatMessage[];
+export interface AgentChatListResult {
+  messages: AgentChatMessage[];
   hasMore: boolean;
 }
 
@@ -62,17 +62,17 @@ function normalizeAskPageLimit(limit?: number): number {
   return Math.max(1, Math.min(limit ?? DEFAULT_ASK_CHAT_PAGE, MAX_ASK_CHAT_PAGE));
 }
 
-async function listAskMessagesDescending(
+async function listAgentMessagesDescending(
   dbPath: string,
   sqlWhere: string,
   limit: number
-): Promise<AskChatListResult> {
+): Promise<AgentChatListResult> {
   await ensureCatalogSchema(dbPath);
   const page = normalizeAskPageLimit(limit);
   const rows = await runSqliteJson<AskMessageRow>(
     dbPath,
     `SELECT id, role, content, citations_json, fallback, sort_order, created_at_ms
-     FROM ask_messages
+     FROM agent_messages
      ${sqlWhere}
      ORDER BY sort_order DESC, created_at_ms DESC
      LIMIT ${page + 1};`
@@ -82,19 +82,19 @@ async function listAskMessagesDescending(
   const messages = slice
     .reverse()
     .map(rowToMessage)
-    .filter((m): m is AskChatMessage => Boolean(m));
+    .filter((m): m is AgentChatMessage => Boolean(m));
   return { messages, hasMore };
 }
 
 async function nextSortOrderBase(dbPath: string): Promise<number> {
   const rows = await runSqliteJson<{ max_order: number }>(
     dbPath,
-    "SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM ask_messages;"
+    "SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM agent_messages;"
   );
   return rows[0]?.max_order ?? 0;
 }
 
-export interface AskThread {
+export interface AgentThread {
   id: string;
   title: string;
   createdAtMs: number;
@@ -105,7 +105,7 @@ export async function ensureDefaultThread(dbPath: string): Promise<string> {
   await ensureCatalogSchema(dbPath);
   const threads = await runSqliteJson<{ id: string }>(
     dbPath,
-    "SELECT id FROM ask_threads LIMIT 1;"
+    "SELECT id FROM agent_threads LIMIT 1;"
   );
   let activeThreadId = "default-thread";
   if (threads.length === 0) {
@@ -113,12 +113,12 @@ export async function ensureDefaultThread(dbPath: string): Promise<string> {
     // Try to get title from first user message
     const firstMsg = await runSqliteJson<{ content: string }>(
       dbPath,
-      "SELECT content FROM ask_messages WHERE role = 'user' ORDER BY sort_order ASC LIMIT 1;"
+      "SELECT content FROM agent_messages WHERE role = 'user' ORDER BY sort_order ASC LIMIT 1;"
     );
     const title = firstMsg[0]?.content?.slice(0, 30) || "默认对话";
     await runSqlite(
       dbPath,
-      `INSERT INTO ask_threads (id, title, created_at_ms, updated_at_ms)
+      `INSERT INTO agent_threads (id, title, created_at_ms, updated_at_ms)
        VALUES ('default-thread', '${escapeSqlLiteral(title)}', ${now}, ${now});`
     );
   } else {
@@ -127,16 +127,16 @@ export async function ensureDefaultThread(dbPath: string): Promise<string> {
   // Migrate any orphaned messages
   await runSqlite(
     dbPath,
-    `UPDATE ask_messages SET thread_id = '${escapeSqlLiteral(activeThreadId)}' WHERE thread_id IS NULL;`
+    `UPDATE agent_messages SET thread_id = '${escapeSqlLiteral(activeThreadId)}' WHERE thread_id IS NULL;`
   );
   return activeThreadId;
 }
 
-export async function listAskThreads(dbPath: string): Promise<AskThread[]> {
+export async function listAgentThreads(dbPath: string): Promise<AgentThread[]> {
   await ensureDefaultThread(dbPath);
   const rows = await runSqliteJson<{ id: string; title: string; created_at_ms: number; updated_at_ms: number }>(
     dbPath,
-    "SELECT id, title, created_at_ms, updated_at_ms FROM ask_threads ORDER BY updated_at_ms DESC;"
+    "SELECT id, title, created_at_ms, updated_at_ms FROM agent_threads ORDER BY updated_at_ms DESC;"
   );
   return rows.map((r) => ({
     id: r.id,
@@ -146,41 +146,41 @@ export async function listAskThreads(dbPath: string): Promise<AskThread[]> {
   }));
 }
 
-export async function createAskThread(dbPath: string, args: { id?: string; title: string }): Promise<AskThread> {
+export async function createAgentThread(dbPath: string, args: { id?: string; title: string }): Promise<AgentThread> {
   await ensureCatalogSchema(dbPath);
   const id = args.id || randomUUID();
   const title = args.title;
   const now = Date.now();
   await runSqlite(
     dbPath,
-    `INSERT INTO ask_threads (id, title, created_at_ms, updated_at_ms)
+    `INSERT INTO agent_threads (id, title, created_at_ms, updated_at_ms)
      VALUES ('${escapeSqlLiteral(id)}', '${escapeSqlLiteral(title)}', ${now}, ${now});`
   );
   return { id, title, createdAtMs: now, updatedAtMs: now };
 }
 
-export async function renameAskThread(dbPath: string, id: string, title: string): Promise<void> {
+export async function renameAgentThread(dbPath: string, id: string, title: string): Promise<void> {
   await ensureCatalogSchema(dbPath);
   const now = Date.now();
   await runSqlite(
     dbPath,
-    `UPDATE ask_threads SET title = '${escapeSqlLiteral(title)}', updated_at_ms = ${now} WHERE id = '${escapeSqlLiteral(id)}';`
+    `UPDATE agent_threads SET title = '${escapeSqlLiteral(title)}', updated_at_ms = ${now} WHERE id = '${escapeSqlLiteral(id)}';`
   );
 }
 
-export async function deleteAskThread(dbPath: string, id: string): Promise<void> {
+export async function deleteAgentThread(dbPath: string, id: string): Promise<void> {
   await ensureCatalogSchema(dbPath);
   await runSqliteTransaction(dbPath, [
-    `DELETE FROM ask_messages WHERE thread_id = '${escapeSqlLiteral(id)}';`,
-    `DELETE FROM ask_threads WHERE id = '${escapeSqlLiteral(id)}';`
+    `DELETE FROM agent_messages WHERE thread_id = '${escapeSqlLiteral(id)}';`,
+    `DELETE FROM agent_threads WHERE id = '${escapeSqlLiteral(id)}';`
   ]);
 }
 
 /** Latest messages for Ask UI (most recent first in query, returned chronological). */
-export async function listRecentAskMessages(
+export async function listRecentAgentMessages(
   dbPath: string,
   options?: { limit?: number; threadId?: string }
-): Promise<AskChatListResult> {
+): Promise<AgentChatListResult> {
   let where = "";
   if (options?.threadId) {
     where = `WHERE thread_id = '${escapeSqlLiteral(options.threadId)}'`;
@@ -188,46 +188,46 @@ export async function listRecentAskMessages(
     const defaultId = await ensureDefaultThread(dbPath);
     where = `WHERE thread_id = '${escapeSqlLiteral(defaultId)}'`;
   }
-  return listAskMessagesDescending(dbPath, where, normalizeAskPageLimit(options?.limit));
+  return listAgentMessagesDescending(dbPath, where, normalizeAskPageLimit(options?.limit));
 }
 
 /** Older messages before a sort_order cursor (for scroll-up pagination). */
-export async function listOlderAskMessages(
+export async function listOlderAgentMessages(
   dbPath: string,
   options: { beforeSortOrder: number; limit?: number; threadId?: string }
-): Promise<AskChatListResult> {
+): Promise<AgentChatListResult> {
   const before = Math.max(0, Math.floor(options.beforeSortOrder));
   let threadId = options.threadId;
   if (!threadId) {
     threadId = await ensureDefaultThread(dbPath);
   }
-  return listAskMessagesDescending(
+  return listAgentMessagesDescending(
     dbPath,
     `WHERE sort_order < ${before} AND thread_id = '${escapeSqlLiteral(threadId)}'`,
     normalizeAskPageLimit(options.limit)
   );
 }
 
-/** @deprecated Use listRecentAskMessages */
-export async function listAskMessages(
+/** @deprecated Use listRecentAgentMessages */
+export async function listAgentMessages(
   dbPath: string,
   options?: { limit?: number; threadId?: string }
-): Promise<AskChatMessage[]> {
-  const result = await listRecentAskMessages(dbPath, options);
+): Promise<AgentChatMessage[]> {
+  const result = await listRecentAgentMessages(dbPath, options);
   return result.messages;
 }
 
 /** Last N user/assistant turns for Meta-Agent prompt context. */
-export async function listAskMessagesForHistory(
+export async function listAgentMessagesForHistory(
   dbPath: string,
   maxTurns = 6,
   threadId?: string
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
-  const { messages } = await listRecentAskMessages(dbPath, { limit: maxTurns * 2, threadId });
+  const { messages } = await listRecentAgentMessages(dbPath, { limit: maxTurns * 2, threadId });
   return messages.map((m) => ({ role: m.role, content: m.content }));
 }
 
-export async function appendAskTurn(
+export async function appendAgentTurn(
   dbPath: string,
   turn: {
     userContent: string;
@@ -250,7 +250,7 @@ export async function appendAskTurn(
   const fallback = turn.fallback ? 1 : 0;
 
   await runSqliteTransaction(dbPath, [
-    `INSERT INTO ask_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
+    `INSERT INTO agent_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
      VALUES (
        '${escapeSqlLiteral(userId)}',
        'user',
@@ -261,7 +261,7 @@ export async function appendAskTurn(
        ${now},
        '${escapeSqlLiteral(threadId)}'
      )`,
-    `INSERT INTO ask_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
+    `INSERT INTO agent_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
      VALUES (
        '${escapeSqlLiteral(assistantId)}',
        'assistant',
@@ -272,15 +272,15 @@ export async function appendAskTurn(
        ${now + 1},
        '${escapeSqlLiteral(threadId)}'
      )`,
-    `UPDATE ask_threads SET updated_at_ms = ${now + 1} WHERE id = '${escapeSqlLiteral(threadId)}';`
+    `UPDATE agent_threads SET updated_at_ms = ${now + 1} WHERE id = '${escapeSqlLiteral(threadId)}';`
   ]);
 }
 
-export async function clearAskMessages(dbPath: string, threadId?: string): Promise<void> {
+export async function clearAgentMessages(dbPath: string, threadId?: string): Promise<void> {
   await ensureCatalogSchema(dbPath);
   if (threadId) {
-    await runSqlite(dbPath, `DELETE FROM ask_messages WHERE thread_id = '${escapeSqlLiteral(threadId)}';`);
+    await runSqlite(dbPath, `DELETE FROM agent_messages WHERE thread_id = '${escapeSqlLiteral(threadId)}';`);
   } else {
-    await runSqlite(dbPath, "DELETE FROM ask_messages;");
+    await runSqlite(dbPath, "DELETE FROM agent_messages;");
   }
 }

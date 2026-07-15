@@ -1,6 +1,6 @@
 import { setSessionSummaryInCatalog } from "../catalog/mutations";
 import { AgentSession } from "../catalog/types";
-import { DigestProgressCallback, sessionProgressRef } from "../memory/progress";
+import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";
 import { PanelSettings } from "../settings/types";

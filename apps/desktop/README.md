@@ -1,6 +1,6 @@
 # Agent Resume Desktop
 
-macOS-oriented shell: **Memory** (home calendar), **Ask** (chat over digests), Settings (gear).
+macOS-oriented shell: **Report** (home calendar), **Agent** (chat over digests), Settings (gear).
 
 ## 开发流程
 
@@ -57,12 +57,12 @@ npm run dev:desktop
 
 | Entry | Role |
 |-------|------|
-| **Memory** (default) | Calendar · generate digests (right panel) · GTD bar · day detail |
-| **Ask** | Natural-language Q&A over digests |
+| **Report** (default) | Calendar · generate digests (right panel) · GTD bar · day detail |
+| **Agent** | Natural-language Q&A over digests |
 | **Sessions** (header) | Reference list + read-only preview |
 | **⚙** | Settings · **通用**（含批量回填） / **用量与日志** |
 
-### Memory 主区
+### Report 主区
 
 - 上方：**从周报/月报分析 GTD + todolist**（打开可编辑预览 sheet）
 - 右侧上方：生成日 / 周 / 月报（点日历同步日报日期）

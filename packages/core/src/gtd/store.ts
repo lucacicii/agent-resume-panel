@@ -74,14 +74,14 @@ export async function setSessionGtdStatusWithAudit(
     status: GtdStatus;
     previousStatus: GtdStatus | null;
     reason: string;
-    sourceMemoryIds: string[];
+    sourceReportIds: string[];
     auditId: string;
   }
 ): Promise<void> {
   const nowMs = Date.now();
   const prev =
     input.previousStatus == null ? "NULL" : `'${escapeSqlLiteral(input.previousStatus)}'`;
-  const sources = escapeSqlLiteral(JSON.stringify(input.sourceMemoryIds || []));
+  const sources = escapeSqlLiteral(JSON.stringify(input.sourceReportIds || []));
 
   await runSqliteTransaction(dbPath, [
     `INSERT INTO session_gtd (provider, agent_session_id, status, updated_at_ms)
@@ -95,7 +95,7 @@ export async function setSessionGtdStatusWithAudit(
        status = excluded.status,
        updated_at_ms = excluded.updated_at_ms`,
     `INSERT INTO gtd_ai_audit (
-       id, provider, agent_session_id, previous_status, new_status, reason, source_memory_ids, created_at_ms
+       id, provider, agent_session_id, previous_status, new_status, reason, source_report_ids, created_at_ms
      ) VALUES (
        '${escapeSqlLiteral(input.auditId)}',
        '${escapeSqlLiteral(input.provider)}',

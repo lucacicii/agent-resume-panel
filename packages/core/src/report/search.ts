@@ -4,13 +4,13 @@ import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { cosineSimilarity, parseEmbeddingJson } from "./cosine";
-import { MemoryEntry, MemoryLevel } from "./schema";
-import { listMemoryEntries } from "./store";
+import { ReportEntry, ReportLevel } from "./schema";
+import { listReportEntries } from "./store";
 
-export interface SearchMemoryOptions {
+export interface SearchReportsOptions {
   panelHome?: string;
   query: string;
-  level?: MemoryLevel | string;
+  level?: ReportLevel | string;
   limit?: number;
   /** Minimum cosine similarity (default 0.15). */
   minScore?: number;
@@ -20,14 +20,14 @@ export interface SearchMemoryOptions {
   queryVector?: number[];
 }
 
-export interface MemorySearchHit {
-  entry: MemoryEntry;
+export interface ReportSearchHit {
+  entry: ReportEntry;
   score: number;
 }
 
-export async function searchMemoryByEmbedding(
-  options: SearchMemoryOptions
-): Promise<MemorySearchHit[]> {
+export async function searchReportsByEmbedding(
+  options: SearchReportsOptions
+): Promise<ReportSearchHit[]> {
   const query = options.query?.trim();
   if (!query) {
     throw new Error("Search query is empty.");
@@ -56,14 +56,14 @@ export async function searchMemoryByEmbedding(
   if (!queryVector) {
     return [];
   }
-  const candidates = await listMemoryEntries(dbPath, {
+  const candidates = await listReportEntries(dbPath, {
     level: options.level,
     limit: options.candidateLimit ?? 200
   });
 
   const minScore = options.minScore ?? 0.15;
   const limit = Math.max(1, Math.min(options.limit ?? 20, 100));
-  const hits: MemorySearchHit[] = [];
+  const hits: ReportSearchHit[] = [];
 
   for (const entry of candidates) {
     const vec = parseEmbeddingJson(entry.embeddingJson);

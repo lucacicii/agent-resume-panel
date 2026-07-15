@@ -1,4 +1,5 @@
 import type { AgentProvider } from "../catalog/types";
+import type { UiLanguagePreference } from "../i18n/locales";
 
 /** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
 export interface LlmSettings {
@@ -88,7 +89,7 @@ export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
   stalePolicy?: SessionSyncStalePolicy;
 }
 
-export interface MemorySettings {
+export interface ReportSettings {
   /** Scheduled jobs in Desktop; default false. */
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
@@ -108,12 +109,14 @@ export interface MemorySettings {
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
+  /** Desktop UI language; auto follows the OS locale. */
+  uiLanguage?: UiLanguagePreference;
   /** Tool LLM (summarize / rename / digests). */
   llm: LlmSettings;
-  /** Conversation model for Ask / Meta-Agent; falls back to llm. */
+  /** Conversation model for Agent / Meta-Agent; falls back to llm. */
   chatLlm?: ChatLlmSettings;
   embedding: EmbeddingSettings;
-  memory?: MemorySettings;
+  report?: ReportSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
@@ -134,7 +137,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   embedding: {
     model: "text-embedding-3-small"
   },
-  memory: {
+  report: {
     enabled: false,
     includeTranscripts: true,
     maxSessionsPerDigest: 40,

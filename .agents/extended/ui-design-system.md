@@ -307,7 +307,7 @@ Existing class names (`.ghost-btn`, `.tool-btn`, etc.) may be kept as aliases du
 
 ### 3.2 Separators
 
-Prefer `border-color: var(--color-separator)` or `1px solid var(--color-separator-opaque)` over thick boxes. Split views use a single vertical separator between panes (`.memory-layout`, `.ask-layout`, `.notes-layout`).
+Prefer `border-color: var(--color-separator)` or `1px solid var(--color-separator-opaque)` over thick boxes. Split views use a single vertical separator between panes (`.report-layout`, `.agent-layout`, `.notes-layout`).
 
 ### 3.3 Hit Targets
 
@@ -346,7 +346,7 @@ Each component lists: **anatomy**, **tokens**, **states**, and **existing classe
 
 ### 4.2 Toolbar
 
-**Classes:** `.toolbar`, `.memory-toolbar`, `.ask-toolbar`, `.row`, `.cal-nav-left`, `.cal-nav-right`
+**Classes:** `.toolbar`, `.report-toolbar`, `.ask-toolbar`, `.row`, `.cal-nav-left`, `.cal-nav-right`
 
 - Single horizontal row; `space-between` when two groups.
 - Height ~32–36px; margin-bottom `--space-3`.
@@ -455,7 +455,7 @@ Settings forms max-width: 640px (`.settings-form`).
 
 ### 4.9 List Row
 
-**Classes:** `.session-row`, `.cal-session-row`, `.ask-sidebar-list` items, `.notes-list` items, `.settings-nav-item`
+**Classes:** `.session-row`, `.cal-session-row`, `.agent-sidebar-list` items, `.notes-list` items, `.settings-nav-item`
 
 | State | Background | Text |
 | --- | --- | --- |
@@ -470,7 +470,7 @@ Settings forms max-width: 640px (`.settings-form`).
 
 ### 4.10 Split View & Resizer
 
-**Classes:** `.memory-layout`, `.ask-layout`, `.notes-layout`, `.workbench-layout`, `.sessions-split`, `.pane-resizer`
+**Classes:** `.report-layout`, `.agent-layout`, `.notes-layout`, `.workbench-layout`, `.sessions-split`, `.pane-resizer`
 
 | Pane | Width guidance |
 | --- | --- |
@@ -516,7 +516,7 @@ Warning banner (`.digest-stale-banner`): use `--color-warning` at 10% background
 
 ### 4.14 Progress & Status
 
-**Classes:** `.status`, `.gen-progress`, `.gen-progress-bar`, `.ask-index-progress`, `.ask-index-progress-bar`
+**Classes:** `.status`, `.gen-progress`, `.gen-progress-bar`, `.agent-index-progress`, `.agent-index-progress-bar`
 
 - Status line: caption, `--color-label-secondary`; errors `--color-destructive`; success `--color-success`.
 - Progress track: `--color-secondary-bg`, height 4–6px, radius full.
@@ -631,8 +631,8 @@ flowchart TB
 
 | Panel | DOM root | Layout pattern |
 | --- | --- | --- |
-| Memory | `#tab-memory` | Toolbar + `.memory-layout` 3-pane |
-| Ask | `#tab-ask` | `.ask-layout` sidebar + main |
+| Memory | `#tab-report` | Toolbar + `.report-layout` 3-pane |
+| Ask | `#tab-agent` | `.agent-layout` sidebar + main |
 | Workbench | `#tab-workbench` | `.workbench-layout` sidebar + terminal |
 | Notes | `#tab-notes` | `.notes-layout` 3-pane + resizers |
 | Settings | `#tab-settings` | `.settings-layout` nav + form (replaces main tabs when open) |
@@ -720,7 +720,7 @@ flowchart TD
 
 **Scope:**
 
-- Memory: `.memory-layout`, calendar, `.cal-session-*`, `.digest-card`, `.gen-progress`
+- Memory: `.report-layout`, calendar, `.cal-session-*`, `.digest-card`, `.gen-progress`
 - Sessions sheet: `.sessions-split`, `.session-row`, `.session-preview-*`
 - Settings: `.settings-*`, `.usage-card`
 - Workbench chrome: `.wb-*` except terminal internals

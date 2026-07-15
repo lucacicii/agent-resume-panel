@@ -10,14 +10,14 @@ import {
   formatNoteSourceBlock,
   formatSourceBlock
 } from "./prompts";
-import { appendAskTurn, listAskMessagesForHistory } from "./askStore";
+import { appendAgentTurn, listAgentMessagesForHistory } from "./agentStore";
 import { retrieveAgentContext } from "./retrieve";
 import { runToolLoop } from "./toolLoop";
 import type { TouchedNote } from "./toolLoop";
 import { NoteMcpClient } from "../mcp/client";
 import { createNoteMcpServer } from "../mcp/server";
 import { NotesStore } from "../notes/store";
-import type { AgentCitation, AskMetaAgentOptions, AskMetaAgentResult } from "./types";
+import type { AgentCitation, AgentChatOptions, AgentChatResult } from "./types";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -25,7 +25,7 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMetaAgentResult> {
+export async function runAgentChat(options: AgentChatOptions): Promise<AgentChatResult> {
   throwIfAborted(options.signal);
   const query = options.query?.trim();
   if (!query) {
@@ -46,7 +46,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
   const history =
     options.history && options.history.length > 0
       ? options.history.slice(-6)
-      : await listAskMessagesForHistory(dbPath, 6, options.threadId);
+      : await listAgentMessagesForHistory(dbPath, 6, options.threadId);
 
   options.onStream?.({ phase: "retrieving" });
 
@@ -138,11 +138,11 @@ interface AskContext {
 }
 
 async function runAskWithoutTools(
-  options: AskMetaAgentOptions,
+  options: AgentChatOptions,
   llm: NonNullable<ReturnType<typeof chatLlmConfigFromSettings>>,
   language: string,
   ctx: AskContext
-): Promise<AskMetaAgentResult> {
+): Promise<AgentChatResult> {
   const messages: ChatMessage[] = [
     { role: "system", content: buildMetaAgentSystemPrompt(language) },
     {
@@ -188,13 +188,13 @@ async function runAskWithoutTools(
 }
 
 async function runAskWithTools(
-  options: AskMetaAgentOptions,
+  options: AgentChatOptions,
   llm: NonNullable<ReturnType<typeof chatLlmConfigFromSettings>>,
   language: string,
   dbPath: string,
   panelHome: string,
   ctx: AskContext
-): Promise<AskMetaAgentResult> {
+): Promise<AgentChatResult> {
   const messages: ChatMessage[] = [
     { role: "system", content: buildMetaAgentSystemPromptWithTools(language) },
     {
@@ -275,14 +275,14 @@ function touchedNotesToCitations(
 }
 
 async function buildAskResult(
-  options: AskMetaAgentOptions,
+  options: AgentChatOptions,
   dbPath: string,
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>,
   answerContent: string,
   citations: AgentCitation[],
   toolCallsExecuted?: number
-): Promise<AskMetaAgentResult> {
-  const answer: AskMetaAgentResult = {
+): Promise<AgentChatResult> {
+  const answer: AgentChatResult = {
     answer: answerContent,
     citations,
     fallback: retrieved.fallback,
@@ -291,7 +291,7 @@ async function buildAskResult(
   };
 
   try {
-    await appendAskTurn(dbPath, {
+    await appendAgentTurn(dbPath, {
       userContent: options.query,
       assistantContent: answerContent,
       citations,

@@ -19,13 +19,13 @@ import {
   type NoteToolContext
 } from "./tools";
 import {
-  handleMemoryList,
-  handleMemoryRead,
-  handleMemorySearch,
-  memoryListSchema,
-  memoryReadSchema,
-  memorySearchSchema
-} from "./memoryTools";
+  handleReportList,
+  handleReportRead,
+  handleReportSearch,
+  reportListSchema,
+  reportReadSchema,
+  reportSearchSchema
+} from "./reportTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.1.0";
@@ -118,38 +118,38 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     }
   );
 
-  const memoryCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };
+  const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };
 
   server.registerTool(
-    "memory_search",
+    "report_search",
     {
       description:
-        "Semantic search over memory digests (daily/weekly/monthly reports). Use when Memory Sources in the prompt are insufficient or the user asks for a different query. If a memoryId is already cited, prefer memory_read instead of searching again.",
-      inputSchema: memorySearchSchema
+        "Semantic search over memory digests (daily/weekly/monthly reports). Use when Report Sources in the prompt are insufficient or the user asks for a different query. If a reportId is already cited, prefer report_read instead of searching again.",
+      inputSchema: reportSearchSchema
     },
     async (args: { query: string; level?: "daily" | "weekly" | "monthly"; limit?: number }) => {
-      return handleMemorySearch(args, memoryCtx);
+      return handleReportSearch(args, reportCtx);
     }
   );
 
   server.registerTool(
-    "memory_read",
+    "report_read",
     {
       description:
-        "Read a full memory digest by memoryId (e.g. daily:2026-07-15). Use to expand truncated Memory Sources from the prompt. Read-only.",
-      inputSchema: memoryReadSchema
+        "Read a full memory digest by reportId (e.g. daily:2026-07-15). Use to expand truncated Report Sources from the prompt. Read-only.",
+      inputSchema: reportReadSchema
     },
-    async (args: { memoryId: string; maxLength?: number }) => {
-      return handleMemoryRead(args, memoryCtx);
+    async (args: { reportId: string; maxLength?: number }) => {
+      return handleReportRead(args, reportCtx);
     }
   );
 
   server.registerTool(
-    "memory_list",
+    "report_list",
     {
       description:
         "List memory digests by level, optionally within a period range. Use for questions like which weekly reports exist in a date span. Read-only.",
-      inputSchema: memoryListSchema
+      inputSchema: reportListSchema
     },
     async (args: {
       level: "daily" | "weekly" | "monthly";
@@ -157,7 +157,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       to?: string;
       limit?: number;
     }) => {
-      return handleMemoryList(args, memoryCtx);
+      return handleReportList(args, reportCtx);
     }
   );
 

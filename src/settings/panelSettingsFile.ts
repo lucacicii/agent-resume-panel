@@ -25,7 +25,7 @@ export interface PanelSettingsFile {
     model: string;
     apiKey?: string;
   };
-  memory?: {
+  report?: {
     enabled?: boolean;
     includeTranscripts?: boolean;
     maxSessionsPerDigest?: number;
@@ -66,7 +66,7 @@ function defaultFile(): PanelSettingsFile {
     embedding: {
       model: "text-embedding-3-small"
     },
-    memory: {
+    report: {
       enabled: false,
       includeTranscripts: true,
       maxSessionsPerDigest: 40,
@@ -89,15 +89,27 @@ function mergeFile(partial: Partial<PanelSettingsFile> | null | undefined): Pane
         ? { ...(base.chatLlm || {}), ...(partial.chatLlm || {}) }
         : undefined,
     embedding: { ...base.embedding, ...(partial.embedding || {}) },
-    memory: { ...base.memory, ...(partial.memory || {}) },
+    report: { ...base.report, ...(partial.report || {}) },
     agentHomes: { ...base.agentHomes, ...(partial.agentHomes || {}) },
     desktop: { ...base.desktop, ...(partial.desktop || {}) }
   };
 }
 
+type LegacyPanelSettingsFile = Partial<PanelSettingsFile> & {
+  memory?: PanelSettingsFile["report"];
+};
+
+function migrateLegacyPanelFile(partial: LegacyPanelSettingsFile): Partial<PanelSettingsFile> {
+  if (partial.memory && !partial.report) {
+    const { memory, ...rest } = partial;
+    return { ...rest, report: memory };
+  }
+  return partial;
+}
+
 function parseFile(raw: string): PanelSettingsFile {
   try {
-    return mergeFile(JSON.parse(raw) as Partial<PanelSettingsFile>);
+    return mergeFile(migrateLegacyPanelFile(JSON.parse(raw) as LegacyPanelSettingsFile));
   } catch {
     return defaultFile();
   }

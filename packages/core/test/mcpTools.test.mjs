@@ -8,7 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   createNoteMcpServer,
   ensureCatalogSchema,
-  insertMemoryEntry,
+  insertReportEntry,
   localDayRange,
   NotesStore
 } from "../dist/index.js";
@@ -26,7 +26,7 @@ async function setupTestContext() {
   };
 }
 
-async function seedDailyMemoryEntry(dbPath, panelHome, { label, title, content }) {
+async function seedDailyReportEntry(dbPath, panelHome, { label, title, content }) {
   await ensureCatalogSchema(dbPath);
   const period = localDayRange(label);
   const entry = {
@@ -39,7 +39,7 @@ async function seedDailyMemoryEntry(dbPath, panelHome, { label, title, content }
     embeddingJson: null,
     createdAtMs: Date.now()
   };
-  await insertMemoryEntry(dbPath, entry, []);
+  await insertReportEntry(dbPath, entry, []);
   return entry;
 }
 
@@ -51,7 +51,7 @@ async function connectClient(server) {
   return client;
 }
 
-test("MCP server exposes all note and memory tools", async () => {
+test("MCP server exposes all note and report tools", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -60,15 +60,15 @@ test("MCP server exposes all note and memory tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
-      "memory_list",
-      "memory_read",
-      "memory_search",
       "note_append",
       "note_create",
       "note_delete",
       "note_read",
       "note_search",
-      "note_write"
+      "note_write",
+      "report_list",
+      "report_read",
+      "report_search"
     ]);
   } finally {
     await client.close();
@@ -338,9 +338,9 @@ test("full CRUD lifecycle: create → read → append → write → delete", asy
   }
 });
 
-test("memory_list returns seeded daily digest", async () => {
+test("report_list returns seeded daily digest", async () => {
   const { ctx, dbPath, panelHome } = await setupTestContext();
-  const entry = await seedDailyMemoryEntry(dbPath, panelHome, {
+  const entry = await seedDailyReportEntry(dbPath, panelHome, {
     label: "2026-07-10",
     title: "Test Daily",
     content: "# Daily digest\n\nWorked on memory MCP."
@@ -350,7 +350,7 @@ test("memory_list returns seeded daily digest", async () => {
 
   try {
     const result = await client.callTool({
-      name: "memory_list",
+      name: "report_list",
       arguments: { level: "daily", limit: 10 }
     });
     assert.notEqual(result.isError, true);
@@ -363,23 +363,23 @@ test("memory_list returns seeded daily digest", async () => {
   }
 });
 
-test("memory_read returns full digest content", async () => {
+test("report_read returns full digest content", async () => {
   const { ctx, dbPath, panelHome } = await setupTestContext();
-  const entry = await seedDailyMemoryEntry(dbPath, panelHome, {
+  const entry = await seedDailyReportEntry(dbPath, panelHome, {
     label: "2026-07-11",
     title: "Read Test",
-    content: "# Daily digest\n\nFull body for memory_read."
+    content: "# Daily digest\n\nFull body for report_read."
   });
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
     const result = await client.callTool({
-      name: "memory_read",
-      arguments: { memoryId: entry.id }
+      name: "report_read",
+      arguments: { reportId: entry.id }
     });
     assert.notEqual(result.isError, true);
-    assert.ok(result.content[0].text.includes("Full body for memory_read"));
+    assert.ok(result.content[0].text.includes("Full body for report_read"));
     assert.ok(result.content[0].text.includes("Read Test"));
   } finally {
     await client.close();
@@ -387,7 +387,7 @@ test("memory_read returns full digest content", async () => {
   }
 });
 
-test("memory_search returns a structured response", async () => {
+test("report_search returns a structured response", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -396,7 +396,7 @@ test("memory_search returns a structured response", async () => {
     let result;
     try {
       result = await client.callTool({
-        name: "memory_search",
+        name: "report_search",
         arguments: { query: "nonexistent-memory-query-xyz" }
       });
     } catch (error) {

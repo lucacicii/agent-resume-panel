@@ -2,7 +2,7 @@ import {
   catalogDbFromSettings,
   ensureCatalogSchema,
   finishScheduleRun,
-  getMemoryJobStatus,
+  getReportJobStatus,
   listLlmUsageEvents,
   loadSettings,
   localDayRange,
@@ -36,7 +36,7 @@ export function startMemoryScheduler(): void {
 
 export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
   const settings = await loadSettings();
-  const enabled = settings.memory?.enabled === true;
+  const enabled = settings.report?.enabled === true;
   if (enabled) {
     startMemoryScheduler();
   } else {
@@ -47,7 +47,7 @@ export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
 
 async function tick(): Promise<void> {
   const settings = await loadSettings();
-  if (settings.memory?.enabled !== true) {
+  if (settings.report?.enabled !== true) {
     return;
   }
 
@@ -58,9 +58,9 @@ async function tick(): Promise<void> {
     return;
   }
 
-  const dailyHour = clampHour(settings.memory?.scheduleDailyHour, 22);
-  const weeklyHour = clampHour(settings.memory?.scheduleWeeklyHour, 9);
-  const monthlyHour = clampHour(settings.memory?.scheduleMonthlyHour, 9);
+  const dailyHour = clampHour(settings.report?.scheduleDailyHour, 22);
+  const weeklyHour = clampHour(settings.report?.scheduleWeeklyHour, 9);
+  const monthlyHour = clampHour(settings.report?.scheduleMonthlyHour, 9);
 
   const dbPath = catalogDbFromSettings(settings);
   await ensureCatalogSchema(dbPath);
@@ -69,7 +69,7 @@ async function tick(): Promise<void> {
     const day = localDayRange();
     const fireKey = `auto:${day.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getMemoryJobStatus(dbPath, day.jobKey);
+      const status = await getReportJobStatus(dbPath, day.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
         await runLoggedSchedule(dbPath, "daily", day.jobKey, async () => {
@@ -83,7 +83,7 @@ async function tick(): Promise<void> {
     const week = previousCompleteWeekRange(now);
     const fireKey = `auto:${week.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getMemoryJobStatus(dbPath, week.jobKey);
+      const status = await getReportJobStatus(dbPath, week.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
         await runLoggedSchedule(dbPath, "weekly", week.jobKey, async () => {
@@ -97,7 +97,7 @@ async function tick(): Promise<void> {
     const month = previousCompleteMonthRange(now);
     const fireKey = `auto:${month.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getMemoryJobStatus(dbPath, month.jobKey);
+      const status = await getReportJobStatus(dbPath, month.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
         await runLoggedSchedule(dbPath, "monthly", month.jobKey, async () => {

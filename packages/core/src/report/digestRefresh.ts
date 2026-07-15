@@ -4,7 +4,7 @@ import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import type { DailyDigestRefreshCheck } from "./daily";
 import { localDayRange, listDayLabelsInRange, localMonthRange, localWeekRange, PeriodRange } from "./period";
-import { getMemoryEntryById, listMemoryEntriesInRange } from "./store";
+import { getReportEntryById, listReportEntriesInRange } from "./store";
 
 export type PeriodDigestRefreshCheck = DailyDigestRefreshCheck;
 
@@ -27,7 +27,7 @@ export async function needsPeriodDigestRefresh(
 
   const sessions = await listSessionsInRange(dbPath, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getMemoryEntryById(dbPath, period.entryId);
+  const entry = await getReportEntryById(dbPath, period.entryId);
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -57,7 +57,7 @@ export async function needsPeriodDigestRefresh(
     }
   }
 
-  const dailies = await listMemoryEntriesInRange(dbPath, {
+  const dailies = await listReportEntriesInRange(dbPath, {
     level: "daily",
     startMs: period.startMs,
     endMs: period.endMs,
@@ -81,7 +81,7 @@ export async function needsPeriodDigestRefresh(
     );
     if (!daySessions.length) continue;
 
-    const dayEntry = await getMemoryEntryById(dbPath, dayPeriod.entryId);
+    const dayEntry = await getReportEntryById(dbPath, dayPeriod.entryId);
     if (!dayEntry?.content?.trim()) {
       staleDailyCount += 1;
       continue;

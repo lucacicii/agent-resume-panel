@@ -16,7 +16,7 @@ export interface TodolistRenderInput {
   gtd: GtdStatus;
   reason: string;
   tasks: string[];
-  sourceMemoryIds: string[];
+  sourceReportIds: string[];
   previousStatus: GtdStatus | null;
   /** Override applied-at timestamp (ISO). Default now. */
   appliedAtIso?: string;
@@ -38,8 +38,8 @@ export function renderSessionTodolistMarkdown(input: TodolistRenderInput): strin
       : "- [ ] (no explicit tasks extracted — review session / digests)";
 
   const sources =
-    input.sourceMemoryIds.length > 0
-      ? input.sourceMemoryIds.map((id) => `- \`${id}\``).join("\n")
+    input.sourceReportIds.length > 0
+      ? input.sourceReportIds.map((id) => `- \`${id}\``).join("\n")
       : "- (none listed)";
 
   const prev = input.previousStatus == null ? "(none)" : `@${input.previousStatus}`;

@@ -72,4 +72,15 @@ if (process.platform === "darwin") {
 }
 }
 
+const repoLocales = path.join(root, "..", "..", "locales");
+const distLocales = path.join(root, "dist", "locales");
+if (fs.existsSync(repoLocales)) {
+  fs.mkdirSync(distLocales, { recursive: true });
+  for (const name of fs.readdirSync(repoLocales)) {
+    if (!name.endsWith(".json")) continue;
+    fs.copyFileSync(path.join(repoLocales, name), path.join(distLocales, name));
+  }
+  console.log("copied locales → dist/locales");
+}
+
 console.log("copied renderer → dist/renderer");

@@ -1,3 +1,4 @@
+/* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
 /* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
 
 function $(id) {
@@ -14,7 +15,7 @@ function setStatus(el, text, kind) {
 
 function formatTime(ms) {
   try {
-    return new Date(ms).toLocaleString();
+    return new Date(ms).toLocaleString(getUiLocale());
   } catch {
     return String(ms);
   }
@@ -94,26 +95,26 @@ function renderMarkdown(value) {
 }
 
 /** @type {boolean} */
-let askChatLoadedFromDb = false;
+let agentChatLoadedFromDb = false;
 /** @type {boolean} */
-let askChatRendered = false;
+let agentChatRendered = false;
 /** @type {boolean} */
-let askChatHasMoreOlder = false;
+let agentChatHasMoreOlder = false;
 /** @type {boolean} */
-let askChatLoadingOlder = false;
+let agentChatLoadingOlder = false;
 /** @type {number | null} */
-let askChatOldestSortOrder = null;
+let agentChatOldestSortOrder = null;
 /** @type {Promise<void> | null} */
-let askChatLoadPromise = null;
-const ASK_CHAT_PAGE_SIZE = 40;
+let agentChatLoadPromise = null;
+const AGENT_CHAT_PAGE_SIZE = 40;
 
 /** @type {any[]} */
-let askThreads = [];
+let agentThreads = [];
 /** @type {string | null} */
-let activeAskThreadId = null;
+let activeAgentThreadId = null;
 /** @type {boolean} */
 let askSidebarCollapsed = false;
-let askEnableTools = true;
+let agentEnableTools = true;
 
 function mapAskMessages(messages) {
   return (messages || []).map((m) => ({
@@ -125,12 +126,12 @@ function mapAskMessages(messages) {
   }));
 }
 
-function syncAskChatCursor() {
+function syncAgentChatCursor() {
   const orders = chatTurns.map((t) => t.sortOrder).filter((n) => Number.isFinite(n));
-  askChatOldestSortOrder = orders.length ? Math.min(...orders) : null;
+  agentChatOldestSortOrder = orders.length ? Math.min(...orders) : null;
 }
 
-let activePrimaryTab = "memory";
+let activePrimaryTab = "report";
 
 function switchTab(name) {
   if (!name || name === activePrimaryTab) return;
@@ -141,7 +142,7 @@ function switchTab(name) {
   }
   activePrimaryTab = name;
 
-  if (name !== "ask") {
+  if (name !== "agent") {
     hideCitationPreview();
   }
 
@@ -152,8 +153,8 @@ function switchTab(name) {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
 
-  if (name === "ask") {
-    void ensureAskChatVisible();
+  if (name === "agent") {
+    void ensureAgentChatVisible();
   }
   if (name === "workbench") {
     void ensureWorkbenchVisible();
@@ -169,13 +170,13 @@ function switchTab(name) {
   }
 }
 
-async function ensureAskChatVisible() {
-  if (!askChatLoadedFromDb) {
-    await loadAskChat({ render: true });
+async function ensureAgentChatVisible() {
+  if (!agentChatLoadedFromDb) {
+    await loadAgentChat({ render: true });
     return;
   }
-  if (!askChatRendered) {
-    renderAskChat();
+  if (!agentChatRendered) {
+    renderAgentChat();
   }
 }
 
@@ -284,7 +285,7 @@ async function loadSessions(opts = {}) {
 
   if (!quiet) {
     list.innerHTML = "";
-    meta.textContent = "Loading…";
+    meta.textContent = t("desktop.common.loading");
   }
 
   try {
@@ -314,10 +315,10 @@ async function loadSessions(opts = {}) {
 }
 
 function sessionListMeta() {
-  const synced = lastSessionSyncAt ? ` · 最近同步 ${formatTime(lastSessionSyncAt)}` : "";
+  const synced = lastSessionSyncAt ? t("desktop.sessions.lastSynced", formatTime(lastSessionSyncAt)) : "";
   const intervalLabel =
-    SESSIONS_AUTO_REFRESH_MS >= 60_000 ? "1 分钟" : `${SESSIONS_AUTO_REFRESH_MS / 1000}s`;
-  return `${sessionsCache.length} sessions · 可见时每 ${intervalLabel} 同步${synced} · 点击预览`;
+    SESSIONS_AUTO_REFRESH_MS >= 60_000 ? t("desktop.common.oneMinute") : t("desktop.common.intervalSeconds", SESSIONS_AUTO_REFRESH_MS / 1000);
+  return t("desktop.sessions.meta", sessionsCache.length, intervalLabel, synced);
 }
 
 function startSessionsAutoRefresh() {
@@ -389,9 +390,14 @@ function visibleFilteredProjectGroups(projectGroups, options) {
 
 function sidebarProjectFilterSectionTitle(filterMode, searchText, visibleCount) {
   const filterActive = filterMode !== "all" || searchText.trim();
-  if (!filterActive) return "项目";
-  const filterLabel = filterMode === "pinned" ? "置顶" : filterMode === "active" ? "活动" : "";
-  return `项目${filterLabel ? ` · ${filterLabel}` : ""}${searchText.trim() ? ` · 「${searchText.trim()}」` : ""} · ${visibleCount}`;
+  if (!filterActive) return t("desktop.notes.projectLabel");
+  const filterLabel = filterMode === "pinned" ? t("desktop.common.pinned") : filterMode === "active" ? t("desktop.common.active") : "";
+  return t(
+    "desktop.workbench.projectFilterMeta",
+    filterLabel ? ` · ${filterLabel}` : "",
+    searchText.trim() ? ` · 「${searchText.trim()}」` : "",
+    visibleCount
+  );
 }
 
 function syncSidebarProjectFilterUi(hostId, filterMode) {
@@ -456,17 +462,17 @@ function configureRenameDialog(mode) {
   const input = $("wbRenameInput");
   const status = $("wbRenameStatus");
   if (mode === "project") {
-    if (title) title.textContent = "重命名项目";
+    if (title) title.textContent = t("desktop.workbench.renameProject");
     if (autoBtn) autoBtn.hidden = true;
-    if (input) input.setAttribute("aria-label", "项目显示名");
+    if (input) input.setAttribute("aria-label", t("desktop.workbench.renameProjectDisplay"));
     if (status) {
       status.hidden = false;
-      status.textContent = "仅改显示名，不影响磁盘路径";
+      status.textContent = t("desktop.workbench.renameDisplayHint");
     }
   } else {
-    if (title) title.textContent = "重命名 Session";
+    if (title) title.textContent = t("desktop.workbench.renameSession");
     if (autoBtn) autoBtn.hidden = false;
-    if (input) input.setAttribute("aria-label", "Session 标题");
+    if (input) input.setAttribute("aria-label", t("desktop.workbench.renameSessionTitle"));
   }
 }
 
@@ -513,13 +519,13 @@ async function refreshSessionViews(opts = {}) {
 }
 
 async function syncAndRefreshSessionViews(statusEl) {
-  if (statusEl) setStatus(statusEl, "正在同步 Agent sessions…");
+  if (statusEl) setStatus(statusEl, t("desktop.workbench.syncingSessions"));
   try {
     const result = await agentResume.syncSessions();
     lastSessionSyncAt = result.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
     const warning = result.warnings?.join(" · ") || "";
-    if (statusEl) setStatus(statusEl, warning || `已同步 ${result.sessionCount} sessions`, warning ? "error" : "ok");
+    if (statusEl) setStatus(statusEl, warning || t("desktop.workbench.syncedCount", result.sessionCount), warning ? "error" : "ok");
     return result;
   } catch (error) {
     if (statusEl) setStatus(statusEl, error instanceof Error ? error.message : String(error), "error");
@@ -554,7 +560,7 @@ async function openSessionPreview(session, opts = {}) {
   highlightWorkbenchSession(activeSessionKey);
   const pane = $(paneId);
   if (!pane) return;
-  pane.innerHTML = `<p class="muted">Loading preview…</p>`;
+  pane.innerHTML = `<p class="muted">${escapeHtml(t("desktop.common.loadingPreview"))}</p>`;
   try {
     const { session: s, preview } = await agentResume.previewSession({
       provider: session.provider,
@@ -609,7 +615,7 @@ function renderSessionPreviewPane(s, preview, summaryText, statusHtml, renderOpt
     html += `<p class="status error">${escapeHtml(preview.warning)}</p>`;
   }
   if (!preview.messages?.length) {
-    html += `<p class="muted">无消息可预览。</p>`;
+    html += `<p class="muted">${escapeHtml(t("desktop.sessions.noMessages"))}</p>`;
   } else {
     for (const m of preview.messages) {
       html += `
@@ -619,7 +625,7 @@ function renderSessionPreviewPane(s, preview, summaryText, statusHtml, renderOpt
         </div>`;
     }
     if (preview.truncated) {
-      html += `<p class="muted">（已截断）</p>`;
+      html += `<p class="muted">${escapeHtml(t("desktop.sessions.truncated"))}</p>`;
     }
   }
   pane.innerHTML = html;
@@ -651,7 +657,7 @@ async function runSessionSummarize(opts = {}) {
   const idPrefix = opts.idPrefix || "";
   const status = $(`${idPrefix}sessionAssistStatus`);
   setSessionAssistBusy(true, "summarize", idPrefix);
-  setStatus(status, "正在 Summarize…");
+  setStatus(status, t("desktop.sessions.summarizing"));
   try {
     const result = await agentResume.summarizeSession({
       provider: activePreviewSession.provider,
@@ -664,7 +670,7 @@ async function runSessionSummarize(opts = {}) {
       body.textContent = result.summary;
     }
     await refreshSessionViews({ quiet: true });
-    setStatus(status, "Summary 已生成并写入 catalog", "ok");
+    setStatus(status, t("desktop.sessions.summaryGenerated"), "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   } finally {
@@ -677,7 +683,7 @@ async function runSessionAutoRename(opts = {}) {
   const idPrefix = opts.idPrefix || "";
   const status = $(`${idPrefix}sessionAssistStatus`);
   setSessionAssistBusy(true, "rename", idPrefix);
-  setStatus(status, "正在 Auto Rename…");
+  setStatus(status, t("desktop.sessions.renaming"));
   try {
     const result = await agentResume.autoRenameSession({
       provider: activePreviewSession.provider,
@@ -709,9 +715,9 @@ async function runSessionAutoRename(opts = {}) {
     if (cached) cached.title = result.title;
     await refreshSessionViews({ quiet: true });
 
-    let msg = `已重命名为「${result.title}」`;
+    let msg = t("desktop.sessions.renamed", result.title);
     if (!result.nativeRenamed && result.nativeError) {
-      msg += `（catalog 已更新；原生存储：${result.nativeError}）`;
+      msg += t("desktop.sessions.renamedNativeError", result.nativeError);
     }
     setStatus(status, msg, result.nativeRenamed || !result.nativeError ? "ok" : "error");
   } catch (error) {
@@ -881,7 +887,7 @@ function selectWorkbenchProject(folder) {
 }
 
 function alertWorkbenchError(error) {
-  const message = error instanceof Error ? error.message : String(error ?? "未知错误");
+  const message = error instanceof Error ? error.message : String(error ?? t("desktop.common.unknownError"));
   window.alert(message);
 }
 
@@ -915,11 +921,11 @@ function updateWorkbenchToolbarState() {
     wbSelectedProject.kind === "project" ? projectDisplayTitle(wbSelectedProject.projectPath) : "";
   if (newSessionBtn) {
     newSessionBtn.title =
-      wbSelectedProject.kind === "project" ? `新建 Session · ${projectTitle}` : "新建 Session";
+      wbSelectedProject.kind === "project" ? t("desktop.workbench.newSessionWithProject", projectTitle) : t("desktop.workbench.newSession");
   }
   if (newTerminalBtn) {
     newTerminalBtn.title =
-      wbSelectedProject.kind === "project" ? `新建 Terminal · ${projectTitle}` : "新建 Terminal";
+      wbSelectedProject.kind === "project" ? t("desktop.workbench.newTerminalWithProject", projectTitle) : t("desktop.workbench.newTerminal");
   }
 }
 
@@ -964,8 +970,8 @@ function updateWorkbenchDetailHeader() {
   const label = $("wbDetailProjectLabel");
   if (!label) return;
   if (wbSelectedProject.kind !== "project") {
-    label.textContent = "全部 Sessions";
-    label.title = "全部 Sessions";
+    label.textContent = t("desktop.workbench.allSessions");
+    label.title = t("desktop.workbench.allSessions");
     return;
   }
   const display = projectDisplayTitle(wbSelectedProject.projectPath);
@@ -1079,7 +1085,7 @@ function renderWorkbenchFolders() {
     filterMode: wbProjectFilter,
     selectedProjectPath: selectedPath
   });
-  const allBtn = renderWorkbenchFolderRow("全部 Sessions", { kind: "all" }, { count: wbSessions.length });
+  const allBtn = renderWorkbenchFolderRow(t("desktop.workbench.allSessions"), { kind: "all" }, { count: wbSessions.length });
   host.appendChild(allBtn);
 
   if (projects.length) {
@@ -1104,7 +1110,7 @@ function renderWorkbenchFolders() {
     } else {
       const empty = document.createElement("p");
       empty.className = "muted wb-folders-empty";
-      empty.textContent = wbProjectSearch.trim() ? "没有匹配的项目" : "没有符合筛选的项目";
+      empty.textContent = wbProjectSearch.trim() ? t("desktop.notes.noMatchingProjects") : t("desktop.notes.noFilterProjects");
       section.appendChild(empty);
     }
     host.appendChild(section);
@@ -1113,7 +1119,7 @@ function renderWorkbenchFolders() {
   if (!projects.length && !wbSessions.length) {
     const empty = document.createElement("p");
     empty.className = "muted wb-folders-empty";
-    empty.textContent = "暂无项目";
+      empty.textContent = t("desktop.workbench.noProjects");
     host.appendChild(empty);
   }
 
@@ -1130,16 +1136,16 @@ function renderWorkbenchSessionList() {
 
   if (meta) {
     const folderLabel =
-      wbSelectedProject.kind === "all" ? "全部 Sessions" : basename(wbSelectedProject.projectPath);
+      wbSelectedProject.kind === "all" ? t("desktop.workbench.allSessions") : basename(wbSelectedProject.projectPath);
     meta.textContent = wbSearch.trim()
-      ? `${folderLabel} · 搜索「${wbSearch.trim()}」· ${sessions.length} 条`
-      : `${folderLabel} · ${sessions.length} 条`;
+      ? t("desktop.workbench.listMetaSearch", folderLabel, wbSearch.trim(), sessions.length)
+      : t("desktop.workbench.listMeta", folderLabel, sessions.length);
   }
 
   if (!sessions.length) {
     const empty = document.createElement("p");
     empty.className = "muted wb-list-empty";
-    empty.textContent = wbSearch.trim() ? "没有匹配的 session" : "此项目暂无 session";
+    empty.textContent = wbSearch.trim() ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject");
     list.appendChild(empty);
     return;
   }
@@ -1193,7 +1199,7 @@ async function loadWorkbenchSessions(opts = {}) {
   const list = $("wbList");
   if (!list) return;
   refreshPinnedProjects();
-  if (!quiet) list.innerHTML = `<p class="muted wb-list-empty">加载中…</p>`;
+  if (!quiet) list.innerHTML = `<p class="muted wb-list-empty">${escapeHtml(t("desktop.common.loading"))}</p>`;
   try {
     wbSessions = await agentResume.listSessions(2000);
     if (wbSelectedProject.kind === "project") {
@@ -1267,7 +1273,7 @@ function workbenchBlankTerminalKey() {
 function nextBlankTerminalTitle(projectKey = currentWorkbenchProjectKey()) {
   const detail = getWorkbenchProjectDetail(projectKey);
   const count = detail ? [...detail.terminalPanes.keys()].filter((k) => k.startsWith("term:")).length : 0;
-  return `终端 ${count + 1}`;
+  return t("desktop.workbench.terminalLabel", count + 1);
 }
 
 async function openBlankWorkbenchTerminal() {
@@ -1320,13 +1326,13 @@ function updateWorkbenchTerminalHint() {
   }
   hint.classList.remove("hidden");
   if (wbSelectedProject.kind !== "project") {
-    hint.textContent = "选择项目后，新建 Terminal 或点击 session 会在该项目的工作台中打开。";
+    hint.textContent = t("desktop.workbench.selectProjectHint");
     return;
   }
   if (isWorkbenchExternalTerminalMode()) {
-    hint.textContent = "终端模式：系统默认终端。点击左侧 session 在外部终端中恢复。";
+    hint.textContent = t("desktop.workbench.externalTerminalHint");
   } else {
-    hint.textContent = "选择左侧 session 以恢复终端";
+    hint.textContent = t("desktop.workbench.selectSessionHint");
   }
 }
 
@@ -1347,7 +1353,7 @@ function ensureWorkbenchTerminalIpc() {
     for (const detail of wbProjectDetails.values()) {
       for (const pane of detail.terminalPanes.values()) {
         if (pane.ptyId === payload.id && pane.term) {
-          pane.term.write("\r\n\x1b[90m[已恢复交互式 shell]\x1b[0m\r\n");
+          pane.term.write(`\r\n\x1b[90m${t("desktop.workbench.shellRestored")}\x1b[0m\r\n`);
         }
       }
     }
@@ -1356,7 +1362,7 @@ function ensureWorkbenchTerminalIpc() {
     for (const detail of wbProjectDetails.values()) {
       for (const pane of detail.terminalPanes.values()) {
         if (pane.ptyId === payload.id && pane.term) {
-          pane.term.write("\r\n\x1b[90m[终端已关闭]\x1b[0m\r\n");
+          pane.term.write(`\r\n\x1b[90m${t("desktop.workbench.terminalClosed")}\x1b[0m\r\n`);
         }
       }
     }
@@ -1413,7 +1419,7 @@ function renderWorkbenchTerminalTabs() {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "wb-terminal-tab-close";
-    closeBtn.setAttribute("aria-label", "关闭终端");
+    closeBtn.setAttribute("aria-label", t("desktop.workbench.closeTerminal"));
     closeBtn.textContent = "×";
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1523,7 +1529,7 @@ async function createWorkbenchTerminalPane(opts) {
   const stack = $("wbTerminalStack");
   const hint = $("wbTerminalHint");
   if (!stack || typeof Terminal === "undefined") {
-    alertWorkbenchError("终端组件未加载");
+    alertWorkbenchError(t("desktop.workbench.terminalNotLoaded"));
     return null;
   }
 
@@ -1676,7 +1682,7 @@ function setWorkbenchRenameBusy(busy) {
   document.querySelectorAll("[data-wb-rename-cancel]").forEach((btn) => {
     btn.toggleAttribute("disabled", busy);
   });
-  if (autoBtn) autoBtn.textContent = busy ? "正在自动重命名…" : "自动重命名";
+  if (autoBtn) autoBtn.textContent = busy ? t("desktop.workbench.autoRenaming") : t("desktop.workbench.autoRename");
 }
 
 function closeWorkbenchRenameDialog(outcome = null) {
@@ -1710,7 +1716,7 @@ async function runWorkbenchSessionAutoRename() {
   const status = $("wbRenameStatus");
   if (status) {
     status.hidden = false;
-    status.textContent = "正在根据对话内容生成标题…";
+    status.textContent = t("desktop.workbench.generatingTitle");
   }
   try {
     const result = await agentResume.autoRenameSession({
@@ -1722,7 +1728,7 @@ async function runWorkbenchSessionAutoRename() {
     if (input) input.value = result.title || "";
     if (status) {
       status.hidden = false;
-      status.textContent = "已填入建议标题，可编辑后点确定保存";
+      status.textContent = t("desktop.workbench.titleSuggested");
     }
     setWorkbenchRenameBusy(false);
     requestAnimationFrame(() => {
@@ -1791,7 +1797,7 @@ async function showWorkbenchContextMenu(node, x, y) {
       const selected = info?.selected;
       const label = info?.editor?.label || labels[selected];
       if (label && (selected !== "auto" || info?.available)) {
-        editorButton.textContent = `在 ${label} 中打开`;
+        editorButton.textContent = t("desktop.workbench.openInApp", label);
         editorButton.hidden = false;
       }
     } catch {
@@ -1880,7 +1886,7 @@ async function handleWorkbenchContextAction(action) {
 
 async function removeWorkbenchSession(session) {
   if (!session) return;
-  const ok = window.confirm(`从面板移除「${session.title}」？（不会删除原生存储）`);
+  const ok = window.confirm(t("desktop.workbench.removeConfirm", session.title));
   if (!ok) return;
   try {
     await agentResume.hideSession({ provider: session.provider, id: session.id });
@@ -1930,7 +1936,7 @@ function defaultWorkbenchNewSessionProvider(settings = loadedSettings) {
 }
 
 async function launchWorkbenchNewSession(cwd, provider) {
-  if (!cwd) throw new Error("请选择一个 project");
+  if (!cwd) throw new Error(t("desktop.workbench.selectProject"));
   const useSystemTerminalOnly = provider === "system-terminal";
   const result = await agentResume.workbenchNewSession({
     cwd,
@@ -1944,7 +1950,7 @@ async function launchWorkbenchNewSession(cwd, provider) {
   await openWorkbenchTerminal({
     key: workbenchNewSessionKey(result.cwd, providerUsed),
     projectPath: result.cwd,
-    title: `新 session · ${basename(result.cwd)}`,
+    title: t("desktop.workbench.newSessionTitle", basename(result.cwd)),
     cwd: result.cwd,
     command: result.command
   });
@@ -1973,10 +1979,10 @@ function renderWorkbenchTargetList() {
     const scratchBtn = document.createElement("button");
     scratchBtn.type = "button";
     scratchBtn.className = "wb-target-item";
-    scratchBtn.textContent = "临时目录（新建）";
-    scratchBtn.title = "在工作台临时目录中新建 session";
+    scratchBtn.textContent = t("desktop.workbench.scratchDir");
+    scratchBtn.title = t("desktop.workbench.scratchDirTitle");
     scratchBtn.addEventListener("click", () => void pickWorkbenchTarget("scratch", wbTargetPopoverMode));
-    if (!q || "临时目录".includes(q) || "scratch".includes(q)) {
+    if (!q || t("desktop.workbench.scratchSearch").includes(q) || "scratch".includes(q)) {
       list.appendChild(scratchBtn);
     }
   }
@@ -1998,7 +2004,7 @@ function renderWorkbenchTargetList() {
   if (!list.children.length) {
     const empty = document.createElement("p");
     empty.className = "muted wb-target-empty";
-    empty.textContent = "没有匹配的项目";
+    empty.textContent = t("desktop.notes.noMatchingProjects");
     list.appendChild(empty);
   }
 }
@@ -2022,7 +2028,7 @@ async function pickWorkbenchTarget(target, mode = wbTargetPopoverMode) {
   const provider = defaultWorkbenchNewSessionProvider();
   try {
     const cwd = target === "scratch" ? await agentResume.createScratchDir() : target;
-    if (!cwd) throw new Error("请选择一个 project");
+    if (!cwd) throw new Error(t("desktop.workbench.selectProject"));
     if (mode === "terminal") {
       wbSelectedProject = { kind: "project", projectPath: cwd };
       saveWbProjectState();
@@ -2112,7 +2118,7 @@ async function openOrCreateWorkbenchNote(owner) {
       const result = await invokeNotesCreateFromOwner(owner);
       notesCache = await agentResume.notesList();
       note = notesCache.find((candidate) => candidate.noteId === result.noteId);
-      if (!note) throw new Error("新建的笔记未找到");
+      if (!note) throw new Error(t("desktop.notes.noteNotFound"));
     }
 
     switchTab("notes");
@@ -2421,7 +2427,7 @@ function saveNotesFolderState() {
 
 function updateSidebarCollapseToggle(btn, collapsed) {
   if (!btn) return;
-  const label = collapsed ? "显示侧栏" : "隐藏侧栏";
+  const label = collapsed ? t("desktop.common.showSidebar") : t("desktop.common.hideSidebar");
   btn.title = label;
   btn.setAttribute("aria-label", label);
   btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -2487,7 +2493,7 @@ function createNotesTitleElement(text = "") {
   const h1 = document.createElement("h1");
   h1.className = "notes-detail-title";
   h1.id = "notesEditorTitle";
-  h1.title = "双击编辑标题";
+  h1.title = t("desktop.notes.dblClickEdit");
   h1.textContent = text;
   bindNotesTitleEdit(h1);
   return h1;
@@ -2496,7 +2502,7 @@ function createNotesTitleElement(text = "") {
 function bindNotesTitleEdit(el) {
   if (!el || el.dataset.titleEditBound === "1") return;
   el.dataset.titleEditBound = "1";
-  el.title = "双击编辑标题";
+  el.title = t("desktop.notes.dblClickEdit");
   el.addEventListener("dblclick", () => beginNotesTitleEdit());
 }
 
@@ -2510,8 +2516,8 @@ function setNotesEditorTitleText(note) {
 
 function validateNotesTitleInput(raw) {
   const trimmed = raw.trim();
-  if (!trimmed) return "名称不能为空";
-  if (/[\\/]/.test(trimmed)) return "名称不能包含路径分隔符";
+  if (!trimmed) return t("desktop.notes.nameEmpty");
+  if (/[\\/]/.test(trimmed)) return t("desktop.notes.nameInvalid");
   return "";
 }
 
@@ -2603,7 +2609,7 @@ function beginNotesTitleEdit() {
   input.className = "notes-detail-title notes-detail-title-input";
   input.id = "notesEditorTitle";
   input.value = noteDisplayTitle(note);
-  input.setAttribute("aria-label", "笔记标题");
+  input.setAttribute("aria-label", t("desktop.notes.titleLabel"));
   input.spellcheck = false;
 
   titleEl.replaceWith(input);
@@ -2647,22 +2653,22 @@ function selectNotesFolder(folder) {
 }
 
 function alertNotesError(error) {
-  const message = error instanceof Error ? error.message : String(error ?? "未知错误");
+  const message = error instanceof Error ? error.message : String(error ?? t("desktop.common.unknownError"));
   window.alert(message);
 }
 
 function noteDeleteConfirmText(note) {
-  return `删除笔记「${note.filename}」？将同时删除其 assets 文件夹。`;
+  return t("desktop.notes.deleteConfirm", note.filename);
 }
 
 function notesRelativeTime(ms) {
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < 60_000) return t("desktop.common.justNow");
+  if (diff < 3_600_000) return t("desktop.common.minutesAgo", Math.floor(diff / 60_000));
+  if (diff < 86_400_000) return t("desktop.common.hoursAgo", Math.floor(diff / 3_600_000));
+  if (diff < 604_800_000) return t("desktop.common.daysAgo", Math.floor(diff / 86_400_000));
   try {
-    return new Date(ms).toLocaleDateString();
+    return new Date(ms).toLocaleDateString(getUiLocale());
   } catch {
     return "";
   }
@@ -2848,8 +2854,8 @@ function renderNotesTargetList() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "notes-target-item";
-    btn.textContent = "独立笔记区";
-    btn.title = "不关联项目或会话的个人笔记";
+    btn.textContent = t("desktop.notes.libraryArea");
+    btn.title = t("desktop.notes.libraryDesc");
     btn.addEventListener("click", () => void pickNotesTarget({ scope: "library" }));
     list.appendChild(btn);
     return;
@@ -2863,7 +2869,7 @@ function renderNotesTargetList() {
     if (!filtered.length) {
       const empty = document.createElement("p");
       empty.className = "muted notes-target-empty";
-      empty.textContent = "暂无可用项目，请先同步 Sessions";
+      empty.textContent = t("desktop.notes.noProjectsSync");
       list.appendChild(empty);
       return;
     }
@@ -2891,7 +2897,7 @@ function renderNotesTargetList() {
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "muted notes-target-empty";
-    empty.textContent = "暂无可用会话，请先同步 Sessions";
+    empty.textContent = t("desktop.notes.noSessionsSync");
     list.appendChild(empty);
     return;
   }
@@ -3019,7 +3025,7 @@ function renderNotesFolders() {
   const sessionsByKey = new Map(sessionsCache.map((s) => [`${s.provider}:${s.id}`, s]));
   const searched = filterNotesBySearch(notesCache);
 
-  const allBtn = renderNotesFolderRow("全部笔记", { kind: "all" }, { count: searched.length });
+  const allBtn = renderNotesFolderRow(t("desktop.notes.allNotes"), { kind: "all" }, { count: searched.length });
   host.appendChild(allBtn);
 
   const libraryNotes = searched
@@ -3027,10 +3033,10 @@ function renderNotesFolders() {
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
   const librarySection = document.createElement("div");
   librarySection.className = "notes-folder-section";
-  librarySection.innerHTML = `<div class="notes-folder-section-label">独立笔记</div>`;
+  librarySection.innerHTML = `<div class="notes-folder-section-label">${escapeHtml(t("desktop.notes.librarySection"))}</div>`;
   librarySection.appendChild(
-    renderNotesFolderRow("独立笔记区", { kind: "library" }, {
-      title: "不关联项目或会话的个人笔记",
+    renderNotesFolderRow(t("desktop.notes.libraryArea"), { kind: "library" }, {
+      title: t("desktop.notes.libraryDesc"),
       count: libraryNotes.length,
       context: { kind: "library", notes: libraryNotes }
     })
@@ -3086,7 +3092,7 @@ function renderNotesFolders() {
     } else {
       const empty = document.createElement("p");
       empty.className = "muted notes-folders-empty";
-      empty.textContent = notesProjectSearch.trim() ? "没有匹配的项目" : "没有符合筛选的项目";
+      empty.textContent = notesProjectSearch.trim() ? t("desktop.notes.noMatchingProjects") : t("desktop.notes.noFilterProjects");
       section.appendChild(empty);
     }
     host.appendChild(section);
@@ -3117,7 +3123,7 @@ function renderNotesFolders() {
   if (sessionGroups.length) {
     const section = document.createElement("div");
     section.className = "notes-folder-section";
-    section.innerHTML = `<div class="notes-folder-section-label">会话</div>`;
+    section.innerHTML = `<div class="notes-folder-section-label">${escapeHtml(t("desktop.notes.sessionsSection"))}</div>`;
     for (const group of sessionGroups) {
       const label =
         sessionsByKey.get(`${group.provider}:${group.sessionId}`)?.title || group.title || group.sessionId;
@@ -3137,7 +3143,7 @@ function renderNotesFolders() {
   if (!projectGroups.length && !sessionGroups.length && !notesCache.length) {
     const empty = document.createElement("p");
     empty.className = "muted notes-folders-empty";
-    empty.textContent = "暂无文件夹";
+    empty.textContent = t("desktop.notes.noFolders");
     host.appendChild(empty);
   }
 
@@ -3155,21 +3161,21 @@ function renderNotesList() {
   if (meta) {
     const folderLabel =
       notesSelectedFolder.kind === "all"
-        ? "全部笔记"
+        ? t("desktop.notes.allNotes")
         : notesSelectedFolder.kind === "library"
-          ? "独立笔记区"
+          ? t("desktop.notes.libraryArea")
           : notesSelectedFolder.kind === "project"
             ? basename(notesSelectedFolder.projectPath)
             : notesSelectedFolder.sessionId;
     meta.textContent = notesSearch.trim()
-      ? `${folderLabel} · 搜索「${notesSearch.trim()}」· ${notes.length} 条`
-      : `${folderLabel} · ${notes.length} 条`;
+      ? t("desktop.notes.listMetaSearch", folderLabel, notesSearch.trim(), notes.length)
+      : t("desktop.notes.listMeta", folderLabel, notes.length);
   }
 
   if (!notes.length) {
     const empty = document.createElement("p");
     empty.className = "muted notes-list-empty";
-    empty.textContent = notesSearch.trim() ? "没有匹配的笔记" : "此文件夹暂无笔记";
+    empty.textContent = notesSearch.trim() ? t("desktop.notes.noMatchingNotes") : t("desktop.notes.noNotesInFolder");
     list.appendChild(empty);
     return;
   }
@@ -3180,7 +3186,7 @@ function renderNotesList() {
     btn.className = "notes-list-item";
     if (note.noteId === notesActiveId) btn.classList.add("active");
     btn.dataset.noteId = note.noteId;
-    const preview = (note.contentPreview || "").trim() || "无额外文本";
+    const preview = (note.contentPreview || "").trim() || t("desktop.notes.noExtraText");
     btn.innerHTML = `
       <div class="notes-list-item-top">
         <span class="notes-list-item-title">${escapeHtml(noteDisplayTitle(note))}</span>
@@ -3272,7 +3278,7 @@ function enhanceNotesPreviewImages(preview) {
   preview.querySelectorAll("img").forEach((img) => {
     img.tabIndex = 0;
     img.setAttribute("role", "button");
-    img.title = "点击放大";
+    img.title = t("desktop.notes.clickZoom");
   });
 }
 
@@ -3457,7 +3463,7 @@ function mountNotesEditor() {
   notesCmView = NotesCodeMirror.mount(host, {
     value: "",
     theme: resolveDesktopTheme(getDesktopThemePref()),
-    placeholder: "编辑 Markdown…（⌘V 可粘贴图片）",
+    placeholder: t("desktop.notes.editorPlaceholder"),
     onChange: onNotesEditorChange,
     onPasteImage: tryHandleNotesImagePaste
   });
@@ -4007,7 +4013,7 @@ function calSessionRowHtml(s) {
  */
 function buildCalSessionListHtml(sessions, type) {
   if (!sessions.length) {
-    return `<p class="muted cal-session-empty">该范围内没有 session</p>`;
+    return `<p class="muted cal-session-empty">${escapeHtml(t("desktop.report.noSessionsInRange"))}</p>`;
   }
 
   if (type === "day") {
@@ -4108,9 +4114,9 @@ async function renderCalSessionList(opts = {}) {
   const range = focusSessionRange();
   if (!range) {
     delete listEl.dataset.view;
-    if (titleEl) titleEl.textContent = "Sessions";
+    if (titleEl) titleEl.textContent = t("desktop.report.sessionsTitle");
     if (metaEl) metaEl.textContent = "";
-    listEl.innerHTML = `<p class="muted cal-session-empty">切换月份或选择日期 / 周后显示 session</p>`;
+    listEl.innerHTML = `<p class="muted cal-session-empty">${escapeHtml(t("desktop.report.sessionEmpty"))}</p>`;
     calSessionCache = [];
     return;
   }
@@ -4118,9 +4124,9 @@ async function renderCalSessionList(opts = {}) {
   listEl.dataset.view = range.type;
 
   const label =
-    range.type === "day" ? `日 ${range.key}` : range.type === "week" ? `周 ${range.key}` : `月 ${range.key}`;
+    range.type === "day" ? t("desktop.report.rangeDay", range.key) : range.type === "week" ? t("desktop.report.rangeWeek", range.key) : t("desktop.report.rangeMonth", range.key);
   if (titleEl) titleEl.textContent = `Sessions · ${label}`;
-  if (metaEl) metaEl.textContent = "加载中…";
+  if (metaEl) metaEl.textContent = t("desktop.common.loading");
 
   const seq = `${range.type}:${range.key}:${range.fromMs}:${range.toMs}`;
   calSessionListSeq = seq;
@@ -4133,7 +4139,7 @@ async function renderCalSessionList(opts = {}) {
     });
     if (calSessionListSeq !== seq) return; // stale
     calSessionCache = sessions || [];
-    if (metaEl) metaEl.textContent = `${calSessionCache.length} 条 · 点击预览`;
+    if (metaEl) metaEl.textContent = t("desktop.report.sessionCountMeta", calSessionCache.length);
     listEl.innerHTML = buildCalSessionListHtml(calSessionCache, range.type);
     wireCalSessionListClicks(listEl);
     if (opts.preserveScroll) listEl.scrollTop = previousScrollTop;
@@ -4206,7 +4212,7 @@ function ensureYearOptions() {
   for (let y = maxY; y >= minY; y--) {
     const opt = document.createElement("option");
     opt.value = String(y);
-    opt.textContent = `${y} 年`;
+    opt.textContent = t("desktop.common.yearSuffix", y);
     sel.appendChild(opt);
   }
   sel.dataset.minY = String(minY);
@@ -4305,10 +4311,10 @@ function digestCardHtml(e) {
             <div class="digest-card-actions">
               <button type="button" class="tool-btn dig-regen" data-level="${escapeHtml(
                 level
-              )}" data-id="${escapeHtml(id)}" data-period-key="${escapeHtml(periodKey)}">重新生成</button>
+              )}" data-id="${escapeHtml(id)}" data-period-key="${escapeHtml(periodKey)}">${escapeHtml(t("desktop.report.regenerateBtn"))}</button>
               <button type="button" class="tool-btn dig-gtd" data-level="${escapeHtml(
                 level
-              )}" data-id="${escapeHtml(id)}">GTD分析</button>
+              )}" data-id="${escapeHtml(id)}">${escapeHtml(t("desktop.report.gtdBtn"))}</button>
             </div>
           </div>
           <div class="meta-line">${escapeHtml(formatTime(e.createdAtMs))}${emb}</div>
@@ -4317,7 +4323,15 @@ function digestCardHtml(e) {
       </article>`;
 }
 
-const FOCUS_DIGEST_LABELS = { day: "日报", week: "周报", month: "月报" };
+const FOCUS_DIGEST_LABELS = {
+  day: () => t("desktop.report.digestDaily"),
+  week: () => t("desktop.report.digestWeekly"),
+  month: () => t("desktop.report.digestMonthly")
+};
+function focusDigestLabel(type) {
+  const fn = FOCUS_DIGEST_LABELS[type];
+  return typeof fn === "function" ? fn() : t("desktop.report.digestReport");
+}
 const FOCUS_DIGEST_LEVELS = { day: "daily", week: "weekly", month: "monthly" };
 
 function enterCalDigestDetailMode(type, key) {
@@ -4327,8 +4341,8 @@ function enterCalDigestDetailMode(type, key) {
   const titleEl = $("calDetailTitle");
   const backBtn = $("btnCalDetailBack");
   if (titleEl) {
-    const label = FOCUS_DIGEST_LABELS[type] || "报告";
-    titleEl.textContent = key ? `${label} · ${key}` : "报告详情";
+    const label = focusDigestLabel(type) || t("desktop.report.digestReport");
+    titleEl.textContent = key ? t("desktop.report.digestDetailTitle", label, key) : t("desktop.report.reportDetail");
   }
   if (backBtn) backBtn.hidden = true;
 }
@@ -4356,12 +4370,12 @@ function returnToCalDigestDetail() {
     calDetailSessionKey = null;
     highlightCalSessionRow(null);
     const titleEl = $("calDetailTitle");
-    if (titleEl) titleEl.textContent = "报告详情";
+    if (titleEl) titleEl.textContent = t("desktop.report.reportDetail");
     $("btnCalDetailBack")?.setAttribute("hidden", "");
     const detail = $("calDetail");
     if (detail) {
       detail.innerHTML =
-        "<p class=\"muted\">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>";
+        `<p class="muted">${escapeHtml(t("desktop.report.detailHint"))}</p>`;
     }
     return;
   }
@@ -4439,7 +4453,15 @@ function wireDigestPanelActions(root) {
   });
 }
 
-const FOCUS_SCOPE_WORDS = { day: "这一天", week: "这一周", month: "这一月" };
+const FOCUS_SCOPE_WORDS = {
+  day: () => t("desktop.report.scopeDay"),
+  week: () => t("desktop.report.scopeWeek"),
+  month: () => t("desktop.report.scopeMonth")
+};
+function focusScopeWord(type) {
+  const fn = FOCUS_SCOPE_WORDS[type];
+  return typeof fn === "function" ? fn() : t("desktop.report.scopePeriod");
+}
 
 function periodRangeForType(type, key) {
   if (type === "day") return dayRangeFromKey(key);
@@ -4471,9 +4493,9 @@ function periodHasSessions(type, key) {
 }
 
 function emptyDigestPanelHtml(type, key, hasSessions) {
-  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  const label = focusDigestLabel(type) || "Digest";
   const level = FOCUS_DIGEST_LEVELS[type] || "daily";
-  const scope = FOCUS_SCOPE_WORDS[type] || "本期";
+  const scope = focusScopeWord(type) || t("desktop.report.scopePeriod");
 
   const header = `
       <header class="digest-panel-head">
@@ -4484,17 +4506,17 @@ function emptyDigestPanelHtml(type, key, hasSessions) {
     return `
     <div class="digest-panel digest-panel-empty digest-panel-quiet">
       ${header}
-      <p class="empty-hint muted">${escapeHtml(scope)}还没有 CLI 会话记录，暂时不必生成${escapeHtml(label)}。</p>
+      <p class="empty-hint muted">${escapeHtml(t("desktop.report.emptyNoSessions", scope, label))}</p>
     </div>`;
   }
 
   return `
     <div class="digest-panel digest-panel-empty">
       ${header}
-      <p class="empty-hint muted">${escapeHtml(scope)}有会话活动，${escapeHtml(label)}还没整理好。如果想汇总一下，可以点下方按钮（需先在 Settings 配置工具 LLM）。</p>
+      <p class="empty-hint muted">${escapeHtml(t("desktop.report.emptyHasSessions", scope, label))}</p>
       <button type="button" class="tool-btn dig-generate" data-level="${escapeHtml(level)}" data-period-key="${escapeHtml(
         key
-      )}">生成${escapeHtml(label)}</button>
+      )}">${escapeHtml(t("desktop.report.generateBtn", label))}</button>
     </div>`;
 }
 
@@ -4509,7 +4531,7 @@ function renderFocusDigestDetail(type, key) {
 
   enterCalDigestDetailMode(type, key);
 
-  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  const label = focusDigestLabel(type) || "Digest";
 
   if (type === "day" && generatingDays.has(key)) {
     showGeneratingDetail("day", key);
@@ -4529,7 +4551,7 @@ function renderFocusDigestDetail(type, key) {
   }
 
   if (isFuturePeriod(type, key)) {
-    detail.innerHTML = `<p class="empty-hint muted">未来的日期还无法生成${escapeHtml(label)}，等有活动后再来看看吧。</p>`;
+    detail.innerHTML = `<p class="empty-hint muted">${escapeHtml(t("desktop.report.futureDateHint", label))}</p>`;
     return;
   }
 
@@ -4565,15 +4587,15 @@ function periodKeyFromMemoryId(level, id) {
   return id;
 }
 
-function regenerateDigest(level, memoryId, explicitPeriodKey = "") {
-  const key = explicitPeriodKey || periodKeyFromMemoryId(level, memoryId);
+function regenerateDigest(level, reportId, explicitPeriodKey = "") {
+  const key = explicitPeriodKey || periodKeyFromMemoryId(level, reportId);
   if (!key) {
-    setGenFinal("无法解析 digest id", "error");
+    setGenFinal(t("desktop.report.cannotParseDigestId"), "error");
     return;
   }
   if (level === "daily") {
     if (weeklyMonthlyBusy) {
-      setGenFinal("周报/月报生成中，请稍候…", "error");
+      setGenFinal(t("desktop.report.weeklyMonthlyBusyError"), "error");
       return;
     }
     if (generatingDays.has(key)) {
@@ -4583,7 +4605,7 @@ function regenerateDigest(level, memoryId, explicitPeriodKey = "") {
     selectedDayKey = key;
     detailFocus = { type: "day", key };
     updatePeriodLabel();
-    runDaily(key, { reasonMessage: "手动重新生成" });
+    runDaily(key, { reasonMessage: t("desktop.report.manualRegenerate") });
     return;
   }
   if (level === "weekly") {
@@ -4592,7 +4614,7 @@ function regenerateDigest(level, memoryId, explicitPeriodKey = "") {
       return;
     }
     if (weeklyMonthlyBusy || generatingDays.size > 0) {
-      setGenFinal("有任务进行中，请稍候再重新生成周报…", "error");
+      setGenFinal(t("desktop.report.taskBusyRegenWeekly"), "error");
       return;
     }
     detailFocus = { type: "week", key };
@@ -4605,18 +4627,18 @@ function regenerateDigest(level, memoryId, explicitPeriodKey = "") {
       return;
     }
     if (weeklyMonthlyBusy || generatingDays.size > 0) {
-      setGenFinal("有任务进行中，请稍候再重新生成月报…", "error");
+      setGenFinal(t("desktop.report.taskBusyRegenMonthly"), "error");
       return;
     }
     detailFocus = { type: "month", key };
     runMonthly(key);
     return;
   }
-  setGenFinal(`未知 level: ${level}`, "error");
+  setGenFinal(t("desktop.report.unknownLevel", level), "error");
 }
 
 /** Last scoped GTD source (from detail card). */
-let gtdScoped = /** @type {{ level: string, memoryId: string } | null} */ (null);
+let gtdScoped = /** @type {{ level: string, reportId: string } | null} */ (null);
 
 /**
  * Cache GTD analysis per digest id. Only refresh on「重新分析」.
@@ -4626,7 +4648,7 @@ const gtdCacheByMemoryId = new Map();
 
 /** Collect current DOM edits into cache for active scoped digest. */
 function snapshotGtdCache() {
-  if (!gtdScoped?.memoryId) return;
+  if (!gtdScoped?.reportId) return;
   const root = $("gtdPreview");
   if (!root) return;
 
@@ -4646,14 +4668,14 @@ function snapshotGtdCache() {
       proposedGtd: edited.gtd,
       reason: edited.reason,
       tasks: edited.tasks,
-      sourceMemoryIds: edited.sourceMemoryIds,
+      sourceReportIds: edited.sourceReportIds,
       todolistPreview: edited.todolistMarkdown
     });
   });
 
-  const prev = gtdCacheByMemoryId.get(gtdScoped.memoryId);
+  const prev = gtdCacheByMemoryId.get(gtdScoped.reportId);
   const statusEl = $("gtdSyncStatus");
-  gtdCacheByMemoryId.set(gtdScoped.memoryId, {
+  gtdCacheByMemoryId.set(gtdScoped.reportId, {
     level: gtdScoped.level,
     proposals,
     warnings: prev?.warnings || [],
@@ -4661,18 +4683,20 @@ function snapshotGtdCache() {
   });
 }
 
-function restoreGtdCache(memoryId) {
-  const cached = gtdCacheByMemoryId.get(memoryId);
+function restoreGtdCache(reportId) {
+  const cached = gtdCacheByMemoryId.get(reportId);
   if (!cached) return false;
   renderGtdPreview(cached.proposals, cached.warnings);
   const status = $("gtdSyncStatus");
   if (status) {
     const text =
       cached.statusText ||
-      `缓存预览 · ${cached.proposals.length} 项 · 源 ${cached.level}:${periodKeyFromMemoryId(
+      t(
+        "desktop.report.gtdCachePreview",
+        cached.proposals.length,
         cached.level,
-        memoryId
-      )} · 点「重新分析」可刷新`;
+        periodKeyFromMemoryId(cached.level, reportId)
+      );
     // Prefer ok when we have items; keep error styling only if empty
     setStatus(status, text, cached.proposals.length ? "ok" : "error");
   }
@@ -4682,22 +4706,22 @@ function restoreGtdCache(memoryId) {
 /**
  * Open GTD sheet for a digest. Uses cache unless forceAnalyze.
  * @param {string} level
- * @param {string} memoryId
+ * @param {string} reportId
  * @param {{ forceAnalyze?: boolean }} [opts]
  */
-async function openGtdFromDigest(level, memoryId, opts = {}) {
-  if (!memoryId) {
-    setGenFinal("缺少 digest id", "error");
+async function openGtdFromDigest(level, reportId, opts = {}) {
+  if (!reportId) {
+    setGenFinal(t("desktop.report.missingDigestId"), "error");
     return;
   }
   // Persist edits from previous open before switching source
   snapshotGtdCache();
 
-  gtdScoped = { level, memoryId };
+  gtdScoped = { level, reportId };
   openSheet("sheetGtd");
 
-  if (!opts.forceAnalyze && gtdCacheByMemoryId.has(memoryId)) {
-    restoreGtdCache(memoryId);
+  if (!opts.forceAnalyze && gtdCacheByMemoryId.has(reportId)) {
+    restoreGtdCache(reportId);
     return;
   }
   await previewGtdSync({ force: true });
@@ -4705,30 +4729,30 @@ async function openGtdFromDigest(level, memoryId, opts = {}) {
 
 function staleDigestHint(check, type = "day") {
   if (!check) return "";
-  const label = FOCUS_DIGEST_LABELS[type] || "Digest";
+  const label = focusDigestLabel(type) || t("desktop.report.digestReport");
   if (type === "day") {
     if (check.reason === "new_sessions" && check.newSessionCount > 0) {
-      return `有 ${check.newSessionCount} 个新 session 还没写进日报，方便的话可以再生成一次同步一下。`;
+      return t("desktop.report.staleNewSessions", check.newSessionCount);
     }
     if (check.reason === "updated_sessions" && check.updatedSessionCount > 0) {
-      return `有 ${check.updatedSessionCount} 个 session 在日报之后又更新了，方便的话可以再生成一次保持最新。`;
+      return t("desktop.report.staleUpdatedSessions", check.updatedSessionCount);
     }
-    return check.message || "日报可能不是最新的，方便的话可以再生成一次。";
+    return check.message || t("desktop.report.staleDefault");
   }
   if (check.reason === "updated_sessions" && check.updatedSessionCount > 0) {
-    return `有 ${check.updatedSessionCount} 个 session 在${label}之后又更新了，方便的话可以再生成一次保持最新。`;
+    return t("desktop.report.staleUpdatedAfterDigest", check.updatedSessionCount, label);
   }
   if (check.reason === "new_sessions" && check.newSessionCount > 0) {
-    return `底层日报有变化，${label}可能不是最新的。方便的话可以再生成一次同步一下。`;
+    return t("desktop.report.staleUnderlyingDaily", label);
   }
-  return check.message || `${label}可能不是最新的，方便的话可以再生成一次。`;
+  return check.message || t("desktop.report.staleDefault");
 }
 
 function renderDigestEntries(entries, staleCheck, focusType = "day") {
   const detail = $("calDetail");
   if (!detail) return;
   if (!entries.length) {
-    detail.innerHTML = `<p class="empty-hint">暂无 digest。</p>`;
+    detail.innerHTML = `<p class="empty-hint">${escapeHtml(t("desktop.report.noDigest"))}</p>`;
     return;
   }
   const banner = staleCheck
@@ -4785,7 +4809,7 @@ function renderCalendar() {
       if (generatingDays.has(key)) cell.classList.add("generating");
       cell.dataset.day = key;
       if (generatingDays.has(key)) {
-        cell.title = `正在生成日报 ${key}…`;
+        cell.title = t("desktop.report.generatingDaily", key);
       }
 
       const marks = document.createElement("div");
@@ -4820,16 +4844,16 @@ function renderCalendar() {
     if (isFutureWeek) weekBtn.classList.add("future");
     if (generatingPeriodKey === `weekly:${wLabel}`) weekBtn.classList.add("generating");
     const staleBadge = staleW
-      ? `<span class="cal-period-stale" title="${escapeHtml(staleW.message || "周报待更新")}">更</span>`
+      ? `<span class="cal-period-stale" title="${escapeHtml(staleW.message || t("desktop.report.weeklyStaleShort"))}">${escapeHtml(t("desktop.report.markStale"))}</span>`
       : "";
     weekBtn.innerHTML = `<span class="cal-week-label">${escapeHtml(weekShortLabel)}</span>${staleBadge}`;
     weekBtn.title = isFutureWeek
-      ? `未来周 ${wLabel}`
+      ? t("desktop.report.futureWeek", wLabel)
       : staleW
-        ? `周报 ${wLabel} · ${staleW.message || "待更新"}`
+        ? t("desktop.report.weeklyTitleStale", wLabel, staleW.message || t("desktop.report.weeklyStaleShort"))
         : hasW
-          ? `周报 ${wLabel} · 点击查看（右侧面板可重新生成）`
-          : `周报 ${wLabel} · 点击查看 session，右侧面板生成`;
+          ? t("desktop.report.weeklyTitleView", wLabel)
+          : t("desktop.report.weeklyTitleGenerate", wLabel);
     weekBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       onWeekButton(wLabel);
@@ -4855,18 +4879,18 @@ function renderCalendar() {
     );
     monthBtn.disabled = isFutureMonth;
     const monthStaleBadge = staleM
-      ? `<span class="cal-period-stale" title="${escapeHtml(staleM.message || "月报待更新")}">更</span>`
+      ? `<span class="cal-period-stale" title="${escapeHtml(staleM.message || t("desktop.report.monthlyStaleShort"))}">${escapeHtml(t("desktop.report.markStale"))}</span>`
       : "";
     monthBtn.innerHTML = isFutureMonth
-      ? "月（未来）"
-      : `月 · ${escapeHtml(mLabel)}${monthStaleBadge}`;
+      ? escapeHtml(t("desktop.report.monthFuture"))
+      : `${escapeHtml(t("desktop.report.monthBtn"))} · ${escapeHtml(mLabel)}${monthStaleBadge}`;
     monthBtn.title = isFutureMonth
-      ? "未来月份"
+      ? t("desktop.report.futureMonth")
       : staleM
-        ? `月 ${mLabel} · ${staleM.message || "待更新"}`
+        ? t("desktop.report.monthTitleStale", mLabel, staleM.message || t("desktop.report.monthlyStaleShort"))
         : hasM
-          ? `月 ${mLabel} · 点击查看 session 与月报（右侧面板可重新生成）`
-          : `月 ${mLabel} · 点击查看 session，右侧面板生成月报`;
+          ? t("desktop.report.monthTitleView", mLabel)
+          : t("desktop.report.monthTitleGenerate", mLabel);
   }
 }
 
@@ -4898,15 +4922,17 @@ function appendDayCellMark(marks, ctx) {
     const m = document.createElement("span");
     if (stale) {
       m.className = "mark daily-stale";
-      m.textContent = "更";
+      m.textContent = t("desktop.report.markStale");
       const parts = [];
-      if (stale.newSessionCount > 0) parts.push(`${stale.newSessionCount} 个新 session`);
-      if (stale.updatedSessionCount > 0) parts.push(`${stale.updatedSessionCount} 个有更新`);
-      m.title = `日报已有，${parts.join("、") || "session 有变化"} · ${dayKey}`;
+      if (stale.newSessionCount > 0) parts.push(t("desktop.report.newSessions", stale.newSessionCount));
+      if (stale.updatedSessionCount > 0) {
+        parts.push(t("desktop.report.updatedSessions", stale.updatedSessionCount));
+      }
+      m.title = t("desktop.report.dailyStaleTitle", parts.join(", ") || t("desktop.report.sessionChanged"), dayKey);
     } else {
       m.className = "mark daily";
       m.textContent = "D";
-      m.title = dailyEntry.title || dailyEntry.id || `日报已是最新 · ${dayKey}`;
+      m.title = dailyEntry.title || dailyEntry.id || t("desktop.report.dailyUpToDate", dayKey);
     }
     marks.appendChild(m);
     return;
@@ -4915,16 +4941,16 @@ function appendDayCellMark(marks, ctx) {
   if (calMonthSessionDays.has(dayKey)) {
     const m = document.createElement("span");
     m.className = "mark daily-missing";
-    m.textContent = "未";
-    m.title = `有 session，日报未生成 · ${dayKey}`;
+    m.textContent = t("desktop.report.markMissing");
+    m.title = t("desktop.report.dailyMissingTitle", dayKey);
     marks.appendChild(m);
     return;
   }
 
   const m = document.createElement("span");
   m.className = "mark no-session";
-  m.textContent = "无";
-  m.title = `无 session · ${dayKey}`;
+  m.textContent = t("desktop.report.markNone");
+  m.title = t("desktop.report.noSessionTitle", dayKey);
   marks.appendChild(m);
 }
 
@@ -4950,8 +4976,8 @@ function focusGeneratingDetail(type, key) {
     $("genProgress")?.classList.add("is-loading");
     const line = $("genProgressLine");
     if (line) {
-      const label = type === "day" ? "日报" : type === "week" ? "周报" : "月报";
-      line.textContent = `正在生成${label} ${key}…`;
+      const label = focusDigestLabel(type);
+      line.textContent = t("desktop.report.generatingLabel", label, key);
       line.classList.remove("is-ok", "is-error");
     }
   }
@@ -4965,14 +4991,14 @@ function showGeneratingDetail(type, key) {
   const detail = $("calDetail");
   if (!detail) return;
   enterCalDigestDetailMode(type, key);
-  const label = type === "day" ? "日报" : type === "week" ? "周报" : "月报";
+  const label = focusDigestLabel(type);
   detail.innerHTML = `
     <div class="detail-generating">
       <p class="empty-hint">
-        正在生成<strong>${escapeHtml(label)}</strong>
+        ${escapeHtml(t("desktop.report.generatingStrong"))}<strong>${escapeHtml(label)}</strong>
         <span class="detail-generating-key">${escapeHtml(key)}</span>
       </p>
-      <p class="muted detail-generating-hint">进度见上方进度条与 session 明细。</p>
+      <p class="muted detail-generating-hint">${escapeHtml(t("desktop.report.generatingHint"))}</p>
     </div>`;
 }
 
@@ -5092,12 +5118,12 @@ async function refreshMonthSessionActivity(opts = {}) {
 }
 
 async function loadMemory() {
-  setStatus($("memoryStatus"), "");
+  setStatus($("reportStatus"), "");
   try {
     const { fromMs, toMs } = monthRangeMs(calView.year, calView.month);
     const monthRange = monthRangeFromKey(viewMonthLabel());
     const [entries, sessions] = await Promise.all([
-      agentResume.listMemory({
+      agentResume.listReports({
         fromMs,
         toMs,
         limit: 300
@@ -5120,9 +5146,9 @@ async function loadMemory() {
       refreshDetailFocus();
     } else {
       $("calDetail").innerHTML =
-        `<p class="muted">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>`;
+        `<p class="muted">${escapeHtml(t("desktop.report.detailHint"))}</p>`;
       const titleEl = $("calDetailTitle");
-      if (titleEl) titleEl.textContent = "报告详情";
+      if (titleEl) titleEl.textContent = t("desktop.report.reportDetail");
       $("btnCalDetailBack")?.setAttribute("hidden", "");
     }
     renderCalSessionList();
@@ -5169,17 +5195,33 @@ function formatSummaryEnsureStats(result) {
   const parts = [];
   const ed = result.ensuredDailies;
   if (ed) {
-    parts.push(`补日报 +${ed.ok?.length || 0}/skip ${ed.skipped?.length || 0}${ed.failed?.length ? `/fail ${ed.failed.length}` : ""}`);
+    parts.push(
+      t(
+        "desktop.report.backfillDaily",
+        ed.ok?.length || 0,
+        ed.skipped?.length || 0,
+        ed.failed?.length ? `/fail ${ed.failed.length}` : ""
+      )
+    );
   }
   const ew = result.ensuredWeeklies;
   if (ew) {
-    parts.push(`补周报 +${ew.ok?.length || 0}/skip ${ew.skipped?.length || 0}${ew.failed?.length ? `/fail ${ew.failed.length}` : ""}`);
+    parts.push(
+      t(
+        "desktop.report.backfillWeekly",
+        ew.ok?.length || 0,
+        ew.skipped?.length || 0,
+        ew.failed?.length ? `/fail ${ew.failed.length}` : ""
+      )
+    );
   }
   const summarized = result.summarizedCount ?? 0;
   const skipped = result.summarySkippedCount ?? 0;
   const failed = result.summaryFailed?.length ?? 0;
   if (summarized || skipped || failed) {
-    parts.push(`summarize +${summarized}/skip ${skipped}${failed ? `/fail ${failed}` : ""}`);
+    parts.push(
+      t("desktop.report.summarizeStats", summarized, skipped, failed ? `/fail ${failed}` : "")
+    );
   }
   return parts.length ? ` · ${parts.join(" · ")}` : "";
 }
@@ -5364,10 +5406,10 @@ function showLlmRequiredDetail(digestLabel) {
   if (!detail) return;
   detail.innerHTML = `
     <div class="detail-error">
-      <p class="empty-hint error">无法生成${escapeHtml(digestLabel)}：尚未配置工具 LLM</p>
-      <p class="muted">日历中的 session 来自本地索引；生成日报 / 周报 / 月报需要调用工具 LLM API（会先补全缺失的日报，再聚合为周报 / 月报）。</p>
-      <p class="muted">请在 <strong>设置 → 模型</strong> 填写 Base URL、Model、API Key，会自动保存，保存后重试。</p>
-      <button type="button" class="tool-btn" id="btnLlmSettings">去 Settings 配置</button>
+      <p class="empty-hint error">${escapeHtml(t("desktop.report.llmRequiredTitle", digestLabel))}</p>
+      <p class="muted">${escapeHtml(t("desktop.report.llmRequiredBody1"))}</p>
+      <p class="muted">${escapeHtml(t("desktop.report.llmRequiredBody2"))}</p>
+      <button type="button" class="tool-btn" id="btnLlmSettings">${escapeHtml(t("desktop.report.llmSettingsBtn"))}</button>
     </div>`;
   $("btnLlmSettings")?.addEventListener("click", openLlmSettings);
 }
@@ -5380,8 +5422,7 @@ async function ensureLlmReady(digestLabel) {
   } catch {
     // fall through to error UI
   }
-  const msg = `无法生成${digestLabel}：请先在设置 → 模型配置工具 LLM（baseUrl / model / apiKey）`;
-  setGenFinal(msg, "error");
+  setGenFinal(t("desktop.report.llmRequiredToast", digestLabel), "error");
   showLlmRequiredDetail(digestLabel);
   return false;
 }
@@ -5394,11 +5435,11 @@ function isLlmConfigError(error) {
 function handleDigestError(digestLabel, error) {
   const err = error instanceof Error ? error.message : String(error);
   if (isLlmConfigError(error)) {
-    setGenFinal(`无法生成${digestLabel}：请先在 Settings → Provider 配置工具 LLM`, "error");
+    setGenFinal(t("desktop.report.llmRequiredGenFinal", digestLabel), "error");
     showLlmRequiredDetail(digestLabel);
     return;
   }
-  setGenFinal(`${digestLabel} 失败：${err}`, "error");
+  setGenFinal(t("desktop.report.digestFailed", digestLabel, err), "error");
 }
 
 /** Days currently generating a daily digest (parallel OK). */
@@ -5452,7 +5493,7 @@ async function refreshDayCalendarState(dayKey) {
   const range = dayRangeFromKey(dayKey);
   if (!range) return;
   try {
-    const entries = await agentResume.listMemory({
+    const entries = await agentResume.listReports({
       fromMs: range.fromMs,
       toMs: range.toMs,
       limit: 20
@@ -5500,7 +5541,7 @@ function syncCalendarFromDigestProgress(event) {
     "embed"
   ]);
   const inCascade =
-    weeklyMonthlyBusy || event.level === "daily" || /日报/.test(event.message || "");
+    weeklyMonthlyBusy || event.level === "daily" || /daily/i.test(event.message || "");
 
   if (dailyActivePhases.has(phase) && inCascade) {
     if (phase === "ensure_summaries" && !event.message?.includes(dayKey)) {
@@ -5537,7 +5578,7 @@ function markDayGenerating(dayKey, on) {
   }
   if (on) {
     cell.classList.add("generating");
-    cell.title = `正在生成日报 ${dayKey}…`;
+    cell.title = t("desktop.report.generatingDaily", dayKey);
     const marks = cell.querySelector(".marks");
     if (marks) marks.innerHTML = "";
     if (!cell.querySelector(".cal-cell-loading")) {
@@ -5557,8 +5598,8 @@ function markDayGenerating(dayKey, on) {
 function formatParallelDailyStatus() {
   const days = [...generatingDays].sort();
   if (!days.length) return "";
-  if (days.length === 1) return `生成日报 ${days[0]}…`;
-  return `并行生成 ${days.length} 天日报：${days.join(" · ")}`;
+  if (days.length === 1) return t("desktop.report.parallelDailyOne", days[0]);
+  return t("desktop.report.parallelDailyMany", days.length, days.join(" · "));
 }
 
 /**
@@ -5569,10 +5610,10 @@ async function runDaily(dayKey, opts = {}) {
   const day = dayKey || getActivePeriods().day;
   if (generatingDays.has(day)) return;
   if (weeklyMonthlyBusy) {
-    setGenFinal("周报/月报生成中，请稍候…", "error");
+    setGenFinal(t("desktop.report.weeklyMonthlyBusyError"), "error");
     return;
   }
-  if (!(await ensureLlmReady("日报"))) return;
+  if (!(await ensureLlmReady(focusDigestLabel("day")))) return;
 
   markDayGenerating(day, true);
   detailFocus = { type: "day", key: day };
@@ -5584,7 +5625,7 @@ async function runDaily(dayKey, opts = {}) {
     phase: "start",
     level: "daily",
     periodLabel: day,
-    message: formatParallelDailyStatus() + "（先 summarize sessions）" + reason
+    message: t("desktop.report.parallelDaily", formatParallelDailyStatus(), reason)
   });
   try {
     const result = await agentResume.runDailyDigest({
@@ -5592,16 +5633,23 @@ async function runDaily(dayKey, opts = {}) {
     });
     const ready = result.summaryReadyCount ?? result.snippetCount ?? 0;
     const still = generatingDays.size > 1; // will delete self in finally after this check
-    const msg = `日报 ${day} OK · ${result.replaced ? "覆盖" : "新建"} · ${result.sessionCount} sessions · summary ${ready}${formatSummaryEnsureStats(
-      result
-    )}${result.embedded ? " · embedded" : ""}`;
+    const action = result.replaced ? t("desktop.report.replaced") : t("desktop.report.created");
+    const embedded = result.embedded ? t("desktop.report.embeddedSuffix") : "";
+    const msg = t(
+      "desktop.report.digestOk",
+      t("desktop.report.digestDaily"),
+      day,
+      action,
+      result.sessionCount,
+      ready,
+      `${formatSummaryEnsureStats(result)}${embedded}`
+    );
     if (still) {
-      // Other days still running — keep progress open with multi status
       applyDigestProgress({
         phase: "start",
         level: "daily",
         periodLabel: day,
-        message: `${msg} · 仍在生成：${[...generatingDays].filter((d) => d !== day).sort().join(" · ")}`
+        message: `${msg}${t("desktop.report.stillGenerating", [...generatingDays].filter((d) => d !== day).sort().join(" · "))}`
       });
     } else {
       setGenFinal(msg, "ok");
@@ -5617,12 +5665,17 @@ async function runDaily(dayKey, opts = {}) {
         phase: "error",
         level: "daily",
         periodLabel: day,
-        message: `日报 ${day} 失败：${err} · 仍在生成：${[...generatingDays].filter((d) => d !== day).sort().join(" · ")}`
+        message: t(
+          "desktop.report.dailyFailedWithStill",
+          day,
+          err,
+          [...generatingDays].filter((d) => d !== day).sort().join(" · ")
+        )
       });
     } else if (isLlmConfigError(error)) {
-      handleDigestError("日报", error);
+      handleDigestError(focusDigestLabel("day"), error);
     } else {
-      setGenFinal(`日报 ${day} 失败：${err}`, "error");
+      setGenFinal(t("desktop.report.dailyFailed", day, err), "error");
     }
   } finally {
     markDayGenerating(day, false);
@@ -5643,10 +5696,10 @@ async function runDaily(dayKey, opts = {}) {
 async function runWeekly(weekKey) {
   const week = weekKey || getActivePeriods().week;
   if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    setGenFinal("有任务进行中，请稍候再生成周报…", "error");
+    setGenFinal(t("desktop.report.taskBusyGenWeekly"), "error");
     return;
   }
-  if (!(await ensureLlmReady("周报"))) return;
+  if (!(await ensureLlmReady(focusDigestLabel("week")))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `weekly:${week}`;
   detailFocus = { type: "week", key: week };
@@ -5658,19 +5711,27 @@ async function runWeekly(weekKey) {
     phase: "start",
     level: "weekly",
     periodLabel: week,
-    message: `生成周报 ${week}…（先逐个更新本周待刷新日报）`
+    message: t("desktop.report.generatingWeeklyCascade", week)
   });
   try {
     const result = await agentResume.runWeeklyDigest(week);
+    const action = result.replaced ? t("desktop.report.replaced") : t("desktop.report.created");
+    const embedded = result.embedded ? t("desktop.report.embeddedSuffix") : "";
     setGenFinal(
-      `周报 ${week} OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (dailies ${
-        result.usedDailies
-      })${formatSummaryEnsureStats(result)}${result.embedded ? " · embedded" : ""}`,
+      t(
+        "desktop.report.weeklyDigestOk",
+        week,
+        action,
+        result.sourceCount,
+        result.usedDailies,
+        formatSummaryEnsureStats(result),
+        embedded
+      ),
       "ok"
     );
     await loadMemory();
   } catch (error) {
-    handleDigestError("周报", error);
+    handleDigestError(focusDigestLabel("week"), error);
   } finally {
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
@@ -5686,10 +5747,10 @@ async function runWeekly(weekKey) {
 async function runMonthly(monthKey) {
   const month = monthKey || getActivePeriods().month;
   if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    setGenFinal("有任务进行中，请稍候再生成月报…", "error");
+    setGenFinal(t("desktop.report.taskBusyGenMonthly"), "error");
     return;
   }
-  if (!(await ensureLlmReady("月报"))) return;
+  if (!(await ensureLlmReady(focusDigestLabel("month")))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `monthly:${month}`;
   detailFocus = { type: "month", key: month };
@@ -5701,19 +5762,27 @@ async function runMonthly(monthKey) {
     phase: "start",
     level: "monthly",
     periodLabel: month,
-    message: `生成月报 ${month}…（先更新本月日报，再更新周报）`
+    message: t("desktop.report.generatingMonthlyCascade", month)
   });
   try {
     const result = await agentResume.runMonthlyDigest(month);
+    const action = result.replaced ? t("desktop.report.replaced") : t("desktop.report.created");
+    const embedded = result.embedded ? t("desktop.report.embeddedSuffix") : "";
     setGenFinal(
-      `月报 ${month} OK · ${result.replaced ? "覆盖" : "新建"} · sources ${result.sourceCount} (dailies ${
-        result.usedDailies
-      })${formatSummaryEnsureStats(result)}${result.embedded ? " · embedded" : ""}`,
+      t(
+        "desktop.report.monthlyDigestOk",
+        month,
+        action,
+        result.sourceCount,
+        result.usedDailies,
+        formatSummaryEnsureStats(result),
+        embedded
+      ),
       "ok"
     );
     await loadMemory();
   } catch (error) {
-    handleDigestError("月报", error);
+    handleDigestError(focusDigestLabel("month"), error);
   } finally {
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
@@ -5726,22 +5795,36 @@ async function runMonthly(monthKey) {
 function formatBackfillStats(label, s) {
   if (!s) return "";
   const fail = s.failed?.length || 0;
-  return `${label}: ok ${s.ok?.length || 0} / skip ${s.skipped?.length || 0} / fail ${fail} (planned ${s.planned?.length || 0})`;
+  return t(
+    "desktop.backfill.stats",
+    label,
+    s.ok?.length || 0,
+    s.skipped?.length || 0,
+    fail,
+    s.planned?.length || 0
+  );
 }
 
 async function previewBackfill() {
   const status = $("backfillStatus");
   const maxDays = Number($("backfillMaxDays").value) || 400;
   const skipExisting = $("backfillSkipExisting").checked;
-  setStatus(status, "Scanning catalog…");
+  setStatus(status, t("desktop.backfill.scanning"));
   try {
     const p = await agentResume.previewBackfillDigests({ maxDays, skipExisting });
     setStatus(
       status,
-      `Preview · sessions ${p.sessionRowsScanned} · days ${p.days.length} · weeks ${p.weeks.length} · months ${p.months.length} · ~${p.estimatedLlmCalls} LLM calls` +
-        (p.days.length
-          ? ` · range ${p.days[0]} → ${p.days[p.days.length - 1]}`
-          : " · no activity days"),
+      t(
+        "desktop.backfill.preview",
+        p.sessionRowsScanned,
+        p.days.length,
+        p.weeks.length,
+        p.months.length,
+        p.estimatedLlmCalls,
+        p.days.length
+          ? t("desktop.backfill.previewRange", p.days[0], p.days[p.days.length - 1])
+          : t("desktop.backfill.noActivity")
+      ),
       p.days.length ? "ok" : "error"
     );
   } catch (error) {
@@ -5755,25 +5838,28 @@ async function runBackfill() {
   const skipExisting = $("backfillSkipExisting").checked;
   const skipEmbedding = $("backfillSkipEmbedding").checked;
 
-  setStatus(status, "Scanning…");
+  setStatus(status, t("desktop.backfill.scanningShort"));
   try {
     const preview = await agentResume.previewBackfillDigests({ maxDays, skipExisting });
     const ok = window.confirm(
-      `将批量生成历史 digests（日→周→月）。\n\n` +
-        `Sessions 扫描: ${preview.sessionRowsScanned}\n` +
-        `Days: ${preview.days.length} · Weeks: ${preview.weeks.length} · Months: ${preview.months.length}\n` +
-        `预计 LLM 调用: ~${preview.estimatedLlmCalls}\n` +
-        (preview.days.length
-          ? `日期范围: ${preview.days[0]} → ${preview.days[preview.days.length - 1]}\n`
-          : "") +
-        `\n可能较慢并产生 API 费用。是否继续？`
+      t(
+        "desktop.backfill.confirm",
+        preview.sessionRowsScanned,
+        preview.days.length,
+        preview.weeks.length,
+        preview.months.length,
+        preview.estimatedLlmCalls,
+        preview.days.length
+          ? t("desktop.backfill.dateRange", preview.days[0], preview.days[preview.days.length - 1])
+          : ""
+      )
     );
     if (!ok) {
-      setStatus(status, "Cancelled");
+      setStatus(status, t("desktop.backfill.cancelled"));
       return;
     }
 
-    setStatus(status, "Backfilling (daily → weekly → monthly)… this may take a while");
+    setStatus(status, t("desktop.backfill.running"));
     const result = await agentResume.backfillDigests({
       maxDays,
       skipExisting,
@@ -5830,9 +5916,9 @@ function renderGtdPreview(proposals, warnings) {
             .join("")}</ul>`
         : "";
     root.innerHTML = `<div class="muted gtd-empty">
-      <p>无 GTD 提议。</p>
-      ${warnHtml || "<p>可能原因：该 digest 周期内无关联 session，或模型未给出可落库的 session id。</p>"}
-      <p>可先确认当日有 session、日报已生成；或换 weekly/monthly 再试。</p>
+      <p>${escapeHtml(t("desktop.report.gtdNoProposals"))}</p>
+      ${warnHtml || `<p>${escapeHtml(t("desktop.report.gtdNoSessionsReason"))}</p>`}
+      <p>${escapeHtml(t("desktop.report.gtdWarnDefault"))}</p>
     </div>`;
     return;
   }
@@ -5841,32 +5927,31 @@ function renderGtdPreview(proposals, warnings) {
     const row = document.createElement("div");
     row.className = "gtd-row";
     row.dataset.idx = String(idx);
-    const prev = p.previousGtd ? `@${p.previousGtd}` : "(none)";
-    // Expanded by default; click head to collapse/expand body.
+    const prev = p.previousGtd ? `@${p.previousGtd}` : t("desktop.report.gtdWasNone");
     row.innerHTML = `
-      <div class="gtd-row-head" role="button" tabindex="0" title="点击折叠/展开">
+      <div class="gtd-row-head" role="button" tabindex="0" title="${escapeHtml(t("desktop.report.gtdCollapseTitle"))}">
         <span class="gtd-row-chevron" aria-hidden="true"></span>
         <div class="gtd-row-title">
           <strong>${escapeHtml(p.title || p.sessionId)}</strong>
           <div class="meta">${escapeHtml(p.provider)} · ${escapeHtml(
             String(p.sessionId).slice(0, 18)
-          )}… · was ${escapeHtml(prev)}</div>
+          )}… · ${escapeHtml(t("desktop.report.gtdWasLabel", prev))}</div>
         </div>
-        <button type="button" class="tool-btn gtd-add-btn" data-idx="${idx}">添加GTD</button>
+        <button type="button" class="tool-btn gtd-add-btn" data-idx="${idx}">${escapeHtml(t("desktop.report.gtdAddBtn"))}</button>
       </div>
       <div class="gtd-edit-grid">
-        <label>GTD
+        <label>${escapeHtml(t("desktop.report.gtdStatusLabel"))}
           <select class="gtd-status" data-idx="${idx}">${gtdOptionsHtml(p.proposedGtd)}</select>
         </label>
-        <label>Reason
+        <label>${escapeHtml(t("desktop.report.gtdReasonLabel"))}
           <textarea class="gtd-reason" data-idx="${idx}" rows="2">${escapeHtml(p.reason || "")}</textarea>
         </label>
-        <label>Tasks（每行一项）
+        <label>${escapeHtml(t("desktop.report.gtdTasksLabel"))}
           <textarea class="gtd-tasks" data-idx="${idx}" rows="3">${escapeHtml(
             (p.tasks || []).join("\n")
           )}</textarea>
         </label>
-        <label>todolist.md（可编辑，添加时写入）
+        <label>${escapeHtml(t("desktop.report.gtdTodoLabel"))}
           <textarea class="gtd-md md" data-idx="${idx}" rows="8">${escapeHtml(
             p.todolistPreview || ""
           )}</textarea>
@@ -5904,7 +5989,7 @@ function renderGtdPreview(proposals, warnings) {
       if (ta.dataset.skipExpand === "1") return;
       openGtdMdEditor(ta);
     });
-    ta.setAttribute("title", "聚焦后打开大编辑窗口");
+    ta.setAttribute("title", t("desktop.report.gtdFocusEditor"));
   });
 }
 
@@ -5921,11 +6006,11 @@ function ensureGtdMdOverlay() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="gtd-md-overlay-backdrop" data-gtd-md-close></div>
-    <div class="gtd-md-overlay-panel" role="dialog" aria-label="todolist.md 编辑">
+    <div class="gtd-md-overlay-panel" role="dialog" aria-label="${escapeHtml(t("desktop.report.gtdMdDialog"))}">
       <div class="gtd-md-overlay-head">
         <strong>todolist.md</strong>
-        <span class="muted gtd-md-overlay-hint">Esc 或点完成关闭</span>
-        <button type="button" class="tool-btn" data-gtd-md-close>完成</button>
+        <span class="muted gtd-md-overlay-hint">${escapeHtml(t("desktop.report.gtdMdHint"))}</span>
+        <button type="button" class="tool-btn" data-gtd-md-close>${escapeHtml(t("desktop.report.gtdMdDone"))}</button>
       </div>
       <textarea class="gtd-md-overlay-ta" spellcheck="false"></textarea>
     </div>
@@ -6006,7 +6091,7 @@ function collectEditedGtdItem(idx) {
     gtd: statusEl?.value || p.proposedGtd,
     reason: reasonEl?.value || "",
     tasks,
-    sourceMemoryIds: p.sourceMemoryIds || [],
+    sourceReportIds: p.sourceReportIds || [],
     title: p.title,
     projectPath: p.projectPath,
     previousGtd: p.previousGtd,
@@ -6021,24 +6106,24 @@ function collectEditedGtdItem(idx) {
  */
 async function previewGtdSync(opts = {}) {
   const status = $("gtdSyncStatus");
-  if (!gtdScoped?.memoryId) {
-    setStatus(status, "请先在详情卡片点击「GTD分析」，指定要分析的 digest。", "error");
+  if (!gtdScoped?.reportId) {
+    setStatus(status, t("desktop.report.gtdNoDigest"), "error");
     return;
   }
-  const { level, memoryId } = gtdScoped;
+  const { level, reportId } = gtdScoped;
 
   // Safety: non-force callers should not re-hit LLM if cache exists
-  if (!opts.force && gtdCacheByMemoryId.has(memoryId)) {
-    restoreGtdCache(memoryId);
+  if (!opts.force && gtdCacheByMemoryId.has(reportId)) {
+    restoreGtdCache(reportId);
     return;
   }
 
-  setStatus(status, `从当前 ${level} digest 分析 GTD…`);
+  setStatus(status, t("desktop.report.gtdAnalyzing", level));
   try {
     // Always scoped; never auto-generate today's daily.
-    const result = await agentResume.previewMemoryGtdSync({
+    const result = await agentResume.previewReportGtdSync({
       ensureDigests: false,
-      memoryIds: [memoryId]
+      reportIds: [reportId]
     });
     renderGtdPreview(result.proposals, result.warnings);
     const warnPreview =
@@ -6046,13 +6131,18 @@ async function previewGtdSync(opts = {}) {
         ? ` · ${result.warnings.slice(0, 2).join("；")}${result.warnings.length > 2 ? "…" : ""}`
         : "";
     const statusText =
-      `可编辑预览 · ${result.proposals.length} 项 · 源 ${level}:${periodKeyFromMemoryId(level, memoryId)}` +
-      (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
-      (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
-      warnPreview +
-      " · 尚未落库（已缓存，重新分析可刷新）";
+      t(
+        "desktop.report.gtdPreviewStatus",
+        result.proposals.length,
+        level,
+        periodKeyFromMemoryId(level, reportId),
+        (result.skipped.length ? ` · skipped ${result.skipped.length}` : "") +
+          (result.warnings.length ? ` · warnings ${result.warnings.length}` : "") +
+          warnPreview +
+          t("desktop.report.gtdNotSaved")
+      );
     setStatus(status, statusText, result.proposals.length ? "ok" : "error");
-    gtdCacheByMemoryId.set(memoryId, {
+    gtdCacheByMemoryId.set(reportId, {
       level,
       proposals: (result.proposals || []).map((p) => ({ ...p })),
       warnings: result.warnings || [],
@@ -6076,48 +6166,46 @@ async function applyOneGtdItem(idx) {
   const status = $("gtdSyncStatus");
   const item = collectEditedGtdItem(idx);
   if (!item) {
-    setStatus(status, "无效的提议项", "error");
+    setStatus(status, t("desktop.report.gtdInvalidProposal"), "error");
     return;
   }
 
   const btn = document.querySelector(`.gtd-add-btn[data-idx="${idx}"]`);
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "添加中…";
+    btn.textContent = t("desktop.report.gtdAdding");
   }
 
-  setStatus(status, `正在添加 GTD：${item.title || item.sessionId}…`);
+  setStatus(status, t("desktop.report.gtdAddingItem", item.title || item.sessionId));
   try {
-    const result = await agentResume.applyMemoryGtdSync({ items: [item] });
+    const result = await agentResume.applyReportGtdSync({ items: [item] });
     const sample = result.applied[0]?.todolistPath || "";
     if (result.applied.length) {
       setStatus(
         status,
-        `已添加 GTD · ${item.title || item.sessionId}` + (sample ? ` · ${sample}` : ""),
+        t("desktop.report.gtdApplied", item.title || item.sessionId, sample ? ` · ${sample}` : ""),
         "ok"
       );
-      // Remove applied row from preview
       const row = document.querySelector(`.gtd-row[data-idx="${idx}"]`);
       if (row) row.remove();
       gtdPreviewItems[idx] = null;
       if (!document.querySelector("#gtdPreview .gtd-row")) {
-        $("gtdPreview").innerHTML = `<p class="muted">全部已添加。</p>`;
+        $("gtdPreview").innerHTML = `<p class="muted">${escapeHtml(t("desktop.report.gtdAllApplied"))}</p>`;
         gtdPreviewItems = [];
       }
-      // Keep cache in sync (remaining rows only)
       snapshotGtdCache();
-      const cached = gtdScoped?.memoryId && gtdCacheByMemoryId.get(gtdScoped.memoryId);
+      const cached = gtdScoped?.reportId && gtdCacheByMemoryId.get(gtdScoped.reportId);
       if (cached) {
         cached.statusText =
           $("gtdSyncStatus")?.textContent ||
-          `可编辑预览 · ${cached.proposals.length} 项（已添加部分）`;
+          t("desktop.report.gtdPreviewPartial", cached.proposals.length);
       }
     } else {
-      const err = result.failed?.[0]?.error || "落库失败";
+      const err = result.failed?.[0]?.error || t("desktop.report.gtdAddFailed");
       setStatus(status, err, "error");
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "添加GTD";
+        btn.textContent = t("desktop.report.gtdAddBtn");
       }
     }
     if (result.failed?.length) {
@@ -6127,7 +6215,7 @@ async function applyOneGtdItem(idx) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "添加GTD";
+      btn.textContent = t("desktop.report.gtdAddBtn");
     }
   }
 }
@@ -6217,7 +6305,7 @@ function remountNotesEditorForTheme() {
   notesCmView = NotesCodeMirror.mount(host, {
     value: text,
     theme: resolveDesktopTheme(getDesktopThemePref()),
-    placeholder: "编辑 Markdown…（⌘V 可粘贴图片）",
+    placeholder: t("desktop.notes.editorPlaceholder"),
     onChange: onNotesEditorChange,
     onPasteImage: tryHandleNotesImagePaste
   });
@@ -6280,6 +6368,36 @@ function wireSettingsAutoSave() {
       scheduleSettingsAutoSave({ immediate: true });
     }
   });
+}
+
+const UI_LANGUAGE_VALUES = ["auto", "en", "zh-cn", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"];
+const NATIVE_LOCALE_LABELS = {
+  en: "English",
+  "zh-cn": "简体中文",
+  ja: "日本語",
+  ko: "한국어",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  "pt-br": "Português (Brasil)",
+  it: "Italiano",
+  ru: "Русский"
+};
+
+function populateUiLanguageSelect(selected) {
+  const form = $("settingsForm");
+  const select = form?.uiLanguage;
+  if (!select) return;
+  const prev = selected ?? select.value;
+  select.innerHTML = "";
+  for (const value of UI_LANGUAGE_VALUES) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent =
+      value === "auto" ? t("desktop.settings.fieldUiLanguageOptionAuto") : NATIVE_LOCALE_LABELS[value] || value;
+    select.appendChild(opt);
+  }
+  select.value = UI_LANGUAGE_VALUES.includes(prev) ? prev : "auto";
 }
 
 async function loadSettingsForm() {
@@ -6350,6 +6468,10 @@ async function loadSettingsForm() {
   if (form.desktopTheme) {
     form.desktopTheme.value = s.desktop?.theme || "system";
   }
+  populateUiLanguageSelect(s.uiLanguage || "auto");
+  if (form.uiLanguage) {
+    form.uiLanguage.value = s.uiLanguage || "auto";
+  }
   updateSettingsNotesRootDisplay();
   updateWorkbenchExternalLaunchVisibility();
   updateMemoryScheduleVisibility();
@@ -6364,9 +6486,7 @@ async function saveSettingsForm() {
   const wasMemoryEnabled = Boolean(loadedSettings?.memory?.enabled);
   const enabling = form.memoryEnabled.checked && !wasMemoryEnabled;
   if (enabling) {
-    const ok = window.confirm(
-      "启用定时分析后，Desktop 将在设定时刻读取 session 数据并调用工具 LLM / embedding API，可能产生费用。是否继续？"
-    );
+const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
     if (!ok) {
       form.memoryEnabled.checked = false;
       updateMemoryScheduleVisibility();
@@ -6404,7 +6524,7 @@ async function saveSettingsForm() {
       model: form.embModel.value.trim() || "text-embedding-3-small",
       apiKey: form.embApiKey.value || undefined
     },
-    memory: {
+    report: {
       ...(loadedSettings?.memory || {}),
       enabled: form.memoryEnabled.checked,
       includeTranscripts: true,
@@ -6447,20 +6567,35 @@ async function saveSettingsForm() {
       cmdTAction:
         form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal"
     },
+    uiLanguage: form.uiLanguage?.value || "auto",
     desktop: {
       ...(loadedSettings?.desktop || {}),
       theme: form.desktopTheme?.value || "system"
     }
   };
-  setStatus(status, "保存中…");
+  setStatus(status, t("desktop.settings.saving"));
+  const localeBeforeSave = getUiLocale();
+  const uiLanguageBeforeSave = loadedSettings?.uiLanguage || "auto";
+  const uiLanguagePending = settings.uiLanguage || "auto";
   try {
     const result = await agentResume.saveSettings(settings);
     loadedSettings = result.settings;
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
-    const sched = result.schedulerEnabled ? " · 定时 ON" : " · 定时 OFF";
-    setStatus(status, `已保存${sched}`, "ok");
+    const savedUiLanguage = result.settings?.uiLanguage || "auto";
+    if (savedUiLanguage !== uiLanguageBeforeSave || savedUiLanguage !== uiLanguagePending) {
+      populateUiLanguageSelect(savedUiLanguage);
+    }
+    if (savedUiLanguage !== uiLanguageBeforeSave) {
+      const bundle = await agentResume.getI18nBundle();
+      await refreshLocalizedUi(bundle);
+    }
+    const sched = result.schedulerEnabled ? t("desktop.settings.schedulerOn") : t("desktop.settings.schedulerOff");
+    const localeAfterSave = getUiLocale();
+    const localeNote =
+      localeAfterSave !== localeBeforeSave ? ` · ${t("notification.uiLanguageChanged")}` : "";
+    setStatus(status, t("desktop.settings.saved", sched) + localeNote, "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -6470,7 +6605,7 @@ async function saveSettingsForm() {
 let chatTurns = [];
 /** @type {Map<string, string>} */
 const askMarkdownHtmlCache = new Map();
-const ASK_MARKDOWN_CACHE_MAX = 200;
+const AGENT_MARKDOWN_CACHE_MAX = 200;
 /** @type {number[]} */
 let chatRowHeights = [];
 let chatStickToBottom = true;
@@ -6488,47 +6623,47 @@ let chatContextTurnIdx = null;
 let askCancelRequested = false;
 let activeAskSendGen = 0;
 /** @type {ReturnType<typeof setTimeout> | null} */
-let askIndexProgressHideTimer = null;
+let agentIndexProgressHideTimer = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let askBackgroundStatusClearTimer = null;
 /** @type {boolean} */
-let askAuditLoaded = false;
+let agentAuditLoaded = false;
 /** @type {boolean} */
-let askAuditLoading = false;
+let agentAuditLoading = false;
 
 function hideAskIndexProgress(delayMs = 0) {
-  if (askIndexProgressHideTimer) {
-    clearTimeout(askIndexProgressHideTimer);
-    askIndexProgressHideTimer = null;
+  if (agentIndexProgressHideTimer) {
+    clearTimeout(agentIndexProgressHideTimer);
+    agentIndexProgressHideTimer = null;
   }
   const hide = () => {
-    const progress = $("askIndexProgress");
+    const progress = $("agentIndexProgress");
     if (progress) progress.hidden = true;
   };
   if (delayMs > 0) {
-    askIndexProgressHideTimer = setTimeout(hide, delayMs);
+    agentIndexProgressHideTimer = setTimeout(hide, delayMs);
   } else {
     hide();
   }
 }
 
 function applyAskIndexProgress(event) {
-  const progress = $("askIndexProgress");
-  const text = $("askIndexProgressText");
-  const count = $("askIndexProgressCount");
-  const bar = $("askIndexProgressBar");
+  const progress = $("agentIndexProgress");
+  const text = $("agentIndexProgressText");
+  const count = $("agentIndexProgressCount");
+  const bar = $("agentIndexProgressBar");
   if (!progress || !text || !count || !bar || !event) return;
 
-  if (askIndexProgressHideTimer) {
-    clearTimeout(askIndexProgressHideTimer);
-    askIndexProgressHideTimer = null;
+  if (agentIndexProgressHideTimer) {
+    clearTimeout(agentIndexProgressHideTimer);
+    agentIndexProgressHideTimer = null;
   }
   progress.hidden = false;
   progress.classList.toggle("is-scanning", event.phase === "scanning");
   progress.classList.toggle("is-error", event.phase === "error");
   text.textContent = event.noteTitle
-    ? `${event.message || "正在索引笔记…"} · ${event.noteTitle}`
-    : event.message || "正在索引笔记…";
+    ? `${event.message || t("desktop.agent.indexingNotes")} · ${event.noteTitle}`
+    : event.message || t("desktop.agent.indexingNotes");
 
   const total = Number(event.total) || 0;
   const current = Math.max(0, Number(event.current) || 0);
@@ -6548,50 +6683,50 @@ function applyAskIndexProgress(event) {
   }
 }
 
-function askAuditStatusLabel(status) {
+function agentAuditStatusLabel(status) {
   const labels = {
-    proposed: "待确认",
-    confirmed: "已确认",
-    applied: "已执行",
-    rejected: "已拒绝",
-    failed: "失败"
+    proposed: t("desktop.agent.auditStatusProposed"),
+    confirmed: t("desktop.agent.auditStatusConfirmed"),
+    applied: t("desktop.agent.auditStatusApplied"),
+    rejected: t("desktop.agent.auditStatusRejected"),
+    failed: t("desktop.agent.auditStatusFailed")
   };
-  return labels[status] || status || "未知";
+  return labels[status] || status || t("desktop.agent.auditStatusUnknown");
 }
 
-function askAuditActionLabel(action) {
+function agentAuditActionLabel(action) {
   const labels = {
-    "note.create": "新建笔记",
-    "note.append": "追加内容",
-    "note.write": "修改笔记",
-    "note.rename": "重命名",
-    "note.move": "移动笔记",
-    "note.delete": "删除笔记"
+    "note.create": t("desktop.agent.auditActionCreate"),
+    "note.append": t("desktop.agent.auditActionAppend"),
+    "note.write": t("desktop.agent.auditActionWrite"),
+    "note.rename": t("desktop.agent.auditActionRename"),
+    "note.move": t("desktop.agent.auditActionMove"),
+    "note.delete": t("desktop.agent.auditActionDelete")
   };
-  return labels[action] || action || "笔记操作";
+  return labels[action] || action || t("desktop.agent.auditActionDefault");
 }
 
 function renderAskAuditList(events) {
-  const list = $("askAuditList");
+  const list = $("agentAuditList");
   if (!list) return;
   if (!events?.length) {
-    list.innerHTML = `<p class="muted ask-audit-empty">暂无追踪记录</p>`;
+    list.innerHTML = `<p class="muted agent-audit-empty">${escapeHtml(t("desktop.agent.auditEmpty"))}</p>`;
     return;
   }
   list.innerHTML = events
     .map((event) => {
-      const title = event.noteTitle || event.relMdPath || event.noteId || "未指定笔记";
-      const meta = [formatTime(event.createdAtMs), event.actor || "ask", event.traceId ? `trace ${event.traceId.slice(0, 8)}` : ""]
+      const title = event.noteTitle || event.relMdPath || event.noteId || t("desktop.agent.auditUnspecifiedNote");
+      const meta = [formatTime(event.createdAtMs), event.actor || "agent", event.traceId ? `trace ${event.traceId.slice(0, 8)}` : ""]
         .filter(Boolean)
         .join(" · ");
       const error = event.error ? `<div class="ask-audit-error">${escapeHtml(event.error)}</div>` : "";
       return `<article class="ask-audit-item" data-status="${escapeHtml(event.status || "")}">
         <div class="ask-audit-item-main">
-          <span class="ask-audit-action">${escapeHtml(askAuditActionLabel(event.action))}</span>
+          <span class="agent-audit-action">${escapeHtml(agentAuditActionLabel(event.action))}</span>
           <span class="ask-audit-note">${escapeHtml(title)}</span>
         </div>
         <div class="ask-audit-item-meta">
-          <span class="ask-audit-status">${escapeHtml(askAuditStatusLabel(event.status))}</span>
+          <span class="agent-audit-status">${escapeHtml(agentAuditStatusLabel(event.status))}</span>
           <span>${escapeHtml(meta)}</span>
         </div>
         ${error}
@@ -6601,37 +6736,37 @@ function renderAskAuditList(events) {
 }
 
 async function loadAskAudit() {
-  if (askAuditLoading || typeof agentResume.listAskNoteAudit !== "function") {
+  if (agentAuditLoading || typeof agentResume.listAgentNoteAudit !== "function") {
     return;
   }
-  askAuditLoading = true;
-  const list = $("askAuditList");
+  agentAuditLoading = true;
+  const list = $("agentAuditList");
   if (list) {
-    list.innerHTML = `<p class="muted ask-audit-empty">加载追踪记录…</p>`;
+    list.innerHTML = `<p class="muted agent-audit-empty">${escapeHtml(t("desktop.agent.auditLoading"))}</p>`;
   }
   try {
-    const events = await agentResume.listAskNoteAudit({ limit: 80 });
+    const events = await agentResume.listAgentNoteAudit({ limit: 80 });
     renderAskAuditList(events || []);
-    askAuditLoaded = true;
+    agentAuditLoaded = true;
   } catch (error) {
     if (list) {
-      list.innerHTML = `<p class="status error ask-audit-empty">${escapeHtml(
+      list.innerHTML = `<p class="status error agent-audit-empty">${escapeHtml(
         error instanceof Error ? error.message : String(error)
       )}</p>`;
     }
   } finally {
-    askAuditLoading = false;
+    agentAuditLoading = false;
   }
 }
 
 function toggleAskAuditPanel(forceOpen) {
-  const panel = $("askAuditPanel");
-  const button = $("btnAskAudit");
+  const panel = $("agentAuditPanel");
+  const button = $("btnAgentAudit");
   if (!panel) return;
   const open = forceOpen ?? panel.hidden;
   panel.hidden = !open;
   button?.classList.toggle("active", open);
-  if (open && !askAuditLoaded) {
+  if (open && !agentAuditLoaded) {
     void loadAskAudit();
   }
 }
@@ -6658,7 +6793,7 @@ function citationLevelToFocusType(level) {
 function citationToFocus(citation) {
   if (citation?.source === "note" || citation?.level === "note") return null;
   const level = citation?.level || "daily";
-  const periodKey = periodKeyFromMemoryId(level, citation?.memoryId || "");
+  const periodKey = periodKeyFromMemoryId(level, citation?.reportId || "");
   if (!periodKey) return null;
   return { type: citationLevelToFocusType(level), key: periodKey, level };
 }
@@ -6682,7 +6817,7 @@ function ensureCitationPopover() {
     <div class="citation-popover-content">
       <div class="citation-preview-head"></div>
       <div class="citation-preview-body"></div>
-      <button type="button" class="citation-preview-open ghost-btn">在 Memory 中查看</button>
+      <button type="button" class="citation-preview-open ghost-btn">${escapeHtml(t("desktop.agent.openInReport"))}</button>
     </div>`;
   popover.addEventListener("mouseenter", () => bumpCitationPreviewHover(1));
   popover.addEventListener("mouseleave", () => bumpCitationPreviewHover(-1));
@@ -6772,7 +6907,7 @@ function hideCitationPreview() {
 }
 
 async function resolveCitationEntry(citation) {
-  const sourceId = citation?.source === "note" ? citation?.noteId : citation?.memoryId;
+  const sourceId = citation?.source === "note" ? citation?.noteId : citation?.reportId;
   if (!sourceId) {
     return null;
   }
@@ -6792,16 +6927,16 @@ async function resolveCitationEntry(citation) {
   if (citation?.source === "note" || citation?.level === "note") {
     return null;
   }
-  const memoryId = citation.memoryId;
-  const fromCal = calEntries.find((e) => e.id === memoryId);
+  const reportId = citation.reportId;
+  const fromCal = calEntries.find((e) => e.id === reportId);
   if (fromCal?.content) {
-    citationPreviewCache.set(memoryId, fromCal);
+    citationPreviewCache.set(reportId, fromCal);
     return fromCal;
   }
-  if (typeof agentResume.getMemoryEntry === "function") {
-    const entry = await agentResume.getMemoryEntry(memoryId);
+  if (typeof agentResume.getReportEntry === "function") {
+    const entry = await agentResume.getReportEntry(reportId);
     if (entry) {
-      citationPreviewCache.set(memoryId, entry);
+      citationPreviewCache.set(reportId, entry);
       return entry;
     }
   }
@@ -6816,22 +6951,22 @@ async function showCitationPreview(anchor, citation) {
   positionCitationPopover(anchor);
   const head = popover.querySelector(".citation-preview-head");
   const body = popover.querySelector(".citation-preview-body");
-  if (head) head.textContent = "加载中…";
+  if (head) head.textContent = t("desktop.common.loading");
   if (body) body.innerHTML = "";
 
   const level = citation?.level || "daily";
   const isNote = citation?.source === "note" || level === "note";
   const focusType = citationLevelToFocusType(level);
-  const levelLabel = isNote ? "笔记" : FOCUS_DIGEST_LABELS[focusType] || level;
+  const levelLabel = isNote ? t("desktop.agent.noteLevel") : focusDigestLabel(focusType) || level;
   const openButton = popover.querySelector(".citation-preview-open");
   if (openButton) {
-    openButton.textContent = isNote ? "在 Notes 中查看" : "在 Memory 中查看";
+    openButton.textContent = isNote ? t("desktop.agent.openInNotes") : t("desktop.agent.openInReport");
   }
 
   try {
     const entry = await resolveCitationEntry(citation);
     if (activeCitationPreview !== citation) return;
-    const title = entry?.title || citation.title || citation.noteId || citation.memoryId || "引用";
+    const title = entry?.title || citation.title || citation.noteId || citation.reportId || t("desktop.agent.citationRef");
     if (head) {
       head.innerHTML = `<span class="badge ${escapeHtml(level)}">${escapeHtml(levelLabel)}</span> ${escapeHtml(title)}`;
     }
@@ -6839,7 +6974,7 @@ async function showCitationPreview(anchor, citation) {
     if (body) {
       body.innerHTML = preview
         ? renderMarkdown(preview)
-        : `<p class="muted">暂无预览内容${citation.noteId || citation.memoryId ? `（${escapeHtml(citation.noteId || citation.memoryId)}）` : ""}</p>`;
+        : `<p class="muted">${escapeHtml(t("desktop.agent.citationNoPreview", citation.noteId || citation.reportId ? ` (${citation.noteId || citation.reportId})` : ""))}</p>`;
     }
     if (activeCitationChipEl) {
       positionCitationPopover(activeCitationChipEl);
@@ -6848,10 +6983,10 @@ async function showCitationPreview(anchor, citation) {
     if (activeCitationPreview !== citation) return;
     const msg = error instanceof Error ? error.message : String(error);
     if (head) {
-      head.textContent = citation.title || citation.noteId || citation.memoryId || "引用";
+      head.textContent = citation.title || citation.noteId || citation.reportId || t("desktop.agent.citationRef");
     }
     if (body) {
-      body.innerHTML = `<p class="muted">预览加载失败：${escapeHtml(msg)}</p>`;
+      body.innerHTML = `<p class="muted">${escapeHtml(t("desktop.agent.previewLoadFailed", msg))}</p>`;
     }
     if (activeCitationChipEl) {
       positionCitationPopover(activeCitationChipEl);
@@ -6863,11 +6998,11 @@ async function openCitationInMemory(citation) {
   if (citation?.source === "note" || citation?.level === "note") {
     if (citation.operation === "delete") {
       hideCitationPreview();
-      setStatus($("agentStatus"), "该笔记已被删除，无法在 Notes 中打开", "error");
+      setStatus($("agentStatus"), t("desktop.agent.noteDeleted"), "error");
       return;
     }
     if (!citation.noteId) {
-      setStatus($("agentStatus"), "无法解析笔记引用", "error");
+      setStatus($("agentStatus"), t("desktop.agent.cannotResolveNote"), "error");
       return;
     }
     hideCitationPreview();
@@ -6879,12 +7014,12 @@ async function openCitationInMemory(citation) {
   }
   const focus = citationToFocus(citation);
   if (!focus) {
-    setStatus($("agentStatus"), "无法解析引用报告", "error");
+    setStatus($("agentStatus"), t("desktop.agent.cannotResolveReport"), "error");
     return;
   }
   hideCitationPreview();
   closeAllSheets();
-  switchTab("memory");
+  switchTab("report");
 
   if (focus.type === "day") {
     const [y, m] = focus.key.split("-").map(Number);
@@ -6915,14 +7050,22 @@ async function openCitationInMemory(citation) {
     renderCalendar();
     await renderCalSessionList();
     renderFocusDigestDetail(focus.type, focus.key);
-    setStatus($("memoryStatus"), `已打开 ${FOCUS_DIGEST_LABELS[focus.type] || ""} ${focus.key}`, "ok");
+    setStatus($("reportStatus"), t("desktop.report.openedDigestStatus", focusDigestLabel(focus.type), focus.key), "ok");
   } catch (error) {
-    setStatus($("memoryStatus"), error instanceof Error ? error.message : String(error), "error");
+    setStatus($("reportStatus"), error instanceof Error ? error.message : String(error), "error");
   }
 }
 
 const NOTE_ACTION_OPERATIONS = new Set(["create", "write", "append"]);
-const NOTE_ACTION_LABELS = { create: "新建", write: "修改", append: "追加" };
+const NOTE_ACTION_LABELS = {
+  create: () => t("desktop.agent.noteOpCreate"),
+  write: () => t("desktop.agent.noteOpWrite"),
+  append: () => t("desktop.agent.noteOpAppend")
+};
+function noteActionLabel(op) {
+  const fn = NOTE_ACTION_LABELS[op];
+  return typeof fn === "function" ? fn() : t("desktop.agent.noteLevel");
+}
 
 /** @type {Map<number, Set<string>>} */
 const chatCitationExpanded = new Map();
@@ -6935,7 +7078,7 @@ function isMemoryCitation(citation) {
   if (isNoteCitation(citation)) {
     return false;
   }
-  return citation?.source === "memory" || !citation?.source;
+  return citation?.source === "report" || !citation?.source;
 }
 
 function partitionCitations(citations) {
@@ -7044,10 +7187,10 @@ function buildCitationSections(citations, turnIdx) {
   const root = document.createElement("div");
   root.className = "citation-sections";
   if (memory.length) {
-    root.appendChild(buildCitationSection("memory", "报告引用", memory, turnIdx));
+    root.appendChild(buildCitationSection("report", t("desktop.agent.citationReports"), memory, turnIdx));
   }
   if (notes.length) {
-    root.appendChild(buildCitationSection("note", "笔记引用", notes, turnIdx));
+    root.appendChild(buildCitationSection("note", t("desktop.agent.citationNotes"), notes, turnIdx));
   }
   return root;
 }
@@ -7064,10 +7207,10 @@ function buildNoteActionBubbles(citations) {
     btn.type = "button";
     btn.className = "note-action-bubble";
     btn.dataset.citationIndex = String(index);
-    const opLabel = NOTE_ACTION_LABELS[citation.operation] || "笔记";
-    const title = citation.title || citation.noteId || "未命名笔记";
+    const opLabel = noteActionLabel(citation.operation);
+    const title = citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote");
     btn.textContent = `${opLabel} · ${title}`;
-    btn.title = `在 Notes 中打开：${title}`;
+    btn.title = t("desktop.agent.openInNotesTitle", title);
     root.appendChild(btn);
   }
   return root;
@@ -7100,21 +7243,21 @@ function buildCitationChip(citation) {
   const score = citation.score != null ? ` · ${Number(citation.score).toFixed(3)}` : "";
   const isNote = citation?.source === "note" || citation?.level === "note";
   const focusType = citationLevelToFocusType(citation.level || "daily");
-  const levelLabel = isNote ? "笔记" : FOCUS_DIGEST_LABELS[focusType] || citation.level || "daily";
+  const levelLabel = isNote ? t("desktop.agent.noteLevel") : focusDigestLabel(focusType) || citation.level || "daily";
   const indexLabel = isNote ? `N${citation.index}` : citation.index;
   const heading = isNote && citation.heading ? ` · ${citation.heading}` : "";
   const operationLabels = {
-    search: "🔍 搜索",
-    read: "📖 读取",
-    create: "➕ 新建",
-    write: "✏️ 修改",
-    append: "📝 追加",
-    delete: "🗑 删除"
+    search: t("desktop.agent.toolSearch"),
+    read: t("desktop.agent.toolRead"),
+    create: t("desktop.agent.toolCreate"),
+    write: t("desktop.agent.toolWrite"),
+    append: t("desktop.agent.toolAppend"),
+    delete: t("desktop.agent.toolDelete")
   };
   const operationLabel = operationLabels[citation.operation];
   const sourceLabel = operationLabel ? `${operationLabel} · ${levelLabel}` : levelLabel;
-  chip.textContent = `[${indexLabel}] ${sourceLabel} · ${citation.title || citation.noteId || citation.memoryId}${heading}${score}${sess}`;
-  chip.title = "悬停预览";
+  chip.textContent = `[${indexLabel}] ${sourceLabel} · ${citation.title || citation.noteId || citation.reportId}${heading}${score}${sess}`;
+  chip.title = t("desktop.agent.citationHover");
   chip.addEventListener("mouseenter", () => {
     bumpCitationPreviewHover(1);
     void showCitationPreview(chip, citation);
@@ -7159,7 +7302,7 @@ function renderMarkdownCached(content) {
   }
   const html = renderMarkdown(source);
   askMarkdownHtmlCache.set(source, html);
-  if (askMarkdownHtmlCache.size > ASK_MARKDOWN_CACHE_MAX) {
+  if (askMarkdownHtmlCache.size > AGENT_MARKDOWN_CACHE_MAX) {
     const oldest = askMarkdownHtmlCache.keys().next().value;
     askMarkdownHtmlCache.delete(oldest);
   }
@@ -7253,8 +7396,8 @@ function findChatVisibleRange(scrollTop, viewportHeight) {
 
 function chatEmptyStateHtml() {
   return `<div class="chat-empty-state">
-      <p class="chat-empty-title">开始对话</p>
-      <p class="chat-empty-hint">用自然语言问记忆。先生成 Daily/Weekly digests 效果更好。</p>
+      <p class="chat-empty-title">${escapeHtml(t("desktop.agent.emptyChat"))}</p>
+      <p class="chat-empty-hint">${escapeHtml(t("desktop.agent.emptyHint"))}</p>
     </div>`;
 }
 
@@ -7287,8 +7430,8 @@ function onChatLogScroll() {
   }
   hideChatContextMenu();
   hideCitationPreview();
-  if (log.scrollTop < 72 && askChatHasMoreOlder && !askChatLoadingOlder) {
-    void loadOlderAskChat();
+  if (log.scrollTop < 72 && agentChatHasMoreOlder && !agentChatLoadingOlder) {
+    void loadOlderAgentChat();
   }
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
   chatStickToBottom = atBottom;
@@ -7406,9 +7549,9 @@ function updateStreamingBubble(idx) {
 
 function assistantStatusLabel(turn) {
   if (turn.streaming) {
-    return "正在输入…";
+    return t("desktop.agent.typing");
   }
-  return turn.fallback ? "近期摘要" : "记忆检索";
+  return turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval");
 }
 
 function appendChatFooter(bubble, turn, turnIdx) {
@@ -7424,10 +7567,10 @@ function appendChatFooter(bubble, turn, turnIdx) {
     const btnCopy = document.createElement("button");
     btnCopy.type = "button";
     btnCopy.className = "chat-copy-btn";
-    btnCopy.textContent = "复制";
+    btnCopy.textContent = t("desktop.common.copy");
     btnCopy.addEventListener("click", async () => {
       await copyText(turn.content);
-      setStatus($("agentStatus"), "已复制回答", "ok");
+      setStatus($("agentStatus"), t("desktop.agent.copiedAnswer"), "ok");
     });
     footer.appendChild(btnCopy);
   }
@@ -7504,9 +7647,9 @@ function updateChatTurn(idx) {
   renderChatVirtual({ scrollToBottom: chatStickToBottom });
 }
 
-function renderAskChat() {
+function renderAgentChat() {
   renderChatFull();
-  askChatRendered = true;
+  agentChatRendered = true;
 }
 
 function renderChatFull() {
@@ -7578,7 +7721,7 @@ async function handleChatContextAction(action) {
   }
   if (action === "copy") {
     await copyText(turn.content);
-    setStatus($("agentStatus"), "已复制", "ok");
+    setStatus($("agentStatus"), t("desktop.agent.copied"), "ok");
     return;
   }
   if (action === "resend") {
@@ -7623,13 +7766,13 @@ async function sendAgent(queryOverride) {
   const sendGen = ++activeAskSendGen;
 
   // Auto-rename thread if it is still named "新对话"
-  const activeThread = askThreads.find((t) => t.id === activeAskThreadId);
-  if (activeThread && activeThread.title === "新对话") {
+  const activeThread = agentThreads.find((t) => t.id === activeAgentThreadId);
+  if (activeThread && activeThread.title === t("desktop.agent.newThread")) {
     const newTitle = query.slice(0, 30);
     activeThread.title = newTitle;
-    void agentResume.renameAskThread({ id: activeAskThreadId, title: newTitle }).then(() => {
-      renderAskThreadsSidebar();
-      updateAskChatTitleHeader();
+    void agentResume.renameAgentThread({ id: activeAgentThreadId, title: newTitle }).then(() => {
+      renderAgentThreadsSidebar();
+      updateAgentChatTitleHeader();
     });
   }
 
@@ -7639,7 +7782,7 @@ async function sendAgent(queryOverride) {
   }
   appendChatTurn(chatTurns.length - 1);
   setAgentComposeEnabled(false);
-  setStatus($("agentStatus"), "检索记忆…");
+  setStatus($("agentStatus"), t("desktop.agent.searchingReports"));
 
   const history = chatTurns
     .filter((t) => t.role === "user" || t.role === "assistant")
@@ -7663,17 +7806,17 @@ async function sendAgent(queryOverride) {
         return;
       }
       if (event.phase === "retrieving") {
-        setStatus($("agentStatus"), "检索记忆…");
+        setStatus($("agentStatus"), t("desktop.agent.searchingReports"));
       } else if (event.phase === "indexing_notes") {
         applyAskIndexProgress(event);
-        setStatus($("agentStatus"), event.message || "正在索引笔记…");
+        setStatus($("agentStatus"), event.message || t("desktop.agent.indexingNotes"));
       } else if (event.phase === "generating") {
         hideAskIndexProgress();
-        setStatus($("agentStatus"), event.message || "生成回答…");
+        setStatus($("agentStatus"), event.message || t("desktop.agent.statusGenerating"));
       } else if (event.phase === "tool_calling") {
-        setStatus($("agentStatus"), `调用工具: ${event.toolName || "…"}…`);
+        setStatus($("agentStatus"), t("desktop.agent.callingTool", event.toolName || "…"));
       } else if (event.phase === "tool_executing") {
-        setStatus($("agentStatus"), `执行工具: ${event.toolName || "…"}`);
+        setStatus($("agentStatus"), t("desktop.agent.executingTool", event.toolName || "…"));
       } else if (event.phase === "chunk" && event.delta) {
         chatTurns[streamIdx].content += event.delta;
         updateStreamingBubble(streamIdx);
@@ -7682,15 +7825,15 @@ async function sendAgent(queryOverride) {
   }
 
   try {
-    const result = await agentResume.askAgent({ query, history, threadId: activeAskThreadId, enableTools: askEnableTools });
+    const result = await agentResume.askAgent({ query, history, threadId: activeAgentThreadId, enableTools: agentEnableTools });
     chatTurns[streamIdx] = {
       role: "assistant",
       content: result.answer,
       citations: result.citations || [],
       fallback: result.fallback
     };
-    askChatLoadedFromDb = true;
-    askChatRendered = true;
+    agentChatLoadedFromDb = true;
+    agentChatRendered = true;
     updateChatTurn(streamIdx);
     if (result.persistWarning) {
       setStatus($("agentStatus"), result.persistWarning, "error");
@@ -7698,12 +7841,18 @@ async function sendAgent(queryOverride) {
       setStatus(
         $("agentStatus"),
         result.fallback
-          ? `完成 · ${result.citations?.length || 0} 条来源 · fallback 检索`
-          : `完成 · ${result.citations?.length || 0} 条来源${result.toolCallsExecuted ? ` · ${result.toolCallsExecuted} 次工具调用` : ""}`,
+          ? t("desktop.agent.completeFallback", result.citations?.length || 0)
+          : t(
+              "desktop.agent.completeDone",
+              result.citations?.length || 0,
+              result.toolCallsExecuted
+                ? t("desktop.agent.completeToolCalls", result.toolCallsExecuted)
+                : ""
+            ),
         "ok"
       );
     }
-    if (!$("askAuditPanel")?.hidden) {
+    if (!$("agentAuditPanel")?.hidden) {
       void loadAskAudit();
     }
   } catch (error) {
@@ -7724,100 +7873,100 @@ async function sendAgent(queryOverride) {
   }
 }
 
-async function loadAskChat(options = {}) {
+async function loadAgentChat(options = {}) {
   const render = options.render !== false;
   const force = options.force === true;
 
-  if (askThreads.length === 0 || force) {
+  if (agentThreads.length === 0 || force) {
     try {
-      askThreads = await agentResume.listAskThreads();
-      if (askThreads.length > 0) {
-        const savedId = localStorage.getItem("activeAskThreadId");
-        if (savedId && askThreads.some((t) => t.id === savedId)) {
-          activeAskThreadId = savedId;
+      agentThreads = await agentResume.listAgentThreads();
+      if (agentThreads.length > 0) {
+        const savedId = localStorage.getItem("activeAgentThreadId");
+        if (savedId && agentThreads.some((t) => t.id === savedId)) {
+          activeAgentThreadId = savedId;
         } else {
-          activeAskThreadId = askThreads[0].id;
-          localStorage.setItem("activeAskThreadId", activeAskThreadId);
+          activeAgentThreadId = agentThreads[0].id;
+          localStorage.setItem("activeAgentThreadId", activeAgentThreadId);
         }
       } else {
-        const thread = await agentResume.createAskThread({ title: "新对话" });
-        askThreads = [thread];
-        activeAskThreadId = thread.id;
-        localStorage.setItem("activeAskThreadId", thread.id);
+        const thread = await agentResume.createAgentThread({ title: t("desktop.agent.newThread") });
+        agentThreads = [thread];
+        activeAgentThreadId = thread.id;
+        localStorage.setItem("activeAgentThreadId", thread.id);
       }
-      renderAskThreadsSidebar();
-      updateAskChatTitleHeader();
+      renderAgentThreadsSidebar();
+      updateAgentChatTitleHeader();
     } catch (error) {
-      setStatus($("agentStatus"), `加载对话列表失败：${error.message || error}`, "error");
+      setStatus($("agentStatus"), t("desktop.agent.loadThreadsFailedPrefix", error.message || error), "error");
       return;
     }
   }
 
-  if (askChatLoadedFromDb && !force) {
-    if (render && !askChatRendered) {
-      renderAskChat();
+  if (agentChatLoadedFromDb && !force) {
+    if (render && !agentChatRendered) {
+      renderAgentChat();
     }
     return;
   }
-  if (askChatLoadPromise && !force) {
-    await askChatLoadPromise;
-    if (render && !askChatRendered) {
-      renderAskChat();
+  if (agentChatLoadPromise && !force) {
+    await agentChatLoadPromise;
+    if (render && !agentChatRendered) {
+      renderAgentChat();
     }
     return;
   }
-  if (typeof agentResume.listAskChat !== "function") {
+  if (typeof agentResume.listAgentChat !== "function") {
     return;
   }
 
-  askChatLoadPromise = (async () => {
+  agentChatLoadPromise = (async () => {
     try {
-      const result = await agentResume.listAskChat({ limit: ASK_CHAT_PAGE_SIZE, threadId: activeAskThreadId });
+      const result = await agentResume.listAgentChat({ limit: AGENT_CHAT_PAGE_SIZE, threadId: activeAgentThreadId });
       chatTurns = mapAskMessages(result?.messages);
-      askChatHasMoreOlder = Boolean(result?.hasMore);
-      syncAskChatCursor();
-      askChatLoadedFromDb = true;
+      agentChatHasMoreOlder = Boolean(result?.hasMore);
+      syncAgentChatCursor();
+      agentChatLoadedFromDb = true;
       if (render) {
-        renderAskChat();
+        renderAgentChat();
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      setStatus($("agentStatus"), `加载对话失败：${msg}`, "error");
+      setStatus($("agentStatus"), t("desktop.agent.loadChatFailedPrefix", msg), "error");
     } finally {
-      askChatLoadPromise = null;
+      agentChatLoadPromise = null;
     }
   })();
 
-  await askChatLoadPromise;
+  await agentChatLoadPromise;
 }
 
-async function loadOlderAskChat() {
+async function loadOlderAgentChat() {
   if (
-    askChatLoadingOlder ||
-    !askChatHasMoreOlder ||
-    askChatOldestSortOrder == null ||
-    typeof agentResume.listOlderAskChat !== "function"
+    agentChatLoadingOlder ||
+    !agentChatHasMoreOlder ||
+    agentChatOldestSortOrder == null ||
+    typeof agentResume.listOlderAgentChat !== "function"
   ) {
     return;
   }
   const log = $("chatLog");
-  askChatLoadingOlder = true;
+  agentChatLoadingOlder = true;
   const prevScrollHeight = log?.scrollHeight ?? 0;
   const prevScrollTop = log?.scrollTop ?? 0;
   try {
-    const result = await agentResume.listOlderAskChat({
-      beforeSortOrder: askChatOldestSortOrder,
-      limit: ASK_CHAT_PAGE_SIZE,
-      threadId: activeAskThreadId
+    const result = await agentResume.listOlderAgentChat({
+      beforeSortOrder: agentChatOldestSortOrder,
+      limit: AGENT_CHAT_PAGE_SIZE,
+      threadId: activeAgentThreadId
     });
     const older = mapAskMessages(result?.messages);
     if (!older.length) {
-      askChatHasMoreOlder = false;
+      agentChatHasMoreOlder = false;
       return;
     }
     chatTurns = [...older, ...chatTurns];
-    askChatHasMoreOlder = Boolean(result?.hasMore);
-    syncAskChatCursor();
+    agentChatHasMoreOlder = Boolean(result?.hasMore);
+    syncAgentChatCursor();
     resetChatRowHeights();
     chatVirtualLastRange = { start: -1, end: -1 };
     renderChatVirtual();
@@ -7829,9 +7978,9 @@ async function loadOlderAskChat() {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    setStatus($("agentStatus"), `加载更早消息失败：${msg}`, "error");
+    setStatus($("agentStatus"), t("desktop.agent.loadOlderFailedPrefix", msg), "error");
   } finally {
-    askChatLoadingOlder = false;
+    agentChatLoadingOlder = false;
   }
 }
 
@@ -7840,18 +7989,18 @@ async function clearChat() {
     return;
   }
   try {
-    if (typeof agentResume.clearAskChat === "function") {
-      await agentResume.clearAskChat({ threadId: activeAskThreadId });
+    if (typeof agentResume.clearAgentChat === "function") {
+      await agentResume.clearAgentChat({ threadId: activeAgentThreadId });
     }
   } catch (error) {
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
     return;
   }
   chatTurns = [];
-  askChatLoadedFromDb = true;
-  askChatRendered = true;
-  askChatHasMoreOlder = false;
-  askChatOldestSortOrder = null;
+  agentChatLoadedFromDb = true;
+  agentChatRendered = true;
+  agentChatHasMoreOlder = false;
+  agentChatOldestSortOrder = null;
   clearAskMarkdownCache();
   resetChatRowHeights();
   renderChatFull();
@@ -7866,11 +8015,11 @@ function loadAskSidebarCollapsedState() {
 
 function setAskSidebarCollapsed(collapsed, { persist = true } = {}) {
   askSidebarCollapsed = collapsed;
-  $("askSidebarPane")?.classList.toggle("is-collapsed", collapsed);
-  const btn = $("btnAskToggleSidebar");
+  $("agentSidebarPane")?.classList.toggle("is-collapsed", collapsed);
+  const btn = $("btnAgentToggleSidebar");
   if (btn) {
     btn.setAttribute("aria-expanded", String(!collapsed));
-    btn.title = collapsed ? "显示侧栏" : "隐藏侧栏";
+    btn.title = collapsed ? t("desktop.common.showSidebar") : t("desktop.common.hideSidebar");
   }
   if (persist) {
     localStorage.setItem("askSidebarCollapsed", collapsed ? "1" : "0");
@@ -7881,32 +8030,32 @@ function toggleAskSidebarCollapsed() {
   setAskSidebarCollapsed(!askSidebarCollapsed);
 }
 
-async function handleNewAskChat() {
+async function handleNewAgentChat() {
   try {
-    const thread = await agentResume.createAskThread({ title: "新对话" });
-    askThreads.unshift(thread);
-    activeAskThreadId = thread.id;
-    localStorage.setItem("activeAskThreadId", thread.id);
+    const thread = await agentResume.createAgentThread({ title: t("desktop.agent.newThread") });
+    agentThreads.unshift(thread);
+    activeAgentThreadId = thread.id;
+    localStorage.setItem("activeAgentThreadId", thread.id);
 
     chatTurns = [];
     resetChatRowHeights();
     chatVirtualLastRange = { start: -1, end: -1 };
 
-    renderAskThreadsSidebar();
-    updateAskChatTitleHeader();
+    renderAgentThreadsSidebar();
+    updateAgentChatTitleHeader();
     renderChatFull();
 
     $("agentInput")?.focus();
   } catch (error) {
-    setStatus($("agentStatus"), `创建对话失败：${error.message || error}`, "error");
+    setStatus($("agentStatus"), t("desktop.agent.createFailedPrefix", error.message || error), "error");
   }
 }
 
-function openAskRenameDialog() {
-  const thread = askThreads.find((t) => t.id === activeAskThreadId);
+function openAgentRenameDialog() {
+  const thread = agentThreads.find((t) => t.id === activeAgentThreadId);
   if (!thread) return;
-  const dialog = $("askRenameDialog");
-  const input = $("askRenameInput");
+  const dialog = $("agentRenameDialog");
+  const input = $("agentRenameInput");
   if (dialog && input) {
     input.value = thread.title;
     dialog.hidden = false;
@@ -7916,58 +8065,58 @@ function openAskRenameDialog() {
 }
 
 function closeAskRenameDialog() {
-  const dialog = $("askRenameDialog");
+  const dialog = $("agentRenameDialog");
   if (dialog) dialog.hidden = true;
 }
 
 async function confirmAskRename() {
-  const input = $("askRenameInput");
+  const input = $("agentRenameInput");
   const title = input?.value.trim();
   if (!title) return;
 
   try {
-    await agentResume.renameAskThread({ id: activeAskThreadId, title });
-    const thread = askThreads.find((t) => t.id === activeAskThreadId);
+    await agentResume.renameAgentThread({ id: activeAgentThreadId, title });
+    const thread = agentThreads.find((t) => t.id === activeAgentThreadId);
     if (thread) {
       thread.title = title;
     }
     closeAskRenameDialog();
-    renderAskThreadsSidebar();
-    updateAskChatTitleHeader();
+    renderAgentThreadsSidebar();
+    updateAgentChatTitleHeader();
   } catch (error) {
-    setStatus($("agentStatus"), `重命名失败：${error.message || error}`, "error");
+    setStatus($("agentStatus"), t("desktop.agent.renameFailedPrefix", error.message || error), "error");
   }
 }
 
-function updateAskChatTitleHeader() {
-  const thread = askThreads.find((t) => t.id === activeAskThreadId);
-  const titleHeader = $("askChatTitle");
+function updateAgentChatTitleHeader() {
+  const thread = agentThreads.find((t) => t.id === activeAgentThreadId);
+  const titleHeader = $("agentChatTitle");
   if (titleHeader) {
-    titleHeader.textContent = thread ? thread.title : "Ask";
+    titleHeader.textContent = thread ? thread.title : t("desktop.tabs.agent");
   }
 }
 
-function renderAskThreadsSidebar() {
-  const list = $("askSidebarList");
+function renderAgentThreadsSidebar() {
+  const list = $("agentSidebarList");
   if (!list) return;
   list.innerHTML = "";
 
-  for (const t of askThreads) {
+  for (const thread of agentThreads) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = `ask-thread-row${t.id === activeAskThreadId ? " active" : ""}`;
-    row.addEventListener("click", () => selectAskThread(t.id));
+    row.className = `ask-thread-row${thread.id === activeAgentThreadId ? " active" : ""}`;
+    row.addEventListener("click", () => selectAgentThread(thread.id));
 
     const label = document.createElement("span");
     label.className = "ask-thread-row-label";
-    label.textContent = t.title;
-    label.title = t.title;
+    label.textContent = thread.title;
+    label.title = thread.title;
     row.appendChild(label);
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "ask-thread-row-delete";
-    delBtn.title = "删除对话";
+    delBtn.title = t("desktop.agent.deleteThreadTitle");
     delBtn.innerHTML = `
       <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="pointer-events: none;">
         <path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -7975,7 +8124,7 @@ function renderAskThreadsSidebar() {
     `;
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      void deleteAskThreadConfirm(t.id);
+      void deleteAgentThreadConfirm(thread.id);
     });
     row.appendChild(delBtn);
 
@@ -7983,48 +8132,48 @@ function renderAskThreadsSidebar() {
   }
 }
 
-async function selectAskThread(threadId) {
-  if (threadId === activeAskThreadId) return;
-  activeAskThreadId = threadId;
-  localStorage.setItem("activeAskThreadId", threadId);
+async function selectAgentThread(threadId) {
+  if (threadId === activeAgentThreadId) return;
+  activeAgentThreadId = threadId;
+  localStorage.setItem("activeAgentThreadId", threadId);
 
-  renderAskThreadsSidebar();
-  updateAskChatTitleHeader();
+  renderAgentThreadsSidebar();
+  updateAgentChatTitleHeader();
 
-  askChatLoadedFromDb = false;
-  askChatRendered = false;
-  await loadAskChat({ force: true });
+  agentChatLoadedFromDb = false;
+  agentChatRendered = false;
+  await loadAgentChat({ force: true });
 }
 
-async function deleteAskThreadConfirm(threadId) {
-  const thread = askThreads.find((t) => t.id === threadId);
+async function deleteAgentThreadConfirm(threadId) {
+  const thread = agentThreads.find((t) => t.id === threadId);
   if (!thread) return;
-  if (!confirm(`确定要删除对话 "${thread.title}" 吗？`)) return;
+  if (!confirm(t("desktop.agent.deleteConfirmSimple", thread.title))) return;
 
   try {
-    await agentResume.deleteAskThread({ id: threadId });
-    askThreads = askThreads.filter((t) => t.id !== threadId);
+    await agentResume.deleteAgentThread({ id: threadId });
+    agentThreads = agentThreads.filter((t) => t.id !== threadId);
 
-    if (activeAskThreadId === threadId) {
-      if (askThreads.length > 0) {
-        activeAskThreadId = askThreads[0].id;
-        localStorage.setItem("activeAskThreadId", activeAskThreadId);
+    if (activeAgentThreadId === threadId) {
+      if (agentThreads.length > 0) {
+        activeAgentThreadId = agentThreads[0].id;
+        localStorage.setItem("activeAgentThreadId", activeAgentThreadId);
       } else {
-        activeAskThreadId = null;
-        localStorage.removeItem("activeAskThreadId");
-        await handleNewAskChat();
+        activeAgentThreadId = null;
+        localStorage.removeItem("activeAgentThreadId");
+        await handleNewAgentChat();
         return;
       }
     }
 
-    renderAskThreadsSidebar();
-    updateAskChatTitleHeader();
+    renderAgentThreadsSidebar();
+    updateAgentChatTitleHeader();
 
-    askChatLoadedFromDb = false;
-    askChatRendered = false;
-    await loadAskChat({ force: true });
+    agentChatLoadedFromDb = false;
+    agentChatRendered = false;
+    await loadAgentChat({ force: true });
   } catch (error) {
-    setStatus($("agentStatus"), `删除失败：${error.message || error}`, "error");
+    setStatus($("agentStatus"), t("desktop.agent.deleteFailedPrefix", error.message || error), "error");
   }
 }
 
@@ -8042,7 +8191,7 @@ function wire() {
         }
         setStatus(
           $("agentStatus"),
-          event.message || "正在索引笔记…",
+          event.message || t("desktop.agent.indexingNotes"),
           event.phase === "error" ? "error" : event.phase === "complete" ? "ok" : undefined
         );
         if (event.phase === "complete") {
@@ -8058,11 +8207,11 @@ function wire() {
       lastSessionSyncAt = result.syncedAt || Date.now();
       void refreshSessionViews({ quiet: true });
       if (notesLoaded) renderNotesPanel();
-      if (result.warnings?.length) setStatus($("memoryStatus"), result.warnings.join(" · "), "error");
+      if (result.warnings?.length) setStatus($("reportStatus"), result.warnings.join(" · "), "error");
     });
   }
   if (typeof agentResume.onSessionsSyncFailed === "function") {
-    agentResume.onSessionsSyncFailed((message) => setStatus($("memoryStatus"), message, "error"));
+    agentResume.onSessionsSyncFailed((message) => setStatus($("reportStatus"), message, "error"));
   }
 
   loadPaneWidths();
@@ -8086,7 +8235,7 @@ function wire() {
   });
   $("btnSettingsBack").addEventListener("click", () => {
     if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
-    void flushSettingsSave().finally(() => switchTab("memory"));
+    void flushSettingsSave().finally(() => switchTab("report"));
   });
   document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
     btn.addEventListener("click", () => showSettingsPane(btn.dataset.settingsPane));
@@ -8102,9 +8251,9 @@ function wire() {
   });
 
   $("btnRefreshSessions").addEventListener("click", () => syncAndRefreshSessionViews($("sessionsMeta")).catch(() => undefined));
-  $("btnRefreshMemory").addEventListener("click", async () => {
+  $("btnRefreshReport").addEventListener("click", async () => {
     try {
-      await syncAndRefreshSessionViews($("memoryStatus"));
+      await syncAndRefreshSessionViews($("reportStatus"));
       await loadMemory();
     } catch {
       // Old catalog and memory data remain visible.
@@ -8138,14 +8287,14 @@ function wire() {
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
   loadAskSidebarCollapsedState();
-  $("btnAskNewChat")?.addEventListener("click", () => handleNewAskChat());
-  $("btnAskToggleSidebar")?.addEventListener("click", () => toggleAskSidebarCollapsed());
-  $("btnAskRenameChat")?.addEventListener("click", () => openAskRenameDialog());
-  $("btnAskRenameConfirm")?.addEventListener("click", () => confirmAskRename());
+  $("btnAgentNewChat")?.addEventListener("click", () => handleNewAgentChat());
+  $("btnAgentToggleSidebar")?.addEventListener("click", () => toggleAskSidebarCollapsed());
+  $("btnAgentRenameChat")?.addEventListener("click", () => openAgentRenameDialog());
+  $("btnAgentRenameConfirm")?.addEventListener("click", () => confirmAskRename());
   document.querySelectorAll("[data-ask-rename-cancel]").forEach((el) => {
     el.addEventListener("click", () => closeAskRenameDialog());
   });
-  $("askRenameInput")?.addEventListener("keydown", (e) => {
+  $("agentRenameInput")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       confirmAskRename();
@@ -8199,24 +8348,24 @@ function wire() {
   function syncAskToolsToggleUi(notifyStatus) {
     const btn = $("btnAgentTools");
     if (btn) {
-      btn.classList.toggle("active", askEnableTools);
-      btn.setAttribute("aria-pressed", String(askEnableTools));
-      btn.title = askEnableTools ? "工具已开启：可通过对话操作笔记" : "开启后可通过对话操作笔记（新建/搜索）";
+      btn.classList.toggle("active", agentEnableTools);
+      btn.setAttribute("aria-pressed", String(agentEnableTools));
+      btn.title = agentEnableTools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle");
     }
     if (notifyStatus) {
-      setStatus($("agentStatus"), askEnableTools ? "工具模式已开启" : "工具模式已关闭", askEnableTools ? "ok" : undefined);
+      setStatus($("agentStatus"), agentEnableTools ? t("desktop.agent.toolsOnStatus") : t("desktop.agent.toolsOffStatus"), agentEnableTools ? "ok" : undefined);
     }
   }
   syncAskToolsToggleUi(false);
   $("btnAgentTools")?.addEventListener("click", () => {
-    askEnableTools = !askEnableTools;
+    agentEnableTools = !agentEnableTools;
     syncAskToolsToggleUi(true);
   });
-  $("btnAskAudit")?.addEventListener("click", () => toggleAskAuditPanel());
-  $("btnAskAuditRefresh")?.addEventListener("click", () => loadAskAudit());
+  $("btnAgentAudit")?.addEventListener("click", () => toggleAskAuditPanel());
+  $("btnAgentAuditRefresh")?.addEventListener("click", () => loadAskAudit());
   $("btnClearChat").addEventListener("click", () => {
-    if (activeAskThreadId) {
-      void deleteAskThreadConfirm(activeAskThreadId);
+    if (activeAgentThreadId) {
+      void deleteAgentThreadConfirm(activeAgentThreadId);
     }
   });
   $("agentInput").addEventListener("keydown", (e) => {
@@ -8274,7 +8423,7 @@ function wire() {
   $("btnWbRenameConfirm")?.addEventListener("click", () => {
     const title = $("wbRenameInput")?.value.trim();
     if (!title) {
-      alertWorkbenchError(wbRenamePending?.kind === "project" ? "名称不能为空" : "标题不能为空");
+      alertWorkbenchError(wbRenamePending?.kind === "project" ? t("desktop.workbench.nameEmpty") : t("desktop.workbench.titleEmpty"));
       return;
     }
     const kind = wbRenamePending?.kind === "project" ? "project" : "manual";
@@ -8463,15 +8612,17 @@ function wire() {
   });
 }
 
-const SETTINGS_PANE_META = {
-  general: { title: "通用", desc: "外观与日常偏好" },
-  models: { title: "模型", desc: "配置工具 LLM、对话与 Embedding" },
-  sessions: { title: "Sessions", desc: "同步策略与会话列表可见性" },
-  workbench: { title: "工作台", desc: "新建 Session、编辑器与终端" },
-  memory: { title: "Memory", desc: "定时 digests 与历史回填" },
-  storage: { title: "数据", desc: "Panel home、笔记与 Agent 数据目录" },
-  usage: { title: "用量", desc: "LLM 调用与定时任务统计" }
-};
+function getSettingsPaneMeta() {
+  return {
+    general: { title: t("desktop.settings.paneGeneral"), desc: t("desktop.settings.paneGeneralDesc") },
+    models: { title: t("desktop.settings.paneModels"), desc: t("desktop.settings.paneModelsDesc") },
+    sessions: { title: t("desktop.settings.paneSessions"), desc: t("desktop.settings.paneSessionsDesc") },
+    workbench: { title: t("desktop.settings.paneWorkbench"), desc: t("desktop.settings.paneWorkbenchDesc") },
+    report: { title: t("desktop.settings.paneReport"), desc: t("desktop.settings.paneReportDesc") },
+    storage: { title: t("desktop.settings.paneStorage"), desc: t("desktop.settings.paneStorageDesc") },
+    usage: { title: t("desktop.settings.paneUsage"), desc: t("desktop.settings.paneUsageDesc") }
+  };
+}
 
 function syncSettingsToggleAria() {
   document.querySelectorAll(".settings-toggle input[role='switch']").forEach((input) => {
@@ -8506,7 +8657,7 @@ function wireSettingsDisclosure() {
 }
 
 function showSettingsPane(name) {
-  const paneIds = ["general", "models", "sessions", "workbench", "memory", "storage", "usage"];
+  const paneIds = ["general", "models", "sessions", "workbench", "report", "storage", "usage"];
   const resolved = paneIds.includes(name) ? name : "general";
   for (const id of paneIds) {
     const pane = $(`settingsPane${id.charAt(0).toUpperCase()}${id.slice(1)}`);
@@ -8518,7 +8669,7 @@ function showSettingsPane(name) {
   const isUsage = resolved === "usage";
   if (form) form.hidden = isUsage;
   if (headerActions) headerActions.hidden = isUsage;
-  const meta = SETTINGS_PANE_META[resolved];
+  const meta = getSettingsPaneMeta()[resolved];
   const titleEl = $("settingsPaneTitle");
   const descEl = $("settingsPaneDesc");
   if (titleEl && meta) titleEl.textContent = meta.title;
@@ -8537,7 +8688,7 @@ function fmtNum(n) {
 async function loadUsagePage() {
   const status = $("usageStatus");
   const days = Number($("usageDays")?.value || 30);
-  setStatus(status, "Loading usage…");
+  setStatus(status, t("desktop.usage.loading"));
   try {
     const [summary, events, runs] = await Promise.all([
       agentResume.usageSummary({ days }),
@@ -8552,19 +8703,19 @@ async function loadUsagePage() {
         .map((s) => `${s.source}:${s.totalTokens}`)
         .join(" · ");
       cards.innerHTML = `
-        <div class="usage-card"><div class="label">Total tokens</div><div class="value">${fmtNum(
+        <div class="usage-card"><div class="label">${escapeHtml(t("desktop.usage.totalTokens"))}</div><div class="value">${fmtNum(
           summary.totalTokens
         )}</div></div>
-        <div class="usage-card"><div class="label">Prompt / Completion</div><div class="value" style="font-size:14px">${fmtNum(
+        <div class="usage-card"><div class="label">${escapeHtml(t("desktop.usage.promptCompletion"))}</div><div class="value" style="font-size:14px">${fmtNum(
           summary.promptTokens
         )} / ${fmtNum(summary.completionTokens)}</div></div>
-        <div class="usage-card"><div class="label">Chat / Embed</div><div class="value" style="font-size:14px">${fmtNum(
+        <div class="usage-card"><div class="label">${escapeHtml(t("desktop.usage.chatEmbed"))}</div><div class="value" style="font-size:14px">${fmtNum(
           summary.chatTokens
         )} / ${fmtNum(summary.embeddingTokens)}</div></div>
-        <div class="usage-card"><div class="label">Events</div><div class="value">${fmtNum(
+        <div class="usage-card"><div class="label">${escapeHtml(t("desktop.usage.events"))}</div><div class="value">${fmtNum(
           summary.eventCount
         )}</div></div>
-        <div class="usage-card" style="grid-column:1/-1"><div class="label">By source</div><div class="value" style="font-size:12px;font-weight:500">${escapeHtml(
+        <div class="usage-card" style="grid-column:1/-1"><div class="label">${escapeHtml(t("desktop.usage.bySource"))}</div><div class="value" style="font-size:12px;font-weight:500">${escapeHtml(
           srcBits || "—"
         )}</div></div>
       `;
@@ -8579,7 +8730,7 @@ async function loadUsagePage() {
               d.events
             )}</td><td>${fmtNum(d.scheduleRuns)}</td></tr>`
         )
-        .join("") || `<tr><td colspan="4" class="muted">暂无数据</td></tr>`;
+        .join("") || `<tr><td colspan="4" class="muted">${escapeHtml(t("desktop.usage.noData"))}</td></tr>`;
     }
 
     const runsBody = $("scheduleRunsBody");
@@ -8597,7 +8748,7 @@ async function loadUsagePage() {
                 <td>${escapeHtml(r.error || "")}</td>
               </tr>`
           )
-          .join("") || `<tr><td colspan="6" class="muted">暂无定时执行记录</td></tr>`;
+          .join("") || `<tr><td colspan="6" class="muted">${escapeHtml(t("desktop.usage.noScheduleRuns"))}</td></tr>`;
     }
 
     const evBody = $("usageEventsBody");
@@ -8615,31 +8766,75 @@ async function loadUsagePage() {
                 <td>${fmtNum(e.durationMs)}</td>
               </tr>`
           )
-          .join("") || `<tr><td colspan="6" class="muted">暂无调用明细（生成 digests / Ask 后会出现）</td></tr>`;
+          .join("") || `<tr><td colspan="6" class="muted">${escapeHtml(t("desktop.usage.noLlmEvents"))}</td></tr>`;
     }
 
-    setStatus(status, `近 ${days} 天 · ${summary.eventCount} 次调用`, "ok");
+    setStatus(status, t("desktop.usage.summaryStatus", days, summary.eventCount), "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
 }
 
+async function registerRefreshLocalizedUiImpl() {
+  window.refreshLocalizedUiImpl = async () => {
+    populateUiLanguageSelect($("settingsForm")?.uiLanguage?.value);
+    if (activePrimaryTab === "settings") {
+      const pane = document.querySelector(".settings-nav-item.active")?.dataset.settingsPane || "general";
+      showSettingsPane(pane);
+    }
+    if (activePrimaryTab === "report") {
+      ensureYearOptions();
+      renderCalendar();
+      await renderCalSessionList({ preserveScroll: true });
+      refreshDetailFocus();
+      const meta = $("sessionsMeta");
+      if (meta && sessionsCache.length) meta.textContent = sessionListMeta();
+    }
+    if (activePrimaryTab === "agent") {
+      renderAgentThreadsSidebar();
+      updateAgentChatTitleHeader();
+      if (agentChatRendered) renderAgentChat();
+    }
+    if (activePrimaryTab === "workbench") {
+      renderWorkbenchPanel();
+      renderWorkbenchTerminalTabs();
+      updateWorkbenchToolbarState();
+    }
+    if (activePrimaryTab === "notes" && notesLoaded) {
+      renderNotesPanel();
+    }
+    if (isSessionsSheetOpen()) {
+      const meta = $("sessionsMeta");
+      if (meta) meta.textContent = sessionListMeta();
+      renderSessionsList(sessionsCache);
+    }
+  };
+}
+
 async function boot() {
+  await initI18n();
+  if (typeof populateCalMonthOptions === "function") populateCalMonthOptions();
+  await registerRefreshLocalizedUiImpl();
+  if (typeof agentResume.onLocaleChanged === "function") {
+    agentResume.onLocaleChanged((bundle) => {
+      void refreshLocalizedUi(bundle);
+    });
+  }
   initMarkdownHighlight();
   wire();
   refreshPinnedProjects();
   await refreshProjectAliases();
   selectedDayKey = todayInputValue();
   updatePeriodLabel();
-  switchTab("memory");
+  switchTab("report");
   await loadSettingsForm();
   applyDesktopTheme(getDesktopThemePref());
   await loadMemory();
-  void loadAskChat({ render: false });
-  void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);
+  void loadAgentChat({ render: false });
+  void syncAndRefreshSessionViews($("reportStatus")).catch(() => undefined);
 }
 
 boot().catch((error) => {
   console.error(error);
-  setStatus($("memoryStatus"), error instanceof Error ? error.message : String(error), "error");
+  setStatus($("reportStatus"), error instanceof Error ? error.message : String(error), "error");
 });

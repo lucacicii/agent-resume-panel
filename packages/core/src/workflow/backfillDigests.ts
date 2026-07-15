@@ -1,14 +1,14 @@
 import { ensureCatalogSchema } from "../catalog/db";
-import { runDailyDigest } from "../memory/daily";
-import { runMonthlyDigest } from "../memory/monthly";
-import { localDayRange, localMonthRange, localWeekRange } from "../memory/period";
-import { getMemoryJobStatus } from "../memory/store";
-import { runWeeklyDigest } from "../memory/weekly";
+import { runDailyDigest } from "../report/daily";
+import { runMonthlyDigest } from "../report/monthly";
+import { localDayRange, localMonthRange, localWeekRange } from "../report/period";
+import { getReportJobStatus } from "../report/store";
+import { runWeeklyDigest } from "../report/weekly";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { runSqliteJson } from "../sqlite";
 
-export interface BackfillMemoryDigestsOptions {
+export interface BackfillReportDigestsOptions {
   panelHome?: string;
   /** Skip periods that already have job status ok. Default true. */
   skipExisting?: boolean;
@@ -27,7 +27,7 @@ export interface BackfillLevelStats {
   failed: Array<{ key: string; error: string }>;
 }
 
-export interface BackfillMemoryDigestsResult {
+export interface BackfillReportDigestsResult {
   daily: BackfillLevelStats;
   weekly: BackfillLevelStats;
   monthly: BackfillLevelStats;
@@ -105,7 +105,7 @@ async function shouldSkip(dbPath: string, jobKey: string, skipExisting: boolean)
   if (!skipExisting) {
     return false;
   }
-  const status = await getMemoryJobStatus(dbPath, jobKey);
+  const status = await getReportJobStatus(dbPath, jobKey);
   return status?.status === "ok";
 }
 
@@ -117,9 +117,9 @@ function emptyStats(planned: string[]): BackfillLevelStats {
  * Batch-generate daily → weekly → monthly digests for all (or recent) session activity days.
  * Order matters: weeklies prefer dailies; monthlies prefer weeklies.
  */
-export async function backfillMemoryDigests(
-  options: BackfillMemoryDigestsOptions = {}
-): Promise<BackfillMemoryDigestsResult> {
+export async function backfillReportDigests(
+  options: BackfillReportDigestsOptions = {}
+): Promise<BackfillReportDigestsResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
     ? resolvePanelHome(options.panelHome)
@@ -218,8 +218,8 @@ export async function backfillMemoryDigests(
 }
 
 /** Preview only: periods that would be processed. */
-export async function previewBackfillMemoryDigests(
-  options: BackfillMemoryDigestsOptions = {}
+export async function previewBackfillReportDigests(
+  options: BackfillReportDigestsOptions = {}
 ): Promise<{
   days: string[];
   weeks: string[];

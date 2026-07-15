@@ -1,7 +1,7 @@
 import { DigestProgressCallback } from "./progress";
 import { formatSessionForDigest } from "./prompts";
-import { MemoryEntry, MemoryLevel } from "./schema";
-import { listMemoryEntriesInRange } from "./store";
+import { ReportEntry, ReportLevel } from "./schema";
+import { listReportEntriesInRange } from "./store";
 
 export interface BuildSourceContextOptions {
   dbPath: string;
@@ -31,7 +31,7 @@ export async function buildWeeklySourceLines(
 ): Promise<WeeklySourceLinesResult> {
   const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel } = options;
 
-  const dailies = await listMemoryEntriesInRange(dbPath, {
+  const dailies = await listReportEntriesInRange(dbPath, {
     level: "daily",
     startMs,
     endMs,
@@ -78,7 +78,7 @@ export async function buildMonthlySourceLines(
   const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel } = options;
 
   // Month can have up to 31 dailies
-  const dailies = await listMemoryEntriesInRange(dbPath, {
+  const dailies = await listReportEntriesInRange(dbPath, {
     level: "daily",
     startMs,
     endMs,
@@ -125,4 +125,4 @@ function truncate(text: string, max: number): string {
 }
 
 export { formatSessionForDigest };
-export type { MemoryEntry, MemoryLevel };
+export type { ReportEntry, ReportLevel };

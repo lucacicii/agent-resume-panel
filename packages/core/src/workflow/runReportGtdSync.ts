@@ -4,20 +4,20 @@ import { getSessionById } from "../catalog/query";
 import { AgentProvider } from "../catalog/types";
 import { getSessionGtdStatus, setSessionGtdStatusWithAudit } from "../gtd/store";
 import { GtdApplyItem, GtdProposal, GtdStatus, isGtdStatus } from "../gtd/types";
-import { runDailyDigest } from "../memory/daily";
-import { localDayRange } from "../memory/period";
-import { getMemoryJobStatus, upsertMemoryJob } from "../memory/store";
+import { runDailyDigest } from "../report/daily";
+import { localDayRange } from "../report/period";
+import { getReportJobStatus, upsertReportJob } from "../report/store";
 import { renderSessionTodolistMarkdown, writeSessionTodolistMd } from "../notes/todolist";
 import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
-import { analyzeMemoryForGtd } from "./analyzeGtd";
+import { analyzeReportForGtd } from "./analyzeGtd";
 
-export interface RunMemoryGtdSyncOptions {
+export interface RunReportGtdSyncOptions {
   panelHome?: string;
   /** If true (default), generate today's daily digest when missing/not ok. */
   ensureDigests?: boolean;
   /** When set, only analyze these digests (e.g. current card). Skips ensureDigests if provided. */
-  memoryIds?: string[];
+  reportIds?: string[];
 }
 
 export interface GtdPreviewItem {
@@ -29,12 +29,12 @@ export interface GtdPreviewItem {
   proposedGtd: GtdStatus;
   reason: string;
   tasks: string[];
-  sourceMemoryIds: string[];
+  sourceReportIds: string[];
   /** Markdown that would be written (not yet on disk). */
   todolistPreview: string;
 }
 
-export interface PreviewMemoryGtdSyncResult {
+export interface PreviewReportGtdSyncResult {
   previewId: string;
   proposals: GtdPreviewItem[];
   skipped: string[];
@@ -42,7 +42,7 @@ export interface PreviewMemoryGtdSyncResult {
   ensureDigest?: { ran: boolean; jobKey?: string };
 }
 
-export interface ApplyMemoryGtdSyncOptions {
+export interface ApplyReportGtdSyncOptions {
   panelHome?: string;
   items: Array<{
     provider: string;
@@ -50,7 +50,7 @@ export interface ApplyMemoryGtdSyncOptions {
     gtd: GtdStatus | string;
     reason: string;
     tasks: string[];
-    sourceMemoryIds: string[];
+    sourceReportIds: string[];
     title?: string;
     projectPath?: string;
     previousGtd?: GtdStatus | null;
@@ -59,13 +59,13 @@ export interface ApplyMemoryGtdSyncOptions {
   }>;
 }
 
-export interface ApplyMemoryGtdSyncResult {
+export interface ApplyReportGtdSyncResult {
   applied: GtdApplyItem[];
   failed: Array<{ key: string; error: string }>;
   jobKey: string;
 }
 
-export interface RunMemoryGtdSyncResult {
+export interface RunReportGtdSyncResult {
   applied: GtdApplyItem[];
   skipped: string[];
   warnings: string[];
@@ -76,9 +76,9 @@ export interface RunMemoryGtdSyncResult {
 /**
  * Analyze only — no GTD writes, no todolist.md on disk.
  */
-export async function previewMemoryGtdSync(
-  options: RunMemoryGtdSyncOptions = {}
-): Promise<PreviewMemoryGtdSyncResult> {
+export async function previewReportGtdSync(
+  options: RunReportGtdSyncOptions = {}
+): Promise<PreviewReportGtdSyncResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
     ? resolvePanelHome(options.panelHome)
@@ -91,23 +91,23 @@ export async function previewMemoryGtdSync(
 
   const skipped: string[] = [];
   const warnings: string[] = [];
-  let ensureDigest: PreviewMemoryGtdSyncResult["ensureDigest"] = { ran: false };
+  let ensureDigest: PreviewReportGtdSyncResult["ensureDigest"] = { ran: false };
 
-  const scoped = Boolean(options.memoryIds?.length);
+  const scoped = Boolean(options.reportIds?.length);
   // Scoped analysis uses an existing digest; do not auto-run today's daily unless asked.
   if (!scoped && options.ensureDigests !== false) {
     const day = localDayRange();
-    const status = await getMemoryJobStatus(dbPath, day.jobKey);
+    const status = await getReportJobStatus(dbPath, day.jobKey);
     if (status?.status !== "ok") {
       await runDailyDigest({ panelHome, date: day.label });
       ensureDigest = { ran: true, jobKey: day.jobKey };
     }
   }
 
-  const { proposals, warnings: analyzeWarnings } = await analyzeMemoryForGtd({
+  const { proposals, warnings: analyzeWarnings } = await analyzeReportForGtd({
     dbPath,
     settings,
-    memoryIds: options.memoryIds
+    reportIds: options.reportIds
   });
   warnings.push(...analyzeWarnings);
 
@@ -127,7 +127,7 @@ export async function previewMemoryGtdSync(
       gtd: p.gtd,
       reason: p.reason,
       tasks: p.tasks,
-      sourceMemoryIds: p.sourceMemoryIds,
+      sourceReportIds: p.sourceReportIds,
       previousStatus: previous,
       appliedAtIso: "(pending approval)"
     });
@@ -141,7 +141,7 @@ export async function previewMemoryGtdSync(
       proposedGtd: p.gtd,
       reason: p.reason,
       tasks: p.tasks,
-      sourceMemoryIds: p.sourceMemoryIds,
+      sourceReportIds: p.sourceReportIds,
       todolistPreview
     });
   }
@@ -158,9 +158,9 @@ export async function previewMemoryGtdSync(
 /**
  * Apply user-approved items: write GTD + todolist.md.
  */
-export async function applyMemoryGtdSync(
-  options: ApplyMemoryGtdSyncOptions
-): Promise<ApplyMemoryGtdSyncResult> {
+export async function applyReportGtdSync(
+  options: ApplyReportGtdSyncOptions
+): Promise<ApplyReportGtdSyncResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
     ? resolvePanelHome(options.panelHome)
@@ -172,7 +172,7 @@ export async function applyMemoryGtdSync(
   await ensureCatalogSchema(dbPath);
 
   const jobKey = `gtd_apply:${new Date().toISOString()}`;
-  await upsertMemoryJob(dbPath, jobKey, "running");
+  await upsertReportJob(dbPath, jobKey, "running");
 
   const applied: GtdApplyItem[] = [];
   const failed: Array<{ key: string; error: string }> = [];
@@ -203,7 +203,7 @@ export async function applyMemoryGtdSync(
           status: gtd,
           previousStatus: previous,
           reason: `[AI] ${raw.reason || "approved from preview"}`,
-          sourceMemoryIds: raw.sourceMemoryIds || [],
+          sourceReportIds: raw.sourceReportIds || [],
           auditId: randomUUID()
         });
 
@@ -217,7 +217,7 @@ export async function applyMemoryGtdSync(
           gtd,
           reason: raw.reason || "",
           tasks: raw.tasks || [],
-          sourceMemoryIds: raw.sourceMemoryIds || [],
+          sourceReportIds: raw.sourceReportIds || [],
           previousStatus: previous,
           markdownBody: raw.todolistMarkdown
         });
@@ -228,7 +228,7 @@ export async function applyMemoryGtdSync(
           previousStatus: previous,
           newStatus: gtd,
           reason: raw.reason || "",
-          sourceMemoryIds: raw.sourceMemoryIds || [],
+          sourceReportIds: raw.sourceReportIds || [],
           todolistPath,
           title: session.title,
           projectPath: session.projectPath
@@ -241,23 +241,23 @@ export async function applyMemoryGtdSync(
       }
     }
 
-    await upsertMemoryJob(dbPath, jobKey, failed.length && !applied.length ? "error" : "ok");
+    await upsertReportJob(dbPath, jobKey, failed.length && !applied.length ? "error" : "ok");
     return { applied, failed, jobKey };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertMemoryJob(dbPath, jobKey, "error", message);
+    await upsertReportJob(dbPath, jobKey, "error", message);
     throw error;
   }
 }
 
 /**
- * @deprecated Prefer previewMemoryGtdSync + applyMemoryGtdSync.
+ * @deprecated Prefer previewReportGtdSync + applyReportGtdSync.
  * Still: preview then apply all (no interactive gate).
  */
-export async function runMemoryGtdSync(
-  options: RunMemoryGtdSyncOptions = {}
-): Promise<RunMemoryGtdSyncResult> {
-  const preview = await previewMemoryGtdSync(options);
+export async function runReportGtdSync(
+  options: RunReportGtdSyncOptions = {}
+): Promise<RunReportGtdSyncResult> {
+  const preview = await previewReportGtdSync(options);
   if (!preview.proposals.length) {
     return {
       applied: [],
@@ -268,7 +268,7 @@ export async function runMemoryGtdSync(
     };
   }
 
-  const apply = await applyMemoryGtdSync({
+  const apply = await applyReportGtdSync({
     panelHome: options.panelHome,
     items: preview.proposals.map((p) => ({
       provider: p.provider,
@@ -276,7 +276,7 @@ export async function runMemoryGtdSync(
       gtd: p.proposedGtd,
       reason: p.reason,
       tasks: p.tasks,
-      sourceMemoryIds: p.sourceMemoryIds,
+      sourceReportIds: p.sourceReportIds,
       title: p.title,
       projectPath: p.projectPath,
       previousGtd: p.previousGtd

@@ -8,7 +8,7 @@ Agent Resume Panel is a local-first session manager. The repository has three pr
 | --- | --- | --- |
 | sessions, providers, resume, native rename, transcript preview, search, session manager, project aliases, favorites | `.agents/menus/sessions.md` | VS Code extension and core |
 | ACP chat, agent connection, permissions, ACP files, images, handoff | `.agents/menus/acp-chat.md` | VS Code extension |
-| GTD, status, tasks, todolist, daily/weekly/monthly digest, memory, Ask, semantic search, usage | `.agents/menus/memory-gtd.md` | Core and desktop |
+| GTD, status, tasks, todolist, daily/weekly/monthly digest, memory, Ask, semantic search, usage | `.agents/menus/report-gtd.md` | Core and desktop |
 | notes, Markdown, attachments, note import, note search, index | `.agents/menus/notes.md` | Extension, core, and desktop |
 | desktop app, Memory calendar, Ask, Workbench, embedded terminal, desktop settings | `.agents/menus/desktop.md` | Electron desktop |
 | settings, local storage, LLM configuration, embeddings, panel home, catalog database, usage, session sync | `.agents/menus/infrastructure.md` | Shared infrastructure |

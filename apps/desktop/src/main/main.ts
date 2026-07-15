@@ -3,31 +3,31 @@ import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
-  askMetaAgent,
-  clearAskMessages,
-  listOlderAskMessages,
-  listAskNoteAudit,
-  listRecentAskMessages,
-  listAskThreads,
-  createAskThread,
-  renameAskThread,
-  deleteAskThread,
+  runAgentChat,
+  clearAgentMessages,
+  listOlderAgentMessages,
+  listAgentNoteAudit,
+  listRecentAgentMessages,
+  listAgentThreads,
+  createAgentThread,
+  renameAgentThread,
+  deleteAgentThread,
   autoRenameSessionAction,
   suggestSessionRenameAction,
-  backfillMemoryDigests,
+  backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
   catalogDbFromSettings,
   effectivePanelHome,
   ensureCatalogSchema,
   expandHome,
-  getMemoryEntryById,
+  getReportEntryById,
   getSessionById,
   getUsageSummary,
   hideSessionAction,
   listLlmUsageEvents,
-  listMemoryEntries,
-  listMemoryEntriesInRange,
+  listReportEntries,
+  listReportEntriesInRange,
   listScheduleRuns,
   listSessions,
   listSessionsInRange,
@@ -40,7 +40,7 @@ import {
   openProjectInEditor,
   openProjectInSystemTerminal,
   openSessionInSystemTerminal,
-  previewBackfillMemoryDigests,
+  previewBackfillReportDigests,
   renameSessionAction,
   resolveProjectEditor,
   resolvePanelHome,
@@ -49,23 +49,24 @@ import {
   needsDailyDigestRefresh,
   needsWeeklyDigestRefresh,
   needsMonthlyDigestRefresh,
-  applyMemoryGtdSync,
-  previewMemoryGtdSync,
+  applyReportGtdSync,
+  previewReportGtdSync,
   runMonthlyDigest,
   runWeeklyDigest,
   saveSettings,
-  searchMemoryByEmbedding,
+  searchReportsByEmbedding,
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
   summarizeSessionAction,
   type AgentProvider,
-  type AskNoteAuditStatus,
+  type AgentNoteAuditStatus,
   type DigestProgressEvent,
   type PanelSettings,
   type WorkbenchProjectEditor,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import { buildI18nBundle, initI18nService } from "./i18nService";
 import {
   invalidateNotesStore,
   notesCopyPath,
@@ -301,11 +302,22 @@ function registerIpc(): void {
     return loadSettings();
   });
 
+  ipcMain.handle("i18n:getBundle", async () => {
+    const settings = await loadSettings();
+    return buildI18nBundle(settings);
+  });
+
   ipcMain.handle("settings:save", async (_event, settings: PanelSettings) => {
+    const previous = await loadSettings();
+    const prevLocale = buildI18nBundle(previous).locale;
     const file = await saveSettings(settings);
     invalidateNotesStore();
     const schedulerEnabled = await refreshMemorySchedulerFromSettings();
     const saved = await loadSettings();
+    const bundle = buildI18nBundle(saved);
+    if (bundle.locale !== prevLocale && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("i18n:localeChanged", bundle);
+    }
     const sync = await syncAndNotify();
     scheduleNotesIndex();
     return { file, settings: saved, schedulerEnabled, sync };
@@ -517,7 +529,7 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
-    "memory:list",
+    "report:list",
     async (
       _event,
       opts?: { level?: string; limit?: number; fromMs?: number; toMs?: number }
@@ -527,44 +539,44 @@ function registerIpc(): void {
       await ensureCatalogSchema(dbPath);
       const level = opts?.level && opts.level !== "all" ? opts.level : undefined;
       if (opts?.fromMs != null && opts?.toMs != null) {
-        return listMemoryEntriesInRange(dbPath, {
+        return listReportEntriesInRange(dbPath, {
           level,
           startMs: opts.fromMs,
           endMs: opts.toMs,
           limit: opts?.limit ?? 200
         });
       }
-      return listMemoryEntries(dbPath, {
+      return listReportEntries(dbPath, {
         level,
         limit: opts?.limit ?? 50
       });
     }
   );
 
-  ipcMain.handle("memory:getEntry", async (_event, memoryId?: string) => {
-    const id = typeof memoryId === "string" ? memoryId.trim() : "";
+  ipcMain.handle("report:getEntry", async (_event, reportId?: string) => {
+    const id = typeof reportId === "string" ? reportId.trim() : "";
     if (!id) {
       return null;
     }
     try {
       const settings = await loadSettings();
       const dbPath = catalogDbFromSettings(settings);
-      return (await getMemoryEntryById(dbPath, id)) ?? null;
+      return (await getReportEntryById(dbPath, id)) ?? null;
     } catch (error) {
-      console.error("memory:getEntry failed:", error);
+      console.error("report:getEntry failed:", error);
       return null;
     }
   });
 
-  ipcMain.handle("memory:listDaily", async (_event, limit?: number) => {
+  ipcMain.handle("report:listDaily", async (_event, limit?: number) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
     await ensureCatalogSchema(dbPath);
-    return listMemoryEntries(dbPath, { level: "daily", limit: limit ?? 30 });
+    return listReportEntries(dbPath, { level: "daily", limit: limit ?? 30 });
   });
 
   ipcMain.handle(
-    "memory:runDaily",
+    "report:runDaily",
     async (
       event,
       args?: string | { date?: string; forceResummarize?: boolean }
@@ -574,7 +586,7 @@ function registerIpc(): void {
           ? { date: args }
           : args || {};
       const sendProgress = (progress: DigestProgressEvent) => {
-        event.sender.send("memory:digestProgress", progress);
+        event.sender.send("report:digestProgress", progress);
       };
       return runDailyDigest({
         date: opts.date,
@@ -584,36 +596,36 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("memory:needsDailyRefresh", async (_event, date?: string) => {
+  ipcMain.handle("report:needsDailyRefresh", async (_event, date?: string) => {
     return needsDailyDigestRefresh({ date });
   });
 
-  ipcMain.handle("memory:needsWeeklyRefresh", async (_event, weekKey?: string) => {
+  ipcMain.handle("report:needsWeeklyRefresh", async (_event, weekKey?: string) => {
     return needsWeeklyDigestRefresh({ weekKey });
   });
 
-  ipcMain.handle("memory:needsMonthlyRefresh", async (_event, monthKey?: string) => {
+  ipcMain.handle("report:needsMonthlyRefresh", async (_event, monthKey?: string) => {
     return needsMonthlyDigestRefresh({ monthKey });
   });
 
-  ipcMain.handle("memory:runWeekly", async (event, weekKey?: string) => {
+  ipcMain.handle("report:runWeekly", async (event, weekKey?: string) => {
     const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("memory:digestProgress", progress);
+      event.sender.send("report:digestProgress", progress);
     };
     return runWeeklyDigest({ weekKey, onProgress: sendProgress });
   });
 
-  ipcMain.handle("memory:runMonthly", async (event, monthKey?: string) => {
+  ipcMain.handle("report:runMonthly", async (event, monthKey?: string) => {
     const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("memory:digestProgress", progress);
+      event.sender.send("report:digestProgress", progress);
     };
     return runMonthlyDigest({ monthKey, onProgress: sendProgress });
   });
 
   ipcMain.handle(
-    "memory:search",
+    "report:search",
     async (_event, args: { query: string; level?: string; limit?: number }) => {
-      return searchMemoryByEmbedding({
+      return searchReportsByEmbedding({
         query: args.query,
         level: args.level && args.level !== "all" ? args.level : undefined,
         limit: args.limit ?? 20
@@ -636,7 +648,7 @@ function registerIpc(): void {
       activeAskAbort = new AbortController();
       const signal = activeAskAbort.signal;
       try {
-        return await askMetaAgent({
+        return await runAgentChat({
           query: args.query,
           history: args.history,
           threadId: args.threadId,
@@ -663,20 +675,20 @@ function registerIpc(): void {
     return { ok: true };
   });
 
-  ipcMain.handle("agent:listAskChat", async (_event, args?: { limit?: number; threadId?: string }) => {
+  ipcMain.handle("agent:listAgentChat", async (_event, args?: { limit?: number; threadId?: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
     await ensureCatalogSchema(dbPath);
-    return listRecentAskMessages(dbPath, { limit: args?.limit, threadId: args?.threadId });
+    return listRecentAgentMessages(dbPath, { limit: args?.limit, threadId: args?.threadId });
   });
 
   ipcMain.handle(
-    "agent:listOlderAskChat",
+    "agent:listOlderAgentChat",
     async (_event, args: { beforeSortOrder: number; limit?: number; threadId?: string }) => {
       const settings = await loadSettings();
       const dbPath = catalogDbFromSettings(settings);
       await ensureCatalogSchema(dbPath);
-      return listOlderAskMessages(dbPath, {
+      return listOlderAgentMessages(dbPath, {
         beforeSortOrder: args.beforeSortOrder,
         limit: args?.limit,
         threadId: args?.threadId
@@ -684,69 +696,69 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("agent:clearAskChat", async (_event, args?: { threadId?: string }) => {
+  ipcMain.handle("agent:clearAgentChat", async (_event, args?: { threadId?: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    await clearAskMessages(dbPath, args?.threadId);
+    await clearAgentMessages(dbPath, args?.threadId);
     return { ok: true };
   });
 
   ipcMain.handle("agent:listThreads", async () => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    return listAskThreads(dbPath);
+    return listAgentThreads(dbPath);
   });
 
   ipcMain.handle("agent:createThread", async (_event, args: { title: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    return createAskThread(dbPath, args);
+    return createAgentThread(dbPath, args);
   });
 
   ipcMain.handle("agent:renameThread", async (_event, args: { id: string; title: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    await renameAskThread(dbPath, args.id, args.title);
+    await renameAgentThread(dbPath, args.id, args.title);
     return { ok: true };
   });
 
   ipcMain.handle("agent:deleteThread", async (_event, args: { id: string }) => {
     const settings = await loadSettings();
     const dbPath = catalogDbFromSettings(settings);
-    await deleteAskThread(dbPath, args.id);
+    await deleteAgentThread(dbPath, args.id);
     return { ok: true };
   });
 
   ipcMain.handle(
-    "agent:listAskNoteAudit",
+    "agent:listAgentNoteAudit",
     async (
       _event,
       args?: {
         limit?: number;
         noteId?: string;
         traceId?: string;
-        status?: AskNoteAuditStatus;
+        status?: AgentNoteAuditStatus;
       }
     ) => {
       const settings = await loadSettings();
       const dbPath = catalogDbFromSettings(settings);
       await ensureCatalogSchema(dbPath);
-      return listAskNoteAudit(dbPath, args);
+      return listAgentNoteAudit(dbPath, args);
     }
   );
 
   ipcMain.handle(
-    "workflow:previewMemoryGtdSync",
-    async (_event, args?: { ensureDigests?: boolean; memoryIds?: string[] }) => {
-      return previewMemoryGtdSync({
+    "workflow:previewReportGtdSync",
+    async (_event, args?: { ensureDigests?: boolean; reportIds?: string[] }) => {
+      return previewReportGtdSync({
         ensureDigests: args?.ensureDigests,
-        memoryIds: args?.memoryIds
+        reportIds: args?.reportIds
       });
     }
   );
 
   ipcMain.handle(
-    "workflow:applyMemoryGtdSync",
+    "workflow:applyReportGtdSync",
     async (
       _event,
       args: {
@@ -756,7 +768,7 @@ function registerIpc(): void {
           gtd: string;
           reason: string;
           tasks: string[];
-          sourceMemoryIds: string[];
+          sourceReportIds: string[];
           title?: string;
           projectPath?: string;
           previousGtd?: string | null;
@@ -764,7 +776,7 @@ function registerIpc(): void {
         }>;
       }
     ) => {
-      return applyMemoryGtdSync({
+      return applyReportGtdSync({
         items: (args?.items || []).map((it) => ({
           ...it,
           previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null,
@@ -819,7 +831,7 @@ function registerIpc(): void {
       _event,
       args?: { maxDays?: number; skipExisting?: boolean; minSessionsPerDay?: number }
     ) => {
-      return previewBackfillMemoryDigests({
+      return previewBackfillReportDigests({
         maxDays: args?.maxDays,
         skipExisting: args?.skipExisting,
         minSessionsPerDay: args?.minSessionsPerDay
@@ -838,7 +850,7 @@ function registerIpc(): void {
         minSessionsPerDay?: number;
       }
     ) => {
-      return backfillMemoryDigests({
+      return backfillReportDigests({
         maxDays: args?.maxDays,
         skipExisting: args?.skipExisting,
         skipEmbedding: args?.skipEmbedding,
@@ -921,6 +933,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  initI18nService(path.join(app.getAppPath()));
   applyAppIcon();
   registerIpc();
   tryRegisterPtyIpc();

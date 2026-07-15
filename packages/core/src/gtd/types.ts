@@ -11,7 +11,7 @@ export interface GtdProposal {
   gtd: GtdStatus;
   reason: string;
   tasks: string[];
-  sourceMemoryIds: string[];
+  sourceReportIds: string[];
 }
 
 export interface GtdApplyItem {
@@ -20,7 +20,7 @@ export interface GtdApplyItem {
   previousStatus: GtdStatus | null;
   newStatus: GtdStatus;
   reason: string;
-  sourceMemoryIds: string[];
+  sourceReportIds: string[];
   todolistPath?: string;
   title?: string;
   projectPath?: string;

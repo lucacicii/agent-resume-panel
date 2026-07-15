@@ -15,8 +15,8 @@ import {
   buildWeeklyUserPrompt,
   normalizeDigestMarkdown
 } from "./prompts";
-import { MemoryEntry } from "./schema";
-import { upsertMemoryJob } from "./store";
+import { ReportEntry } from "./schema";
+import { upsertReportJob } from "./store";
 
 export interface RunWeeklyDigestOptions {
   panelHome?: string;
@@ -31,7 +31,7 @@ export interface RunWeeklyDigestOptions {
 }
 
 export interface RunWeeklyDigestResult {
-  entry: MemoryEntry;
+  entry: ReportEntry;
   sourceCount: number;
   usedDailies: number;
   ensuredDailies: EnsureLevelStats;
@@ -59,7 +59,7 @@ export async function runWeeklyDigest(
 
   const period = localWeekRange(options.weekKey);
   const onProgress = options.onProgress;
-  await upsertMemoryJob(dbPath, period.jobKey, "running");
+  await upsertReportJob(dbPath, period.jobKey, "running");
 
   try {
     onProgress?.({
@@ -142,7 +142,7 @@ export async function runWeeklyDigest(
       });
     }
 
-    const entry: MemoryEntry = {
+    const entry: ReportEntry = {
       id: period.entryId,
       level: "weekly",
       periodStartMs: period.startMs,
@@ -174,7 +174,7 @@ export async function runWeeklyDigest(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertMemoryJob(dbPath, period.jobKey, "error", message);
+    await upsertReportJob(dbPath, period.jobKey, "error", message);
     onProgress?.({
       phase: "error",
       level: "weekly",

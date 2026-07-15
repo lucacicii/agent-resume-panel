@@ -8,14 +8,14 @@ export {
 export type { AgentMcpContext } from "./server";
 export type { NoteToolContext } from "./tools";
 export {
-  memorySearchSchema,
-  memoryReadSchema,
-  memoryListSchema,
-  handleMemorySearch,
-  handleMemoryRead,
-  handleMemoryList
-} from "./memoryTools";
-export type { MemoryToolContext } from "./memoryTools";
+  reportSearchSchema,
+  reportReadSchema,
+  reportListSchema,
+  handleReportSearch,
+  handleReportRead,
+  handleReportList
+} from "./reportTools";
+export type { ReportToolContext } from "./reportTools";
 export {
   noteSearchSchema,
   noteCreateSchema,

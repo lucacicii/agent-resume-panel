@@ -18,8 +18,8 @@ import {
   buildMonthlyUserPrompt,
   normalizeDigestMarkdown
 } from "./prompts";
-import { MemoryEntry } from "./schema";
-import { upsertMemoryJob } from "./store";
+import { ReportEntry } from "./schema";
+import { upsertReportJob } from "./store";
 
 export interface RunMonthlyDigestOptions {
   panelHome?: string;
@@ -33,7 +33,7 @@ export interface RunMonthlyDigestOptions {
 }
 
 export interface RunMonthlyDigestResult {
-  entry: MemoryEntry;
+  entry: ReportEntry;
   sourceCount: number;
   usedWeeklies: number;
   usedDailies: number;
@@ -64,7 +64,7 @@ export async function runMonthlyDigest(
 
   const period = localMonthRange(options.monthKey);
   const onProgress = options.onProgress;
-  await upsertMemoryJob(dbPath, period.jobKey, "running");
+  await upsertReportJob(dbPath, period.jobKey, "running");
 
   try {
     onProgress?.({
@@ -160,7 +160,7 @@ export async function runMonthlyDigest(
       });
     }
 
-    const entry: MemoryEntry = {
+    const entry: ReportEntry = {
       id: period.entryId,
       level: "monthly",
       periodStartMs: period.startMs,
@@ -194,7 +194,7 @@ export async function runMonthlyDigest(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertMemoryJob(dbPath, period.jobKey, "error", message);
+    await upsertReportJob(dbPath, period.jobKey, "error", message);
     onProgress?.({
       phase: "error",
       level: "monthly",

@@ -12,7 +12,7 @@ export type {
   LlmSettings,
   ChatLlmSettings,
   EmbeddingSettings,
-  MemorySettings,
+  ReportSettings,
   DesktopSettings,
   DesktopTheme,
   WorkbenchSettings,
@@ -25,6 +25,24 @@ export type {
   SessionSyncStalePolicy
 } from "./settings/types";
 export { DEFAULT_SETTINGS } from "./settings/types";
+export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
+export {
+  UI_LANGUAGE_SETTING,
+  UI_LANGUAGE_AUTO,
+  UI_LOCALES,
+  UI_LANGUAGE_OPTIONS,
+  NATIVE_LOCALE_LABELS,
+  normalizeSystemLocale,
+  normalizeUiLanguagePreference,
+  isUiLocale,
+  loadCatalogs,
+  setLocalesDir,
+  translateKey,
+  getCatalogForLocale,
+  interpolate,
+  resetI18nCache,
+  resolveUiLocale
+} from "./i18n";
 export {
   loadSettings,
   saveSettings,
@@ -88,35 +106,35 @@ export type {
   UsageSummary
 } from "./usage/types";
 
-export type { MemoryLevel, MemoryEntry, MemoryLink } from "./memory/schema";
-export { MEMORY_SCHEMA_SQL } from "./memory/schema";
+export type { ReportLevel, ReportEntry, ReportLink } from "./report/schema";
+export { REPORT_SCHEMA_SQL } from "./report/schema";
 export {
-  listMemoryEntries,
-  listMemoryEntriesInRange,
-  insertMemoryEntry,
-  upsertMemoryJob,
-  getMemoryJobStatus,
-  listMemoryLinks,
-  getMemoryEntryById
-} from "./memory/store";
-export type { MemoryLinkRow } from "./memory/store";
-export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./memory/daily";
-export type { PeriodDigestRefreshCheck } from "./memory/digestRefresh";
-export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./memory/digestRefresh";
-export { normalizeDigestMarkdown, digestLanguageLabels } from "./memory/prompts";
+  listReportEntries,
+  listReportEntriesInRange,
+  insertReportEntry,
+  upsertReportJob,
+  getReportJobStatus,
+  listReportLinks,
+  getReportEntryById
+} from "./report/store";
+export type { ReportLinkRow } from "./report/store";
+export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./report/daily";
+export type { PeriodDigestRefreshCheck } from "./report/digestRefresh";
+export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./report/digestRefresh";
+export { normalizeDigestMarkdown, digestLanguageLabels } from "./report/prompts";
 export type {
   RunDailyDigestOptions,
   RunDailyDigestResult,
   DailyDigestRefreshCheck,
   DailyDigestRefreshReason
-} from "./memory/daily";
+} from "./report/daily";
 export type {
   DigestLevel,
   DigestProgressPhase,
   DigestProgressEvent,
   DigestProgressCallback,
   DigestProgressSession
-} from "./memory/progress";
+} from "./report/progress";
 export {
   localDayRange as localDayRangePeriod,
   localWeekRange,
@@ -125,19 +143,19 @@ export {
   previousCompleteMonthRange,
   listDayLabelsInRange,
   listWeekLabelsInRange
-} from "./memory/period";
-export type { PeriodRange } from "./memory/period";
-export { ensureDailiesForPeriod } from "./memory/ensureDailies";
-export type { EnsureDailiesOptions, EnsureLevelStats } from "./memory/ensureDailies";
-export { ensureWeekliesForPeriod } from "./memory/ensureWeeklies";
-export type { EnsureWeekliesOptions } from "./memory/ensureWeeklies";
-export { runWeeklyDigest } from "./memory/weekly";
-export type { RunWeeklyDigestOptions, RunWeeklyDigestResult } from "./memory/weekly";
-export { runMonthlyDigest } from "./memory/monthly";
-export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./memory/monthly";
-export { searchMemoryByEmbedding } from "./memory/search";
-export type { SearchMemoryOptions, MemorySearchHit } from "./memory/search";
-export { cosineSimilarity, parseEmbeddingJson } from "./memory/cosine";
+} from "./report/period";
+export type { PeriodRange } from "./report/period";
+export { ensureDailiesForPeriod } from "./report/ensureDailies";
+export type { EnsureDailiesOptions, EnsureLevelStats } from "./report/ensureDailies";
+export { ensureWeekliesForPeriod } from "./report/ensureWeeklies";
+export type { EnsureWeekliesOptions } from "./report/ensureWeeklies";
+export { runWeeklyDigest } from "./report/weekly";
+export type { RunWeeklyDigestOptions, RunWeeklyDigestResult } from "./report/weekly";
+export { runMonthlyDigest } from "./report/monthly";
+export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./report/monthly";
+export { searchReportsByEmbedding } from "./report/search";
+export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
+export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export { resolvePreviewHomes, DEFAULT_AGENT_HOMES, defaultAlmaDataDir } from "./transcript/homes";
@@ -150,33 +168,33 @@ export {
 
 export type {
   AgentCitation,
-  AskMetaAgentOptions,
-  AskMetaAgentResult,
-  AskStreamEvent,
-  AskStreamPhase
+  AgentChatOptions,
+  AgentChatResult,
+  AgentStreamEvent,
+  AgentStreamPhase
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
-export { askMetaAgent } from "./agent/ask";
+export { runAgentChat } from "./agent/agentChat";
 export {
-  appendAskTurn,
-  clearAskMessages,
-  listAskMessages,
-  listAskMessagesForHistory,
-  listOlderAskMessages,
-  listRecentAskMessages,
-  listAskThreads,
-  createAskThread,
-  renameAskThread,
-  deleteAskThread
-} from "./agent/askStore";
-export type { AskChatListResult, AskChatMessage, AskThread } from "./agent/askStore";
+  appendAgentTurn,
+  clearAgentMessages,
+  listAgentMessages,
+  listAgentMessagesForHistory,
+  listOlderAgentMessages,
+  listRecentAgentMessages,
+  listAgentThreads,
+  createAgentThread,
+  renameAgentThread,
+  deleteAgentThread
+} from "./agent/agentStore";
+export type { AgentChatListResult, AgentChatMessage, AgentThread } from "./agent/agentStore";
 export {
-  insertAskNoteAudit,
-  listAskNoteAudit,
-  updateAskNoteAuditStatus
+  insertAgentNoteAudit,
+  listAgentNoteAudit,
+  updateAgentNoteAuditStatus
 } from "./agent/noteAudit";
-export type { AskNoteAuditEvent, AskNoteAuditStatus } from "./agent/noteAudit";
+export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudit";
 
 export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
 export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
@@ -287,29 +305,29 @@ export {
   fileMtimeMs
 } from "./notes/fs";
 export {
-  runMemoryGtdSync,
-  previewMemoryGtdSync,
-  applyMemoryGtdSync
-} from "./workflow/runMemoryGtdSync";
+  runReportGtdSync,
+  previewReportGtdSync,
+  applyReportGtdSync
+} from "./workflow/runReportGtdSync";
 export type {
-  RunMemoryGtdSyncOptions,
-  RunMemoryGtdSyncResult,
-  PreviewMemoryGtdSyncResult,
-  ApplyMemoryGtdSyncOptions,
-  ApplyMemoryGtdSyncResult,
+  RunReportGtdSyncOptions,
+  RunReportGtdSyncResult,
+  PreviewReportGtdSyncResult,
+  ApplyReportGtdSyncOptions,
+  ApplyReportGtdSyncResult,
   GtdPreviewItem
-} from "./workflow/runMemoryGtdSync";
-export { analyzeMemoryForGtd } from "./workflow/analyzeGtd";
+} from "./workflow/runReportGtdSync";
+export { analyzeReportForGtd } from "./workflow/analyzeGtd";
 export { renderSessionTodolistMarkdown } from "./notes/todolist";
 export {
-  backfillMemoryDigests,
-  previewBackfillMemoryDigests,
+  backfillReportDigests,
+  previewBackfillReportDigests,
   listActivityPeriods,
   localDateKeyFromMs
 } from "./workflow/backfillDigests";
 export type {
-  BackfillMemoryDigestsOptions,
-  BackfillMemoryDigestsResult,
+  BackfillReportDigestsOptions,
+  BackfillReportDigestsResult,
   BackfillLevelStats
 } from "./workflow/backfillDigests";
 

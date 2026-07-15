@@ -10,19 +10,19 @@ export async function insertGtdAiAudit(
     previousStatus: GtdStatus | null;
     newStatus: GtdStatus;
     reason: string;
-    sourceMemoryIds: string[];
+    sourceReportIds: string[];
   }
 ): Promise<string> {
   const id = randomUUID();
   const now = Date.now();
   const prev =
     input.previousStatus == null ? "NULL" : `'${escapeSqlLiteral(input.previousStatus)}'`;
-  const sources = escapeSqlLiteral(JSON.stringify(input.sourceMemoryIds || []));
+  const sources = escapeSqlLiteral(JSON.stringify(input.sourceReportIds || []));
 
   await runSqlite(
     dbPath,
     `INSERT INTO gtd_ai_audit (
-       id, provider, agent_session_id, previous_status, new_status, reason, source_memory_ids, created_at_ms
+       id, provider, agent_session_id, previous_status, new_status, reason, source_report_ids, created_at_ms
      ) VALUES (
        '${escapeSqlLiteral(id)}',
        '${escapeSqlLiteral(input.provider)}',

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -7,7 +7,7 @@
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file: data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent Resume Desktop</title>
+    <title data-i18n="desktop.app.title">Agent Resume Desktop</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./vendor/xterm.css" />
     <link id="hljsLightCss" rel="stylesheet" href="./vendor/github.min.css" />
@@ -16,86 +16,84 @@
   <body>
     <header class="top mac-top">
       <nav class="tabs primary-tabs">
-        <button type="button" class="tab active" data-tab="memory">Memory</button>
-        <button type="button" class="tab" data-tab="ask">Ask</button>
-        <button type="button" class="tab" data-tab="workbench">工作台</button>
-        <button type="button" class="tab" data-tab="notes">笔记</button>
+        <button type="button" class="tab active" data-tab="report" data-i18n="desktop.tabs.report">Report</button>
+        <button type="button" class="tab" data-tab="agent" data-i18n="desktop.tabs.agent">Agent</button>
+        <button type="button" class="tab" data-tab="workbench" data-i18n="desktop.tabs.workbench">Workbench</button>
+        <button type="button" class="tab" data-tab="notes" data-i18n="desktop.tabs.notes">Notes</button>
       </nav>
       <div class="top-actions">
-        <button type="button" class="ghost-btn" id="btnOpenSessions" title="Sessions 参考">Sessions</button>
-        <button type="button" class="icon-btn" id="btnOpenSettings" title="Settings">⚙</button>
+        <button type="button" class="ghost-btn" id="btnOpenSessions" data-i18n-title="desktop.top.sessionsRefTitle" data-i18n="desktop.top.sessionsRef">Sessions</button>
+        <button type="button" class="icon-btn" id="btnOpenSettings" data-i18n-title="desktop.top.settingsTitle" aria-label="Settings">⚙</button>
       </div>
     </header>
 
     <main>
-      <!-- Memory home -->
-      <section id="tab-memory" class="panel active">
-        <div class="toolbar memory-toolbar">
+      <!-- Report home -->
+      <section id="tab-report" class="panel active">
+        <div class="toolbar report-toolbar">
           <div class="cal-nav-left">
-            <button type="button" class="tool-btn" id="btnCalPrev" title="上月">‹</button>
-            <select id="calYearSelect" class="quiet-select tool-select cal-year-select" title="年" aria-label="年"></select>
-            <select id="calMonthSelect" class="quiet-select tool-select cal-month-select" title="月" aria-label="月">
-              <option value="0">1 月</option>
-              <option value="1">2 月</option>
-              <option value="2">3 月</option>
-              <option value="3">4 月</option>
-              <option value="4">5 月</option>
-              <option value="5">6 月</option>
-              <option value="6">7 月</option>
-              <option value="7">8 月</option>
-              <option value="8">9 月</option>
-              <option value="9">10 月</option>
-              <option value="10">11 月</option>
-              <option value="11">12 月</option>
+            <button type="button" class="tool-btn" id="btnCalPrev" data-i18n-title="desktop.report.prevMonth" aria-label="Previous month">‹</button>
+            <select id="calYearSelect" class="quiet-select tool-select cal-year-select" data-i18n-title="desktop.common.year" data-i18n-aria-label="desktop.common.year"></select>
+            <select id="calMonthSelect" class="quiet-select tool-select cal-month-select" data-i18n-title="desktop.common.month" data-i18n-aria-label="desktop.common.month">
+              <option value="0" data-i18n="desktop.calendar.month1">Jan</option>
+              <option value="1" data-i18n="desktop.calendar.month2">Feb</option>
+              <option value="2" data-i18n="desktop.calendar.month3">Mar</option>
+              <option value="3" data-i18n="desktop.calendar.month4">Apr</option>
+              <option value="4" data-i18n="desktop.calendar.month5">May</option>
+              <option value="5" data-i18n="desktop.calendar.month6">Jun</option>
+              <option value="6" data-i18n="desktop.calendar.month7">Jul</option>
+              <option value="7" data-i18n="desktop.calendar.month8">Aug</option>
+              <option value="8" data-i18n="desktop.calendar.month9">Sep</option>
+              <option value="9" data-i18n="desktop.calendar.month10">Oct</option>
+              <option value="10" data-i18n="desktop.calendar.month11">Nov</option>
+              <option value="11" data-i18n="desktop.calendar.month12">Dec</option>
             </select>
-            <button type="button" class="tool-btn" id="btnCalNext" title="下月">›</button>
-            <button type="button" class="tool-btn" id="btnCalToday">今天</button>
+            <button type="button" class="tool-btn" id="btnCalNext" data-i18n-title="desktop.report.nextMonth" aria-label="Next month">›</button>
+            <button type="button" class="tool-btn" id="btnCalToday" data-i18n="desktop.common.today">Today</button>
           </div>
           <div class="cal-nav-right">
-            <button type="button" class="tool-btn ghost-btn" id="btnRefreshMemory">刷新</button>
+            <button type="button" class="tool-btn ghost-btn" id="btnRefreshReport" data-i18n="desktop.common.refresh">Refresh</button>
           </div>
         </div>
 
-        <div class="memory-layout">
-          <aside class="memory-cal-pane">
+        <div class="report-layout">
+          <aside class="report-cal-pane">
             <div class="cal-main">
               <div class="cal-weekdays">
-                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-                <span class="cal-week-col-head">周</span>
+                <span data-i18n="desktop.report.weekdayMon">Mon</span><span data-i18n="desktop.report.weekdayTue">Tue</span><span data-i18n="desktop.report.weekdayWed">Wed</span><span data-i18n="desktop.report.weekdayThu">Thu</span><span data-i18n="desktop.report.weekdayFri">Fri</span><span data-i18n="desktop.report.weekdaySat">Sat</span><span data-i18n="desktop.report.weekdaySun">Sun</span>
+                <span class="cal-week-col-head" data-i18n="desktop.report.weekCol">Wk</span>
               </div>
               <div id="calendarGrid" class="cal-grid"></div>
               <div class="cal-month-actions">
-                <button type="button" class="tool-btn cal-month-btn" id="btnCalMonthDigest">月</button>
+                <button type="button" class="tool-btn cal-month-btn" id="btnCalMonthDigest" data-i18n="desktop.report.monthBtn">Month</button>
               </div>
               <p class="muted cal-legend">
-                <span class="cal-legend-group">日期：<span class="dot daily"></span>D 已生成
-                <span class="dot daily-stale"></span>更 待更新
-                <span class="dot daily-missing"></span>未 待生成
-                <span class="dot no-session"></span>无 无活动</span>
-                <span class="cal-legend-group"><span class="dot weekly"></span>周报
-                <span class="dot monthly"></span>月报</span>
+                <span class="cal-legend-group"><span data-i18n="desktop.report.legendDates">Dates:</span><span class="dot daily"></span><span data-i18n="desktop.report.legendDailyOk">D generated</span>
+                <span class="dot daily-stale"></span><span data-i18n="desktop.report.legendDailyStale">Update pending</span>
+                <span class="dot daily-missing"></span><span data-i18n="desktop.report.legendDailyMissing">Not generated</span>
+                <span class="dot no-session"></span><span data-i18n="desktop.report.legendNoSession">No activity</span></span>
+                <span class="cal-legend-group"><span class="dot weekly"></span><span data-i18n="desktop.report.legendWeekly">Weekly</span>
+                <span class="dot monthly"></span><span data-i18n="desktop.report.legendMonthly">Monthly</span></span>
               </p>
             </div>
           </aside>
 
-          <aside class="memory-session-pane">
+          <aside class="report-session-pane">
             <div class="cal-session-panel">
               <div class="cal-session-panel-head">
-                <strong id="calSessionTitle">Sessions</strong>
+                <strong id="calSessionTitle" data-i18n="desktop.report.sessionsTitle">Sessions</strong>
                 <span class="muted" id="calSessionMeta"></span>
               </div>
               <div id="calSessionList" class="cal-session-list">
-                <p class="muted cal-session-empty">切换月份或选择日期 / 周后显示 session</p>
+                <p class="muted cal-session-empty" data-i18n="desktop.report.sessionEmpty">Select a month or date / week to show sessions</p>
               </div>
             </div>
           </aside>
 
-          <main class="memory-detail-pane">
-            <div class="memory-detail-head">
-              <strong id="calDetailTitle">报告详情</strong>
-              <button type="button" class="tool-btn ghost-btn memory-detail-back" id="btnCalDetailBack" hidden>
-                返回报告
-              </button>
+          <main class="report-detail-pane">
+            <div class="report-detail-head">
+              <strong id="calDetailTitle" data-i18n="desktop.report.reportDetail">Report detail</strong>
+              <button type="button" class="tool-btn ghost-btn report-detail-back" id="btnCalDetailBack" hidden data-i18n="desktop.report.backToReport">Back to report</button>
             </div>
             <div class="detail-progress gen-progress" id="genProgress" hidden>
               <div class="gen-progress-line" id="genProgressLine"></div>
@@ -108,20 +106,20 @@
               </div>
             </div>
             <div class="cal-detail" id="calDetail">
-              <p class="muted">点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。</p>
+              <p class="muted" data-i18n="desktop.report.detailHint">Click a date / week / month to view sessions and reports.</p>
             </div>
           </main>
         </div>
-        <p class="status" id="memoryStatus"></p>
+        <p class="status" id="reportStatus"></p>
       </section>
 
-      <!-- Ask (merged Agent + semantic search) -->
-      <!-- Ask (merged Agent + semantic search) -->
-      <section id="tab-ask" class="panel ask-panel">
-        <div class="ask-layout">
-          <aside class="sidebar-folders-pane ask-sidebar-pane" id="askSidebarPane">
+      <!-- Agent chat -->
+      <!-- Agent chat -->
+      <section id="tab-agent" class="panel agent-panel">
+        <div class="agent-layout">
+          <aside class="sidebar-folders-pane agent-sidebar-pane" id="agentSidebarPane">
             <div class="sidebar-folders-header">
-              <button type="button" class="notes-icon-btn" id="btnAskNewChat" title="新建对话" aria-label="新建对话">
+              <button type="button" class="notes-icon-btn" id="btnAgentNewChat" data-i18n-title="desktop.agent.newChat" data-i18n-aria-label="desktop.agent.newChat">
                 <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 17px; height: 17px;">
                   <path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                   <path d="M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -130,9 +128,9 @@
               <button
                 type="button"
                 class="sidebar-collapse-toggle"
-                id="btnAskToggleSidebar"
-                title="隐藏侧栏"
-                aria-label="隐藏侧栏"
+                id="btnAgentToggleSidebar"
+                data-i18n-title="desktop.common.hideSidebar"
+                data-i18n-aria-label="desktop.common.hideSidebar"
                 aria-expanded="true"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -142,25 +140,25 @@
                 </svg>
               </button>
             </div>
-            <div class="ask-sidebar-list" id="askSidebarList">
+            <div class="agent-sidebar-list" id="agentSidebarList">
               <!-- Dynamically populated threads list -->
             </div>
           </aside>
 
           <main class="ask-main-pane">
             <div class="toolbar ask-toolbar">
-              <h2 class="quiet-title" id="askChatTitle">Ask</h2>
-              <button type="button" class="ghost-btn" id="btnAskRenameChat">重命名</button>
-              <button type="button" class="ghost-btn" id="btnAskAudit">追踪</button>
-              <button type="button" class="ghost-btn" id="btnClearChat">删除对话</button>
+              <h2 class="quiet-title" id="agentChatTitle" data-i18n="desktop.tabs.agent">Agent</h2>
+              <button type="button" class="ghost-btn" id="btnAgentRenameChat" data-i18n="desktop.agent.renameChat">Rename</button>
+              <button type="button" class="ghost-btn" id="btnAgentAudit" data-i18n="desktop.agent.audit">Trace</button>
+              <button type="button" class="ghost-btn" id="btnClearChat" data-i18n="desktop.agent.deleteChat">Delete chat</button>
             </div>
             <div class="ask-chat-shell">
               <div id="chatLog" class="chat-log"></div>
               <div class="chat-compose">
                 <div class="chat-compose-field">
-                  <textarea id="agentInput" rows="1" placeholder="输入消息…"></textarea>
+                  <textarea id="agentInput" rows="1" data-i18n-placeholder="desktop.agent.inputPlaceholder" placeholder="Type a message…"></textarea>
                 </div>
-                <button type="button" id="btnAgentTools" class="chat-tools-toggle active" title="工具已开启：可通过对话操作笔记" aria-label="工具开关" aria-pressed="true">
+                <button type="button" id="btnAgentTools" class="chat-tools-toggle active" data-i18n-title="desktop.agent.toolsOn" data-i18n-aria-label="desktop.agent.toolsToggle" aria-pressed="true">
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path
                       fill="currentColor"
@@ -168,7 +166,7 @@
                     />
                   </svg>
                 </button>
-                <button type="button" id="btnAgentSend" class="chat-send-btn" title="发送" aria-label="发送">
+                <button type="button" id="btnAgentSend" class="chat-send-btn" data-i18n-title="desktop.common.send" data-i18n-aria-label="desktop.common.send">
                   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                     <path
                       fill="currentColor"
@@ -177,22 +175,22 @@
                   </svg>
                 </button>
               </div>
-              <div class="ask-index-progress" id="askIndexProgress" hidden>
-                <div class="ask-index-progress-head">
-                  <span id="askIndexProgressText">正在索引笔记…</span>
-                  <span id="askIndexProgressCount"></span>
+              <div class="agent-index-progress" id="agentIndexProgress" hidden>
+                <div class="agent-index-progress-head">
+                  <span id="agentIndexProgressText" data-i18n="desktop.agent.indexingNotes">Indexing notes…</span>
+                  <span id="agentIndexProgressCount"></span>
                 </div>
-                <div class="ask-index-progress-track">
-                  <div class="ask-index-progress-bar" id="askIndexProgressBar"></div>
+                <div class="agent-index-progress-track">
+                  <div class="agent-index-progress-bar" id="agentIndexProgressBar"></div>
                 </div>
               </div>
-              <section class="ask-audit-panel" id="askAuditPanel" hidden>
+              <section class="agent-audit-panel" id="agentAuditPanel" hidden>
                 <div class="ask-audit-head">
-                  <strong>Ask 笔记追踪</strong>
-                  <button type="button" class="ghost-btn" id="btnAskAuditRefresh">刷新</button>
+                  <strong data-i18n="desktop.agent.auditTitle">Agent note trace</strong>
+                  <button type="button" class="ghost-btn" id="btnAgentAuditRefresh" data-i18n="desktop.common.refresh">Refresh</button>
                 </div>
-                <div class="ask-audit-list" id="askAuditList">
-                  <p class="muted">暂无追踪记录</p>
+                <div class="agent-audit-list" id="agentAuditList">
+                  <p class="muted" data-i18n="desktop.agent.auditEmpty">No trace records yet</p>
                 </div>
               </section>
               <p class="status ask-status" id="agentStatus"></p>
@@ -211,21 +209,21 @@
                   type="search"
                   id="notesProjectSearch"
                   class="sidebar-project-search"
-                  placeholder="筛选项目"
+                  data-i18n-placeholder="desktop.notes.filterProjects" placeholder="Filter projects"
                   autocomplete="off"
                   spellcheck="false"
-                  aria-label="筛选项目"
+                  data-i18n-aria-label="desktop.notes.filterProjects" aria-label="Filter projects"
                 />
               </div>
-              <div class="sidebar-project-filter-segmented" id="notesProjectFilter" role="tablist" aria-label="项目筛选">
+              <div class="sidebar-project-filter-segmented" id="notesProjectFilter" role="tablist" data-i18n-aria-label="desktop.notes.projectFilter" aria-label="Project filter">
                 <span class="sidebar-project-filter-thumb" aria-hidden="true"></span>
-                <button type="button" role="tab" data-filter="all" class="active">全部</button>
-                <button type="button" role="tab" data-filter="pinned">置顶</button>
-                <button type="button" role="tab" data-filter="active">活动</button>
+                <button type="button" role="tab" data-filter="all" class="active" data-i18n="desktop.common.all">All</button>
+                <button type="button" role="tab" data-filter="pinned" data-i18n="desktop.common.pinned">Pinned</button>
+                <button type="button" role="tab" data-filter="active" data-i18n="desktop.common.active">Active</button>
               </div>
             </div>
             <div class="notes-folders" id="notesFolders">
-              <p class="muted notes-folders-empty">加载文件夹…</p>
+              <p class="muted notes-folders-empty" data-i18n="desktop.notes.loadingFolders">Loading folders…</p>
             </div>
           </aside>
           <div
@@ -233,19 +231,19 @@
             id="notesFoldersResizer"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整文件夹侧栏宽度"
+            data-i18n-aria-label="desktop.notes.resizeFolders" aria-label="Resize folder sidebar"
             tabindex="0"
           ></div>
           <aside class="notes-list-pane" id="notesListPane">
             <div class="notes-list-toolbar-wrap">
               <div class="notes-list-toolbar">
-                <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记" aria-label="新建笔记">
+                <button type="button" class="notes-icon-btn" id="btnNotesNew" data-i18n-title="desktop.common.newNote" data-i18n-aria-label="desktop.common.newNote">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M5 12h14" />
                     <path d="M12 5v14" />
                   </svg>
                 </button>
-                <button type="button" class="notes-icon-btn" id="btnNotesImport" title="导入 Markdown" aria-label="导入 Markdown">
+                <button type="button" class="notes-icon-btn" id="btnNotesImport" data-i18n-title="desktop.common.importMarkdown" data-i18n-aria-label="desktop.common.importMarkdown">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
                     <path d="M14 2v4a2 2 0 0 0 2 2h4" />
@@ -253,7 +251,7 @@
                     <path d="m15 15-3-3-3 3" />
                   </svg>
                 </button>
-                <button type="button" class="notes-icon-btn" id="btnNotesRefresh" title="刷新" aria-label="刷新">
+                <button type="button" class="notes-icon-btn" id="btnNotesRefresh" data-i18n-title="desktop.common.refresh" data-i18n-aria-label="desktop.common.refresh">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                     <path d="M21 3v5h-5" />
@@ -265,8 +263,8 @@
                   type="button"
                   class="notes-icon-btn notes-toolbar-delete"
                   id="btnNotesDelete"
-                  title="删除笔记"
-                  aria-label="删除笔记"
+                  data-i18n-title="desktop.notes.deleteNote"
+                  data-i18n-aria-label="desktop.notes.deleteNote"
                   disabled
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -279,12 +277,12 @@
                 </button>
               </div>
               <div class="notes-target-popover" id="notesTargetPopover" hidden>
-                <div class="notes-target-tabs" role="tablist" aria-label="笔记目标">
-                  <button type="button" role="tab" data-target-kind="library" class="active">独立笔记</button>
-                  <button type="button" role="tab" data-target-kind="project">项目</button>
-                  <button type="button" role="tab" data-target-kind="session">会话</button>
+                <div class="notes-target-tabs" role="tablist" data-i18n-aria-label="desktop.notes.targetTabs" aria-label="Note target">
+                  <button type="button" role="tab" data-target-kind="library" class="active" data-i18n="desktop.notes.targetLibrary">Standalone</button>
+                  <button type="button" role="tab" data-target-kind="project" data-i18n="desktop.notes.targetProject">Project</button>
+                  <button type="button" role="tab" data-target-kind="session" data-i18n="desktop.notes.targetSession">Session</button>
                 </div>
-                <input type="search" class="notes-target-search" id="notesTargetSearch" placeholder="筛选…" autocomplete="off" spellcheck="false" />
+                <input type="search" class="notes-target-search" id="notesTargetSearch" data-i18n-placeholder="desktop.common.filter" placeholder="Filter…" autocomplete="off" spellcheck="false" />
                 <div class="notes-target-list" id="notesTargetList"></div>
               </div>
             </div>
@@ -293,8 +291,8 @@
                 type="button"
                 class="sidebar-collapse-toggle"
                 id="btnNotesToggleFolders"
-                title="隐藏侧栏"
-                aria-label="隐藏侧栏"
+                data-i18n-title="desktop.common.hideSidebar"
+                data-i18n-aria-label="desktop.common.hideSidebar"
                 aria-expanded="true"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -303,13 +301,13 @@
                   <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
                 </svg>
               </button>
-              <input type="search" id="notesSearch" class="notes-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
+              <input type="search" id="notesSearch" class="notes-search" data-i18n-placeholder="desktop.common.search" placeholder="Search" autocomplete="off" spellcheck="false" />
             </div>
             <div class="notes-list-meta-row">
               <p class="notes-list-meta" id="notesMeta"></p>
             </div>
             <div class="notes-list" id="notesList">
-              <p class="muted notes-list-empty">加载笔记…</p>
+              <p class="muted notes-list-empty" data-i18n="desktop.notes.loadingNotes">Loading notes…</p>
             </div>
           </aside>
           <div
@@ -317,32 +315,32 @@
             id="notesListResizer"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整笔记列表宽度"
+            data-i18n-aria-label="desktop.notes.resizeList" aria-label="Resize note list"
             tabindex="0"
           ></div>
           <main class="notes-detail">
             <div class="notes-editor-shell" id="notesEditorShell" hidden>
               <div class="notes-detail-head">
                 <h1 class="notes-detail-title" id="notesEditorTitle"></h1>
-                <div class="notes-segmented" id="notesViewSegmented" role="tablist" aria-label="视图模式">
-                  <button type="button" role="tab" data-mode="edit">编辑</button>
-                  <button type="button" role="tab" data-mode="view">查看</button>
+                <div class="notes-segmented" id="notesViewSegmented" role="tablist" data-i18n-aria-label="desktop.notes.viewMode" aria-label="View mode">
+                  <button type="button" role="tab" data-mode="edit" data-i18n="desktop.common.edit">Edit</button>
+                  <button type="button" role="tab" data-mode="view" data-i18n="desktop.common.view">View</button>
                 </div>
               </div>
               <div class="notes-find-bar" id="notesFindBar" hidden>
-                <input type="search" id="notesFindInput" class="notes-find-input" placeholder="查找当前笔记" autocomplete="off" spellcheck="false" />
+                <input type="search" id="notesFindInput" class="notes-find-input" data-i18n-placeholder="desktop.notes.findInNote" placeholder="Find in note" autocomplete="off" spellcheck="false" />
                 <span class="notes-find-count" id="notesFindCount">0/0</span>
-                <button type="button" class="notes-find-btn" id="btnNotesFindPrev" title="上一个" aria-label="上一个">
+                <button type="button" class="notes-find-btn" id="btnNotesFindPrev" data-i18n-title="desktop.common.previous" data-i18n-aria-label="desktop.common.previous">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m18 15-6-6-6 6" />
                   </svg>
                 </button>
-                <button type="button" class="notes-find-btn" id="btnNotesFindNext" title="下一个" aria-label="下一个">
+                <button type="button" class="notes-find-btn" id="btnNotesFindNext" data-i18n-title="desktop.common.next" data-i18n-aria-label="desktop.common.next">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m6 9 6 6 6-6" />
                   </svg>
                 </button>
-                <button type="button" class="notes-find-btn" id="btnNotesFindClose" title="关闭查找" aria-label="关闭查找">
+                <button type="button" class="notes-find-btn" id="btnNotesFindClose" data-i18n-title="desktop.common.closeFind" data-i18n-aria-label="desktop.common.closeFind">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M18 6 6 18" />
                     <path d="m6 6 12 12" />
@@ -355,7 +353,7 @@
               </div>
             </div>
             <div class="notes-empty-state" id="notesEmptyState">
-              <p class="muted notes-hint" id="notesHint">选择或创建一条笔记</p>
+              <p class="muted notes-hint" id="notesHint" data-i18n="desktop.notes.selectOrCreate">Select or create a note</p>
             </div>
           </main>
         </div>
@@ -371,21 +369,21 @@
                   type="search"
                   id="wbProjectSearch"
                   class="sidebar-project-search"
-                  placeholder="筛选项目"
+                  data-i18n-placeholder="desktop.notes.filterProjects" placeholder="Filter projects"
                   autocomplete="off"
                   spellcheck="false"
-                  aria-label="筛选项目"
+                  data-i18n-aria-label="desktop.notes.filterProjects" aria-label="Filter projects"
                 />
               </div>
-              <div class="sidebar-project-filter-segmented" id="wbProjectFilter" role="tablist" aria-label="项目筛选">
+              <div class="sidebar-project-filter-segmented" id="wbProjectFilter" role="tablist" data-i18n-aria-label="desktop.notes.projectFilter" aria-label="Project filter">
                 <span class="sidebar-project-filter-thumb" aria-hidden="true"></span>
-                <button type="button" role="tab" data-filter="all" class="active">全部</button>
-                <button type="button" role="tab" data-filter="pinned">置顶</button>
-                <button type="button" role="tab" data-filter="active">活动</button>
+                <button type="button" role="tab" data-filter="all" class="active" data-i18n="desktop.common.all">All</button>
+                <button type="button" role="tab" data-filter="pinned" data-i18n="desktop.common.pinned">Pinned</button>
+                <button type="button" role="tab" data-filter="active" data-i18n="desktop.common.active">Active</button>
               </div>
             </div>
             <div class="wb-folders" id="wbFolders">
-              <p class="muted wb-folders-empty">加载项目…</p>
+              <p class="muted wb-folders-empty" data-i18n="desktop.workbench.loadingProjects">Loading projects…</p>
             </div>
           </aside>
           <div
@@ -393,7 +391,7 @@
             id="wbFoldersResizer"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整项目侧栏宽度"
+            data-i18n-aria-label="desktop.workbench.resizeProjects" aria-label="Resize project sidebar"
             tabindex="0"
           ></div>
           <aside class="wb-list-pane" id="wbListPane">
@@ -403,7 +401,7 @@
                   type="search"
                   class="wb-target-search"
                   id="wbTargetSearch"
-                  placeholder="筛选项目…"
+                  data-i18n-placeholder="desktop.workbench.filterProjects" placeholder="Filter projects…"
                   autocomplete="off"
                   spellcheck="false"
                 />
@@ -415,8 +413,8 @@
                 type="button"
                 class="sidebar-collapse-toggle"
                 id="btnWbToggleFolders"
-                title="隐藏侧栏"
-                aria-label="隐藏侧栏"
+                data-i18n-title="desktop.common.hideSidebar"
+                data-i18n-aria-label="desktop.common.hideSidebar"
                 aria-expanded="true"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -425,11 +423,11 @@
                   <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
                 </svg>
               </button>
-              <input type="search" id="wbSearch" class="wb-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
+              <input type="search" id="wbSearch" class="wb-search" data-i18n-placeholder="desktop.common.search" placeholder="Search" autocomplete="off" spellcheck="false" />
             </div>
             <div class="wb-list-meta-row">
               <p class="wb-list-meta" id="wbMeta"></p>
-              <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" title="刷新" aria-label="刷新">
+              <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" data-i18n-title="desktop.common.refresh" data-i18n-aria-label="desktop.common.refresh">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                   <path d="M21 3v5h-5" />
@@ -439,7 +437,7 @@
               </button>
             </div>
             <div class="wb-list" id="wbList">
-              <p class="muted wb-list-empty">加载 sessions…</p>
+              <p class="muted wb-list-empty" data-i18n="desktop.workbench.loadingSessions">Loading sessions…</p>
             </div>
           </aside>
           <div
@@ -447,23 +445,23 @@
             id="wbListResizer"
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整 Session 列表宽度"
+            data-i18n-aria-label="desktop.workbench.resizeSessions" aria-label="Resize session list"
             tabindex="0"
           ></div>
           <main class="wb-detail">
             <div class="wb-detail-head">
-              <span class="wb-detail-project-label" id="wbDetailProjectLabel">全部 Sessions</span>
+              <span class="wb-detail-project-label" id="wbDetailProjectLabel" data-i18n="desktop.workbench.allSessions">All Sessions</span>
             </div>
             <div class="wb-terminal-shell" id="wbTerminalShell">
               <div class="wb-terminal-tabs" id="wbTerminalTabs">
-                <div class="wb-terminal-tabs-list" id="wbTerminalTabsList" role="tablist" aria-label="终端标签"></div>
+                <div class="wb-terminal-tabs-list" id="wbTerminalTabsList" role="tablist" data-i18n-aria-label="desktop.workbench.terminalTabs" aria-label="Terminal tabs"></div>
                 <div class="wb-terminal-tabs-actions">
                   <button
                     type="button"
                     class="wb-terminal-tab-action"
                     id="btnWorkbenchTabNewTerminal"
-                    title="新建 Terminal"
-                    aria-label="新建 Terminal"
+                    data-i18n-title="desktop.workbench.newTerminal"
+                    data-i18n-aria-label="desktop.workbench.newTerminal"
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="m4 17 6-6-6-6" />
@@ -475,8 +473,8 @@
                     type="button"
                     class="wb-terminal-tab-action"
                     id="btnWorkbenchTabNewSession"
-                    title="新建 Session"
-                    aria-label="新建 Session"
+                    data-i18n-title="desktop.workbench.newSession"
+                    data-i18n-aria-label="desktop.workbench.newSession"
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -487,7 +485,7 @@
                 </div>
               </div>
               <div class="wb-terminal-stack" id="wbTerminalStack"></div>
-              <p class="muted wb-terminal-hint" id="wbTerminalHint">选择 session 以恢复终端</p>
+              <p class="muted wb-terminal-hint" id="wbTerminalHint" data-i18n="desktop.workbench.selectSessionHint">Select a session to restore terminal</p>
             </div>
           </main>
         </div>
@@ -496,26 +494,26 @@
       <!-- Settings: macOS-style sidebar + grouped content -->
       <section id="tab-settings" class="panel">
         <div class="toolbar">
-          <h2 class="quiet-title">Settings</h2>
-          <button type="button" class="ghost-btn" id="btnSettingsBack">完成</button>
+          <h2 class="quiet-title" data-i18n="desktop.settings.title">Settings</h2>
+          <button type="button" class="ghost-btn" id="btnSettingsBack" data-i18n="desktop.settings.done">Done</button>
         </div>
 
         <div class="settings-layout">
-          <aside class="settings-nav" aria-label="Settings menu">
-            <button type="button" class="settings-nav-item active" data-settings-pane="general">通用</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="models">模型</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="sessions">Sessions</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="workbench">工作台</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="memory">Memory</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="storage">数据</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="usage">用量</button>
+          <aside class="settings-nav" data-i18n-aria-label="desktop.settings.navLabel" aria-label="Settings menu">
+            <button type="button" class="settings-nav-item active" data-settings-pane="general" data-i18n="desktop.settings.paneGeneral">General</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="models" data-i18n="desktop.settings.paneModels">Models</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="sessions" data-i18n="desktop.settings.paneSessions">Sessions</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="workbench" data-i18n="desktop.settings.paneWorkbench">Workbench</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="report" data-i18n="desktop.settings.paneReport">Memory</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="storage" data-i18n="desktop.settings.paneStorage">Data</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="usage" data-i18n="desktop.settings.paneUsage">Usage</button>
           </aside>
 
           <div class="settings-main">
             <header id="settingsContentHeader" class="settings-content-header">
               <div class="settings-content-header-text">
-                <h2 id="settingsPaneTitle" class="settings-pane-title">通用</h2>
-                <p id="settingsPaneDesc" class="settings-pane-desc">外观与日常偏好</p>
+                <h2 id="settingsPaneTitle" class="settings-pane-title" data-i18n="desktop.settings.paneGeneral">General</h2>
+                <p id="settingsPaneDesc" class="settings-pane-desc" data-i18n="desktop.settings.paneGeneralDesc">Appearance and daily preferences</p>
               </div>
               <div class="settings-header-actions">
                 <p class="status" id="settingsStatus"></p>
@@ -526,18 +524,25 @@
               <div id="settingsPaneGeneral" class="settings-pane">
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">外观</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.appearance">Appearance</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">主题</span>
-                          <span class="settings-row-desc">切换应用浅色、深色或跟随系统</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.theme">Theme</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.themeDesc">Light, dark, or follow system</span>
                         </div>
                         <select name="desktopTheme" class="settings-row-control">
-                          <option value="system">跟随系统</option>
-                          <option value="light">浅色</option>
-                          <option value="dark">深色</option>
+                          <option value="system" data-i18n="desktop.settings.themeSystem">Follow system</option>
+                          <option value="light" data-i18n="desktop.settings.themeLight">Light</option>
+                          <option value="dark" data-i18n="desktop.settings.themeDark">Dark</option>
                         </select>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="settings.fieldUiLanguageLabel">UI Language</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.fieldUiLanguageDescription">Desktop UI language. Auto follows system.</span>
+                        </div>
+                        <select name="uiLanguage" class="settings-row-control"></select>
                       </div>
                     </div>
                   </section>
@@ -547,70 +552,70 @@
               <div id="settingsPaneModels" class="settings-pane" hidden>
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">工具 LLM</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.toolLlm">Tool LLM</h3>
                     <div class="settings-group-body">
-                      <p class="settings-footnote">
-                        用于摘要、自动重命名、定时 digests 等工具任务。请使用便宜、快速的模型（如 gpt-4o-mini、deepseek-chat）。
+                      <p class="settings-footnote" data-i18n="desktop.settings.toolLlmFootnote">
+                        For summaries, auto-rename, scheduled digests, etc. Use a fast, inexpensive model (e.g. gpt-4o-mini, deepseek-chat).
                       </p>
                       <label class="settings-field">
-                        <span class="settings-field-label">Base URL</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.baseUrl">Base URL</span>
                         <input name="llmBaseUrl" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Model</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.model">Model</span>
                         <input name="llmModel" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">API Key</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.apiKey">API Key</span>
                         <input name="llmApiKey" type="password" autocomplete="off" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Output language</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.outputLanguage">Output language</span>
                         <input name="llmLang" type="text" placeholder="zh-CN" />
                       </label>
                     </div>
                   </section>
 
                   <section class="settings-group">
-                    <h3 class="settings-group-title">对话模型</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.chatModel">Chat model</h3>
                     <div class="settings-group-body">
-                      <p class="settings-footnote">用于 Ask / Meta-Agent 对话。默认同工具 LLM，可单独配置更强模型。</p>
+                      <p class="settings-footnote" data-i18n="desktop.settings.chatModelFootnote">For Agent / Meta-Agent chat. Defaults to tool LLM; can use a stronger model.</p>
                       <label class="settings-field">
-                        <span class="settings-field-label">Base URL</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.baseUrl">Base URL</span>
                         <input name="chatBaseUrl" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Model</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.model">Model</span>
                         <input name="chatModel" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">API Key</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.apiKey">API Key</span>
                         <input name="chatApiKey" type="password" autocomplete="off" />
                       </label>
                     </div>
                   </section>
 
                   <section class="settings-group">
-                    <h3 class="settings-group-title">Embedding</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.embedding">Embedding</h3>
                     <div class="settings-group-body">
-                      <p class="settings-footnote">Base URL / API Key 可留空，将回落到工具 LLM 的配置。</p>
+                      <p class="settings-footnote" data-i18n="desktop.settings.embeddingFootnote">Base URL / API Key optional; falls back to tool LLM settings.</p>
                       <label class="settings-field">
-                        <span class="settings-field-label">Base URL（可选）</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.baseUrlOptional">Base URL (optional)</span>
                         <input name="embBaseUrl" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Model</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.model">Model</span>
                         <input name="embModel" type="text" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">API Key（可选）</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.apiKeyOptional">API Key (optional)</span>
                         <input name="embApiKey" type="password" autocomplete="off" />
                       </label>
                     </div>
                   </section>
 
-                  <p class="settings-footnote settings-pane-footnote">
-                    写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
+                  <p class="settings-footnote settings-pane-footnote" data-i18n="desktop.settings.settingsPathFootnote">
+                    Written to ~/.agent-resume-panel/settings.json (shared with VS Code extension).
                   </p>
                 </div>
               </div>
@@ -618,32 +623,32 @@
               <div id="settingsPaneSessions" class="settings-pane" hidden>
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">同步</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.sync">Sync</h3>
                     <div class="settings-group-body">
                       <label class="settings-field">
-                        <span class="settings-field-label">同步上限</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.syncMax">Sync limit</span>
                         <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" />
                       </label>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">过期策略</span>
-                          <span class="settings-row-desc">源端已删除的 session 在本地隐藏或清除</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.stalePolicy">Stale policy</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.stalePolicyDesc">Hide or purge sessions deleted at source</span>
                         </div>
                         <select name="syncStalePolicy" class="settings-row-control">
-                          <option value="hide">隐藏</option>
-                          <option value="purge">清除</option>
+                          <option value="hide" data-i18n="desktop.settings.staleHide">Hide</option>
+                          <option value="purge" data-i18n="desktop.settings.stalePurge">Purge</option>
                         </select>
                       </div>
                     </div>
                   </section>
 
                   <section class="settings-group">
-                    <h3 class="settings-group-title">可见性过滤</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.visibilityFilter">Visibility filter</h3>
                     <div class="settings-group-body settings-group-body-rows">
-                      <p class="settings-footnote">控制各 Provider 的归档、子 Agent 等特殊 session 是否出现在列表中。</p>
+                      <p class="settings-footnote" data-i18n="desktop.settings.visibilityFootnote">Control archived/sub-agent sessions per provider in lists.</p>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">显示 Codex 归档</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.showArchivedCodex">Show archived Codex</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="showArchivedCodex" type="checkbox" role="switch" />
@@ -652,7 +657,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">显示 Codex 子 Agent</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.showSubagentCodex">Show Codex sub-agents</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="showSubagentCodex" type="checkbox" role="switch" />
@@ -661,7 +666,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">显示 OpenCode 归档</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.showArchivedOpenCode">Show archived OpenCode</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="showArchivedOpenCode" type="checkbox" role="switch" />
@@ -670,7 +675,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">显示 Grok 子 Agent</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.showSubagentGrok">Show Grok sub-agents</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="showSubagentGrok" type="checkbox" role="switch" />
@@ -679,7 +684,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">隐藏 Alma cron</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.hideCronAlma">Hide Alma cron</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="hideCronAlma" type="checkbox" role="switch" />
@@ -688,7 +693,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">隐藏 Alma channel</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.hideChannelAlma">Hide Alma channel</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="hideChannelAlma" type="checkbox" role="switch" />
@@ -697,7 +702,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">显示 Alma incognito</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.showIncognitoAlma">Show Alma incognito</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="showIncognitoAlma" type="checkbox" role="switch" />
@@ -712,12 +717,12 @@
               <div id="settingsPaneWorkbench" class="settings-pane" hidden>
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">新建 Session</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.newSessionGroup">New Session</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">默认 Agent</span>
-                          <span class="settings-row-desc">在工作台新建 session 时使用的 Provider</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.defaultAgent">Default agent</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.defaultAgentDesc">Provider used when creating a session in Workbench</span>
                         </div>
                         <select name="workbenchDefaultProvider" class="settings-row-control">
                           <option value="codex">Codex</option>
@@ -729,22 +734,22 @@
                         </select>
                       </div>
                       <label class="settings-field">
-                        <span class="settings-field-label">临时目录</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.scratchDir">Scratch directory</span>
                         <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
                       </label>
                     </div>
                   </section>
 
                   <section class="settings-group">
-                    <h3 class="settings-group-title">编辑器与终端</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.editorTerminal">Editor & terminal</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">项目编辑器</span>
-                          <span class="settings-row-desc">从工作台打开项目时使用的编辑器</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.projectEditor">Project editor</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.projectEditorDesc">Editor used when opening a project from Workbench</span>
                         </div>
                         <select name="workbenchProjectEditor" class="settings-row-control">
-                          <option value="auto">自动检测</option>
+                          <option value="auto" data-i18n="desktop.settings.editorAuto">Auto-detect</option>
                           <option value="vscode">VS Code</option>
                           <option value="vscodium">VSCodium</option>
                           <option value="cursor">Cursor</option>
@@ -753,33 +758,33 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">终端模式</span>
-                          <span class="settings-row-desc">内嵌 xterm 或系统默认终端</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.terminalMode">Terminal mode</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.terminalModeDesc">Embedded xterm or system default terminal</span>
                         </div>
                         <select name="workbenchTerminalMode" class="settings-row-control">
-                          <option value="xterm">内嵌终端 (xterm.js)</option>
-                          <option value="external-system">系统默认终端</option>
+                          <option value="xterm" data-i18n="desktop.settings.terminalXterm">Embedded terminal (xterm.js)</option>
+                          <option value="external-system" data-i18n="desktop.settings.terminalExternal">System default terminal</option>
                         </select>
                       </div>
                       <div id="settingsExternalLaunchRow" class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">外部终端启动方式</span>
-                          <span class="settings-row-desc">恢复 session 时如何传递命令</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.externalLaunch">External terminal launch</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.externalLaunchDesc">How to pass resume command when restoring a session</span>
                         </div>
                         <select name="workbenchExternalLaunchMode" class="settings-row-control">
-                          <option value="executeCommand">自动执行恢复命令</option>
-                          <option value="pasteCommand">打开后自动粘贴命令</option>
-                          <option value="copyCommand">仅复制命令到剪贴板</option>
+                          <option value="executeCommand" data-i18n="desktop.settings.launchExecute">Auto-run resume command</option>
+                          <option value="pasteCommand" data-i18n="desktop.settings.launchPaste">Paste command after open</option>
+                          <option value="copyCommand" data-i18n="desktop.settings.launchCopy">Copy command only</option>
                         </select>
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">⌘T 快捷键</span>
-                          <span class="settings-row-desc">在工作台按下 ⌘T（Windows 为 Ctrl+T）时执行的操作</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.cmdT">⌘T shortcut</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.cmdTDesc">Action when pressing ⌘T (Ctrl+T on Windows) in Workbench</span>
                         </div>
                         <select name="workbenchCmdTAction" class="settings-row-control">
-                          <option value="newTerminal">新建 Terminal</option>
-                          <option value="newSession">新建 Session</option>
+                          <option value="newTerminal" data-i18n="desktop.settings.cmdTNewTerminal">New Terminal</option>
+                          <option value="newSession" data-i18n="desktop.settings.cmdTNewSession">New Session</option>
                         </select>
                       </div>
                     </div>
@@ -787,15 +792,15 @@
                 </div>
               </div>
 
-              <div id="settingsPaneMemory" class="settings-pane" hidden>
+              <div id="settingsPaneReport" class="settings-pane" hidden>
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">定时 digests</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.scheduledDigests">Scheduled digests</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">启用定时分析</span>
-                          <span class="settings-row-desc">在设定时刻调用工具 LLM 生成日/周/月报</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.enableSchedule">Enable scheduled analysis</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.enableScheduleDesc">Call tool LLM at set times to generate daily/weekly/monthly digests</span>
                         </div>
                         <label class="settings-toggle">
                           <input name="memoryEnabled" type="checkbox" role="switch" />
@@ -804,15 +809,15 @@
                       </div>
                       <div id="settingsMemoryScheduleFields" class="settings-schedule-fields" hidden>
                         <label class="settings-field">
-                          <span class="settings-field-label">Daily hour</span>
+                          <span class="settings-field-label" data-i18n="desktop.settings.dailyHour">Daily hour</span>
                           <input name="dailyHour" type="number" min="0" max="23" />
                         </label>
                         <label class="settings-field">
-                          <span class="settings-field-label">Weekly hour (Mon)</span>
+                          <span class="settings-field-label" data-i18n="desktop.settings.weeklyHour">Weekly hour (Mon)</span>
                           <input name="weeklyHour" type="number" min="0" max="23" />
                         </label>
                         <label class="settings-field">
-                          <span class="settings-field-label">Monthly hour (day 1)</span>
+                          <span class="settings-field-label" data-i18n="desktop.settings.monthlyHour">Monthly hour (day 1)</span>
                           <input name="monthlyHour" type="number" min="0" max="23" />
                         </label>
                       </div>
@@ -820,18 +825,18 @@
                   </section>
 
                   <section class="settings-group settings-group-action">
-                    <h3 class="settings-group-title">批量回填历史 digests</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.backfillTitle">Backfill historical digests</h3>
                     <div class="settings-group-body">
-                      <p class="settings-callout">
-                        扫描 catalog 全部 session 日期，按日→周→月批量生成。多次 LLM 调用，可能产生费用且耗时较长。
+                      <p class="settings-callout" data-i18n="desktop.settings.backfillCallout">
+                        Scan all session dates in catalog and batch-generate day→week→month. Many LLM calls; may incur cost and take time.
                       </p>
                       <label class="settings-field">
-                        <span class="settings-field-label">最多天数</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.backfillMaxDays">Max days</span>
                         <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
                       </label>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">跳过已有成功 digest</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.backfillSkipExisting">Skip existing successful digests</span>
                         </div>
                         <label class="settings-toggle">
                           <input type="checkbox" id="backfillSkipExisting" role="switch" checked />
@@ -840,7 +845,7 @@
                       </div>
                       <div class="settings-row">
                         <div class="settings-row-label">
-                          <span class="settings-row-title">跳过 embedding</span>
+                          <span class="settings-row-title" data-i18n="desktop.settings.backfillSkipEmbedding">Skip embedding</span>
                         </div>
                         <label class="settings-toggle">
                           <input type="checkbox" id="backfillSkipEmbedding" role="switch" checked />
@@ -848,8 +853,8 @@
                         </label>
                       </div>
                       <div class="settings-action-row">
-                        <button type="button" id="btnBackfillPreview" class="tool-btn">预览范围</button>
-                        <button type="button" id="btnBackfillRun" class="tool-btn">开始回填</button>
+                        <button type="button" id="btnBackfillPreview" class="tool-btn" data-i18n="desktop.settings.backfillPreview">Preview range</button>
+                        <button type="button" id="btnBackfillRun" class="tool-btn" data-i18n="desktop.settings.backfillRun">Start backfill</button>
                       </div>
                       <p class="status" id="backfillStatus"></p>
                     </div>
@@ -860,29 +865,29 @@
               <div id="settingsPaneStorage" class="settings-pane" hidden>
                 <div class="settings-pane-body">
                   <section class="settings-group">
-                    <h3 class="settings-group-title">应用数据</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.appData">App data</h3>
                     <div class="settings-group-body">
-                      <p class="settings-footnote">
-                        <code>catalog.db</code>、<code>acp/</code>、<code>notes/</code> 均存放在 Panel home 下。
+                      <p class="settings-footnote" data-i18n="desktop.settings.appDataFootnote">
+                        catalog.db, acp/, notes/ live under Panel home.
                       </p>
                       <label class="settings-field">
-                        <span class="settings-field-label">Panel home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.panelHome">Panel home</span>
                         <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
                       </label>
-                      <p class="settings-footnote">打开操作使用已保存的路径；修改后会自动保存。</p>
+                      <p class="settings-footnote" data-i18n="desktop.settings.panelHomeFootnote">Reveal uses saved path; changes auto-save.</p>
                       <div class="settings-path-row">
-                        <button type="button" id="btnSettingsOpenPanelHome" class="tool-btn">在 Finder 中显示</button>
+                        <button type="button" id="btnSettingsOpenPanelHome" class="tool-btn" data-i18n="desktop.common.revealInFinder">Reveal in Finder</button>
                       </div>
                     </div>
                   </section>
 
                   <section class="settings-group">
-                    <h3 class="settings-group-title">笔记</h3>
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.notesGroup">Notes</h3>
                     <div class="settings-group-body">
-                      <p class="settings-footnote">笔记以 Markdown 文件存储，可用 Finder / Obsidian 直接编辑。</p>
+                      <p class="settings-footnote" data-i18n="desktop.settings.notesFootnote">Notes are Markdown files; edit in Finder / Obsidian.</p>
                       <div class="settings-path-row">
                         <code id="settingsNotesRootPath" class="settings-path-display"></code>
-                        <button type="button" id="btnSettingsOpenNotesFolder" class="tool-btn">在 Finder 中显示</button>
+                        <button type="button" id="btnSettingsOpenNotesFolder" class="tool-btn" data-i18n="desktop.common.revealInFinder">Reveal in Finder</button>
                       </div>
                     </div>
                   </section>
@@ -890,35 +895,35 @@
                   <section id="settingsAgentHomesDisclosure" class="settings-group settings-disclosure collapsed">
                     <button type="button" class="settings-disclosure-head" aria-expanded="false">
                       <span class="settings-disclosure-chevron" aria-hidden="true"></span>
-                      <span class="settings-disclosure-title">Agent 数据目录（高级）</span>
+                      <span class="settings-disclosure-title" data-i18n="desktop.settings.agentHomesAdvanced">Agent data directories (advanced)</span>
                     </button>
                     <div class="settings-disclosure-body">
                       <label class="settings-field">
-                        <span class="settings-field-label">Codex home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.codexHome">Codex home</span>
                         <input name="codexHome" type="text" placeholder="~/.codex" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Claude home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.claudeHome">Claude home</span>
                         <input name="claudeHome" type="text" placeholder="~/.claude" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Antigravity home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.antigravityHome">Antigravity home</span>
                         <input name="antigravityHome" type="text" placeholder="~/.gemini" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Grok home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.grokHome">Grok home</span>
                         <input name="grokHome" type="text" placeholder="~/.grok" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Alma data directory</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.almaDataDir">Alma data directory</span>
                         <input name="almaDataDir" type="text" placeholder="~/Library/Application Support/alma" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">OpenCode home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.opencodeHome">OpenCode home</span>
                         <input name="opencodeHome" type="text" placeholder="~/.local/share/opencode" />
                       </label>
                       <label class="settings-field">
-                        <span class="settings-field-label">Pi home</span>
+                        <span class="settings-field-label" data-i18n="desktop.settings.piHome">Pi home</span>
                         <input name="piHome" type="text" placeholder="~/.pi/agent" />
                       </label>
                     </div>
@@ -931,57 +936,57 @@
               <div class="settings-pane-body">
                 <div class="settings-usage-toolbar">
                   <label class="settings-inline-label">
-                    范围
+                    <span data-i18n="desktop.usage.scope">Range</span>
                     <select id="usageDays">
-                      <option value="7">近 7 天</option>
-                      <option value="30" selected>近 30 天</option>
-                      <option value="90">近 90 天</option>
+                      <option value="7" data-i18n="desktop.usage.last7">Last 7 days</option>
+                      <option value="30" selected data-i18n="desktop.usage.last30">Last 30 days</option>
+                      <option value="90" data-i18n="desktop.usage.last90">Last 90 days</option>
                     </select>
                   </label>
-                  <button type="button" class="ghost-btn" id="btnUsageRefresh">刷新</button>
+                  <button type="button" class="ghost-btn" id="btnUsageRefresh" data-i18n="desktop.common.refresh">Refresh</button>
                 </div>
                 <div id="usageSummaryCards" class="usage-cards"></div>
-                <h3 class="section-h">按日</h3>
+                <h3 class="section-h" data-i18n="desktop.usage.byDay">By day</h3>
                 <div class="table-wrap compact">
                   <table>
                     <thead>
                       <tr>
-                        <th>日期</th>
-                        <th>Tokens</th>
-                        <th>调用</th>
-                        <th>定时 runs</th>
+                        <th data-i18n="desktop.usage.colDate">Date</th>
+                        <th data-i18n="desktop.usage.colTokens">Tokens</th>
+                        <th data-i18n="desktop.usage.colCalls">Calls</th>
+                        <th data-i18n="desktop.usage.colScheduleRuns">Scheduled runs</th>
                       </tr>
                     </thead>
                     <tbody id="usageByDayBody"></tbody>
                   </table>
                 </div>
-                <h3 class="section-h">定时执行日志</h3>
+                <h3 class="section-h" data-i18n="desktop.usage.scheduleLog">Scheduled run log</h3>
                 <div class="table-wrap compact">
                   <table>
                     <thead>
                       <tr>
-                        <th>时间</th>
-                        <th>Level</th>
-                        <th>Period</th>
-                        <th>Status</th>
-                        <th>Tokens</th>
-                        <th>Error</th>
+                        <th data-i18n="desktop.usage.colTime">Time</th>
+                        <th data-i18n="desktop.usage.colLevel">Level</th>
+                        <th data-i18n="desktop.usage.colPeriod">Period</th>
+                        <th data-i18n="desktop.usage.colStatus">Status</th>
+                        <th data-i18n="desktop.usage.colTokens">Tokens</th>
+                        <th data-i18n="desktop.usage.colError">Error</th>
                       </tr>
                     </thead>
                     <tbody id="scheduleRunsBody"></tbody>
                   </table>
                 </div>
-                <h3 class="section-h">LLM 调用明细</h3>
+                <h3 class="section-h" data-i18n="desktop.usage.llmDetails">LLM call details</h3>
                 <div class="table-wrap compact">
                   <table>
                     <thead>
                       <tr>
-                        <th>时间</th>
-                        <th>Kind</th>
-                        <th>Source</th>
-                        <th>Model</th>
-                        <th>Tokens</th>
-                        <th>ms</th>
+                        <th data-i18n="desktop.usage.colTime">Time</th>
+                        <th data-i18n="desktop.usage.colKind">Kind</th>
+                        <th data-i18n="desktop.usage.colSource">Source</th>
+                        <th data-i18n="desktop.usage.colModel">Model</th>
+                        <th data-i18n="desktop.usage.colTokens">Tokens</th>
+                        <th data-i18n="desktop.usage.colMs">ms</th>
                       </tr>
                     </thead>
                     <tbody id="usageEventsBody"></tbody>
@@ -1000,15 +1005,15 @@
       <div class="sheet-backdrop" data-close-sheet="sheetGtd"></div>
       <div class="sheet-panel sheet-wide">
         <div class="sheet-head">
-          <h3>Digest → GTD + todolist</h3>
-          <button type="button" class="ghost-btn" data-close-sheet="sheetGtd">关闭</button>
+          <h3 data-i18n="desktop.sheet.gtdTitle">Digest → GTD + todolist</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetGtd" data-i18n="desktop.common.close">Close</button>
         </div>
         <div class="sheet-body">
-          <p class="muted">
-            基于详情中选中的 daily / weekly / monthly digest 分析（不会自动生成今日日报）。预览可编辑，确认后再落库。
+          <p class="muted" data-i18n="desktop.sheet.gtdDesc">
+            Based on the selected daily / weekly / monthly digest in detail (today's daily is not auto-generated). Preview is editable; confirm to save.
           </p>
           <div class="form-row">
-            <button type="button" id="btnGtdPreview">重新分析</button>
+            <button type="button" id="btnGtdPreview" data-i18n="desktop.report.gtdReanalyze">Re-analyze</button>
           </div>
           <div id="gtdPreview" class="gtd-preview"></div>
           <p class="status" id="gtdSyncStatus"></p>
@@ -1021,65 +1026,65 @@
       <div class="sheet-backdrop" data-close-sheet="sheetSessions"></div>
       <div class="sheet-panel sheet-wide">
         <div class="sheet-head">
-          <h3>Sessions（参考）</h3>
-          <button type="button" class="ghost-btn" data-close-sheet="sheetSessions">关闭</button>
+          <h3 data-i18n="desktop.sessions.sheetTitle">Sessions (reference)</h3>
+          <button type="button" class="ghost-btn" data-close-sheet="sheetSessions" data-i18n="desktop.common.close">Close</button>
         </div>
         <div class="sheet-body sessions-split">
           <div class="sessions-list-pane">
             <div class="form-row">
-              <button type="button" class="ghost-btn" id="btnRefreshSessions">刷新列表</button>
+              <button type="button" class="ghost-btn" id="btnRefreshSessions" data-i18n="desktop.sessions.refreshList">Refresh list</button>
             </div>
             <p class="muted" id="sessionsMeta"></p>
             <div class="sessions-list" id="sessionsList"></div>
           </div>
           <div class="session-preview-pane" id="sessionPreview">
-            <p class="muted">点击左侧 session 查看对话预览。支持 Summarize / Auto Rename（与 VS Code 扩展类似）。</p>
+            <p class="muted" data-i18n="desktop.sessions.previewHint">Click a session on the left to preview. Supports Summarize / Auto Rename (like the VS Code extension).</p>
           </div>
         </div>
       </div>
     </div>
 
     <div class="notes-context-menu" id="notesContextMenu" hidden>
-      <button type="button" data-notes-action="pinProject" hidden>置顶项目</button>
-      <button type="button" data-notes-action="unpinProject" hidden>取消置顶</button>
-      <button type="button" data-notes-action="new" hidden>新建笔记</button>
-      <button type="button" data-notes-action="import" hidden>导入 Markdown</button>
-      <button type="button" data-notes-action="renameProject" hidden>重命名项目</button>
-      <button type="button" data-notes-action="move" hidden>更改归属…</button>
-      <button type="button" data-notes-action="copyPath" hidden>复制路径</button>
-      <button type="button" data-notes-action="reveal" hidden>在 Finder 中显示</button>
-      <button type="button" data-notes-action="delete" hidden>删除笔记</button>
+      <button type="button" data-notes-action="pinProject" hidden data-i18n="desktop.notes.pinProject">Pin project</button>
+      <button type="button" data-notes-action="unpinProject" hidden data-i18n="desktop.notes.unpinProject">Unpin project</button>
+      <button type="button" data-notes-action="new" hidden data-i18n="desktop.common.newNote">New note</button>
+      <button type="button" data-notes-action="import" hidden data-i18n="desktop.common.importMarkdown">Import Markdown</button>
+      <button type="button" data-notes-action="renameProject" hidden data-i18n="desktop.notes.renameProject">Rename project</button>
+      <button type="button" data-notes-action="move" hidden data-i18n="desktop.notes.changeOwner">Change owner…</button>
+      <button type="button" data-notes-action="copyPath" hidden data-i18n="desktop.notes.copyPath">Copy path</button>
+      <button type="button" data-notes-action="reveal" hidden data-i18n="desktop.common.revealInFinder">Reveal in Finder</button>
+      <button type="button" data-notes-action="delete" hidden data-i18n="desktop.notes.deleteNote">Delete note</button>
     </div>
 
     <div class="notes-image-preview" id="notesImagePreview" hidden>
-      <button type="button" class="notes-image-preview-close" id="btnNotesImagePreviewClose" aria-label="关闭图片预览">关闭</button>
+      <button type="button" class="notes-image-preview-close" id="btnNotesImagePreviewClose" data-i18n-aria-label="desktop.notes.closeImagePreview" data-i18n="desktop.notes.closeImagePreviewBtn">Close</button>
       <img id="notesImagePreviewImg" alt="" />
     </div>
 
     <div class="wb-context-menu" id="wbContextMenu" hidden>
-      <button type="button" data-wb-action="pinProject" hidden>置顶项目</button>
-      <button type="button" data-wb-action="unpinProject" hidden>取消置顶</button>
-      <button type="button" data-wb-action="newSession" hidden>新建 Session</button>
-      <button type="button" data-wb-action="openProjectEditor" hidden>在编辑器中打开</button>
-      <button type="button" data-wb-action="mountNote" hidden>挂载笔记</button>
-      <button type="button" data-wb-action="renameProject" hidden>重命名项目</button>
-      <button type="button" data-wb-action="codexApp" hidden>在 ChatGPT 中打开</button>
-      <button type="button" data-wb-action="preview" hidden>预览</button>
-      <button type="button" data-wb-action="rename" hidden>重命名</button>
-      <button type="button" data-wb-action="remove" hidden>从面板移除</button>
+      <button type="button" data-wb-action="pinProject" hidden data-i18n="desktop.workbench.pinProject">Pin project</button>
+      <button type="button" data-wb-action="unpinProject" hidden data-i18n="desktop.workbench.unpinProject">Unpin project</button>
+      <button type="button" data-wb-action="newSession" hidden data-i18n="desktop.workbench.newSession">New Session</button>
+      <button type="button" data-wb-action="openProjectEditor" hidden data-i18n="desktop.workbench.openInEditor">Open in editor</button>
+      <button type="button" data-wb-action="mountNote" hidden data-i18n="desktop.workbench.mountNote">Mount note</button>
+      <button type="button" data-wb-action="renameProject" hidden data-i18n="desktop.workbench.renameProject">Rename project</button>
+      <button type="button" data-wb-action="codexApp" hidden data-i18n="desktop.workbench.openInChatGpt">Open in ChatGPT</button>
+      <button type="button" data-wb-action="preview" hidden data-i18n="desktop.workbench.preview">Preview</button>
+      <button type="button" data-wb-action="rename" hidden data-i18n="desktop.common.rename">Rename</button>
+      <button type="button" data-wb-action="remove" hidden data-i18n="desktop.workbench.removeFromPanel">Remove from panel</button>
     </div>
 
     <div class="chat-context-menu" id="chatContextMenu" hidden>
-      <button type="button" data-chat-action="copy">复制</button>
-      <button type="button" data-chat-action="resend">重新发送</button>
+      <button type="button" data-chat-action="copy" data-i18n="desktop.common.copy">Copy</button>
+      <button type="button" data-chat-action="resend" data-i18n="desktop.common.resend">Resend</button>
     </div>
 
     <div class="wb-note-created-overlay" id="wbRenameDialog" hidden>
       <div class="wb-note-created-backdrop" data-wb-rename-cancel></div>
       <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbRenameTitle">
         <div class="wb-rename-head">
-          <p class="wb-note-created-title" id="wbRenameTitle">重命名 Session</p>
-          <button type="button" class="wb-rename-auto-btn" id="btnWbRenameAuto">自动重命名</button>
+          <p class="wb-note-created-title" id="wbRenameTitle" data-i18n="desktop.workbench.renameSession">Rename Session</p>
+          <button type="button" class="wb-rename-auto-btn" id="btnWbRenameAuto" data-i18n="desktop.workbench.autoRename">Auto rename</button>
         </div>
         <p class="wb-rename-status muted" id="wbRenameStatus" hidden></p>
         <input
@@ -1088,32 +1093,32 @@
           id="wbRenameInput"
           autocomplete="off"
           spellcheck="false"
-          aria-label="Session 标题"
+          data-i18n-aria-label="desktop.workbench.renameSessionTitle"
         />
         <div class="wb-note-created-actions">
-          <button type="button" class="wb-note-created-btn" data-wb-rename-cancel>取消</button>
-          <button type="button" class="wb-note-created-btn primary" id="btnWbRenameConfirm">确定</button>
+          <button type="button" class="wb-note-created-btn" data-wb-rename-cancel data-i18n="desktop.common.cancel">Cancel</button>
+          <button type="button" class="wb-note-created-btn primary" id="btnWbRenameConfirm" data-i18n="desktop.common.confirm">Confirm</button>
         </div>
       </div>
     </div>
 
-    <div class="wb-note-created-overlay" id="askRenameDialog" hidden>
+    <div class="wb-note-created-overlay" id="agentRenameDialog" hidden>
       <div class="wb-note-created-backdrop" data-ask-rename-cancel></div>
-      <div class="wb-note-created-panel" role="dialog" aria-labelledby="askRenameTitle">
+      <div class="wb-note-created-panel" role="dialog" aria-labelledby="agentRenameTitle">
         <div class="wb-rename-head">
-          <p class="wb-note-created-title" id="askRenameTitle">重命名对话</p>
+          <p class="wb-note-created-title" id="agentRenameTitle" data-i18n="desktop.agent.renameDialogTitle">Rename chat</p>
         </div>
         <input
           type="text"
           class="wb-rename-input"
-          id="askRenameInput"
+          id="agentRenameInput"
           autocomplete="off"
           spellcheck="false"
-          aria-label="对话标题"
+          data-i18n-aria-label="desktop.agent.renameInputLabel"
         />
         <div class="wb-note-created-actions">
-          <button type="button" class="wb-note-created-btn" data-ask-rename-cancel>取消</button>
-          <button type="button" class="wb-note-created-btn primary" id="btnAskRenameConfirm">确定</button>
+          <button type="button" class="wb-note-created-btn" data-ask-rename-cancel data-i18n="desktop.common.cancel">Cancel</button>
+          <button type="button" class="wb-note-created-btn primary" id="btnAgentRenameConfirm" data-i18n="desktop.common.confirm">Confirm</button>
         </div>
       </div>
     </div>
@@ -1125,6 +1130,10 @@
     <script src="./vendor/xterm.js"></script>
     <script src="./vendor/xterm-addon-fit.js"></script>
     <script src="./vendor/xterm-addon-webgl.js"></script>
+    <script src="./i18n.js"></script>
+    <script src="./refreshLocalizedUi.js"></script>
+    <script src="./i18n.js"></script>
+    <script src="./refreshLocalizedUi.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

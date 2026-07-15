@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { ensureCatalogSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 
-export type AskNoteAuditStatus = "proposed" | "confirmed" | "applied" | "rejected" | "failed";
+export type AgentNoteAuditStatus = "proposed" | "confirmed" | "applied" | "rejected" | "failed";
 
-export interface AskNoteAuditEvent {
+export interface AgentNoteAuditEvent {
   id: string;
   traceId: string;
-  askMessageId?: string | null;
+  agentMessageId?: string | null;
   action: string;
-  status: AskNoteAuditStatus;
+  status: AgentNoteAuditStatus;
   noteId?: string | null;
   relMdPath?: string | null;
   noteTitle?: string | null;
@@ -25,7 +25,7 @@ export interface AskNoteAuditEvent {
 interface AskNoteAuditRow {
   id: string;
   trace_id: string;
-  ask_message_id: string | null;
+  agent_message_id: string | null;
   action: string;
   status: string;
   note_id: string | null;
@@ -51,13 +51,13 @@ function normalizeJson(value: unknown): string | null {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function mapAskNoteAudit(row: AskNoteAuditRow): AskNoteAuditEvent {
+function mapAskNoteAudit(row: AskNoteAuditRow): AgentNoteAuditEvent {
   return {
     id: row.id,
     traceId: row.trace_id,
-    askMessageId: row.ask_message_id,
+    agentMessageId: row.agent_message_id,
     action: row.action,
-    status: row.status as AskNoteAuditStatus,
+    status: row.status as AgentNoteAuditStatus,
     noteId: row.note_id,
     relMdPath: row.rel_md_path,
     noteTitle: row.note_title,
@@ -71,13 +71,13 @@ function mapAskNoteAudit(row: AskNoteAuditRow): AskNoteAuditEvent {
   };
 }
 
-export async function insertAskNoteAudit(
+export async function insertAgentNoteAudit(
   dbPath: string,
   input: {
     traceId?: string;
-    askMessageId?: string | null;
+    agentMessageId?: string | null;
     action: string;
-    status?: AskNoteAuditStatus;
+    status?: AgentNoteAuditStatus;
     noteId?: string | null;
     relMdPath?: string | null;
     noteTitle?: string | null;
@@ -98,19 +98,19 @@ export async function insertAskNoteAudit(
 
   await runSqlite(
     dbPath,
-    `INSERT INTO ask_note_audit (
-       id, trace_id, ask_message_id, action, status, note_id, rel_md_path, note_title,
+    `INSERT INTO agent_note_audit (
+       id, trace_id, agent_message_id, action, status, note_id, rel_md_path, note_title,
        actor, request_json, before_json, after_json, error, created_at_ms, completed_at_ms
      ) VALUES (
        '${escapeSqlLiteral(id)}',
        '${escapeSqlLiteral(traceId)}',
-       ${sqlNullable(input.askMessageId)},
+       ${sqlNullable(input.agentMessageId)},
        '${escapeSqlLiteral(input.action)}',
        '${escapeSqlLiteral(input.status || "proposed")}',
        ${sqlNullable(input.noteId)},
        ${sqlNullable(input.relMdPath)},
        ${sqlNullable(input.noteTitle)},
-       '${escapeSqlLiteral(input.actor || "ask")}',
+       '${escapeSqlLiteral(input.actor || "agent")}',
        ${sqlNullable(requestJson)},
        ${sqlNullable(beforeJson)},
        ${sqlNullable(afterJson)},
@@ -122,11 +122,11 @@ export async function insertAskNoteAudit(
   return id;
 }
 
-export async function updateAskNoteAuditStatus(
+export async function updateAgentNoteAuditStatus(
   dbPath: string,
   id: string,
   input: {
-    status: AskNoteAuditStatus;
+    status: AgentNoteAuditStatus;
     before?: unknown;
     after?: unknown;
     error?: string | null;
@@ -152,11 +152,11 @@ export async function updateAskNoteAuditStatus(
 
   await runSqlite(
     dbPath,
-    `UPDATE ask_note_audit SET ${sets.join(", ")} WHERE id = '${escapeSqlLiteral(id)}';`
+    `UPDATE agent_note_audit SET ${sets.join(", ")} WHERE id = '${escapeSqlLiteral(id)}';`
   );
 }
 
-export async function listAskNoteAudit(
+export async function listAgentNoteAudit(
   dbPath: string,
   options?: {
     limit?: number;
@@ -164,7 +164,7 @@ export async function listAskNoteAudit(
     traceId?: string;
     status?: string;
   }
-): Promise<AskNoteAuditEvent[]> {
+): Promise<AgentNoteAuditEvent[]> {
   await ensureCatalogSchema(dbPath);
   const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
   const clauses: string[] = [];
@@ -180,7 +180,7 @@ export async function listAskNoteAudit(
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const rows = await runSqliteJson<AskNoteAuditRow>(
     dbPath,
-    `SELECT * FROM ask_note_audit ${where} ORDER BY created_at_ms DESC LIMIT ${limit};`
+    `SELECT * FROM agent_note_audit ${where} ORDER BY created_at_ms DESC LIMIT ${limit};`
   );
   return rows.map(mapAskNoteAudit);
 }

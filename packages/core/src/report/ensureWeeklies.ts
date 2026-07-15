@@ -1,17 +1,11 @@
 import { listSessionsInRange } from "../catalog/query";
-import { runDailyDigest } from "./daily";
-import { localDayRange, listDayLabelsInRange } from "./period";
+import { localWeekRange, listWeekLabelsInRange } from "./period";
 import { DigestProgressCallback } from "./progress";
-import { getMemoryEntryById } from "./store";
+import { getReportEntryById } from "./store";
+import { runWeeklyDigest } from "./weekly";
+import { EnsureLevelStats } from "./ensureDailies";
 
-export interface EnsureLevelStats {
-  planned: string[];
-  ok: string[];
-  skipped: string[];
-  failed: Array<{ key: string; error: string }>;
-}
-
-export interface EnsureDailiesOptions {
+export interface EnsureWeekliesOptions {
   dbPath: string;
   startMs: number;
   endMs: number;
@@ -19,23 +13,22 @@ export interface EnsureDailiesOptions {
   skipExisting?: boolean;
   skipEmbedding?: boolean;
   forceResummarize?: boolean;
-  /** Only days with at least one catalog session. Default true. */
+  /** Only weeks with at least one catalog session. Default true. */
   onlyWithSessions?: boolean;
   onProgress?: DigestProgressCallback;
-  progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
 }
 
 /**
- * Ensure daily digests exist for days in [startMs, endMs).
- * Used before weekly aggregation. Existing entries are skipped by default.
+ * Ensure weekly digests exist for ISO weeks covering [startMs, endMs).
+ * Each weekly run cascades to ensure its dailies first.
  */
-export async function ensureDailiesForPeriod(
-  options: EnsureDailiesOptions
+export async function ensureWeekliesForPeriod(
+  options: EnsureWeekliesOptions
 ): Promise<EnsureLevelStats> {
   const skipExisting = options.skipExisting !== false;
   const onlyWithSessions = options.onlyWithSessions !== false;
-  const days = listDayLabelsInRange(options.startMs, options.endMs);
+  const weeks = listWeekLabelsInRange(options.startMs, options.endMs);
   const stats: EnsureLevelStats = {
     planned: [],
     ok: [],
@@ -44,8 +37,8 @@ export async function ensureDailiesForPeriod(
   };
 
   const candidates: string[] = [];
-  for (const day of days) {
-    const range = localDayRange(day);
+  for (const week of weeks) {
+    const range = localWeekRange(week);
     if (onlyWithSessions) {
       const sessions = await listSessionsInRange(
         options.dbPath,
@@ -54,35 +47,32 @@ export async function ensureDailiesForPeriod(
         1
       );
       if (!sessions.length) {
-        stats.skipped.push(day);
+        stats.skipped.push(week);
         continue;
       }
     }
 
     if (skipExisting) {
-      const existing = await getMemoryEntryById(options.dbPath, range.entryId);
+      const existing = await getReportEntryById(options.dbPath, range.entryId);
       if (existing?.content?.trim()) {
-        stats.skipped.push(day);
+        stats.skipped.push(week);
         continue;
       }
     }
 
-    candidates.push(day);
+    candidates.push(week);
   }
 
   stats.planned = [...candidates];
   const total = candidates.length;
-  const parentLevel = options.progressLevel || "weekly";
   const parentLabel = options.progressPeriodLabel || "";
-
-  const scopeHint = parentLevel === "monthly" ? "本月" : parentLevel === "weekly" ? "本周" : "本期";
 
   if (!total) {
     options.onProgress?.({
       phase: "ensure_summaries",
-      level: parentLevel,
+      level: "monthly",
       periodLabel: parentLabel,
-      message: `${scopeHint}日报已齐全（或无 session 活动日）`,
+      message: "本月周报已齐全（或无 session 活动周）",
       index: 0,
       total: 0
     });
@@ -91,46 +81,45 @@ export async function ensureDailiesForPeriod(
 
   options.onProgress?.({
     phase: "ensure_summaries",
-    level: parentLevel,
+    level: "monthly",
     periodLabel: parentLabel,
-    message: `检查并补全${scopeHint}日报 · 需生成 ${total} 天…`,
+    message: `检查并补全周报 · 需生成 ${total} 周…`,
     index: 0,
     total
   });
 
   let i = 0;
-  for (const day of candidates) {
+  for (const week of candidates) {
     i += 1;
     options.onProgress?.({
       phase: "ensure_summaries",
-      level: parentLevel,
+      level: "monthly",
       periodLabel: parentLabel,
-      message: `补全日报 ${i}/${total} · ${day}`,
+      message: `补全周报 ${i}/${total} · ${week}`,
       index: i,
       total
     });
     try {
-      await runDailyDigest({
+      await runWeeklyDigest({
         panelHome: options.panelHome,
-        date: day,
+        weekKey: week,
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
         onProgress: (ev) => {
-          // Bubble nested daily progress with parent context prefix
           options.onProgress?.({
             ...ev,
-            level: parentLevel,
+            level: "monthly",
             periodLabel: parentLabel,
             message: ev.message
-              ? `日报 ${day} · ${ev.message}`
-              : `日报 ${day}`
+              ? `周报 ${week} · ${ev.message}`
+              : `周报 ${week}`
           });
         }
       });
-      stats.ok.push(day);
+      stats.ok.push(week);
     } catch (error) {
       stats.failed.push({
-        key: day,
+        key: week,
         error: error instanceof Error ? error.message : String(error)
       });
     }

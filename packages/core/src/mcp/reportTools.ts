@@ -1,25 +1,25 @@
 import { z } from "zod";
-import { localDayRange, localMonthRange, localWeekRange } from "../memory/period";
-import { searchMemoryByEmbedding } from "../memory/search";
-import type { MemoryLevel } from "../memory/schema";
+import { localDayRange, localMonthRange, localWeekRange } from "../report/period";
+import { searchReportsByEmbedding } from "../report/search";
+import type { ReportLevel } from "../report/schema";
 import {
-  getMemoryEntryById,
-  listMemoryEntries,
-  listMemoryEntriesInRange,
-  listMemoryLinks
-} from "../memory/store";
+  getReportEntryById,
+  listReportEntries,
+  listReportEntriesInRange,
+  listReportLinks
+} from "../report/store";
 
-export interface MemoryToolContext {
+export interface ReportToolContext {
   dbPath: string;
   panelHome: string;
 }
 
-export const MEMORY_SEARCH_DEFAULT_LIMIT = 8;
-export const MEMORY_SEARCH_MAX_LIMIT = 20;
-export const MEMORY_LIST_DEFAULT_LIMIT = 20;
-export const MEMORY_LIST_MAX_LIMIT = 50;
-export const MEMORY_READ_DEFAULT_MAX_LENGTH = 12_000;
-export const MEMORY_READ_MAX_LENGTH = 20_000;
+export const REPORT_SEARCH_DEFAULT_LIMIT = 8;
+export const REPORT_SEARCH_MAX_LIMIT = 20;
+export const REPORT_LIST_DEFAULT_LIMIT = 20;
+export const REPORT_LIST_MAX_LIMIT = 50;
+export const REPORT_READ_DEFAULT_MAX_LENGTH = 12_000;
+export const REPORT_READ_MAX_LENGTH = 20_000;
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) {
@@ -28,31 +28,31 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}\n[...truncated...]`;
 }
 
-function clampMemorySearchLimit(limit?: number): number {
+function clampReportSearchLimit(limit?: number): number {
   const raw = Number(limit);
   if (!Number.isFinite(raw) || raw < 1) {
-    return MEMORY_SEARCH_DEFAULT_LIMIT;
+    return REPORT_SEARCH_DEFAULT_LIMIT;
   }
-  return Math.min(Math.floor(raw), MEMORY_SEARCH_MAX_LIMIT);
+  return Math.min(Math.floor(raw), REPORT_SEARCH_MAX_LIMIT);
 }
 
-function clampMemoryListLimit(limit?: number): number {
+function clampReportListLimit(limit?: number): number {
   const raw = Number(limit);
   if (!Number.isFinite(raw) || raw < 1) {
-    return MEMORY_LIST_DEFAULT_LIMIT;
+    return REPORT_LIST_DEFAULT_LIMIT;
   }
-  return Math.min(Math.floor(raw), MEMORY_LIST_MAX_LIMIT);
+  return Math.min(Math.floor(raw), REPORT_LIST_MAX_LIMIT);
 }
 
-function clampMemoryReadMaxLength(maxLength?: number): number {
+function clampReportReadMaxLength(maxLength?: number): number {
   const raw = Number(maxLength);
   if (!Number.isFinite(raw) || raw < 100) {
-    return MEMORY_READ_DEFAULT_MAX_LENGTH;
+    return REPORT_READ_DEFAULT_MAX_LENGTH;
   }
-  return Math.min(Math.floor(raw), MEMORY_READ_MAX_LENGTH);
+  return Math.min(Math.floor(raw), REPORT_READ_MAX_LENGTH);
 }
 
-function resolvePeriodRange(level: MemoryLevel | string, label: string) {
+function resolvePeriodRange(level: ReportLevel | string, label: string) {
   if (level === "daily") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) {
       throw new Error(`Invalid daily period label "${label}". Use YYYY-MM-DD.`);
@@ -74,7 +74,7 @@ function resolvePeriodRange(level: MemoryLevel | string, label: string) {
   throw new Error(`Unsupported memory level "${level}" for period range.`);
 }
 
-function summarizeMemoryListEntry(entry: {
+function summarizeReportListEntry(entry: {
   id: string;
   level: string;
   title: string | null;
@@ -82,7 +82,7 @@ function summarizeMemoryListEntry(entry: {
   content: string;
 }) {
   return {
-    memoryId: entry.id,
+    reportId: entry.id,
     level: entry.level,
     title: entry.title || entry.id,
     periodStartMs: entry.periodStartMs,
@@ -90,12 +90,12 @@ function summarizeMemoryListEntry(entry: {
   };
 }
 
-export const memorySearchSchema = {
+export const reportSearchSchema = {
   query: z
     .string()
     .min(1)
     .describe(
-      "Semantic search query for memory digests (daily/weekly/monthly reports). Prefer memory_read when Memory Sources already cite a memoryId."
+      "Semantic search query for memory digests (daily/weekly/monthly reports). Prefer report_read when Report Sources already cite a reportId."
     ),
   level: z
     .enum(["daily", "weekly", "monthly"])
@@ -107,12 +107,12 @@ export const memorySearchSchema = {
     .min(1)
     .optional()
     .describe(
-      `Maximum results to return. Defaults to ${MEMORY_SEARCH_DEFAULT_LIMIT}, capped at ${MEMORY_SEARCH_MAX_LIMIT}.`
+      `Maximum results to return. Defaults to ${REPORT_SEARCH_DEFAULT_LIMIT}, capped at ${REPORT_SEARCH_MAX_LIMIT}.`
     )
 };
 
-export const memoryReadSchema = {
-  memoryId: z
+export const reportReadSchema = {
+  reportId: z
     .string()
     .min(1)
     .describe("Memory entry id, e.g. daily:2026-07-15, weekly:2026-W28, monthly:2026-07."),
@@ -120,14 +120,14 @@ export const memoryReadSchema = {
     .number()
     .int()
     .min(100)
-    .max(MEMORY_READ_MAX_LENGTH)
+    .max(REPORT_READ_MAX_LENGTH)
     .optional()
     .describe(
-      `Maximum characters of digest content to return. Defaults to ${MEMORY_READ_DEFAULT_MAX_LENGTH}.`
+      `Maximum characters of digest content to return. Defaults to ${REPORT_READ_DEFAULT_MAX_LENGTH}.`
     )
 };
 
-export const memoryListSchema = {
+export const reportListSchema = {
   level: z.enum(["daily", "weekly", "monthly"]).describe("Digest level to list."),
   from: z
     .string()
@@ -140,20 +140,20 @@ export const memoryListSchema = {
     .min(1)
     .optional()
     .describe(
-      `Maximum entries when from/to are omitted, or cap for range queries. Defaults to ${MEMORY_LIST_DEFAULT_LIMIT}, capped at ${MEMORY_LIST_MAX_LIMIT}.`
+      `Maximum entries when from/to are omitted, or cap for range queries. Defaults to ${REPORT_LIST_DEFAULT_LIMIT}, capped at ${REPORT_LIST_MAX_LIMIT}.`
     )
 };
 
-export async function handleMemorySearch(
-  args: { query: string; level?: MemoryLevel; limit?: number },
-  ctx: MemoryToolContext
+export async function handleReportSearch(
+  args: { query: string; level?: ReportLevel; limit?: number },
+  ctx: ReportToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const query = args.query?.trim();
   if (!query) {
     throw new Error("query is required.");
   }
-  const limit = clampMemorySearchLimit(args.limit);
-  const hits = await searchMemoryByEmbedding({
+  const limit = clampReportSearchLimit(args.limit);
+  const hits = await searchReportsByEmbedding({
     panelHome: ctx.panelHome,
     query,
     level: args.level,
@@ -165,7 +165,7 @@ export async function handleMemorySearch(
     };
   }
   const summary = hits.map((hit) => ({
-    memoryId: hit.entry.id,
+    reportId: hit.entry.id,
     level: hit.entry.level,
     title: hit.entry.title || hit.entry.id,
     score: hit.score,
@@ -181,24 +181,24 @@ export async function handleMemorySearch(
   };
 }
 
-export async function handleMemoryRead(
-  args: { memoryId: string; maxLength?: number },
-  ctx: MemoryToolContext
+export async function handleReportRead(
+  args: { reportId: string; maxLength?: number },
+  ctx: ReportToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const memoryId = args.memoryId?.trim();
-  if (!memoryId) {
-    throw new Error("memoryId is required.");
+  const reportId = args.reportId?.trim();
+  if (!reportId) {
+    throw new Error("reportId is required.");
   }
-  const maxLength = clampMemoryReadMaxLength(args.maxLength);
-  const entry = await getMemoryEntryById(ctx.dbPath, memoryId);
+  const maxLength = clampReportReadMaxLength(args.maxLength);
+  const entry = await getReportEntryById(ctx.dbPath, reportId);
   if (!entry) {
     return {
-      content: [{ type: "text", text: `No memory entry found for memoryId "${memoryId}".` }]
+      content: [{ type: "text", text: `No memory entry found for reportId "${reportId}".` }]
     };
   }
-  const links = await listMemoryLinks(ctx.dbPath, memoryId);
+  const links = await listReportLinks(ctx.dbPath, reportId);
   const payload = {
-    memoryId: entry.id,
+    reportId: entry.id,
     level: entry.level,
     title: entry.title || entry.id,
     periodStartMs: entry.periodStartMs,
@@ -215,15 +215,15 @@ export async function handleMemoryRead(
   };
 }
 
-export async function handleMemoryList(
-  args: { level: MemoryLevel; from?: string; to?: string; limit?: number },
-  ctx: MemoryToolContext
+export async function handleReportList(
+  args: { level: ReportLevel; from?: string; to?: string; limit?: number },
+  ctx: ReportToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const level = args.level;
   if (!level) {
     throw new Error("level is required.");
   }
-  const limit = clampMemoryListLimit(args.limit);
+  const limit = clampReportListLimit(args.limit);
   const from = args.from?.trim();
   const to = args.to?.trim();
 
@@ -234,14 +234,14 @@ export async function handleMemoryList(
     if (startMs >= endMs) {
       throw new Error("Invalid range: from must be before to.");
     }
-    entries = await listMemoryEntriesInRange(ctx.dbPath, {
+    entries = await listReportEntriesInRange(ctx.dbPath, {
       level,
       startMs,
       endMs,
       limit
     });
   } else {
-    entries = await listMemoryEntries(ctx.dbPath, { level, limit });
+    entries = await listReportEntries(ctx.dbPath, { level, limit });
   }
 
   if (!entries.length) {
@@ -251,7 +251,7 @@ export async function handleMemoryList(
     };
   }
 
-  const summary = entries.map(summarizeMemoryListEntry);
+  const summary = entries.map(summarizeReportListEntry);
   return {
     content: [
       {

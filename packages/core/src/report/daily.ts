@@ -16,8 +16,8 @@ import {
   formatSessionForDigest,
   normalizeDigestMarkdown
 } from "./prompts";
-import { MemoryEntry } from "./schema";
-import { getMemoryEntryById, listMemoryLinks, upsertMemoryJob } from "./store";
+import { ReportEntry } from "./schema";
+import { getReportEntryById, listReportLinks, upsertReportJob } from "./store";
 
 export interface RunDailyDigestOptions {
   /** Override panel home (default from settings / ~/.agent-resume-panel). */
@@ -38,7 +38,7 @@ export interface RunDailyDigestOptions {
 }
 
 export interface RunDailyDigestResult {
-  entry: MemoryEntry;
+  entry: ReportEntry;
   sessionCount: number;
   /** Sessions that have a non-empty session_summary after ensure step. */
   summaryReadyCount: number;
@@ -97,7 +97,7 @@ export interface DailyDigestRefreshCheck {
 
 /**
  * Decide whether auto-click should regenerate the daily digest for a local day.
- * Uses catalog session set + updated_at_ms vs digest created_at + memory_links.
+ * Uses catalog session set + updated_at_ms vs digest created_at + report_links.
  */
 export async function needsDailyDigestRefresh(
   options: { panelHome?: string; date?: string } = {}
@@ -115,7 +115,7 @@ export async function needsDailyDigestRefresh(
   const period = localDayRangeImpl(options.date);
   const sessions = await listSessionsInRange(dbPath, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getMemoryEntryById(dbPath, period.entryId);
+  const entry = await getReportEntryById(dbPath, period.entryId);
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -138,7 +138,7 @@ export async function needsDailyDigestRefresh(
     };
   }
 
-  const links = await listMemoryLinks(dbPath, entry.id);
+  const links = await listReportLinks(dbPath, entry.id);
   const linked = new Set(
     links
       .filter((l) => l.provider && l.agentSessionId)
@@ -205,7 +205,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
   const period = localDayRangeImpl(options.date);
   const { startMs, endMs, label: dateLabel, jobKey, entryId } = period;
   const onProgress = options.onProgress;
-  await upsertMemoryJob(dbPath, jobKey, "running");
+  await upsertReportJob(dbPath, jobKey, "running");
 
   try {
     onProgress?.({
@@ -223,7 +223,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       );
     }
 
-    const maxSessions = Math.max(1, Math.min(settings.memory?.maxSessionsPerDigest ?? 40, 200));
+    const maxSessions = Math.max(1, Math.min(settings.report?.maxSessionsPerDigest ?? 40, 200));
 
     let sessions = await listSessionsInRange(dbPath, startMs, endMs);
     const totalFound = sessions.length;
@@ -320,7 +320,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       });
     }
 
-    const entry: MemoryEntry = {
+    const entry: ReportEntry = {
       id: entryId,
       level: "daily",
       periodStartMs: startMs,
@@ -364,7 +364,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertMemoryJob(dbPath, jobKey, "error", message);
+    await upsertReportJob(dbPath, jobKey, "error", message);
     onProgress?.({
       phase: "error",
       level: "daily",

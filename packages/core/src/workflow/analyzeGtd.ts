@@ -2,8 +2,8 @@ import { getSessionById, listSessionsInRange } from "../catalog/query";
 import { AgentProvider, AgentSession } from "../catalog/types";
 import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
-import { listMemoryLinks, getMemoryEntryById, listMemoryEntries } from "../memory/store";
-import { MemoryEntry } from "../memory/schema";
+import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
+import { ReportEntry } from "../report/schema";
 import { PanelSettings } from "../settings/types";
 import { GtdProposal, isGtdStatus } from "../gtd/types";
 import { getSessionGtdStatus } from "../gtd/store";
@@ -16,11 +16,11 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}\n[...truncated...]`;
 }
 
-export async function analyzeMemoryForGtd(input: {
+export async function analyzeReportForGtd(input: {
   dbPath: string;
   settings: PanelSettings;
   /** When set, only analyze these memory entry ids (scoped GTD). */
-  memoryIds?: string[];
+  reportIds?: string[];
 }): Promise<{ proposals: GtdProposal[]; warnings: string[]; raw?: string }> {
   const llm = llmConfigFromSettings(input.settings);
   if (!llm) {
@@ -30,11 +30,11 @@ export async function analyzeMemoryForGtd(input: {
   }
 
   const scopedWarnings: string[] = [];
-  let digests: MemoryEntry[] = [];
+  let digests: ReportEntry[] = [];
 
-  if (input.memoryIds?.length) {
-    for (const id of input.memoryIds) {
-      const entry = await getMemoryEntryById(input.dbPath, id);
+  if (input.reportIds?.length) {
+    for (const id of input.reportIds) {
+      const entry = await getReportEntryById(input.dbPath, id);
       if (entry) {
         digests.push(entry);
       } else {
@@ -43,9 +43,9 @@ export async function analyzeMemoryForGtd(input: {
     }
   } else {
     // Prefer weekly + monthly for GTD triage; dailies as supporting context
-    const weeklies = await listMemoryEntries(input.dbPath, { level: "weekly", limit: 8 });
-    const monthlies = await listMemoryEntries(input.dbPath, { level: "monthly", limit: 6 });
-    const dailies = await listMemoryEntries(input.dbPath, { level: "daily", limit: 8 });
+    const weeklies = await listReportEntries(input.dbPath, { level: "weekly", limit: 8 });
+    const monthlies = await listReportEntries(input.dbPath, { level: "monthly", limit: 6 });
+    const dailies = await listReportEntries(input.dbPath, { level: "daily", limit: 8 });
     digests = [...monthlies, ...weeklies, ...dailies];
   }
 
@@ -82,10 +82,10 @@ export async function analyzeMemoryForGtd(input: {
     });
   }
 
-  // 1) Sessions linked via memory_links
+  // 1) Sessions linked via report_links
   let linkCount = 0;
   for (const d of digests) {
-    const links = await listMemoryLinks(input.dbPath, d.id);
+    const links = await listReportLinks(input.dbPath, d.id);
     for (const link of links) {
       if (!link.provider || !link.agentSessionId) continue;
       const session = await getSessionById(
@@ -116,11 +116,11 @@ export async function analyzeMemoryForGtd(input: {
 
   if (!sessionKeys.size) {
     scopedWarnings.push(
-      "该 digest 未关联到任何 catalog session（无 memory_links，且周期内无 session）。无法生成 GTD 提议。"
+      "该 digest 未关联到任何 catalog session（无 report_links，且周期内无 session）。无法生成 GTD 提议。"
     );
   } else if (linkCount === 0) {
     scopedWarnings.push(
-      `memory_links 为空，已按 digest 时间范围回退加载 ${sessionKeys.size} 个 session。`
+      `report_links 为空，已按 digest 时间范围回退加载 ${sessionKeys.size} 个 session。`
     );
   }
 
@@ -143,7 +143,7 @@ export async function analyzeMemoryForGtd(input: {
       .join("\n") || "(no sessions available)";
 
   const language = llm.outputLanguage || "zh-CN";
-  const scoped = Boolean(input.memoryIds?.length);
+  const scoped = Boolean(input.reportIds?.length);
   const digestIdsHint = digests.map((d) => d.id).join(", ");
   const system = [
     "You triage coding-agent sessions into GTD for a developer.",
@@ -152,19 +152,19 @@ export async function analyzeMemoryForGtd(input: {
     scoped
       ? "Analyze ONLY the provided digest(s) (daily/weekly/monthly all valid). Ground every proposal in that content."
       : "Prioritize insights from WEEKLY and MONTHLY digests; use daily digests as supporting detail.",
-    `sourceMemoryIds should include these digest ids when relevant: ${digestIdsHint || "(from digests)"}.`,
+    `sourceReportIds should include these digest ids when relevant: ${digestIdsHint || "(from digests)"}.`,
     "You MUST only use provider+sessionId pairs from the Linked sessions list below.",
     "When the Linked sessions list is non-empty, produce at least one proposal per unfinished/active session when the digest mentions related work; use reference for pure knowledge sessions.",
     "Return ONLY one JSON object. No markdown fences, no commentary before or after.",
-    'Schema: {"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceMemoryIds":["daily:..."]}]}',
+    'Schema: {"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceReportIds":["daily:..."]}]}',
     "If Linked sessions is empty, return {\"items\":[]}.",
     `Write reason and tasks in language: ${language}.`
   ].join(" ");
 
   const user = [
     scoped
-      ? "## Memory digests (scoped — current selection only; daily is enough)"
-      : "## Memory digests (monthly + weekly first, then daily)",
+      ? "## Report digests (scoped — current selection only; daily is enough)"
+      : "## Report digests (monthly + weekly first, then daily)",
     digestBlock,
     "",
     "## Linked sessions (use ONLY these provider|sessionId values)",
@@ -205,7 +205,7 @@ export async function analyzeMemoryForGtd(input: {
     gtd: string;
     reason?: string;
     tasks?: string[];
-    sourceMemoryIds?: string[];
+    sourceReportIds?: string[];
   }> = [];
   try {
     parsed = parseProposalsJson(raw);
@@ -237,8 +237,8 @@ export async function analyzeMemoryForGtd(input: {
       gtd: item.gtd,
       reason: item.reason || "AI triage from memory",
       tasks: Array.isArray(item.tasks) ? item.tasks.map(String).filter(Boolean).slice(0, 20) : [],
-      sourceMemoryIds: Array.isArray(item.sourceMemoryIds)
-        ? item.sourceMemoryIds.map(String)
+      sourceReportIds: Array.isArray(item.sourceReportIds)
+        ? item.sourceReportIds.map(String)
         : []
     });
   }
@@ -252,7 +252,7 @@ type ParsedProposal = {
   gtd: string;
   reason?: string;
   tasks?: string[];
-  sourceMemoryIds?: string[];
+  sourceReportIds?: string[];
 };
 
 function parseProposalsJson(raw: string): ParsedProposal[] {
@@ -386,10 +386,10 @@ function mapProposalItems(items: unknown[]): ParsedProposal[] {
       gtd: String(x.gtd || ""),
       reason: x.reason != null ? String(x.reason) : undefined,
       tasks: Array.isArray(x.tasks) ? x.tasks.map(String) : undefined,
-      sourceMemoryIds: Array.isArray(x.sourceMemoryIds)
-        ? x.sourceMemoryIds.map(String)
-        : Array.isArray(x.source_memory_ids)
-          ? (x.source_memory_ids as unknown[]).map(String)
+      sourceReportIds: Array.isArray(x.sourceReportIds)
+        ? x.sourceReportIds.map(String)
+        : Array.isArray(x.source_report_ids)
+          ? (x.source_report_ids as unknown[]).map(String)
           : undefined
     }))
     .filter((x) => x.provider && x.sessionId);

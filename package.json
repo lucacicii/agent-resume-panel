@@ -113,7 +113,8 @@
     "build:core": "npm run build -w @agent-resume/core",
     "build:desktop": "npm run build -w @agent-resume/desktop",
     "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
-    "dev:desktop": "npm run dev -w @agent-resume/desktop"
+    "dev:desktop": "npm run dev -w @agent-resume/desktop",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",

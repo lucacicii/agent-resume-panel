@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   previous_status TEXT,
   new_status TEXT NOT NULL,
   reason TEXT,
-  source_memory_ids TEXT,
+  source_report_ids TEXT,
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_session ON gtd_ai_audit(provider, agent_session_id);
@@ -112,15 +112,15 @@ CREATE TABLE IF NOT EXISTS schedule_run_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_started ON schedule_run_logs(started_at_ms DESC);
 
-CREATE TABLE IF NOT EXISTS ask_threads (
+CREATE TABLE IF NOT EXISTS agent_threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_ask_threads_updated ON ask_threads(updated_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_threads_updated ON agent_threads(updated_at_ms DESC);
 
-CREATE TABLE IF NOT EXISTS ask_messages (
+CREATE TABLE IF NOT EXISTS agent_messages (
   id TEXT PRIMARY KEY,
   role TEXT NOT NULL,
   content TEXT NOT NULL,
@@ -130,12 +130,12 @@ CREATE TABLE IF NOT EXISTS ask_messages (
   created_at_ms INTEGER NOT NULL,
   thread_id TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_ask_messages_order ON ask_messages(sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_agent_messages_order ON agent_messages(sort_order ASC);
 
-CREATE TABLE IF NOT EXISTS ask_note_audit (
+CREATE TABLE IF NOT EXISTS agent_note_audit (
   id TEXT PRIMARY KEY,
   trace_id TEXT NOT NULL,
-  ask_message_id TEXT,
+  agent_message_id TEXT,
   action TEXT NOT NULL,
   status TEXT NOT NULL,
   note_id TEXT,
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS ask_note_audit (
   created_at_ms INTEGER NOT NULL,
   completed_at_ms INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_ask_note_audit_created ON ask_note_audit(created_at_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_ask_note_audit_trace ON ask_note_audit(trace_id);
-CREATE INDEX IF NOT EXISTS idx_ask_note_audit_note ON ask_note_audit(note_id, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
 `;

@@ -14,6 +14,7 @@ import {
   type NoteOwner,
   type NoteRecord
 } from "@agent-resume/core";
+import { desktopT } from "./i18nService";
 
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
@@ -95,9 +96,10 @@ export async function notesRename(noteId: string, filename: string): Promise<Not
 }
 
 export async function notesImport(owner: NoteOwner): Promise<ImportNotesResult> {
+  const settings = await loadSettings();
   const result = await dialog.showOpenDialog({
     properties: ["openFile", "multiSelections"],
-    filters: [{ name: "Markdown", extensions: ["md"] }]
+    filters: [{ name: desktopT(settings, "desktop.dialog.markdown"), extensions: ["md"] }]
   });
   if (result.canceled || !result.filePaths.length) {
     return { imported: 0, skipped: 0, errors: [], records: [] };

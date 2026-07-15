@@ -1,11 +1,11 @@
 import { AgentProvider } from "../catalog/types";
-import { MemoryEntry } from "../memory/schema";
+import { ReportEntry } from "../report/schema";
 
 export interface AgentCitation {
   /** Missing on persisted citations created before note sources were supported. */
-  source?: "memory" | "note";
+  source?: "report" | "note";
   index: number;
-  memoryId?: string;
+  reportId?: string;
   noteId?: string;
   relMdPath?: string;
   scope?: string;
@@ -18,7 +18,7 @@ export interface AgentCitation {
   contentPreview?: string;
   /** Tool operation that produced this citation (tool-call mode only). */
   operation?: "search" | "read" | "create" | "write" | "append" | "delete";
-  /** Best-effort linked session from memory_links (usually daily digests). */
+  /** Best-effort linked session from report_links (usually daily digests). */
   session?: {
     provider: AgentProvider;
     id: string;
@@ -26,10 +26,10 @@ export interface AgentCitation {
   };
 }
 
-export type AskStreamPhase = "retrieving" | "indexing_notes" | "generating" | "chunk" | "tool_calling" | "tool_executing" | "done";
+export type AgentStreamPhase = "retrieving" | "indexing_notes" | "generating" | "chunk" | "tool_calling" | "tool_executing" | "done";
 
-export interface AskStreamEvent {
-  phase: AskStreamPhase;
+export interface AgentStreamEvent {
+  phase: AgentStreamPhase;
   /** Present when phase is "chunk". */
   delta?: string;
   message?: string;
@@ -42,7 +42,7 @@ export interface AskStreamEvent {
   toolName?: string;
 }
 
-export interface AskMetaAgentOptions {
+export interface AgentChatOptions {
   query: string;
   /** Prior turns (user/assistant only); last 6 used. */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -50,7 +50,7 @@ export interface AskMetaAgentOptions {
   /** Max digests in context. Default 8. */
   limit?: number;
   /** Optional streaming progress callback (desktop Ask tab). */
-  onStream?: (event: AskStreamEvent) => void | Promise<void>;
+  onStream?: (event: AgentStreamEvent) => void | Promise<void>;
   threadId?: string;
   /** Enable MCP tool-calling for note operations. Default true. */
   enableTools?: boolean;
@@ -62,12 +62,12 @@ export interface AskMetaAgentOptions {
   mcpServerArgs?: string[];
 }
 
-export interface AskMetaAgentResult {
+export interface AgentChatResult {
   answer: string;
   citations: AgentCitation[];
   /** True when embedding search failed/empty and recent digests were used. */
   fallback: boolean;
-  digests: MemoryEntry[];
+  digests: ReportEntry[];
   /** Set when the answer was generated but DB persistence failed. */
   persistWarning?: string;
   /** Number of tool calls executed when enableTools is true. */

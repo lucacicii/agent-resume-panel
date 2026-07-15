@@ -2,8 +2,8 @@ import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { PanelSettings } from "../settings/types";
 import { TokenUsage } from "../usage/types";
-import { MemoryEntry } from "./schema";
-import { insertMemoryEntry, upsertMemoryJob } from "./store";
+import { ReportEntry } from "./schema";
+import { insertReportEntry, upsertReportJob } from "./store";
 
 export async function maybeEmbedContent(
   settings: PanelSettings,
@@ -45,11 +45,11 @@ export async function maybeEmbedContent(
 
 export async function finalizeDigestEntry(
   dbPath: string,
-  entry: MemoryEntry,
+  entry: ReportEntry,
   links: Array<{ provider: string; agentSessionId: string; projectPath: string }>,
   jobKey: string
 ): Promise<{ replaced: boolean }> {
-  const { replaced } = await insertMemoryEntry(dbPath, entry, links);
-  await upsertMemoryJob(dbPath, jobKey, "ok");
+  const { replaced } = await insertReportEntry(dbPath, entry, links);
+  await upsertReportJob(dbPath, jobKey, "ok");
   return { replaced };
 }

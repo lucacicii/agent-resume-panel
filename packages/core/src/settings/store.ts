@@ -3,6 +3,16 @@ import * as path from "node:path";
 import { DEFAULT_PANEL_HOME, resolvePanelHome, settingsPath } from "../panelHome";
 import { DEFAULT_SETTINGS, PanelSettings } from "./types";
 
+type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
+
+function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSettings> {
+  if (partial.memory && !partial.report) {
+    const { memory, ...rest } = partial;
+    return { ...rest, report: memory };
+  }
+  return partial;
+}
+
 function mergeSettings(partial: Partial<PanelSettings> | null | undefined): PanelSettings {
   const base = structuredClone(DEFAULT_SETTINGS);
   if (!partial || typeof partial !== "object") {
@@ -19,6 +29,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
 
   return {
     panelHome: partial.panelHome?.trim() || base.panelHome,
+    uiLanguage: partial.uiLanguage,
     llm: {
       ...base.llm,
       ...(partial.llm || {})
@@ -28,9 +39,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.embedding,
       ...(partial.embedding || {})
     },
-    memory: {
-      ...base.memory,
-      ...(partial.memory || {})
+    report: {
+      ...base.report,
+      ...(partial.report || {})
     },
     agentHomes: {
       ...base.agentHomes,
@@ -75,7 +86,7 @@ export async function loadSettings(panelHomeHint?: string): Promise<PanelSetting
 
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PanelSettings>;
+    const parsed = migrateLegacySettings(JSON.parse(raw) as LegacyPanelSettings);
     const merged = mergeSettings(parsed);
     const effectiveHome = resolvePanelHome(merged.panelHome?.trim() || home);
     if (!panelHomeHint && effectiveHome !== home) {

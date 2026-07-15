@@ -4,9 +4,9 @@ import { catalogDbPath, resolvePanelHome } from "../panelHome";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
-import { MemoryEntry } from "../memory/schema";
-import { listMemoryEntries, listMemoryLinks } from "../memory/store";
-import { searchMemoryByEmbedding } from "../memory/search";
+import { ReportEntry } from "../report/schema";
+import { listReportEntries, listReportLinks } from "../report/store";
+import { searchReportsByEmbedding } from "../report/search";
 import { NoteSearchHit, searchNotesByEmbedding } from "../notes/search";
 import type { NoteIndexProgressCallback } from "../notes/vectorIndex";
 import { recordLlmUsage } from "../usage/store";
@@ -21,7 +21,7 @@ const NOTE_CONTEXT_CHARS = 8000;
 const EXACT_NOTE_CONTEXT_CHARS = 18000;
 
 export interface RetrievedDigest {
-  entry: MemoryEntry;
+  entry: ReportEntry;
   score?: number;
 }
 
@@ -99,7 +99,7 @@ export async function retrieveAgentContext(options: {
       if (!queryVector) {
         throw new Error("Query embedding is unavailable.");
       }
-      const hits = await searchMemoryByEmbedding({
+      const hits = await searchReportsByEmbedding({
         panelHome: options.panelHome,
         query: options.query,
         limit,
@@ -116,8 +116,8 @@ export async function retrieveAgentContext(options: {
 
     if (!digests.length) {
       fallback = true;
-      const dailies = await listMemoryEntries(dbPath, { level: "daily", limit: Math.ceil(limit / 2) });
-      const weeklies = await listMemoryEntries(dbPath, { level: "weekly", limit: Math.ceil(limit / 2) });
+      const dailies = await listReportEntries(dbPath, { level: "daily", limit: Math.ceil(limit / 2) });
+      const weeklies = await listReportEntries(dbPath, { level: "weekly", limit: Math.ceil(limit / 2) });
       const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
       digests = merged.slice(0, limit).map((entry) => ({ entry }));
     }
@@ -153,12 +153,12 @@ export async function retrieveAgentContext(options: {
   const citations: AgentCitation[] = [];
   for (let i = 0; i < digests.length; i++) {
     const { entry, score } = digests[i];
-    const links = await listMemoryLinks(dbPath, entry.id);
+    const links = await listReportLinks(dbPath, entry.id);
     const first = links.find((l) => l.provider && l.agentSessionId);
     citations.push({
-      source: "memory",
+      source: "report",
       index: i + 1,
-      memoryId: entry.id,
+      reportId: entry.id,
       level: entry.level,
       title: entry.title || entry.id,
       score,

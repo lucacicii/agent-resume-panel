@@ -1,14 +1,14 @@
 import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type {
   AgentSession,
-  AskChatMessage,
-  AskThread,
-  AskNoteAuditEvent,
-  AskMetaAgentResult,
-  AskStreamEvent,
+  AgentChatMessage,
+  AgentThread,
+  AgentNoteAuditEvent,
+  AgentChatResult,
+  AgentStreamEvent,
   DigestProgressEvent,
-  MemoryEntry,
-  MemorySearchHit,
+  ReportEntry,
+  ReportSearchHit,
   NoteIndexProgressEvent,
   PanelSettings,
   DailyDigestRefreshCheck,
@@ -132,14 +132,14 @@ export interface DesktopApi {
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
-  listMemory(opts?: {
+  listReports(opts?: {
     level?: string;
     limit?: number;
     fromMs?: number;
     toMs?: number;
-  }): Promise<MemoryEntry[]>;
-  getMemoryEntry(memoryId: string): Promise<MemoryEntry | null>;
-  listDailyDigests(limit?: number): Promise<MemoryEntry[]>;
+  }): Promise<ReportEntry[]>;
+  getReportEntry(reportId: string): Promise<ReportEntry | null>;
+  listDailyDigests(limit?: number): Promise<ReportEntry[]>;
   runDailyDigest(
     dateOrOpts?: string | { date?: string; forceResummarize?: boolean }
   ): Promise<RunDailyDigestResult>;
@@ -149,46 +149,46 @@ export interface DesktopApi {
   runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
   runMonthlyDigest(monthKey?: string): Promise<RunMonthlyDigestResult>;
   onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
-  searchMemory(args: {
+  searchReports(args: {
     query: string;
     level?: string;
     limit?: number;
-  }): Promise<MemorySearchHit[]>;
+  }): Promise<ReportSearchHit[]>;
   askAgent(args: {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     threadId?: string;
     enableTools?: boolean;
-  }): Promise<AskMetaAgentResult>;
+  }): Promise<AgentChatResult>;
   cancelAskAgent(): Promise<{ ok: boolean }>;
-  listAskChat(args?: { limit?: number; threadId?: string }): Promise<{
-    messages: AskChatMessage[];
+  listAgentChat(args?: { limit?: number; threadId?: string }): Promise<{
+    messages: AgentChatMessage[];
     hasMore: boolean;
   }>;
-  listOlderAskChat(args: {
+  listOlderAgentChat(args: {
     beforeSortOrder: number;
     limit?: number;
     threadId?: string;
   }): Promise<{
-    messages: AskChatMessage[];
+    messages: AgentChatMessage[];
     hasMore: boolean;
   }>;
-  clearAskChat(args?: { threadId?: string }): Promise<{ ok: boolean }>;
-  listAskThreads(): Promise<AskThread[]>;
-  createAskThread(args: { title: string }): Promise<AskThread>;
-  renameAskThread(args: { id: string; title: string }): Promise<{ ok: boolean }>;
-  deleteAskThread(args: { id: string }): Promise<{ ok: boolean }>;
-  listAskNoteAudit(args?: {
+  clearAgentChat(args?: { threadId?: string }): Promise<{ ok: boolean }>;
+  listAgentThreads(): Promise<AgentThread[]>;
+  createAgentThread(args: { title: string }): Promise<AgentThread>;
+  renameAgentThread(args: { id: string; title: string }): Promise<{ ok: boolean }>;
+  deleteAgentThread(args: { id: string }): Promise<{ ok: boolean }>;
+  listAgentNoteAudit(args?: {
     limit?: number;
     noteId?: string;
     traceId?: string;
     status?: string;
-  }): Promise<AskNoteAuditEvent[]>;
-  onAskStream(callback: (event: AskStreamEvent) => void): () => void;
+  }): Promise<AgentNoteAuditEvent[]>;
+  onAskStream(callback: (event: AgentStreamEvent) => void): () => void;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
-  previewMemoryGtdSync(args?: {
+  previewReportGtdSync(args?: {
     ensureDigests?: boolean;
-    memoryIds?: string[];
+    reportIds?: string[];
   }): Promise<{
     previewId: string;
     proposals: Array<{
@@ -200,21 +200,21 @@ export interface DesktopApi {
       proposedGtd: string;
       reason: string;
       tasks: string[];
-      sourceMemoryIds: string[];
+      sourceReportIds: string[];
       todolistPreview: string;
     }>;
     skipped: string[];
     warnings: string[];
     ensureDigest?: { ran: boolean; jobKey?: string };
   }>;
-  applyMemoryGtdSync(args: {
+  applyReportGtdSync(args: {
     items: Array<{
       provider: string;
       sessionId: string;
       gtd: string;
       reason: string;
       tasks: string[];
-      sourceMemoryIds: string[];
+      sourceReportIds: string[];
       title?: string;
       projectPath?: string;
       previousGtd?: string | null;
@@ -376,6 +376,8 @@ export interface DesktopApi {
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
   listProjectAliases(): Promise<Record<string, string>>;
   setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
+  getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
+  onLocaleChanged(callback: (bundle: { locale: string; messages: Record<string, string> }) => void): () => void;
 }
 
 const api: DesktopApi = {
@@ -427,42 +429,42 @@ const api: DesktopApi = {
     ipcRenderer.on("terminal:respawned", handler);
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
-  listMemory: (opts) => ipcRenderer.invoke("memory:list", opts),
-  getMemoryEntry: (memoryId) => ipcRenderer.invoke("memory:getEntry", memoryId),
-  listDailyDigests: (limit) => ipcRenderer.invoke("memory:listDaily", limit),
+  listReports: (opts) => ipcRenderer.invoke("report:list", opts),
+  getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
+  listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
   runDailyDigest: (dateOrOpts) => {
     if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
-      return ipcRenderer.invoke("memory:runDaily", { date: dateOrOpts });
+      return ipcRenderer.invoke("report:runDaily", { date: dateOrOpts });
     }
-    return ipcRenderer.invoke("memory:runDaily", dateOrOpts);
+    return ipcRenderer.invoke("report:runDaily", dateOrOpts);
   },
-  needsDailyDigestRefresh: (date) => ipcRenderer.invoke("memory:needsDailyRefresh", date),
-  needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("memory:needsWeeklyRefresh", weekKey),
-  needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("memory:needsMonthlyRefresh", monthKey),
-  runWeeklyDigest: (weekKey) => ipcRenderer.invoke("memory:runWeekly", weekKey),
-  runMonthlyDigest: (monthKey) => ipcRenderer.invoke("memory:runMonthly", monthKey),
+  needsDailyDigestRefresh: (date) => ipcRenderer.invoke("report:needsDailyRefresh", date),
+  needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("report:needsWeeklyRefresh", weekKey),
+  needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("report:needsMonthlyRefresh", monthKey),
+  runWeeklyDigest: (weekKey) => ipcRenderer.invoke("report:runWeekly", weekKey),
+  runMonthlyDigest: (monthKey) => ipcRenderer.invoke("report:runMonthly", monthKey),
   onDigestProgress: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: DigestProgressEvent) => {
       callback(progress);
     };
-    ipcRenderer.on("memory:digestProgress", handler);
+    ipcRenderer.on("report:digestProgress", handler);
     return () => {
-      ipcRenderer.removeListener("memory:digestProgress", handler);
+      ipcRenderer.removeListener("report:digestProgress", handler);
     };
   },
-  searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
+  searchReports: (args) => ipcRenderer.invoke("report:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
-  listAskChat: (args) => ipcRenderer.invoke("agent:listAskChat", args),
-  listOlderAskChat: (args) => ipcRenderer.invoke("agent:listOlderAskChat", args),
-  clearAskChat: (args) => ipcRenderer.invoke("agent:clearAskChat", args),
-  listAskThreads: () => ipcRenderer.invoke("agent:listThreads"),
-  createAskThread: (args) => ipcRenderer.invoke("agent:createThread", args),
-  renameAskThread: (args) => ipcRenderer.invoke("agent:renameThread", args),
-  deleteAskThread: (args) => ipcRenderer.invoke("agent:deleteThread", args),
-  listAskNoteAudit: (args) => ipcRenderer.invoke("agent:listAskNoteAudit", args),
+  listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),
+  listOlderAgentChat: (args) => ipcRenderer.invoke("agent:listOlderAgentChat", args),
+  clearAgentChat: (args) => ipcRenderer.invoke("agent:clearAgentChat", args),
+  listAgentThreads: () => ipcRenderer.invoke("agent:listThreads"),
+  createAgentThread: (args) => ipcRenderer.invoke("agent:createThread", args),
+  renameAgentThread: (args) => ipcRenderer.invoke("agent:renameThread", args),
+  deleteAgentThread: (args) => ipcRenderer.invoke("agent:deleteThread", args),
+  listAgentNoteAudit: (args) => ipcRenderer.invoke("agent:listAgentNoteAudit", args),
   onAskStream: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, streamEvent: AskStreamEvent) => {
+    const handler = (_event: Electron.IpcRendererEvent, streamEvent: AgentStreamEvent) => {
       callback(streamEvent);
     };
     ipcRenderer.on("agent:askStream", handler);
@@ -479,8 +481,8 @@ const api: DesktopApi = {
       ipcRenderer.removeListener("notes:indexProgress", handler);
     };
   },
-  previewMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:previewMemoryGtdSync", args),
-  applyMemoryGtdSync: (args) => ipcRenderer.invoke("workflow:applyMemoryGtdSync", args),
+  previewReportGtdSync: (args) => ipcRenderer.invoke("workflow:previewReportGtdSync", args),
+  applyReportGtdSync: (args) => ipcRenderer.invoke("workflow:applyReportGtdSync", args),
   previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
   backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
@@ -501,7 +503,16 @@ const api: DesktopApi = {
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
   notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args),
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
-  setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args)
+  setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
+  getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
+  onLocaleChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      bundle: { locale: string; messages: Record<string, string> }
+    ) => callback(bundle);
+    ipcRenderer.on("i18n:localeChanged", handler);
+    return () => ipcRenderer.removeListener("i18n:localeChanged", handler);
+  }
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);
