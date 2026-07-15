@@ -1510,6 +1510,33 @@ main {
 }
 
 .report-cal-pane {
+  --cal-cell-border: var(--border);
+  --cal-mark-daily-fg: #93c5fd;
+  --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 35%, transparent);
+  --cal-mark-stale-fg: #fdba74;
+  --cal-mark-stale-bg: color-mix(in srgb, #f97316 32%, transparent);
+  --cal-mark-stale-border: color-mix(in srgb, #f97316 50%, transparent);
+  --cal-mark-missing-fg: #fbbf24;
+  --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 28%, transparent);
+  --cal-mark-missing-border: color-mix(in srgb, #f59e0b 55%, transparent);
+  --cal-mark-none-fg: var(--muted);
+  --cal-mark-none-bg: color-mix(in srgb, var(--muted) 18%, transparent);
+  --cal-mark-none-border: color-mix(in srgb, var(--muted) 35%, transparent);
+  --cal-week-digest-fg: #c084fc;
+  --cal-week-digest-bg: color-mix(in srgb, #a855f7 12%, var(--bg));
+  --cal-week-digest-border: color-mix(in srgb, #a855f7 50%, var(--border));
+  --cal-week-stale-bg: color-mix(in srgb, #f97316 10%, #a855f7 8%);
+  --cal-week-stale-border: color-mix(in srgb, #f97316 55%, #a855f7 30%);
+  --cal-month-digest-fg: #2dd4bf;
+  --cal-month-digest-border: color-mix(in srgb, #14b8a6 50%, var(--border));
+  --cal-month-stale-bg: color-mix(in srgb, #f97316 10%, var(--bg));
+  --cal-month-stale-border: color-mix(in srgb, #f97316 55%, #14b8a6 30%);
+  --cal-dot-daily: #3b82f6;
+  --cal-dot-stale: #f97316;
+  --cal-dot-missing: #f59e0b;
+  --cal-dot-weekly: #a855f7;
+  --cal-dot-monthly: #14b8a6;
+
   width: min(340px, 30vw);
   max-width: 360px;
   flex-shrink: 0;
@@ -2002,7 +2029,7 @@ legend {
 
 .report-cal-pane .cal-weekdays,
 .report-cal-pane .cal-grid {
-  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(2.15rem, 2.5rem);
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(2.25rem, 2.6rem);
 }
 
 .report-cal-pane .cal-grid {
@@ -2015,8 +2042,6 @@ legend {
 
 .report-cal-pane .cal-week-btn {
   min-height: 48px;
-  padding: 1px !important;
-  font-size: 10px;
 }
 
 .cal-session-panel {
@@ -2180,19 +2205,24 @@ legend {
   min-height: 44px;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)) !important;
   border-radius: 8px;
-  padding: 2px 2px !important;
+  padding: 3px 3px !important;
   background: color-mix(in srgb, var(--accent) 8%, var(--bg)) !important;
   color: var(--accent) !important;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.15;
+}
+
+.cal-week-btn .cal-week-label {
   font-size: 11px;
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  flex-wrap: wrap;
-  writing-mode: horizontal-tb;
-  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  align-self: center;
+  white-space: nowrap;
 }
 
 .cal-week-btn:hover {
@@ -2201,27 +2231,42 @@ legend {
 }
 
 .cal-week-btn.has-digest {
-  border-color: color-mix(in srgb, #a855f7 50%, var(--border)) !important;
-  color: #c084fc !important;
-  background: color-mix(in srgb, #a855f7 12%, var(--bg)) !important;
+  border-color: var(--cal-week-digest-border) !important;
+  color: var(--cal-week-digest-fg) !important;
+  background: var(--cal-week-digest-bg) !important;
 }
 
 .cal-week-btn.has-digest-stale {
-  border-color: color-mix(in srgb, #f97316 55%, #a855f7 30%) !important;
-  background: color-mix(in srgb, #f97316 10%, #a855f7 8%) !important;
+  border-color: var(--cal-week-stale-border) !important;
+  background: var(--cal-week-stale-bg) !important;
 }
 
-.cal-week-btn .cal-period-stale,
+.cal-cell .mark,
+.cal-week-btn .mark,
 .cal-month-btn .cal-period-stale {
-  margin-left: 3px;
-  font-size: 9px;
-  line-height: 1.2;
-  padding: 1px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  max-width: 15px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
   border-radius: 4px;
   font-weight: 700;
-  background: color-mix(in srgb, #f97316 32%, transparent);
-  color: #fdba74;
-  border: 1px solid color-mix(in srgb, #f97316 50%, transparent);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-month-btn .cal-period-stale {
+  color: var(--cal-mark-stale-fg);
+  background: var(--cal-mark-stale-bg);
+  border: 1px solid var(--cal-mark-stale-border);
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 .cal-week-btn.future {
@@ -2238,6 +2283,10 @@ legend {
 }
 
 .cal-week-btn.generating .cal-week-label {
+  opacity: 0.35;
+}
+
+.cal-week-btn.generating .marks {
   opacity: 0.25;
 }
 
@@ -2268,13 +2317,13 @@ legend {
 }
 
 .cal-month-btn.has-digest {
-  border-color: color-mix(in srgb, #14b8a6 50%, var(--border)) !important;
-  color: #2dd4bf !important;
+  border-color: var(--cal-month-digest-border) !important;
+  color: var(--cal-month-digest-fg) !important;
 }
 
 .cal-month-btn.has-digest-stale {
-  border-color: color-mix(in srgb, #f97316 55%, #14b8a6 30%) !important;
-  background: color-mix(in srgb, #f97316 10%, var(--bg)) !important;
+  border-color: var(--cal-month-stale-border) !important;
+  background: var(--cal-month-stale-bg) !important;
 }
 
 .cal-month-btn.selected {
@@ -2286,7 +2335,7 @@ legend {
   min-width: 0;
   width: 100%;
   min-height: 44px;
-  border: 1px solid var(--border) !important;
+  border: 1px solid var(--cal-cell-border, var(--border)) !important;
   border-radius: 8px;
   padding: 3px 3px !important;
   background: var(--bg) !important;
@@ -2388,21 +2437,25 @@ legend {
   align-self: center;
 }
 
-/* 月外 / 未来 / 生成中等无 tag 时，日期居中 */
-.cal-cell:not(:has(.marks .mark)) {
+/* 无 tag 时标签居中；有 tag 时标签在上、marks 贴底（与日格子一致） */
+.cal-cell:not(:has(.marks .mark)),
+.cal-week-btn:not(:has(.marks .mark)) {
   justify-content: center;
   align-items: center;
 }
 
-.cal-cell:not(:has(.marks .mark)) .marks {
+.cal-cell:not(:has(.marks .mark)) .marks,
+.cal-week-btn:not(:has(.marks .mark)) .marks {
   display: none;
 }
 
-.cal-cell:not(:has(.marks .mark)) .day-num {
+.cal-cell:not(:has(.marks .mark)) .day-num,
+.cal-week-btn:not(:has(.marks .mark)) .cal-week-label {
   margin: 0;
 }
 
-.cal-cell .marks {
+.cal-cell .marks,
+.cal-week-btn .marks {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -2411,35 +2464,36 @@ legend {
   justify-content: center;
 }
 
-.cal-cell .mark {
-  font-size: 9px;
-  line-height: 1.2;
-  padding: 1px 4px;
-  border-radius: 4px;
+.cal-cell .mark,
+.cal-week-btn .mark {
   font-weight: 600;
 }
 
-.cal-cell .mark.daily {
-  background: color-mix(in srgb, #3b82f6 35%, transparent);
-  color: #93c5fd;
+.cal-cell .mark.daily,
+.cal-week-btn .mark.daily {
+  background: var(--cal-mark-daily-bg);
+  color: var(--cal-mark-daily-fg);
 }
 
-.cal-cell .mark.daily-stale {
-  background: color-mix(in srgb, #f97316 32%, transparent);
-  color: #fdba74;
-  border: 1px solid color-mix(in srgb, #f97316 50%, transparent);
+.cal-cell .mark.daily-stale,
+.cal-week-btn .mark.daily-stale {
+  background: var(--cal-mark-stale-bg);
+  color: var(--cal-mark-stale-fg);
+  border: 1px solid var(--cal-mark-stale-border);
 }
 
-.cal-cell .mark.daily-missing {
-  background: color-mix(in srgb, #f59e0b 28%, transparent);
-  color: #fbbf24;
-  border: 1px dashed color-mix(in srgb, #f59e0b 55%, transparent);
+.cal-cell .mark.daily-missing,
+.cal-week-btn .mark.daily-missing {
+  background: var(--cal-mark-missing-bg);
+  color: var(--cal-mark-missing-fg);
+  border: 1px dashed var(--cal-mark-missing-border);
 }
 
-.cal-cell .mark.no-session {
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
-  color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+.cal-cell .mark.no-session,
+.cal-week-btn .mark.no-session {
+  background: var(--cal-mark-none-bg);
+  color: var(--cal-mark-none-fg);
+  border: 1px solid var(--cal-mark-none-border);
 }
 
 .cal-cell .mark.weekly {
@@ -2455,9 +2509,9 @@ legend {
 .cal-legend {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 12px;
   align-items: stretch;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 11px;
   flex: 0 0 auto;
   line-height: 1.4;
@@ -2479,25 +2533,85 @@ legend {
   vertical-align: middle;
 }
 
-.cal-legend .dot.daily {
-  background: #3b82f6;
+.report-cal-pane .cal-legend .dot.daily {
+  background: var(--cal-dot-daily);
 }
-.cal-legend .dot.daily-stale {
-  background: #f97316;
+.report-cal-pane .cal-legend .dot.daily-stale {
+  background: var(--cal-dot-stale);
 }
-.cal-legend .dot.daily-missing {
+.report-cal-pane .cal-legend .dot.daily-missing {
   background: transparent;
-  border: 1px dashed #f59e0b;
+  border: 1px dashed var(--cal-dot-missing);
 }
-.cal-legend .dot.no-session {
+.report-cal-pane .cal-legend .dot.no-session {
   background: transparent;
-  border: 1px solid var(--muted);
+  border: 1px solid var(--cal-mark-none-fg);
 }
-.cal-legend .dot.weekly {
-  background: #a855f7;
+.report-cal-pane .cal-legend .dot.weekly {
+  background: var(--cal-dot-weekly);
 }
-.cal-legend .dot.monthly {
-  background: #14b8a6;
+.report-cal-pane .cal-legend .dot.monthly {
+  background: var(--cal-dot-monthly);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .report-cal-pane {
+    --cal-cell-border: #c7c7cc;
+    --cal-mark-daily-fg: #1d4ed8;
+    --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 22%, transparent);
+    --cal-mark-stale-fg: #c2410c;
+    --cal-mark-stale-bg: color-mix(in srgb, #f97316 24%, transparent);
+    --cal-mark-stale-border: color-mix(in srgb, #f97316 58%, transparent);
+    --cal-mark-missing-fg: #b45309;
+    --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 22%, transparent);
+    --cal-mark-missing-border: color-mix(in srgb, #f59e0b 62%, transparent);
+    --cal-mark-none-fg: rgba(0, 0, 0, 0.5);
+    --cal-mark-none-bg: color-mix(in srgb, rgba(0, 0, 0, 0.5) 14%, transparent);
+    --cal-mark-none-border: color-mix(in srgb, rgba(0, 0, 0, 0.5) 38%, transparent);
+    --cal-week-digest-fg: #7e22ce;
+    --cal-week-digest-bg: color-mix(in srgb, #a855f7 16%, var(--bg));
+    --cal-week-digest-border: color-mix(in srgb, #a855f7 58%, var(--border));
+    --cal-week-stale-bg: color-mix(in srgb, #f97316 14%, #a855f7 10%);
+    --cal-week-stale-border: color-mix(in srgb, #f97316 62%, #a855f7 34%);
+    --cal-month-digest-fg: #0f766e;
+    --cal-month-digest-border: color-mix(in srgb, #14b8a6 58%, var(--border));
+    --cal-month-stale-bg: color-mix(in srgb, #f97316 14%, var(--bg));
+    --cal-month-stale-border: color-mix(in srgb, #f97316 62%, #14b8a6 34%);
+    --cal-dot-daily: #2563eb;
+    --cal-dot-stale: #ea580c;
+    --cal-dot-missing: #d97706;
+    --cal-dot-weekly: #9333ea;
+    --cal-dot-monthly: #0d9488;
+  }
+}
+
+[data-theme="light"] .report-cal-pane {
+  --cal-cell-border: #c7c7cc;
+  --cal-mark-daily-fg: #1d4ed8;
+  --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 22%, transparent);
+  --cal-mark-stale-fg: #c2410c;
+  --cal-mark-stale-bg: color-mix(in srgb, #f97316 24%, transparent);
+  --cal-mark-stale-border: color-mix(in srgb, #f97316 58%, transparent);
+  --cal-mark-missing-fg: #b45309;
+  --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 22%, transparent);
+  --cal-mark-missing-border: color-mix(in srgb, #f59e0b 62%, transparent);
+  --cal-mark-none-fg: rgba(0, 0, 0, 0.5);
+  --cal-mark-none-bg: color-mix(in srgb, rgba(0, 0, 0, 0.5) 14%, transparent);
+  --cal-mark-none-border: color-mix(in srgb, rgba(0, 0, 0, 0.5) 38%, transparent);
+  --cal-week-digest-fg: #7e22ce;
+  --cal-week-digest-bg: color-mix(in srgb, #a855f7 16%, var(--bg));
+  --cal-week-digest-border: color-mix(in srgb, #a855f7 58%, var(--border));
+  --cal-week-stale-bg: color-mix(in srgb, #f97316 14%, #a855f7 10%);
+  --cal-week-stale-border: color-mix(in srgb, #f97316 62%, #a855f7 34%);
+  --cal-month-digest-fg: #0f766e;
+  --cal-month-digest-border: color-mix(in srgb, #14b8a6 58%, var(--border));
+  --cal-month-stale-bg: color-mix(in srgb, #f97316 14%, var(--bg));
+  --cal-month-stale-border: color-mix(in srgb, #f97316 62%, #14b8a6 34%);
+  --cal-dot-daily: #2563eb;
+  --cal-dot-stale: #ea580c;
+  --cal-dot-missing: #d97706;
+  --cal-dot-weekly: #9333ea;
+  --cal-dot-monthly: #0d9488;
 }
 
 .cal-detail {
@@ -4435,6 +4549,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   padding: 2px 8px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
@@ -4475,14 +4590,16 @@ code {
   --active-index: 0;
   --segment-inset: 2px;
   position: relative;
-  display: inline-flex;
+  display: flex;
   width: 100%;
+  min-width: 0;
   padding: var(--segment-inset);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--color-secondary-bg);
   isolation: isolate;
+  container-type: inline-size;
 }
 
 .sidebar-project-filter-thumb {
@@ -4520,15 +4637,27 @@ code {
 .sidebar-project-filter-segmented button {
   position: relative;
   z-index: 1;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   appearance: none;
   border: none;
   background: transparent;
   color: var(--muted);
   padding: 4px 6px;
   font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: color 0.18s ease;
+}
+
+@container (max-width: 128px) {
+  .sidebar-project-filter-segmented button {
+    padding: 4px 2px;
+    font-size: 10px;
+  }
 }
 
 .sidebar-project-filter-segmented button:hover {

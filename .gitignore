@@ -28,3 +28,7 @@ npm-debug.log*
 # IDE local config
 .idea/
 .cursor/
+
+# Vendored doc repos (track content only, not nested .git)
+agent-resume-desktop-doc/.git/
+agent-resume-panel-doc/.git/

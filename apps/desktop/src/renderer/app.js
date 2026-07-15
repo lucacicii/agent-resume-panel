@@ -3883,6 +3883,14 @@ function closeAllSheets() {
 
 
 
+/** Locale-independent single-glyph calendar cell / period badges. */
+const CAL_MARK = Object.freeze({
+  daily: "D",
+  stale: "↻",
+  missing: "+",
+  none: "—",
+});
+
 /** @type {{ year: number, month: number }} month is 0-based */
 let calView = (() => {
   const n = new Date();
@@ -4897,10 +4905,20 @@ function renderCalendar() {
     if (staleW) weekBtn.classList.add("has-digest-stale");
     if (isFutureWeek) weekBtn.classList.add("future");
     if (generatingPeriodKey === `weekly:${wLabel}`) weekBtn.classList.add("generating");
-    const staleBadge = staleW
-      ? `<span class="cal-period-stale" title="${escapeHtml(staleW.message || t("desktop.report.weeklyStaleShort"))}">${escapeHtml(t("desktop.report.markStale"))}</span>`
-      : "";
-    weekBtn.innerHTML = `<span class="cal-week-label">${escapeHtml(weekShortLabel)}</span>${staleBadge}`;
+    const weekLabelEl = document.createElement("span");
+    weekLabelEl.className = "cal-week-label";
+    weekLabelEl.textContent = weekShortLabel;
+    const weekMarks = document.createElement("div");
+    weekMarks.className = "marks";
+    if (staleW) {
+      const staleMark = document.createElement("span");
+      staleMark.className = "mark daily-stale";
+      staleMark.setAttribute("aria-hidden", "true");
+      staleMark.textContent = CAL_MARK.stale;
+      weekMarks.appendChild(staleMark);
+    }
+    weekBtn.appendChild(weekLabelEl);
+    weekBtn.appendChild(weekMarks);
     weekBtn.title = isFutureWeek
       ? t("desktop.report.futureWeek", wLabel)
       : staleW
@@ -4933,7 +4951,7 @@ function renderCalendar() {
     );
     monthBtn.disabled = isFutureMonth;
     const monthStaleBadge = staleM
-      ? `<span class="cal-period-stale" title="${escapeHtml(staleM.message || t("desktop.report.monthlyStaleShort"))}">${escapeHtml(t("desktop.report.markStale"))}</span>`
+      ? `<span class="cal-period-stale" aria-hidden="true">${escapeHtml(CAL_MARK.stale)}</span>`
       : "";
     monthBtn.innerHTML = isFutureMonth
       ? escapeHtml(t("desktop.report.monthFuture"))
@@ -4959,9 +4977,9 @@ function hasDailyDigest(dayKey) {
 /**
  * Day-cell status tags (mutually exclusive):
  * - daily (D): digest up to date
- * - daily-stale (更): digest exists but sessions changed
- * - daily-missing (未): has sessions, no digest
- * - no-session (无): no sessions in catalog for this day
+ * - daily-stale (↻): digest exists but sessions changed
+ * - daily-missing (+): has sessions, no digest
+ * - no-session (—): no sessions in catalog for this day
  * Spinner (generating) is separate — no text tag while running.
  * Outside-month / future days: no tag.
  * @param {HTMLElement} marks
@@ -4976,7 +4994,7 @@ function appendDayCellMark(marks, ctx) {
     const m = document.createElement("span");
     if (stale) {
       m.className = "mark daily-stale";
-      m.textContent = t("desktop.report.markStale");
+      m.textContent = CAL_MARK.stale;
       const parts = [];
       if (stale.newSessionCount > 0) parts.push(t("desktop.report.newSessions", stale.newSessionCount));
       if (stale.updatedSessionCount > 0) {
@@ -4985,7 +5003,7 @@ function appendDayCellMark(marks, ctx) {
       m.title = t("desktop.report.dailyStaleTitle", parts.join(", ") || t("desktop.report.sessionChanged"), dayKey);
     } else {
       m.className = "mark daily";
-      m.textContent = "D";
+      m.textContent = CAL_MARK.daily;
       m.title = dailyEntry.title || dailyEntry.id || t("desktop.report.dailyUpToDate", dayKey);
     }
     marks.appendChild(m);
@@ -4995,7 +5013,7 @@ function appendDayCellMark(marks, ctx) {
   if (calMonthSessionDays.has(dayKey)) {
     const m = document.createElement("span");
     m.className = "mark daily-missing";
-    m.textContent = t("desktop.report.markMissing");
+    m.textContent = CAL_MARK.missing;
     m.title = t("desktop.report.dailyMissingTitle", dayKey);
     marks.appendChild(m);
     return;
@@ -5003,7 +5021,7 @@ function appendDayCellMark(marks, ctx) {
 
   const m = document.createElement("span");
   m.className = "mark no-session";
-  m.textContent = t("desktop.report.markNone");
+  m.textContent = CAL_MARK.none;
   m.title = t("desktop.report.noSessionTitle", dayKey);
   marks.appendChild(m);
 }
