@@ -46,7 +46,7 @@ export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" |
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
 
 export interface WorkbenchSettings {
-  /** Scratch directory for temporary new sessions. Default: {panelHome}/scratch */
+  /** Scratch directory for temporary new sessions. Default: {panelHome}/.desktop/scratch */
   scratchDir?: string;
   defaultNewSessionProvider?: AgentProvider;
   /** Workbench ⌘T / Ctrl+T shortcut action. Default newTerminal. */

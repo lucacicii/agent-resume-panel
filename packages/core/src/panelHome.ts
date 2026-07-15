@@ -30,3 +30,8 @@ export function desktopDataDir(panelHome: string): string {
 export function desktopDbPath(panelHome: string): string {
   return path.join(desktopDataDir(panelHome), "desktop.db");
 }
+
+/** Desktop workbench scratch sessions: `<panelHome>/.desktop/scratch`. */
+export function defaultScratchDir(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "scratch");
+}

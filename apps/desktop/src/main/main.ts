@@ -43,6 +43,7 @@ import {
   resolveProjectEditor,
   resolvePanelHome,
   resolvePreviewHomes,
+  resolveScratchBaseDir,
   runDailyDigest,
   needsDailyDigestRefresh,
   needsWeeklyDigestRefresh,
@@ -459,9 +460,7 @@ function registerIpc(): void {
 
   safeHandle("workbench:createScratchDir", async () => {
     const settings = await loadSettings();
-    const home = effectivePanelHome(settings);
-    const scratchBase = settings.workbench?.scratchDir?.trim() || path.join(home, "scratch");
-    const base = expandHome(scratchBase);
+    const base = resolveScratchBaseDir(settings);
     const dir = path.join(base, `session-${Date.now()}`);
     await fs.mkdir(dir, { recursive: true });
     return dir;

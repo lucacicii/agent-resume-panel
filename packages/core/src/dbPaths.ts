@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ensureCatalogSyncStateDesktop, ensureDesktopDbSchema, ensureExtensionCatalogSchema } from "./catalog/db";
 import { desktopDbPath } from "./panelHome";
+import { migrateLegacyScratchDir } from "./scratchDir";
 import type { PanelSettings } from "./settings/types";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "./settings/store";
 
@@ -36,6 +37,7 @@ export async function preparePanelDatabases(
 ): Promise<PanelDbPaths> {
   const paths = resolvePanelDbPaths(settings, panelHomeHint);
   await ensurePanelDatabases(paths);
+  await migrateLegacyScratchDir(settings, panelHomeHint);
   return paths;
 }
 

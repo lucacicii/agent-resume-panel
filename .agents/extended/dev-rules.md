@@ -25,7 +25,7 @@
 
 ## Data Contracts
 
-- `~/.agent-resume-panel` is the default shared panel home for both the extension and Desktop. It contains `catalog.db`, `notes/`, `settings.json` (extension LLM bridge), `settings.desktop.json` (Desktop config), and `acp/` (extension-only). Preserve the configurable panel-home flow.
+- `~/.agent-resume-panel` is the default shared panel home for both the extension and Desktop. It contains `catalog.db`, `notes/`, `settings.json` (extension LLM bridge), `settings.desktop.json` (Desktop config), and `acp/` (extension-only). Desktop-private runtime data lives under `.desktop/` (`desktop.db`, workbench `scratch/`). Preserve the configurable panel-home flow.
 - `catalog.db` shared tables are owned by the frozen extension schema in `src/catalog/db.ts` (`sessions`, `sync_state`, `projects`, `session_gtd`, legacy note tables, `notes`, `catalog_meta`). Desktop-only tables (`report_*`, `agent_*`, vector index, usage, scheduler) are migrated only through `ensureDesktopCatalogSchema` in `@agent-resume/core`.
 - Catalog records are indexes over provider-owned local transcripts. Do not turn a catalog hide/remove action into deletion of a provider's native session data.
 - Extension settings stay in VS Code `agentResume.*` (+ SecretStorage). Desktop settings live in `settings.desktop.json` under the same `panelHome`.

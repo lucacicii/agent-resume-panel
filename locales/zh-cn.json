@@ -381,7 +381,7 @@
   "desktop.settings.apiKey": "API Key",
   "desktop.settings.apiKeyOptional": "API Key（可选）",
   "desktop.settings.appData": "应用数据",
-  "desktop.settings.appDataFootnote": "catalog.db、notes/ 与 .desktop/desktop.db 均存放在 Panel home 下。",
+  "desktop.settings.appDataFootnote": "catalog.db、notes/ 与 .desktop/（desktop.db、scratch/）均存放在 Panel home 下。",
   "desktop.settings.appearance": "外观",
   "desktop.settings.backfillCallout": "扫描 catalog 全部 session 日期，按日→周→月批量生成。多次 LLM 调用，可能产生费用且耗时较长。",
   "desktop.settings.backfillMaxDays": "最多天数",
