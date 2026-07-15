@@ -3,6 +3,9 @@ node_modules/
 # Build output
 out/
 dist/
+apps/desktop/release/
+apps/desktop/.dev-app-stamp
+apps/desktop/.electron-zips/
 
 # Packaged VS Code extension artifacts
 *.vsix

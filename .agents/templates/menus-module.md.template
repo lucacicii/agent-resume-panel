@@ -1,0 +1,15 @@
+# <Module Name> Feature Map
+
+> Parent index: `.agents/menus-index.md`
+
+## Feature Locations
+
+| User-visible name or keywords | Code path | Notes |
+| --- | --- | --- |
+| _Add feature_ | `<path>` | _Add dependencies, entry points, or risks_ |
+
+## Related Code
+
+| Name | Path | Reuse or contract notes |
+| --- | --- | --- |
+| _Add component, service, or test_ | `<path>` | _Add notes_ |

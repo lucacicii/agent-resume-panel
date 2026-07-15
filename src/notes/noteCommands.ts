@@ -153,6 +153,12 @@ export async function newNoteFromNotesViewCommand(
 ): Promise<void> {
   if (node && typeof node === "object" && "kind" in node) {
     const n = node as NotesTreeNode;
+    if (n.kind === "libraryRoot") {
+      const created = await notesStore.createLibraryNote();
+      await openNoteRecord(notesStore, created);
+      onChanged?.();
+      return;
+    }
     if (n.kind === "project") {
       const created = await notesStore.createProjectNote(n.projectPath);
       await openNoteRecord(notesStore, created);
@@ -173,12 +179,20 @@ export async function newNoteFromNotesViewCommand(
 
   const choice = await vscode.window.showQuickPick(
     [
+      { label: t("dialog.newNoteKindLibrary"), noteKind: "library" as const },
       { label: t("dialog.newNoteKindProject"), noteKind: "project" as const },
       { label: t("dialog.newNoteKindSession"), noteKind: "session" as const }
     ],
     { title: t("dialog.newNoteTitle") }
   );
   if (!choice) {
+    return;
+  }
+
+  if (choice.noteKind === "library") {
+    const created = await notesStore.createLibraryNote();
+    await openNoteRecord(notesStore, created);
+    onChanged?.();
     return;
   }
 
@@ -285,6 +299,9 @@ async function resolveNoteOwnerForCommand(
 ): Promise<NoteOwner | undefined> {
   if (node && typeof node === "object" && "kind" in node) {
     const n = node as NotesTreeNode;
+    if (n.kind === "libraryRoot") {
+      return { scope: "library" };
+    }
     if (n.kind === "project") {
       return { scope: "project", projectPath: n.projectPath };
     }
@@ -298,6 +315,9 @@ async function resolveNoteOwnerForCommand(
     }
     if (n.kind === "note") {
       const note = n.note;
+      if (note.scope === "library") {
+        return { scope: "library" };
+      }
       if (note.scope === "project" && note.projectPath) {
         return { scope: "project", projectPath: note.projectPath };
       }
@@ -314,6 +334,7 @@ async function resolveNoteOwnerForCommand(
 
   const choice = await vscode.window.showQuickPick(
     [
+      { label: t("dialog.newNoteKindLibrary"), noteKind: "library" as const },
       { label: t("dialog.newNoteKindProject"), noteKind: "project" as const },
       { label: t("dialog.newNoteKindSession"), noteKind: "session" as const }
     ],
@@ -321,6 +342,10 @@ async function resolveNoteOwnerForCommand(
   );
   if (!choice) {
     return undefined;
+  }
+
+  if (choice.noteKind === "library") {
+    return { scope: "library" };
   }
 
   if (choice.noteKind === "project") {
@@ -335,6 +360,78 @@ async function resolveNoteOwnerForCommand(
     return { scope: "project", projectPath: picked.path };
   }
 
+  const sessions = tree.getSessions();
+  const picked = await vscode.window.showQuickPick(
+    sessions.map((s) => ({
+      label: s.title,
+      description: `${s.provider} · ${tree.getProjectDisplayName(s.projectPath)}`,
+      session: s
+    })),
+    { title: t("dialog.pickSessionForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+  );
+  if (!picked) {
+    return undefined;
+  }
+  return {
+    scope: "session",
+    provider: picked.session.provider,
+    sessionId: picked.session.id,
+    projectPath: picked.session.projectPath
+  };
+}
+
+export async function moveNoteCommand(
+  notesStore: NotesStore,
+  tree: SessionTreeProvider,
+  notesTree: NotesTreeProvider,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const note =
+    node && typeof node === "object" && "kind" in node && (node as NotesTreeNode).kind === "note"
+      ? (node as Extract<NotesTreeNode, { kind: "note" }>).note
+      : undefined;
+  if (!note || note.filename === "todolist.md") {
+    return;
+  }
+
+  const owner = await pickNoteOwnerTarget(tree);
+  if (!owner) {
+    return;
+  }
+
+  const updated = await notesStore.moveNote(note.noteId, owner);
+  await openNoteRecord(notesStore, updated);
+  onChanged?.();
+  void notesTree;
+}
+
+async function pickNoteOwnerTarget(tree: SessionTreeProvider): Promise<NoteOwner | undefined> {
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: t("dialog.newNoteKindLibrary"), noteKind: "library" as const },
+      { label: t("dialog.newNoteKindProject"), noteKind: "project" as const },
+      { label: t("dialog.newNoteKindSession"), noteKind: "session" as const }
+    ],
+    { title: t("dialog.moveNoteTitle") }
+  );
+  if (!choice) {
+    return undefined;
+  }
+  if (choice.noteKind === "library") {
+    return { scope: "library" };
+  }
+  if (choice.noteKind === "project") {
+    const projects = [...new Set(tree.getSessions().map((s) => s.projectPath).filter(Boolean))];
+    const picked = await vscode.window.showQuickPick(
+      projects.map((p) => ({ label: tree.getProjectDisplayName(p), description: p, path: p })),
+      { title: t("dialog.pickProjectForNote"), placeHolder: t("dialog.pickNotePlaceholder") }
+    );
+    if (!picked) {
+      return undefined;
+    }
+    return { scope: "project", projectPath: picked.path };
+  }
   const sessions = tree.getSessions();
   const picked = await vscode.window.showQuickPick(
     sessions.map((s) => ({

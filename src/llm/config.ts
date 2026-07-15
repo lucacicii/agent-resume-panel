@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { DEFAULT_LLM_OUTPUT_LANGUAGE, LlmOutputLanguage, normalizeOutputLanguage } from "./languages";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
+import {
+  loadPanelSettingsFile,
+  loadPanelSettingsFileSync,
+  readLlmSettingWithPanelFallback
+} from "../settings/panelSettingsFile";
 
 export interface LlmConfig {
   baseUrl: string;
@@ -30,10 +35,26 @@ export function buildChatCompletionsUrl(baseUrl: string): string {
   return `${normalized}/chat/completions`;
 }
 
+/**
+ * API key resolution order:
+ * 1) overrides
+ * 2) VS Code SecretStorage
+ * 3) panelHome settings.json (shared with Desktop)
+ * 4) env AGENT_RESUME_LLM_API_KEY
+ */
 export async function getLlmApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
   const stored = await context.secrets.get(LLM_API_KEY_SECRET);
   if (stored?.trim()) {
     return stored.trim();
+  }
+
+  try {
+    const panel = await loadPanelSettingsFile();
+    if (panel.llm.apiKey?.trim()) {
+      return panel.llm.apiKey.trim();
+    }
+  } catch {
+    // ignore unreadable panel settings
   }
 
   const envKey = process.env.AGENT_RESUME_LLM_API_KEY?.trim();
@@ -49,20 +70,55 @@ export async function getLlmConfig(
     return undefined;
   }
 
+  let panelLlm: { baseUrl?: string; model?: string; outputLanguage?: string; maxContextChars?: number } = {};
+  try {
+    const panel = await loadPanelSettingsFile();
+    panelLlm = panel.llm;
+  } catch {
+    // ignore
+  }
+
   const baseUrl = normalizeBaseUrl(
-    overrides?.baseUrl ?? readAgentResumeSetting("llm.baseUrl", "https://api.openai.com/v1")
+    overrides?.baseUrl ??
+      String(
+        readLlmSettingWithPanelFallback(
+          "llm.baseUrl",
+          panelLlm.baseUrl,
+          "https://api.openai.com/v1"
+        )
+      )
   );
-  const model = (overrides?.model ?? readAgentResumeSetting("llm.model", "gpt-4o-mini")).trim();
+  const model = (
+    overrides?.model ??
+    String(readLlmSettingWithPanelFallback("llm.model", panelLlm.model, "gpt-4o-mini"))
+  ).trim();
   const outputLanguage = normalizeOutputLanguage(
-    overrides?.outputLanguage ?? readAgentResumeSetting("llm.outputLanguage", DEFAULT_LLM_OUTPUT_LANGUAGE)
+    overrides?.outputLanguage ??
+      String(
+        readLlmSettingWithPanelFallback(
+          "llm.outputLanguage",
+          panelLlm.outputLanguage,
+          DEFAULT_LLM_OUTPUT_LANGUAGE
+        )
+      )
   );
-  const maxContextChars = overrides?.maxContextChars ?? readAgentResumeSetting("llm.maxContextChars", 120000);
+  const maxContextChars =
+    overrides?.maxContextChars ??
+    Number(
+      readLlmSettingWithPanelFallback("llm.maxContextChars", panelLlm.maxContextChars, 120000)
+    );
 
   if (!baseUrl || !model) {
     return undefined;
   }
 
-  return { baseUrl, model, outputLanguage, maxContextChars, apiKey };
+  return {
+    baseUrl,
+    model,
+    outputLanguage,
+    maxContextChars: Number.isFinite(maxContextChars) ? maxContextChars : 120000,
+    apiKey
+  };
 }
 
 export async function isLlmConfigured(context: vscode.ExtensionContext): Promise<boolean> {
@@ -70,9 +126,22 @@ export async function isLlmConfigured(context: vscode.ExtensionContext): Promise
 }
 
 export function getLlmOutputLanguage(): LlmOutputLanguage {
-  return normalizeOutputLanguage(
-    readAgentResumeSetting("llm.outputLanguage", DEFAULT_LLM_OUTPUT_LANGUAGE)
-  );
+  try {
+    const panel = loadPanelSettingsFileSync();
+    return normalizeOutputLanguage(
+      String(
+        readLlmSettingWithPanelFallback(
+          "llm.outputLanguage",
+          panel.llm.outputLanguage,
+          DEFAULT_LLM_OUTPUT_LANGUAGE
+        )
+      )
+    );
+  } catch {
+    return normalizeOutputLanguage(
+      readAgentResumeSetting("llm.outputLanguage", DEFAULT_LLM_OUTPUT_LANGUAGE)
+    );
+  }
 }
 
 export function readAgentResumeSetting<T>(key: string, defaultValue: T): T {

@@ -32,6 +32,11 @@ import {
   SettingField,
   SettingSection
 } from "./settingsSchema";
+import {
+  loadPanelSettingsFile,
+  readLlmSettingWithPanelFallback,
+  upsertPanelLlmFields
+} from "./panelSettingsFile";
 
 export interface SettingsSnapshot {
   sections: SettingSection[];
@@ -57,14 +62,42 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
   const config = vscode.workspace.getConfiguration("agentResume");
   const values: Record<string, unknown> = {};
 
+  let panel: Awaited<ReturnType<typeof loadPanelSettingsFile>> | undefined;
+  try {
+    panel = await loadPanelSettingsFile();
+  } catch {
+    panel = undefined;
+  }
+
   for (const key of getAllSettingKeys()) {
     const field = findSettingField(key);
-    if (field) {
+    if (!field) {
+      continue;
+    }
+
+    if (key === "llm.baseUrl") {
+      values[key] = readLlmSettingWithPanelFallback(key, panel?.llm.baseUrl, field.default as string);
+    } else if (key === "llm.model") {
+      values[key] = readLlmSettingWithPanelFallback(key, panel?.llm.model, field.default as string);
+    } else if (key === "llm.outputLanguage") {
+      values[key] = readLlmSettingWithPanelFallback(
+        key,
+        panel?.llm.outputLanguage,
+        field.default as string
+      );
+    } else if (key === "llm.maxContextChars") {
+      values[key] = readLlmSettingWithPanelFallback(
+        key,
+        panel?.llm.maxContextChars,
+        field.default as number
+      );
+    } else {
       values[key] = readFieldValue(field);
     }
   }
 
   const apiKey = await context.secrets.get(LLM_API_KEY_SECRET);
+  const panelKey = panel?.llm.apiKey?.trim();
   const envKey = process.env.AGENT_RESUME_LLM_API_KEY?.trim();
   const mainActions = loadMainActions(config);
   const itemOrder = loadItemOrder(config);
@@ -74,7 +107,7 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
   return {
     sections: getSettingSections(),
     values,
-    llmApiKeyConfigured: Boolean(apiKey?.trim() || envKey),
+    llmApiKeyConfigured: Boolean(apiKey?.trim() || panelKey || envKey),
     projectMenu: buildProjectMenuEditorState(mainActions, itemOrder),
     sessionMenu: buildSessionMenuEditorState(sessionMainActions, sessionItemOrder)
   };
@@ -93,6 +126,13 @@ export async function applySettingsPatch(
       await setLlmApiKey(context, apiKey);
     }
   }
+
+  const llmPanelPatch: {
+    baseUrl?: string;
+    model?: string;
+    outputLanguage?: string;
+    maxContextChars?: number;
+  } = {};
 
   if ("projectMenu.mainActions" in patch) {
     const raw = patch["projectMenu.mainActions"];
@@ -163,6 +203,30 @@ export async function applySettingsPatch(
 
     const normalized = normalizeValue(field, value);
     await config.update(key, normalized, vscode.ConfigurationTarget.Global);
+
+    if (key === "llm.baseUrl" && typeof normalized === "string") {
+      llmPanelPatch.baseUrl = normalized;
+    } else if (key === "llm.model" && typeof normalized === "string") {
+      llmPanelPatch.model = normalized;
+    } else if (key === "llm.outputLanguage" && typeof normalized === "string") {
+      llmPanelPatch.outputLanguage = normalized;
+    } else if (key === "llm.maxContextChars" && typeof normalized === "number") {
+      llmPanelPatch.maxContextChars = normalized;
+    }
+  }
+
+  // Keep ~/.agent-resume-panel/settings.json in sync for Desktop + core.
+  if (
+    llmPanelPatch.baseUrl !== undefined ||
+    llmPanelPatch.model !== undefined ||
+    llmPanelPatch.outputLanguage !== undefined ||
+    llmPanelPatch.maxContextChars !== undefined
+  ) {
+    try {
+      await upsertPanelLlmFields(llmPanelPatch);
+    } catch {
+      // Non-fatal: VS Code settings already applied.
+    }
   }
 }
 
@@ -172,10 +236,20 @@ export async function setLlmApiKey(context: vscode.ExtensionContext, apiKey: str
     throw new Error(t("error.settingsApiKeyEmpty"));
   }
   await context.secrets.store(LLM_API_KEY_SECRET, trimmed);
+  try {
+    await upsertPanelLlmFields({ apiKey: trimmed });
+  } catch {
+    // Secret still stored; panel file sync is best-effort.
+  }
 }
 
 export async function clearLlmApiKey(context: vscode.ExtensionContext): Promise<void> {
   await context.secrets.delete(LLM_API_KEY_SECRET);
+  try {
+    await upsertPanelLlmFields({ clearApiKey: true });
+  } catch {
+    // ignore
+  }
 }
 
 function normalizeValue(field: SettingField, value: unknown): unknown {

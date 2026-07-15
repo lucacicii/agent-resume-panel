@@ -7,6 +7,9 @@ const root = join(import.meta.dirname, "..");
 const srcDir = join(root, "src");
 const mediaDir = join(root, "media");
 const localesDir = join(root, "locales");
+const desktopRendererDir = join(root, "apps/desktop/src/renderer");
+const desktopMainDir = join(root, "apps/desktop/src/main");
+const desktopIndexHtml = join(desktopRendererDir, "index.html");
 
 function walk(dir, filter) {
   const files = [];
@@ -29,6 +32,26 @@ for (const file of walk(srcDir, (path) => path.endsWith(".ts"))) {
   for (const match of content.matchAll(keyPattern)) {
     usedKeys.add(match[1]);
   }
+}
+
+for (const file of walk(desktopRendererDir, (path) => path.endsWith(".js"))) {
+  const content = readFileSync(file, "utf8");
+  for (const match of content.matchAll(keyPattern)) {
+    usedKeys.add(match[1]);
+  }
+}
+
+for (const file of walk(desktopMainDir, (path) => path.endsWith(".ts"))) {
+  const content = readFileSync(file, "utf8");
+  for (const match of content.matchAll(keyPattern)) {
+    usedKeys.add(match[1]);
+  }
+}
+
+const indexHtml = readFileSync(desktopIndexHtml, "utf8");
+const domKeyPattern = /data-i18n(?:-placeholder|-title|-aria-label)?="([^"]+)"/g;
+for (const match of indexHtml.matchAll(domKeyPattern)) {
+  usedKeys.add(match[1]);
 }
 
 const uiStringsPath = join(srcDir, "webview", "uiStrings.ts");

@@ -102,14 +102,19 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "npm run build:core && tsc -p ./",
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs && node scripts/generate-handoff-menu-contributions.test.mjs",
     "test:notes": "node scripts/note-uri.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
     "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
-    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
+    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\"",
+    "build:core": "npm run build -w @agent-resume/core",
+    "build:desktop": "npm run build -w @agent-resume/desktop",
+    "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
+    "dev:desktop": "npm run dev -w @agent-resume/desktop",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
@@ -1689,6 +1694,11 @@
         "title": "New Note…",
         "category": "Agent Resume",
         "icon": "$(plus)"
+      },
+      {
+        "command": "agentResume.moveNote",
+        "title": "Move Note…",
+        "category": "Agent Resume"
       },
       {
         "command": "agentResume.zh-cn.newNote",
@@ -197301,9 +197311,14 @@
     }
   },
   "dependencies": {
+    "@agent-resume/core": "0.1.0",
     "@agentclientprotocol/sdk": "^1.1.0",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
     "zod": "^4.4.3"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
 }

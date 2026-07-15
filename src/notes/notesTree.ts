@@ -6,6 +6,7 @@ import { relativeTime } from "../util/relativeTime";
 import { NotesStore } from "./notesStore";
 
 export type NotesTreeNode =
+  | { kind: "libraryRoot"; notes: NoteRecord[] }
   | { kind: "projectsRoot" }
   | { kind: "sessionsRoot" }
   | { kind: "project"; projectPath: string; notes: NoteRecord[] }
@@ -72,6 +73,14 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
 
   getTreeItem(element: NotesTreeNode): vscode.TreeItem {
     switch (element.kind) {
+      case "libraryRoot": {
+        const item = new vscode.TreeItem(t("tree.notes.libraryRoot"), vscode.TreeItemCollapsibleState.Expanded);
+        item.description = `${element.notes.length}`;
+        item.iconPath = new vscode.ThemeIcon("notebook");
+        item.contextValue = "agentResume.notes.libraryRoot";
+        item.id = "agentResume.notes.libraryRoot";
+        return item;
+      }
       case "projectsRoot": {
         const item = new vscode.TreeItem(t("tree.notes.projectsRoot"), vscode.TreeItemCollapsibleState.Expanded);
         item.iconPath = new vscode.ThemeIcon("folder-library");
@@ -157,7 +166,18 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
       if (!notes.length) {
         return [this.filterText ? { kind: "filterEmpty" } : { kind: "empty" }];
       }
-      return [{ kind: "projectsRoot" }, { kind: "sessionsRoot" }];
+      const libraryNotes = notes
+        .filter((note) => note.scope === "library")
+        .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+      return [
+        { kind: "libraryRoot", notes: libraryNotes },
+        { kind: "projectsRoot" },
+        { kind: "sessionsRoot" }
+      ];
+    }
+
+    if (element.kind === "libraryRoot") {
+      return element.notes.map((note) => ({ kind: "note" as const, note }));
     }
 
     if (element.kind === "projectsRoot") {
