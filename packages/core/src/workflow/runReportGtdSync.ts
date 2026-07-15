@@ -1,15 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { ensureCatalogSchema } from "../catalog/db";
 import { getSessionById } from "../catalog/query";
 import { AgentProvider } from "../catalog/types";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { getSessionGtdStatus, setSessionGtdStatusWithAudit } from "../gtd/store";
 import { GtdApplyItem, GtdProposal, GtdStatus, isGtdStatus } from "../gtd/types";
 import { runDailyDigest } from "../report/daily";
 import { localDayRange } from "../report/period";
 import { getReportJobStatus, upsertReportJob } from "../report/store";
 import { renderSessionTodolistMarkdown, writeSessionTodolistMd } from "../notes/todolist";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { analyzeReportForGtd } from "./analyzeGtd";
 
 export interface RunReportGtdSyncOptions {
@@ -80,24 +79,17 @@ export async function previewReportGtdSync(
   options: RunReportGtdSyncOptions = {}
 ): Promise<PreviewReportGtdSyncResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
 
   const skipped: string[] = [];
   const warnings: string[] = [];
   let ensureDigest: PreviewReportGtdSyncResult["ensureDigest"] = { ran: false };
 
   const scoped = Boolean(options.reportIds?.length);
-  // Scoped analysis uses an existing digest; do not auto-run today's daily unless asked.
   if (!scoped && options.ensureDigests !== false) {
     const day = localDayRange();
-    const status = await getReportJobStatus(dbPath, day.jobKey);
+    const status = await getReportJobStatus(paths.desktopDb, day.jobKey);
     if (status?.status !== "ok") {
       await runDailyDigest({ panelHome, date: day.label });
       ensureDigest = { ran: true, jobKey: day.jobKey };
@@ -105,7 +97,8 @@ export async function previewReportGtdSync(
   }
 
   const { proposals, warnings: analyzeWarnings } = await analyzeReportForGtd({
-    dbPath,
+    catalogDb: paths.catalogDb,
+    desktopDb: paths.desktopDb,
     settings,
     reportIds: options.reportIds
   });
@@ -113,12 +106,12 @@ export async function previewReportGtdSync(
 
   const items: GtdPreviewItem[] = [];
   for (const p of proposals) {
-    const session = await getSessionById(dbPath, p.provider as AgentProvider, p.sessionId);
+    const session = await getSessionById(paths.catalogDb, p.provider as AgentProvider, p.sessionId);
     if (!session) {
       skipped.push(`missing session ${p.provider}/${p.sessionId}`);
       continue;
     }
-    const previous = (await getSessionGtdStatus(dbPath, session.provider, session.id)) ?? null;
+    const previous = (await getSessionGtdStatus(paths.catalogDb, session.provider, session.id)) ?? null;
     const todolistPreview = renderSessionTodolistMarkdown({
       provider: session.provider,
       sessionId: session.id,
@@ -162,17 +155,11 @@ export async function applyReportGtdSync(
   options: ApplyReportGtdSyncOptions
 ): Promise<ApplyReportGtdSyncResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
 
   const jobKey = `gtd_apply:${new Date().toISOString()}`;
-  await upsertReportJob(dbPath, jobKey, "running");
+  await upsertReportJob(paths.desktopDb, jobKey, "running");
 
   const applied: GtdApplyItem[] = [];
   const failed: Array<{ key: string; error: string }> = [];
@@ -186,7 +173,7 @@ export async function applyReportGtdSync(
           continue;
         }
         const gtd = raw.gtd as GtdStatus;
-        const session = await getSessionById(dbPath, raw.provider as AgentProvider, raw.sessionId);
+        const session = await getSessionById(paths.catalogDb, raw.provider as AgentProvider, raw.sessionId);
         if (!session) {
           failed.push({ key, error: "session not found" });
           continue;
@@ -195,9 +182,9 @@ export async function applyReportGtdSync(
         const previous =
           raw.previousGtd !== undefined
             ? raw.previousGtd
-            : (await getSessionGtdStatus(dbPath, session.provider, session.id)) ?? null;
+            : (await getSessionGtdStatus(paths.catalogDb, session.provider, session.id)) ?? null;
 
-        await setSessionGtdStatusWithAudit(dbPath, {
+        await setSessionGtdStatusWithAudit(paths.catalogDb, paths.desktopDb, {
           provider: session.provider,
           sessionId: session.id,
           status: gtd,
@@ -209,7 +196,7 @@ export async function applyReportGtdSync(
 
         const todolistPath = await writeSessionTodolistMd({
           panelHome,
-          dbPath,
+          dbPath: paths.catalogDb,
           provider: session.provider,
           sessionId: session.id,
           title: raw.title || session.title,
@@ -241,11 +228,11 @@ export async function applyReportGtdSync(
       }
     }
 
-    await upsertReportJob(dbPath, jobKey, failed.length && !applied.length ? "error" : "ok");
+    await upsertReportJob(paths.desktopDb, jobKey, failed.length && !applied.length ? "error" : "ok");
     return { applied, failed, jobKey };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertReportJob(dbPath, jobKey, "error", message);
+    await upsertReportJob(paths.desktopDb, jobKey, "error", message);
     throw error;
   }
 }

@@ -1,11 +1,11 @@
 import {
-  catalogDbFromSettings,
   effectivePanelHome,
   embeddingConfigFromSettings,
   ensureNotesVectorIndex,
   loadSettings,
   type NoteIndexProgressEvent
 } from "@agent-resume/core";
+import { loadPanelDbPaths } from "./panelDatabases";
 
 const NOTES_INDEX_INTERVAL_MS = 5 * 60_000;
 
@@ -53,8 +53,10 @@ async function runNotesIndex(): Promise<void> {
   if (!embedding) {
     return;
   }
+  const paths = await loadPanelDbPaths(settings);
   await ensureNotesVectorIndex({
-    dbPath: catalogDbFromSettings(settings),
+    catalogDb: paths.catalogDb,
+    desktopDb: paths.desktopDb,
     panelHome: effectivePanelHome(settings),
     embedding,
     onProgress: (event) => notifyProgress?.(event)

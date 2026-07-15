@@ -1,5 +1,6 @@
 import { setSessionSummaryInCatalog } from "../catalog/mutations";
 import { AgentSession } from "../catalog/types";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";
@@ -51,6 +52,8 @@ export async function ensureSummariesForSessions(
     );
   }
   const llm: LlmRuntimeConfig = llmConfig;
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const desktopDb = paths.desktopDb;
 
   const homes = resolvePreviewHomes(options.settings, options.panelHome);
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 2, 6));
@@ -114,7 +117,8 @@ export async function ensureSummariesForSessions(
 
       try {
         const summary = await summarizeOneSession({
-          dbPath: options.dbPath,
+          catalogDb: options.dbPath,
+          desktopDb,
           session,
           llm,
           homes,
@@ -159,7 +163,8 @@ export async function ensureSummariesForSessions(
 }
 
 async function summarizeOneSession(input: {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   session: AgentSession;
   llm: LlmRuntimeConfig;
   homes: PreviewHomes;
@@ -173,7 +178,7 @@ async function summarizeOneSession(input: {
 
   try {
     const result = await summarizeSessionMessages(input.llm, preview.messages);
-    await recordLlmUsage(input.dbPath, {
+    await recordLlmUsage(input.desktopDb, {
       kind: "chat",
       source: "summarize",
       jobKey: input.jobKey,
@@ -183,7 +188,7 @@ async function summarizeOneSession(input: {
       ok: true
     });
     await setSessionSummaryInCatalog(
-      input.dbPath,
+      input.catalogDb,
       input.session.provider,
       input.session.id,
       input.language,
@@ -191,7 +196,7 @@ async function summarizeOneSession(input: {
     );
     return result.summary;
   } catch (error) {
-    await recordLlmUsage(input.dbPath, {
+    await recordLlmUsage(input.desktopDb, {
       kind: "chat",
       source: "summarize",
       jobKey: input.jobKey,

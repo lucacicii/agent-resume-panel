@@ -12,7 +12,8 @@ export interface EnsureLevelStats {
 }
 
 export interface EnsureDailiesOptions {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   startMs: number;
   endMs: number;
   panelHome?: string;
@@ -48,7 +49,7 @@ export async function ensureDailiesForPeriod(
     const range = localDayRange(day);
     if (onlyWithSessions) {
       const sessions = await listSessionsInRange(
-        options.dbPath,
+        options.catalogDb,
         range.startMs,
         range.endMs,
         1
@@ -60,7 +61,7 @@ export async function ensureDailiesForPeriod(
     }
 
     if (skipExisting) {
-      const existing = await getReportEntryById(options.dbPath, range.entryId);
+      const existing = await getReportEntryById(options.desktopDb, range.entryId);
       if (existing?.content?.trim()) {
         stats.skipped.push(day);
         continue;

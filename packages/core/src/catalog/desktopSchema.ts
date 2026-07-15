@@ -1,14 +1,11 @@
-/** Tables needed by Desktop workflow; compatible with extension (IF NOT EXISTS). */
-export const GTD_AND_NOTES_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS session_gtd (
-  provider TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (provider, agent_session_id)
-);
-CREATE INDEX IF NOT EXISTS idx_session_gtd_status ON session_gtd(status);
+/** Desktop-only tables and additive migrations on shared tables. */
+export const SYNC_STATE_DESKTOP_MIGRATION_SQL = `
+ALTER TABLE sync_state ADD COLUMN status TEXT;
+ALTER TABLE sync_state ADD COLUMN session_count INTEGER;
+ALTER TABLE sync_state ADD COLUMN warning TEXT;
+`;
 
+export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
@@ -21,25 +18,6 @@ CREATE TABLE IF NOT EXISTS gtd_ai_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_session ON gtd_ai_audit(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_created ON gtd_ai_audit(created_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS notes (
-  note_id TEXT PRIMARY KEY,
-  scope TEXT NOT NULL,
-  provider TEXT,
-  agent_session_id TEXT,
-  project_path TEXT,
-  filename TEXT NOT NULL,
-  rel_dir TEXT NOT NULL,
-  rel_md_path TEXT NOT NULL UNIQUE,
-  title TEXT,
-  content_preview TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  fs_mtime_ms INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
-CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
 
 CREATE TABLE IF NOT EXISTS note_chunks (
   chunk_id TEXT PRIMARY KEY,
@@ -66,17 +44,6 @@ CREATE TABLE IF NOT EXISTS note_vector_index (
   content_hash TEXT NOT NULL,
   embedding_key TEXT NOT NULL,
   indexed_at_ms INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS catalog_meta (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS projects (
-  project_path TEXT PRIMARY KEY,
-  alias TEXT NOT NULL,
-  updated_at_ms INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS llm_usage_events (
@@ -131,6 +98,7 @@ CREATE TABLE IF NOT EXISTS agent_messages (
   thread_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_agent_messages_order ON agent_messages(sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_agent_messages_thread ON agent_messages(thread_id);
 
 CREATE TABLE IF NOT EXISTS agent_note_audit (
   id TEXT PRIMARY KEY,
@@ -152,4 +120,9 @@ CREATE TABLE IF NOT EXISTS agent_note_audit (
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(created_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS catalog_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;

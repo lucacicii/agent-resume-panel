@@ -1,7 +1,8 @@
 import { chatCompletionStream } from "../llm/chat";
 import { ChatMessage } from "../llm/types";
 import { chatLlmConfigFromSettings } from "../llm/fromSettings";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { recordLlmUsage } from "../usage/store";
 import {
   buildMetaAgentSystemPrompt,
@@ -40,13 +41,14 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     );
   }
 
-  const dbPath = catalogDbFromSettings(settings, options.panelHome);
   const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const desktopDb = paths.desktopDb;
 
   const history =
     options.history && options.history.length > 0
       ? options.history.slice(-6)
-      : await listAgentMessagesForHistory(dbPath, 6, options.threadId);
+      : await listAgentMessagesForHistory(desktopDb, 6, options.threadId);
 
   options.onStream?.({ phase: "retrieving" });
 
@@ -105,13 +107,13 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
   const language = llm.outputLanguage || "zh-CN";
 
   if (options.enableTools ?? true) {
-    return runAskWithTools(options, llm, language, dbPath, panelHome, {
+    return runAskWithTools(options, llm, language, desktopDb, panelHome, {
       query,
       sourcesBlock,
       notesBlock,
       notesSummary,
       historyBlock,
-      dbPath,
+      desktopDb,
       retrieved
     });
   }
@@ -122,7 +124,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     notesBlock,
     notesSummary,
     historyBlock,
-    dbPath,
+    desktopDb,
     retrieved
   });
 }
@@ -133,7 +135,7 @@ interface AskContext {
   notesBlock: string;
   notesSummary?: string;
   historyBlock?: string;
-  dbPath: string;
+  desktopDb: string;
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>;
 }
 
@@ -172,7 +174,7 @@ async function runAskWithoutTools(
     options.signal
   );
   try {
-    await recordLlmUsage(ctx.dbPath, {
+    await recordLlmUsage(ctx.desktopDb, {
       kind: "chat",
       source: "ask",
       model: result.model,
@@ -184,14 +186,14 @@ async function runAskWithoutTools(
     // non-fatal
   }
 
-  return buildAskResult(options, ctx.dbPath, ctx.retrieved, result.content, ctx.retrieved.citations);
+  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, result.content, ctx.retrieved.citations);
 }
 
 async function runAskWithTools(
   options: AgentChatOptions,
   llm: NonNullable<ReturnType<typeof chatLlmConfigFromSettings>>,
   language: string,
-  dbPath: string,
+  desktopDb: string,
   panelHome: string,
   ctx: AskContext
 ): Promise<AgentChatResult> {
@@ -215,8 +217,8 @@ async function runAskWithTools(
   let touchedNotes: TouchedNote[] = [];
 
   try {
-    const notesStore = new NotesStore(dbPath, panelHome);
-    const server = createNoteMcpServer({ notesStore, dbPath, panelHome });
+    const notesStore = new NotesStore(ctx.retrieved.catalogDb, panelHome);
+    const server = createNoteMcpServer({ notesStore, dbPath: ctx.retrieved.desktopDb, panelHome });
     await mcpClient.connectInMemory(server);
 
     options.onStream?.({ phase: "generating" });
@@ -253,7 +255,7 @@ async function runAskWithTools(
   const toolCitations = touchedNotesToCitations(touchedNotes, baseCitations.length);
   const allCitations = [...baseCitations, ...toolCitations];
 
-  return buildAskResult(options, ctx.dbPath, ctx.retrieved, answer, allCitations, toolCallsExecuted);
+  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, answer, allCitations, toolCallsExecuted);
 }
 
 function touchedNotesToCitations(
@@ -276,7 +278,7 @@ function touchedNotesToCitations(
 
 async function buildAskResult(
   options: AgentChatOptions,
-  dbPath: string,
+  desktopDb: string,
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>,
   answerContent: string,
   citations: AgentCitation[],
@@ -291,7 +293,7 @@ async function buildAskResult(
   };
 
   try {
-    await appendAgentTurn(dbPath, {
+    await appendAgentTurn(desktopDb, {
       userContent: options.query,
       assistantContent: answerContent,
       citations,

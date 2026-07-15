@@ -69,6 +69,7 @@ import {
   renameNoteCommand,
   revealNoteInOsCommand
 } from "./notes/noteCommands";
+import { ensureCatalogSchema } from "./catalog/db";
 import { NotesStore } from "./notes/notesStore";
 import { NotesTreeProvider } from "./notes/notesTree";
 import { notesRoot } from "./notes/notesPaths";
@@ -123,7 +124,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
   sessionGtdStore = new SessionGtdStore(catalogDbPath);
-  notesStore = new NotesStore(catalogDbPath, panelHomeFromConfig());
+  notesStore = new NotesStore(catalogDbPath, panelHomeFromConfig(), ensureCatalogSchema);
   gtdTree = new GtdTreeProvider(sessionGtdStore);
   notesTree = new NotesTreeProvider(notesStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));

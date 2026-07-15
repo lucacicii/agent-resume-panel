@@ -1,7 +1,8 @@
 import { hideSessionsInCatalog, setSessionSummaryInCatalog, setUserTitleInCatalog } from "../catalog/mutations";
 import { getSessionById } from "../catalog/query";
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureExtensionCatalogSchema } from "../catalog/db";
 import { AgentProvider, AgentSession } from "../catalog/types";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbFromSettings, loadSettings } from "../settings/store";
 import { loadSessionPreview } from "../transcript/load";
@@ -36,9 +37,11 @@ export interface SuggestSessionRenameResult {
 
 async function loadSessionContext(opts: SessionActionOptions) {
   const settings = await loadSettings();
-  const dbPath = catalogDbFromSettings(settings);
-  await ensureCatalogSchema(dbPath);
-  const session = await getSessionById(dbPath, opts.provider, opts.id);
+  const paths = await preparePanelDatabasesFromSettings();
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
+  await ensureExtensionCatalogSchema(catalogDb);
+  const session = await getSessionById(catalogDb, opts.provider, opts.id);
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
   }
@@ -51,19 +54,19 @@ async function loadSessionContext(opts: SessionActionOptions) {
   if (!preview.messages?.length) {
     throw new Error(preview.warning || "Session has no messages to analyze.");
   }
-  return { settings, dbPath, session, llm, homes, preview };
+  return { settings, catalogDb, desktopDb, session, llm, homes, preview };
 }
 
 /** Summarize session transcript via LLM and cache on the catalog row. */
 export async function summarizeSessionAction(
   opts: SessionActionOptions
 ): Promise<SummarizeSessionResult> {
-  const { dbPath, session, llm, preview } = await loadSessionContext(opts);
+  const { catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts);
   const language = llm.outputLanguage?.trim() || "zh-CN";
 
   try {
     const result = await summarizeSessionMessages(llm, preview.messages);
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "summarize",
       jobKey: `summarize:${session.provider}:${session.id}`,
@@ -72,14 +75,14 @@ export async function summarizeSessionAction(
       durationMs: result.durationMs,
       ok: true
     });
-    await setSessionSummaryInCatalog(dbPath, session.provider, session.id, language, result.summary);
+    await setSessionSummaryInCatalog(catalogDb, session.provider, session.id, language, result.summary);
     return {
       summary: result.summary,
       language,
       session: { ...session, sessionSummary: result.summary }
     };
   } catch (error) {
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "summarize",
       jobKey: `summarize:${session.provider}:${session.id}`,
@@ -107,12 +110,12 @@ export async function autoRenameSessionAction(
   opts: SessionActionOptions & { persist?: boolean }
 ): Promise<AutoRenameSessionResult> {
   const persist = opts.persist !== false;
-  const { dbPath, session, llm, homes, preview } = await loadSessionContext(opts);
+  const { catalogDb, desktopDb, session, llm, homes, preview } = await loadSessionContext(opts);
   const previousTitle = session.title;
 
   try {
     const result = await suggestSessionTitleFromMessages(llm, session.title, preview.messages);
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "rename",
       jobKey: `${persist ? "rename" : "rename-suggest"}:${session.provider}:${session.id}`,
@@ -132,7 +135,7 @@ export async function autoRenameSessionAction(
     }
 
     if (session.provider !== "chat") {
-      await setUserTitleInCatalog(dbPath, session.provider, session.id, result.title);
+      await setUserTitleInCatalog(catalogDb, session.provider, session.id, result.title);
     }
 
     let nativeRenamed = false;
@@ -156,7 +159,7 @@ export async function autoRenameSessionAction(
       nativeError
     };
   } catch (error) {
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "rename",
       jobKey: `rename:${session.provider}:${session.id}`,
@@ -184,7 +187,7 @@ export async function renameSessionAction(
 
   const settings = await loadSettings();
   const dbPath = catalogDbFromSettings(settings);
-  await ensureCatalogSchema(dbPath);
+  await ensureExtensionCatalogSchema(dbPath);
   const session = await getSessionById(dbPath, opts.provider, opts.id);
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
@@ -217,7 +220,7 @@ export async function renameSessionAction(
 export async function hideSessionAction(opts: SessionActionOptions): Promise<void> {
   const settings = await loadSettings();
   const dbPath = catalogDbFromSettings(settings);
-  await ensureCatalogSchema(dbPath);
+  await ensureExtensionCatalogSchema(dbPath);
   const session = await getSessionById(dbPath, opts.provider, opts.id);
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);

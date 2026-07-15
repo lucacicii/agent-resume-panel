@@ -7,7 +7,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   createNoteMcpServer,
-  ensureCatalogSchema,
+  desktopDbPath,
+  ensureDesktopDbSchema,
   insertReportEntry,
   localDayRange,
   NotesStore
@@ -15,19 +16,22 @@ import {
 
 async function setupTestContext() {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-mcp-"));
-  const dbPath = path.join(panelHome, "catalog.db");
-  const store = new NotesStore(dbPath, panelHome);
+  const catalogDb = path.join(panelHome, "catalog.db");
+  const desktopDb = desktopDbPath(panelHome);
+  const store = new NotesStore(catalogDb, panelHome);
   await store.initialize();
   return {
     panelHome,
-    dbPath,
+    catalogDb,
+    desktopDb,
+    dbPath: desktopDb,
     store,
-    ctx: { notesStore: store, dbPath, panelHome }
+    ctx: { notesStore: store, dbPath: desktopDb, panelHome }
   };
 }
 
-async function seedDailyReportEntry(dbPath, panelHome, { label, title, content }) {
-  await ensureCatalogSchema(dbPath);
+async function seedDailyReportEntry(desktopDb, panelHome, { label, title, content }) {
+  await ensureDesktopDbSchema(desktopDb);
   const period = localDayRange(label);
   const entry = {
     id: period.entryId,
@@ -39,7 +43,7 @@ async function seedDailyReportEntry(dbPath, panelHome, { label, title, content }
     embeddingJson: null,
     createdAtMs: Date.now()
   };
-  await insertReportEntry(dbPath, entry, []);
+  await insertReportEntry(desktopDb, entry, []);
   return entry;
 }
 

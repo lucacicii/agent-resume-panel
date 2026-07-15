@@ -2,7 +2,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AgentSession, AgentProvider } from "./catalog/types";
-import { ensureCatalogSchema } from "./catalog/db";
+import {
+  ensureCatalogSyncStateDesktop,
+  ensureExtensionCatalogSchema,
+  syncStateHasExtendedColumns
+} from "./catalog/db";
 import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
 import { PanelSettings, SessionSyncStalePolicy } from "./settings/types";
 import { catalogDbFromSettings } from "./settings/store";
@@ -12,9 +16,13 @@ import { listJsonlFiles, findFilesByName } from "./transcript/fs";
 
 export type SyncableAgentProvider = Exclude<AgentProvider, "chat">;
 
+export type CatalogSchemaMode = "extension" | "desktop";
+
 export interface AgentSessionSyncOptions {
   dbPath: string;
   panelHome: string;
+  /** Desktop sync uses the full schema; extension paths stay on the frozen subset. */
+  catalogSchema?: CatalogSchemaMode;
   codexHome: string;
   claudeHome: string;
   antigravityHome: string;
@@ -85,6 +93,7 @@ export function sessionSyncOptionsFromSettings(
     hideCronAlma: sync.hideCronAlma !== false,
     hideChannelAlma: sync.hideChannelAlma !== false,
     showIncognitoAlma: sync.showIncognitoAlma === true,
+    catalogSchema: "desktop",
     ...overrides
   };
 }
@@ -135,7 +144,10 @@ export function syncAgentSessions(options: AgentSessionSyncOptions): Promise<Age
 }
 
 async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessionSyncResult> {
-  await ensureCatalogSchema(options.dbPath);
+  await ensureExtensionCatalogSchema(options.dbPath);
+  if (options.catalogSchema === "desktop") {
+    await ensureCatalogSyncStateDesktop(options.dbPath);
+  }
   const result = await loadAllAgentSessions(options);
   const loaded = result.sessions as LoadedSession[];
   for (const providerResult of result.providers) {
@@ -188,10 +200,18 @@ async function applyProviderStalePolicy(dbPath: string, provider: SyncableAgentP
 }
 
 async function writeSyncState(dbPath: string, result: AgentSessionProviderSyncResult): Promise<void> {
-  await runSqliteTransaction(dbPath, [`INSERT INTO sync_state(provider,last_sync_at_ms,status,session_count,warning)
-    VALUES(${sql(result.provider)},${result.syncedAt},${sql(result.status)},${result.sessionCount},${nullable(result.warning)})
-    ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms,status=excluded.status,
-    session_count=excluded.session_count,warning=excluded.warning`]);
+  const extended = await syncStateHasExtendedColumns(dbPath);
+  if (extended) {
+    await runSqliteTransaction(dbPath, [`INSERT INTO sync_state(provider,last_sync_at_ms,status,session_count,warning)
+      VALUES(${sql(result.provider)},${result.syncedAt},${sql(result.status)},${result.sessionCount},${nullable(result.warning)})
+      ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms,status=excluded.status,
+      session_count=excluded.session_count,warning=excluded.warning`]);
+    return;
+  }
+
+  await runSqliteTransaction(dbPath, [`INSERT INTO sync_state(provider,last_sync_at_ms)
+    VALUES(${sql(result.provider)},${result.syncedAt})
+    ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms`]);
 }
 
 async function loadCodex(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {

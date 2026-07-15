@@ -6,7 +6,8 @@ import { runWeeklyDigest } from "./weekly";
 import { EnsureLevelStats } from "./ensureDailies";
 
 export interface EnsureWeekliesOptions {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   startMs: number;
   endMs: number;
   panelHome?: string;
@@ -41,7 +42,7 @@ export async function ensureWeekliesForPeriod(
     const range = localWeekRange(week);
     if (onlyWithSessions) {
       const sessions = await listSessionsInRange(
-        options.dbPath,
+        options.catalogDb,
         range.startMs,
         range.endMs,
         1
@@ -53,7 +54,7 @@ export async function ensureWeekliesForPeriod(
     }
 
     if (skipExisting) {
-      const existing = await getReportEntryById(options.dbPath, range.entryId);
+      const existing = await getReportEntryById(options.desktopDb, range.entryId);
       if (existing?.content?.trim()) {
         stats.skipped.push(week);
         continue;

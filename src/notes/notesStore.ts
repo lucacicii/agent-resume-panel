@@ -8,6 +8,14 @@ import {
 export type { ImportNotesResult, NoteRecord };
 
 export class NotesStore extends CoreNotesStore {
+  constructor(
+    dbPath: string,
+    panelHome?: string,
+    ensureSchema?: (dbPath: string) => Promise<void>
+  ) {
+    super(dbPath, panelHome, ensureSchema);
+  }
+
   async renameNote(noteId: string, desiredName: string): Promise<NoteRecord> {
     const record = await this.getNote(noteId);
     const oldAbs = record ? this.absolutePath(record) : "";

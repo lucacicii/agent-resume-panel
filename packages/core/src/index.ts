@@ -3,8 +3,19 @@ export {
   DEFAULT_PANEL_HOME,
   resolvePanelHome,
   catalogDbPath,
-  settingsPath
+  settingsPath,
+  desktopSettingsPath,
+  desktopDataDir,
+  desktopDbPath
 } from "./panelHome";
+export type { PanelDbPaths } from "./dbPaths";
+export {
+  resolvePanelDbPaths,
+  resolvePanelDbPathsFromSettings,
+  ensurePanelDatabases,
+  preparePanelDatabases,
+  preparePanelDatabasesFromSettings
+} from "./dbPaths";
 export { escapeSqlLiteral, runSqlite, runSqliteJson } from "./sqlite";
 
 export type {
@@ -52,7 +63,13 @@ export {
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
-export { ensureCatalogSchema } from "./catalog/db";
+export {
+  ensureDesktopDbSchema,
+  ensureExtensionCatalogSchema,
+  ensureCatalogSyncStateDesktop,
+  syncStateHasExtendedColumns
+} from "./catalog/db";
+
 export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
 export { setUserTitleInCatalog, setSessionSummaryInCatalog, hideSessionsInCatalog } from "./catalog/mutations";
 export {

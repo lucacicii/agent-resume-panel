@@ -65,9 +65,10 @@ export async function setSessionGtdStatus(
   );
 }
 
-/** GTD write + AI audit in one transaction (fewer lock windows). */
+/** GTD write on catalog.db plus AI audit row on desktop.db. */
 export async function setSessionGtdStatusWithAudit(
-  dbPath: string,
+  catalogDb: string,
+  desktopDb: string,
   input: {
     provider: string;
     sessionId: string;
@@ -83,17 +84,9 @@ export async function setSessionGtdStatusWithAudit(
     input.previousStatus == null ? "NULL" : `'${escapeSqlLiteral(input.previousStatus)}'`;
   const sources = escapeSqlLiteral(JSON.stringify(input.sourceReportIds || []));
 
-  await runSqliteTransaction(dbPath, [
-    `INSERT INTO session_gtd (provider, agent_session_id, status, updated_at_ms)
-     VALUES (
-       '${escapeSqlLiteral(input.provider)}',
-       '${escapeSqlLiteral(input.sessionId)}',
-       '${escapeSqlLiteral(input.status)}',
-       ${nowMs}
-     )
-     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
-       status = excluded.status,
-       updated_at_ms = excluded.updated_at_ms`,
+  await setSessionGtdStatus(catalogDb, input.provider, input.sessionId, input.status);
+  await runSqlite(
+    desktopDb,
     `INSERT INTO gtd_ai_audit (
        id, provider, agent_session_id, previous_status, new_status, reason, source_report_ids, created_at_ms
      ) VALUES (
@@ -106,5 +99,5 @@ export async function setSessionGtdStatusWithAudit(
        '${sources}',
        ${nowMs}
      )`
-  ]);
+  );
 }

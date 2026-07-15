@@ -1,11 +1,10 @@
-import { ensureCatalogSchema } from "../catalog/db";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { runDailyDigest } from "../report/daily";
 import { runMonthlyDigest } from "../report/monthly";
 import { localDayRange, localMonthRange, localWeekRange } from "../report/period";
 import { getReportJobStatus } from "../report/store";
 import { runWeeklyDigest } from "../report/weekly";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { runSqliteJson } from "../sqlite";
 
 export interface BackfillReportDigestsOptions {
@@ -121,19 +120,15 @@ export async function backfillReportDigests(
   options: BackfillReportDigestsOptions = {}
 ): Promise<BackfillReportDigestsResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
   const skipExisting = options.skipExisting !== false;
   const skipEmbedding = options.skipEmbedding !== false;
 
-  const activity = await listActivityPeriods(dbPath, {
+  const activity = await listActivityPeriods(catalogDb, {
     maxDays: options.maxDays,
     minSessionsPerDay: options.minSessionsPerDay
   });
@@ -146,7 +141,7 @@ export async function backfillReportDigests(
   for (const day of activity.days) {
     const period = localDayRange(day);
     try {
-      if (await shouldSkip(dbPath, period.jobKey, skipExisting)) {
+      if (await shouldSkip(desktopDb, period.jobKey, skipExisting)) {
         daily.skipped.push(day);
         continue;
       }
@@ -169,7 +164,7 @@ export async function backfillReportDigests(
   for (const week of activity.weeks) {
     const period = localWeekRange(week);
     try {
-      if (await shouldSkip(dbPath, period.jobKey, skipExisting)) {
+      if (await shouldSkip(desktopDb, period.jobKey, skipExisting)) {
         weekly.skipped.push(week);
         continue;
       }
@@ -191,7 +186,7 @@ export async function backfillReportDigests(
   for (const month of activity.months) {
     const period = localMonthRange(month);
     try {
-      if (await shouldSkip(dbPath, period.jobKey, skipExisting)) {
+      if (await shouldSkip(desktopDb, period.jobKey, skipExisting)) {
         monthly.skipped.push(month);
         continue;
       }
@@ -227,16 +222,8 @@ export async function previewBackfillReportDigests(
   sessionRowsScanned: number;
   estimatedLlmCalls: number;
 }> {
-  const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
-  const activity = await listActivityPeriods(dbPath, {
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const activity = await listActivityPeriods(paths.catalogDb, {
     maxDays: options.maxDays,
     minSessionsPerDay: options.minSessionsPerDay
   });
@@ -247,17 +234,17 @@ export async function previewBackfillReportDigests(
   let monthCalls = 0;
 
   for (const day of activity.days) {
-    if (!(await shouldSkip(dbPath, localDayRange(day).jobKey, skipExisting))) {
+    if (!(await shouldSkip(paths.desktopDb, localDayRange(day).jobKey, skipExisting))) {
       dayCalls += 1;
     }
   }
   for (const week of activity.weeks) {
-    if (!(await shouldSkip(dbPath, localWeekRange(week).jobKey, skipExisting))) {
+    if (!(await shouldSkip(paths.desktopDb, localWeekRange(week).jobKey, skipExisting))) {
       weekCalls += 1;
     }
   }
   for (const month of activity.months) {
-    if (!(await shouldSkip(dbPath, localMonthRange(month).jobKey, skipExisting))) {
+    if (!(await shouldSkip(paths.desktopDb, localMonthRange(month).jobKey, skipExisting))) {
       monthCalls += 1;
     }
   }

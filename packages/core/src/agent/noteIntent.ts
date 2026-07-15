@@ -27,7 +27,8 @@ function parseJsonObject(content: string): unknown {
 export async function resolveNoteSearchPlan(options: {
   query: string;
   settings: PanelSettings;
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
 }): Promise<NoteSearchPlan> {
   const deterministic = planNoteSearchDeterministically(options.query);
   if (!shouldAnalyzeNoteSearchWithLlm(deterministic)) {
@@ -56,7 +57,7 @@ export async function resolveNoteSearchPlan(options: {
   try {
     const result = await chatCompletionDetailed(llm, messages, 220);
     try {
-      await recordLlmUsage(options.dbPath, {
+      await recordLlmUsage(options.desktopDb, {
         kind: "chat",
         source: "ask",
         jobKey: "notes:intent",

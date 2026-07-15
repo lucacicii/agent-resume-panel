@@ -5,15 +5,16 @@ import path from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createNoteMcpServer, NotesStore, runToolLoop } from "../dist/index.js";
+import { createNoteMcpServer, desktopDbPath, NotesStore, runToolLoop } from "../dist/index.js";
 
 async function setupMcpPair() {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-loop-"));
-  const dbPath = path.join(panelHome, "catalog.db");
-  const store = new NotesStore(dbPath, panelHome);
+  const catalogDb = path.join(panelHome, "catalog.db");
+  const desktopDb = desktopDbPath(panelHome);
+  const store = new NotesStore(catalogDb, panelHome);
   await store.initialize();
 
-  const server = createNoteMcpServer({ notesStore: store, dbPath });
+  const server = createNoteMcpServer({ notesStore: store, dbPath: desktopDb, panelHome });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
 

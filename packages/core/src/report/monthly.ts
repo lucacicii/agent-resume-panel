@@ -1,9 +1,8 @@
-import { ensureCatalogSchema } from "../catalog/db";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { buildMonthlySourceLines } from "./context";
 import { EnsureLevelStats } from "./ensureDailies";
 import {
@@ -53,18 +52,14 @@ export async function runMonthlyDigest(
   options: RunMonthlyDigestOptions = {}
 ): Promise<RunMonthlyDigestResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
   const period = localMonthRange(options.monthKey);
   const onProgress = options.onProgress;
-  await upsertReportJob(dbPath, period.jobKey, "running");
+  await upsertReportJob(desktopDb, period.jobKey, "running");
 
   try {
     onProgress?.({
@@ -82,7 +77,8 @@ export async function runMonthlyDigest(
     }
 
     const ensuredDailies = await ensureFreshDailiesForPeriod({
-      dbPath,
+      catalogDb,
+      desktopDb,
       startMs: period.startMs,
       endMs: period.endMs,
       panelHome,
@@ -95,7 +91,8 @@ export async function runMonthlyDigest(
     });
 
     const ensuredWeeklies = await ensureFreshWeekliesForPeriod({
-      dbPath,
+      catalogDb,
+      desktopDb,
       startMs: period.startMs,
       endMs: period.endMs,
       panelHome,
@@ -108,7 +105,7 @@ export async function runMonthlyDigest(
     });
 
     const { lines, sourceCount, usedWeeklies, usedDailies } = await buildMonthlySourceLines({
-      dbPath,
+      dbPath: desktopDb,
       startMs: period.startMs,
       endMs: period.endMs,
       onProgress,
@@ -136,7 +133,7 @@ export async function runMonthlyDigest(
       3000
     );
     const content = normalizeDigestMarkdown(chatResult.content);
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "monthly",
       jobKey: period.jobKey,
@@ -149,7 +146,7 @@ export async function runMonthlyDigest(
     const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
     const { embeddingJson, embedded } = embedResult;
     if (embedded) {
-      await recordLlmUsage(dbPath, {
+      await recordLlmUsage(desktopDb, {
         kind: "embedding",
         source: "monthly",
         jobKey: period.jobKey,
@@ -171,7 +168,7 @@ export async function runMonthlyDigest(
       createdAtMs: Date.now()
     };
 
-    const { replaced } = await finalizeDigestEntry(dbPath, entry, [], period.jobKey);
+    const { replaced } = await finalizeDigestEntry(desktopDb, entry, [], period.jobKey);
     onProgress?.({
       phase: "complete",
       level: "monthly",
@@ -194,7 +191,7 @@ export async function runMonthlyDigest(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertReportJob(dbPath, period.jobKey, "error", message);
+    await upsertReportJob(desktopDb, period.jobKey, "error", message);
     onProgress?.({
       phase: "error",
       level: "monthly",

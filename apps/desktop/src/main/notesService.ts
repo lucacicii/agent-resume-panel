@@ -2,7 +2,6 @@ import { clipboard, dialog, nativeImage, shell } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
-  catalogDbFromSettings,
   effectivePanelHome,
   expandHome,
   loadSettings,
@@ -15,6 +14,7 @@ import {
   type NoteRecord
 } from "@agent-resume/core";
 import { desktopT } from "./i18nService";
+import { loadPanelDbPaths } from "./panelDatabases";
 
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
@@ -22,7 +22,8 @@ let notesStoreKey = "";
 async function getNotesStore(): Promise<NotesStore> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
-  const dbPath = catalogDbFromSettings(settings);
+  const paths = await loadPanelDbPaths(settings);
+  const dbPath = paths.catalogDb;
   const key = `${dbPath}::${panelHome}`;
   if (!notesStore || notesStoreKey !== key) {
     notesStore = new NotesStore(dbPath, panelHome);

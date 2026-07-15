@@ -1,6 +1,4 @@
 import {
-  catalogDbFromSettings,
-  ensureCatalogSchema,
   finishScheduleRun,
   getReportJobStatus,
   listLlmUsageEvents,
@@ -13,6 +11,7 @@ import {
   runWeeklyDigest,
   startScheduleRun
 } from "@agent-resume/core";
+import { loadPanelDbPaths } from "./panelDatabases";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastFiredKey = "";
@@ -62,17 +61,17 @@ async function tick(): Promise<void> {
   const weeklyHour = clampHour(settings.report?.scheduleWeeklyHour, 9);
   const monthlyHour = clampHour(settings.report?.scheduleMonthlyHour, 9);
 
-  const dbPath = catalogDbFromSettings(settings);
-  await ensureCatalogSchema(dbPath);
+  const paths = await loadPanelDbPaths(settings);
+  const desktopDb = paths.desktopDb;
 
   if (hour === dailyHour) {
     const day = localDayRange();
     const fireKey = `auto:${day.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getReportJobStatus(dbPath, day.jobKey);
+      const status = await getReportJobStatus(desktopDb, day.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        await runLoggedSchedule(dbPath, "daily", day.jobKey, async () => {
+        await runLoggedSchedule(desktopDb, "daily", day.jobKey, async () => {
           await runDailyDigest({ date: day.dateLabel });
         });
       }
@@ -83,10 +82,10 @@ async function tick(): Promise<void> {
     const week = previousCompleteWeekRange(now);
     const fireKey = `auto:${week.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getReportJobStatus(dbPath, week.jobKey);
+      const status = await getReportJobStatus(desktopDb, week.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        await runLoggedSchedule(dbPath, "weekly", week.jobKey, async () => {
+        await runLoggedSchedule(desktopDb, "weekly", week.jobKey, async () => {
           await runWeeklyDigest({ weekKey: week.label });
         });
       }
@@ -97,10 +96,10 @@ async function tick(): Promise<void> {
     const month = previousCompleteMonthRange(now);
     const fireKey = `auto:${month.jobKey}:${now.toDateString()}`;
     if (fireKey !== lastFiredKey) {
-      const status = await getReportJobStatus(dbPath, month.jobKey);
+      const status = await getReportJobStatus(desktopDb, month.jobKey);
       if (status?.status !== "ok") {
         lastFiredKey = fireKey;
-        await runLoggedSchedule(dbPath, "monthly", month.jobKey, async () => {
+        await runLoggedSchedule(desktopDb, "monthly", month.jobKey, async () => {
           await runMonthlyDigest({ monthKey: month.label });
         });
       }
@@ -109,13 +108,13 @@ async function tick(): Promise<void> {
 }
 
 async function runLoggedSchedule(
-  dbPath: string,
+  desktopDb: string,
   level: "daily" | "weekly" | "monthly",
   periodKey: string,
   fn: () => Promise<void>
 ): Promise<void> {
   const started = Date.now();
-  const runId = await startScheduleRun(dbPath, {
+  const runId = await startScheduleRun(desktopDb, {
     level,
     periodKey,
     trigger: "schedule"
@@ -123,8 +122,7 @@ async function runLoggedSchedule(
   console.log("[memory-scheduler] running", level, periodKey);
   try {
     await fn();
-    // sum usage events since start for this job
-    const events = await listLlmUsageEvents(dbPath, { fromMs: started, limit: 50 });
+    const events = await listLlmUsageEvents(desktopDb, { fromMs: started, limit: 50 });
     const related = events.filter(
       (e) => e.jobKey === periodKey || e.source === level || e.source === "schedule"
     );
@@ -136,7 +134,7 @@ async function runLoggedSchedule(
       completion += e.completionTokens || 0;
       total += e.totalTokens || 0;
     }
-    await finishScheduleRun(dbPath, runId, {
+    await finishScheduleRun(desktopDb, runId, {
       status: "ok",
       promptTokens: prompt,
       completionTokens: completion,
@@ -144,7 +142,7 @@ async function runLoggedSchedule(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await finishScheduleRun(dbPath, runId, {
+    await finishScheduleRun(desktopDb, runId, {
       status: "error",
       error: message
     });

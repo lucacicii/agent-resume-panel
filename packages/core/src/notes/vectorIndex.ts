@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureDesktopDbSchema, ensureExtensionCatalogSchema } from "../catalog/db";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { EmbeddingRuntimeConfig } from "../llm/types";
 import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "../sqlite";
@@ -260,21 +260,23 @@ async function replaceNoteChunks(
 }
 
 async function runNotesVectorIndex(options: {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   panelHome: string;
   embedding: EmbeddingRuntimeConfig;
   onProgress?: NoteIndexProgressCallback;
 }): Promise<{ indexedNotes: number; indexedChunks: number }> {
   await options.onProgress?.({ phase: "scanning", message: "正在扫描笔记…" });
-  await ensureCatalogSchema(options.dbPath);
-  await reconcileNotesIndex(options.dbPath, options.panelHome);
-  const notes = await listAllNotes(options.dbPath);
-  const existing = await indexRows(options.dbPath);
+  await ensureExtensionCatalogSchema(options.catalogDb);
+  await ensureDesktopDbSchema(options.desktopDb);
+  await reconcileNotesIndex(options.catalogDb, options.panelHome);
+  const notes = await listAllNotes(options.catalogDb);
+  const existing = await indexRows(options.desktopDb);
   const currentIds = new Set(notes.map((note) => note.noteId));
   const staleIds = [...existing.keys()].filter((noteId) => !currentIds.has(noteId));
   if (staleIds.length) {
     const ids = staleIds.map((id) => `'${escapeSqlLiteral(id)}'`).join(", ");
-    await runSqliteTransaction(options.dbPath, [
+    await runSqliteTransaction(options.desktopDb, [
       `DELETE FROM note_chunks WHERE note_id IN (${ids})`,
       `DELETE FROM note_vector_index WHERE note_id IN (${ids})`
     ]);
@@ -314,7 +316,7 @@ async function runNotesVectorIndex(options: {
       const body = parseNoteDocument(raw).body.trim();
       const bodyHash = hash(body);
       if (state && state.content_hash === bodyHash && state.embedding_key === key) {
-        await runSqliteTransaction(options.dbPath, [
+        await runSqliteTransaction(options.desktopDb, [
           `UPDATE note_chunks SET
              rel_md_path = '${escapeSqlLiteral(note.relMdPath)}',
              scope = '${escapeSqlLiteral(note.scope)}',
@@ -335,7 +337,7 @@ async function runNotesVectorIndex(options: {
       const chunks = chunkNoteMarkdown(body);
       const vectors = chunks.length
         ? await embedChunks(
-            options.dbPath,
+            options.desktopDb,
             options.embedding,
             note,
             chunks,
@@ -345,7 +347,7 @@ async function runNotesVectorIndex(options: {
           )
         : [];
       await replaceNoteChunks(
-        options.dbPath,
+        options.desktopDb,
         note,
         sourceMtimeMs,
         bodyHash,
@@ -378,12 +380,13 @@ async function runNotesVectorIndex(options: {
 }
 
 export async function ensureNotesVectorIndex(options: {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   panelHome: string;
   embedding: EmbeddingRuntimeConfig;
   onProgress?: NoteIndexProgressCallback;
 }): Promise<{ indexedNotes: number; indexedChunks: number }> {
-  const key = `${options.dbPath}\n${embeddingKey(options.embedding)}`;
+  const key = `${options.catalogDb}\n${options.desktopDb}\n${embeddingKey(options.embedding)}`;
   const existing = indexTasks.get(key);
   if (existing) {
     if (options.onProgress) {

@@ -1,10 +1,9 @@
 import * as fs from "node:fs/promises";
-import { ensureCatalogSchema } from "../catalog/db";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
-import { runSqliteJson } from "../sqlite";
+import { effectivePanelHome, loadSettings } from "../settings/store";
+import { queryNoteChunksWithProjects } from "../sqliteAttach";
 import { recordLlmUsage } from "../usage/store";
 import { cosineSimilarity, parseEmbeddingJson } from "../report/cosine";
 import { listAllNotes } from "./catalogNotes";
@@ -195,17 +194,14 @@ export async function searchNotesByEmbedding(options: {
     throw new Error("Search query is empty.");
   }
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
   const plan = options.plan ?? planNoteSearchDeterministically(query);
   if (plan.mode === "exact") {
     const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, MAX_EXACT_LIMIT));
-    return searchExactNotesFromDisk(dbPath, panelHome, plan, exactLimit);
+    return searchExactNotesFromDisk(catalogDb, panelHome, plan, exactLimit);
   }
 
   const embedding = embeddingConfigFromSettings(settings);
@@ -215,7 +211,8 @@ export async function searchNotesByEmbedding(options: {
     );
   }
   await ensureNotesVectorIndex({
-    dbPath,
+    catalogDb,
+    desktopDb,
     panelHome,
     embedding,
     onProgress: options.onIndexProgress
@@ -225,7 +222,7 @@ export async function searchNotesByEmbedding(options: {
   if (!queryVector) {
     const queryResult = await embedTextsDetailed(embedding, [plan.semanticQuery.slice(0, 8000)]);
     try {
-      await recordLlmUsage(dbPath, {
+      await recordLlmUsage(desktopDb, {
         kind: "embedding",
         source: "ask",
         jobKey: "notes:query",
@@ -247,14 +244,15 @@ export async function searchNotesByEmbedding(options: {
   const hits: NoteSearchHit[] = [];
   for (let offset = 0; offset < candidateLimit; offset += CANDIDATE_PAGE_SIZE) {
     const pageSize = Math.min(CANDIDATE_PAGE_SIZE, candidateLimit - offset);
-    const rows = await runSqliteJson<NoteChunkRow>(
-      dbPath,
+    const rows = (await queryNoteChunksWithProjects(
+      desktopDb,
+      catalogDb,
       `SELECT c.chunk_id, c.note_id, c.rel_md_path, c.scope, c.title, c.heading, c.chunk_index,
               c.content, c.embedding_json, c.updated_at_ms, n.project_path
-       FROM note_chunks c LEFT JOIN notes n ON c.note_id = n.note_id
-       ORDER BY updated_at_ms DESC, note_id, chunk_index
+       FROM note_chunks c LEFT JOIN {catalog}.notes n ON c.note_id = n.note_id
+       ORDER BY c.updated_at_ms DESC, c.note_id, c.chunk_index
        LIMIT ${pageSize} OFFSET ${offset};`
-    );
+    )) as unknown as NoteChunkRow[];
     for (const row of rows) {
       const vector = parseEmbeddingJson(row.embedding_json);
       if (!vector) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureDesktopDbSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 
 export type AgentNoteAuditStatus = "proposed" | "confirmed" | "applied" | "rejected" | "failed";
@@ -88,7 +88,7 @@ export async function insertAgentNoteAudit(
     error?: string | null;
   }
 ): Promise<string> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const id = randomUUID();
   const traceId = input.traceId || randomUUID();
   const now = Date.now();
@@ -132,7 +132,7 @@ export async function updateAgentNoteAuditStatus(
     error?: string | null;
   }
 ): Promise<void> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const completed = input.status === "applied" || input.status === "rejected" || input.status === "failed";
   const sets = [`status = '${escapeSqlLiteral(input.status)}'`];
   const beforeJson = normalizeJson(input.before);
@@ -165,7 +165,7 @@ export async function listAgentNoteAudit(
     status?: string;
   }
 ): Promise<AgentNoteAuditEvent[]> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
   const clauses: string[] = [];
   if (options?.noteId) {

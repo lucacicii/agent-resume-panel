@@ -17,7 +17,8 @@ function truncate(text: string, max: number): string {
 }
 
 export async function analyzeReportForGtd(input: {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   settings: PanelSettings;
   /** When set, only analyze these memory entry ids (scoped GTD). */
   reportIds?: string[];
@@ -34,7 +35,7 @@ export async function analyzeReportForGtd(input: {
 
   if (input.reportIds?.length) {
     for (const id of input.reportIds) {
-      const entry = await getReportEntryById(input.dbPath, id);
+      const entry = await getReportEntryById(input.desktopDb, id);
       if (entry) {
         digests.push(entry);
       } else {
@@ -43,9 +44,9 @@ export async function analyzeReportForGtd(input: {
     }
   } else {
     // Prefer weekly + monthly for GTD triage; dailies as supporting context
-    const weeklies = await listReportEntries(input.dbPath, { level: "weekly", limit: 8 });
-    const monthlies = await listReportEntries(input.dbPath, { level: "monthly", limit: 6 });
-    const dailies = await listReportEntries(input.dbPath, { level: "daily", limit: 8 });
+    const weeklies = await listReportEntries(input.desktopDb, { level: "weekly", limit: 8 });
+    const monthlies = await listReportEntries(input.desktopDb, { level: "monthly", limit: 6 });
+    const dailies = await listReportEntries(input.desktopDb, { level: "daily", limit: 8 });
     digests = [...monthlies, ...weeklies, ...dailies];
   }
 
@@ -71,7 +72,7 @@ export async function analyzeReportForGtd(input: {
   async function addSession(session: AgentSession): Promise<void> {
     const key = `${session.provider}:${session.id}`;
     if (sessionKeys.has(key)) return;
-    const gtd = await getSessionGtdStatus(input.dbPath, session.provider, session.id);
+    const gtd = await getSessionGtdStatus(input.catalogDb, session.provider, session.id);
     sessionKeys.set(key, {
       provider: session.provider,
       sessionId: session.id,
@@ -85,11 +86,11 @@ export async function analyzeReportForGtd(input: {
   // 1) Sessions linked via report_links
   let linkCount = 0;
   for (const d of digests) {
-    const links = await listReportLinks(input.dbPath, d.id);
+    const links = await listReportLinks(input.desktopDb, d.id);
     for (const link of links) {
       if (!link.provider || !link.agentSessionId) continue;
       const session = await getSessionById(
-        input.dbPath,
+        input.catalogDb,
         link.provider as AgentProvider,
         link.agentSessionId
       );
@@ -104,7 +105,7 @@ export async function analyzeReportForGtd(input: {
   for (const d of digests) {
     if (d.periodStartMs == null || d.periodEndMs == null) continue;
     const inRange = await listSessionsInRange(
-      input.dbPath,
+      input.catalogDb,
       d.periodStartMs,
       d.periodEndMs,
       40
@@ -185,7 +186,7 @@ export async function analyzeReportForGtd(input: {
     2500
   );
   try {
-    await recordLlmUsage(input.dbPath, {
+    await recordLlmUsage(input.desktopDb, {
       kind: "chat",
       source: "gtd",
       model: chatResult.model,
@@ -223,7 +224,7 @@ export async function analyzeReportForGtd(input: {
       continue;
     }
     const session = await getSessionById(
-      input.dbPath,
+      input.catalogDb,
       item.provider as AgentProvider,
       item.sessionId
     );

@@ -20,7 +20,8 @@ function digestNeedsRefresh(check: {
 }
 
 export interface EnsureFreshDigestsOptions {
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
   startMs: number;
   endMs: number;
   panelHome?: string;
@@ -47,7 +48,7 @@ export async function ensureFreshDailiesForPeriod(
     if (options.forceRefresh) {
       const range = localDayRange(day);
       const sessions = await listSessionsInRange(
-        options.dbPath,
+        options.catalogDb,
         range.startMs,
         range.endMs,
         1

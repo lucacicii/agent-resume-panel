@@ -376,7 +376,7 @@
   "desktop.settings.apiKey": "API Key",
   "desktop.settings.apiKeyOptional": "API Key (optional)",
   "desktop.settings.appData": "App data",
-  "desktop.settings.appDataFootnote": "catalog.db, acp/, notes/ live under Panel home.",
+  "desktop.settings.appDataFootnote": "catalog.db, notes/, and .desktop/desktop.db live under Panel home.",
   "desktop.settings.appearance": "Appearance",
   "desktop.settings.backfillCallout": "Scan all session dates in catalog and batch-generate day→week→month. Many LLM calls; may incur cost and take time.",
   "desktop.settings.backfillMaxDays": "Max days",

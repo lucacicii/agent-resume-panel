@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { catalogDbFromSettings, effectivePanelHome } from "../settings/store";
-import { loadSettings } from "../settings/store";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { NotesStore } from "../notes/store";
 import {
   handleNoteAppend,
@@ -167,10 +167,10 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
 export async function createNoteToolContext(panelHomeOverride?: string): Promise<AgentMcpContext> {
   const settings = await loadSettings(panelHomeOverride);
   const panelHome = effectivePanelHome(settings, panelHomeOverride);
-  const dbPath = catalogDbFromSettings(settings, panelHomeOverride);
-  const notesStore = new NotesStore(dbPath, panelHome);
+  const paths = await preparePanelDatabasesFromSettings(panelHomeOverride);
+  const notesStore = new NotesStore(paths.catalogDb, panelHome);
   await notesStore.initialize();
-  return { notesStore, dbPath, panelHome };
+  return { notesStore, dbPath: paths.desktopDb, panelHome };
 }
 
 export async function runStdioServer(panelHomeOverride?: string): Promise<void> {

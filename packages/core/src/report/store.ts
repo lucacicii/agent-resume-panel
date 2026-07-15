@@ -1,4 +1,4 @@
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureDesktopDbSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import { ReportEntry, ReportLevel } from "./schema";
 
@@ -193,7 +193,7 @@ export async function getReportEntryById(
   dbPath: string,
   id: string
 ): Promise<ReportEntry | undefined> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms

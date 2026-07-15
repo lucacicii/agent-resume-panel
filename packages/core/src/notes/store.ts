@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureExtensionCatalogSchema } from "../catalog/db";
 import type { AgentProvider, AgentSession } from "../catalog/types";
 import { sessionGtdKey } from "../gtd/store";
 import { resolvePanelHome } from "../panelHome";
@@ -67,7 +67,8 @@ export class NotesStore {
 
   constructor(
     private readonly dbPath: string,
-    panelHome?: string
+    panelHome?: string,
+    private readonly ensureSchema: (dbPath: string) => Promise<void> = ensureExtensionCatalogSchema
   ) {
     this.panelHome = resolvePanelHome(panelHome);
   }
@@ -81,7 +82,7 @@ export class NotesStore {
   }
 
   async initialize(): Promise<void> {
-    await ensureCatalogSchema(this.dbPath);
+    await this.ensureSchema(this.dbPath);
     await fs.mkdir(notesRoot(this.panelHome), { recursive: true });
     await this.reload();
   }

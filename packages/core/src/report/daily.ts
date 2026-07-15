@@ -1,11 +1,10 @@
-import { ensureCatalogSchema } from "../catalog/db";
 import { listSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { effectivePanelHome, loadSettings } from "../settings/store";
 import { ensureSummariesForSessions } from "../session/ensureSummaries";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localDayRange as localDayRangeImpl } from "./period";
@@ -103,19 +102,14 @@ export async function needsDailyDigestRefresh(
   options: { panelHome?: string; date?: string } = {}
 ): Promise<DailyDigestRefreshCheck> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
   const period = localDayRangeImpl(options.date);
-  const sessions = await listSessionsInRange(dbPath, period.startMs, period.endMs);
+  const sessions = await listSessionsInRange(catalogDb, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getReportEntryById(dbPath, period.entryId);
+  const entry = await getReportEntryById(desktopDb, period.entryId);
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -138,7 +132,7 @@ export async function needsDailyDigestRefresh(
     };
   }
 
-  const links = await listReportLinks(dbPath, entry.id);
+  const links = await listReportLinks(desktopDb, entry.id);
   const linked = new Set(
     links
       .filter((l) => l.provider && l.agentSessionId)
@@ -193,19 +187,15 @@ export async function needsDailyDigestRefresh(
 
 export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promise<RunDailyDigestResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const panelHome = effectivePanelHome(settings, options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
   const period = localDayRangeImpl(options.date);
   const { startMs, endMs, label: dateLabel, jobKey, entryId } = period;
   const onProgress = options.onProgress;
-  await upsertReportJob(dbPath, jobKey, "running");
+  await upsertReportJob(desktopDb, jobKey, "running");
 
   try {
     onProgress?.({
@@ -225,14 +215,14 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
 
     const maxSessions = Math.max(1, Math.min(settings.report?.maxSessionsPerDigest ?? 40, 200));
 
-    let sessions = await listSessionsInRange(dbPath, startMs, endMs);
+    let sessions = await listSessionsInRange(catalogDb, startMs, endMs);
     const totalFound = sessions.length;
     if (sessions.length > maxSessions) {
       sessions = sessions.slice(0, maxSessions);
     }
 
     const ensure = await ensureSummariesForSessions({
-      dbPath,
+      dbPath: catalogDb,
       sessions,
       settings,
       panelHome,
@@ -288,7 +278,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       2000
     );
     const content = normalizeDigestMarkdown(chatResult.content);
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(desktopDb, {
       kind: "chat",
       source: "daily",
       jobKey,
@@ -309,7 +299,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
     const { embeddingJson, embedded } = embedResult;
     if (embedded) {
-      await recordLlmUsage(dbPath, {
+      await recordLlmUsage(desktopDb, {
         kind: "embedding",
         source: "daily",
         jobKey,
@@ -332,7 +322,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     };
 
     const { replaced } = await finalizeDigestEntry(
-      dbPath,
+      desktopDb,
       entry,
       sessions.map((s: AgentSession) => ({
         provider: s.provider,
@@ -364,7 +354,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await upsertReportJob(dbPath, jobKey, "error", message);
+    await upsertReportJob(desktopDb, jobKey, "error", message);
     onProgress?.({
       phase: "error",
       level: "daily",

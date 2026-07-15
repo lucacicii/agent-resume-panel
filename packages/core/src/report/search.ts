@@ -1,8 +1,7 @@
-import { ensureCatalogSchema } from "../catalog/db";
 import { embedTexts } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
+import { loadSettings } from "../settings/store";
 import { cosineSimilarity, parseEmbeddingJson } from "./cosine";
 import { ReportEntry, ReportLevel } from "./schema";
 import { listReportEntries } from "./store";
@@ -34,14 +33,8 @@ export async function searchReportsByEmbedding(
   }
 
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const desktopDb = paths.desktopDb;
 
   let queryVector = options.queryVector;
   if (!queryVector) {
@@ -56,7 +49,7 @@ export async function searchReportsByEmbedding(
   if (!queryVector) {
     return [];
   }
-  const candidates = await listReportEntries(dbPath, {
+  const candidates = await listReportEntries(desktopDb, {
     level: options.level,
     limit: options.candidateLimit ?? 200
   });

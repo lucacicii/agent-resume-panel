@@ -1,7 +1,5 @@
 import { AgentProvider } from "../catalog/types";
-import { ensureCatalogSchema } from "../catalog/db";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { ReportEntry } from "../report/schema";
@@ -12,6 +10,8 @@ import type { NoteIndexProgressCallback } from "../notes/vectorIndex";
 import { recordLlmUsage } from "../usage/store";
 import { AgentCitation } from "./types";
 import { resolveNoteSearchPlan } from "./noteIntent";
+import { effectivePanelHome, loadSettings } from "../settings/store";
+import { resolvePanelHome } from "../panelHome";
 
 const DEFAULT_LIMIT = 8;
 const CONTENT_CHARS = 2000;
@@ -31,7 +31,8 @@ export interface RetrieveAgentContextResult {
   citations: AgentCitation[];
   fallback: boolean;
   noteMatchTotal?: number;
-  dbPath: string;
+  catalogDb: string;
+  desktopDb: string;
 }
 
 function truncate(text: string, max: number): string {
@@ -51,11 +52,9 @@ export async function retrieveAgentContext(options: {
   const panelHome = options.panelHome
     ? resolvePanelHome(options.panelHome)
     : effectivePanelHome(settings, options.panelHome);
-  const dbPath = options.panelHome
-    ? catalogDbPath(panelHome)
-    : catalogDbFromSettings(settings, options.panelHome);
-
-  await ensureCatalogSchema(dbPath);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, 16));
   let digests: RetrievedDigest[] = [];
@@ -66,7 +65,8 @@ export async function retrieveAgentContext(options: {
   const noteSearchPlan = await resolveNoteSearchPlan({
     query: options.query,
     settings,
-    dbPath
+    catalogDb,
+    desktopDb
   });
   const exactNoteSearch = noteSearchPlan.mode === "exact";
   const notesOnly = noteSearchPlan.notesOnly;
@@ -77,7 +77,7 @@ export async function retrieveAgentContext(options: {
       const result = await embedTextsDetailed(embedding, [options.query.slice(0, 8000)]);
       queryVector = result.vectors[0];
       try {
-        await recordLlmUsage(dbPath, {
+        await recordLlmUsage(desktopDb, {
           kind: "embedding",
           source: "ask",
           jobKey: "ask:query",
@@ -116,8 +116,8 @@ export async function retrieveAgentContext(options: {
 
     if (!digests.length) {
       fallback = true;
-      const dailies = await listReportEntries(dbPath, { level: "daily", limit: Math.ceil(limit / 2) });
-      const weeklies = await listReportEntries(dbPath, { level: "weekly", limit: Math.ceil(limit / 2) });
+      const dailies = await listReportEntries(desktopDb, { level: "daily", limit: Math.ceil(limit / 2) });
+      const weeklies = await listReportEntries(desktopDb, { level: "weekly", limit: Math.ceil(limit / 2) });
       const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
       digests = merged.slice(0, limit).map((entry) => ({ entry }));
     }
@@ -153,7 +153,7 @@ export async function retrieveAgentContext(options: {
   const citations: AgentCitation[] = [];
   for (let i = 0; i < digests.length; i++) {
     const { entry, score } = digests[i];
-    const links = await listReportLinks(dbPath, entry.id);
+    const links = await listReportLinks(desktopDb, entry.id);
     const first = links.find((l) => l.provider && l.agentSessionId);
     citations.push({
       source: "report",
@@ -191,11 +191,10 @@ export async function retrieveAgentContext(options: {
     });
   }
 
-  // Truncate digests for prompt packing (mutate copy content only in ask)
   digests = digests.map((d) => ({
     ...d,
     entry: { ...d.entry, content: truncate(d.entry.content, CONTENT_CHARS) }
   }));
 
-  return { digests, notes, citations, fallback, noteMatchTotal, dbPath };
+  return { digests, notes, citations, fallback, noteMatchTotal, catalogDb, desktopDb };
 }

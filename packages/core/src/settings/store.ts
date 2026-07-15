@@ -1,6 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { DEFAULT_PANEL_HOME, resolvePanelHome, settingsPath } from "../panelHome";
+import {
+  DEFAULT_PANEL_HOME,
+  desktopSettingsPath,
+  resolvePanelHome,
+  settingsPath
+} from "../panelHome";
 import { DEFAULT_SETTINGS, PanelSettings } from "./types";
 
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
@@ -80,13 +85,55 @@ export function effectivePanelHome(settings: PanelSettings, loadFrom?: string): 
   return resolvePanelHome(DEFAULT_PANEL_HOME);
 }
 
-export async function loadSettings(panelHomeHint?: string): Promise<PanelSettings> {
-  const home = resolvePanelHome(panelHomeHint || DEFAULT_PANEL_HOME);
-  const file = settingsPath(home);
-
+async function readSettingsFile(file: string): Promise<Partial<PanelSettings> | null> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    const parsed = migrateLegacySettings(JSON.parse(raw) as LegacyPanelSettings);
+    return migrateLegacySettings(JSON.parse(raw) as LegacyPanelSettings);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * One-time import from legacy shared settings.json when settings.desktop.json is missing.
+ * Leaves settings.json intact for the VS Code extension LLM bridge.
+ */
+async function migrateLegacySharedSettings(home: string): Promise<Partial<PanelSettings> | null> {
+  const desktopFile = desktopSettingsPath(home);
+  try {
+    await fs.access(desktopFile);
+    return null;
+  } catch {
+    // continue
+  }
+
+  const legacy = await readSettingsFile(settingsPath(home));
+  if (!legacy) {
+    return null;
+  }
+
+  const merged = mergeSettings(legacy);
+  await fs.mkdir(home, { recursive: true });
+  const toWrite: PanelSettings = {
+    ...merged,
+    panelHome: merged.panelHome || DEFAULT_PANEL_HOME
+  };
+  await fs.writeFile(desktopFile, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
+  return legacy;
+}
+
+export async function loadSettings(panelHomeHint?: string): Promise<PanelSettings> {
+  const home = resolvePanelHome(panelHomeHint || DEFAULT_PANEL_HOME);
+  const file = desktopSettingsPath(home);
+
+  await migrateLegacySharedSettings(home);
+
+  try {
+    const parsed = await readSettingsFile(file);
     const merged = mergeSettings(parsed);
     const effectiveHome = resolvePanelHome(merged.panelHome?.trim() || home);
     if (!panelHomeHint && effectiveHome !== home) {
@@ -108,7 +155,7 @@ export async function saveSettings(settings: PanelSettings, panelHomeHint?: stri
     panelHomeHint?.trim() || merged.panelHome?.trim() || DEFAULT_PANEL_HOME
   );
   await fs.mkdir(home, { recursive: true });
-  const file = settingsPath(home);
+  const file = desktopSettingsPath(home);
   const toWrite: PanelSettings = {
     ...merged,
     panelHome: merged.panelHome || DEFAULT_PANEL_HOME

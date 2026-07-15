@@ -17,9 +17,7 @@ import {
   backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
-  catalogDbFromSettings,
   effectivePanelHome,
-  ensureCatalogSchema,
   expandHome,
   getReportEntryById,
   getSessionById,
@@ -66,6 +64,7 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, initI18nService } from "./i18nService";
 import {
   invalidateNotesStore,
@@ -350,10 +349,8 @@ function registerIpc(): void {
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
 
   ipcMain.handle("sessions:list", async (_event, limit?: number) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
-    return listSessions(dbPath, limit ?? 500);
+    const paths = await loadPanelDbPaths();
+    return listSessions(paths.catalogDb, limit ?? 500);
   });
 
   ipcMain.handle(
@@ -362,16 +359,14 @@ function registerIpc(): void {
       _event,
       args?: { fromMs?: number; toMs?: number; limit?: number }
     ) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
+      const paths = await loadPanelDbPaths();
       const fromMs = Number(args?.fromMs);
       const toMs = Number(args?.toMs);
       // NaN is not null — must use isFinite or SQLite gets "updated_at_ms >= NaN"
       if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
         return [];
       }
-      return listSessionsInRange(dbPath, fromMs, toMs, args?.limit ?? 2000);
+      return listSessionsInRange(paths.catalogDb, fromMs, toMs, args?.limit ?? 2000);
     }
   );
 
@@ -379,9 +374,8 @@ function registerIpc(): void {
     "sessions:preview",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      const session = await getSessionById(dbPath, args.provider, args.id);
+      const paths = await loadPanelDbPaths(settings);
+      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
       if (!session) {
         throw new Error(`Session not found: ${args.provider} ${args.id}`);
       }
@@ -482,9 +476,8 @@ function registerIpc(): void {
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      const session = await getSessionById(dbPath, args.provider, args.id);
+      const paths = await loadPanelDbPaths(settings);
+      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
       if (!session) {
         throw new Error(`Session not found: ${args.provider} ${args.id}`);
       }
@@ -515,9 +508,8 @@ function registerIpc(): void {
     "workbench:openCodexApp",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      const session = await getSessionById(dbPath, args.provider, args.id);
+      const paths = await loadPanelDbPaths(settings);
+      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
       if (!session) {
         throw new Error(`Session not found: ${args.provider} ${args.id}`);
       }
@@ -558,19 +550,17 @@ function registerIpc(): void {
       _event,
       opts?: { level?: string; limit?: number; fromMs?: number; toMs?: number }
     ) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
+      const paths = await loadPanelDbPaths();
       const level = opts?.level && opts.level !== "all" ? opts.level : undefined;
       if (opts?.fromMs != null && opts?.toMs != null) {
-        return listReportEntriesInRange(dbPath, {
+        return listReportEntriesInRange(paths.desktopDb, {
           level,
           startMs: opts.fromMs,
           endMs: opts.toMs,
           limit: opts?.limit ?? 200
         });
       }
-      return listReportEntries(dbPath, {
+      return listReportEntries(paths.desktopDb, {
         level,
         limit: opts?.limit ?? 50
       });
@@ -583,9 +573,8 @@ function registerIpc(): void {
       return null;
     }
     try {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      return (await getReportEntryById(dbPath, id)) ?? null;
+      const paths = await loadPanelDbPaths();
+      return (await getReportEntryById(paths.desktopDb, id)) ?? null;
     } catch (error) {
       console.error("report:getEntry failed:", error);
       return null;
@@ -593,10 +582,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("report:listDaily", async (_event, limit?: number) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
-    return listReportEntries(dbPath, { level: "daily", limit: limit ?? 30 });
+    const paths = await loadPanelDbPaths();
+    return listReportEntries(paths.desktopDb, { level: "daily", limit: limit ?? 30 });
   });
 
   ipcMain.handle(
@@ -700,19 +687,15 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("agent:listAgentChat", async (_event, args?: { limit?: number; threadId?: string }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
-    return listRecentAgentMessages(dbPath, { limit: args?.limit, threadId: args?.threadId });
+    const paths = await loadPanelDbPaths();
+    return listRecentAgentMessages(paths.desktopDb, { limit: args?.limit, threadId: args?.threadId });
   });
 
   ipcMain.handle(
     "agent:listOlderAgentChat",
     async (_event, args: { beforeSortOrder: number; limit?: number; threadId?: string }) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      return listOlderAgentMessages(dbPath, {
+      const paths = await loadPanelDbPaths();
+      return listOlderAgentMessages(paths.desktopDb, {
         beforeSortOrder: args.beforeSortOrder,
         limit: args?.limit,
         threadId: args?.threadId
@@ -721,35 +704,30 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("agent:clearAgentChat", async (_event, args?: { threadId?: string }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await clearAgentMessages(dbPath, args?.threadId);
+    const paths = await loadPanelDbPaths();
+    await clearAgentMessages(paths.desktopDb, args?.threadId);
     return { ok: true };
   });
 
   ipcMain.handle("agent:listThreads", async () => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    return listAgentThreads(dbPath);
+    const paths = await loadPanelDbPaths();
+    return listAgentThreads(paths.desktopDb);
   });
 
   ipcMain.handle("agent:createThread", async (_event, args: { title: string }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    return createAgentThread(dbPath, args);
+    const paths = await loadPanelDbPaths();
+    return createAgentThread(paths.desktopDb, args);
   });
 
   ipcMain.handle("agent:renameThread", async (_event, args: { id: string; title: string }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await renameAgentThread(dbPath, args.id, args.title);
+    const paths = await loadPanelDbPaths();
+    await renameAgentThread(paths.desktopDb, args.id, args.title);
     return { ok: true };
   });
 
   ipcMain.handle("agent:deleteThread", async (_event, args: { id: string }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await deleteAgentThread(dbPath, args.id);
+    const paths = await loadPanelDbPaths();
+    await deleteAgentThread(paths.desktopDb, args.id);
     return { ok: true };
   });
 
@@ -764,10 +742,8 @@ function registerIpc(): void {
         status?: AgentNoteAuditStatus;
       }
     ) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      return listAgentNoteAudit(dbPath, args);
+      const paths = await loadPanelDbPaths();
+      return listAgentNoteAudit(paths.desktopDb, args);
     }
   );
 
@@ -811,21 +787,17 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("usage:summary", async (_event, args?: { days?: number }) => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
-    return getUsageSummary(dbPath, args?.days ?? 30);
+    const paths = await loadPanelDbPaths();
+    return getUsageSummary(paths.desktopDb, args?.days ?? 30);
   });
 
   ipcMain.handle(
     "usage:listEvents",
     async (_event, args?: { limit?: number; source?: string; days?: number }) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
+      const paths = await loadPanelDbPaths();
       const days = args?.days ?? 30;
       const fromMs = Date.now() - days * 24 * 60 * 60 * 1000;
-      return listLlmUsageEvents(dbPath, {
+      return listLlmUsageEvents(paths.desktopDb, {
         fromMs,
         source: args?.source,
         limit: args?.limit ?? 100
@@ -836,12 +808,10 @@ function registerIpc(): void {
   ipcMain.handle(
     "usage:listScheduleRuns",
     async (_event, args?: { limit?: number; level?: string; days?: number }) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
+      const paths = await loadPanelDbPaths();
       const days = args?.days ?? 30;
       const fromMs = Date.now() - days * 24 * 60 * 60 * 1000;
-      return listScheduleRuns(dbPath, {
+      return listScheduleRuns(paths.desktopDb, {
         fromMs,
         level: args?.level,
         limit: args?.limit ?? 100
@@ -938,19 +908,15 @@ function registerIpc(): void {
   ipcMain.handle("notes:copyPath", async (_event, args: { noteId: string }) => notesCopyPath(args.noteId));
 
   ipcMain.handle("projects:listAliases", async () => {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
-    return loadProjectAliasesMap(dbPath);
+    const paths = await loadPanelDbPaths();
+    return loadProjectAliasesMap(paths.catalogDb);
   });
 
   ipcMain.handle(
     "projects:setAlias",
     async (_event, args: { projectPath: string; alias: string }) => {
-      const settings = await loadSettings();
-      const dbPath = catalogDbFromSettings(settings);
-      await ensureCatalogSchema(dbPath);
-      await setProjectAliasInCatalog(dbPath, args.projectPath, args.alias);
+      const paths = await loadPanelDbPaths();
+      await setProjectAliasInCatalog(paths.catalogDb, args.projectPath, args.alias);
       return { ok: true };
     }
   );
@@ -962,11 +928,9 @@ app.whenReady().then(async () => {
   registerIpc();
   tryRegisterPtyIpc();
   try {
-    const settings = await loadSettings();
-    const dbPath = catalogDbFromSettings(settings);
-    await ensureCatalogSchema(dbPath);
+    await loadPanelDbPaths();
   } catch (error) {
-    console.error("Failed to ensure catalog schema on startup:", error);
+    console.error("Failed to prepare panel databases on startup:", error);
   }
   createWindow();
   startDesktopNotesIndexer();

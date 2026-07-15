@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ensureCatalogSchema } from "../catalog/db";
+import { ensureDesktopDbSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteTransaction } from "../sqlite";
 import { AgentCitation } from "./types";
 
@@ -67,7 +67,7 @@ async function listAgentMessagesDescending(
   sqlWhere: string,
   limit: number
 ): Promise<AgentChatListResult> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const page = normalizeAskPageLimit(limit);
   const rows = await runSqliteJson<AskMessageRow>(
     dbPath,
@@ -102,7 +102,7 @@ export interface AgentThread {
 }
 
 export async function ensureDefaultThread(dbPath: string): Promise<string> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const threads = await runSqliteJson<{ id: string }>(
     dbPath,
     "SELECT id FROM agent_threads LIMIT 1;"
@@ -147,7 +147,7 @@ export async function listAgentThreads(dbPath: string): Promise<AgentThread[]> {
 }
 
 export async function createAgentThread(dbPath: string, args: { id?: string; title: string }): Promise<AgentThread> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const id = args.id || randomUUID();
   const title = args.title;
   const now = Date.now();
@@ -160,7 +160,7 @@ export async function createAgentThread(dbPath: string, args: { id?: string; tit
 }
 
 export async function renameAgentThread(dbPath: string, id: string, title: string): Promise<void> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   const now = Date.now();
   await runSqlite(
     dbPath,
@@ -169,7 +169,7 @@ export async function renameAgentThread(dbPath: string, id: string, title: strin
 }
 
 export async function deleteAgentThread(dbPath: string, id: string): Promise<void> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   await runSqliteTransaction(dbPath, [
     `DELETE FROM agent_messages WHERE thread_id = '${escapeSqlLiteral(id)}';`,
     `DELETE FROM agent_threads WHERE id = '${escapeSqlLiteral(id)}';`
@@ -237,7 +237,7 @@ export async function appendAgentTurn(
     threadId?: string;
   }
 ): Promise<void> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   let threadId = turn.threadId;
   if (!threadId) {
     threadId = await ensureDefaultThread(dbPath);
@@ -277,7 +277,7 @@ export async function appendAgentTurn(
 }
 
 export async function clearAgentMessages(dbPath: string, threadId?: string): Promise<void> {
-  await ensureCatalogSchema(dbPath);
+  await ensureDesktopDbSchema(dbPath);
   if (threadId) {
     await runSqlite(dbPath, `DELETE FROM agent_messages WHERE thread_id = '${escapeSqlLiteral(threadId)}';`);
   } else {

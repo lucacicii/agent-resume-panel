@@ -3,134 +3,66 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { ensureCatalogSchema, runSqlite, runSqliteJson } from "../dist/index.js";
+import {
+  desktopDbPath,
+  ensureDesktopDbSchema,
+  ensureExtensionCatalogSchema,
+  runSqliteJson
+} from "../dist/index.js";
 
-test("migrates legacy agent_messages before creating the thread index", async () => {
+test("extension schema does not create desktop-only report tables", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
   const dbPath = path.join(panelHome, "catalog.db");
 
   try {
-    await runSqlite(
-      dbPath,
-      `CREATE TABLE agent_messages (
-        id TEXT PRIMARY KEY,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        citations_json TEXT,
-        fallback INTEGER NOT NULL DEFAULT 0,
-        sort_order INTEGER NOT NULL,
-        created_at_ms INTEGER NOT NULL
-      );`
-    );
-
-    await ensureCatalogSchema(dbPath);
-
-    const columns = await runSqliteJson(dbPath, "PRAGMA table_info(agent_messages);");
-    assert.ok(columns.some((column) => column.name === "thread_id"));
-
-    const indexes = await runSqliteJson(dbPath, "PRAGMA index_list(agent_messages);");
-    assert.ok(indexes.some((index) => index.name === "idx_agent_messages_thread"));
-  } finally {
-    await fs.rm(panelHome, { recursive: true, force: true });
-  }
-});
-
-test("merges legacy ask chat rows when empty agent tables already exist", async () => {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
-  const dbPath = path.join(panelHome, "catalog.db");
-
-  try {
-    await runSqlite(
-      dbPath,
-      `CREATE TABLE ask_threads (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
-      );
-      INSERT INTO ask_threads VALUES ('legacy-1', 'Old chat', 1000, 2000);
-      CREATE TABLE agent_threads (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
-      );
-      INSERT INTO agent_threads VALUES ('new-1', 'New chat', 3000, 4000);
-      CREATE TABLE ask_messages (
-        id TEXT PRIMARY KEY,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        citations_json TEXT,
-        fallback INTEGER NOT NULL DEFAULT 0,
-        sort_order INTEGER NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        thread_id TEXT
-      );
-      INSERT INTO ask_messages VALUES ('m1', 'user', 'hello', NULL, 0, 1, 1000, 'legacy-1');
-      CREATE TABLE agent_messages (
-        id TEXT PRIMARY KEY,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        citations_json TEXT,
-        fallback INTEGER NOT NULL DEFAULT 0,
-        sort_order INTEGER NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        thread_id TEXT
-      );`
-    );
-
-    await ensureCatalogSchema(dbPath);
-
-    const threadCount = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM agent_threads;");
-    assert.equal(Number(threadCount[0]?.c), 2);
-    const messageCount = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM agent_messages;");
-    assert.equal(Number(messageCount[0]?.c), 1);
-    const tables = await runSqliteJson(
-      dbPath,
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('ask_threads', 'ask_messages');"
-    );
-    assert.equal(tables.length, 0);
-  } finally {
-    await fs.rm(panelHome, { recursive: true, force: true });
-  }
-});
-
-test("renames legacy memory_entries and ask_threads tables", async () => {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
-  const dbPath = path.join(panelHome, "catalog.db");
-
-  try {
-    await runSqlite(
-      dbPath,
-      `CREATE TABLE memory_entries (
-        id TEXT PRIMARY KEY,
-        level TEXT NOT NULL,
-        period_start_ms INTEGER NOT NULL,
-        period_end_ms INTEGER NOT NULL,
-        title TEXT,
-        content TEXT NOT NULL,
-        embedding_json TEXT,
-        created_at_ms INTEGER NOT NULL
-      );
-      CREATE TABLE ask_threads (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
-      );`
-    );
-
-    await ensureCatalogSchema(dbPath);
+    await ensureExtensionCatalogSchema(dbPath);
 
     const tables = await runSqliteJson(
       dbPath,
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
     );
     const names = tables.map((row) => row.name);
-    assert.ok(names.includes("report_entries"));
-    assert.ok(names.includes("agent_threads"));
-    assert.ok(!names.includes("memory_entries"));
-    assert.ok(!names.includes("ask_threads"));
+    assert.ok(names.includes("sessions"));
+    assert.ok(names.includes("notes"));
+    assert.ok(!names.includes("report_entries"));
+    assert.ok(!names.includes("agent_threads"));
+    assert.ok(!names.includes("note_vector_index"));
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("desktop schema creates report and agent tables in panelHome/.desktop/desktop.db", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
+  const catalogDb = path.join(panelHome, "catalog.db");
+  const desktopDb = desktopDbPath(panelHome);
+
+  try {
+    await ensureExtensionCatalogSchema(catalogDb);
+    await ensureDesktopDbSchema(desktopDb);
+
+    const catalogTables = await runSqliteJson(
+      catalogDb,
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+    );
+    const catalogNames = catalogTables.map((row) => row.name);
+    assert.ok(catalogNames.includes("sessions"));
+    assert.ok(catalogNames.includes("notes"));
+    assert.ok(!catalogNames.includes("report_entries"));
+    assert.ok(!catalogNames.includes("agent_threads"));
+
+    const desktopTables = await runSqliteJson(
+      desktopDb,
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+    );
+    const desktopNames = desktopTables.map((row) => row.name);
+    assert.ok(desktopNames.includes("report_entries"));
+    assert.ok(desktopNames.includes("agent_threads"));
+    assert.ok(desktopNames.includes("note_vector_index"));
+    assert.ok(desktopDb.includes(`${path.sep}.desktop${path.sep}desktop.db`));
+
+    const indexes = await runSqliteJson(desktopDb, "PRAGMA index_list(agent_messages);");
+    assert.ok(indexes.some((index) => index.name === "idx_agent_messages_thread"));
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

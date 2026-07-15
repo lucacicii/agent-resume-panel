@@ -1,19 +1,10 @@
-import { ensureCatalogSchema } from "../catalog/db";
 import { listSessionsInRange } from "../catalog/query";
-import { catalogDbPath, resolvePanelHome } from "../panelHome";
-import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
+import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import type { DailyDigestRefreshCheck } from "./daily";
 import { localDayRange, listDayLabelsInRange, localMonthRange, localWeekRange, PeriodRange } from "./period";
 import { getReportEntryById, listReportEntriesInRange } from "./store";
 
 export type PeriodDigestRefreshCheck = DailyDigestRefreshCheck;
-
-async function resolveDbPath(panelHome?: string): Promise<string> {
-  const settings = await loadSettings(panelHome);
-  return panelHome
-    ? catalogDbPath(resolvePanelHome(panelHome))
-    : catalogDbFromSettings(settings, panelHome);
-}
 
 /**
  * Weekly / monthly: stale when sessions updated after digest, or underlying dailies changed.
@@ -22,12 +13,13 @@ export async function needsPeriodDigestRefresh(
   period: PeriodRange,
   options: { panelHome?: string; levelLabel: string }
 ): Promise<PeriodDigestRefreshCheck> {
-  const dbPath = await resolveDbPath(options.panelHome);
-  await ensureCatalogSchema(dbPath);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  const catalogDb = paths.catalogDb;
+  const desktopDb = paths.desktopDb;
 
-  const sessions = await listSessionsInRange(dbPath, period.startMs, period.endMs);
+  const sessions = await listSessionsInRange(catalogDb, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getReportEntryById(dbPath, period.entryId);
+  const entry = await getReportEntryById(desktopDb, period.entryId);
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -57,7 +49,7 @@ export async function needsPeriodDigestRefresh(
     }
   }
 
-  const dailies = await listReportEntriesInRange(dbPath, {
+  const dailies = await listReportEntriesInRange(desktopDb, {
     level: "daily",
     startMs: period.startMs,
     endMs: period.endMs,
@@ -74,14 +66,14 @@ export async function needsPeriodDigestRefresh(
   for (const day of listDayLabelsInRange(period.startMs, period.endMs)) {
     const dayPeriod = localDayRange(day);
     const daySessions = await listSessionsInRange(
-      dbPath,
+      catalogDb,
       dayPeriod.startMs,
       dayPeriod.endMs,
       50
     );
     if (!daySessions.length) continue;
 
-    const dayEntry = await getReportEntryById(dbPath, dayPeriod.entryId);
+    const dayEntry = await getReportEntryById(desktopDb, dayPeriod.entryId);
     if (!dayEntry?.content?.trim()) {
       staleDailyCount += 1;
       continue;
