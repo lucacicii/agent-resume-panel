@@ -16,4 +16,5 @@
 
 - Keep `contextIsolation: true` and `nodeIntegration: false`.
 - Any new capability follows main handler, preload method, and renderer call as one contract change.
+- Desktop UI visual work must follow [`.agents/extended/ui-design-system.md`](../extended/ui-design-system.md) (macOS HIG tokens, components, migration phases).
 - Use `npm run build:desktop` for compilation and asset verification; use `npm run dev:desktop` for interactive checks.

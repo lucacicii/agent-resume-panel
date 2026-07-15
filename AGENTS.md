@@ -17,7 +17,7 @@ Skip the menu index when the user supplies a concrete path, a searchable identif
 Load these references only when relevant:
 
 - TypeScript, VS Code extension, Electron, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
-- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md)
+- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) and [`.agents/extended/ui-design-system.md`](.agents/extended/ui-design-system.md) (desktop visual spec)
 - Filesystem, process, database, authentication, network, or secret handling: [`.agents/extended/security.md`](.agents/extended/security.md)
 
 ## Verification
