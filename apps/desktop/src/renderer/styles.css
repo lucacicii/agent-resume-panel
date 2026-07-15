@@ -2768,6 +2768,102 @@ code {
   gap: 4px;
 }
 
+.note-action-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.note-action-bubble {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--tg-sender) 45%, transparent);
+  background: color-mix(in srgb, var(--tg-sender) 12%, transparent);
+  color: currentColor;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  max-width: 100%;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.note-action-bubble:hover {
+  background: color-mix(in srgb, var(--tg-sender) 22%, transparent);
+  border-color: color-mix(in srgb, var(--tg-sender) 65%, transparent);
+}
+
+.citation-sections {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.citation-section {
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.citation-section-head {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 8px;
+}
+
+.citation-section-head:hover {
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.citation-section-chevron {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.citation-section.collapsed .citation-section-chevron {
+  transform: rotate(0deg);
+}
+
+.citation-section:not(.collapsed) .citation-section-chevron {
+  transform: rotate(90deg);
+}
+
+.citation-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.citation-section.collapsed .citation-section-body {
+  display: none;
+}
+
+.citation-section-body .citation-chip {
+  margin: 0;
+}
+
 .citation-chip {
   display: block;
   font-size: 11px;

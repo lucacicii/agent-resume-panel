@@ -6375,6 +6375,173 @@ async function openCitationInMemory(citation) {
   }
 }
 
+const NOTE_ACTION_OPERATIONS = new Set(["create", "write", "append"]);
+const NOTE_ACTION_LABELS = { create: "新建", write: "修改", append: "追加" };
+
+/** @type {Map<number, Set<string>>} */
+const chatCitationExpanded = new Map();
+
+function isNoteCitation(citation) {
+  return citation?.source === "note" || citation?.level === "note";
+}
+
+function isMemoryCitation(citation) {
+  if (isNoteCitation(citation)) {
+    return false;
+  }
+  return citation?.source === "memory" || !citation?.source;
+}
+
+function partitionCitations(citations) {
+  const memory = [];
+  const notes = [];
+  for (const c of citations || []) {
+    if (isNoteCitation(c)) {
+      notes.push(c);
+    } else if (isMemoryCitation(c)) {
+      memory.push(c);
+    }
+  }
+  return { memory, notes };
+}
+
+function collectNoteActionCitations(citations) {
+  /** @type {Map<string, { citation: object, index: number }>} */
+  const byNoteId = new Map();
+  for (let i = 0; i < (citations || []).length; i++) {
+    const c = citations[i];
+    if (!NOTE_ACTION_OPERATIONS.has(c.operation) || !isNoteCitation(c) || !c.noteId) {
+      continue;
+    }
+    byNoteId.set(c.noteId, { citation: c, index: i });
+  }
+  return Array.from(byNoteId.values());
+}
+
+function isCitationSectionExpanded(turnIdx, group) {
+  return chatCitationExpanded.get(turnIdx)?.has(group) ?? false;
+}
+
+function setCitationSectionExpanded(turnIdx, group, expanded) {
+  let groups = chatCitationExpanded.get(turnIdx);
+  if (!groups) {
+    groups = new Set();
+    chatCitationExpanded.set(turnIdx, groups);
+  }
+  if (expanded) {
+    groups.add(group);
+  } else {
+    groups.delete(group);
+  }
+}
+
+function estimateCitationBlocksHeight(turnIdx, citations) {
+  if (!citations?.length) {
+    return 0;
+  }
+  const { memory, notes } = partitionCitations(citations);
+  const actions = collectNoteActionCitations(citations);
+  let height = 0;
+  if (actions.length) {
+    const rows = Math.ceil(actions.length / 2);
+    height += 8 + rows * 32;
+  }
+  for (const [group, items] of [
+    ["memory", memory],
+    ["note", notes]
+  ]) {
+    if (!items.length) {
+      continue;
+    }
+    height += 30;
+    if (isCitationSectionExpanded(turnIdx, group)) {
+      height += 4 + items.length * 34;
+    }
+  }
+  if (height > 0) {
+    height += 8;
+  }
+  return height;
+}
+
+function buildCitationSection(group, label, citations, turnIdx) {
+  const section = document.createElement("div");
+  section.className = "citation-section";
+  section.dataset.citationGroup = group;
+  const expanded = isCitationSectionExpanded(turnIdx, group);
+  if (!expanded) {
+    section.classList.add("collapsed");
+  }
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "citation-section-head";
+  head.setAttribute("aria-expanded", expanded ? "true" : "false");
+  head.innerHTML = `<span class="citation-section-chevron" aria-hidden="true"></span><span class="citation-section-label">${escapeHtml(label)} (${citations.length})</span>`;
+
+  const body = document.createElement("div");
+  body.className = "citation-section-body";
+  for (const c of citations) {
+    body.appendChild(buildCitationChip(c));
+  }
+
+  section.appendChild(head);
+  section.appendChild(body);
+  return section;
+}
+
+function buildCitationSections(citations, turnIdx) {
+  const { memory, notes } = partitionCitations(citations);
+  if (!memory.length && !notes.length) {
+    return null;
+  }
+  const root = document.createElement("div");
+  root.className = "citation-sections";
+  if (memory.length) {
+    root.appendChild(buildCitationSection("memory", "报告引用", memory, turnIdx));
+  }
+  if (notes.length) {
+    root.appendChild(buildCitationSection("note", "笔记引用", notes, turnIdx));
+  }
+  return root;
+}
+
+function buildNoteActionBubbles(citations) {
+  const actions = collectNoteActionCitations(citations);
+  if (!actions.length) {
+    return null;
+  }
+  const root = document.createElement("div");
+  root.className = "note-action-bubbles";
+  for (const { citation, index } of actions) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "note-action-bubble";
+    btn.dataset.citationIndex = String(index);
+    const opLabel = NOTE_ACTION_LABELS[citation.operation] || "笔记";
+    const title = citation.title || citation.noteId || "未命名笔记";
+    btn.textContent = `${opLabel} · ${title}`;
+    btn.title = `在 Notes 中打开：${title}`;
+    root.appendChild(btn);
+  }
+  return root;
+}
+
+function toggleCitationSection(sectionEl, turnIdx) {
+  const group = sectionEl.dataset.citationGroup;
+  if (!group) {
+    return;
+  }
+  const expanded = sectionEl.classList.toggle("collapsed") === false;
+  setCitationSectionExpanded(turnIdx, group, expanded);
+  const head = sectionEl.querySelector(".citation-section-head");
+  if (head) {
+    head.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+  delete chatRowHeights[turnIdx];
+  renderChatVirtual();
+}
+
 function buildCitationChip(citation) {
   const chip = document.createElement("span");
   chip.className = "citation-chip";
@@ -6459,9 +6626,10 @@ function clearAskMarkdownCache() {
 
 function resetChatRowHeights() {
   chatRowHeights = [];
+  chatCitationExpanded.clear();
 }
 
-function estimateChatRowHeight(turn) {
+function estimateChatRowHeight(turn, turnIdx = -1) {
   if (!turn) {
     return 48;
   }
@@ -6472,7 +6640,7 @@ function estimateChatRowHeight(turn) {
   }
   let height = 62 + lines * 20;
   if (turn.citations?.length) {
-    height += 12 + turn.citations.length * 34;
+    height += estimateCitationBlocksHeight(turnIdx, turn.citations);
   }
   if (turn.streaming) {
     height += 10;
@@ -6485,7 +6653,7 @@ function getChatRowHeight(idx) {
   if (cached != null && cached > 0) {
     return cached;
   }
-  return estimateChatRowHeight(chatTurns[idx]);
+  return estimateChatRowHeight(chatTurns[idx], idx);
 }
 
 function buildChatRowOffsets() {
@@ -6758,13 +6926,13 @@ function buildChatTurnRow(turn, idx) {
     return row;
   }
 
-  if (turn.citations?.length) {
-    const list = document.createElement("div");
-    list.className = "citation-list";
-      for (const c of turn.citations) {
-        list.appendChild(buildCitationChip(c));
-      }
-    bubble.appendChild(list);
+  const actionBubbles = buildNoteActionBubbles(turn.citations);
+  if (actionBubbles) {
+    bubble.appendChild(actionBubbles);
+  }
+  const citationSections = buildCitationSections(turn.citations, idx);
+  if (citationSections) {
+    bubble.appendChild(citationSections);
   }
 
   appendChatFooter(bubble, turn, idx);
@@ -6777,7 +6945,7 @@ function appendChatTurn(idx) {
   if (!turn) {
     return;
   }
-  chatRowHeights[idx] = estimateChatRowHeight(turn);
+  chatRowHeights[idx] = estimateChatRowHeight(turn, idx);
   chatStickToBottom = true;
   renderChatVirtual({ scrollToBottom: true });
 }
@@ -7425,6 +7593,30 @@ function wire() {
   });
 
   $("btnAgentSend").addEventListener("click", () => void sendAgent());
+  $("chatLog")?.addEventListener("click", (e) => {
+    const actionBtn = e.target.closest(".note-action-bubble");
+    if (actionBtn) {
+      e.preventDefault();
+      const bubble = actionBtn.closest(".chat-bubble");
+      const turnIdx = Number(bubble?.dataset.turnIdx);
+      const citationIndex = Number(actionBtn.dataset.citationIndex);
+      const citation = chatTurns[turnIdx]?.citations?.[citationIndex];
+      if (citation) {
+        void openCitationInMemory(citation);
+      }
+      return;
+    }
+    const sectionHead = e.target.closest(".citation-section-head");
+    if (sectionHead) {
+      e.preventDefault();
+      const section = sectionHead.closest(".citation-section");
+      const bubble = sectionHead.closest(".chat-bubble");
+      const turnIdx = Number(bubble?.dataset.turnIdx);
+      if (section && Number.isFinite(turnIdx)) {
+        toggleCitationSection(section, turnIdx);
+      }
+    }
+  });
   $("chatLog")?.addEventListener("contextmenu", (e) => {
     const bubble = e.target.closest(".chat-bubble.user");
     if (!bubble) {
