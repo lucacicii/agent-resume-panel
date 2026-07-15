@@ -5,14 +5,42 @@ import path from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createNoteMcpServer, NotesStore } from "../dist/index.js";
+import {
+  createNoteMcpServer,
+  ensureCatalogSchema,
+  insertMemoryEntry,
+  localDayRange,
+  NotesStore
+} from "../dist/index.js";
 
 async function setupTestContext() {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-mcp-"));
   const dbPath = path.join(panelHome, "catalog.db");
   const store = new NotesStore(dbPath, panelHome);
   await store.initialize();
-  return { panelHome, dbPath, store, ctx: { notesStore: store, dbPath } };
+  return {
+    panelHome,
+    dbPath,
+    store,
+    ctx: { notesStore: store, dbPath, panelHome }
+  };
+}
+
+async function seedDailyMemoryEntry(dbPath, panelHome, { label, title, content }) {
+  await ensureCatalogSchema(dbPath);
+  const period = localDayRange(label);
+  const entry = {
+    id: period.entryId,
+    level: "daily",
+    periodStartMs: period.startMs,
+    periodEndMs: period.endMs,
+    title,
+    content,
+    embeddingJson: null,
+    createdAtMs: Date.now()
+  };
+  await insertMemoryEntry(dbPath, entry, []);
+  return entry;
 }
 
 async function connectClient(server) {
@@ -23,7 +51,7 @@ async function connectClient(server) {
   return client;
 }
 
-test("MCP server exposes all 6 note tools", async () => {
+test("MCP server exposes all note and memory tools", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -31,7 +59,17 @@ test("MCP server exposes all 6 note tools", async () => {
   try {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
-    assert.deepEqual(names, ["note_append", "note_create", "note_delete", "note_read", "note_search", "note_write"]);
+    assert.deepEqual(names, [
+      "memory_list",
+      "memory_read",
+      "memory_search",
+      "note_append",
+      "note_create",
+      "note_delete",
+      "note_read",
+      "note_search",
+      "note_write"
+    ]);
   } finally {
     await client.close();
     await server.close();
@@ -294,6 +332,84 @@ test("full CRUD lifecycle: create → read → append → write → delete", asy
       arguments: { noteId }
     });
     assert.equal(readAfterDelete.isError, true);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("memory_list returns seeded daily digest", async () => {
+  const { ctx, dbPath, panelHome } = await setupTestContext();
+  const entry = await seedDailyMemoryEntry(dbPath, panelHome, {
+    label: "2026-07-10",
+    title: "Test Daily",
+    content: "# Daily digest\n\nWorked on memory MCP."
+  });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "memory_list",
+      arguments: { level: "daily", limit: 10 }
+    });
+    assert.notEqual(result.isError, true);
+    assert.ok(result.content[0].text.includes("Listed 1 daily"));
+    assert.ok(result.content[0].text.includes(entry.id));
+    assert.ok(result.content[0].text.includes("Test Daily"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("memory_read returns full digest content", async () => {
+  const { ctx, dbPath, panelHome } = await setupTestContext();
+  const entry = await seedDailyMemoryEntry(dbPath, panelHome, {
+    label: "2026-07-11",
+    title: "Read Test",
+    content: "# Daily digest\n\nFull body for memory_read."
+  });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "memory_read",
+      arguments: { memoryId: entry.id }
+    });
+    assert.notEqual(result.isError, true);
+    assert.ok(result.content[0].text.includes("Full body for memory_read"));
+    assert.ok(result.content[0].text.includes("Read Test"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("memory_search returns a structured response", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    let result;
+    try {
+      result = await client.callTool({
+        name: "memory_search",
+        arguments: { query: "nonexistent-memory-query-xyz" }
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      assert.match(msg, /Embedding is not configured/i);
+      return;
+    }
+    const text = result.content?.[0]?.text || "";
+    if (result.isError) {
+      assert.match(text, /Embedding is not configured/i);
+    } else {
+      assert.ok(text.includes("No memory digests found"));
+    }
   } finally {
     await client.close();
     await server.close();

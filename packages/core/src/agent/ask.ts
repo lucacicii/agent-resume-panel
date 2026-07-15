@@ -216,7 +216,7 @@ async function runAskWithTools(
 
   try {
     const notesStore = new NotesStore(dbPath, panelHome);
-    const server = createNoteMcpServer({ notesStore, dbPath });
+    const server = createNoteMcpServer({ notesStore, dbPath, panelHome });
     await mcpClient.connectInMemory(server);
 
     options.onStream?.({ phase: "generating" });

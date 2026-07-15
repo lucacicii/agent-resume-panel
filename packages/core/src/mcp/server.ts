@@ -18,11 +18,23 @@ import {
   noteWriteSchema,
   type NoteToolContext
 } from "./tools";
+import {
+  handleMemoryList,
+  handleMemoryRead,
+  handleMemorySearch,
+  memoryListSchema,
+  memoryReadSchema,
+  memorySearchSchema
+} from "./memoryTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.1.0";
 
-export function createNoteMcpServer(ctx: NoteToolContext): McpServer {
+export interface AgentMcpContext extends NoteToolContext {
+  panelHome: string;
+}
+
+export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION }
   );
@@ -106,16 +118,59 @@ export function createNoteMcpServer(ctx: NoteToolContext): McpServer {
     }
   );
 
+  const memoryCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };
+
+  server.registerTool(
+    "memory_search",
+    {
+      description:
+        "Semantic search over memory digests (daily/weekly/monthly reports). Use when Memory Sources in the prompt are insufficient or the user asks for a different query. If a memoryId is already cited, prefer memory_read instead of searching again.",
+      inputSchema: memorySearchSchema
+    },
+    async (args: { query: string; level?: "daily" | "weekly" | "monthly"; limit?: number }) => {
+      return handleMemorySearch(args, memoryCtx);
+    }
+  );
+
+  server.registerTool(
+    "memory_read",
+    {
+      description:
+        "Read a full memory digest by memoryId (e.g. daily:2026-07-15). Use to expand truncated Memory Sources from the prompt. Read-only.",
+      inputSchema: memoryReadSchema
+    },
+    async (args: { memoryId: string; maxLength?: number }) => {
+      return handleMemoryRead(args, memoryCtx);
+    }
+  );
+
+  server.registerTool(
+    "memory_list",
+    {
+      description:
+        "List memory digests by level, optionally within a period range. Use for questions like which weekly reports exist in a date span. Read-only.",
+      inputSchema: memoryListSchema
+    },
+    async (args: {
+      level: "daily" | "weekly" | "monthly";
+      from?: string;
+      to?: string;
+      limit?: number;
+    }) => {
+      return handleMemoryList(args, memoryCtx);
+    }
+  );
+
   return server;
 }
 
-export async function createNoteToolContext(panelHomeOverride?: string): Promise<NoteToolContext> {
+export async function createNoteToolContext(panelHomeOverride?: string): Promise<AgentMcpContext> {
   const settings = await loadSettings(panelHomeOverride);
   const panelHome = effectivePanelHome(settings, panelHomeOverride);
   const dbPath = catalogDbFromSettings(settings, panelHomeOverride);
   const notesStore = new NotesStore(dbPath, panelHome);
   await notesStore.initialize();
-  return { notesStore, dbPath };
+  return { notesStore, dbPath, panelHome };
 }
 
 export async function runStdioServer(panelHomeOverride?: string): Promise<void> {
