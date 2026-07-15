@@ -132,6 +132,7 @@ export interface DesktopApi {
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
+  onWorkbenchCmdT(callback: () => void): () => void;
   listReports(opts?: {
     level?: string;
     limit?: number;
@@ -428,6 +429,11 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
     ipcRenderer.on("terminal:respawned", handler);
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
+  },
+  onWorkbenchCmdT: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdT", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdT", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),

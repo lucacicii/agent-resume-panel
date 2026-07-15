@@ -258,6 +258,29 @@ function resumeSessionSync(): void {
   void syncAndNotify().catch(notifySessionSyncFailure);
 }
 
+function isWorkbenchCmdTInput(input: Electron.Input): boolean {
+  if (input.type !== "keyDown") {
+    return false;
+  }
+  if (!(input.control || input.meta) || input.alt || input.shift) {
+    return false;
+  }
+  const key = input.key?.toLowerCase();
+  return key === "t" || input.code === "KeyT";
+}
+
+function registerWorkbenchShortcuts(win: BrowserWindow): void {
+  win.webContents.on("before-input-event", (event, input) => {
+    if (!isWorkbenchCmdTInput(input)) {
+      return;
+    }
+    event.preventDefault();
+    if (!win.isDestroyed()) {
+      win.webContents.send("workbench:cmdT");
+    }
+  });
+}
+
 function createWindow(): void {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
@@ -277,6 +300,7 @@ function createWindow(): void {
     }
   });
 
+  registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
   mainWindow.on("show", () => {

@@ -3786,11 +3786,14 @@ code {
 
 /* Beat global `button { padding; border; background }` inside the tab strip. */
 .wb-terminal-tabs button {
-  padding: 0;
   margin: 0;
   border: none;
   background: transparent;
   box-shadow: none;
+}
+
+.wb-terminal-tabs button:not(.wb-terminal-tab-label) {
+  padding: 0;
 }
 
 .wb-terminal-tabs button:hover:not(:disabled) {
@@ -3876,8 +3879,10 @@ code {
 
 .wb-terminal-tab-label {
   appearance: none;
+  border: none;
+  box-shadow: none;
   color: var(--color-label-secondary);
-  padding: 0 10px;
+  padding: 0 10px 0 var(--space-3);
   height: 100%;
   align-self: stretch;
   cursor: pointer;

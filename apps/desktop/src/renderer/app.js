@@ -937,9 +937,15 @@ function shouldIgnoreWorkbenchShortcut(target) {
   return Boolean(target.closest("[contenteditable='true']"));
 }
 
+/** xterm 用隐藏 textarea 承接按键，需与工作台其它文本输入区分开。 */
+function isWorkbenchXtermInputTarget(target) {
+  return Boolean(target?.closest?.(".xterm, .wb-terminal-host"));
+}
+
 /** ⌘T 在终端聚焦时也应生效，仅跳过文本输入控件。 */
 function shouldIgnoreWorkbenchCmdT(target) {
   if (!target || !(target instanceof Element)) return false;
+  if (isWorkbenchXtermInputTarget(target)) return false;
   const tag = target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
   if (target.closest(".cm-editor")) return true;
@@ -951,19 +957,19 @@ function defaultWorkbenchCmdTAction(settings = loadedSettings) {
   return action === "newSession" ? "newSession" : "newTerminal";
 }
 
-function handleWorkbenchCmdT(event) {
-  if (activePrimaryTab !== "workbench") return;
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-  const key = event.key?.toLowerCase();
-  if (key !== "t" && event.code !== "KeyT") return;
-  if (shouldIgnoreWorkbenchCmdT(event.target)) return;
-  event.preventDefault();
-  event.stopPropagation();
+function triggerWorkbenchCmdT() {
+  if (wbCreateBusy) return;
   if (defaultWorkbenchCmdTAction() === "newSession") {
     void handleWorkbenchNewSessionClick();
   } else {
     void openBlankWorkbenchTerminal();
   }
+}
+
+function applyWorkbenchCmdTShortcut() {
+  if (!isWorkbenchActive()) return;
+  if (shouldIgnoreWorkbenchCmdT(document.activeElement)) return;
+  triggerWorkbenchCmdT();
 }
 
 function updateWorkbenchDetailHeader() {
@@ -8388,7 +8394,9 @@ function wire() {
     void openBlankWorkbenchTerminal();
   });
   $("btnWorkbenchRefresh")?.addEventListener("click", () => void loadWorkbenchSessions());
-  document.addEventListener("keydown", handleWorkbenchCmdT, true);
+  if (typeof agentResume.onWorkbenchCmdT === "function") {
+    agentResume.onWorkbenchCmdT(() => applyWorkbenchCmdTShortcut());
+  }
   updateWorkbenchToolbarState();
   $("wbSearch")?.addEventListener("input", (e) => {
     wbSearch = e.target.value ?? "";
