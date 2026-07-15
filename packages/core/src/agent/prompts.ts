@@ -55,9 +55,22 @@ export function formatNoteSourceBlock(input: {
   heading?: string;
   score?: number;
   matchType?: "exact" | "semantic";
+  projectPath?: string;
 }): string {
   const scorePart = input.score != null ? ` score=${input.score.toFixed(3)}` : "";
   const headingPart = input.heading ? ` · ${input.heading}` : "";
   const matchPart = input.matchType === "exact" ? " · exact-match" : "";
-  return `[N${input.index}] note · ${input.title} · ${input.relMdPath} · scope=${input.scope}${headingPart}${matchPart}${scorePart}\n${input.content}`;
+  const pathPart = input.projectPath ? ` · path=${input.projectPath}` : "";
+  return `[N${input.index}] note · ${input.title} · ${input.relMdPath} · scope=${input.scope}${pathPart}${headingPart}${matchPart}${scorePart}\n${input.content}`;
+}
+
+export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): string {
+  return [
+    buildMetaAgentSystemPrompt(outputLanguage),
+    "When the user asks to create, find, or manage notes, use the available tools to perform the action directly.",
+    "For note creation, ask the user for any missing required information (title, scope) before calling note.create.",
+    "For note search, call note.search with a relevant query and report the results clearly.",
+    "After executing a tool, summarize what was done in a concise sentence.",
+    "Do not pretend to have performed an action if the tool call failed — report the error honestly."
+  ].join(" ");
 }

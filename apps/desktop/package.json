@@ -7,8 +7,9 @@
   "scripts": {
     "build": "node scripts/fix-node-pty.mjs && tsc -p tsconfig.json && node scripts/copy-renderer.cjs && node scripts/build-renderer-vendor.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:once": "node scripts/dev.mjs --fresh --no-watch",
+    "dev:mac": "node scripts/dev-mac.mjs",
     "pack:mac": "node scripts/pack-mac.mjs",
-    "dev:raw": "npm run build && electron .",
     "postinstall": "node scripts/fix-node-pty.mjs",
     "test:mac-app": "node scripts/mac-app.test.mjs",
     "test:node-pty": "node scripts/fix-node-pty.test.mjs",
@@ -47,6 +48,7 @@
     "@electron/packager": "^18.3.5",
     "@types/node": "^24.13.1",
     "electron": "^35.2.1",
+    "electronmon": "^2.0.4",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3"
   }

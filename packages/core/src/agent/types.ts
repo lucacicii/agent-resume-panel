@@ -16,6 +16,8 @@ export interface AgentCitation {
   periodStartMs?: number;
   /** Truncated digest body for Ask citation hover (no extra DB read). */
   contentPreview?: string;
+  /** Tool operation that produced this citation (tool-call mode only). */
+  operation?: "search" | "read" | "create" | "write" | "append" | "delete";
   /** Best-effort linked session from memory_links (usually daily digests). */
   session?: {
     provider: AgentProvider;
@@ -24,7 +26,7 @@ export interface AgentCitation {
   };
 }
 
-export type AskStreamPhase = "retrieving" | "indexing_notes" | "generating" | "chunk" | "done";
+export type AskStreamPhase = "retrieving" | "indexing_notes" | "generating" | "chunk" | "tool_calling" | "tool_executing" | "done";
 
 export interface AskStreamEvent {
   phase: AskStreamPhase;
@@ -36,6 +38,8 @@ export interface AskStreamEvent {
   noteTitle?: string;
   chunkCurrent?: number;
   chunkTotal?: number;
+  /** Tool name for tool_calling / tool_executing phases. */
+  toolName?: string;
 }
 
 export interface AskMetaAgentOptions {
@@ -48,6 +52,12 @@ export interface AskMetaAgentOptions {
   /** Optional streaming progress callback (desktop Ask tab). */
   onStream?: (event: AskStreamEvent) => void | Promise<void>;
   threadId?: string;
+  /** Enable MCP tool-calling for note operations. Default false. */
+  enableTools?: boolean;
+  /** Override the MCP server spawn command. Defaults to auto-detect. */
+  mcpServerCommand?: string;
+  /** Override the MCP server spawn args. */
+  mcpServerArgs?: string[];
 }
 
 export interface AskMetaAgentResult {
@@ -58,4 +68,6 @@ export interface AskMetaAgentResult {
   digests: MemoryEntry[];
   /** Set when the answer was generated but DB persistence failed. */
   persistWarning?: string;
+  /** Number of tool calls executed when enableTools is true. */
+  toolCallsExecuted?: number;
 }

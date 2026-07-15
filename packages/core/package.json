@@ -22,5 +22,11 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "bin": {
+    "agent-resume-mcp": "./dist/mcp/cli.js"
   }
 }

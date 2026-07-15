@@ -30,6 +30,7 @@ interface NoteChunkRow {
   note_id: string;
   rel_md_path: string;
   scope: string;
+  project_path: string | null;
   title: string | null;
   heading: string | null;
   chunk_index: number;
@@ -43,6 +44,7 @@ export interface NoteSearchHit {
   noteId: string;
   relMdPath: string;
   scope: string;
+  projectPath?: string;
   title?: string;
   heading?: string;
   chunkIndex: number;
@@ -69,6 +71,7 @@ function rowToHit(row: NoteChunkRow, score: number): NoteSearchHit {
     noteId: row.note_id,
     relMdPath: row.rel_md_path,
     scope: row.scope,
+    projectPath: row.project_path ?? undefined,
     title: row.title ?? undefined,
     heading: row.heading ?? undefined,
     chunkIndex: row.chunk_index,
@@ -156,6 +159,7 @@ async function searchExactNotesFromDisk(
           noteId: note.noteId,
           relMdPath: note.relMdPath,
           scope: note.scope,
+          projectPath: note.projectPath,
           title: note.title,
           chunkIndex: 0,
           content: exactNoteExcerpt(note, body, plan),
@@ -244,9 +248,9 @@ export async function searchNotesByEmbedding(options: {
     const pageSize = Math.min(CANDIDATE_PAGE_SIZE, candidateLimit - offset);
     const rows = await runSqliteJson<NoteChunkRow>(
       dbPath,
-      `SELECT chunk_id, note_id, rel_md_path, scope, title, heading, chunk_index,
-              content, embedding_json, updated_at_ms
-       FROM note_chunks
+      `SELECT c.chunk_id, c.note_id, c.rel_md_path, c.scope, c.title, c.heading, c.chunk_index,
+              c.content, c.embedding_json, c.updated_at_ms, n.project_path
+       FROM note_chunks c LEFT JOIN notes n ON c.note_id = n.note_id
        ORDER BY updated_at_ms DESC, note_id, chunk_index
        LIMIT ${pageSize} OFFSET ${offset};`
     );

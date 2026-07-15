@@ -18,7 +18,7 @@
 - Use npm workspaces from the repository root. Add a dependency only to the workspace that owns it: `npm install <package> -w <workspace-name>`.
 - Run `npm run compile` after source changes. It builds core before compiling the extension.
 - For core-only work, use `npm run build -w @agent-resume/core` and its package test script when applicable.
-- For desktop work, use `npm run build:desktop`; use `npm run dev:desktop` for manual Electron verification.
+- For desktop work, use `npm run dev:desktop` for daily watch-mode development (see [`apps/desktop/README.md`](../../apps/desktop/README.md)); use `npm run build:desktop` for full builds; use `npm run dev:mac -w @agent-resume/desktop` on macOS to verify the packaged `.app` path; use `npm run pack:desktop` before distribution tests.
 - User-facing extension strings require `npm run i18n:check`. The checker validates `t()` references, webview string consumers, and all locale catalog keys.
 - Context-menu contribution changes require `node scripts/patch-project-menu-package.mjs`, then `npm run test:menus`. The patch script updates both `package.json` and `package-vscode.json`.
 - Extension contributions, commands, views, or activation events require `npm run install:local` and **Developer: Reload Window** to test the installed extension.

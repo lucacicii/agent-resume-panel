@@ -54,14 +54,14 @@ export type {
   SyncableAgentProvider
 } from "./sessionSync";
 
-export type { ChatMessage, LlmRuntimeConfig, EmbeddingRuntimeConfig } from "./llm/types";
+export type { ChatMessage, LlmRuntimeConfig, EmbeddingRuntimeConfig, ToolCall, ToolDefinition } from "./llm/types";
 export {
   normalizeBaseUrl,
   buildChatCompletionsUrl,
   buildEmbeddingsUrl
 } from "./llm/types";
-export { chatCompletion, chatCompletionDetailed, chatCompletionStream } from "./llm/chat";
-export type { ChatStreamCallbacks } from "./llm/chat";
+export { chatCompletion, chatCompletionDetailed, chatCompletionStream, chatCompletionWithTools } from "./llm/chat";
+export type { ChatStreamCallbacks, LlmToolCallResult } from "./llm/chat";
 export type { LlmCallResult } from "./llm/chat";
 export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
 export type { EmbedCallResult } from "./llm/embeddings";
@@ -356,3 +356,19 @@ export type {
 } from "./session/ensureSummaries";
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
+
+// MCP server and tool-calling support
+export {
+  createNoteMcpServer,
+  createNoteToolContext,
+  runStdioServer,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION
+} from "./mcp/server";
+export type { NoteToolContext } from "./mcp/tools";
+export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
+export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
+export { runToolLoop } from "./agent/toolLoop";
+export type { ToolLoopOptions, ToolLoopResult, TouchedNote, NoteOperation } from "./agent/toolLoop";
+export { resolveMcpServerCommand } from "./agent/mcpConfig";
+export type { McpServerCommand } from "./agent/mcpConfig";

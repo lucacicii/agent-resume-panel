@@ -1,6 +1,32 @@
+export interface ToolFunctionSpec {
+  name: string;
+  description?: string;
+  parameters: object;
+}
+
+export interface ToolDefinition {
+  type: "function";
+  function: ToolFunctionSpec;
+}
+
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Present on assistant messages that requested tool calls. */
+  tool_calls?: ToolCall[];
+  /** Present on tool-role messages that respond to a specific tool call. */
+  tool_call_id?: string;
+  /** Name of the tool, present on tool-role messages. */
+  name?: string;
 }
 
 export interface LlmRuntimeConfig {

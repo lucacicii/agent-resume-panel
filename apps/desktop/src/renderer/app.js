@@ -113,6 +113,7 @@ let askThreads = [];
 let activeAskThreadId = null;
 /** @type {boolean} */
 let askSidebarCollapsed = false;
+let askEnableTools = false;
 
 function mapAskMessages(messages) {
   return (messages || []).map((m) => ({
@@ -6310,6 +6311,11 @@ async function showCitationPreview(anchor, citation) {
 
 async function openCitationInMemory(citation) {
   if (citation?.source === "note" || citation?.level === "note") {
+    if (citation.operation === "delete") {
+      hideCitationPreview();
+      setStatus($("agentStatus"), "该笔记已被删除，无法在 Notes 中打开", "error");
+      return;
+    }
     if (!citation.noteId) {
       setStatus($("agentStatus"), "无法解析笔记引用", "error");
       return;
@@ -6368,6 +6374,9 @@ async function openCitationInMemory(citation) {
 function buildCitationChip(citation) {
   const chip = document.createElement("span");
   chip.className = "citation-chip";
+  if (citation.operation) {
+    chip.dataset.operation = citation.operation;
+  }
   const sess = citation.session
     ? ` · ${citation.session.provider}/${String(citation.session.id).slice(0, 10)}…`
     : "";
@@ -6377,7 +6386,17 @@ function buildCitationChip(citation) {
   const levelLabel = isNote ? "笔记" : FOCUS_DIGEST_LABELS[focusType] || citation.level || "daily";
   const indexLabel = isNote ? `N${citation.index}` : citation.index;
   const heading = isNote && citation.heading ? ` · ${citation.heading}` : "";
-  chip.textContent = `[${indexLabel}] ${levelLabel} · ${citation.title || citation.noteId || citation.memoryId}${heading}${score}${sess}`;
+  const operationLabels = {
+    search: "🔍 搜索",
+    read: "📖 读取",
+    create: "➕ 新建",
+    write: "✏️ 修改",
+    append: "📝 追加",
+    delete: "🗑 删除"
+  };
+  const operationLabel = operationLabels[citation.operation];
+  const sourceLabel = operationLabel ? `${operationLabel} · ${levelLabel}` : levelLabel;
+  chip.textContent = `[${indexLabel}] ${sourceLabel} · ${citation.title || citation.noteId || citation.memoryId}${heading}${score}${sess}`;
   chip.title = "悬停预览";
   chip.addEventListener("mouseenter", () => {
     bumpCitationPreviewHover(1);
@@ -6846,7 +6865,11 @@ async function sendAgent() {
         setStatus($("agentStatus"), event.message || "正在索引笔记…");
       } else if (event.phase === "generating") {
         hideAskIndexProgress();
-        setStatus($("agentStatus"), "生成回答…");
+        setStatus($("agentStatus"), event.message || "生成回答…");
+      } else if (event.phase === "tool_calling") {
+        setStatus($("agentStatus"), `调用工具: ${event.toolName || "…"}…`);
+      } else if (event.phase === "tool_executing") {
+        setStatus($("agentStatus"), `执行工具: ${event.toolName || "…"}`);
       } else if (event.phase === "chunk" && event.delta) {
         chatTurns[streamIdx].content += event.delta;
         updateStreamingBubble(streamIdx);
@@ -6855,7 +6878,7 @@ async function sendAgent() {
   }
 
   try {
-    const result = await agentResume.askAgent({ query, history, threadId: activeAskThreadId });
+    const result = await agentResume.askAgent({ query, history, threadId: activeAskThreadId, enableTools: askEnableTools });
     chatTurns[streamIdx] = {
       role: "assistant",
       content: result.answer,
@@ -6872,7 +6895,7 @@ async function sendAgent() {
         $("agentStatus"),
         result.fallback
           ? `完成 · ${result.citations?.length || 0} 条来源 · fallback 检索`
-          : `完成 · ${result.citations?.length || 0} 条来源`,
+          : `完成 · ${result.citations?.length || 0} 条来源${result.toolCallsExecuted ? ` · ${result.toolCallsExecuted} 次工具调用` : ""}`,
         "ok"
       );
     }
@@ -7305,6 +7328,16 @@ function wire() {
   });
 
   $("btnAgentSend").addEventListener("click", () => sendAgent());
+  $("btnAgentTools")?.addEventListener("click", () => {
+    askEnableTools = !askEnableTools;
+    const btn = $("btnAgentTools");
+    if (btn) {
+      btn.classList.toggle("active", askEnableTools);
+      btn.setAttribute("aria-pressed", String(askEnableTools));
+      btn.title = askEnableTools ? "工具已开启：可通过对话操作笔记" : "开启后可通过对话操作笔记（新建/搜索）";
+    }
+    setStatus($("agentStatus"), askEnableTools ? "工具模式已开启" : "工具模式已关闭", askEnableTools ? "ok" : undefined);
+  });
   $("btnAskAudit")?.addEventListener("click", () => toggleAskAuditPanel());
   $("btnAskAuditRefresh")?.addEventListener("click", () => loadAskAudit());
   $("btnClearChat").addEventListener("click", () => {

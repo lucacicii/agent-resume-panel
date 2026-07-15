@@ -158,6 +158,7 @@ export interface DesktopApi {
     query: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     threadId?: string;
+    enableTools?: boolean;
   }): Promise<AskMetaAgentResult>;
   listAskChat(args?: { limit?: number; threadId?: string }): Promise<{
     messages: AskChatMessage[];

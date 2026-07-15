@@ -2,15 +2,23 @@ import {
   buildChatCompletionsUrl,
   ChatMessage,
   DEFAULT_LLM_REQUEST_TIMEOUT_MS,
-  LlmRuntimeConfig
+  LlmRuntimeConfig,
+  ToolCall,
+  ToolDefinition
 } from "./types";
 import { parseOpenAiUsage, TokenUsage } from "../usage/types";
 
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
-      content?: string;
+      content?: string | null;
+      tool_calls?: Array<{
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }>;
     };
+    finish_reason?: string;
   }>;
   model?: string;
   usage?: unknown;
@@ -26,6 +34,27 @@ export interface LlmCallResult {
   durationMs: number;
 }
 
+export interface LlmToolCallResult extends LlmCallResult {
+  toolCalls?: ToolCall[];
+  finishReason?: string;
+}
+
+function llmRequestTimeoutMs(config: LlmRuntimeConfig): number {
+  const configuredTimeout = Number(config.requestTimeoutMs);
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? Math.max(1_000, Math.floor(configuredTimeout))
+    : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+}
+
+async function readLlmErrorMessage(response: Response, url: string): Promise<string> {
+  try {
+    const payload = (await response.json()) as ChatCompletionResponse;
+    return payload.error?.message || `LLM request failed with status ${response.status}. (endpoint: ${url})`;
+  } catch {
+    return `LLM request failed with status ${response.status}. (endpoint: ${url})`;
+  }
+}
+
 export async function chatCompletionDetailed(
   config: LlmRuntimeConfig,
   messages: ChatMessage[],
@@ -33,10 +62,7 @@ export async function chatCompletionDetailed(
 ): Promise<LlmCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
   const started = Date.now();
-  const configuredTimeout = Number(config.requestTimeoutMs);
-  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
-    ? Math.max(1_000, Math.floor(configuredTimeout))
-    : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+  const timeoutMs = llmRequestTimeoutMs(config);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -87,6 +113,67 @@ export async function chatCompletionDetailed(
   };
 }
 
+export async function chatCompletionWithTools(
+  config: LlmRuntimeConfig,
+  messages: ChatMessage[],
+  tools: ToolDefinition[],
+  maxTokens = 1024
+): Promise<LlmToolCallResult> {
+  const url = buildChatCompletionsUrl(config.baseUrl);
+  const started = Date.now();
+  const timeoutMs = llmRequestTimeoutMs(config);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.2,
+        tools
+      }),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
+    }
+    throw error;
+  }
+
+  let payload: ChatCompletionResponse;
+  try {
+    payload = (await response.json()) as ChatCompletionResponse;
+  } catch {
+    throw new Error(`LLM request failed with status ${response.status}.`);
+  }
+
+  const durationMs = Date.now() - started;
+
+  if (!response.ok) {
+    const message = payload.error?.message || `LLM request failed with status ${response.status}.`;
+    throw new Error(`${message} (endpoint: ${url})`);
+  }
+
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content?.trim() || "";
+  const rawToolCalls = choice?.message?.tool_calls;
+
+  return {
+    content,
+    toolCalls: rawToolCalls,
+    finishReason: choice?.finish_reason,
+    usage: parseOpenAiUsage(payload.usage),
+    model: payload.model || config.model,
+    durationMs
+  };
+}
+
 export interface ChatStreamCallbacks {
   onChunk?: (delta: string) => void | Promise<void>;
 }
@@ -102,22 +189,6 @@ interface StreamChunkPayload {
   error?: {
     message?: string;
   };
-}
-
-function llmRequestTimeoutMs(config: LlmRuntimeConfig): number {
-  const configuredTimeout = Number(config.requestTimeoutMs);
-  return Number.isFinite(configuredTimeout) && configuredTimeout > 0
-    ? Math.max(1_000, Math.floor(configuredTimeout))
-    : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
-}
-
-async function readLlmErrorMessage(response: Response, url: string): Promise<string> {
-  try {
-    const payload = (await response.json()) as ChatCompletionResponse;
-    return payload.error?.message || `LLM request failed with status ${response.status}. (endpoint: ${url})`;
-  } catch {
-    return `LLM request failed with status ${response.status}. (endpoint: ${url})`;
-  }
 }
 
 export async function chatCompletionStream(

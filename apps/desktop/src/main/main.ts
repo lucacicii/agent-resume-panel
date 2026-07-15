@@ -599,12 +599,14 @@ function registerIpc(): void {
         query: string;
         history?: Array<{ role: "user" | "assistant"; content: string }>;
         threadId?: string;
+        enableTools?: boolean;
       }
     ) => {
       return askMetaAgent({
         query: args.query,
         history: args.history,
         threadId: args.threadId,
+        enableTools: args.enableTools ?? false,
         onStream: async (streamEvent) => {
           event.sender.send("agent:askStream", streamEvent);
           if (streamEvent.phase === "chunk") {

@@ -5,13 +5,19 @@ import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../sett
 import { recordLlmUsage } from "../usage/store";
 import {
   buildMetaAgentSystemPrompt,
+  buildMetaAgentSystemPromptWithTools,
   buildMetaAgentUserPrompt,
   formatNoteSourceBlock,
   formatSourceBlock
 } from "./prompts";
 import { appendAskTurn, listAskMessagesForHistory } from "./askStore";
 import { retrieveAgentContext } from "./retrieve";
-import type { AskMetaAgentOptions, AskMetaAgentResult } from "./types";
+import { runToolLoop } from "./toolLoop";
+import type { TouchedNote } from "./toolLoop";
+import { NoteMcpClient } from "../mcp/client";
+import { createNoteMcpServer } from "../mcp/server";
+import { NotesStore } from "../notes/store";
+import type { AgentCitation, AskMetaAgentOptions, AskMetaAgentResult } from "./types";
 
 export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMetaAgentResult> {
   const query = options.query?.trim();
@@ -75,7 +81,8 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
         heading: note.heading,
         content: note.content,
         score: note.score,
-        matchType: note.matchType
+        matchType: note.matchType,
+        projectPath: note.projectPath
       })
     )
     .join("\n\n");
@@ -88,16 +95,56 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     : undefined;
 
   const language = llm.outputLanguage || "zh-CN";
+
+  if (options.enableTools) {
+    return runAskWithTools(options, llm, language, dbPath, panelHome, {
+      query,
+      sourcesBlock,
+      notesBlock,
+      notesSummary,
+      historyBlock,
+      dbPath,
+      retrieved
+    });
+  }
+
+  return runAskWithoutTools(options, llm, language, {
+    query,
+    sourcesBlock,
+    notesBlock,
+    notesSummary,
+    historyBlock,
+    dbPath,
+    retrieved
+  });
+}
+
+interface AskContext {
+  query: string;
+  sourcesBlock: string;
+  notesBlock: string;
+  notesSummary?: string;
+  historyBlock?: string;
+  dbPath: string;
+  retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>;
+}
+
+async function runAskWithoutTools(
+  options: AskMetaAgentOptions,
+  llm: NonNullable<ReturnType<typeof chatLlmConfigFromSettings>>,
+  language: string,
+  ctx: AskContext
+): Promise<AskMetaAgentResult> {
   const messages: ChatMessage[] = [
     { role: "system", content: buildMetaAgentSystemPrompt(language) },
     {
       role: "user",
       content: buildMetaAgentUserPrompt({
-        query,
-        sourcesBlock,
-        notesBlock,
-        notesSummary,
-        historyBlock
+        query: ctx.query,
+        sourcesBlock: ctx.sourcesBlock,
+        notesBlock: ctx.notesBlock,
+        notesSummary: ctx.notesSummary,
+        historyBlock: ctx.historyBlock
       })
     }
   ];
@@ -111,7 +158,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     }
   });
   try {
-    await recordLlmUsage(dbPath, {
+    await recordLlmUsage(ctx.dbPath, {
       kind: "chat",
       source: "ask",
       model: result.model,
@@ -123,18 +170,116 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
     // non-fatal
   }
 
+  return buildAskResult(options, ctx.dbPath, ctx.retrieved, result.content, ctx.retrieved.citations);
+}
+
+async function runAskWithTools(
+  options: AskMetaAgentOptions,
+  llm: NonNullable<ReturnType<typeof chatLlmConfigFromSettings>>,
+  language: string,
+  dbPath: string,
+  panelHome: string,
+  ctx: AskContext
+): Promise<AskMetaAgentResult> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: buildMetaAgentSystemPromptWithTools(language) },
+    {
+      role: "user",
+      content: buildMetaAgentUserPrompt({
+        query: ctx.query,
+        sourcesBlock: ctx.sourcesBlock,
+        notesBlock: ctx.notesBlock,
+        notesSummary: ctx.notesSummary,
+        historyBlock: ctx.historyBlock
+      })
+    }
+  ];
+
+  const mcpClient = new NoteMcpClient();
+  let answer: string;
+  let toolCallsExecuted = 0;
+  let touchedNotes: TouchedNote[] = [];
+
+  try {
+    const notesStore = new NotesStore(dbPath, panelHome);
+    const server = createNoteMcpServer({ notesStore, dbPath });
+    await mcpClient.connectInMemory(server);
+
+    options.onStream?.({ phase: "generating" });
+
+    const toolResult = await runToolLoop({
+      llm,
+      messages,
+      mcpClient,
+      maxTokens: 2000,
+      onProgress: (message) => {
+        options.onStream?.({ phase: "generating", message });
+      },
+      onToolCall: (toolName) => {
+        options.onStream?.({ phase: "tool_calling", toolName });
+      },
+      onToolResult: (toolName) => {
+        options.onStream?.({ phase: "tool_executing", toolName });
+      }
+    });
+
+    answer = toolResult.content;
+    toolCallsExecuted = toolResult.toolCallsExecuted;
+    touchedNotes = toolResult.touchedNotes;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[ask:tools] tool loop failed:", msg);
+    throw error;
+ } finally {
+   await mcpClient.stop().catch(() => {});
+ }
+
+  const baseCitations = ctx.retrieved.citations;
+  const toolCitations = touchedNotesToCitations(touchedNotes, baseCitations.length);
+  const allCitations = [...baseCitations, ...toolCitations];
+
+  return buildAskResult(options, ctx.dbPath, ctx.retrieved, answer, allCitations, toolCallsExecuted);
+}
+
+function touchedNotesToCitations(
+  touched: TouchedNote[],
+  startIndex: number
+): AgentCitation[] {
+  return touched.map((note, i) => ({
+    source: "note" as const,
+    index: startIndex + i + 1,
+    noteId: note.noteId,
+    title: note.title || note.noteId,
+    scope: note.scope,
+    relMdPath: note.relMdPath,
+    projectPath: note.projectPath,
+    level: "note",
+    contentPreview: note.contentPreview,
+    operation: note.operation
+  }));
+}
+
+async function buildAskResult(
+  options: AskMetaAgentOptions,
+  dbPath: string,
+  retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>,
+  answerContent: string,
+  citations: AgentCitation[],
+  toolCallsExecuted?: number
+): Promise<AskMetaAgentResult> {
   const answer: AskMetaAgentResult = {
-    answer: result.content,
-    citations: retrieved.citations,
+    answer: answerContent,
+    citations,
     fallback: retrieved.fallback,
-    digests: retrieved.digests.map((d) => d.entry)
+    digests: retrieved.digests.map((d) => d.entry),
+    toolCallsExecuted
   };
 
   try {
     await appendAskTurn(dbPath, {
-      userContent: query,
-      assistantContent: result.content,
-      citations: retrieved.citations,
+      userContent: options.query,
+      assistantContent: answerContent,
+      citations,
       fallback: retrieved.fallback,
       threadId: options.threadId
     });
