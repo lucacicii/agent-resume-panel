@@ -205,22 +205,6 @@
       <section id="tab-notes" class="panel notes-panel">
         <div class="notes-layout">
           <aside class="sidebar-folders-pane notes-folders-pane" id="notesFoldersPane">
-            <div class="sidebar-folders-header">
-              <button
-                type="button"
-                class="sidebar-collapse-toggle"
-                id="btnNotesToggleFolders"
-                title="隐藏侧栏"
-                aria-label="隐藏侧栏"
-                aria-expanded="true"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
-                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
-                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
-                </svg>
-              </button>
-            </div>
             <div class="sidebar-project-filter-wrap">
               <div class="sidebar-project-search-wrap">
                 <input
@@ -305,9 +289,25 @@
               </div>
             </div>
             <div class="notes-search-wrap">
+              <button
+                type="button"
+                class="sidebar-collapse-toggle"
+                id="btnNotesToggleFolders"
+                title="隐藏侧栏"
+                aria-label="隐藏侧栏"
+                aria-expanded="true"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
+                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
+                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
+                </svg>
+              </button>
               <input type="search" id="notesSearch" class="notes-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
             </div>
-            <p class="notes-list-meta" id="notesMeta"></p>
+            <div class="notes-list-meta-row">
+              <p class="notes-list-meta" id="notesMeta"></p>
+            </div>
             <div class="notes-list" id="notesList">
               <p class="muted notes-list-empty">加载笔记…</p>
             </div>
@@ -365,22 +365,6 @@
       <section id="tab-workbench" class="panel workbench-panel">
         <div class="workbench-layout">
           <aside class="sidebar-folders-pane wb-folders-pane" id="wbFoldersPane">
-            <div class="sidebar-folders-header">
-              <button
-                type="button"
-                class="sidebar-collapse-toggle"
-                id="btnWbToggleFolders"
-                title="隐藏侧栏"
-                aria-label="隐藏侧栏"
-                aria-expanded="true"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
-                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
-                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
-                </svg>
-              </button>
-            </div>
             <div class="sidebar-project-filter-wrap">
               <div class="sidebar-project-search-wrap">
                 <input
@@ -427,6 +411,20 @@
               </div>
             </div>
             <div class="wb-search-wrap">
+              <button
+                type="button"
+                class="sidebar-collapse-toggle"
+                id="btnWbToggleFolders"
+                title="隐藏侧栏"
+                aria-label="隐藏侧栏"
+                aria-expanded="true"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3.5" y="5" width="17" height="14" rx="2.25" fill="none" />
+                  <line x1="9.25" y1="5" x2="9.25" y2="19" />
+                  <rect class="sidebar-collapse-panel" x="5" y="7.25" width="3.25" height="9.5" rx="0.75" />
+                </svg>
+              </button>
               <input type="search" id="wbSearch" class="wb-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
             </div>
             <div class="wb-list-meta-row">

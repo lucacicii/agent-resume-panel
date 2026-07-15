@@ -3553,6 +3553,7 @@ function shouldKeepNotesSelection(target) {
     target.closest(".notes-list-item") ||
       target.closest("#notesEditorShell") ||
       target.closest(".notes-list-toolbar") ||
+      target.closest(".notes-list-meta-row") ||
       target.closest("#notesTargetPopover") ||
       target.closest("#notesContextMenu")
   );

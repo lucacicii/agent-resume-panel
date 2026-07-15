@@ -4183,6 +4183,13 @@ code {
   width: 40px;
 }
 
+.sidebar-folders-pane.notes-folders-pane.is-collapsed,
+.sidebar-folders-pane.wb-folders-pane.is-collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .sidebar-folders-pane.is-resizing,
 .wb-list-pane.is-resizing,
 .notes-list-pane.is-resizing {
@@ -4714,6 +4721,9 @@ body.is-pane-resizing * {
 .notes-search-wrap,
 .wb-search-wrap {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 10px 6px;
 }
 
@@ -4727,6 +4737,13 @@ body.is-pane-resizing * {
   font-size: 13px;
   background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
   color: var(--text);
+}
+
+.notes-search-wrap .notes-search,
+.wb-search-wrap .wb-search {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 .notes-search:focus,
@@ -4744,6 +4761,7 @@ body.is-pane-resizing * {
   min-width: 0;
 }
 
+.notes-list-meta-row,
 .wb-list-meta-row {
   display: flex;
   align-items: center;
@@ -5264,6 +5282,10 @@ body.is-pane-resizing * {
 }
 
 .sidebar-folders-pane.is-collapsed .ask-sidebar-list {
+  display: none;
+}
+
+.ask-sidebar-pane.is-collapsed #btnAskNewChat {
   display: none;
 }
 
