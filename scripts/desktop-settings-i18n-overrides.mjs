@@ -194,8 +194,88 @@ export const overridesByKey = {
     "Gravado em ~/.agent-resume-panel/settings.json (compartilhado com a extensão VS Code).",
     "Записывается в ~/.agent-resume-panel/settings.json (общий с расширением VS Code)."
   ),
+  "desktop.settings.unhideAllDesc": row(
+    "パネルから削除した session は catalog で非表示になります。復元しても Agent から再インポートしません。",
+    "패널에서 제거한 세션은 catalog에서 숨겨집니다. 복원해도 에이전트에서 다시 가져오지 않습니다.",
+    "Aus dem Panel entfernte Sessions werden im Katalog ausgeblendet. Wiederherstellen importiert nicht neu von Agents.",
+    "Las sesiones quitadas del panel quedan ocultas en el catálogo. Restaurar no reimporta desde agentes.",
+    "Les sessions retirées du panneau sont masquées dans le catalogue. Restaurer ne réimporte pas depuis les agents.",
+    "Le session rimosse dal pannello sono nascoste nel catalogo. Ripristinare non reimporta dagli agent.",
+    "Sessões removidas do painel ficam ocultas no catálogo. Restaurar não reimporta dos agentes.",
+    "Sessions, удалённые из панели, скрыты в каталоге. Восстановление не реимпортирует из агентов."
+  ),
+  "desktop.settings.stalePolicyDesc": row(
+    "purge は最新同期で更新されなかった catalog 行を削除します。オフですべて保持します。",
+    "purge는 최신 동기화에서 갱신되지 않은 catalog 행을 제거합니다. 끄면 모두 유지합니다.",
+    "Purge entfernt Katalogzeilen, die in der letzten Sync nicht aktualisiert wurden. Aus behält alle Zeilen.",
+    "Purge elimina filas del catálogo no actualizadas en la última sincronización. Desactivado conserva todas.",
+    "Purge supprime les lignes du catalogue non rafraîchies lors de la dernière sync. Désactivé conserve tout.",
+    "Purge rimuove righe del catalogo non aggiornate nell'ultima sync. Off mantiene tutte le righe.",
+    "Purge remove linhas do catálogo não atualizadas na última sincronização. Desligado mantém todas.",
+    "Purge удаляет строки каталога, не обновлённые при последней синхронизации. Выкл. сохраняет все."
+  ),
+  "desktop.settings.unhideAllBtn": row(
+    "非表示 session を復元",
+    "숨긴 세션 복원",
+    "Versteckte Sessions wiederherstellen",
+    "Restaurar sesiones ocultas",
+    "Restaurer les sessions masquées",
+    "Ripristina session nascoste",
+    "Restaurar sessões ocultas",
+    "Восстановить скрытые session"
+  ),
+  "desktop.settings.unhideAllConfirm": row(
+    "catalog の非表示 session をすべて表示に戻しますか？Agent からの再インポートは行いません。",
+    "catalog의 숨긴 세션을 모두 표시로 복원할까요? 에이전트에서 다시 가져오지 않습니다.",
+    "Alle versteckten Sessions im Katalog wieder sichtbar machen? Kein Neuimport von Agents.",
+    "¿Restaurar todas las sesiones ocultas del catálogo? No reimporta desde agentes.",
+    "Restaurer toutes les sessions masquées du catalogue ? Pas de réimport depuis les agents.",
+    "Ripristinare tutte le session nascoste nel catalogo? Nessun reimport dagli agent.",
+    "Restaurar todas as sessões ocultas do catálogo? Não reimporta dos agentes.",
+    "Сделать все скрытые session в каталоге видимыми? Без реимпорта из агентов."
+  ),
+  "desktop.settings.unhideAllDone": row(
+    "非表示 session を {0} 件復元しました",
+    "숨긴 세션 {0}개를 복원했습니다",
+    "{0} versteckte Sessions wiederhergestellt",
+    "Se restauraron {0} sesiones ocultas",
+    "{0} sessions masquées restaurées",
+    "Ripristinate {0} session nascoste",
+    "{0} sessões ocultas restauradas",
+    "Восстановлено скрытых session: {0}"
+  ),
   "desktop.settings.sync": row("同期", "동기화", "Synchronisierung", "Sincronización", "Synchronisation", "Sincronizzazione", "Sincronização", "Синхронизация"),
-  "desktop.settings.staleHide": row("非表示", "숨기기", "Ausblenden", "Ocultar", "Masquer", "Nascondi", "Ocultar", "Скрыть"),
+  "desktop.workbench.allSessionsCount": row(
+    "全部 Sessions（{0}）",
+    "전체 Sessions({0})",
+    "Alle Sessions ({0})",
+    "Todas las sesiones ({0})",
+    "Toutes les sessions ({0})",
+    "Tutte le session ({0})",
+    "Todas as sessões ({0})",
+    "Все Sessions ({0})"
+  ),
+  "desktop.workbench.allSessionsWithTotal": row(
+    "全部 Sessions（{0} / {1}）",
+    "전체 Sessions({0} / {1})",
+    "Alle Sessions ({0} / {1})",
+    "Todas las sesiones ({0} / {1})",
+    "Toutes les sessions ({0} / {1})",
+    "Tutte le session ({0} / {1})",
+    "Todas as sessões ({0} / {1})",
+    "Все Sessions ({0} / {1})"
+  ),
+  "desktop.workbench.listMetaWithTotal": row(
+    "{0} · {1} / {2} 条",
+    "{0} · {1} / {2} 条",
+    "{0} · {1} / {2} sessions",
+    "{0} · {1} / {2} sesiones",
+    "{0} · {1} / {2} sessions",
+    "{0} · {1} / {2} session",
+    "{0} · {1} / {2} sessões",
+    "{0} · {1} / {2} sessions"
+  ),
+  "desktop.settings.staleOff": row("オフ", "끄기", "Aus", "Desactivado", "Désactivé", "Off", "Desligado", "Выкл."),
   "desktop.settings.stalePurge": row("削除", "삭제", "Entfernen", "Eliminar", "Supprimer", "Elimina", "Remover", "Удалить"),
   "desktop.settings.visibilityFootnote": row(
     "各プロバイダーのアーカイブ／サブエージェント session の一覧表示を制御します。",

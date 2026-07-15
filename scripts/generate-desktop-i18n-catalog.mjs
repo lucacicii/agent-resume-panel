@@ -353,6 +353,15 @@ const flat = {
   "desktop.workbench.resizeProjects": { en: "Resize project sidebar", "zh-cn": "调整项目侧栏宽度" },
   "desktop.workbench.resizeSessions": { en: "Resize session list", "zh-cn": "调整 Session 列表宽度" },
   "desktop.workbench.allSessions": { en: "All Sessions", "zh-cn": "全部 Sessions" },
+  "desktop.workbench.allSessionsCount": { en: "All Sessions ({0})", "zh-cn": "全部 Sessions（{0}）" },
+  "desktop.workbench.allSessionsWithTotal": {
+    en: "All Sessions ({0} / {1})",
+    "zh-cn": "全部 Sessions（{0} / {1}）"
+  },
+  "desktop.workbench.listMetaWithTotal": {
+    en: "{0} · {1} / {2} sessions",
+    "zh-cn": "{0} · {1} / {2} 条"
+  },
   "desktop.workbench.loadingProjects": { en: "Loading projects…", "zh-cn": "加载项目…" },
   "desktop.workbench.loadingSessions": { en: "Loading sessions…", "zh-cn": "加载 sessions…" },
   "desktop.workbench.newTerminal": { en: "New Terminal", "zh-cn": "新建 Terminal" },
@@ -480,14 +489,24 @@ const flat = {
     en: "Written to ~/.agent-resume-panel/settings.json (shared with VS Code extension).",
     "zh-cn": "写入 ~/.agent-resume-panel/settings.json（与 VS Code 扩展共用）。"
   },
+  "desktop.settings.unhideAllDesc": {
+    en: "Sync may mark sessions not scanned in the latest run as hidden. Restore makes them visible again without re-importing from agents.",
+    "zh-cn": "同步时，本次未从 Agent 源扫入的 session 可能被标为隐藏。恢复可见不会重新从 Agent 导入。"
+  },
+  "desktop.settings.unhideAllBtn": { en: "Restore hidden sessions", "zh-cn": "恢复已隐藏 session" },
+  "desktop.settings.unhideAllConfirm": {
+    en: "Restore all hidden sessions in the catalog to visible? This does not re-import from agents.",
+    "zh-cn": "将 catalog 中所有已隐藏的 session 恢复为可见？不会从 Agent 重新导入。"
+  },
+  "desktop.settings.unhideAllDone": { en: "Restored {0} hidden sessions", "zh-cn": "已恢复 {0} 条隐藏 session" },
   "desktop.settings.sync": { en: "Sync", "zh-cn": "同步" },
   "desktop.settings.syncMax": { en: "Sync limit", "zh-cn": "同步上限" },
   "desktop.settings.stalePolicy": { en: "Stale policy", "zh-cn": "过期策略" },
   "desktop.settings.stalePolicyDesc": {
-    en: "Hide or purge sessions deleted at source",
-    "zh-cn": "源端已删除的 session 在本地隐藏或清除"
+    en: "Purge removes catalog rows not refreshed in the latest sync. Off keeps all rows.",
+    "zh-cn": "清除会删除本次同步未刷新的 catalog 行。关闭则保留全部。"
   },
-  "desktop.settings.staleHide": { en: "Hide", "zh-cn": "隐藏" },
+  "desktop.settings.staleOff": { en: "Off", "zh-cn": "关闭" },
   "desktop.settings.stalePurge": { en: "Purge", "zh-cn": "清除" },
   "desktop.settings.visibilityFilter": { en: "Visibility filter", "zh-cn": "可见性过滤" },
   "desktop.settings.visibilityFootnote": {

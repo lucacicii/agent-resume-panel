@@ -27,8 +27,10 @@ import {
   listReportEntries,
   listReportEntriesInRange,
   listScheduleRuns,
+  countSessions,
   listSessions,
   listSessionsInRange,
+  unhideAllSessionsInCatalog,
   loadProjectAliasesMap,
   loadSessionPreview,
   loadSettings,
@@ -67,6 +69,7 @@ import {
 import { safeHandle } from "./ipcUtils";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, initI18nService } from "./i18nService";
+import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
   invalidateNotesStore,
   notesCopyPath,
@@ -338,23 +341,40 @@ function registerIpc(): void {
     await shell.openExternal(url);
   });
 
-  ipcMain.handle("settings:save", async (_event, settings: PanelSettings) => {
-    const previous = await loadSettings();
-    const prevLocale = buildI18nBundle(previous).locale;
-    const file = await saveSettings(settings);
-    invalidateNotesStore();
-    const schedulerEnabled = await refreshMemorySchedulerFromSettings();
-    const saved = await loadSettings();
-    const bundle = buildI18nBundle(saved);
-    if (bundle.locale !== prevLocale && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("i18n:localeChanged", bundle);
+  ipcMain.handle(
+    "settings:save",
+    async (_event, settings: PanelSettings, options?: SaveSettingsOptions) => {
+      const previous = await loadSettings();
+      const prevLocale = buildI18nBundle(previous).locale;
+      const file = await saveSettings(settings);
+      invalidateNotesStore();
+      const schedulerEnabled = await refreshMemorySchedulerFromSettings();
+      const saved = await loadSettings();
+      const bundle = buildI18nBundle(saved);
+      if (bundle.locale !== prevLocale && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("i18n:localeChanged", bundle);
+      }
+      const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
+        ? await syncAndNotify()
+        : undefined;
+      scheduleNotesIndex();
+      return { file, settings: saved, schedulerEnabled, sync };
     }
-    const sync = await syncAndNotify();
-    scheduleNotesIndex();
-    return { file, settings: saved, schedulerEnabled, sync };
-  });
+  );
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
+
+  ipcMain.handle("sessions:count", async () => {
+    const paths = await loadPanelDbPaths();
+    return countSessions(paths.catalogDb);
+  });
+
+  ipcMain.handle("sessions:unhideAll", async () => {
+    const paths = await loadPanelDbPaths();
+    const restored = await unhideAllSessionsInCatalog(paths.catalogDb);
+    const counts = await countSessions(paths.catalogDb);
+    return { restored, counts };
+  });
 
   ipcMain.handle("sessions:list", async (_event, limit?: number) => {
     const paths = await loadPanelDbPaths();

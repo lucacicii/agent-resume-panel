@@ -648,10 +648,16 @@
                           <span class="settings-row-desc" data-i18n="desktop.settings.stalePolicyDesc">Hide or purge sessions deleted at source</span>
                         </div>
                         <select name="syncStalePolicy" class="settings-row-control">
-                          <option value="hide" data-i18n="desktop.settings.staleHide">Hide</option>
+                          <option value="off" data-i18n="desktop.settings.staleOff">Off</option>
                           <option value="purge" data-i18n="desktop.settings.stalePurge">Purge</option>
                         </select>
                       </div>
+                      <p class="settings-footnote" data-i18n="desktop.settings.unhideAllDesc">
+                        Sync may mark sessions not scanned in the latest run as hidden. Restore makes them visible again without re-importing from agents.
+                      </p>
+                      <button type="button" id="btnUnhideAllSessions" class="tool-btn" data-i18n="desktop.settings.unhideAllBtn">
+                        Restore hidden sessions
+                      </button>
                     </div>
                   </section>
 

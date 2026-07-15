@@ -62,7 +62,7 @@ function applyDesktopSettingsOverlay(localeCode, locale) {
     }
   }
   for (const [key, value] of Object.entries(overrides)) {
-    if (!key.startsWith("desktop.tabs.")) continue;
+    if (!key.startsWith("desktop.tabs.") && !key.startsWith("desktop.workbench.")) continue;
     locale[key] = value;
     applied += 1;
   }

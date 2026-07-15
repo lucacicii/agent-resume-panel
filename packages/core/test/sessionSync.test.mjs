@@ -61,7 +61,7 @@ test("syncs seven providers, preserves local enhancements, and isolates provider
     llm: { baseUrl: "http://localhost", model: "test" },
     embedding: { model: "test" },
     agentHomes: homes,
-    sessionSync: { maxItems: 10000, stalePolicy: "hide" }
+    sessionSync: { maxItems: 10000, stalePolicy: "off" }
   };
   const options = sessionSyncOptionsFromSettings(settings);
   const firstPromise = syncAgentSessions(options);

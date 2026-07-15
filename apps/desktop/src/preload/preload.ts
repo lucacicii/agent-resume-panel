@@ -22,11 +22,17 @@ export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
   saveSettings(
-    settings: PanelSettings
+    settings: PanelSettings,
+    options?: { triggerSync?: boolean }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
   syncSessions(): Promise<AgentSessionSyncResult>;
   onSessionsSynced(callback: (result: AgentSessionSyncResult) => void): () => void;
   onSessionsSyncFailed(callback: (message: string) => void): () => void;
+  countSessions(): Promise<{ total: number; visible: number; hidden: number }>;
+  unhideAllSessions(): Promise<{
+    restored: number;
+    counts: { total: number; visible: number; hidden: number };
+  }>;
   listSessions(limit?: number): Promise<AgentSession[]>;
   listSessionsInRange(args: {
     fromMs: number;
@@ -385,8 +391,10 @@ export interface DesktopApi {
 const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
-  saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
+  saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
   syncSessions: () => ipcRenderer.invoke("sessions:sync"),
+  countSessions: () => ipcRenderer.invoke("sessions:count"),
+  unhideAllSessions: () => ipcRenderer.invoke("sessions:unhideAll"),
   onSessionsSynced: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, result: AgentSessionSyncResult) => callback(result);
     ipcRenderer.on("sessions:synced", handler);

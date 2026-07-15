@@ -182,11 +182,11 @@
         "agentResume.catalog.stalePolicy": {
           "type": "string",
           "enum": [
-            "hide",
+            "off",
             "purge"
           ],
-          "default": "hide",
-          "description": "When a session disappears from agent storage during sync: hide marks it hidden in the catalog; purge deletes the catalog row."
+          "default": "off",
+          "description": "When a session disappears from agent storage during sync: off keeps all catalog rows; purge deletes rows not refreshed in the latest sync."
         },
         "agentResume.catalog.sidebarMode": {
           "type": "string",

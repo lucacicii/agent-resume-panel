@@ -14,6 +14,15 @@ export async function hideSessionsInCatalog(dbPath: string, sessions: AgentSessi
   await runSqlite(dbPath, `UPDATE sessions SET hidden = 1 WHERE ${clauses.join(" OR ")};`);
 }
 
+export async function unhideAllSessionsInCatalog(dbPath: string): Promise<number> {
+  const rows = await runSqliteJson<{ changes: number }>(
+    dbPath,
+    `UPDATE sessions SET hidden = 0 WHERE hidden = 1;
+     SELECT changes() AS changes;`
+  );
+  return Number(rows[0]?.changes) || 0;
+}
+
 export async function setUserTitleInCatalog(
   dbPath: string,
   provider: AgentProvider,

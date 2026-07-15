@@ -5,7 +5,6 @@ import {
   getCatalogForLocale,
   loadCatalogs,
   normalizeUiLanguagePreference,
-  resetI18nCache,
   resolveUiLocale,
   setLocalesDir,
   translateKey,
@@ -44,22 +43,12 @@ export function initI18nService(appRoot: string): void {
   initialized = true;
 }
 
-function ensureFreshCatalog(): void {
-  if (process.env.AGENT_RESUME_DEV !== "1" || !localesDir) {
-    return;
-  }
-  resetI18nCache();
-  setLocalesDir(localesDir);
-  loadCatalogs();
-}
-
 export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
   const pref = normalizeUiLanguagePreference(settings?.uiLanguage ?? UI_LANGUAGE_AUTO);
   return resolveUiLocale(pref, app.getLocale());
 }
 
 export function buildI18nBundle(settings: PanelSettings | undefined): I18nBundle {
-  ensureFreshCatalog();
   const locale = resolveDesktopLocale(settings);
   return {
     locale,

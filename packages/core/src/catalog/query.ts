@@ -17,6 +17,28 @@ export async function listSessions(dbPath: string, limit = 500): Promise<AgentSe
   return rows.map((row) => toAgentSession(row));
 }
 
+export interface SessionCatalogCounts {
+  total: number;
+  visible: number;
+  hidden: number;
+}
+
+export async function countSessions(dbPath: string): Promise<SessionCatalogCounts> {
+  const rows = await runSqliteJson<SessionCatalogCounts>(
+    dbPath,
+    `SELECT COUNT(*) AS total,
+      SUM(CASE WHEN hidden = 0 THEN 1 ELSE 0 END) AS visible,
+      SUM(CASE WHEN hidden = 1 THEN 1 ELSE 0 END) AS hidden
+     FROM sessions;`
+  );
+  const row = rows[0];
+  return {
+    total: Number(row?.total) || 0,
+    visible: Number(row?.visible) || 0,
+    hidden: Number(row?.hidden) || 0
+  };
+}
+
 export async function listSessionsInRange(
   dbPath: string,
   startMs: number,

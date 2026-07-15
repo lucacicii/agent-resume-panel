@@ -354,7 +354,7 @@ const nested = {
     fieldCatalogSyncMaxItemsDescription: "Upper bound of sessions imported per refresh into the catalog.",
     fieldCatalogStalePolicyLabel: "Stale Session Policy",
     fieldCatalogStalePolicyDescription:
-      "hide keeps a hidden catalog row; purge removes rows missing from the latest agent snapshot.",
+      "Purge removes catalog rows not refreshed in the latest sync. Off keeps all rows.",
     fieldCatalogSidebarModeLabel: "Sidebar Mode",
     fieldCatalogSidebarModeDescription: "legacy matches Max Sessions; full shows more rows from the catalog in the sidebar.",
     fieldCodexHomeLabel: "Codex Home",
@@ -449,7 +449,7 @@ const nested = {
     editorNewSessionProviderGrok: "grok",
     editorNewSessionProviderOpencode: "opencode",
     editorNewSessionProviderPi: "pi",
-    catalogStalePolicyHide: "hide",
+    catalogStalePolicyOff: "off",
     catalogStalePolicyPurge: "purge",
     catalogSidebarModeLegacy: "legacy",
     catalogSidebarModeFull: "full",

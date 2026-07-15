@@ -3,7 +3,7 @@ import { AgentProvider, AgentSession } from "../history/types";
 import { summaryLanguagesMatch } from "@agent-resume/core";
 import { LlmOutputLanguage } from "../llm/languages";
 
-export type CatalogStalePolicy = "hide" | "purge";
+export type CatalogStalePolicy = "off" | "purge";
 export type CatalogSidebarMode = "legacy" | "full";
 
 export interface CatalogSettings {

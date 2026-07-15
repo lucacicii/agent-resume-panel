@@ -85,7 +85,7 @@ export function sessionSyncOptionsFromSettings(
     dbPath: catalogDbFromSettings(settings),
     ...homes,
     maxItems: clamp(sync.maxItems ?? 10_000, 1, 50_000),
-    stalePolicy: sync.stalePolicy === "purge" ? "purge" : "hide",
+    stalePolicy: normalizeStalePolicy(sync.stalePolicy),
     showArchivedCodex: sync.showArchivedCodex === true,
     showArchivedOpenCode: sync.showArchivedOpenCode === true,
     showSubagentCodex: sync.showSubagentCodex === true,
@@ -194,9 +194,16 @@ async function upsertProvider(dbPath: string, provider: SyncableAgentProvider, s
   }
 }
 
+function normalizeStalePolicy(value: SessionSyncStalePolicy | "hide" | undefined): SessionSyncStalePolicy {
+  return value === "purge" ? "purge" : "off";
+}
+
 async function applyProviderStalePolicy(dbPath: string, provider: SyncableAgentProvider, policy: SessionSyncStalePolicy, syncTime: number): Promise<void> {
+  if (policy !== "purge") {
+    return;
+  }
   const where = `provider=${sql(provider)} AND (last_synced_at_ms IS NULL OR last_synced_at_ms < ${syncTime})`;
-  await runSqliteTransaction(dbPath, [policy === "purge" ? `DELETE FROM sessions WHERE ${where}` : `UPDATE sessions SET hidden=1 WHERE ${where}`]);
+  await runSqliteTransaction(dbPath, [`DELETE FROM sessions WHERE ${where}`]);
 }
 
 async function writeSyncState(dbPath: string, result: AgentSessionProviderSyncResult): Promise<void> {

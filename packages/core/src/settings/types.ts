@@ -72,7 +72,7 @@ export interface AgentHomesSettings {
   piHome?: string;
 }
 
-export type SessionSyncStalePolicy = "hide" | "purge";
+export type SessionSyncStalePolicy = "off" | "purge";
 
 export interface AgentSessionSyncFilters {
   showArchivedCodex?: boolean;
@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   sessionSync: {
     maxItems: 10_000,
-    stalePolicy: "hide",
+    stalePolicy: "off",
     showArchivedCodex: false,
     showArchivedOpenCode: false,
     showSubagentCodex: false,

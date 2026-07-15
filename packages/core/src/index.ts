@@ -81,8 +81,14 @@ export {
   syncStateHasExtendedColumns
 } from "./catalog/db";
 
-export { listSessions, listSessionsInRange, getSessionById } from "./catalog/query";
-export { setUserTitleInCatalog, setSessionSummaryInCatalog, hideSessionsInCatalog } from "./catalog/mutations";
+export { listSessions, listSessionsInRange, getSessionById, countSessions } from "./catalog/query";
+export type { SessionCatalogCounts } from "./catalog/query";
+export {
+  setUserTitleInCatalog,
+  setSessionSummaryInCatalog,
+  hideSessionsInCatalog,
+  unhideAllSessionsInCatalog
+} from "./catalog/mutations";
 export {
   loadProjectAliasesMap,
   getProjectAliasFromCatalog,

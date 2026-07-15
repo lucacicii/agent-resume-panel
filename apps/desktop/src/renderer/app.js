@@ -769,6 +769,8 @@ const PINNED_PROJECTS_KEY = "pinned-projects";
 let projectAliasMap = {};
 let pinnedProjects = [];
 let wbSessions = [];
+/** @type {{ total: number, visible: number, hidden: number }} */
+let wbSessionCounts = { total: 0, visible: 0, hidden: 0 };
 let wbActiveKey = "";
 let wbSearch = "";
 let wbProjectSearch = "";
@@ -923,6 +925,23 @@ function selectWorkbenchProject(folder) {
 function alertWorkbenchError(error) {
   const message = error instanceof Error ? error.message : String(error ?? t("desktop.common.unknownError"));
   window.alert(message);
+}
+
+async function refreshWorkbenchSessionCounts() {
+  try {
+    wbSessionCounts = await agentResume.countSessions();
+  } catch {
+    wbSessionCounts = { total: wbSessions.length, visible: wbSessions.length, hidden: 0 };
+  }
+}
+
+function workbenchAllSessionsLabel() {
+  const visible = wbSessionCounts.visible || wbSessions.length;
+  const total = wbSessionCounts.total || visible;
+  if (total > visible) {
+    return t("desktop.workbench.allSessionsWithTotal", visible, total);
+  }
+  return t("desktop.workbench.allSessionsCount", visible);
 }
 
 function filterWorkbenchSessionsByProject(sessions) {
@@ -1125,7 +1144,7 @@ function renderWorkbenchFolders() {
     filterMode: wbProjectFilter,
     selectedProjectPath: selectedPath
   });
-  const allBtn = renderWorkbenchFolderRow(t("desktop.workbench.allSessions"), { kind: "all" }, { count: wbSessions.length });
+  const allBtn = renderWorkbenchFolderRow(workbenchAllSessionsLabel(), { kind: "all" });
   host.appendChild(allBtn);
 
   if (projects.length) {
@@ -1176,10 +1195,15 @@ function renderWorkbenchSessionList() {
 
   if (meta) {
     const folderLabel =
-      wbSelectedProject.kind === "all" ? t("desktop.workbench.allSessions") : basename(wbSelectedProject.projectPath);
-    meta.textContent = wbSearch.trim()
-      ? t("desktop.workbench.listMetaSearch", folderLabel, wbSearch.trim(), sessions.length)
-      : t("desktop.workbench.listMeta", folderLabel, sessions.length);
+      wbSelectedProject.kind === "all" ? workbenchAllSessionsLabel() : basename(wbSelectedProject.projectPath);
+    const total = wbSessionCounts.total || sessions.length;
+    if (wbSearch.trim()) {
+      meta.textContent = t("desktop.workbench.listMetaSearch", folderLabel, wbSearch.trim(), sessions.length);
+    } else if (total > sessions.length) {
+      meta.textContent = t("desktop.workbench.listMetaWithTotal", folderLabel, sessions.length, total);
+    } else {
+      meta.textContent = t("desktop.workbench.listMeta", folderLabel, sessions.length);
+    }
   }
 
   if (!sessions.length) {
@@ -1242,6 +1266,7 @@ async function loadWorkbenchSessions(opts = {}) {
   if (!quiet) list.innerHTML = `<p class="muted wb-list-empty">${escapeHtml(t("desktop.common.loading"))}</p>`;
   try {
     wbSessions = await agentResume.listSessions(2000);
+    await refreshWorkbenchSessionCounts();
     if (wbSelectedProject.kind === "project") {
       const hasProject = wbSessions.some(
         (s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath
@@ -6626,7 +6651,7 @@ async function loadSettingsForm() {
   form.opencodeHome.value = s.agentHomes?.opencodeHome || "~/.local/share/opencode";
   form.piHome.value = s.agentHomes?.piHome || "~/.pi/agent";
   form.syncMaxItems.value = s.sessionSync?.maxItems ?? 10000;
-  form.syncStalePolicy.value = s.sessionSync?.stalePolicy || "hide";
+  form.syncStalePolicy.value = s.sessionSync?.stalePolicy === "purge" ? "purge" : "off";
   form.showArchivedCodex.checked = Boolean(s.sessionSync?.showArchivedCodex);
   form.showSubagentCodex.checked = Boolean(s.sessionSync?.showSubagentCodex);
   form.showArchivedOpenCode.checked = Boolean(s.sessionSync?.showArchivedOpenCode);
@@ -6715,7 +6740,7 @@ function collectSessionsSettings(form) {
     sessionSync: {
       ...(loadedSettings?.sessionSync || {}),
       maxItems: Math.max(1, Math.min(50000, Number(form.syncMaxItems.value) || 10000)),
-      stalePolicy: form.syncStalePolicy.value === "purge" ? "purge" : "hide",
+      stalePolicy: form.syncStalePolicy.value === "purge" ? "purge" : "off",
       showArchivedCodex: form.showArchivedCodex.checked,
       showSubagentCodex: form.showSubagentCodex.checked,
       showArchivedOpenCode: form.showArchivedOpenCode.checked,
@@ -6782,7 +6807,7 @@ async function persistSettings(patch, { refreshSessions = true } = {}) {
   const uiLanguageBeforeSave = loadedSettings?.uiLanguage || "en";
   const uiLanguagePending = settings.uiLanguage || "en";
   try {
-    const result = await agentResume.saveSettings(settings);
+    const result = await agentResume.saveSettings(settings, { triggerSync: refreshSessions });
     loadedSettings = result.settings;
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
@@ -6824,6 +6849,21 @@ async function saveReportSection() {
   await persistSettings(patch, { refreshSessions: false });
 }
 
+async function restoreHiddenCatalogSessions() {
+  const status = $("settingsStatus");
+  const ok = window.confirm(t("desktop.settings.unhideAllConfirm"));
+  if (!ok) return;
+  try {
+    setStatus(status, t("desktop.common.loading"));
+    const result = await agentResume.unhideAllSessions();
+    wbSessionCounts = result.counts;
+    await refreshSessionViews({ quiet: true });
+    setStatus(status, t("desktop.settings.unhideAllDone", result.restored), "ok");
+  } catch (error) {
+    setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
 async function saveSettingsSection(section) {
   const form = $("settingsForm");
   if (!form) return;
@@ -6844,7 +6884,7 @@ async function saveSettingsSection(section) {
       await saveReportSection();
       break;
     case "storage":
-      await persistSettings(collectStorageSettings(form));
+      await persistSettings(collectStorageSettings(form), { refreshSessions: true });
       break;
     default:
       break;
@@ -8546,6 +8586,7 @@ function wire() {
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
+  $("btnUnhideAllSessions")?.addEventListener("click", () => void restoreHiddenCatalogSessions());
   $("btnAgentNewChat")?.addEventListener("click", () => handleNewAgentChat());
   $("btnAgentToggleSidebar")?.addEventListener("click", () => toggleAskSidebarCollapsed());
   $("btnAgentRenameChat")?.addEventListener("click", () => openAgentRenameDialog());

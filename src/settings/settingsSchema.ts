@@ -107,10 +107,10 @@ export function getSettingSections(): SettingSection[] {
           label: t("settings.fieldCatalogStalePolicyLabel"),
           description: t("settings.fieldCatalogStalePolicyDescription"),
           type: "enum",
-          default: "hide",
-          enum: ["hide", "purge"],
+          default: "off",
+          enum: ["off", "purge"],
           enumLabels: {
-            hide: t("settings.enum.catalogStalePolicyHide"),
+            off: t("settings.enum.catalogStalePolicyOff"),
             purge: t("settings.enum.catalogStalePolicyPurge")
           }
         },
