@@ -8,9 +8,9 @@ import {
   syncStateHasExtendedColumns
 } from "./catalog/db";
 import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
-import { PanelSettings, SessionSyncStalePolicy } from "./settings/types";
+import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
 import { catalogDbFromSettings } from "./settings/store";
-import { resolvePreviewHomes } from "./transcript/homes";
+import { agentHomeDiffersFromDefault, AgentHomeKey, resolvePreviewHomes } from "./transcript/homes";
 import { candidateAgyRoots } from "./transcript/agyRoots";
 import { listJsonlFiles, findFilesByName } from "./transcript/fs";
 
@@ -30,6 +30,7 @@ export interface AgentSessionSyncOptions {
   almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  configuredAgentHomes?: AgentHomesSettings;
   maxItems: number;
   stalePolicy: SessionSyncStalePolicy;
   showArchivedCodex: boolean;
@@ -84,6 +85,7 @@ export function sessionSyncOptionsFromSettings(
   return {
     dbPath: catalogDbFromSettings(settings),
     ...homes,
+    configuredAgentHomes: settings.agentHomes,
     maxItems: clamp(sync.maxItems ?? 10_000, 1, 50_000),
     stalePolicy: normalizeStalePolicy(sync.stalePolicy),
     showArchivedCodex: sync.showArchivedCodex === true,
@@ -164,7 +166,13 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
 async function loadProvider(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
   const home = providerHome(provider, options);
   if (!await fileExists(home)) {
-    return { provider, sessions: [], warning: `${label(provider)} data directory not found at ${home}.`, failed: true };
+    const configured = isConfiguredAgentHome(provider, options);
+    return {
+      provider,
+      sessions: [],
+      warning: configured ? `${label(provider)} data directory not found at ${home}.` : undefined,
+      failed: false
+    };
   }
   switch (provider) {
     case "codex": return loadCodex(options);
@@ -317,3 +325,8 @@ async function grokCwd(summaryFile: string): Promise<string> { const group = pat
 function hideAlma(title: string, options: AgentSessionSyncOptions): boolean { const value = title.trim(); return (options.hideCronAlma && value.startsWith("⏰ Cron:")) || (options.hideChannelAlma && ["WeChat:", "Telegram:", "Discord:", "Slack:"].some((prefix) => value.startsWith(prefix))); }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
 function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "alma": return options.almaDataDir; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
+function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "alma": return "almaDataDir"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
+function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
+  const key = agentHomeSettingKey(provider) as AgentHomeKey;
+  return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);
+}

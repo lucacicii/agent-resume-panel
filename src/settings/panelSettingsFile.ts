@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { sanitizeAgentHomes } from "@agent-resume/core";
 import { expandHome } from "../history/pathUtils";
 
 /** Mirrors packages/core PanelSettings LLM fields used by Desktop. */
@@ -228,7 +229,7 @@ export async function upsertPanelLlmFields(input: {
 
   // Keep agent homes aligned with extension defaults when missing
   const config = vscode.workspace.getConfiguration("agentResume");
-  current.agentHomes = {
+  current.agentHomes = sanitizeAgentHomes({
     codexHome: config.get<string>("codexHome", "~/.codex"),
     claudeHome: config.get<string>("claudeHome", "~/.claude"),
     antigravityHome: config.get<string>("antigravityHome", "~/.gemini"),
@@ -237,7 +238,7 @@ export async function upsertPanelLlmFields(input: {
     opencodeHome: config.get<string>("opencodeHome", "~/.local/share/opencode"),
     piHome: config.get<string>("piHome", "~/.pi/agent"),
     ...current.agentHomes
-  };
+  });
 
   current.panelHome = config.get<string>("panelHome", DEFAULT_PANEL_HOME);
 

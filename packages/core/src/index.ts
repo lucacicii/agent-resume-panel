@@ -192,7 +192,15 @@ export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
 export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
-export { resolvePreviewHomes, DEFAULT_AGENT_HOMES, defaultAlmaDataDir } from "./transcript/homes";
+export {
+  resolvePreviewHomes,
+  DEFAULT_AGENT_HOMES,
+  defaultAlmaDataDir,
+  defaultAgentHomeValue,
+  agentHomeDiffersFromDefault,
+  sanitizeAgentHomes
+} from "./transcript/homes";
+export type { AgentHomeKey } from "./transcript/homes";
 export {
   loadSessionPreview,
   loadSessionSnippet,

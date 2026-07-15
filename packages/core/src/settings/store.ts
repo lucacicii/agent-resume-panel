@@ -6,6 +6,7 @@ import {
   resolvePanelHome,
   settingsPath
 } from "../panelHome";
+import { sanitizeAgentHomes } from "../transcript/homes";
 import { DEFAULT_SETTINGS, PanelSettings } from "./types";
 
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
@@ -48,10 +49,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.report,
       ...(partial.report || {})
     },
-    agentHomes: {
+    agentHomes: sanitizeAgentHomes({
       ...base.agentHomes,
       ...(partial.agentHomes || {})
-    },
+    }),
     sessionSync: {
       ...base.sessionSync,
       ...(partial.sessionSync || {})
@@ -120,7 +121,8 @@ async function migrateLegacySharedSettings(home: string): Promise<Partial<PanelS
   await fs.mkdir(home, { recursive: true });
   const toWrite: PanelSettings = {
     ...merged,
-    panelHome: merged.panelHome || DEFAULT_PANEL_HOME
+    panelHome: merged.panelHome || DEFAULT_PANEL_HOME,
+    agentHomes: sanitizeAgentHomes(merged.agentHomes)
   };
   await fs.writeFile(desktopFile, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
   return legacy;
@@ -158,7 +160,8 @@ export async function saveSettings(settings: PanelSettings, panelHomeHint?: stri
   const file = desktopSettingsPath(home);
   const toWrite: PanelSettings = {
     ...merged,
-    panelHome: merged.panelHome || DEFAULT_PANEL_HOME
+    panelHome: merged.panelHome || DEFAULT_PANEL_HOME,
+    agentHomes: sanitizeAgentHomes(merged.agentHomes)
   };
   await fs.writeFile(file, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
   return file;

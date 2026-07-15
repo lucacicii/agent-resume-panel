@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   listSessions,
+  loadAllAgentSessions,
   runSqliteJson,
   sessionSyncOptionsFromSettings,
   syncAgentSessions
@@ -19,6 +20,42 @@ async function jsonl(file, rows) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
 }
+
+test("fresh install with default agent homes does not warn about missing directories", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-fresh-"));
+  const settings = {
+    panelHome: path.join(root, "panel"),
+    llm: { baseUrl: "http://localhost", model: "test" },
+    embedding: { model: "test" },
+    agentHomes: {
+      codexHome: "~/.codex",
+      claudeHome: "~/.claude",
+      antigravityHome: "~/.gemini",
+      grokHome: "~/.grok",
+      almaDataDir: "~/Library/Application Support/alma",
+      opencodeHome: "~/.local/share/opencode",
+      piHome: "~/.pi/agent"
+    }
+  };
+  const result = await loadAllAgentSessions(sessionSyncOptionsFromSettings(settings));
+  assert.equal(result.warnings.length, 0);
+  assert.equal(result.providers.every((provider) => provider.status === "ok"), true);
+});
+
+test("explicit missing agent home still warns", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-explicit-"));
+  const missing = path.join(root, "missing-claude");
+  const settings = {
+    panelHome: path.join(root, "panel"),
+    llm: { baseUrl: "http://localhost", model: "test" },
+    embedding: { model: "test" },
+    agentHomes: {
+      claudeHome: missing
+    }
+  };
+  const result = await loadAllAgentSessions(sessionSyncOptionsFromSettings(settings));
+  assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
+});
 
 test("syncs seven providers, preserves local enhancements, and isolates provider failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-sync-"));

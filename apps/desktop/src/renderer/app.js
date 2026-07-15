@@ -1,7 +1,7 @@
 /* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
 /* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
 
-const DESKTOP_APP_VERSION = "0.1.0";
+const DESKTOP_APP_VERSION = "0.1.1";
 const DESKTOP_DOC_README = "https://github.com/thunder-luc/agent-resume-desktop-doc#readme";
 const DESKTOP_DOC_ISSUES = "https://github.com/thunder-luc/agent-resume-desktop-doc/issues";
 const PANEL_DOC_README = "https://github.com/thunder-luc/agent-resume-panel-doc#readme";
@@ -558,8 +558,12 @@ async function syncAndRefreshSessionViews(statusEl) {
     const result = await agentResume.syncSessions();
     lastSessionSyncAt = result.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
-    const warning = result.warnings?.join(" · ") || "";
-    if (statusEl) setStatus(statusEl, warning || t("desktop.workbench.syncedCount", result.sessionCount), warning ? "error" : "ok");
+    if (result.warnings?.length) {
+      console.warn("session sync warnings", result.warnings);
+    }
+    if (statusEl) {
+      setStatus(statusEl, t("desktop.workbench.syncedCount", result.sessionCount), "ok");
+    }
     return result;
   } catch (error) {
     if (statusEl) setStatus(statusEl, error instanceof Error ? error.message : String(error), "error");
@@ -6783,19 +6787,27 @@ function collectReportSettings(form) {
   };
 }
 
+const DEFAULT_AGENT_HOME_FIELDS = {
+  codexHome: "~/.codex",
+  claudeHome: "~/.claude",
+  antigravityHome: "~/.gemini",
+  grokHome: "~/.grok",
+  almaDataDir: "~/Library/Application Support/alma",
+  opencodeHome: "~/.local/share/opencode",
+  piHome: "~/.pi/agent"
+};
+
 function collectStorageSettings(form) {
+  const agentHomes = {};
+  for (const [key, fallback] of Object.entries(DEFAULT_AGENT_HOME_FIELDS)) {
+    const value = (form[key]?.value || fallback).trim() || fallback;
+    if (value !== fallback) {
+      agentHomes[key] = value;
+    }
+  }
   return {
     panelHome: form.panelHome.value.trim() || undefined,
-    agentHomes: {
-      ...(loadedSettings?.agentHomes || {}),
-      codexHome: form.codexHome.value.trim() || "~/.codex",
-      claudeHome: form.claudeHome.value.trim() || "~/.claude",
-      antigravityHome: form.antigravityHome.value.trim() || "~/.gemini",
-      grokHome: form.grokHome.value.trim() || "~/.grok",
-      almaDataDir: form.almaDataDir.value.trim() || "~/Library/Application Support/alma",
-      opencodeHome: form.opencodeHome.value.trim() || "~/.local/share/opencode",
-      piHome: form.piHome.value.trim() || "~/.pi/agent"
-    }
+    ...(Object.keys(agentHomes).length ? { agentHomes } : {})
   };
 }
 
