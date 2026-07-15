@@ -129,6 +129,7 @@ async function launchElectronMon() {
       "dist/preload/**",
       "dist/renderer/**",
       "../../packages/core/dist/**",
+      "!dist/resources/**",
       "!src/**",
       "!../../packages/core/src/**",
       "!**/*.map"

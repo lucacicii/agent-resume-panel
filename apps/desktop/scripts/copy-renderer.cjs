@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..");
+const rendererOnly = process.argv.includes("--renderer-only");
 const src = path.join(root, "src", "renderer");
 const dest = path.join(root, "dist", "renderer");
 const vendorDest = path.join(dest, "vendor");
@@ -14,6 +15,8 @@ for (const name of fs.readdirSync(src)) {
   if (fs.statSync(from).isDirectory()) continue;
   fs.copyFileSync(from, to);
 }
+
+if (!rendererOnly) {
 fs.mkdirSync(vendorDest, { recursive: true });
 fs.copyFileSync(
   path.join(path.dirname(require.resolve("marked")), "marked.umd.js"),
@@ -66,6 +69,7 @@ if (process.platform === "darwin") {
   fs.rmSync(iconset, { recursive: true, force: true });
 } else {
   fs.copyFileSync(iconSrc, iconPng);
+}
 }
 
 console.log("copied renderer → dist/renderer");

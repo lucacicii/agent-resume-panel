@@ -142,30 +142,59 @@ function appResourcesDir(): string {
   return path.join(app.getAppPath(), "dist", "resources");
 }
 
-function appIconPath(): string {
+function appIconCandidates(): string[] {
   const resourcesDir = appResourcesDir();
+  const png = path.join(resourcesDir, "icon.png");
   if (process.platform === "darwin") {
-    const icnsPath = path.join(resourcesDir, "icon.icns");
-    if (existsSync(icnsPath)) return icnsPath;
+    const icns = path.join(resourcesDir, "icon.icns");
+    // electron . dev runs often fail to decode .icns; prefer .png there.
+    if (process.env.AGENT_RESUME_DEV === "1") {
+      return [png, icns];
+    }
+    return [icns, png];
   }
-  return path.join(resourcesDir, "icon.png");
+  return [png];
+}
+
+function isBrokenPipe(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EPIPE";
+}
+
+function safeWarn(...args: unknown[]): void {
+  try {
+    console.warn(...args);
+  } catch (error) {
+    if (!isBrokenPipe(error)) {
+      throw error;
+    }
+  }
+}
+
+function loadIconFromPath(iconPath: string): Electron.NativeImage | undefined {
+  let image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) {
+    try {
+      image = nativeImage.createFromBuffer(readFileSync(iconPath));
+    } catch {
+      return undefined;
+    }
+  }
+  return image.isEmpty() ? undefined : image;
 }
 
 function loadAppIcon(): Electron.NativeImage | undefined {
-  const iconPath = appIconPath();
-  if (!existsSync(iconPath)) {
-    console.warn("[desktop] App icon not found:", iconPath, "(resources dir:", appResourcesDir(), ")");
-    return undefined;
+  for (const iconPath of appIconCandidates()) {
+    if (!existsSync(iconPath)) {
+      continue;
+    }
+    const image = loadIconFromPath(iconPath);
+    if (image) {
+      return image;
+    }
+    safeWarn("[desktop] App icon could not be loaded:", iconPath);
   }
-  let image = nativeImage.createFromPath(iconPath);
-  if (image.isEmpty()) {
-    image = nativeImage.createFromBuffer(readFileSync(iconPath));
-  }
-  if (image.isEmpty()) {
-    console.warn("[desktop] App icon could not be loaded:", iconPath);
-    return undefined;
-  }
-  return image;
+  safeWarn("[desktop] App icon not found under", appResourcesDir());
+  return undefined;
 }
 
 function applyAppIcon(): void {

@@ -11,7 +11,7 @@ let debounceTimer = null;
 
 function runCopy() {
   console.log("[watch-renderer] syncing renderer → dist/renderer");
-  execFileSync(process.execPath, [copyScript], { cwd: root, stdio: "inherit" });
+  execFileSync(process.execPath, [copyScript, "--renderer-only"], { cwd: root, stdio: "inherit" });
 }
 
 function scheduleCopy(filename) {
