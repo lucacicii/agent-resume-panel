@@ -30,9 +30,13 @@ export interface EmbeddingSettings {
   apiKey?: string;
 }
 
+export type DesktopTheme = "system" | "light" | "dark";
+
 export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
+  /** UI appearance; default follows OS. */
+  theme?: DesktopTheme;
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
@@ -148,5 +152,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   workbench: {
     projectEditor: "auto"
+  },
+  desktop: {
+    theme: "system"
   }
 };

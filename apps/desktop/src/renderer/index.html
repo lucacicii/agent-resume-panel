@@ -10,8 +10,8 @@
     <title>Agent Resume Desktop</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./vendor/xterm.css" />
-    <link rel="stylesheet" href="./vendor/github.min.css" media="(prefers-color-scheme: light)" />
-    <link rel="stylesheet" href="./vendor/github-dark.min.css" media="(prefers-color-scheme: dark)" />
+    <link id="hljsLightCss" rel="stylesheet" href="./vendor/github.min.css" />
+    <link id="hljsDarkCss" rel="stylesheet" href="./vendor/github-dark.min.css" disabled />
   </head>
   <body>
     <header class="top mac-top">
@@ -596,6 +596,17 @@
 
               <!-- General: sync policy, workbench behavior, schedule, backfill -->
               <div id="settingsPaneGeneral" class="settings-pane" hidden>
+                <fieldset>
+                  <legend>外观</legend>
+                  <label>
+                    主题
+                    <select name="desktopTheme">
+                      <option value="system">跟随系统</option>
+                      <option value="light">浅色</option>
+                      <option value="dark">深色</option>
+                    </select>
+                  </label>
+                </fieldset>
                 <fieldset>
                   <legend>Agent Sessions</legend>
                   <label>同步上限 <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" /></label>

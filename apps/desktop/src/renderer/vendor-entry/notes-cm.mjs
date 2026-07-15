@@ -107,7 +107,11 @@ function notesEditorTheme() {
 }
 
 function buildExtensions(options) {
-  const useLight = window.matchMedia?.("(prefers-color-scheme: light)")?.matches ?? false;
+  const pref = options.theme;
+  const useLight =
+    pref === "light" || pref === "dark"
+      ? pref === "light"
+      : (window.matchMedia?.("(prefers-color-scheme: light)")?.matches ?? false);
   const themePack = useLight
     ? [syntaxHighlighting(defaultHighlightStyle, { fallback: true }), notesEditorTheme()]
     : [oneDark, notesEditorTheme()];

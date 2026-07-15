@@ -1480,11 +1480,7 @@ async function createWorkbenchTerminalPane(opts) {
     cursorBlink: true,
     fontSize: 13,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    theme: {
-      background: "#0d1117",
-      foreground: "#e6edf3",
-      cursor: "#e6edf3"
-    },
+    theme: workbenchTerminalTheme(resolveDesktopTheme(getDesktopThemePref())),
     allowProposedApi: true
   });
 
@@ -3394,6 +3390,7 @@ function mountNotesEditor() {
   if (!host || notesCmView || typeof NotesCodeMirror?.mount !== "function") return;
   notesCmView = NotesCodeMirror.mount(host, {
     value: "",
+    theme: resolveDesktopTheme(getDesktopThemePref()),
     placeholder: "编辑 Markdown…（⌘V 可粘贴图片）",
     onChange: onNotesEditorChange,
     onPasteImage: tryHandleNotesImagePaste
@@ -6077,6 +6074,91 @@ function resolvePanelHomeForDisplay(raw) {
   return trimmed || "~/.agent-resume-panel";
 }
 
+/** @type {MediaQueryList | null} */
+let systemThemeMedia = null;
+
+function getDesktopThemePref() {
+  const form = $("settingsForm");
+  const fromForm = form?.desktopTheme?.value;
+  if (fromForm) return fromForm;
+  return loadedSettings?.desktop?.theme || "system";
+}
+
+function resolveDesktopTheme(pref) {
+  if (pref === "light" || pref === "dark") return pref;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function syncHighlightJsTheme(effective) {
+  const light = $("hljsLightCss");
+  const dark = $("hljsDarkCss");
+  if (!light || !dark) return;
+  const useDark = effective === "dark";
+  light.disabled = useDark;
+  dark.disabled = !useDark;
+}
+
+function applyDesktopTheme(pref) {
+  const root = document.documentElement;
+  if (pref === "system" || !pref) {
+    root.removeAttribute("data-theme");
+    root.style.colorScheme = "light dark";
+  } else {
+    root.dataset.theme = pref;
+    root.style.colorScheme = pref;
+  }
+  syncHighlightJsTheme(resolveDesktopTheme(pref));
+  remountNotesEditorForTheme();
+}
+
+function wireSystemThemeListener() {
+  if (systemThemeMedia) return;
+  systemThemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  systemThemeMedia.addEventListener("change", () => {
+    const pref = getDesktopThemePref();
+    if (pref === "system" || !pref) {
+      applyDesktopTheme("system");
+    }
+  });
+}
+
+function workbenchTerminalTheme(effective) {
+  if (effective === "light") {
+    return {
+      background: "#f5f5f7",
+      foreground: "rgba(0, 0, 0, 0.85)",
+      cursor: "#007aff"
+    };
+  }
+  return {
+    background: "#1e1e1e",
+    foreground: "rgba(255, 255, 255, 0.85)",
+    cursor: "#0a84ff"
+  };
+}
+
+function remountNotesEditorForTheme() {
+  if (!notesCmView) return;
+  const host = $("notesEditorHost");
+  const text = getNotesEditorContent();
+  const hadFocus = Boolean(document.activeElement?.closest?.(".cm-editor"));
+  if (typeof NotesCodeMirror?.unmount === "function") {
+    NotesCodeMirror.unmount(notesCmView);
+  }
+  notesCmView = null;
+  if (!host || typeof NotesCodeMirror?.mount !== "function") return;
+  notesCmView = NotesCodeMirror.mount(host, {
+    value: text,
+    theme: resolveDesktopTheme(getDesktopThemePref()),
+    placeholder: "编辑 Markdown…（⌘V 可粘贴图片）",
+    onChange: onNotesEditorChange,
+    onPasteImage: tryHandleNotesImagePaste
+  });
+  if (hadFocus && typeof NotesCodeMirror?.focus === "function") {
+    NotesCodeMirror.focus(notesCmView);
+  }
+}
+
 function updateSettingsNotesRootDisplay() {
   const panelHome = $("settingsForm")?.panelHome?.value ?? "";
   const el = $("settingsNotesRootPath");
@@ -6142,6 +6224,9 @@ async function loadSettingsForm() {
   if (form.workbenchExternalLaunchMode) {
     form.workbenchExternalLaunchMode.value =
       s.workbench?.externalLaunchMode || s.ghosttyLaunchMode || "executeCommand";
+  }
+  if (form.desktopTheme) {
+    form.desktopTheme.value = s.desktop?.theme || "system";
   }
   updateSettingsNotesRootDisplay();
 }
@@ -6229,6 +6314,10 @@ async function saveSettingsForm() {
       terminalMode:
         form.workbenchTerminalMode?.value === "external-system" ? "external-system" : "xterm",
       externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand"
+    },
+    desktop: {
+      ...(loadedSettings?.desktop || {}),
+      theme: form.desktopTheme?.value || "system"
     }
   };
   try {
@@ -7899,6 +7988,8 @@ function wire() {
   $("btnCalDetailBack")?.addEventListener("click", () => returnToCalDigestDetail());
   $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
   $("settingsForm")?.panelHome?.addEventListener("input", () => updateSettingsNotesRootDisplay());
+  $("settingsForm")?.desktopTheme?.addEventListener("change", () => applyDesktopTheme(getDesktopThemePref()));
+  wireSystemThemeListener();
   $("btnSettingsOpenNotesFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
   $("btnSettingsOpenPanelHome")?.addEventListener("click", () => void agentResume.settingsOpenPanelHome());
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
@@ -8351,6 +8442,7 @@ async function boot() {
   updatePeriodLabel();
   switchTab("memory");
   await loadSettingsForm();
+  applyDesktopTheme(getDesktopThemePref());
   await loadMemory();
   void loadAskChat({ render: false });
   void syncAndRefreshSessionViews($("memoryStatus")).catch(() => undefined);

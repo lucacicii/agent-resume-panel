@@ -14,6 +14,7 @@ export type {
   EmbeddingSettings,
   MemorySettings,
   DesktopSettings,
+  DesktopTheme,
   WorkbenchSettings,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
