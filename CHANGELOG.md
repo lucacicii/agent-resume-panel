@@ -8,6 +8,26 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.6]
+
+#### 修复
+
+- **同步误隐藏 session**：移除 `catalog.stalePolicy` 的 **hide** 选项（默认改为 **off**）；同步不再将本次未刷新的 session 批量标为隐藏。**Remove from Panel** 的手动隐藏不受影响。仍可选 **purge** 从 catalog 删除过期行；旧配置中的 `hide` 会按 **off** 处理。
+- **重复打开恢复终端**：再次恢复同一会话时聚焦已有集成终端，不再重复新建标签。
+
+#### 新增
+
+- **文档与反馈**：**Agent Resume Settings** 页脚增加**用户文档**与 **Report Issue** 链接；扩展 `homepage` / `bugs` 指向独立文档仓库 [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc)。
+
+#### 变更
+
+- **LLM 配置共享**：扩展 LLM Assist（Base URL、Model、API Key）与 `panelHome/settings.json` 对齐，便于与 Agent Resume Desktop 共用一份配置。
+- **LLM 输出语言**：**LLM Assist → Output Language** 新增 **Auto**（跟随 **UI Language**），与 Desktop 一致。
+
+#### 文档
+
+- 主仓库 README 精简；完整用户说明见文档仓库。
+
 ### [2.6.5]
 
 #### 变更
@@ -335,6 +355,26 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.6]
+
+#### Fixed
+
+- **Sessions mistakenly hidden during sync**: Removed the **hide** option from `catalog.stalePolicy` (default is now **off**); sync no longer batch-marks sessions missing from the latest refresh as hidden. Manual **Remove from Panel** hides are unchanged. **purge** still optionally deletes stale catalog rows; legacy `hide` values are treated as **off**.
+- **Duplicate resume terminals**: Resuming the same session again focuses the existing integrated terminal instead of opening another tab.
+
+#### Added
+
+- **Documentation and feedback**: **Agent Resume Settings** footer links to the user guide and **Report Issue**; extension `homepage` / `bugs` point to the standalone [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) repository.
+
+#### Changed
+
+- **Shared LLM config**: Extension LLM Assist (base URL, model, API key) aligns with `panelHome/settings.json` so Desktop and the extension can share one configuration.
+- **LLM output language**: **LLM Assist → Output Language** adds **Auto** (follows **UI Language**), matching Desktop.
+
+#### Docs
+
+- Main repository README simplified; full user documentation lives in the doc repository.
 
 ### [2.6.5]
 
