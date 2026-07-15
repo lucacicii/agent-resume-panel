@@ -3492,18 +3492,24 @@ code {
 }
 
 .sidebar-folders-pane {
-  width: 200px;
+  width: var(--sidebar-folders-width, 200px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border);
+  border-right: none;
   background: color-mix(in srgb, var(--bg) 90%, var(--text) 10%);
   transition: width 0.18s ease;
 }
 
 .sidebar-folders-pane.is-collapsed {
   width: 40px;
+}
+
+.sidebar-folders-pane.is-resizing,
+.wb-list-pane.is-resizing,
+.notes-list-pane.is-resizing {
+  transition: none;
 }
 
 .sidebar-folders-header {
@@ -3801,13 +3807,58 @@ code {
 
 .notes-list-pane,
 .wb-list-pane {
-  width: min(320px, 32vw);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border);
+  border-right: none;
   background: color-mix(in srgb, var(--bg) 96%, var(--panel));
+}
+
+.wb-list-pane {
+  width: var(--wb-list-width, 320px);
+}
+
+.notes-list-pane {
+  width: var(--notes-list-width, 320px);
+}
+
+.pane-resizer {
+  position: relative;
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.pane-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+.pane-resizer:hover,
+.pane-resizer.is-dragging {
+  background: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.pane-resizer.is-hidden {
+  display: none;
+}
+
+body.is-pane-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.is-pane-resizing * {
+  cursor: col-resize !important;
 }
 
 .notes-list-toolbar-wrap,
@@ -4429,11 +4480,7 @@ code {
   color: var(--muted);
 }
 
-@media (max-width: 900px) {
-  .notes-list-pane {
-    width: min(260px, 38vw);
-  }
-}
+
 
 .notes-context-menu {
   position: fixed;

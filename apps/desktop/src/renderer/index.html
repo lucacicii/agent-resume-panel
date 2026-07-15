@@ -244,7 +244,15 @@
               <p class="muted notes-folders-empty">加载文件夹…</p>
             </div>
           </aside>
-          <aside class="notes-list-pane">
+          <div
+            class="pane-resizer"
+            id="notesFoldersResizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整文件夹侧栏宽度"
+            tabindex="0"
+          ></div>
+          <aside class="notes-list-pane" id="notesListPane">
             <div class="notes-list-toolbar-wrap">
               <div class="notes-list-toolbar">
                 <button type="button" class="notes-icon-btn" id="btnNotesNew" title="新建笔记" aria-label="新建笔记">
@@ -304,6 +312,14 @@
               <p class="muted notes-list-empty">加载笔记…</p>
             </div>
           </aside>
+          <div
+            class="pane-resizer"
+            id="notesListResizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整笔记列表宽度"
+            tabindex="0"
+          ></div>
           <main class="notes-detail">
             <div class="notes-editor-shell" id="notesEditorShell" hidden>
               <div class="notes-detail-head">
@@ -388,7 +404,15 @@
               <p class="muted wb-folders-empty">加载项目…</p>
             </div>
           </aside>
-          <aside class="wb-list-pane">
+          <div
+            class="pane-resizer"
+            id="wbFoldersResizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整项目侧栏宽度"
+            tabindex="0"
+          ></div>
+          <aside class="wb-list-pane" id="wbListPane">
             <div class="wb-list-toolbar-wrap">
               <div class="wb-list-toolbar">
                 <button type="button" class="wb-icon-btn" id="btnWorkbenchNewSession" title="新建 Session" aria-label="新建 Session">
@@ -448,6 +472,14 @@
               <p class="muted wb-list-empty">加载 sessions…</p>
             </div>
           </aside>
+          <div
+            class="pane-resizer"
+            id="wbListResizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整 Session 列表宽度"
+            tabindex="0"
+          ></div>
           <main class="wb-detail">
             <div class="wb-detail-head">
               <span class="wb-detail-project-label" id="wbDetailProjectLabel">全部 Sessions</span>

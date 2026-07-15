@@ -2067,6 +2067,227 @@ async function openOrCreateWorkbenchNote(owner) {
   }
 }
 
+// --- Sidebar pane resize ---
+
+const SIDEBAR_FOLDERS_WIDTH_KEY = "sidebar-folders-width";
+const WB_LIST_PANE_WIDTH_KEY = "wb-list-pane-width";
+const NOTES_LIST_PANE_WIDTH_KEY = "notes-list-pane-width";
+const PANE_DETAIL_MIN = 280;
+const PANE_RESIZER_GUTTER = 6;
+const PANE_WIDTH_LIMITS = {
+  folders: { min: 140, max: 400, default: 200 },
+  list: { min: 240, max: 520, default: 320 }
+};
+
+/** @type {{ folders: number, wbList: number, notesList: number }} */
+const paneWidthState = {
+  folders: PANE_WIDTH_LIMITS.folders.default,
+  wbList: PANE_WIDTH_LIMITS.list.default,
+  notesList: PANE_WIDTH_LIMITS.list.default
+};
+
+let paneResizeFitRaf = 0;
+
+function clampPaneWidth(value, min, max) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function readStoredPaneWidth(key, limits) {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = Number.parseInt(raw ?? "", 10);
+    if (!Number.isFinite(parsed)) return null;
+    return clampPaneWidth(parsed, limits.min, limits.max);
+  } catch {
+    return null;
+  }
+}
+
+function applyPaneWidths() {
+  const root = document.documentElement;
+  root.style.setProperty("--sidebar-folders-width", `${paneWidthState.folders}px`);
+  root.style.setProperty("--wb-list-width", `${paneWidthState.wbList}px`);
+  root.style.setProperty("--notes-list-width", `${paneWidthState.notesList}px`);
+}
+
+function loadPaneWidths() {
+  const folders = readStoredPaneWidth(SIDEBAR_FOLDERS_WIDTH_KEY, PANE_WIDTH_LIMITS.folders);
+  const wbList = readStoredPaneWidth(WB_LIST_PANE_WIDTH_KEY, PANE_WIDTH_LIMITS.list);
+  const notesList = readStoredPaneWidth(NOTES_LIST_PANE_WIDTH_KEY, PANE_WIDTH_LIMITS.list);
+  if (folders != null) paneWidthState.folders = folders;
+  if (wbList != null) paneWidthState.wbList = wbList;
+  if (notesList != null) paneWidthState.notesList = notesList;
+  applyPaneWidths();
+}
+
+function persistPaneWidth(widthKind, width) {
+  const key =
+    widthKind === "folders"
+      ? SIDEBAR_FOLDERS_WIDTH_KEY
+      : widthKind === "wbList"
+        ? WB_LIST_PANE_WIDTH_KEY
+        : NOTES_LIST_PANE_WIDTH_KEY;
+  try {
+    localStorage.setItem(key, String(width));
+  } catch {
+    // ignore
+  }
+}
+
+function setPaneWidth(widthKind, width, { persist = true, layout = null } = {}) {
+  const limits = widthKind === "folders" ? PANE_WIDTH_LIMITS.folders : PANE_WIDTH_LIMITS.list;
+  let maxAllowed = limits.max;
+  if (layout) {
+    maxAllowed = Math.min(maxAllowed, computeMaxPaneWidth(layout, widthKind));
+  }
+  const clamped = clampPaneWidth(width, limits.min, maxAllowed);
+  if (widthKind === "folders") paneWidthState.folders = clamped;
+  else if (widthKind === "wbList") paneWidthState.wbList = clamped;
+  else paneWidthState.notesList = clamped;
+  applyPaneWidths();
+  if (persist) persistPaneWidth(widthKind, clamped);
+  return clamped;
+}
+
+function computeMaxPaneWidth(layout, widthKind) {
+  if (!layout) return PANE_WIDTH_LIMITS[widthKind === "folders" ? "folders" : "list"].max;
+  const foldersPane = layout.querySelector(".sidebar-folders-pane");
+  const listPane = layout.querySelector(".wb-list-pane, .notes-list-pane");
+  const foldersW = foldersPane?.getBoundingClientRect().width || 0;
+  const listW = listPane?.getBoundingClientRect().width || 0;
+  const available = layout.clientWidth - PANE_DETAIL_MIN - PANE_RESIZER_GUTTER;
+  if (widthKind === "folders") return Math.max(PANE_WIDTH_LIMITS.folders.min, available - listW);
+  return Math.max(PANE_WIDTH_LIMITS.list.min, available - foldersW);
+}
+
+function syncFoldersResizerVisibility() {
+  $("notesFoldersResizer")?.classList.toggle("is-hidden", notesFoldersCollapsed);
+  $("wbFoldersResizer")?.classList.toggle("is-hidden", wbFoldersCollapsed);
+}
+
+function schedulePaneResizeFit(callback) {
+  if (!callback) return;
+  if (paneResizeFitRaf) cancelAnimationFrame(paneResizeFitRaf);
+  paneResizeFitRaf = requestAnimationFrame(() => {
+    paneResizeFitRaf = 0;
+    callback();
+  });
+}
+
+function initPaneResizer({ handle, layout, targetPane, widthKind, onResize }) {
+  if (!handle || !layout || !targetPane) return;
+  /** @type {{ startX: number, startWidth: number } | null} */
+  let dragState = null;
+
+  function applyWidth(width, { persist = false } = {}) {
+    const next = setPaneWidth(widthKind, width, { persist, layout });
+    onResize?.();
+    return next;
+  }
+
+  function beginDrag(clientX) {
+    if (widthKind === "folders" && targetPane.classList.contains("is-collapsed")) return;
+    dragState = {
+      startX: clientX,
+      startWidth: targetPane.getBoundingClientRect().width
+    };
+    handle.classList.add("is-dragging");
+    targetPane.classList.add("is-resizing");
+    document.body.classList.add("is-pane-resizing");
+  }
+
+  function moveDrag(clientX) {
+    if (!dragState) return;
+    applyWidth(dragState.startWidth + (clientX - dragState.startX), { persist: false });
+  }
+
+  function endDrag({ persist = true } = {}) {
+    if (!dragState) return;
+    if (persist) {
+      applyWidth(targetPane.getBoundingClientRect().width, { persist: true });
+    }
+    dragState = null;
+    handle.classList.remove("is-dragging");
+    targetPane.classList.remove("is-resizing");
+    document.body.classList.remove("is-pane-resizing");
+  }
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || handle.classList.contains("is-hidden")) return;
+    if (widthKind === "folders" && targetPane.classList.contains("is-collapsed")) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    beginDrag(e.clientX);
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragState) return;
+    moveDrag(e.clientX);
+  });
+
+  handle.addEventListener("pointerup", (e) => {
+    if (!dragState) return;
+    if (handle.hasPointerCapture(e.pointerId)) {
+      handle.releasePointerCapture(e.pointerId);
+    }
+    endDrag({ persist: true });
+  });
+
+  handle.addEventListener("pointercancel", () => {
+    endDrag({ persist: false });
+  });
+
+  handle.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = e.key === "ArrowRight" ? 8 : -8;
+    applyWidth(targetPane.getBoundingClientRect().width + step, { persist: true });
+  });
+}
+
+function reclampPaneWidthsOnResize() {
+  const wbLayout = document.querySelector(".workbench-layout");
+  const notesLayout = document.querySelector(".notes-layout");
+  const layout = wbLayout || notesLayout;
+  if (layout) {
+    setPaneWidth("folders", paneWidthState.folders, { persist: false, layout });
+  }
+  if (wbLayout) setPaneWidth("wbList", paneWidthState.wbList, { persist: false, layout: wbLayout });
+  if (notesLayout) setPaneWidth("notesList", paneWidthState.notesList, { persist: false, layout: notesLayout });
+  schedulePaneResizeFit(fitWorkbenchTerminal);
+}
+
+function initPaneResizers() {
+  const wbLayout = document.querySelector(".workbench-layout");
+  const notesLayout = document.querySelector(".notes-layout");
+  initPaneResizer({
+    handle: $("wbFoldersResizer"),
+    layout: wbLayout,
+    targetPane: $("wbFoldersPane"),
+    widthKind: "folders"
+  });
+  initPaneResizer({
+    handle: $("wbListResizer"),
+    layout: wbLayout,
+    targetPane: $("wbListPane"),
+    widthKind: "wbList",
+    onResize: () => schedulePaneResizeFit(fitWorkbenchTerminal)
+  });
+  initPaneResizer({
+    handle: $("notesFoldersResizer"),
+    layout: notesLayout,
+    targetPane: $("notesFoldersPane"),
+    widthKind: "folders"
+  });
+  initPaneResizer({
+    handle: $("notesListResizer"),
+    layout: notesLayout,
+    targetPane: $("notesListPane"),
+    widthKind: "notesList"
+  });
+  window.addEventListener("resize", reclampPaneWidthsOnResize);
+}
+
 // --- Notes ---
 
 const NOTES_FOLDER_KEY = "notes-selected-folder";
@@ -2149,6 +2370,7 @@ function setNotesFoldersCollapsed(collapsed, { persist = true } = {}) {
   notesFoldersCollapsed = collapsed;
   $("notesFoldersPane")?.classList.toggle("is-collapsed", collapsed);
   updateSidebarCollapseToggle($("btnNotesToggleFolders"), collapsed);
+  syncFoldersResizerVisibility();
   if (persist) {
     try {
       localStorage.setItem(NOTES_FOLDERS_COLLAPSED_KEY, collapsed ? "1" : "0");
@@ -2162,6 +2384,7 @@ function setWbFoldersCollapsed(collapsed, { persist = true } = {}) {
   wbFoldersCollapsed = collapsed;
   $("wbFoldersPane")?.classList.toggle("is-collapsed", collapsed);
   updateSidebarCollapseToggle($("btnWbToggleFolders"), collapsed);
+  syncFoldersResizerVisibility();
   if (persist) {
     try {
       localStorage.setItem(WB_FOLDERS_COLLAPSED_KEY, collapsed ? "1" : "0");
@@ -7620,7 +7843,10 @@ function wire() {
     agentResume.onSessionsSyncFailed((message) => setStatus($("memoryStatus"), message, "error"));
   }
 
+  loadPaneWidths();
+  initPaneResizers();
   loadSidebarFoldersCollapsedState();
+  syncFoldersResizerVisibility();
   $("btnNotesToggleFolders")?.addEventListener("click", () => toggleNotesFoldersCollapsed());
   $("btnWbToggleFolders")?.addEventListener("click", () => toggleWbFoldersCollapsed());
 
