@@ -347,6 +347,60 @@ function projectDisplayTitle(projectPath) {
   return alias || base;
 }
 
+function projectMatchesSearch(projectPath, searchText) {
+  if (!searchText.trim()) return true;
+  const q = searchText.trim().toLowerCase();
+  const haystack = [
+    projectDisplayTitle(projectPath),
+    projectFolderBaseName(projectPath),
+    projectPath,
+    projectAliasMap[projectPath]
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function projectMatchesFilter(projectPath, filterMode) {
+  if (filterMode === "pinned") return isProjectPinned(projectPath);
+  if (filterMode === "active") return hasWorkbenchProjectActivity(projectPath);
+  return true;
+}
+
+function visibleFilteredProjectGroups(projectGroups, options) {
+  const { searchText, filterMode, selectedProjectPath } = options;
+  return projectGroups.filter((group) => {
+    const matches =
+      projectMatchesFilter(group.projectPath, filterMode) &&
+      projectMatchesSearch(group.projectPath, searchText);
+    if (matches) return true;
+    return selectedProjectPath && group.projectPath === selectedProjectPath;
+  });
+}
+
+function sidebarProjectFilterSectionTitle(filterMode, searchText, visibleCount) {
+  const filterActive = filterMode !== "all" || searchText.trim();
+  if (!filterActive) return "项目";
+  const filterLabel = filterMode === "pinned" ? "置顶" : filterMode === "active" ? "活动" : "";
+  return `项目${filterLabel ? ` · ${filterLabel}` : ""}${searchText.trim() ? ` · 「${searchText.trim()}」` : ""} · ${visibleCount}`;
+}
+
+function syncSidebarProjectFilterUi(hostId, filterMode) {
+  const host = $(hostId);
+  if (!host) return;
+  const buttons = [...host.querySelectorAll("[data-filter]")];
+  let activeIndex = 0;
+  buttons.forEach((btn, index) => {
+    const isActive = btn.dataset.filter === filterMode;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    if (isActive) activeIndex = index;
+  });
+  host.style.setProperty("--segment-count", String(buttons.length || 3));
+  host.style.setProperty("--active-index", String(activeIndex));
+}
+
 function projectFolderRowInnerHtml(prefix, projectPath, options = {}) {
   const title = projectDisplayTitle(projectPath);
   const base = projectFolderBaseName(projectPath);
@@ -669,6 +723,9 @@ let pinnedProjects = [];
 let wbSessions = [];
 let wbActiveKey = "";
 let wbSearch = "";
+let wbProjectSearch = "";
+/** @type {"all" | "pinned" | "active"} */
+let wbProjectFilter = "all";
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
 /** @type {Map<string, { terminalPanes: Map<string, { key: string, projectKey: string, projectPath: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string }>, activeTerminalKey: string, activeSessionKey: string }>} */
@@ -968,21 +1025,39 @@ function renderWorkbenchFolders() {
   host.innerHTML = "";
 
   const projects = groupSessionsByProject(wbSessions);
+  const selectedPath = wbSelectedProject.kind === "project" ? wbSelectedProject.projectPath : "";
+  const visibleProjects = visibleFilteredProjectGroups(projects, {
+    searchText: wbProjectSearch,
+    filterMode: wbProjectFilter,
+    selectedProjectPath: selectedPath
+  });
   const allBtn = renderWorkbenchFolderRow("全部 Sessions", { kind: "all" }, { count: wbSessions.length });
   host.appendChild(allBtn);
 
   if (projects.length) {
     const section = document.createElement("div");
     section.className = "wb-folder-section";
-    section.innerHTML = `<div class="wb-folder-section-label">项目</div>`;
-    for (const project of projects) {
-      const folder = { kind: "project", projectPath: project.projectPath };
-      section.appendChild(
-        renderWorkbenchFolderRow(projectDisplayTitle(project.projectPath), folder, {
-          title: project.projectPath,
-          count: project.sessions.length
-        })
-      );
+    const sectionTitle = sidebarProjectFilterSectionTitle(
+      wbProjectFilter,
+      wbProjectSearch,
+      visibleProjects.length
+    );
+    section.innerHTML = `<div class="wb-folder-section-label">${escapeHtml(sectionTitle)}</div>`;
+    if (visibleProjects.length) {
+      for (const project of visibleProjects) {
+        const folder = { kind: "project", projectPath: project.projectPath };
+        section.appendChild(
+          renderWorkbenchFolderRow(projectDisplayTitle(project.projectPath), folder, {
+            title: project.projectPath,
+            count: project.sessions.length
+          })
+        );
+      }
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "muted wb-folders-empty";
+      empty.textContent = wbProjectSearch.trim() ? "没有匹配的项目" : "没有符合筛选的项目";
+      section.appendChild(empty);
     }
     host.appendChild(section);
   }
@@ -993,6 +1068,8 @@ function renderWorkbenchFolders() {
     empty.textContent = "暂无项目";
     host.appendChild(empty);
   }
+
+  syncSidebarProjectFilterUi("wbProjectFilter", wbProjectFilter);
 }
 
 function renderWorkbenchSessionList() {
@@ -1999,6 +2076,9 @@ let notesFoldersCollapsed = false;
 let wbFoldersCollapsed = false;
 let notesCache = [];
 let notesSearch = "";
+let notesProjectSearch = "";
+/** @type {"all" | "pinned" | "active"} */
+let notesProjectFilter = "all";
 /** @type {{ kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string }} */
 let notesSelectedFolder = { kind: "all" };
 let notesActiveId = "";
@@ -2692,18 +2772,37 @@ function renderNotesFolders() {
     });
 
   if (projectGroups.length) {
+    const selectedPath =
+      notesSelectedFolder.kind === "project" ? notesSelectedFolder.projectPath : "";
+    const visibleProjectGroups = visibleFilteredProjectGroups(projectGroups, {
+      searchText: notesProjectSearch,
+      filterMode: notesProjectFilter,
+      selectedProjectPath: selectedPath
+    });
     const section = document.createElement("div");
     section.className = "notes-folder-section";
-    section.innerHTML = `<div class="notes-folder-section-label">项目</div>`;
-    for (const group of projectGroups) {
-      const folder = { kind: "project", projectPath: group.projectPath };
-      section.appendChild(
-        renderNotesFolderRow(projectDisplayTitle(group.projectPath), folder, {
-          title: group.projectPath,
-          count: group.notes.length,
-          context: { kind: "project", projectPath: group.projectPath, notes: group.notes }
-        })
-      );
+    const sectionTitle = sidebarProjectFilterSectionTitle(
+      notesProjectFilter,
+      notesProjectSearch,
+      visibleProjectGroups.length
+    );
+    section.innerHTML = `<div class="notes-folder-section-label">${escapeHtml(sectionTitle)}</div>`;
+    if (visibleProjectGroups.length) {
+      for (const group of visibleProjectGroups) {
+        const folder = { kind: "project", projectPath: group.projectPath };
+        section.appendChild(
+          renderNotesFolderRow(projectDisplayTitle(group.projectPath), folder, {
+            title: group.projectPath,
+            count: group.notes.length,
+            context: { kind: "project", projectPath: group.projectPath, notes: group.notes }
+          })
+        );
+      }
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "muted notes-folders-empty";
+      empty.textContent = notesProjectSearch.trim() ? "没有匹配的项目" : "没有符合筛选的项目";
+      section.appendChild(empty);
     }
     host.appendChild(section);
   }
@@ -2756,6 +2855,8 @@ function renderNotesFolders() {
     empty.textContent = "暂无文件夹";
     host.appendChild(empty);
   }
+
+  syncSidebarProjectFilterUi("notesProjectFilter", notesProjectFilter);
 }
 
 function renderNotesList() {
@@ -7685,6 +7786,19 @@ function wire() {
     wbSearch = e.target.value ?? "";
     renderWorkbenchSessionList();
   });
+  $("wbProjectSearch")?.addEventListener("input", (e) => {
+    wbProjectSearch = e.target.value ?? "";
+    renderWorkbenchFolders();
+  });
+  $("wbProjectFilter")?.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.dataset.filter;
+      if (!next || next === wbProjectFilter) return;
+      wbProjectFilter = next;
+      syncSidebarProjectFilterUi("wbProjectFilter", wbProjectFilter);
+      renderWorkbenchFolders();
+    });
+  });
   $("tab-workbench")?.addEventListener("click", (e) => {
     if (shouldKeepWorkbenchSelection(e.target)) return;
     clearWorkbenchSelection();
@@ -7747,6 +7861,19 @@ function wire() {
   $("notesSearch")?.addEventListener("input", (e) => {
     notesSearch = e.target.value ?? "";
     renderNotesPanel();
+  });
+  $("notesProjectSearch")?.addEventListener("input", (e) => {
+    notesProjectSearch = e.target.value ?? "";
+    renderNotesFolders();
+  });
+  $("notesProjectFilter")?.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.dataset.filter;
+      if (!next || next === notesProjectFilter) return;
+      notesProjectFilter = next;
+      syncSidebarProjectFilterUi("notesProjectFilter", notesProjectFilter);
+      renderNotesFolders();
+    });
   });
   $("notesFindInput")?.addEventListener("input", () => updateNotesFindResults({ select: true }));
   $("notesFindInput")?.addEventListener("keydown", (e) => {

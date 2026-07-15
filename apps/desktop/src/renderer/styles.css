@@ -2887,7 +2887,7 @@ code {
 .chat-compose {
   display: flex;
   gap: 8px;
-  align-items: flex-end;
+  align-items: center;
   padding: 8px 10px 10px;
   background: var(--tg-compose-bg);
   border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
@@ -3531,8 +3531,119 @@ code {
 }
 
 .sidebar-folders-pane.is-collapsed .notes-folders,
-.sidebar-folders-pane.is-collapsed .wb-folders {
+.sidebar-folders-pane.is-collapsed .wb-folders,
+.sidebar-folders-pane.is-collapsed .sidebar-project-filter-wrap {
   display: none;
+}
+
+.sidebar-project-filter-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 8px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.sidebar-project-search-wrap {
+  flex-shrink: 0;
+}
+
+.sidebar-project-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
+  color: var(--text);
+}
+
+.sidebar-project-search:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 0;
+}
+
+.sidebar-project-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  cursor: pointer;
+}
+
+.sidebar-project-filter-segmented {
+  --segment-count: 3;
+  --active-index: 0;
+  --segment-inset: 2px;
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  padding: var(--segment-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 52%, var(--panel));
+  isolation: isolate;
+}
+
+.sidebar-project-filter-thumb {
+  position: absolute;
+  top: var(--segment-inset);
+  bottom: var(--segment-inset);
+  left: var(--segment-inset);
+  width: calc((100% - (var(--segment-inset) * 2)) / var(--segment-count));
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 9%, transparent),
+    0 0 0 0.5px color-mix(in srgb, var(--border) 70%, transparent);
+  transform: translateX(calc(var(--active-index) * 100%));
+  transition: transform 0.26s cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-project-filter-thumb {
+    background: color-mix(in srgb, var(--text) 9%, var(--panel));
+    box-shadow:
+      0 1px 3px color-mix(in srgb, #000 28%, transparent),
+      0 0 0 0.5px color-mix(in srgb, var(--border) 55%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-project-filter-thumb {
+    transition: none;
+  }
+}
+
+.sidebar-project-filter-segmented button {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.sidebar-project-filter-segmented button:hover {
+  color: var(--text);
+}
+
+.sidebar-project-filter-segmented button.active {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .sidebar-collapse-toggle {
@@ -4491,18 +4602,24 @@ code {
   border: 1px solid var(--tg-border, #ddd);
   border-radius: 50%;
   background: transparent;
-  font-size: 16px;
-  line-height: 1;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   cursor: pointer;
   opacity: 0.5;
-  transition: opacity 0.15s ease, background 0.15s ease;
-  align-self: center;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.chat-tools-toggle svg {
+  display: block;
 }
 .chat-tools-toggle:hover {
   opacity: 0.8;
 }
 .chat-tools-toggle.active {
   opacity: 1;
+  color: #ffffff;
   background: var(--tg-accent, #4a9eff);
   border-color: var(--tg-accent, #4a9eff);
 }
