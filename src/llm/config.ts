@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { DEFAULT_LLM_OUTPUT_LANGUAGE, LlmOutputLanguage, normalizeOutputLanguage } from "./languages";
+import {
+  normalizeOutputLanguagePreference,
+  OUTPUT_LANGUAGE_AUTO,
+  resolveEffectiveOutputLanguage,
+  UI_LANGUAGE_AUTO,
+  UI_LANGUAGE_SETTING
+} from "@agent-resume/core";
+import { DEFAULT_LLM_OUTPUT_LANGUAGE, LlmOutputLanguage } from "./languages";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import {
   loadPanelSettingsFile,
@@ -33,6 +40,32 @@ export function buildChatCompletionsUrl(baseUrl: string): string {
     return normalized;
   }
   return `${normalized}/chat/completions`;
+}
+
+function readStoredOutputLanguagePreference(panelValue?: string): string {
+  try {
+    const panel = panelValue ?? loadPanelSettingsFileSync().llm.outputLanguage;
+    return String(
+      readLlmSettingWithPanelFallback("llm.outputLanguage", panel, OUTPUT_LANGUAGE_AUTO)
+    );
+  } catch {
+    return String(readAgentResumeSetting("llm.outputLanguage", OUTPUT_LANGUAGE_AUTO));
+  }
+}
+
+export function resolveExtensionOutputLanguage(storedPreference?: string): LlmOutputLanguage {
+  const effective = resolveEffectiveOutputLanguage({
+    outputPreference: storedPreference ?? readStoredOutputLanguagePreference(),
+    uiPreference: readAgentResumeSetting(UI_LANGUAGE_SETTING, UI_LANGUAGE_AUTO),
+    systemLocale: vscode.env.language
+  });
+  return effective.catalogLanguage as LlmOutputLanguage;
+}
+
+export function isOutputLanguageFollowingUi(): boolean {
+  return (
+    normalizeOutputLanguagePreference(readStoredOutputLanguagePreference()) === OUTPUT_LANGUAGE_AUTO
+  );
 }
 
 /**
@@ -92,16 +125,16 @@ export async function getLlmConfig(
     overrides?.model ??
     String(readLlmSettingWithPanelFallback("llm.model", panelLlm.model, "gpt-4o-mini"))
   ).trim();
-  const outputLanguage = normalizeOutputLanguage(
+  const storedOutputPreference =
     overrides?.outputLanguage ??
-      String(
-        readLlmSettingWithPanelFallback(
-          "llm.outputLanguage",
-          panelLlm.outputLanguage,
-          DEFAULT_LLM_OUTPUT_LANGUAGE
-        )
+    String(
+      readLlmSettingWithPanelFallback(
+        "llm.outputLanguage",
+        panelLlm.outputLanguage,
+        OUTPUT_LANGUAGE_AUTO
       )
-  );
+    );
+  const outputLanguage = resolveExtensionOutputLanguage(storedOutputPreference);
   const maxContextChars =
     overrides?.maxContextChars ??
     Number(
@@ -126,22 +159,7 @@ export async function isLlmConfigured(context: vscode.ExtensionContext): Promise
 }
 
 export function getLlmOutputLanguage(): LlmOutputLanguage {
-  try {
-    const panel = loadPanelSettingsFileSync();
-    return normalizeOutputLanguage(
-      String(
-        readLlmSettingWithPanelFallback(
-          "llm.outputLanguage",
-          panel.llm.outputLanguage,
-          DEFAULT_LLM_OUTPUT_LANGUAGE
-        )
-      )
-    );
-  } catch {
-    return normalizeOutputLanguage(
-      readAgentResumeSetting("llm.outputLanguage", DEFAULT_LLM_OUTPUT_LANGUAGE)
-    );
-  }
+  return resolveExtensionOutputLanguage();
 }
 
 export function readAgentResumeSetting<T>(key: string, defaultValue: T): T {

@@ -28,6 +28,7 @@ const LANGUAGE_PROMPT_DIRECTIVES: Record<LlmOutputLanguage, string> = {
   Russian: "Write your entire response in Russian (русский) only."
 };
 
+/** @deprecated Prefer resolveExtensionOutputLanguage for settings-backed values. */
 export function normalizeOutputLanguage(value: string | undefined): LlmOutputLanguage {
   const trimmed = value?.trim();
   if (trimmed && (LLM_OUTPUT_LANGUAGES as readonly string[]).includes(trimmed)) {

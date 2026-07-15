@@ -1,5 +1,6 @@
 import { AcpAgentProvider } from "../acp/types";
 import { AgentProvider, AgentSession } from "../history/types";
+import { summaryLanguagesMatch } from "@agent-resume/core";
 import { LlmOutputLanguage } from "../llm/languages";
 
 export type CatalogStalePolicy = "hide" | "purge";
@@ -71,7 +72,8 @@ export function toAgentSession(
   const summary = row.session_summary?.trim();
   if (
     summary &&
-    (summaryPolicy === "any" || (outputLanguage && row.session_summary_language === outputLanguage))
+    (summaryPolicy === "any" ||
+      (outputLanguage && summaryLanguagesMatch(row.session_summary_language, outputLanguage)))
   ) {
     session.sessionSummary = summary;
   }

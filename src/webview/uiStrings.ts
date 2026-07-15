@@ -26,7 +26,10 @@ export function getSettingsUiStrings(): Record<string, string> {
     passwordToggleHide: t("webview.settings.passwordToggleHide"),
     dragHandleTitle: t("webview.settings.dragHandleTitle"),
     statusSaved: t("webview.settings.statusSaved"),
-    statusSaveFailed: t("webview.settings.statusSaveFailed")
+    statusSaveFailed: t("webview.settings.statusSaveFailed"),
+    linkDocumentation: t("webview.settings.linkDocumentation"),
+    linkReportIssue: t("webview.settings.linkReportIssue"),
+    footerHint: t("webview.settings.footerHint")
   };
 }
 

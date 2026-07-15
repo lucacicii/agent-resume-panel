@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, nativeImage, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -330,6 +330,13 @@ function registerIpc(): void {
     return buildI18nBundle(settings);
   });
 
+  ipcMain.handle("shell:openExternal", async (_event, url: string) => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      throw new Error("Invalid external URL");
+    }
+    await shell.openExternal(url);
+  });
+
   ipcMain.handle("settings:save", async (_event, settings: PanelSettings) => {
     const previous = await loadSettings();
     const prevLocale = buildI18nBundle(previous).locale;
@@ -400,7 +407,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "sessions:summarize",
     async (_event, args: { provider: AgentProvider; id: string }) => {
-      return summarizeSessionAction({ provider: args.provider, id: args.id });
+      return summarizeSessionAction({
+        provider: args.provider,
+        id: args.id,
+        systemLocale: app.getLocale()
+      });
     }
   );
 
@@ -410,7 +421,8 @@ function registerIpc(): void {
       return autoRenameSessionAction({
         provider: args.provider,
         id: args.id,
-        persist: args.persist
+        persist: args.persist,
+        systemLocale: app.getLocale()
       });
     }
   );
@@ -418,7 +430,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "sessions:suggestRename",
     async (_event, args: { provider: AgentProvider; id: string }) => {
-      return suggestSessionRenameAction({ provider: args.provider, id: args.id });
+      return suggestSessionRenameAction({
+        provider: args.provider,
+        id: args.id,
+        systemLocale: app.getLocale()
+      });
     }
   );
 
@@ -664,6 +680,7 @@ function registerIpc(): void {
           history: args.history,
           threadId: args.threadId,
           enableTools: args.enableTools ?? true,
+          systemLocale: app.getLocale(),
           signal,
           onStream: async (streamEvent) => {
             event.sender.send("agent:askStream", streamEvent);

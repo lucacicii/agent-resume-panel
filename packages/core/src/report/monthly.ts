@@ -1,5 +1,6 @@
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { chatCompletionDetailed } from "../llm/chat";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
 import { effectivePanelHome, loadSettings } from "../settings/store";
@@ -123,7 +124,7 @@ export async function runMonthlyDigest(
     });
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
-    const language = llm.outputLanguage || "zh-CN";
+    const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
     const chatResult = await chatCompletionDetailed(
       llm,
       [

@@ -1,7 +1,7 @@
 import { t } from "../i18n";
-import { DEFAULT_LLM_OUTPUT_LANGUAGE, LLM_OUTPUT_LANGUAGES } from "../llm/languages";
+import { OUTPUT_LANGUAGE_AUTO, OUTPUT_LANGUAGE_OPTIONS } from "../i18n/locales";
+import { getOutputLanguageOptionLabel, getUiLanguageOptionLabel } from "../i18n";
 import { UI_LANGUAGE_OPTIONS } from "../i18n/locales";
-import { getUiLanguageOptionLabel } from "../i18n";
 
 export type SettingFieldType = "string" | "number" | "boolean" | "enum" | "stringArray";
 
@@ -507,20 +507,11 @@ export function getSettingSections(): SettingSection[] {
           label: t("settings.fieldLlmOutputLanguageLabel"),
           description: t("settings.fieldLlmOutputLanguageDescription"),
           type: "enum",
-          default: DEFAULT_LLM_OUTPUT_LANGUAGE,
-          enum: [...LLM_OUTPUT_LANGUAGES],
-          enumLabels: {
-            English: t("settings.enum.llmOutputLanguageEnglish"),
-            Chinese: t("settings.enum.llmOutputLanguageChinese"),
-            Japanese: t("settings.enum.llmOutputLanguageJapanese"),
-            Korean: t("settings.enum.llmOutputLanguageKorean"),
-            Spanish: t("settings.enum.llmOutputLanguageSpanish"),
-            French: t("settings.enum.llmOutputLanguageFrench"),
-            German: t("settings.enum.llmOutputLanguageGerman"),
-            Portuguese: t("settings.enum.llmOutputLanguagePortuguese"),
-            Italian: t("settings.enum.llmOutputLanguageItalian"),
-            Russian: t("settings.enum.llmOutputLanguageRussian")
-          }
+          default: OUTPUT_LANGUAGE_AUTO,
+          enum: [...OUTPUT_LANGUAGE_OPTIONS],
+          enumLabels: Object.fromEntries(
+            OUTPUT_LANGUAGE_OPTIONS.map((value) => [value, getOutputLanguageOptionLabel(value)])
+          )
         },
         {
           key: "llm.maxContextChars",

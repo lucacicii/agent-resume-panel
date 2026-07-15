@@ -34,6 +34,8 @@
   let sessionMenuDirty = false;
   /** @type {Record<string, string>} */
   let uiStrings = {};
+  /** @type {{ documentation?: string; reportIssue?: string }} */
+  let docLinks = {};
 
   const navList = document.getElementById("settings-nav-list");
   const sectionTitle = document.getElementById("section-title");
@@ -50,6 +52,9 @@
   const statusBanner = document.getElementById("status-banner");
   const saveBtn = document.getElementById("save-settings");
   const testLlmBtn = document.getElementById("test-llm");
+  const footerHint = document.getElementById("settings-footer-hint");
+  const linkDocumentationBtn = document.getElementById("settings-link-documentation");
+  const linkReportIssueBtn = document.getElementById("settings-link-report-issue");
 
   saveBtn.addEventListener("click", () => {
     saveBtn.disabled = true;
@@ -94,6 +99,18 @@
     renderSessionMenuList();
   });
 
+  linkDocumentationBtn?.addEventListener("click", () => {
+    if (docLinks.documentation) {
+      vscode.postMessage({ type: "openExternal", href: docLinks.documentation });
+    }
+  });
+
+  linkReportIssueBtn?.addEventListener("click", () => {
+    if (docLinks.reportIssue) {
+      vscode.postMessage({ type: "openExternal", href: docLinks.reportIssue });
+    }
+  });
+
   window.addEventListener("message", (event) => {
     const message = event.data;
 
@@ -102,6 +119,7 @@
       values = { ...(message.values || {}) };
       llmApiKeyConfigured = Boolean(message.llmApiKeyConfigured);
       uiStrings = message.uiStrings || {};
+      docLinks = message.docLinks || {};
       apiKeyInput = "";
       saveBtn.disabled = false;
       loadProjectMenuState(message.projectMenu);
@@ -739,6 +757,15 @@
     }
     if (sectionTitle && sectionTitle.textContent.trim() === "Loading...") {
       sectionTitle.textContent = uiStrings.loading || sectionTitle.textContent;
+    }
+    if (footerHint) {
+      footerHint.textContent = uiStrings.footerHint || "";
+    }
+    if (linkDocumentationBtn) {
+      linkDocumentationBtn.textContent = uiStrings.linkDocumentation || "Documentation";
+    }
+    if (linkReportIssueBtn) {
+      linkReportIssueBtn.textContent = uiStrings.linkReportIssue || "Report Issue";
     }
   }
 

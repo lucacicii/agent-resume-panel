@@ -52,7 +52,14 @@ export {
   getCatalogForLocale,
   interpolate,
   resetI18nCache,
-  resolveUiLocale
+  resolveUiLocale,
+  OUTPUT_LANGUAGE_AUTO,
+  OUTPUT_LANGUAGE_OPTIONS,
+  DEFAULT_CATALOG_OUTPUT_LANGUAGE,
+  normalizeOutputLanguagePreference,
+  resolveEffectiveOutputLanguage,
+  normalizeSummaryLanguageTag,
+  summaryLanguagesMatch
 } from "./i18n";
 export {
   loadSettings,

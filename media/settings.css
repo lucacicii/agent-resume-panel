@@ -354,3 +354,36 @@ body {
 .project-menu-footer {
   margin-top: 12px;
 }
+
+.settings-footer {
+  margin-top: auto;
+  padding: 16px 0 8px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.settings-footer-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.settings-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-link-btn {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.settings-link-btn:hover {
+  color: var(--vscode-textLink-activeForeground);
+}

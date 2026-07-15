@@ -1,6 +1,7 @@
 import { getSessionById, listSessionsInRange } from "../catalog/query";
 import { AgentProvider, AgentSession } from "../catalog/types";
 import { chatCompletionDetailed } from "../llm/chat";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
 import { ReportEntry } from "../report/schema";
@@ -143,7 +144,7 @@ export async function analyzeReportForGtd(input: {
       )
       .join("\n") || "(no sessions available)";
 
-  const language = llm.outputLanguage || "zh-CN";
+  const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
   const scoped = Boolean(input.reportIds?.length);
   const digestIdsHint = digests.map((d) => d.id).join(", ");
   const system = [

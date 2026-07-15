@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { normalizeOutputLanguagePreference } from "@agent-resume/core";
 import { readAgentResumeSetting } from "../llm/config";
 import {
   applyProjectMenuContext,
@@ -80,11 +81,12 @@ export async function loadSettingsSnapshot(context: vscode.ExtensionContext): Pr
     } else if (key === "llm.model") {
       values[key] = readLlmSettingWithPanelFallback(key, panel?.llm.model, field.default as string);
     } else if (key === "llm.outputLanguage") {
-      values[key] = readLlmSettingWithPanelFallback(
+      const raw = readLlmSettingWithPanelFallback(
         key,
         panel?.llm.outputLanguage,
         field.default as string
       );
+      values[key] = normalizeOutputLanguagePreference(String(raw));
     } else if (key === "llm.maxContextChars") {
       values[key] = readLlmSettingWithPanelFallback(
         key,

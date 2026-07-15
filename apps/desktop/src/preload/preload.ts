@@ -378,6 +378,7 @@ export interface DesktopApi {
   listProjectAliases(): Promise<Record<string, string>>;
   setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
+  openExternalUrl(url: string): Promise<void>;
   onLocaleChanged(callback: (bundle: { locale: string; messages: Record<string, string> }) => void): () => void;
 }
 
@@ -511,6 +512,7 @@ const api: DesktopApi = {
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
   setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
+  openExternalUrl: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
   onLocaleChanged: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

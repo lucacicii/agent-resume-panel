@@ -2,6 +2,7 @@ import { listSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { chatCompletionDetailed } from "../llm/chat";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
 import { effectivePanelHome, loadSettings } from "../settings/store";
@@ -268,7 +269,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       message: `从 summary 提取日报 ${dateLabel}…`
     });
 
-    const language = llm.outputLanguage || "zh-CN";
+    const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
     const chatResult = await chatCompletionDetailed(
       llm,
       [

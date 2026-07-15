@@ -2,6 +2,7 @@ import { setSessionSummaryInCatalog } from "../catalog/mutations";
 import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";
 import { PanelSettings } from "../settings/types";
@@ -25,6 +26,8 @@ export interface EnsureSummariesOptions {
   jobKeyPrefix?: string;
   /** Progress for UI (session-level). */
   onProgress?: DigestProgressCallback;
+  /** OS / VS Code display locale when output language is auto. */
+  systemLocale?: string;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
 }
@@ -45,7 +48,7 @@ export interface EnsureSummariesResult {
 export async function ensureSummariesForSessions(
   options: EnsureSummariesOptions
 ): Promise<EnsureSummariesResult> {
-  const llmConfig = llmConfigFromSettings(options.settings);
+  const llmConfig = llmConfigFromSettings(options.settings, options.systemLocale);
   if (!llmConfig) {
     throw new Error(
       "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in settings."
@@ -57,7 +60,7 @@ export async function ensureSummariesForSessions(
 
   const homes = resolvePreviewHomes(options.settings, options.panelHome);
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 2, 6));
-  const language = llm.outputLanguage?.trim() || "zh-CN";
+  const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
   const force = options.force === true;
   const prefix = options.jobKeyPrefix || "summarize";
   const level = options.progressLevel || "daily";

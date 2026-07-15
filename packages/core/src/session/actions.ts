@@ -3,6 +3,7 @@ import { getSessionById } from "../catalog/query";
 import { ensureExtensionCatalogSchema } from "../catalog/db";
 import { AgentProvider, AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { catalogDbFromSettings, loadSettings } from "../settings/store";
 import { loadSessionPreview } from "../transcript/load";
@@ -14,6 +15,8 @@ import { renameSessionNative } from "./rename";
 export interface SessionActionOptions {
   provider: AgentProvider;
   id: string;
+  /** OS / VS Code display locale when output language is auto. */
+  systemLocale?: string;
 }
 
 export interface SummarizeSessionResult {
@@ -45,7 +48,7 @@ async function loadSessionContext(opts: SessionActionOptions) {
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
   }
-  const llm = llmConfigFromSettings(settings);
+  const llm = llmConfigFromSettings(settings, opts.systemLocale);
   if (!llm) {
     throw new Error("LLM is not configured. Open Settings to set API base URL, model, and API key.");
   }
@@ -62,7 +65,7 @@ export async function summarizeSessionAction(
   opts: SessionActionOptions
 ): Promise<SummarizeSessionResult> {
   const { catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts);
-  const language = llm.outputLanguage?.trim() || "zh-CN";
+  const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 
   try {
     const result = await summarizeSessionMessages(llm, preview.messages);

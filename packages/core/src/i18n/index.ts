@@ -22,3 +22,14 @@ export {
 } from "./catalog";
 export type { MessageCatalog } from "./catalog";
 export { resolveUiLocale } from "./resolve";
+export {
+  OUTPUT_LANGUAGE_AUTO,
+  OUTPUT_LANGUAGE_OPTIONS,
+  DEFAULT_CATALOG_OUTPUT_LANGUAGE,
+  normalizeOutputLanguagePreference,
+  catalogLanguageForLocale,
+  resolveEffectiveOutputLanguage,
+  normalizeSummaryLanguageTag,
+  summaryLanguagesMatch
+} from "./outputLanguage";
+export type { OutputLanguagePreference, EffectiveOutputLanguage } from "./outputLanguage";

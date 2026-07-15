@@ -11,8 +11,11 @@ import {
   translateKey,
   UI_LANGUAGE_AUTO,
   UI_LANGUAGE_SETTING,
+  OUTPUT_LANGUAGE_AUTO,
+  OUTPUT_LANGUAGE_OPTIONS,
   UiLocale,
-  isUiLocale
+  isUiLocale,
+  normalizeOutputLanguagePreference
 } from "@agent-resume/core";
 import { readAgentResumeSetting } from "../llm/config";
 
@@ -43,6 +46,16 @@ export function getUiLocaleDisplayName(locale: UiLocale): string {
 export function getUiLanguageOptionLabel(preference: string): string {
   if (preference === UI_LANGUAGE_AUTO) {
     return t("settings.fieldUiLanguageOptionAuto");
+  }
+  if (isUiLocale(preference)) {
+    return NATIVE_LOCALE_LABELS[preference];
+  }
+  return preference;
+}
+
+export function getOutputLanguageOptionLabel(preference: string): string {
+  if (preference === OUTPUT_LANGUAGE_AUTO) {
+    return t("settings.fieldLlmOutputLanguageOptionAuto");
   }
   if (isUiLocale(preference)) {
     return NATIVE_LOCALE_LABELS[preference];

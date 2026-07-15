@@ -1,5 +1,6 @@
 import { chatCompletionStream } from "../llm/chat";
 import { ChatMessage } from "../llm/types";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { chatLlmConfigFromSettings } from "../llm/fromSettings";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { effectivePanelHome, loadSettings } from "../settings/store";
@@ -34,7 +35,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
   }
 
   const settings = await loadSettings(options.panelHome);
-  const llm = chatLlmConfigFromSettings(settings);
+  const llm = chatLlmConfigFromSettings(settings, options.systemLocale);
   if (!llm) {
     throw new Error(
       "Conversation LLM is not configured. Set llm (or chatLlm) baseUrl, model, and apiKey in settings.json."
@@ -104,7 +105,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     ? history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
     : undefined;
 
-  const language = llm.outputLanguage || "zh-CN";
+  const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 
   if (options.enableTools ?? true) {
     return runAskWithTools(options, llm, language, desktopDb, panelHome, {

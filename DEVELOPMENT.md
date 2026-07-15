@@ -1,6 +1,28 @@
 # Development
 
-Guide for building, testing, and publishing the Agent Resume Panel VS Code extension.
+内部开发指南：构建、测试与发布 Agent Resume Panel VS Code 扩展与相关产物。
+
+## User-facing documentation
+
+对外用户文档在独立仓库，**不要**把仓库结构、构建命令、源码路径等开发信息写进 doc 仓库 README：
+
+| 产品 | 用户文档 | Issues |
+|------|----------|--------|
+| VS Code 扩展 | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
+| Desktop App | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) | [issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+
+Desktop 专项开发见 [apps/desktop/README.md](apps/desktop/README.md)。
+
+## Monorepo layout
+
+| 路径 | 说明 |
+|------|------|
+| `src/` | VS Code 扩展 |
+| `packages/core/` | 共享 TypeScript 核心（`@agent-resume/core`） |
+| `apps/desktop/` | Electron 桌面应用 |
+| `locales/` | 扩展 i18n 文案 |
+| `media/` | 扩展 Webview 静态资源 |
+| `scripts/` | 构建、菜单生成、i18n 检查等 |
 
 ## Secrets & local config
 

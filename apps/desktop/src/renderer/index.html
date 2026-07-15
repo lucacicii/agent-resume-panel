@@ -507,6 +507,7 @@
             <button type="button" class="settings-nav-item" data-settings-pane="report" data-i18n="desktop.settings.paneReport">Memory</button>
             <button type="button" class="settings-nav-item" data-settings-pane="storage" data-i18n="desktop.settings.paneStorage">Data</button>
             <button type="button" class="settings-nav-item" data-settings-pane="usage" data-i18n="desktop.settings.paneUsage">Usage</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="about" data-i18n="desktop.settings.paneAbout">About</button>
           </aside>
 
           <div class="settings-main">
@@ -569,10 +570,13 @@
                         <span class="settings-field-label" data-i18n="desktop.settings.apiKey">API Key</span>
                         <input name="llmApiKey" type="password" autocomplete="off" />
                       </label>
-                      <label class="settings-field">
-                        <span class="settings-field-label" data-i18n="desktop.settings.outputLanguage">Output language</span>
-                        <input name="llmLang" type="text" placeholder="zh-CN" />
-                      </label>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.outputLanguage">Output language</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.fieldOutputLanguageDescription">Follows UI language when auto.</span>
+                        </div>
+                        <select name="llmLang" class="settings-row-control"></select>
+                      </div>
                     </div>
                   </section>
 
@@ -931,6 +935,108 @@
                 </div>
               </div>
             </form>
+
+            <div id="settingsPaneAbout" class="settings-pane settings-pane-about" hidden>
+              <div class="settings-pane-body settings-about-body">
+                <header class="settings-about-hero">
+                  <div class="settings-about-app-icon" aria-hidden="true">
+                    <img
+                      class="settings-about-app-icon-img"
+                      src="../resources/icon.png"
+                      alt=""
+                      width="72"
+                      height="72"
+                      decoding="async"
+                    />
+                  </div>
+                  <h3 class="settings-about-app-name">Agent Resume</h3>
+                  <p class="settings-about-version" id="settingsAboutVersion">Desktop</p>
+                  <p class="settings-about-tagline" data-i18n="desktop.settings.aboutTagline">Session OS + Memory for coding agents</p>
+                </header>
+
+                <section class="settings-group">
+                  <h3 class="settings-group-title" data-i18n="desktop.settings.aboutResources">Resources</h3>
+                  <div class="settings-group-body settings-group-body-rows settings-about-rows">
+                    <button type="button" class="settings-about-row" id="btnOpenDesktopDoc">
+                      <span class="settings-about-row-icon settings-about-row-icon-doc" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H14l5 5v11.5A2.5 2.5 0 0 1 16.5 22h-10A2.5 2.5 0 0 1 4 19.5z" />
+                          <path d="M14 3v5h5" />
+                          <path d="M8 13h8M8 17h5" />
+                        </svg>
+                      </span>
+                      <span class="settings-about-row-text">
+                        <span class="settings-about-row-title" data-i18n="desktop.settings.linkDocumentation">Documentation</span>
+                        <span class="settings-about-row-desc" data-i18n="desktop.settings.linkDocumentationDesc">User guide and feature overview</span>
+                      </span>
+                      <span class="settings-about-row-external" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M14 3h7v7" />
+                          <path d="M10 14 21 3" />
+                          <path d="M21 14v7H3V3h7" />
+                        </svg>
+                      </span>
+                    </button>
+                    <button type="button" class="settings-about-row" id="btnOpenExtensionDoc">
+                      <span class="settings-about-row-icon settings-about-row-icon-ext" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                          <path d="M9 9h6v6H9z" />
+                        </svg>
+                      </span>
+                      <span class="settings-about-row-text">
+                        <span class="settings-about-row-title" data-i18n="desktop.settings.linkExtensionDoc">VS Code extension docs</span>
+                        <span class="settings-about-row-desc" data-i18n="desktop.settings.linkExtensionDocDesc">Companion sidebar extension</span>
+                      </span>
+                      <span class="settings-about-row-external" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M14 3h7v7" />
+                          <path d="M10 14 21 3" />
+                          <path d="M21 14v7H3V3h7" />
+                        </svg>
+                      </span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="settings-group">
+                  <h3 class="settings-group-title" data-i18n="desktop.settings.aboutFeedback">Feedback</h3>
+                  <div class="settings-group-body settings-group-body-rows settings-about-rows">
+                    <button type="button" class="settings-about-row settings-about-row-primary" id="btnReportDesktopIssue">
+                      <span class="settings-about-row-icon settings-about-row-icon-feedback" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                          <path d="M12 8v4M12 16h.01" />
+                        </svg>
+                      </span>
+                      <span class="settings-about-row-text">
+                        <span class="settings-about-row-title" data-i18n="desktop.settings.linkReportIssue">Report Issue</span>
+                        <span class="settings-about-row-desc" data-i18n="desktop.settings.linkReportIssueDesc">Bug reports and feature requests on GitHub</span>
+                      </span>
+                      <span class="settings-about-row-external" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M14 3h7v7" />
+                          <path d="M10 14 21 3" />
+                          <path d="M21 14v7H3V3h7" />
+                        </svg>
+                      </span>
+                    </button>
+                  </div>
+                </section>
+
+                <aside class="settings-about-privacy">
+                  <span class="settings-about-privacy-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </span>
+                  <p data-i18n="desktop.settings.footerHint">Feedback via GitHub Issues. Do not paste API keys or full transcripts.</p>
+                </aside>
+              </div>
+            </div>
 
             <div id="settingsPaneUsage" class="settings-pane settings-pane-usage" hidden>
               <div class="settings-pane-body">

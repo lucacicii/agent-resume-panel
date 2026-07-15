@@ -12,9 +12,9 @@
     "type": "git",
     "url": "https://github.com/thunder-luc/agent-resume-panel.git"
   },
-  "homepage": "https://github.com/thunder-luc/agent-resume-panel#readme",
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel-doc#readme",
   "bugs": {
-    "url": "https://github.com/thunder-luc/agent-resume-panel/issues"
+    "url": "https://github.com/thunder-luc/agent-resume-panel-doc/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
@@ -3122,6 +3122,16 @@
       {
         "command": "agentResume.ru.newCodexAppSession",
         "title": "Новая сессия Codex App",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openDocumentation",
+        "title": "Open Documentation",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.reportIssue",
+        "title": "Report Issue",
         "category": "Agent Resume"
       }
     ],

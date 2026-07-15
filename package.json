@@ -12,9 +12,9 @@
     "type": "git",
     "url": "https://github.com/thunder-luc/agent-resume-panel.git"
   },
-  "homepage": "https://github.com/thunder-luc/agent-resume-panel#readme",
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel-doc#readme",
   "bugs": {
-    "url": "https://github.com/thunder-luc/agent-resume-panel/issues"
+    "url": "https://github.com/thunder-luc/agent-resume-panel-doc/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
@@ -447,19 +447,20 @@
         "agentResume.llm.outputLanguage": {
           "type": "string",
           "enum": [
-            "English",
-            "Chinese",
-            "Japanese",
-            "Korean",
-            "Spanish",
-            "French",
-            "German",
-            "Portuguese",
-            "Italian",
-            "Russian"
+            "auto",
+            "en",
+            "zh-cn",
+            "ja",
+            "ko",
+            "es",
+            "fr",
+            "de",
+            "pt-br",
+            "it",
+            "ru"
           ],
-          "default": "English",
-          "description": "Language used for Summarize and Auto Rename results."
+          "default": "auto",
+          "description": "Language for Summarize, Auto Rename, and digests. auto follows UI Language."
         },
         "agentResume.llm.maxContextChars": {
           "type": "number",
@@ -3152,6 +3153,16 @@
       {
         "command": "agentResume.ru.newCodexAppSession",
         "title": "Новая сессия ChatGPT",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openDocumentation",
+        "title": "Open Documentation",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.reportIssue",
+        "title": "Report Issue",
         "category": "Agent Resume"
       }
     ],

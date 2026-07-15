@@ -60,6 +60,8 @@ export interface AgentChatOptions {
   mcpServerCommand?: string;
   /** Override the MCP server spawn args. */
   mcpServerArgs?: string[];
+  /** OS / VS Code display locale when output language is auto. */
+  systemLocale?: string;
 }
 
 export interface AgentChatResult {

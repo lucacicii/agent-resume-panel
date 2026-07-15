@@ -1,6 +1,11 @@
 /* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
 /* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
 
+const DESKTOP_APP_VERSION = "0.1.0";
+const DESKTOP_DOC_README = "https://github.com/thunder-luc/agent-resume-desktop-doc#readme";
+const DESKTOP_DOC_ISSUES = "https://github.com/thunder-luc/agent-resume-desktop-doc/issues";
+const PANEL_DOC_README = "https://github.com/thunder-luc/agent-resume-panel-doc#readme";
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -6390,6 +6395,34 @@ const NATIVE_LOCALE_LABELS = {
   ru: "Русский"
 };
 
+const LEGACY_OUTPUT_LANGUAGE_MAP = {
+  English: "en",
+  Chinese: "zh-cn",
+  Japanese: "ja",
+  Korean: "ko",
+  Spanish: "es",
+  French: "fr",
+  German: "de",
+  Portuguese: "pt-br",
+  Italian: "it",
+  Russian: "ru",
+  "zh-CN": "zh-cn",
+  zh_CN: "zh-cn",
+  zh: "zh-cn"
+};
+
+function normalizeOutputLanguagePreference(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed === "auto") {
+    return "auto";
+  }
+  if (UI_LANGUAGE_VALUES.includes(trimmed)) {
+    return trimmed;
+  }
+  const legacy = LEGACY_OUTPUT_LANGUAGE_MAP[trimmed] || LEGACY_OUTPUT_LANGUAGE_MAP[trimmed.toLowerCase()];
+  return legacy && UI_LANGUAGE_VALUES.includes(legacy) ? legacy : "auto";
+}
+
 function populateUiLanguageSelect(selected) {
   const form = $("settingsForm");
   const select = form?.uiLanguage;
@@ -6401,6 +6434,24 @@ function populateUiLanguageSelect(selected) {
     opt.value = value;
     opt.textContent =
       value === "auto" ? t("desktop.settings.fieldUiLanguageOptionAuto") : NATIVE_LOCALE_LABELS[value] || value;
+    select.appendChild(opt);
+  }
+  select.value = UI_LANGUAGE_VALUES.includes(prev) ? prev : "auto";
+}
+
+function populateOutputLanguageSelect(selected) {
+  const form = $("settingsForm");
+  const select = form?.llmLang;
+  if (!select) return;
+  const prev = normalizeOutputLanguagePreference(selected ?? select.value);
+  select.innerHTML = "";
+  for (const value of UI_LANGUAGE_VALUES) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent =
+      value === "auto"
+        ? t("desktop.settings.fieldOutputLanguageOptionAuto")
+        : NATIVE_LOCALE_LABELS[value] || value;
     select.appendChild(opt);
   }
   select.value = UI_LANGUAGE_VALUES.includes(prev) ? prev : "auto";
@@ -6419,7 +6470,10 @@ async function loadSettingsForm() {
   form.llmBaseUrl.value = toolBase;
   form.llmModel.value = toolModel;
   form.llmApiKey.value = toolKey;
-  form.llmLang.value = s.llm?.outputLanguage || "";
+  populateOutputLanguageSelect(s.llm?.outputLanguage || "auto");
+  if (form.llmLang) {
+    form.llmLang.value = normalizeOutputLanguagePreference(s.llm?.outputLanguage || "auto");
+  }
 
   // Conversation model: prefer chatLlm, else prefill from tool LLM
   form.chatBaseUrl.value = s.chatLlm?.baseUrl?.trim() || toolBase;
@@ -6474,9 +6528,9 @@ async function loadSettingsForm() {
   if (form.desktopTheme) {
     form.desktopTheme.value = s.desktop?.theme || "system";
   }
-  populateUiLanguageSelect(s.uiLanguage || "auto");
+  populateUiLanguageSelect(s.uiLanguage || "en");
   if (form.uiLanguage) {
-    form.uiLanguage.value = s.uiLanguage || "auto";
+    form.uiLanguage.value = s.uiLanguage || "en";
   }
   updateSettingsNotesRootDisplay();
   updateWorkbenchExternalLaunchVisibility();
@@ -6516,7 +6570,7 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
       baseUrl: llmBaseUrl,
       model: llmModel,
       apiKey: llmApiKey,
-      outputLanguage: form.llmLang.value.trim() || "zh-CN"
+      outputLanguage: normalizeOutputLanguagePreference(form.llmLang?.value || "auto")
     },
     chatLlm: {
       ...(loadedSettings?.chatLlm || {}),
@@ -6573,7 +6627,7 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
       cmdTAction:
         form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal"
     },
-    uiLanguage: form.uiLanguage?.value || "auto",
+    uiLanguage: form.uiLanguage?.value || "en",
     desktop: {
       ...(loadedSettings?.desktop || {}),
       theme: form.desktopTheme?.value || "system"
@@ -6581,15 +6635,15 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
   };
   setStatus(status, t("desktop.settings.saving"));
   const localeBeforeSave = getUiLocale();
-  const uiLanguageBeforeSave = loadedSettings?.uiLanguage || "auto";
-  const uiLanguagePending = settings.uiLanguage || "auto";
+  const uiLanguageBeforeSave = loadedSettings?.uiLanguage || "en";
+  const uiLanguagePending = settings.uiLanguage || "en";
   try {
     const result = await agentResume.saveSettings(settings);
     loadedSettings = result.settings;
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
-    const savedUiLanguage = result.settings?.uiLanguage || "auto";
+    const savedUiLanguage = result.settings?.uiLanguage || "en";
     if (savedUiLanguage !== uiLanguageBeforeSave || savedUiLanguage !== uiLanguagePending) {
       populateUiLanguageSelect(savedUiLanguage);
     }
@@ -8243,6 +8297,15 @@ function wire() {
     if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
     void flushSettingsSave().finally(() => switchTab("report"));
   });
+  $("btnOpenDesktopDoc")?.addEventListener("click", () => {
+    void agentResume.openExternalUrl(DESKTOP_DOC_README);
+  });
+  $("btnReportDesktopIssue")?.addEventListener("click", () => {
+    void agentResume.openExternalUrl(DESKTOP_DOC_ISSUES);
+  });
+  $("btnOpenExtensionDoc")?.addEventListener("click", () => {
+    void agentResume.openExternalUrl(PANEL_DOC_README);
+  });
   document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
     btn.addEventListener("click", () => showSettingsPane(btn.dataset.settingsPane));
   });
@@ -8628,7 +8691,8 @@ function getSettingsPaneMeta() {
     workbench: { title: t("desktop.settings.paneWorkbench"), desc: t("desktop.settings.paneWorkbenchDesc") },
     report: { title: t("desktop.settings.paneReport"), desc: t("desktop.settings.paneReportDesc") },
     storage: { title: t("desktop.settings.paneStorage"), desc: t("desktop.settings.paneStorageDesc") },
-    usage: { title: t("desktop.settings.paneUsage"), desc: t("desktop.settings.paneUsageDesc") }
+    usage: { title: t("desktop.settings.paneUsage"), desc: t("desktop.settings.paneUsageDesc") },
+    about: { title: t("desktop.settings.paneAbout"), desc: t("desktop.settings.paneAboutDesc") }
   };
 }
 
@@ -8665,7 +8729,7 @@ function wireSettingsDisclosure() {
 }
 
 function showSettingsPane(name) {
-  const paneIds = ["general", "models", "sessions", "workbench", "report", "storage", "usage"];
+  const paneIds = ["general", "models", "sessions", "workbench", "report", "storage", "usage", "about"];
   const resolved = paneIds.includes(name) ? name : "general";
   for (const id of paneIds) {
     const pane = $(`settingsPane${id.charAt(0).toUpperCase()}${id.slice(1)}`);
@@ -8675,8 +8739,9 @@ function showSettingsPane(name) {
   const saveStatus = $("settingsStatus");
   const headerActions = $("settingsContentHeader")?.querySelector(".settings-header-actions");
   const isUsage = resolved === "usage";
-  if (form) form.hidden = isUsage;
-  if (headerActions) headerActions.hidden = isUsage;
+  const isAbout = resolved === "about";
+  if (form) form.hidden = isUsage || isAbout;
+  if (headerActions) headerActions.hidden = isUsage || isAbout;
   const meta = getSettingsPaneMeta()[resolved];
   const titleEl = $("settingsPaneTitle");
   const descEl = $("settingsPaneDesc");
@@ -8686,6 +8751,13 @@ function showSettingsPane(name) {
     btn.classList.toggle("active", btn.dataset.settingsPane === resolved);
   });
   if (isUsage) loadUsagePage();
+  if (isAbout) updateAboutPaneVersion();
+}
+
+function updateAboutPaneVersion() {
+  const el = $("settingsAboutVersion");
+  if (!el) return;
+  el.textContent = `${t("desktop.settings.aboutVersionLabel")} ${DESKTOP_APP_VERSION}`;
 }
 
 function fmtNum(n) {
@@ -8786,6 +8858,7 @@ async function loadUsagePage() {
 async function registerRefreshLocalizedUiImpl() {
   window.refreshLocalizedUiImpl = async () => {
     populateUiLanguageSelect($("settingsForm")?.uiLanguage?.value);
+    populateOutputLanguageSelect($("settingsForm")?.llmLang?.value);
     if (activePrimaryTab === "settings") {
       const pane = document.querySelector(".settings-nav-item.active")?.dataset.settingsPane || "general";
       showSettingsPane(pane);

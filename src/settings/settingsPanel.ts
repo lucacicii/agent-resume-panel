@@ -10,6 +10,7 @@ import {
   promptReloadIfContributionsStale,
   promptReloadWindow
 } from "../upgrade/contributionSync";
+import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "../constants/docLinks";
 import { applySettingsPatch, loadSettingsSnapshot } from "./settingsIO";
 
 let settingsPanel: vscode.WebviewPanel | undefined;
@@ -20,6 +21,7 @@ interface WebviewMessage {
   type?: string;
   patch?: Record<string, unknown>;
   draft?: Record<string, unknown>;
+  href?: string;
 }
 
 export async function openSettingsPanel(context: vscode.ExtensionContext): Promise<void> {
@@ -102,6 +104,11 @@ async function revealSettingsPanel(context: vscode.ExtensionContext): Promise<vo
       return;
     }
 
+    if (message.type === "openExternal" && message.href) {
+      await vscode.env.openExternal(vscode.Uri.parse(message.href));
+      return;
+    }
+
     if (message.type === "testLlm") {
       try {
         const messageText = await testLlmConnection(ctx, llmOverridesFromDraft(message.draft));
@@ -139,7 +146,11 @@ async function sendInit(webview: vscode.Webview, context: vscode.ExtensionContex
     projectMenu: snapshot.projectMenu,
     sessionMenu: snapshot.sessionMenu,
     activeSection,
-    uiStrings: getSettingsUiStrings()
+    uiStrings: getSettingsUiStrings(),
+    docLinks: {
+      documentation: PANEL_DOC_README,
+      reportIssue: PANEL_DOC_ISSUES
+    }
   });
 }
 

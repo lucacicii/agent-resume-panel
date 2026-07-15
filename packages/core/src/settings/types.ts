@@ -127,10 +127,11 @@ export interface PanelSettings {
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
+  uiLanguage: "en",
   llm: {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
-    outputLanguage: "zh-CN",
+    outputLanguage: "auto",
     maxContextChars: 120_000,
     requestTimeoutMs: 300_000
   },

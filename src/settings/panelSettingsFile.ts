@@ -60,7 +60,7 @@ function defaultFile(): PanelSettingsFile {
     llm: {
       baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o-mini",
-      outputLanguage: "zh-CN",
+      outputLanguage: "auto",
       maxContextChars: 120_000
     },
     embedding: {

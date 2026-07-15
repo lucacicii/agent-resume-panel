@@ -84,7 +84,7 @@ import {
   ProjectSessionSortMode,
   setProjectSessionSortMode
 } from "./tree/projectSessionSort";
-import { getLlmConfig } from "./llm/config";
+import { getLlmConfig, isOutputLanguageFollowingUi } from "./llm/config";
 import { migrateSummariesFromGlobalState } from "./llm/summaryMigration";
 import { executeHandoffCommand } from "./handoff/handoffCommand";
 import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
@@ -103,6 +103,7 @@ import {
 import { loadSectionOrder } from "./tree/sectionOrder";
 import { SessionTreeDragDrop } from "./tree/sessionTreeDragDrop";
 import { projectUri, sessionQuickPickLabel, SessionTreeProvider } from "./tree/sessionTree";
+import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
@@ -261,6 +262,12 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("agentResume.openSettings", () => openSettingsPanel(context)),
     vscode.commands.registerCommand("agentResume.openAcpSettings", () => openSettingsPanelToAcp(context)),
+    vscode.commands.registerCommand("agentResume.openDocumentation", () =>
+      vscode.env.openExternal(vscode.Uri.parse(PANEL_DOC_README))
+    ),
+    vscode.commands.registerCommand("agentResume.reportIssue", () =>
+      vscode.env.openExternal(vscode.Uri.parse(PANEL_DOC_ISSUES))
+    ),
     ...menuCommand("agentResume.autoRenameSession", (nodeOrSession?: unknown) =>
       autoRenameSessionCommand(tree, nodeOrSession, context, () => refresh(tree, false))
     ),
@@ -418,6 +425,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       if (event.affectsConfiguration("agentResume.uiLanguage")) {
         void refreshAllLocalizedUi(false);
+        if (isOutputLanguageFollowingUi()) {
+          void refresh(tree, false);
+        }
       }
       if (event.affectsConfiguration("agentResume") && !event.affectsConfiguration("agentResume.uiLanguage")) {
         void refresh(tree, false);
