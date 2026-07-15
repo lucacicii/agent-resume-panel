@@ -96,7 +96,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
 
   const language = llm.outputLanguage || "zh-CN";
 
-  if (options.enableTools) {
+  if (options.enableTools ?? true) {
     return runAskWithTools(options, llm, language, dbPath, panelHome, {
       query,
       sourcesBlock,

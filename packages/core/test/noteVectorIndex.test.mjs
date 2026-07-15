@@ -48,6 +48,16 @@ test("builds general exact and semantic note search plans", () => {
   assert.deepEqual(planNoteSearchDeterministically("查找标签 #urgent 的笔记").terms, ["#urgent"]);
   assert.deepEqual(planNoteSearchDeterministically("find notes containing auth_token").terms, ["auth_token"]);
   assert.equal(planNoteSearchDeterministically("查找关于登录故障的笔记").mode, "semantic");
+  assert.deepEqual(planNoteSearchDeterministically("查一下天脊下面的所有笔记"), {
+    mode: "exact",
+    terms: ["天脊"],
+    operator: "all",
+    fields: ["path", "title", "content", "filename"],
+    semanticQuery: "查一下天脊下面的所有笔记",
+    notesOnly: true,
+    confidence: 0.92,
+    source: "deterministic"
+  });
 
   const fallback = planNoteSearchDeterministically("帮我查一下登录故障的笔记");
   const llmPlan = normalizeLlmNoteSearchPlan(

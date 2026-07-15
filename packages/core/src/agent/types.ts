@@ -52,7 +52,7 @@ export interface AskMetaAgentOptions {
   /** Optional streaming progress callback (desktop Ask tab). */
   onStream?: (event: AskStreamEvent) => void | Promise<void>;
   threadId?: string;
-  /** Enable MCP tool-calling for note operations. Default false. */
+  /** Enable MCP tool-calling for note operations. Default true. */
   enableTools?: boolean;
   /** Override the MCP server spawn command. Defaults to auto-detect. */
   mcpServerCommand?: string;

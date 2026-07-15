@@ -20,6 +20,7 @@ import type { NoteIndexProgressCallback } from "./vectorIndex";
 
 const DEFAULT_LIMIT = 6;
 const DEFAULT_EXACT_LIMIT = 50;
+const MAX_EXACT_LIMIT = 200;
 const DEFAULT_CANDIDATE_LIMIT = 10000;
 const DEFAULT_MIN_SCORE = 0.15;
 const CANDIDATE_PAGE_SIZE = 200;
@@ -203,7 +204,7 @@ export async function searchNotesByEmbedding(options: {
   await ensureCatalogSchema(dbPath);
   const plan = options.plan ?? planNoteSearchDeterministically(query);
   if (plan.mode === "exact") {
-    const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, DEFAULT_EXACT_LIMIT));
+    const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, MAX_EXACT_LIMIT));
     return searchExactNotesFromDisk(dbPath, panelHome, plan, exactLimit);
   }
 

@@ -62,6 +62,45 @@ test("note_create then note_search finds it", async () => {
   }
 });
 
+test("note_search accepts large limit values without validation error", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "note_search",
+      arguments: { query: "nonexistent", limit: 500 }
+    });
+    assert.notEqual(result.isError, true);
+    assert.ok(result.content[0].text.includes("No notes found"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note_search matches notes by path segment", async () => {
+  const { ctx, store } = await setupTestContext();
+  const record = await store.createLibraryNote("# Tianji Note\n\nContent under tianji folder.");
+  await store.writeNoteContent(record.noteId, "# Tianji Note\n\n天脊项目相关内容。");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "note_search",
+      arguments: { query: "天脊", limit: 50 }
+    });
+    assert.notEqual(result.isError, true);
+    assert.ok(result.content[0].text.includes("Found"));
+    assert.ok(result.content[0].text.includes(record.noteId));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 test("note_search returns empty message when no matches", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);

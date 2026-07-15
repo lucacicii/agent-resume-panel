@@ -113,7 +113,7 @@ let askThreads = [];
 let activeAskThreadId = null;
 /** @type {boolean} */
 let askSidebarCollapsed = false;
-let askEnableTools = false;
+let askEnableTools = true;
 
 function mapAskMessages(messages) {
   return (messages || []).map((m) => ({
@@ -7328,15 +7328,21 @@ function wire() {
   });
 
   $("btnAgentSend").addEventListener("click", () => sendAgent());
-  $("btnAgentTools")?.addEventListener("click", () => {
-    askEnableTools = !askEnableTools;
+  function syncAskToolsToggleUi(notifyStatus) {
     const btn = $("btnAgentTools");
     if (btn) {
       btn.classList.toggle("active", askEnableTools);
       btn.setAttribute("aria-pressed", String(askEnableTools));
       btn.title = askEnableTools ? "工具已开启：可通过对话操作笔记" : "开启后可通过对话操作笔记（新建/搜索）";
     }
-    setStatus($("agentStatus"), askEnableTools ? "工具模式已开启" : "工具模式已关闭", askEnableTools ? "ok" : undefined);
+    if (notifyStatus) {
+      setStatus($("agentStatus"), askEnableTools ? "工具模式已开启" : "工具模式已关闭", askEnableTools ? "ok" : undefined);
+    }
+  }
+  syncAskToolsToggleUi(false);
+  $("btnAgentTools")?.addEventListener("click", () => {
+    askEnableTools = !askEnableTools;
+    syncAskToolsToggleUi(true);
   });
   $("btnAskAudit")?.addEventListener("click", () => toggleAskAuditPanel());
   $("btnAskAuditRefresh")?.addEventListener("click", () => loadAskAudit());

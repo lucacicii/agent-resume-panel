@@ -31,7 +31,7 @@ export function createNoteMcpServer(ctx: NoteToolContext): McpServer {
     "note_search",
     {
       description:
-        "Search notes by keyword. Matches against titles, content previews, and filenames. Returns noteId, title, scope, and path for each match.",
+        "Search notes by keyword. Matches titles, full content, filenames, note paths, and project paths. Use limit up to 200 for list-all requests; values above 200 are clamped.",
       inputSchema: noteSearchSchema
     },
     async (args: { query: string; scope?: string; limit?: number }) => {

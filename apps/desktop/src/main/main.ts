@@ -635,7 +635,7 @@ function registerIpc(): void {
         query: args.query,
         history: args.history,
         threadId: args.threadId,
-        enableTools: args.enableTools ?? false,
+        enableTools: args.enableTools ?? true,
         onStream: async (streamEvent) => {
           event.sender.send("agent:askStream", streamEvent);
           if (streamEvent.phase === "chunk") {

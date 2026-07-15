@@ -128,6 +128,25 @@ export function planNoteSearchDeterministically(query: string): NoteSearchPlan {
     };
   }
 
+  const underNoteMatch = normalized.match(
+    /(?:查|找|搜|列出|显示|看看)?(?:一下)?\s*(.+?)\s*(?:下面|之下|以内|文件夹|目录)(?:的)?(?:所有|全部)?(?:的)?(?:笔记|日记|便签)?/iu
+  );
+  if (underNoteMatch && notesOnly) {
+    const term = underNoteMatch[1].trim().replace(/^(?:关于|有关)\s*/u, "");
+    if (term) {
+      return {
+        mode: "exact",
+        terms: uniqueTerms([term]),
+        operator: "all",
+        fields: ["path", "title", "content", "filename"],
+        semanticQuery: normalized,
+        notesOnly,
+        confidence: 0.92,
+        source: "deterministic"
+      };
+    }
+  }
+
   const codeTerms = uniqueTerms([...normalized.matchAll(CODE_TOKEN_RE)].map((match) => match[0]));
   if (codeTerms.length && SEARCH_ACTION_RE.test(normalized)) {
     return {

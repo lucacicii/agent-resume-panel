@@ -69,7 +69,7 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
     buildMetaAgentSystemPrompt(outputLanguage),
     "When the user asks to create, find, or manage notes, use the available tools to perform the action directly.",
     "For note creation, ask the user for any missing required information (title, scope) before calling note.create.",
-    "For note search, call note.search with a relevant query and report the results clearly.",
+    "For note search, call note_search with the user's keywords (e.g. project or folder name). Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
     "After executing a tool, summarize what was done in a concise sentence.",
     "Do not pretend to have performed an action if the tool call failed — report the error honestly."
   ].join(" ");

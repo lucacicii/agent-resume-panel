@@ -2,10 +2,23 @@ import { z } from "zod";
 import type { NotesStore } from "../notes/store";
 import type { NoteRecord } from "../notes/catalogNotes";
 import type { AgentProvider } from "../catalog/types";
+import { planNoteSearchDeterministically } from "../notes/queryPlan";
+import { searchNotesByEmbedding } from "../notes/search";
 
 export interface NoteToolContext {
   notesStore: NotesStore;
   dbPath: string;
+}
+
+export const NOTE_SEARCH_DEFAULT_LIMIT = 50;
+export const NOTE_SEARCH_MAX_LIMIT = 200;
+
+export function clampNoteSearchLimit(limit?: number): number {
+  const raw = Number(limit);
+  if (!Number.isFinite(raw) || raw < 1) {
+    return NOTE_SEARCH_DEFAULT_LIMIT;
+  }
+  return Math.min(Math.floor(raw), NOTE_SEARCH_MAX_LIMIT);
 }
 
 function summarizeNote(record: NoteRecord): Record<string, unknown> {
@@ -22,15 +35,70 @@ function summarizeNote(record: NoteRecord): Record<string, unknown> {
   };
 }
 
+function noteMatchesQuery(note: NoteRecord, queryLower: string): boolean {
+  const fields = [
+    note.title,
+    note.contentPreview,
+    note.filename,
+    note.relMdPath,
+    note.relDir,
+    note.projectPath
+  ];
+  return fields.some((value) => value && value.toLowerCase().includes(queryLower));
+}
+
+function formatSearchResults(
+  query: string,
+  summary: Record<string, unknown>[],
+  totalMatches?: number
+): string {
+  if (summary.length === 0) {
+    return `No notes found matching "${query}".`;
+  }
+  const total = totalMatches ?? summary.length;
+  if (total > summary.length) {
+    return `Found ${total} note(s) matching "${query}"; showing first ${summary.length}:\n${JSON.stringify(summary, null, 2)}`;
+  }
+  return `Found ${summary.length} note(s) matching "${query}":\n${JSON.stringify(summary, null, 2)}`;
+}
+
+function fallbackNoteSearch(
+  notes: NoteRecord[],
+  query: string,
+  scope: string,
+  limit: number
+): { summary: Record<string, unknown>[]; totalMatches: number } {
+  let filtered = notes;
+  if (scope !== "all") {
+    filtered = notes.filter((note) => note.scope === scope);
+  }
+  const queryLower = query.toLowerCase();
+  const matched = filtered.filter((note) => noteMatchesQuery(note, queryLower));
+  return {
+    summary: matched.slice(0, limit).map(summarizeNote),
+    totalMatches: matched.length
+  };
+}
+
 // --- Schemas ---
 
 export const noteSearchSchema = {
-  query: z.string().min(1).describe("Search query — matched against note titles, content previews, and filenames."),
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      "Search query — matched against note titles, full content, filenames, paths, and project paths."
+    ),
   scope: z
     .enum(["library", "project", "session", "all"])
     .optional()
     .describe("Filter by note scope. Defaults to 'all'."),
-  limit: z.number().int().min(1).max(50).optional().describe("Maximum notes to return. Defaults to 10.")
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(`Maximum notes to return. Defaults to ${NOTE_SEARCH_DEFAULT_LIMIT}, capped at ${NOTE_SEARCH_MAX_LIMIT}.`)
 };
 
 export const noteCreateSchema = {
@@ -75,32 +143,44 @@ export async function handleNoteSearch(
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const store = ctx.notesStore;
   await store.reload();
-  const all = store.getAllNotes();
-  const scope = args.scope || "all";
-  const limit = args.limit || 10;
 
-  let filtered = all;
-  if (scope !== "all") {
-    filtered = all.filter((n) => n.scope === scope);
+  const query = args.query?.trim();
+  if (!query) {
+    throw new Error("query is required.");
   }
 
-  const queryLower = args.query.toLowerCase();
-  const matched = filtered
-    .filter((n) => {
-      const title = (n.title || "").toLowerCase();
-      const preview = (n.contentPreview || "").toLowerCase();
-      const filename = (n.filename || "").toLowerCase();
-      return title.includes(queryLower) || preview.includes(queryLower) || filename.includes(queryLower);
-    })
-    .slice(0, limit);
+  const scope = args.scope || "all";
+  const limit = clampNoteSearchLimit(args.limit);
+  const plan = planNoteSearchDeterministically(query);
 
-  const summary = matched.map(summarizeNote);
-  const text =
-    matched.length === 0
-      ? `No notes found matching "${args.query}".`
-      : `Found ${matched.length} note(s) matching "${args.query}":\n${JSON.stringify(summary, null, 2)}`;
-
-  return { content: [{ type: "text", text }] };
+  try {
+    let hits = await searchNotesByEmbedding({
+      panelHome: store.getPanelHome(),
+      query,
+      limit,
+      plan
+    });
+    if (scope !== "all") {
+      hits = hits.filter((hit) => hit.scope === scope);
+    }
+    const totalMatches = hits[0]?.exactMatchTotal ?? hits.length;
+    const summary = hits.map((hit) => ({
+      noteId: hit.noteId,
+      title: hit.title || hit.relMdPath,
+      scope: hit.scope,
+      relMdPath: hit.relMdPath,
+      projectPath: hit.projectPath,
+      contentPreview: hit.content.slice(0, 240),
+      matchType: hit.matchType,
+      matchedTerms: hit.matchedTerms
+    }));
+    const text = formatSearchResults(query, summary, totalMatches);
+    return { content: [{ type: "text", text }] };
+  } catch {
+    const { summary, totalMatches } = fallbackNoteSearch(store.getAllNotes(), query, scope, limit);
+    const text = formatSearchResults(query, summary, totalMatches);
+    return { content: [{ type: "text", text }] };
+  }
 }
 
 export async function handleNoteCreate(
