@@ -70,6 +70,7 @@
   "desktop.agent.previewLoadFailed": "Preview failed: {0}",
   "desktop.agent.recentSummary": "近期摘要",
   "desktop.agent.renameChat": "重命名",
+  "desktop.agent.resizeSidebar": "调整对话侧栏宽度",
   "desktop.agent.renameDialogTitle": "重命名对话",
   "desktop.agent.renameFailed": "重命名失败：{0}",
   "desktop.agent.renameFailedPrefix": "重命名失败：{0}",

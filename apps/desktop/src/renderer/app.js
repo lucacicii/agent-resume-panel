@@ -2253,7 +2253,7 @@ function schedulePaneResizeFit(callback) {
   });
 }
 
-function initPaneResizer({ handle, layout, targetPane, widthKind, onResize }) {
+function initPaneResizer({ handle, layout, targetPane, widthKind, onResize, onBeforeDrag }) {
   if (!handle || !layout || !targetPane) return;
   /** @type {{ startX: number, startWidth: number } | null} */
   let dragState = null;
@@ -2265,7 +2265,10 @@ function initPaneResizer({ handle, layout, targetPane, widthKind, onResize }) {
   }
 
   function beginDrag(clientX) {
-    if (widthKind === "folders" && targetPane.classList.contains("is-collapsed")) return;
+    if (widthKind === "folders" && targetPane.classList.contains("is-collapsed")) {
+      onBeforeDrag?.();
+      if (targetPane.classList.contains("is-collapsed")) return;
+    }
     dragState = {
       startX: clientX,
       startWidth: targetPane.getBoundingClientRect().width
@@ -2293,7 +2296,6 @@ function initPaneResizer({ handle, layout, targetPane, widthKind, onResize }) {
 
   handle.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || handle.classList.contains("is-hidden")) return;
-    if (widthKind === "folders" && targetPane.classList.contains("is-collapsed")) return;
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
     beginDrag(e.clientX);
@@ -2327,9 +2329,11 @@ function initPaneResizer({ handle, layout, targetPane, widthKind, onResize }) {
 function reclampPaneWidthsOnResize() {
   const wbLayout = document.querySelector(".workbench-layout");
   const notesLayout = document.querySelector(".notes-layout");
-  const layout = wbLayout || notesLayout;
-  if (layout) {
-    setPaneWidth("folders", paneWidthState.folders, { persist: false, layout });
+  const agentLayout = document.querySelector(".agent-layout");
+  for (const layout of [wbLayout, notesLayout, agentLayout]) {
+    if (layout) {
+      setPaneWidth("folders", paneWidthState.folders, { persist: false, layout });
+    }
   }
   if (wbLayout) setPaneWidth("wbList", paneWidthState.wbList, { persist: false, layout: wbLayout });
   if (notesLayout) setPaneWidth("notesList", paneWidthState.notesList, { persist: false, layout: notesLayout });
@@ -2339,6 +2343,16 @@ function reclampPaneWidthsOnResize() {
 function initPaneResizers() {
   const wbLayout = document.querySelector(".workbench-layout");
   const notesLayout = document.querySelector(".notes-layout");
+  const agentLayout = document.querySelector(".agent-layout");
+  initPaneResizer({
+    handle: $("agentFoldersResizer"),
+    layout: agentLayout,
+    targetPane: $("agentSidebarPane"),
+    widthKind: "folders",
+    onBeforeDrag: () => {
+      if (askSidebarCollapsed) setAskSidebarCollapsed(false);
+    }
+  });
   initPaneResizer({
     handle: $("wbFoldersResizer"),
     layout: wbLayout,
@@ -8081,6 +8095,7 @@ function setAskSidebarCollapsed(collapsed, { persist = true } = {}) {
     btn.setAttribute("aria-expanded", String(!collapsed));
     btn.title = collapsed ? t("desktop.common.showSidebar") : t("desktop.common.hideSidebar");
   }
+  syncFoldersResizerVisibility();
   if (persist) {
     localStorage.setItem("askSidebarCollapsed", collapsed ? "1" : "0");
   }
@@ -8275,9 +8290,10 @@ function wire() {
   }
 
   loadPaneWidths();
-  initPaneResizers();
+  loadAskSidebarCollapsedState();
   loadSidebarFoldersCollapsedState();
   syncFoldersResizerVisibility();
+  initPaneResizers();
   $("btnNotesToggleFolders")?.addEventListener("click", () => toggleNotesFoldersCollapsed());
   $("btnWbToggleFolders")?.addEventListener("click", () => toggleWbFoldersCollapsed());
 
@@ -8355,7 +8371,6 @@ function wire() {
   $("btnGtdPreview").addEventListener("click", () => previewGtdSync({ force: true }));
   $("btnBackfillPreview")?.addEventListener("click", () => previewBackfill());
   $("btnBackfillRun")?.addEventListener("click", () => runBackfill());
-  loadAskSidebarCollapsedState();
   $("btnAgentNewChat")?.addEventListener("click", () => handleNewAgentChat());
   $("btnAgentToggleSidebar")?.addEventListener("click", () => toggleAskSidebarCollapsed());
   $("btnAgentRenameChat")?.addEventListener("click", () => openAgentRenameDialog());

@@ -70,6 +70,7 @@
   "desktop.agent.previewLoadFailed": "Preview failed: {0}",
   "desktop.agent.recentSummary": "Recent summary",
   "desktop.agent.renameChat": "Rename",
+  "desktop.agent.resizeSidebar": "Resize thread sidebar",
   "desktop.agent.renameDialogTitle": "Rename chat",
   "desktop.agent.renameFailed": "Rename failed: {0}",
   "desktop.agent.renameFailedPrefix": "Rename failed: {0}",
