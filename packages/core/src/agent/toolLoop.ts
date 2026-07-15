@@ -1,5 +1,6 @@
 import { chatCompletionWithTools } from "../llm/chat";
 import type { ChatMessage, LlmRuntimeConfig } from "../llm/types";
+import type { UiText } from "../i18n/uiText";
 import {
   convertMcpToolsToOpenAiFormat,
   type McpToolCallResult,
@@ -30,6 +31,7 @@ export interface ToolLoopOptions {
   onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, result: McpToolCallResult, error?: string) => void;
   onProgress?: (message: string) => void;
+  uiText?: UiText;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -178,11 +180,13 @@ function tryParseJsonAt(
 export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopResult> {
   const maxIterations = options.maxIterations || DEFAULT_MAX_ITERATIONS;
   const maxTokens = options.maxTokens || 2000;
+  const pt = options.uiText ?? ((key: string, ...args: (string | number)[]) =>
+    args.length ? `${key} ${args.join(" ")}` : key);
 
-  options.onProgress?.("正在获取工具列表…");
+  options.onProgress?.(pt("desktop.agent.fetchingTools"));
   const toolsList = await options.mcpClient.listTools();
   const tools = convertMcpToolsToOpenAiFormat(toolsList);
-  options.onProgress?.(`工具就绪: ${toolsList.map((t) => t.name).join(", ")}`);
+  options.onProgress?.(pt("desktop.agent.toolsReady", toolsList.map((t) => t.name).join(", ")));
 
   let messages = [...options.messages];
   let iterations = 0;
@@ -200,7 +204,9 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     throwIfAborted(options.signal);
     iterations++;
     options.onProgress?.(
-      iterations === 1 ? "正在请求 LLM…" : `第 ${iterations} 轮请求 LLM…`
+      iterations === 1
+        ? pt("desktop.agent.requestingLlm")
+        : pt("desktop.agent.requestingLlmRound", iterations)
     );
 
     const result = await chatCompletionWithTools(
@@ -216,7 +222,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     if (!result.toolCalls || result.toolCalls.length === 0 || result.finishReason === "stop") {
       if (!lastContent) {
         return {
-          content: "LLM 未返回有效回答（可能是端点不支持 function calling）。请在设置中确认你的 LLM 端点支持 tools 参数。",
+          content: pt("desktop.agent.toolsNoResponse"),
           iterations,
           toolCallsExecuted,
           touchedNotes: Array.from(touchedMap.values())
@@ -274,7 +280,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   }
 
   return {
-    content: lastContent || "已达到工具调用次数上限，请缩小请求范围后重试。",
+    content: lastContent || pt("desktop.agent.toolsMaxIterations"),
     iterations,
     toolCallsExecuted,
     touchedNotes: Array.from(touchedMap.values())

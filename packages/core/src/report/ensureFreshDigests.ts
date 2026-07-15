@@ -1,8 +1,15 @@
+import { loadSettings } from "../settings/store";
 import { needsDailyDigestRefresh } from "./daily";
 import { needsWeeklyDigestRefresh } from "./digestRefresh";
 import { runDailyDigest } from "./daily";
 import { runWeeklyDigest } from "./weekly";
 import { listDayLabelsInRange, listWeekLabelsInRange } from "./period";
+import {
+  createReportProgressText,
+  freshDailiesRefreshKey,
+  freshDailiesUpToDateKey,
+  resolveReportScope
+} from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import type { EnsureLevelStats } from "./ensureDailies";
 import { listSessionsInRange } from "../catalog/query";
@@ -32,6 +39,7 @@ export interface EnsureFreshDigestsOptions {
   onProgress?: DigestProgressCallback;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
+  systemLocale?: string;
 }
 
 /**
@@ -40,6 +48,10 @@ export interface EnsureFreshDigestsOptions {
 export async function ensureFreshDailiesForPeriod(
   options: EnsureFreshDigestsOptions
 ): Promise<EnsureLevelStats> {
+  const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
+  const scope = resolveReportScope(options.progressLevel);
+
   const stats = emptyStats();
   const days = listDayLabelsInRange(options.startMs, options.endMs);
   const candidates: string[] = [];
@@ -63,7 +75,8 @@ export async function ensureFreshDailiesForPeriod(
 
     const check = await needsDailyDigestRefresh({
       panelHome: options.panelHome,
-      date: day
+      date: day,
+      systemLocale: options.systemLocale
     });
     if (digestNeedsRefresh(check)) {
       candidates.push(day);
@@ -76,15 +89,13 @@ export async function ensureFreshDailiesForPeriod(
   const total = candidates.length;
   const parentLevel = options.progressLevel || "weekly";
   const parentLabel = options.progressPeriodLabel || "";
-  const scopeHint =
-    parentLevel === "monthly" ? "本月" : parentLevel === "weekly" ? "本周" : "本期";
 
   if (!total) {
     options.onProgress?.({
       phase: "ensure_summaries",
       level: parentLevel,
       periodLabel: parentLabel,
-      message: `${scopeHint}日报已是最新`,
+      message: pt(freshDailiesUpToDateKey(scope)),
       index: 0,
       total: 0
     });
@@ -95,7 +106,7 @@ export async function ensureFreshDailiesForPeriod(
     phase: "ensure_summaries",
     level: parentLevel,
     periodLabel: parentLabel,
-    message: `先更新${scopeHint}待刷新日报 · 共 ${total} 天…`,
+    message: pt(freshDailiesRefreshKey(scope), total),
     index: 0,
     total
   });
@@ -108,7 +119,7 @@ export async function ensureFreshDailiesForPeriod(
       level: parentLevel,
       periodLabel: parentLabel,
       dayKey: day,
-      message: `更新日报 ${i}/${total} · ${day}`,
+      message: pt("desktop.report.freshDailiesUpdateProgress", i, total, day),
       index: i,
       total
     });
@@ -118,13 +129,16 @@ export async function ensureFreshDailiesForPeriod(
         date: day,
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
+        systemLocale: options.systemLocale,
         onProgress: (ev) => {
           options.onProgress?.({
             ...ev,
             level: parentLevel,
             periodLabel: parentLabel,
             dayKey: day,
-            message: ev.message ? `日报 ${day} · ${ev.message}` : `日报 ${day}`
+            message: ev.message
+              ? pt("desktop.report.nestedDailyDetail", day, ev.message)
+              : pt("desktop.report.nestedDailyLabel", day)
           });
         }
       });
@@ -147,6 +161,9 @@ export async function ensureFreshDailiesForPeriod(
 export async function ensureFreshWeekliesForPeriod(
   options: EnsureFreshDigestsOptions
 ): Promise<EnsureLevelStats> {
+  const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
+
   const stats = emptyStats();
   const weeks = listWeekLabelsInRange(options.startMs, options.endMs);
   const candidates: string[] = [];
@@ -158,7 +175,8 @@ export async function ensureFreshWeekliesForPeriod(
     }
     const check = await needsWeeklyDigestRefresh({
       panelHome: options.panelHome,
-      weekKey: week
+      weekKey: week,
+      systemLocale: options.systemLocale
     });
     if (digestNeedsRefresh(check)) {
       candidates.push(week);
@@ -176,7 +194,7 @@ export async function ensureFreshWeekliesForPeriod(
       phase: "ensure_summaries",
       level: "monthly",
       periodLabel: parentLabel,
-      message: "本月周报已是最新",
+      message: pt("desktop.report.freshWeekliesUpToDateMonth"),
       index: 0,
       total: 0
     });
@@ -187,7 +205,7 @@ export async function ensureFreshWeekliesForPeriod(
     phase: "ensure_summaries",
     level: "monthly",
     periodLabel: parentLabel,
-    message: `先更新本月待刷新周报 · 共 ${total} 周…`,
+    message: pt("desktop.report.freshWeekliesRefreshMonth", total),
     index: 0,
     total
   });
@@ -199,7 +217,7 @@ export async function ensureFreshWeekliesForPeriod(
       phase: "ensure_summaries",
       level: "monthly",
       periodLabel: parentLabel,
-      message: `更新周报 ${i}/${total} · ${week}`,
+      message: pt("desktop.report.freshWeekliesUpdateProgress", i, total, week),
       index: i,
       total
     });
@@ -210,12 +228,15 @@ export async function ensureFreshWeekliesForPeriod(
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
         forceEnsureLower: options.forceRefresh,
+        systemLocale: options.systemLocale,
         onProgress: (ev) => {
           options.onProgress?.({
             ...ev,
             level: "monthly",
             periodLabel: parentLabel,
-            message: ev.message ? `周报 ${week} · ${ev.message}` : `周报 ${week}`
+            message: ev.message
+              ? pt("desktop.report.nestedWeeklyDetail", week, ev.message)
+              : pt("desktop.report.nestedWeeklyLabel", week)
           });
         }
       });

@@ -1,6 +1,7 @@
 import { chatCompletionStream } from "../llm/chat";
 import { ChatMessage } from "../llm/types";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
+import { createUiText } from "../i18n/uiText";
 import { chatLlmConfigFromSettings } from "../llm/fromSettings";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { effectivePanelHome, loadSettings } from "../settings/store";
@@ -198,6 +199,8 @@ async function runAskWithTools(
   panelHome: string,
   ctx: AskContext
 ): Promise<AgentChatResult> {
+  const settings = await loadSettings(options.panelHome);
+  const pt = createUiText(settings, options.systemLocale);
   const messages: ChatMessage[] = [
     { role: "system", content: buildMetaAgentSystemPromptWithTools(language) },
     {
@@ -230,6 +233,7 @@ async function runAskWithTools(
       mcpClient,
       maxTokens: 2000,
       signal: options.signal,
+      uiText: pt,
       onProgress: (message) => {
         options.onStream?.({ phase: "generating", message });
       },
@@ -303,7 +307,9 @@ async function buildAskResult(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    answer.persistWarning = `对话保存失败：${message}`;
+    const settings = await loadSettings(options.panelHome);
+    const pt = createUiText(settings, options.systemLocale);
+    answer.persistWarning = pt("desktop.agent.persistFailed", message);
   }
 
   options.onStream?.({ phase: "done" });

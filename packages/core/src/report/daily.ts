@@ -9,6 +9,7 @@ import { effectivePanelHome, loadSettings } from "../settings/store";
 import { ensureSummariesForSessions } from "../session/ensureSummaries";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localDayRange as localDayRangeImpl } from "./period";
+import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import {
   buildDailySystemPrompt,
@@ -30,6 +31,8 @@ export interface RunDailyDigestOptions {
   forceResummarize?: boolean;
   /** Progress for Desktop UI. */
   onProgress?: DigestProgressCallback;
+  /** OS display locale when UI language is auto. */
+  systemLocale?: string;
   /**
    * @deprecated Transcript snippets are no longer used; digests extract from session summaries.
    * Kept for API compatibility; ignored.
@@ -100,9 +103,10 @@ export interface DailyDigestRefreshCheck {
  * Uses catalog session set + updated_at_ms vs digest created_at + report_links.
  */
 export async function needsDailyDigestRefresh(
-  options: { panelHome?: string; date?: string } = {}
+  options: { panelHome?: string; date?: string; systemLocale?: string } = {}
 ): Promise<DailyDigestRefreshCheck> {
   const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
   const desktopDb = paths.desktopDb;
@@ -120,7 +124,7 @@ export async function needsDailyDigestRefresh(
         sessionCount: 0,
         newSessionCount: 0,
         updatedSessionCount: 0,
-        message: "当日无 session，跳过生成"
+        message: pt("desktop.report.refreshNoSessionsSkip")
       };
     }
     return {
@@ -129,7 +133,7 @@ export async function needsDailyDigestRefresh(
       sessionCount,
       newSessionCount: sessionCount,
       updatedSessionCount: 0,
-      message: `尚无日报 · ${sessionCount} sessions，将生成`
+      message: pt("desktop.report.refreshDailyMissing", sessionCount)
     };
   }
 
@@ -160,7 +164,7 @@ export async function needsDailyDigestRefresh(
       newSessionCount,
       updatedSessionCount,
       digestCreatedAtMs: entry.createdAtMs,
-      message: `检测到 ${newSessionCount} 个新 session，将重新生成日报`
+      message: pt("desktop.report.refreshNewSessionsDaily", newSessionCount)
     };
   }
   if (updatedSessionCount > 0) {
@@ -171,7 +175,7 @@ export async function needsDailyDigestRefresh(
       newSessionCount: 0,
       updatedSessionCount,
       digestCreatedAtMs: entry.createdAtMs,
-      message: `检测到 ${updatedSessionCount} 个 session 有更新，将重新生成日报`
+      message: pt("desktop.report.refreshUpdatedSessionsDaily", updatedSessionCount)
     };
   }
 
@@ -182,12 +186,13 @@ export async function needsDailyDigestRefresh(
     newSessionCount: 0,
     updatedSessionCount: 0,
     digestCreatedAtMs: entry.createdAtMs,
-    message: `日报已是最新（${sessionCount} sessions）`
+    message: pt("desktop.report.refreshDailyUpToDateCount", sessionCount)
   };
 }
 
 export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promise<RunDailyDigestResult> {
   const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
   const panelHome = effectivePanelHome(settings, options.panelHome);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
@@ -204,7 +209,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       level: "daily",
       periodLabel: dateLabel,
       dayKey: dateLabel,
-      message: `生成日报 ${dateLabel}…（先 summarize sessions）`
+      message: pt("desktop.report.startDaily", dateLabel)
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -232,6 +237,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       force: false,
       jobKeyPrefix: `summarize:${jobKey}`,
       onProgress,
+      systemLocale: options.systemLocale,
       progressLevel: "daily",
       progressPeriodLabel: dateLabel
     });
@@ -266,7 +272,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       level: "daily",
       periodLabel: dateLabel,
       dayKey: dateLabel,
-      message: `从 summary 提取日报 ${dateLabel}…`
+      message: pt("desktop.report.extractDailyFromSummary", dateLabel)
     });
 
     const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
@@ -294,7 +300,9 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       level: "daily",
       periodLabel: dateLabel,
       dayKey: dateLabel,
-      message: options.skipEmbedding ? "跳过 embedding…" : "写入 embedding…"
+      message: options.skipEmbedding
+        ? pt("desktop.report.skipEmbedding")
+        : pt("desktop.report.writeEmbedding")
     });
 
     const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
@@ -338,7 +346,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       level: "daily",
       periodLabel: dateLabel,
       dayKey: dateLabel,
-      message: `日报完成 · ${sessions.length} sessions`
+      message: pt("desktop.report.dailyCompleteCount", sessions.length)
     });
 
     return {

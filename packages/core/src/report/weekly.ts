@@ -9,6 +9,7 @@ import { EnsureLevelStats } from "./ensureDailies";
 import { ensureFreshDailiesForPeriod } from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localWeekRange } from "./period";
+import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import {
   buildWeeklySystemPrompt,
@@ -28,6 +29,7 @@ export interface RunWeeklyDigestOptions {
   /** Re-generate dailies even if they exist. Default false. */
   forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
+  systemLocale?: string;
 }
 
 export interface RunWeeklyDigestResult {
@@ -48,6 +50,7 @@ export async function runWeeklyDigest(
   options: RunWeeklyDigestOptions = {}
 ): Promise<RunWeeklyDigestResult> {
   const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
   const panelHome = effectivePanelHome(settings, options.panelHome);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
@@ -62,7 +65,7 @@ export async function runWeeklyDigest(
       phase: "start",
       level: "weekly",
       periodLabel: period.label,
-      message: `生成周报 ${period.label}…（先更新本周待刷新日报）`
+      message: pt("desktop.report.generatingWeeklyCascade", period.label)
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -82,6 +85,7 @@ export async function runWeeklyDigest(
       skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
       onProgress,
+      systemLocale: options.systemLocale,
       progressLevel: "weekly",
       progressPeriodLabel: period.label
     });
@@ -92,7 +96,8 @@ export async function runWeeklyDigest(
       endMs: period.endMs,
       onProgress,
       progressLevel: "weekly",
-      progressPeriodLabel: period.label
+      progressPeriodLabel: period.label,
+      progressText: pt
     });
 
     onProgress?.({
@@ -100,8 +105,8 @@ export async function runWeeklyDigest(
       level: "weekly",
       periodLabel: period.label,
       message: usedDailies
-        ? `从 ${usedDailies} 篇日报提取周报…`
-        : `本周无日报，生成占位周报…`
+        ? pt("desktop.report.extractWeeklyFromDailies", usedDailies)
+        : pt("desktop.report.extractWeeklyPlaceholder")
     });
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
@@ -155,7 +160,12 @@ export async function runWeeklyDigest(
       phase: "complete",
       level: "weekly",
       periodLabel: period.label,
-      message: `周报完成 · dailies ${usedDailies} · 补全 +${ensuredDailies.ok.length}/skip ${ensuredDailies.skipped.length}`
+      message: pt(
+        "desktop.report.weeklyCompleteStats",
+        usedDailies,
+        ensuredDailies.ok.length,
+        ensuredDailies.skipped.length
+      )
     });
     return {
       entry,

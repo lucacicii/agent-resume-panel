@@ -482,7 +482,7 @@ function registerIpc(): void {
     async (_event, args: { projectPath: string }) => {
       const settings = await loadSettings();
       const selected: WorkbenchProjectEditor = settings.workbench?.projectEditor || "auto";
-      const editor = await openProjectInEditor(args.projectPath, selected);
+      const editor = await openProjectInEditor(args.projectPath, selected, app.getLocale());
       return { ok: true, editor };
     }
   );
@@ -617,35 +617,44 @@ function registerIpc(): void {
       return runDailyDigest({
         date: opts.date,
         forceResummarize: opts.forceResummarize,
-        onProgress: sendProgress
+        onProgress: sendProgress,
+        systemLocale: app.getLocale()
       });
     }
   );
 
   ipcMain.handle("report:needsDailyRefresh", async (_event, date?: string) => {
-    return needsDailyDigestRefresh({ date });
+    return needsDailyDigestRefresh({ date, systemLocale: app.getLocale() });
   });
 
   ipcMain.handle("report:needsWeeklyRefresh", async (_event, weekKey?: string) => {
-    return needsWeeklyDigestRefresh({ weekKey });
+    return needsWeeklyDigestRefresh({ weekKey, systemLocale: app.getLocale() });
   });
 
   ipcMain.handle("report:needsMonthlyRefresh", async (_event, monthKey?: string) => {
-    return needsMonthlyDigestRefresh({ monthKey });
+    return needsMonthlyDigestRefresh({ monthKey, systemLocale: app.getLocale() });
   });
 
   ipcMain.handle("report:runWeekly", async (event, weekKey?: string) => {
     const sendProgress = (progress: DigestProgressEvent) => {
       event.sender.send("report:digestProgress", progress);
     };
-    return runWeeklyDigest({ weekKey, onProgress: sendProgress });
+    return runWeeklyDigest({
+      weekKey,
+      onProgress: sendProgress,
+      systemLocale: app.getLocale()
+    });
   });
 
   ipcMain.handle("report:runMonthly", async (event, monthKey?: string) => {
     const sendProgress = (progress: DigestProgressEvent) => {
       event.sender.send("report:digestProgress", progress);
     };
-    return runMonthlyDigest({ monthKey, onProgress: sendProgress });
+    return runMonthlyDigest({
+      monthKey,
+      onProgress: sendProgress,
+      systemLocale: app.getLocale()
+    });
   });
 
   ipcMain.handle(
@@ -768,7 +777,8 @@ function registerIpc(): void {
     async (_event, args?: { ensureDigests?: boolean; reportIds?: string[] }) => {
       return previewReportGtdSync({
         ensureDigests: args?.ensureDigests,
-        reportIds: args?.reportIds
+        reportIds: args?.reportIds,
+        systemLocale: app.getLocale()
       });
     }
   );

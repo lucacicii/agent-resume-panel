@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ensureDesktopDbSchema } from "../catalog/db";
+import { createUiText } from "../i18n/uiText";
+import { loadSettings } from "../settings/store";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteTransaction } from "../sqlite";
 import { AgentCitation } from "./types";
 
@@ -115,7 +117,9 @@ export async function ensureDefaultThread(dbPath: string): Promise<string> {
       dbPath,
       "SELECT content FROM agent_messages WHERE role = 'user' ORDER BY sort_order ASC LIMIT 1;"
     );
-    const title = firstMsg[0]?.content?.slice(0, 30) || "默认对话";
+    const settings = await loadSettings();
+    const pt = createUiText(settings);
+    const title = firstMsg[0]?.content?.slice(0, 30) || pt("desktop.agent.newThread");
     await runSqlite(
       dbPath,
       `INSERT INTO agent_threads (id, title, created_at_ms, updated_at_ms)

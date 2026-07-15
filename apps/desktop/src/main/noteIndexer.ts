@@ -1,4 +1,6 @@
+import { app } from "electron";
 import {
+  createUiText,
   effectivePanelHome,
   embeddingConfigFromSettings,
   ensureNotesVectorIndex,
@@ -39,10 +41,12 @@ export function scheduleNotesIndex(delayMs = 1_000): void {
   }
   pending = setTimeout(() => {
     pending = null;
-    void runNotesIndex().catch((error) => {
+    void runNotesIndex().catch(async (error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[notes-indexer]", error);
-      notifyProgress?.({ phase: "error", message: `笔记索引失败：${message}` });
+      const settings = await loadSettings();
+      const pt = createUiText(settings, app.getLocale());
+      notifyProgress?.({ phase: "error", message: pt("desktop.notes.indexFailed", message) });
     });
   }, Math.max(0, delayMs));
 }
@@ -59,6 +63,7 @@ async function runNotesIndex(): Promise<void> {
     desktopDb: paths.desktopDb,
     panelHome: effectivePanelHome(settings),
     embedding,
+    systemLocale: app.getLocale(),
     onProgress: (event) => notifyProgress?.(event)
   });
 }

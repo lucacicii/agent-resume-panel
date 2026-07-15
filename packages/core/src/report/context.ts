@@ -1,4 +1,5 @@
 import { DigestProgressCallback } from "./progress";
+import { ReportProgressText } from "./progressI18n";
 import { formatSessionForDigest } from "./prompts";
 import { ReportEntry, ReportLevel } from "./schema";
 import { listReportEntriesInRange } from "./store";
@@ -10,6 +11,7 @@ export interface BuildSourceContextOptions {
   onProgress?: DigestProgressCallback;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
+  progressText?: ReportProgressText;
 }
 
 export interface WeeklySourceLinesResult {
@@ -29,7 +31,9 @@ export interface MonthlySourceLinesResult {
 export async function buildWeeklySourceLines(
   options: BuildSourceContextOptions
 ): Promise<WeeklySourceLinesResult> {
-  const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel } = options;
+  const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel, progressText } =
+    options;
+  const pt = progressText ?? ((key: string) => key);
 
   const dailies = await listReportEntriesInRange(dbPath, {
     level: "daily",
@@ -43,7 +47,7 @@ export async function buildWeeklySourceLines(
       phase: "ensure_summaries",
       level: progressLevel || "weekly",
       periodLabel: progressPeriodLabel || "",
-      message: `使用 ${dailies.length} 篇日报聚合周报`
+      message: pt("desktop.report.aggregateWeeklyFromDailies", dailies.length)
     });
     const lines = dailies.map(
       (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 4000)}`
@@ -59,7 +63,7 @@ export async function buildWeeklySourceLines(
     phase: "ensure_summaries",
     level: progressLevel || "weekly",
     periodLabel: progressPeriodLabel || "",
-    message: "本周无可用日报（将生成占位周报）"
+    message: pt("desktop.report.aggregateWeeklyPlaceholder")
   });
   return {
     lines: ["(No daily digests available for this week.)"],
@@ -75,7 +79,9 @@ export async function buildWeeklySourceLines(
 export async function buildMonthlySourceLines(
   options: BuildSourceContextOptions
 ): Promise<MonthlySourceLinesResult> {
-  const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel } = options;
+  const { dbPath, startMs, endMs, onProgress, progressLevel, progressPeriodLabel, progressText } =
+    options;
+  const pt = progressText ?? ((key: string) => key);
 
   // Month can have up to 31 dailies
   const dailies = await listReportEntriesInRange(dbPath, {
@@ -90,7 +96,7 @@ export async function buildMonthlySourceLines(
       phase: "ensure_summaries",
       level: progressLevel || "monthly",
       periodLabel: progressPeriodLabel || "",
-      message: `使用本月 ${dailies.length} 篇日报聚合月报`
+      message: pt("desktop.report.aggregateMonthlyFromDailies", dailies.length)
     });
     const lines = dailies.map(
       (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 2500)}`
@@ -107,7 +113,7 @@ export async function buildMonthlySourceLines(
     phase: "ensure_summaries",
     level: progressLevel || "monthly",
     periodLabel: progressPeriodLabel || "",
-    message: "本月无可用日报（将生成占位月报）"
+    message: pt("desktop.report.aggregateMonthlyPlaceholder")
   });
   return {
     lines: ["(No daily digests available for this month.)"],

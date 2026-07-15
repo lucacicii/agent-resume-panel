@@ -1,5 +1,7 @@
 import { listSessionsInRange } from "../catalog/query";
+import { loadSettings } from "../settings/store";
 import { localWeekRange, listWeekLabelsInRange } from "./period";
+import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import { getReportEntryById } from "./store";
 import { runWeeklyDigest } from "./weekly";
@@ -18,6 +20,7 @@ export interface EnsureWeekliesOptions {
   onlyWithSessions?: boolean;
   onProgress?: DigestProgressCallback;
   progressPeriodLabel?: string;
+  systemLocale?: string;
 }
 
 /**
@@ -27,6 +30,9 @@ export interface EnsureWeekliesOptions {
 export async function ensureWeekliesForPeriod(
   options: EnsureWeekliesOptions
 ): Promise<EnsureLevelStats> {
+  const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
+
   const skipExisting = options.skipExisting !== false;
   const onlyWithSessions = options.onlyWithSessions !== false;
   const weeks = listWeekLabelsInRange(options.startMs, options.endMs);
@@ -73,7 +79,7 @@ export async function ensureWeekliesForPeriod(
       phase: "ensure_summaries",
       level: "monthly",
       periodLabel: parentLabel,
-      message: "本月周报已齐全（或无 session 活动周）",
+      message: pt("desktop.report.weekliesCompleteMonth"),
       index: 0,
       total: 0
     });
@@ -84,7 +90,7 @@ export async function ensureWeekliesForPeriod(
     phase: "ensure_summaries",
     level: "monthly",
     periodLabel: parentLabel,
-    message: `检查并补全周报 · 需生成 ${total} 周…`,
+    message: pt("desktop.report.ensureWeekliesCheck", total),
     index: 0,
     total
   });
@@ -96,7 +102,7 @@ export async function ensureWeekliesForPeriod(
       phase: "ensure_summaries",
       level: "monthly",
       periodLabel: parentLabel,
-      message: `补全周报 ${i}/${total} · ${week}`,
+      message: pt("desktop.report.backfillWeeklyProgress", i, total, week),
       index: i,
       total
     });
@@ -106,14 +112,15 @@ export async function ensureWeekliesForPeriod(
         weekKey: week,
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
+        systemLocale: options.systemLocale,
         onProgress: (ev) => {
           options.onProgress?.({
             ...ev,
             level: "monthly",
             periodLabel: parentLabel,
             message: ev.message
-              ? `周报 ${week} · ${ev.message}`
-              : `周报 ${week}`
+              ? pt("desktop.report.nestedWeeklyDetail", week, ev.message)
+              : pt("desktop.report.nestedWeeklyLabel", week)
           });
         }
       });

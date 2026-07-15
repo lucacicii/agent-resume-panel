@@ -2,6 +2,7 @@ import { getSessionById, listSessionsInRange } from "../catalog/query";
 import { AgentProvider, AgentSession } from "../catalog/types";
 import { chatCompletionDetailed } from "../llm/chat";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
+import { createUiText } from "../i18n/uiText";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
 import { ReportEntry } from "../report/schema";
@@ -23,7 +24,9 @@ export async function analyzeReportForGtd(input: {
   settings: PanelSettings;
   /** When set, only analyze these memory entry ids (scoped GTD). */
   reportIds?: string[];
+  systemLocale?: string;
 }): Promise<{ proposals: GtdProposal[]; warnings: string[]; raw?: string }> {
+  const pt = createUiText(input.settings, input.systemLocale);
   const llm = llmConfigFromSettings(input.settings);
   if (!llm) {
     throw new Error(
@@ -117,13 +120,9 @@ export async function analyzeReportForGtd(input: {
   }
 
   if (!sessionKeys.size) {
-    scopedWarnings.push(
-      "该 digest 未关联到任何 catalog session（无 report_links，且周期内无 session）。无法生成 GTD 提议。"
-    );
+    scopedWarnings.push(pt("desktop.report.gtdNoLinkedSessions"));
   } else if (linkCount === 0) {
-    scopedWarnings.push(
-      `report_links 为空，已按 digest 时间范围回退加载 ${sessionKeys.size} 个 session。`
-    );
+    scopedWarnings.push(pt("desktop.report.gtdFallbackSessions", sessionKeys.size));
   }
 
   const digestBlock = digests
@@ -213,7 +212,7 @@ export async function analyzeReportForGtd(input: {
     parsed = parseProposalsJson(raw);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    warnings.push(`LLM 返回的 JSON 无法解析: ${msg}`);
+    warnings.push(pt("desktop.report.gtdJsonParseFailed", msg));
     return { proposals: [], warnings, raw };
   }
 

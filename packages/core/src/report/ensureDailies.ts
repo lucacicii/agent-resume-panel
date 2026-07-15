@@ -1,6 +1,13 @@
 import { listSessionsInRange } from "../catalog/query";
+import { loadSettings } from "../settings/store";
 import { runDailyDigest } from "./daily";
 import { localDayRange, listDayLabelsInRange } from "./period";
+import {
+  createReportProgressText,
+  dailiesCompleteKey,
+  ensureDailiesCheckKey,
+  resolveReportScope
+} from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import { getReportEntryById } from "./store";
 
@@ -25,6 +32,7 @@ export interface EnsureDailiesOptions {
   onProgress?: DigestProgressCallback;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
+  systemLocale?: string;
 }
 
 /**
@@ -34,6 +42,10 @@ export interface EnsureDailiesOptions {
 export async function ensureDailiesForPeriod(
   options: EnsureDailiesOptions
 ): Promise<EnsureLevelStats> {
+  const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
+  const scope = resolveReportScope(options.progressLevel);
+
   const skipExisting = options.skipExisting !== false;
   const onlyWithSessions = options.onlyWithSessions !== false;
   const days = listDayLabelsInRange(options.startMs, options.endMs);
@@ -76,14 +88,12 @@ export async function ensureDailiesForPeriod(
   const parentLevel = options.progressLevel || "weekly";
   const parentLabel = options.progressPeriodLabel || "";
 
-  const scopeHint = parentLevel === "monthly" ? "本月" : parentLevel === "weekly" ? "本周" : "本期";
-
   if (!total) {
     options.onProgress?.({
       phase: "ensure_summaries",
       level: parentLevel,
       periodLabel: parentLabel,
-      message: `${scopeHint}日报已齐全（或无 session 活动日）`,
+      message: pt(dailiesCompleteKey(scope)),
       index: 0,
       total: 0
     });
@@ -94,7 +104,7 @@ export async function ensureDailiesForPeriod(
     phase: "ensure_summaries",
     level: parentLevel,
     periodLabel: parentLabel,
-    message: `检查并补全${scopeHint}日报 · 需生成 ${total} 天…`,
+    message: pt(ensureDailiesCheckKey(scope), total),
     index: 0,
     total
   });
@@ -106,7 +116,7 @@ export async function ensureDailiesForPeriod(
       phase: "ensure_summaries",
       level: parentLevel,
       periodLabel: parentLabel,
-      message: `补全日报 ${i}/${total} · ${day}`,
+      message: pt("desktop.report.backfillDailyProgress", i, total, day),
       index: i,
       total
     });
@@ -116,15 +126,15 @@ export async function ensureDailiesForPeriod(
         date: day,
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
+        systemLocale: options.systemLocale,
         onProgress: (ev) => {
-          // Bubble nested daily progress with parent context prefix
           options.onProgress?.({
             ...ev,
             level: parentLevel,
             periodLabel: parentLabel,
             message: ev.message
-              ? `日报 ${day} · ${ev.message}`
-              : `日报 ${day}`
+              ? pt("desktop.report.nestedDailyDetail", day, ev.message)
+              : pt("desktop.report.nestedDailyLabel", day)
           });
         }
       });

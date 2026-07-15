@@ -1,9 +1,11 @@
 import { app } from "electron";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   getCatalogForLocale,
   loadCatalogs,
   normalizeUiLanguagePreference,
+  resetI18nCache,
   resolveUiLocale,
   setLocalesDir,
   translateKey,
@@ -19,14 +21,36 @@ export interface I18nBundle {
 }
 
 let initialized = false;
+let localesDir = "";
+
+function resolveLocalesDir(appRoot: string): string {
+  const distLocales = path.join(appRoot, "dist", "locales");
+  if (process.env.AGENT_RESUME_DEV === "1") {
+    const repoLocales = path.join(appRoot, "..", "..", "locales");
+    if (fs.existsSync(repoLocales)) {
+      return repoLocales;
+    }
+  }
+  return distLocales;
+}
 
 export function initI18nService(appRoot: string): void {
   if (initialized) {
     return;
   }
-  setLocalesDir(path.join(appRoot, "dist", "locales"));
+  localesDir = resolveLocalesDir(appRoot);
+  setLocalesDir(localesDir);
   loadCatalogs();
   initialized = true;
+}
+
+function ensureFreshCatalog(): void {
+  if (process.env.AGENT_RESUME_DEV !== "1" || !localesDir) {
+    return;
+  }
+  resetI18nCache();
+  setLocalesDir(localesDir);
+  loadCatalogs();
 }
 
 export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
@@ -35,6 +59,7 @@ export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLoc
 }
 
 export function buildI18nBundle(settings: PanelSettings | undefined): I18nBundle {
+  ensureFreshCatalog();
   const locale = resolveDesktopLocale(settings);
   return {
     locale,

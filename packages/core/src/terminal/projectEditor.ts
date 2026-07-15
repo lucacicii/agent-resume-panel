@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import * as path from "node:path";
+import { createUiText } from "../i18n/uiText";
 import { expandHome } from "../pathUtils";
+import { loadSettings } from "../settings/store";
 import type { WorkbenchProjectEditor } from "../settings/types";
 
 export type ProjectEditorId = Exclude<WorkbenchProjectEditor, "auto">;
@@ -53,8 +55,8 @@ const EDITORS: EditorDefinition[] = [
 ];
 
 export function projectEditorLabel(editor: WorkbenchProjectEditor): string {
-  if (editor === "auto") return "编辑器";
-  return EDITORS.find((item) => item.id === editor)?.label || "编辑器";
+  if (editor === "auto") return "Editor";
+  return EDITORS.find((item) => item.id === editor)?.label || "Editor";
 }
 
 export async function resolveProjectEditor(
@@ -70,19 +72,23 @@ export async function resolveProjectEditor(
 
 export async function openProjectInEditor(
   projectPath: string,
-  preferred: WorkbenchProjectEditor = "auto"
+  preferred: WorkbenchProjectEditor = "auto",
+  systemLocale?: string
 ): Promise<ProjectEditor> {
   const cwd = expandHome(projectPath?.trim() || "");
   if (!cwd) {
     throw new Error("Project path is required.");
   }
+  const settings = await loadSettings();
+  const pt = createUiText(settings, systemLocale);
   const editor = await resolveProjectEditor(preferred);
   if (!editor) {
-    const label = projectEditorLabel(preferred);
+    const label =
+      preferred === "auto" ? pt("desktop.workbench.editorAuto") : projectEditorLabel(preferred);
     throw new Error(
       preferred === "auto"
-        ? "未找到可用的 VS Code、VSCodium、Cursor 或 Windsurf。"
-        : `未找到 ${label}，请确认应用已安装或命令行工具可用。`
+        ? pt("desktop.workbench.editorNotFoundAuto")
+        : pt("desktop.workbench.editorNotFound", label)
     );
   }
 

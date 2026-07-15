@@ -192,6 +192,49 @@ const flat = {
   "desktop.agent.toolsOn": { en: "Tools on: operate notes via chat", "zh-cn": "工具已开启：可通过对话操作笔记" },
   "desktop.agent.toolsToggle": { en: "Tools toggle", "zh-cn": "工具开关" },
   "desktop.agent.indexingNotes": { en: "Indexing notes…", "zh-cn": "正在索引笔记…" },
+  "desktop.agent.fetchingTools": { en: "Fetching tool list…", "zh-cn": "正在获取工具列表…" },
+  "desktop.agent.toolsReady": { en: "Tools ready: {0}", "zh-cn": "工具就绪: {0}" },
+  "desktop.agent.requestingLlm": { en: "Requesting LLM…", "zh-cn": "正在请求 LLM…" },
+  "desktop.agent.requestingLlmRound": { en: "LLM request round {0}…", "zh-cn": "第 {0} 轮请求 LLM…" },
+  "desktop.agent.toolsNoResponse": {
+    en: "LLM returned no valid answer (endpoint may not support function calling). Confirm your LLM endpoint supports the tools parameter in Settings.",
+    "zh-cn": "LLM 未返回有效回答（可能是端点不支持 function calling）。请在设置中确认你的 LLM 端点支持 tools 参数。"
+  },
+  "desktop.agent.toolsMaxIterations": {
+    en: "Tool call limit reached; narrow the request and try again.",
+    "zh-cn": "已达到工具调用次数上限，请缩小请求范围后重试。"
+  },
+  "desktop.agent.persistFailed": { en: "Failed to save chat: {0}", "zh-cn": "对话保存失败：{0}" },
+  "desktop.notes.scanningNotes": { en: "Scanning notes…", "zh-cn": "正在扫描笔记…" },
+  "desktop.notes.indexingProgress": { en: "Indexing note {0}/{1}", "zh-cn": "正在索引笔记 {0}/{1}" },
+  "desktop.notes.generatingVectors": { en: "Generating vectors {0}/{1}", "zh-cn": "正在生成向量 {0}/{1}" },
+  "desktop.notes.indexComplete": {
+    en: "Note index complete: {0} notes, {1} chunks",
+    "zh-cn": "笔记索引完成：{0} 篇，{1} 个片段"
+  },
+  "desktop.notes.indexUpToDate": { en: "Note index up to date", "zh-cn": "笔记索引已是最新" },
+  "desktop.notes.indexFailed": { en: "Note index failed: {0}", "zh-cn": "笔记索引失败：{0}" },
+  "desktop.workbench.editorAuto": { en: "Editor", "zh-cn": "编辑器" },
+  "desktop.workbench.editorNotFoundAuto": {
+    en: "No available VS Code, VSCodium, Cursor, or Windsurf found.",
+    "zh-cn": "未找到可用的 VS Code、VSCodium、Cursor 或 Windsurf。"
+  },
+  "desktop.workbench.editorNotFound": {
+    en: "{0} not found; confirm the app is installed or CLI tools are available.",
+    "zh-cn": "未找到 {0}，请确认应用已安装或命令行工具可用。"
+  },
+  "desktop.report.gtdNoLinkedSessions": {
+    en: "This digest is not linked to any catalog session (no report_links and no sessions in period). Cannot generate GTD proposals.",
+    "zh-cn": "该 digest 未关联到任何 catalog session（无 report_links，且周期内无 session）。无法生成 GTD 提议。"
+  },
+  "desktop.report.gtdFallbackSessions": {
+    en: "report_links empty; loaded {0} sessions from digest time range as fallback.",
+    "zh-cn": "report_links 为空，已按 digest 时间范围回退加载 {0} 个 session。"
+  },
+  "desktop.report.gtdJsonParseFailed": {
+    en: "Could not parse JSON from LLM: {0}",
+    "zh-cn": "LLM 返回的 JSON 无法解析: {0}"
+  },
   "desktop.agent.auditTitle": { en: "Ask note trace", "zh-cn": "Ask 笔记追踪" },
   "desktop.agent.auditEmpty": { en: "No trace records yet", "zh-cn": "暂无追踪记录" },
   "desktop.agent.newThread": { en: "New chat", "zh-cn": "新对话" },
@@ -391,7 +434,7 @@ const flat = {
   "desktop.settings.paneModels": { en: "Models", "zh-cn": "模型" },
   "desktop.settings.paneSessions": { en: "Sessions", "zh-cn": "Sessions" },
   "desktop.settings.paneWorkbench": { en: "Workbench", "zh-cn": "工作台" },
-  "desktop.settings.paneReport": { en: "Memory", "zh-cn": "Memory" },
+  "desktop.settings.paneReport": { en: "Report", "zh-cn": "报告" },
   "desktop.settings.paneStorage": { en: "Data", "zh-cn": "数据" },
   "desktop.settings.paneUsage": { en: "Usage", "zh-cn": "用量" },
   "desktop.settings.paneGeneralDesc": { en: "Appearance and daily preferences", "zh-cn": "外观与日常偏好" },
@@ -541,6 +584,40 @@ const flat = {
     en: "Enabling scheduled analysis will read session data and call tool LLM / embedding APIs at set times, which may incur cost. Continue?",
     "zh-cn": "启用定时分析后，Desktop 将在设定时刻读取 session 数据并调用工具 LLM / embedding API，可能产生费用。是否继续？"
   },
+  "desktop.settings.fieldOutputLanguageDescription": {
+    en: "Language for summaries, digests, and Agent replies. auto follows UI Language.",
+    "zh-cn": "摘要、digest、Agent 回复使用的语言。auto 跟随界面语言。"
+  },
+  "desktop.settings.fieldOutputLanguageOptionAuto": {
+    en: "Auto (follow UI language)",
+    "zh-cn": "自动（跟随界面语言）"
+  },
+  "desktop.settings.paneAbout": { en: "About", "zh-cn": "关于" },
+  "desktop.settings.paneAboutDesc": { en: "Documentation and feedback", "zh-cn": "文档与问题反馈" },
+  "desktop.settings.aboutTagline": {
+    en: "Session OS + Memory for coding agents",
+    "zh-cn": "面向编程 Agent 的 Session OS + Memory"
+  },
+  "desktop.settings.aboutVersionLabel": { en: "Desktop", "zh-cn": "Desktop" },
+  "desktop.settings.aboutResources": { en: "Resources", "zh-cn": "资源" },
+  "desktop.settings.aboutFeedback": { en: "Feedback", "zh-cn": "反馈" },
+  "desktop.settings.linkDocumentationDesc": {
+    en: "User guide and feature overview",
+    "zh-cn": "用户指南与功能说明"
+  },
+  "desktop.settings.linkExtensionDoc": { en: "VS Code extension docs", "zh-cn": "VS Code 扩展文档" },
+  "desktop.settings.linkExtensionDocDesc": {
+    en: "Companion VS Code sidebar extension",
+    "zh-cn": "配套的 VS Code 侧边栏扩展"
+  },
+  "desktop.settings.linkReportIssueDesc": {
+    en: "Bug reports and feature requests on GitHub",
+    "zh-cn": "在 GitHub 提交 Bug 与功能建议"
+  },
+  "desktop.settings.footerHint": {
+    en: "Feedback via GitHub Issues. Do not paste API keys or full transcripts.",
+    "zh-cn": "请通过 GitHub Issues 反馈，勿粘贴 API 密钥或完整对话内容。"
+  },
 
   "desktop.usage.scope": { en: "Range", "zh-cn": "范围" },
   "desktop.usage.last7": { en: "Last 7 days", "zh-cn": "近 7 天" },
@@ -642,6 +719,215 @@ const flat = {
     en: "See progress bar and session details above.",
     "zh-cn": "进度见上方进度条与 session 明细。"
   },
+  "desktop.report.prepareSummarize": {
+    en: "Preparing to summarize {0} sessions…",
+    "zh-cn": "准备 summarize {0} 个 session…"
+  },
+  "desktop.report.generatingSessionSummary": {
+    en: "Generating summary · {0}",
+    "zh-cn": "正在生成摘要 · {0}"
+  },
+  "desktop.report.summarySkipped": {
+    en: "Skipped (summary exists) · {0}",
+    "zh-cn": "跳过（已有 summary）· {0}"
+  },
+  "desktop.report.summaryDone": {
+    en: "Summary complete · {0}",
+    "zh-cn": "摘要完成 · {0}"
+  },
+  "desktop.report.summaryFailed": {
+    en: "Summary failed · {0}",
+    "zh-cn": "摘要失败 · {0}"
+  },
+  "desktop.report.refreshNoSessionsSkip": {
+    en: "No sessions this day; skipping generation",
+    "zh-cn": "当日无 session，跳过生成"
+  },
+  "desktop.report.refreshDailyMissing": {
+    en: "No daily yet · {0} sessions; will generate",
+    "zh-cn": "尚无日报 · {0} sessions，将生成"
+  },
+  "desktop.report.refreshNewSessionsDaily": {
+    en: "Detected {0} new sessions; will regenerate daily",
+    "zh-cn": "检测到 {0} 个新 session，将重新生成日报"
+  },
+  "desktop.report.refreshUpdatedSessionsDaily": {
+    en: "Detected {0} updated sessions; will regenerate daily",
+    "zh-cn": "检测到 {0} 个 session 有更新，将重新生成日报"
+  },
+  "desktop.report.refreshDailyUpToDateCount": {
+    en: "Daily up to date ({0} sessions)",
+    "zh-cn": "日报已是最新（{0} sessions）"
+  },
+  "desktop.report.startDaily": {
+    en: "Generating daily {0}… (summarize sessions first)",
+    "zh-cn": "生成日报 {0}…（先 summarize sessions）"
+  },
+  "desktop.report.extractDailyFromSummary": {
+    en: "Extracting daily {0} from summaries…",
+    "zh-cn": "从 summary 提取日报 {0}…"
+  },
+  "desktop.report.skipEmbedding": { en: "Skipping embedding…", "zh-cn": "跳过 embedding…" },
+  "desktop.report.writeEmbedding": { en: "Writing embedding…", "zh-cn": "写入 embedding…" },
+  "desktop.report.dailyCompleteCount": {
+    en: "Daily complete · {0} sessions",
+    "zh-cn": "日报完成 · {0} sessions"
+  },
+  "desktop.report.extractWeeklyFromDailies": {
+    en: "Extracting weekly from {0} dailies…",
+    "zh-cn": "从 {0} 篇日报提取周报…"
+  },
+  "desktop.report.extractWeeklyPlaceholder": {
+    en: "No dailies this week; generating placeholder weekly…",
+    "zh-cn": "本周无日报，生成占位周报…"
+  },
+  "desktop.report.weeklyCompleteStats": {
+    en: "Weekly complete · dailies {0} · backfill +{1}/skip {2}",
+    "zh-cn": "周报完成 · dailies {0} · 补全 +{1}/skip {2}"
+  },
+  "desktop.report.extractMonthlyFromDailies": {
+    en: "Extracting monthly from {0} dailies this month…",
+    "zh-cn": "从本月 {0} 篇日报提取月报…"
+  },
+  "desktop.report.extractMonthlyPlaceholder": {
+    en: "No dailies this month; generating placeholder monthly…",
+    "zh-cn": "本月无日报，生成占位月报…"
+  },
+  "desktop.report.monthlyCompleteStats": {
+    en: "Monthly complete · dailies {0} · daily +{1} · weekly +{2}",
+    "zh-cn": "月报完成 · dailies {0} · 日报 +{1} · 周报 +{2}"
+  },
+  "desktop.report.aggregateWeeklyFromDailies": {
+    en: "Aggregating weekly from {0} dailies",
+    "zh-cn": "使用 {0} 篇日报聚合周报"
+  },
+  "desktop.report.aggregateWeeklyPlaceholder": {
+    en: "No dailies this week (will generate placeholder weekly)",
+    "zh-cn": "本周无可用日报（将生成占位周报）"
+  },
+  "desktop.report.aggregateMonthlyFromDailies": {
+    en: "Aggregating monthly from {0} dailies this month",
+    "zh-cn": "使用本月 {0} 篇日报聚合月报"
+  },
+  "desktop.report.aggregateMonthlyPlaceholder": {
+    en: "No dailies this month (will generate placeholder monthly)",
+    "zh-cn": "本月无可用日报（将生成占位月报）"
+  },
+  "desktop.report.freshDailiesUpToDateWeek": {
+    en: "This week's dailies are up to date",
+    "zh-cn": "本周日报已是最新"
+  },
+  "desktop.report.freshDailiesUpToDateMonth": {
+    en: "This month's dailies are up to date",
+    "zh-cn": "本月日报已是最新"
+  },
+  "desktop.report.freshDailiesUpToDatePeriod": {
+    en: "Period dailies are up to date",
+    "zh-cn": "本期日报已是最新"
+  },
+  "desktop.report.freshDailiesRefreshWeek": {
+    en: "Refreshing stale dailies this week · {0} days…",
+    "zh-cn": "先更新本周待刷新日报 · 共 {0} 天…"
+  },
+  "desktop.report.freshDailiesRefreshMonth": {
+    en: "Refreshing stale dailies this month · {0} days…",
+    "zh-cn": "先更新本月待刷新日报 · 共 {0} 天…"
+  },
+  "desktop.report.freshDailiesRefreshPeriod": {
+    en: "Refreshing stale dailies this period · {0} days…",
+    "zh-cn": "先更新本期待刷新日报 · 共 {0} 天…"
+  },
+  "desktop.report.freshDailiesUpdateProgress": {
+    en: "Updating daily {0}/{1} · {2}",
+    "zh-cn": "更新日报 {0}/{1} · {2}"
+  },
+  "desktop.report.freshWeekliesUpToDateMonth": {
+    en: "This month's weeklies are up to date",
+    "zh-cn": "本月周报已是最新"
+  },
+  "desktop.report.freshWeekliesRefreshMonth": {
+    en: "Refreshing stale weeklies this month · {0} weeks…",
+    "zh-cn": "先更新本月待刷新周报 · 共 {0} 周…"
+  },
+  "desktop.report.freshWeekliesUpdateProgress": {
+    en: "Updating weekly {0}/{1} · {2}",
+    "zh-cn": "更新周报 {0}/{1} · {2}"
+  },
+  "desktop.report.dailiesCompleteWeek": {
+    en: "This week's dailies complete (or no session activity days)",
+    "zh-cn": "本周日报已齐全（或无 session 活动日）"
+  },
+  "desktop.report.dailiesCompleteMonth": {
+    en: "This month's dailies complete (or no session activity days)",
+    "zh-cn": "本月日报已齐全（或无 session 活动日）"
+  },
+  "desktop.report.dailiesCompletePeriod": {
+    en: "Period dailies complete (or no session activity days)",
+    "zh-cn": "本期日报已齐全（或无 session 活动日）"
+  },
+  "desktop.report.ensureDailiesCheckWeek": {
+    en: "Checking and backfilling this week's dailies · {0} days to generate…",
+    "zh-cn": "检查并补全本周日报 · 需生成 {0} 天…"
+  },
+  "desktop.report.ensureDailiesCheckMonth": {
+    en: "Checking and backfilling this month's dailies · {0} days to generate…",
+    "zh-cn": "检查并补全本月日报 · 需生成 {0} 天…"
+  },
+  "desktop.report.ensureDailiesCheckPeriod": {
+    en: "Checking and backfilling period dailies · {0} days to generate…",
+    "zh-cn": "检查并补全本期日报 · 需生成 {0} 天…"
+  },
+  "desktop.report.backfillDailyProgress": {
+    en: "Backfilling daily {0}/{1} · {2}",
+    "zh-cn": "补全日报 {0}/{1} · {2}"
+  },
+  "desktop.report.weekliesCompleteMonth": {
+    en: "This month's weeklies complete (or no session activity weeks)",
+    "zh-cn": "本月周报已齐全（或无 session 活动周）"
+  },
+  "desktop.report.ensureWeekliesCheck": {
+    en: "Checking and backfilling weeklies · {0} weeks to generate…",
+    "zh-cn": "检查并补全周报 · 需生成 {0} 周…"
+  },
+  "desktop.report.backfillWeeklyProgress": {
+    en: "Backfilling weekly {0}/{1} · {2}",
+    "zh-cn": "补全周报 {0}/{1} · {2}"
+  },
+  "desktop.report.nestedDailyDetail": {
+    en: "Daily {0} · {1}",
+    "zh-cn": "日报 {0} · {1}"
+  },
+  "desktop.report.nestedDailyLabel": { en: "Daily {0}", "zh-cn": "日报 {0}" },
+  "desktop.report.nestedWeeklyDetail": {
+    en: "Weekly {0} · {1}",
+    "zh-cn": "周报 {0} · {1}"
+  },
+  "desktop.report.nestedWeeklyLabel": { en: "Weekly {0}", "zh-cn": "周报 {0}" },
+  "desktop.report.periodNoSessions": {
+    en: "{0}: no sessions in period",
+    "zh-cn": "{0}：当期无 session"
+  },
+  "desktop.report.periodMissing": {
+    en: "No {0} yet · {1} sessions",
+    "zh-cn": "尚无{0} · {1} sessions"
+  },
+  "desktop.report.periodUpdatedSessions": {
+    en: "{0}: {1} sessions updated",
+    "zh-cn": "{0}：{1} 个 session 有更新"
+  },
+  "desktop.report.periodUnderlyingNewOnly": {
+    en: "{0}: {1} new dailies",
+    "zh-cn": "{0}：{1} 篇新日报"
+  },
+  "desktop.report.periodUnderlyingStaleOnly": {
+    en: "{0}: {1} days with stale dailies",
+    "zh-cn": "{0}：{1} 天日报待更新"
+  },
+  "desktop.report.periodUnderlyingBoth": {
+    en: "{0}: {1} new dailies, {2} days with stale dailies",
+    "zh-cn": "{0}：{1} 篇新日报、{2} 天日报待更新"
+  },
+  "desktop.report.periodUpToDate": { en: "{0} up to date", "zh-cn": "{0}已是最新" },
   "desktop.report.weeklyStaleShort": { en: "Weekly update pending", "zh-cn": "周报待更新" },
   "desktop.report.monthlyStaleShort": { en: "Monthly update pending", "zh-cn": "月报待更新" },
   "desktop.report.futureWeek": { en: "Future week {0}", "zh-cn": "未来周 {0}" },

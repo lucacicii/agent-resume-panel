@@ -17,6 +17,7 @@ export interface RunReportGtdSyncOptions {
   ensureDigests?: boolean;
   /** When set, only analyze these digests (e.g. current card). Skips ensureDigests if provided. */
   reportIds?: string[];
+  systemLocale?: string;
 }
 
 export interface GtdPreviewItem {
@@ -91,7 +92,11 @@ export async function previewReportGtdSync(
     const day = localDayRange();
     const status = await getReportJobStatus(paths.desktopDb, day.jobKey);
     if (status?.status !== "ok") {
-      await runDailyDigest({ panelHome, date: day.label });
+      await runDailyDigest({
+        panelHome,
+        date: day.label,
+        systemLocale: options.systemLocale
+      });
       ensureDigest = { ran: true, jobKey: day.jobKey };
     }
   }
@@ -100,7 +105,8 @@ export async function previewReportGtdSync(
     catalogDb: paths.catalogDb,
     desktopDb: paths.desktopDb,
     settings,
-    reportIds: options.reportIds
+    reportIds: options.reportIds,
+    systemLocale: options.systemLocale
   });
   warnings.push(...analyzeWarnings);
 

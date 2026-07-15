@@ -8,6 +8,8 @@ import { recordLlmUsage } from "../usage/store";
 import { listAllNotes, NoteRecord } from "./catalogNotes";
 import { parseNoteDocument } from "./frontmatter";
 import { absFromRelMdPath } from "./paths";
+import { createUiText } from "../i18n/uiText";
+import { loadSettings } from "../settings/store";
 import { reconcileNotesIndex } from "./reconcile";
 
 const CHUNK_TARGET_CHARS = 1400;
@@ -164,7 +166,8 @@ async function embedChunks(
   chunks: NoteChunkInput[],
   noteCurrent: number,
   noteTotal: number,
-  onProgress?: NoteIndexProgressCallback
+  onProgress: NoteIndexProgressCallback | undefined,
+  pt: (key: string, ...args: (string | number)[]) => string
 ): Promise<number[][]> {
   const vectors: number[][] = [];
   for (let i = 0; i < chunks.length; i += EMBEDDING_BATCH_SIZE) {
@@ -176,7 +179,11 @@ async function embedChunks(
     vectors.push(...result.vectors);
     await onProgress?.({
       phase: "embedding",
-      message: `正在生成向量 ${Math.min(i + batch.length, chunks.length)}/${chunks.length}`,
+      message: pt(
+        "desktop.notes.generatingVectors",
+        Math.min(i + batch.length, chunks.length),
+        chunks.length
+      ),
       current: noteCurrent,
       total: noteTotal,
       noteTitle: note.title || note.filename,
@@ -265,8 +272,11 @@ async function runNotesVectorIndex(options: {
   panelHome: string;
   embedding: EmbeddingRuntimeConfig;
   onProgress?: NoteIndexProgressCallback;
+  systemLocale?: string;
 }): Promise<{ indexedNotes: number; indexedChunks: number }> {
-  await options.onProgress?.({ phase: "scanning", message: "正在扫描笔记…" });
+  const settings = await loadSettings(options.panelHome);
+  const pt = createUiText(settings, options.systemLocale);
+  await options.onProgress?.({ phase: "scanning", message: pt("desktop.notes.scanningNotes") });
   await ensureExtensionCatalogSchema(options.catalogDb);
   await ensureDesktopDbSchema(options.desktopDb);
   await reconcileNotesIndex(options.catalogDb, options.panelHome);
@@ -304,7 +314,7 @@ async function runNotesVectorIndex(options: {
     try {
       await options.onProgress?.({
         phase: "indexing",
-        message: `正在索引笔记 ${noteIndex + 1}/${pendingNotes.length}`,
+        message: pt("desktop.notes.indexingProgress", noteIndex + 1, pendingNotes.length),
         current: noteIndex,
         total: pendingNotes.length,
         noteTitle: note.title || note.filename
@@ -343,7 +353,8 @@ async function runNotesVectorIndex(options: {
             chunks,
             noteIndex,
             pendingNotes.length,
-            options.onProgress
+            options.onProgress,
+            pt
           )
         : [];
       await replaceNoteChunks(
@@ -362,7 +373,7 @@ async function runNotesVectorIndex(options: {
     }
     await options.onProgress?.({
       phase: "indexing",
-      message: `正在索引笔记 ${noteIndex + 1}/${pendingNotes.length}`,
+      message: pt("desktop.notes.indexingProgress", noteIndex + 1, pendingNotes.length),
       current: noteIndex + 1,
       total: pendingNotes.length,
       noteTitle: note.title || note.filename
@@ -371,8 +382,8 @@ async function runNotesVectorIndex(options: {
   await options.onProgress?.({
     phase: "complete",
     message: indexedNotes
-      ? `笔记索引完成：${indexedNotes} 篇，${indexedChunks} 个片段`
-      : "笔记索引已是最新",
+      ? pt("desktop.notes.indexComplete", indexedNotes, indexedChunks)
+      : pt("desktop.notes.indexUpToDate"),
     current: pendingNotes.length,
     total: pendingNotes.length
   });
@@ -385,6 +396,7 @@ export async function ensureNotesVectorIndex(options: {
   panelHome: string;
   embedding: EmbeddingRuntimeConfig;
   onProgress?: NoteIndexProgressCallback;
+  systemLocale?: string;
 }): Promise<{ indexedNotes: number; indexedChunks: number }> {
   const key = `${options.catalogDb}\n${options.desktopDb}\n${embeddingKey(options.embedding)}`;
   const existing = indexTasks.get(key);

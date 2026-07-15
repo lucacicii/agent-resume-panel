@@ -61,8 +61,10 @@ export {
   normalizeOutputLanguagePreference,
   resolveEffectiveOutputLanguage,
   normalizeSummaryLanguageTag,
-  summaryLanguagesMatch
+  summaryLanguagesMatch,
+  createUiText
 } from "./i18n";
+export type { UiText } from "./i18n/uiText";
 export {
   loadSettings,
   saveSettings,

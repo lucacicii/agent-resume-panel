@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
+import { createReportProgressText } from "../report/progressI18n";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";
 import { PanelSettings } from "../settings/types";
@@ -66,6 +67,7 @@ export async function ensureSummariesForSessions(
   const level = options.progressLevel || "daily";
   const periodLabel = options.progressPeriodLabel || "";
   const onProgress = options.onProgress;
+  const progressText = createReportProgressText(options.settings, options.systemLocale);
 
   const out: AgentSession[] = options.sessions.map((s) => ({ ...s }));
   let summarized = 0;
@@ -79,7 +81,7 @@ export async function ensureSummariesForSessions(
       phase: "ensure_summaries",
       level,
       periodLabel,
-      message: `准备 summarize ${total} 个 session…`,
+      message: progressText("desktop.report.prepareSummarize", total),
       index: 0,
       total
     });
@@ -100,7 +102,7 @@ export async function ensureSummariesForSessions(
           phase: "session_skip",
           level,
           periodLabel,
-          message: `跳过（已有 summary）· ${session.title}`,
+          message: progressText("desktop.report.summarySkipped", session.title),
           index: processed,
           total,
           session: ref
@@ -112,7 +114,7 @@ export async function ensureSummariesForSessions(
         phase: "session_start",
         level,
         periodLabel,
-        message: `正在生成摘要 · ${session.title}`,
+        message: progressText("desktop.report.generatingSessionSummary", session.title),
         index: processed + 1,
         total,
         session: ref
@@ -135,7 +137,7 @@ export async function ensureSummariesForSessions(
           phase: "session_done",
           level,
           periodLabel,
-          message: `摘要完成 · ${session.title}`,
+          message: progressText("desktop.report.summaryDone", session.title),
           index: processed,
           total,
           session: ref
@@ -148,7 +150,7 @@ export async function ensureSummariesForSessions(
           phase: "session_fail",
           level,
           periodLabel,
-          message: `摘要失败 · ${session.title}`,
+          message: progressText("desktop.report.summaryFailed", session.title),
           index: processed,
           total,
           session: ref

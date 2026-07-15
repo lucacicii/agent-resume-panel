@@ -12,6 +12,7 @@ import {
 } from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
 import { localMonthRange } from "./period";
+import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import {
   buildMonthlySystemPrompt,
@@ -30,6 +31,7 @@ export interface RunMonthlyDigestOptions {
   /** Re-generate dailies even if they exist. Default false. */
   forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
+  systemLocale?: string;
 }
 
 export interface RunMonthlyDigestResult {
@@ -53,6 +55,7 @@ export async function runMonthlyDigest(
   options: RunMonthlyDigestOptions = {}
 ): Promise<RunMonthlyDigestResult> {
   const settings = await loadSettings(options.panelHome);
+  const pt = createReportProgressText(settings, options.systemLocale);
   const panelHome = effectivePanelHome(settings, options.panelHome);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
@@ -67,7 +70,7 @@ export async function runMonthlyDigest(
       phase: "start",
       level: "monthly",
       periodLabel: period.label,
-      message: `生成月报 ${period.label}…（先更新本月日报与周报）`
+      message: pt("desktop.report.generatingMonthlyCascade", period.label)
     });
 
     const llm = llmConfigFromSettings(settings);
@@ -87,6 +90,7 @@ export async function runMonthlyDigest(
       skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
       onProgress,
+      systemLocale: options.systemLocale,
       progressLevel: "monthly",
       progressPeriodLabel: period.label
     });
@@ -101,6 +105,7 @@ export async function runMonthlyDigest(
       skipEmbedding: options.skipEmbedding,
       forceResummarize: options.forceResummarize,
       onProgress,
+      systemLocale: options.systemLocale,
       progressLevel: "monthly",
       progressPeriodLabel: period.label
     });
@@ -111,7 +116,8 @@ export async function runMonthlyDigest(
       endMs: period.endMs,
       onProgress,
       progressLevel: "monthly",
-      progressPeriodLabel: period.label
+      progressPeriodLabel: period.label,
+      progressText: pt
     });
 
     onProgress?.({
@@ -119,8 +125,8 @@ export async function runMonthlyDigest(
       level: "monthly",
       periodLabel: period.label,
       message: usedDailies
-        ? `从本月 ${usedDailies} 篇日报提取月报…`
-        : `本月无日报，生成占位月报…`
+        ? pt("desktop.report.extractMonthlyFromDailies", usedDailies)
+        : pt("desktop.report.extractMonthlyPlaceholder")
     });
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
@@ -174,7 +180,12 @@ export async function runMonthlyDigest(
       phase: "complete",
       level: "monthly",
       periodLabel: period.label,
-      message: `月报完成 · dailies ${usedDailies} · 日报 +${ensuredDailies.ok.length} · 周报 +${ensuredWeeklies.ok.length}`
+      message: pt(
+        "desktop.report.monthlyCompleteStats",
+        usedDailies,
+        ensuredDailies.ok.length,
+        ensuredWeeklies.ok.length
+      )
     });
     return {
       entry,

@@ -22,6 +22,8 @@ export {
 } from "./catalog";
 export type { MessageCatalog } from "./catalog";
 export { resolveUiLocale } from "./resolve";
+export { createUiText } from "./uiText";
+export type { UiText } from "./uiText";
 export {
   OUTPUT_LANGUAGE_AUTO,
   OUTPUT_LANGUAGE_OPTIONS,
