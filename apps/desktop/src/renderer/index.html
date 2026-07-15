@@ -414,44 +414,6 @@
           ></div>
           <aside class="wb-list-pane" id="wbListPane">
             <div class="wb-list-toolbar-wrap">
-              <div class="wb-list-toolbar">
-                <button type="button" class="wb-icon-btn" id="btnWorkbenchNewSession" title="新建 Session" aria-label="新建 Session">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 12h14" />
-                    <path d="M12 5v14" />
-                  </svg>
-                </button>
-                <button type="button" class="wb-icon-btn" id="btnWorkbenchNewTerminal" title="新建 Terminal" aria-label="新建 Terminal">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 19h8" />
-                    <path d="m4 17 6-6-6-6" />
-                  </svg>
-                </button>
-                <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" title="刷新" aria-label="刷新">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-                    <path d="M21 3v5h-5" />
-                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-                    <path d="M8 16H3v5" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  class="wb-icon-btn wb-toolbar-remove"
-                  id="btnWorkbenchRemove"
-                  title="从面板移除"
-                  aria-label="从面板移除"
-                  disabled
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 6h18" />
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                    <path d="M10 11v6" />
-                    <path d="M14 11v6" />
-                  </svg>
-                </button>
-              </div>
               <div class="wb-target-popover" id="wbTargetPopover" hidden>
                 <input
                   type="search"
@@ -467,7 +429,17 @@
             <div class="wb-search-wrap">
               <input type="search" id="wbSearch" class="wb-search" placeholder="搜索" autocomplete="off" spellcheck="false" />
             </div>
-            <p class="wb-list-meta" id="wbMeta"></p>
+            <div class="wb-list-meta-row">
+              <p class="wb-list-meta" id="wbMeta"></p>
+              <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" title="刷新" aria-label="刷新">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                  <path d="M8 16H3v5" />
+                </svg>
+              </button>
+            </div>
             <div class="wb-list" id="wbList">
               <p class="muted wb-list-empty">加载 sessions…</p>
             </div>
@@ -485,7 +457,37 @@
               <span class="wb-detail-project-label" id="wbDetailProjectLabel">全部 Sessions</span>
             </div>
             <div class="wb-terminal-shell" id="wbTerminalShell">
-              <div class="wb-terminal-tabs" id="wbTerminalTabs" hidden></div>
+              <div class="wb-terminal-tabs" id="wbTerminalTabs">
+                <div class="wb-terminal-tabs-list" id="wbTerminalTabsList" role="tablist" aria-label="终端标签"></div>
+                <div class="wb-terminal-tabs-actions">
+                  <button
+                    type="button"
+                    class="wb-terminal-tab-action"
+                    id="btnWorkbenchTabNewTerminal"
+                    title="新建 Terminal"
+                    aria-label="新建 Terminal"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m4 17 6-6-6-6" />
+                      <path d="M12 19h8" />
+                    </svg>
+                  </button>
+                  <span class="wb-terminal-tabs-action-sep" aria-hidden="true"></span>
+                  <button
+                    type="button"
+                    class="wb-terminal-tab-action"
+                    id="btnWorkbenchTabNewSession"
+                    title="新建 Session"
+                    aria-label="新建 Session"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="M12 9v6" />
+                      <path d="M9 12h6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
               <div class="wb-terminal-stack" id="wbTerminalStack"></div>
               <p class="muted wb-terminal-hint" id="wbTerminalHint">选择 session 以恢复终端</p>
             </div>
@@ -493,7 +495,7 @@
         </div>
       </section>
 
-      <!-- Settings: left nav + right content -->
+      <!-- Settings: macOS-style sidebar + grouped content -->
       <section id="tab-settings" class="panel">
         <div class="toolbar">
           <h2 class="quiet-title">Settings</h2>
@@ -502,268 +504,493 @@
 
         <div class="settings-layout">
           <aside class="settings-nav" aria-label="Settings menu">
-            <button type="button" class="settings-nav-item active" data-settings-pane="provider">
-              Provider
-            </button>
-            <button type="button" class="settings-nav-item" data-settings-pane="data">数据与存储</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="general">通用</button>
-            <button type="button" class="settings-nav-item" data-settings-pane="usage">用量与日志</button>
+            <button type="button" class="settings-nav-item active" data-settings-pane="general">通用</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="models">模型</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="sessions">Sessions</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="workbench">工作台</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="memory">Memory</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="storage">数据</button>
+            <button type="button" class="settings-nav-item" data-settings-pane="usage">用量</button>
           </aside>
 
           <div class="settings-main">
+            <header id="settingsContentHeader" class="settings-content-header">
+              <div class="settings-content-header-text">
+                <h2 id="settingsPaneTitle" class="settings-pane-title">通用</h2>
+                <p id="settingsPaneDesc" class="settings-pane-desc">外观与日常偏好</p>
+              </div>
+              <div class="settings-header-actions">
+                <p class="status" id="settingsStatus"></p>
+              </div>
+            </header>
+
             <form id="settingsForm" class="form settings-form">
-              <!-- Provider: tool LLM + chat LLM + embedding -->
-              <div id="settingsPaneProvider" class="settings-pane">
-                <p class="muted">
-                  写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
-                </p>
-
-                <fieldset>
-                  <legend>工具 LLM</legend>
-                  <p class="settings-tip">
-                    用于摘要、自动重命名、定时 digests 等工具任务。请使用<strong>便宜、快速</strong>的模型（如
-                    gpt-4o-mini、deepseek-chat），无需大型推理模型。
-                  </p>
-                  <label>Base URL <input name="llmBaseUrl" type="text" /></label>
-                  <label>Model <input name="llmModel" type="text" /></label>
-                  <label>API Key <input name="llmApiKey" type="password" autocomplete="off" /></label>
-                  <label>Output language <input name="llmLang" type="text" placeholder="zh-CN" /></label>
-                </fieldset>
-
-                <fieldset>
-                  <legend>对话模型</legend>
-                  <p class="settings-tip">
-                    用于 Ask / Meta-Agent 对话。默认填充工具模型，可单独改为更强的对话模型。
-                  </p>
-                  <label>Base URL <input name="chatBaseUrl" type="text" /></label>
-                  <label>Model <input name="chatModel" type="text" /></label>
-                  <label>API Key <input name="chatApiKey" type="password" autocomplete="off" /></label>
-                </fieldset>
-
-                <fieldset>
-                  <legend>Embedding</legend>
-                  <p class="settings-tip muted-tip">
-                    Base URL / API Key 可留空，将回落到工具 LLM 的配置。
-                  </p>
-                  <label>Base URL (optional) <input name="embBaseUrl" type="text" /></label>
-                  <label>Model <input name="embModel" type="text" /></label>
-                  <label>API Key (optional) <input name="embApiKey" type="password" autocomplete="off" /></label>
-                </fieldset>
+              <div id="settingsPaneGeneral" class="settings-pane">
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">外观</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">主题</span>
+                          <span class="settings-row-desc">切换应用浅色、深色或跟随系统</span>
+                        </div>
+                        <select name="desktopTheme" class="settings-row-control">
+                          <option value="system">跟随系统</option>
+                          <option value="light">浅色</option>
+                          <option value="dark">深色</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+                </div>
               </div>
 
-              <!-- Data & storage: paths and open-in-Finder actions -->
-              <div id="settingsPaneData" class="settings-pane" hidden>
-                <fieldset>
-                  <legend>应用数据</legend>
-                  <p class="settings-tip muted-tip">
-                    <code>catalog.db</code>、<code>acp/</code>、<code>notes/</code> 均存放在 Panel home 下。
+              <div id="settingsPaneModels" class="settings-pane" hidden>
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">工具 LLM</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-footnote">
+                        用于摘要、自动重命名、定时 digests 等工具任务。请使用便宜、快速的模型（如 gpt-4o-mini、deepseek-chat）。
+                      </p>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Base URL</span>
+                        <input name="llmBaseUrl" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Model</span>
+                        <input name="llmModel" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">API Key</span>
+                        <input name="llmApiKey" type="password" autocomplete="off" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Output language</span>
+                        <input name="llmLang" type="text" placeholder="zh-CN" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">对话模型</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-footnote">用于 Ask / Meta-Agent 对话。默认同工具 LLM，可单独配置更强模型。</p>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Base URL</span>
+                        <input name="chatBaseUrl" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Model</span>
+                        <input name="chatModel" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">API Key</span>
+                        <input name="chatApiKey" type="password" autocomplete="off" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">Embedding</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-footnote">Base URL / API Key 可留空，将回落到工具 LLM 的配置。</p>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Base URL（可选）</span>
+                        <input name="embBaseUrl" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Model</span>
+                        <input name="embModel" type="text" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">API Key（可选）</span>
+                        <input name="embApiKey" type="password" autocomplete="off" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <p class="settings-footnote settings-pane-footnote">
+                    写入 <code>~/.agent-resume-panel/settings.json</code>（与 VS Code 扩展共用）。
                   </p>
-                  <label>
-                    Panel home
-                    <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
-                  </label>
-                  <p class="settings-tip muted-tip">打开操作使用已保存的路径；修改后请先点保存。</p>
-                  <div class="settings-path-row">
-                    <button type="button" id="btnSettingsOpenPanelHome" class="tool-btn">打开 Panel home</button>
-                  </div>
-                </fieldset>
-                <fieldset>
-                  <legend>笔记</legend>
-                  <p class="settings-tip">笔记以 Markdown 文件存储，可用 Finder / Obsidian 直接编辑。</p>
-                  <div class="settings-path-row">
-                    <code id="settingsNotesRootPath" class="settings-path-display"></code>
-                    <button type="button" id="btnSettingsOpenNotesFolder" class="tool-btn">打开笔记文件夹</button>
-                  </div>
-                </fieldset>
-                <fieldset>
-                  <legend>Agent 数据目录</legend>
-                  <label>Codex home <input name="codexHome" type="text" placeholder="~/.codex" /></label>
-                  <label>Claude home <input name="claudeHome" type="text" placeholder="~/.claude" /></label>
-                  <label>Antigravity home <input name="antigravityHome" type="text" placeholder="~/.gemini" /></label>
-                  <label>Grok home <input name="grokHome" type="text" placeholder="~/.grok" /></label>
-                  <label>Alma data directory <input name="almaDataDir" type="text" placeholder="~/Library/Application Support/alma" /></label>
-                  <label>OpenCode home <input name="opencodeHome" type="text" placeholder="~/.local/share/opencode" /></label>
-                  <label>Pi home <input name="piHome" type="text" placeholder="~/.pi/agent" /></label>
-                </fieldset>
-                <fieldset>
-                  <legend>工作台目录</legend>
-                  <label>
-                    临时目录（新建 Session）
-                    <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
-                  </label>
-                </fieldset>
+                </div>
               </div>
 
-              <!-- General: sync policy, workbench behavior, schedule, backfill -->
-              <div id="settingsPaneGeneral" class="settings-pane" hidden>
-                <fieldset>
-                  <legend>外观</legend>
-                  <label>
-                    主题
-                    <select name="desktopTheme">
-                      <option value="system">跟随系统</option>
-                      <option value="light">浅色</option>
-                      <option value="dark">深色</option>
-                    </select>
-                  </label>
-                </fieldset>
-                <fieldset>
-                  <legend>Agent Sessions</legend>
-                  <label>同步上限 <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" /></label>
-                  <label>Stale policy
-                    <select name="syncStalePolicy">
-                      <option value="hide">hide</option>
-                      <option value="purge">purge</option>
-                    </select>
-                  </label>
-                  <label class="check"><input name="showArchivedCodex" type="checkbox" />显示 Codex 归档</label>
-                  <label class="check"><input name="showSubagentCodex" type="checkbox" />显示 Codex 子 Agent</label>
-                  <label class="check"><input name="showArchivedOpenCode" type="checkbox" />显示 OpenCode 归档</label>
-                  <label class="check"><input name="showSubagentGrok" type="checkbox" />显示 Grok 子 Agent</label>
-                  <label class="check"><input name="hideCronAlma" type="checkbox" />隐藏 Alma cron</label>
-                  <label class="check"><input name="hideChannelAlma" type="checkbox" />隐藏 Alma channel</label>
-                  <label class="check"><input name="showIncognitoAlma" type="checkbox" />显示 Alma incognito</label>
-                </fieldset>
-                <fieldset>
-                  <legend>工作台</legend>
-                  <label>
-                    默认新建 Agent
-                    <select name="workbenchDefaultProvider">
-                      <option value="codex">Codex</option>
-                      <option value="claude">Claude</option>
-                      <option value="grok">Grok</option>
-                      <option value="agy">Antigravity</option>
-                      <option value="opencode">OpenCode</option>
-                      <option value="pi">Pi</option>
-                    </select>
-                  </label>
-                  <label>
-                    项目编辑器
-                    <select name="workbenchProjectEditor">
-                      <option value="auto">自动检测</option>
-                      <option value="vscode">VS Code</option>
-                      <option value="vscodium">VSCodium</option>
-                      <option value="cursor">Cursor</option>
-                      <option value="windsurf">Windsurf</option>
-                    </select>
-                  </label>
-                  <label>
-                    终端模式
-                    <select name="workbenchTerminalMode">
-                      <option value="xterm">内嵌终端 (xterm.js)</option>
-                      <option value="external-system">系统默认终端</option>
-                    </select>
-                  </label>
-                  <label>
-                    外部终端启动方式
-                    <select name="workbenchExternalLaunchMode">
-                      <option value="executeCommand">自动执行恢复命令</option>
-                      <option value="pasteCommand">打开后自动粘贴命令</option>
-                      <option value="copyCommand">仅复制命令到剪贴板</option>
-                    </select>
-                  </label>
-                </fieldset>
-                <fieldset>
-                  <legend>定时（默认关）</legend>
-                  <label class="check">
-                    <input name="memoryEnabled" type="checkbox" />
-                    启用定时 digests
-                  </label>
-                  <label>Daily hour <input name="dailyHour" type="number" min="0" max="23" /></label>
-                  <label>Weekly hour (Mon) <input name="weeklyHour" type="number" min="0" max="23" /></label>
-                  <label>Monthly hour (day 1) <input name="monthlyHour" type="number" min="0" max="23" /></label>
-                </fieldset>
-                <fieldset>
-                  <legend>批量回填历史 digests</legend>
-                  <p class="muted" style="margin: 0 0 8px">
-                    扫描 catalog 全部 session 日期，按日→周→月批量生成（多次 LLM，较慢）。
-                  </p>
-                  <label>
-                    最多天数
-                    <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
-                  </label>
-                  <label class="check">
-                    <input type="checkbox" id="backfillSkipExisting" checked />
-                    跳过已有成功 digest
-                  </label>
-                  <label class="check">
-                    <input type="checkbox" id="backfillSkipEmbedding" checked />
-                    跳过 embedding
-                  </label>
-                  <div class="form-row" style="margin-top: 8px">
-                    <button type="button" id="btnBackfillPreview" class="tool-btn">预览范围</button>
-                    <button type="button" id="btnBackfillRun" class="tool-btn">开始回填</button>
-                  </div>
-                  <p class="status" id="backfillStatus"></p>
-                </fieldset>
+              <div id="settingsPaneSessions" class="settings-pane" hidden>
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">同步</h3>
+                    <div class="settings-group-body">
+                      <label class="settings-field">
+                        <span class="settings-field-label">同步上限</span>
+                        <input name="syncMaxItems" type="number" min="1" max="50000" value="10000" />
+                      </label>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">过期策略</span>
+                          <span class="settings-row-desc">源端已删除的 session 在本地隐藏或清除</span>
+                        </div>
+                        <select name="syncStalePolicy" class="settings-row-control">
+                          <option value="hide">隐藏</option>
+                          <option value="purge">清除</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">可见性过滤</h3>
+                    <div class="settings-group-body settings-group-body-rows">
+                      <p class="settings-footnote">控制各 Provider 的归档、子 Agent 等特殊 session 是否出现在列表中。</p>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">显示 Codex 归档</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="showArchivedCodex" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">显示 Codex 子 Agent</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="showSubagentCodex" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">显示 OpenCode 归档</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="showArchivedOpenCode" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">显示 Grok 子 Agent</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="showSubagentGrok" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">隐藏 Alma cron</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="hideCronAlma" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">隐藏 Alma channel</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="hideChannelAlma" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">显示 Alma incognito</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="showIncognitoAlma" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <div id="settingsPaneWorkbench" class="settings-pane" hidden>
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">新建 Session</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">默认 Agent</span>
+                          <span class="settings-row-desc">在工作台新建 session 时使用的 Provider</span>
+                        </div>
+                        <select name="workbenchDefaultProvider" class="settings-row-control">
+                          <option value="codex">Codex</option>
+                          <option value="claude">Claude</option>
+                          <option value="grok">Grok</option>
+                          <option value="agy">Antigravity</option>
+                          <option value="opencode">OpenCode</option>
+                          <option value="pi">Pi</option>
+                        </select>
+                      </div>
+                      <label class="settings-field">
+                        <span class="settings-field-label">临时目录</span>
+                        <input name="workbenchScratchDir" type="text" placeholder="~/.agent-resume-panel/scratch" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">编辑器与终端</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">项目编辑器</span>
+                          <span class="settings-row-desc">从工作台打开项目时使用的编辑器</span>
+                        </div>
+                        <select name="workbenchProjectEditor" class="settings-row-control">
+                          <option value="auto">自动检测</option>
+                          <option value="vscode">VS Code</option>
+                          <option value="vscodium">VSCodium</option>
+                          <option value="cursor">Cursor</option>
+                          <option value="windsurf">Windsurf</option>
+                        </select>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">终端模式</span>
+                          <span class="settings-row-desc">内嵌 xterm 或系统默认终端</span>
+                        </div>
+                        <select name="workbenchTerminalMode" class="settings-row-control">
+                          <option value="xterm">内嵌终端 (xterm.js)</option>
+                          <option value="external-system">系统默认终端</option>
+                        </select>
+                      </div>
+                      <div id="settingsExternalLaunchRow" class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">外部终端启动方式</span>
+                          <span class="settings-row-desc">恢复 session 时如何传递命令</span>
+                        </div>
+                        <select name="workbenchExternalLaunchMode" class="settings-row-control">
+                          <option value="executeCommand">自动执行恢复命令</option>
+                          <option value="pasteCommand">打开后自动粘贴命令</option>
+                          <option value="copyCommand">仅复制命令到剪贴板</option>
+                        </select>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">⌘T 快捷键</span>
+                          <span class="settings-row-desc">在工作台按下 ⌘T（Windows 为 Ctrl+T）时执行的操作</span>
+                        </div>
+                        <select name="workbenchCmdTAction" class="settings-row-control">
+                          <option value="newTerminal">新建 Terminal</option>
+                          <option value="newSession">新建 Session</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <div id="settingsPaneMemory" class="settings-pane" hidden>
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">定时 digests</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">启用定时分析</span>
+                          <span class="settings-row-desc">在设定时刻调用工具 LLM 生成日/周/月报</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="memoryEnabled" type="checkbox" role="switch" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div id="settingsMemoryScheduleFields" class="settings-schedule-fields" hidden>
+                        <label class="settings-field">
+                          <span class="settings-field-label">Daily hour</span>
+                          <input name="dailyHour" type="number" min="0" max="23" />
+                        </label>
+                        <label class="settings-field">
+                          <span class="settings-field-label">Weekly hour (Mon)</span>
+                          <input name="weeklyHour" type="number" min="0" max="23" />
+                        </label>
+                        <label class="settings-field">
+                          <span class="settings-field-label">Monthly hour (day 1)</span>
+                          <input name="monthlyHour" type="number" min="0" max="23" />
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-group settings-group-action">
+                    <h3 class="settings-group-title">批量回填历史 digests</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-callout">
+                        扫描 catalog 全部 session 日期，按日→周→月批量生成。多次 LLM 调用，可能产生费用且耗时较长。
+                      </p>
+                      <label class="settings-field">
+                        <span class="settings-field-label">最多天数</span>
+                        <input type="number" id="backfillMaxDays" min="1" max="2000" value="400" />
+                      </label>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">跳过已有成功 digest</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input type="checkbox" id="backfillSkipExisting" role="switch" checked />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title">跳过 embedding</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input type="checkbox" id="backfillSkipEmbedding" role="switch" checked />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-action-row">
+                        <button type="button" id="btnBackfillPreview" class="tool-btn">预览范围</button>
+                        <button type="button" id="btnBackfillRun" class="tool-btn">开始回填</button>
+                      </div>
+                      <p class="status" id="backfillStatus"></p>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <div id="settingsPaneStorage" class="settings-pane" hidden>
+                <div class="settings-pane-body">
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">应用数据</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-footnote">
+                        <code>catalog.db</code>、<code>acp/</code>、<code>notes/</code> 均存放在 Panel home 下。
+                      </p>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Panel home</span>
+                        <input name="panelHome" type="text" placeholder="~/.agent-resume-panel" />
+                      </label>
+                      <p class="settings-footnote">打开操作使用已保存的路径；修改后会自动保存。</p>
+                      <div class="settings-path-row">
+                        <button type="button" id="btnSettingsOpenPanelHome" class="tool-btn">在 Finder 中显示</button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title">笔记</h3>
+                    <div class="settings-group-body">
+                      <p class="settings-footnote">笔记以 Markdown 文件存储，可用 Finder / Obsidian 直接编辑。</p>
+                      <div class="settings-path-row">
+                        <code id="settingsNotesRootPath" class="settings-path-display"></code>
+                        <button type="button" id="btnSettingsOpenNotesFolder" class="tool-btn">在 Finder 中显示</button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section id="settingsAgentHomesDisclosure" class="settings-group settings-disclosure collapsed">
+                    <button type="button" class="settings-disclosure-head" aria-expanded="false">
+                      <span class="settings-disclosure-chevron" aria-hidden="true"></span>
+                      <span class="settings-disclosure-title">Agent 数据目录（高级）</span>
+                    </button>
+                    <div class="settings-disclosure-body">
+                      <label class="settings-field">
+                        <span class="settings-field-label">Codex home</span>
+                        <input name="codexHome" type="text" placeholder="~/.codex" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Claude home</span>
+                        <input name="claudeHome" type="text" placeholder="~/.claude" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Antigravity home</span>
+                        <input name="antigravityHome" type="text" placeholder="~/.gemini" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Grok home</span>
+                        <input name="grokHome" type="text" placeholder="~/.grok" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Alma data directory</span>
+                        <input name="almaDataDir" type="text" placeholder="~/Library/Application Support/alma" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">OpenCode home</span>
+                        <input name="opencodeHome" type="text" placeholder="~/.local/share/opencode" />
+                      </label>
+                      <label class="settings-field">
+                        <span class="settings-field-label">Pi home</span>
+                        <input name="piHome" type="text" placeholder="~/.pi/agent" />
+                      </label>
+                    </div>
+                  </section>
+                </div>
               </div>
             </form>
 
-            <div id="settingsPaneUsage" class="settings-pane" hidden>
-              <div class="form-row">
-                <label>
-                  范围
-                  <select id="usageDays">
-                    <option value="7">近 7 天</option>
-                    <option value="30" selected>近 30 天</option>
-                    <option value="90">近 90 天</option>
-                  </select>
-                </label>
-                <button type="button" class="ghost-btn" id="btnUsageRefresh">刷新</button>
+            <div id="settingsPaneUsage" class="settings-pane settings-pane-usage" hidden>
+              <div class="settings-pane-body">
+                <div class="settings-usage-toolbar">
+                  <label class="settings-inline-label">
+                    范围
+                    <select id="usageDays">
+                      <option value="7">近 7 天</option>
+                      <option value="30" selected>近 30 天</option>
+                      <option value="90">近 90 天</option>
+                    </select>
+                  </label>
+                  <button type="button" class="ghost-btn" id="btnUsageRefresh">刷新</button>
+                </div>
+                <div id="usageSummaryCards" class="usage-cards"></div>
+                <h3 class="section-h">按日</h3>
+                <div class="table-wrap compact">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>日期</th>
+                        <th>Tokens</th>
+                        <th>调用</th>
+                        <th>定时 runs</th>
+                      </tr>
+                    </thead>
+                    <tbody id="usageByDayBody"></tbody>
+                  </table>
+                </div>
+                <h3 class="section-h">定时执行日志</h3>
+                <div class="table-wrap compact">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>时间</th>
+                        <th>Level</th>
+                        <th>Period</th>
+                        <th>Status</th>
+                        <th>Tokens</th>
+                        <th>Error</th>
+                      </tr>
+                    </thead>
+                    <tbody id="scheduleRunsBody"></tbody>
+                  </table>
+                </div>
+                <h3 class="section-h">LLM 调用明细</h3>
+                <div class="table-wrap compact">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>时间</th>
+                        <th>Kind</th>
+                        <th>Source</th>
+                        <th>Model</th>
+                        <th>Tokens</th>
+                        <th>ms</th>
+                      </tr>
+                    </thead>
+                    <tbody id="usageEventsBody"></tbody>
+                  </table>
+                </div>
+                <p class="status" id="usageStatus"></p>
               </div>
-              <div id="usageSummaryCards" class="usage-cards"></div>
-              <h3 class="section-h">按日</h3>
-              <div class="table-wrap compact">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>日期</th>
-                      <th>Tokens</th>
-                      <th>调用</th>
-                      <th>定时 runs</th>
-                    </tr>
-                  </thead>
-                  <tbody id="usageByDayBody"></tbody>
-                </table>
-              </div>
-              <h3 class="section-h">定时执行日志</h3>
-              <div class="table-wrap compact">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>Level</th>
-                      <th>Period</th>
-                      <th>Status</th>
-                      <th>Tokens</th>
-                      <th>Error</th>
-                    </tr>
-                  </thead>
-                  <tbody id="scheduleRunsBody"></tbody>
-                </table>
-              </div>
-              <h3 class="section-h">LLM 调用明细</h3>
-              <div class="table-wrap compact">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>Kind</th>
-                      <th>Source</th>
-                      <th>Model</th>
-                      <th>Tokens</th>
-                      <th>ms</th>
-                    </tr>
-                  </thead>
-                  <tbody id="usageEventsBody"></tbody>
-                </table>
-              </div>
-              <p class="status" id="usageStatus"></p>
-            </div>
-
-            <div id="settingsSaveBar" class="settings-save-bar">
-              <button type="button" id="btnSaveSettings">保存</button>
-              <p class="status" id="settingsStatus"></p>
             </div>
           </div>
         </div>

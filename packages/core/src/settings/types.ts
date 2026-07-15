@@ -42,10 +42,14 @@ export interface DesktopSettings {
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
+export type WorkbenchCmdTAction = "newSession" | "newTerminal";
+
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/scratch */
   scratchDir?: string;
   defaultNewSessionProvider?: AgentProvider;
+  /** Workbench ⌘T / Ctrl+T shortcut action. Default newTerminal. */
+  cmdTAction?: WorkbenchCmdTAction;
   /** Editor used by the workbench project context menu. Default auto. */
   projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;

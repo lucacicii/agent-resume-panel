@@ -134,6 +134,11 @@ let activePrimaryTab = "memory";
 
 function switchTab(name) {
   if (!name || name === activePrimaryTab) return;
+  const prevTab = activePrimaryTab;
+  if (activePrimaryTab === "settings" && name !== "settings") {
+    if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
+    void flushSettingsSave();
+  }
   activePrimaryTab = name;
 
   if (name !== "ask") {
@@ -152,6 +157,9 @@ function switchTab(name) {
   }
   if (name === "workbench") {
     void ensureWorkbenchVisible();
+  }
+  if (name === "workbench" || prevTab === "workbench") {
+    renderWorkbenchTerminalTabs();
   }
   if (name === "notes") {
     void ensureNotesVisible();
@@ -901,15 +909,55 @@ function visibleWorkbenchSessions() {
 }
 
 function updateWorkbenchToolbarState() {
-  const removeBtn = $("btnWorkbenchRemove");
-  if (removeBtn) removeBtn.disabled = !wbActiveKey;
-  const newSessionBtn = $("btnWorkbenchNewSession");
-  const newTerminalBtn = $("btnWorkbenchNewTerminal");
-  const title = wbSelectedProject.kind === "project"
-    ? `当前项目：${projectDisplayTitle(wbSelectedProject.projectPath)}`
-    : "选择项目后创建";
-  if (newSessionBtn) newSessionBtn.title = wbSelectedProject.kind === "project" ? `新建 Session · ${projectDisplayTitle(wbSelectedProject.projectPath)}` : "新建 Session";
-  if (newTerminalBtn) newTerminalBtn.title = wbSelectedProject.kind === "project" ? `新建 Terminal · ${projectDisplayTitle(wbSelectedProject.projectPath)}` : title;
+  const newSessionBtn = $("btnWorkbenchTabNewSession");
+  const newTerminalBtn = $("btnWorkbenchTabNewTerminal");
+  const projectTitle =
+    wbSelectedProject.kind === "project" ? projectDisplayTitle(wbSelectedProject.projectPath) : "";
+  if (newSessionBtn) {
+    newSessionBtn.title =
+      wbSelectedProject.kind === "project" ? `新建 Session · ${projectTitle}` : "新建 Session";
+  }
+  if (newTerminalBtn) {
+    newTerminalBtn.title =
+      wbSelectedProject.kind === "project" ? `新建 Terminal · ${projectTitle}` : "新建 Terminal";
+  }
+}
+
+function shouldIgnoreWorkbenchShortcut(target) {
+  if (!target || !(target instanceof Element)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.closest(".cm-editor") || target.closest(".xterm")) return true;
+  return Boolean(target.closest("[contenteditable='true']"));
+}
+
+/** ⌘T 在终端聚焦时也应生效，仅跳过文本输入控件。 */
+function shouldIgnoreWorkbenchCmdT(target) {
+  if (!target || !(target instanceof Element)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.closest(".cm-editor")) return true;
+  return Boolean(target.closest("[contenteditable='true']"));
+}
+
+function defaultWorkbenchCmdTAction(settings = loadedSettings) {
+  const action = settings?.workbench?.cmdTAction;
+  return action === "newSession" ? "newSession" : "newTerminal";
+}
+
+function handleWorkbenchCmdT(event) {
+  if (activePrimaryTab !== "workbench") return;
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+  const key = event.key?.toLowerCase();
+  if (key !== "t" && event.code !== "KeyT") return;
+  if (shouldIgnoreWorkbenchCmdT(event.target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (defaultWorkbenchCmdTAction() === "newSession") {
+    void handleWorkbenchNewSessionClick();
+  } else {
+    void openBlankWorkbenchTerminal();
+  }
 }
 
 function updateWorkbenchDetailHeader() {
@@ -1327,17 +1375,33 @@ function syncWorkbenchTerminalVisibility() {
 
 function renderWorkbenchTerminalTabs() {
   const tabsEl = $("wbTerminalTabs");
-  if (!tabsEl) return;
+  const listEl = $("wbTerminalTabsList");
+  if (!tabsEl || !listEl) return;
+  const onWorkbench = document.getElementById("tab-workbench")?.classList.contains("active");
+  const internalTerminal = !isWorkbenchExternalTerminalMode();
+  const hasProject = wbSelectedProject.kind === "project";
+
+  tabsEl.hidden = !onWorkbench;
+  if (!onWorkbench) return;
+
+  listEl.hidden = !internalTerminal;
+  listEl.innerHTML = "";
+  const newTerminalBtn = $("btnWorkbenchTabNewTerminal");
+  if (newTerminalBtn) newTerminalBtn.hidden = !internalTerminal;
+
+  if (!hasProject || !internalTerminal) return;
+
   const detail = getWorkbenchProjectDetail();
   const terminalPanes = detail?.terminalPanes || new Map();
-  tabsEl.hidden = terminalPanes.size === 0;
-  tabsEl.innerHTML = "";
 
   for (const [key, pane] of terminalPanes) {
     const tab = document.createElement("div");
     tab.className = "wb-terminal-tab";
     tab.dataset.key = key;
-    if (key === detail?.activeTerminalKey) tab.classList.add("active");
+    tab.setAttribute("role", "tab");
+    const isActive = key === detail?.activeTerminalKey;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
 
     const label = document.createElement("button");
     label.type = "button";
@@ -1358,7 +1422,7 @@ function renderWorkbenchTerminalTabs() {
 
     tab.appendChild(label);
     tab.appendChild(closeBtn);
-    tabsEl.appendChild(tab);
+    listEl.appendChild(tab);
   }
 }
 
@@ -1846,7 +1910,8 @@ function shouldKeepWorkbenchSelection(target) {
   return Boolean(
     target.closest(".wb-list-item") ||
       target.closest("#wbTerminalShell") ||
-      target.closest(".wb-list-toolbar") ||
+      target.closest(".wb-terminal-tabs-actions") ||
+      target.closest(".wb-list-meta-row") ||
       target.closest("#wbTargetPopover") ||
       target.closest("#wbContextMenu") ||
       target.closest("#wbRenameDialog")
@@ -1887,8 +1952,9 @@ async function launchWorkbenchNewSession(cwd, provider) {
 
 function setWorkbenchCreateBusy(busy) {
   wbCreateBusy = busy;
-  const btn = $("btnWorkbenchNewSession");
-  if (btn) btn.classList.toggle("is-busy", busy);
+  for (const id of ["btnWorkbenchTabNewSession", "btnWorkbenchTabNewTerminal"]) {
+    $(id)?.classList.toggle("is-busy", busy);
+  }
   updateWorkbenchToolbarState();
 }
 
@@ -5289,7 +5355,7 @@ function isLlmConfigured(settings) {
 function openLlmSettings() {
   closeAllSheets();
   switchTab("settings");
-  showSettingsPane("provider");
+  showSettingsPane("models");
 }
 
 function showLlmRequiredDetail(digestLabel) {
@@ -5299,7 +5365,7 @@ function showLlmRequiredDetail(digestLabel) {
     <div class="detail-error">
       <p class="empty-hint error">无法生成${escapeHtml(digestLabel)}：尚未配置工具 LLM</p>
       <p class="muted">日历中的 session 来自本地索引；生成日报 / 周报 / 月报需要调用工具 LLM API（会先补全缺失的日报，再聚合为周报 / 月报）。</p>
-      <p class="muted">请在 <strong>Settings → Provider</strong> 填写 Base URL、Model、API Key，保存后重试。</p>
+      <p class="muted">请在 <strong>设置 → 模型</strong> 填写 Base URL、Model、API Key，会自动保存，保存后重试。</p>
       <button type="button" class="tool-btn" id="btnLlmSettings">去 Settings 配置</button>
     </div>`;
   $("btnLlmSettings")?.addEventListener("click", openLlmSettings);
@@ -5313,7 +5379,7 @@ async function ensureLlmReady(digestLabel) {
   } catch {
     // fall through to error UI
   }
-  const msg = `无法生成${digestLabel}：请先在 Settings → Provider 配置工具 LLM（baseUrl / model / apiKey）`;
+  const msg = `无法生成${digestLabel}：请先在设置 → 模型配置工具 LLM（baseUrl / model / apiKey）`;
   setGenFinal(msg, "error");
   showLlmRequiredDetail(digestLabel);
   return false;
@@ -6165,7 +6231,58 @@ function updateSettingsNotesRootDisplay() {
   if (el) el.textContent = `${resolvePanelHomeForDisplay(panelHome)}/notes`;
 }
 
+let settingsHydrating = false;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let settingsAutoSaveTimer = null;
+let settingsSaveInFlight = false;
+let settingsSaveQueued = false;
+
+function scheduleSettingsAutoSave({ immediate = false } = {}) {
+  if (settingsHydrating) return;
+  if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
+  const delay = immediate ? 0 : 450;
+  settingsAutoSaveTimer = setTimeout(() => {
+    settingsAutoSaveTimer = null;
+    void flushSettingsSave();
+  }, delay);
+}
+
+async function flushSettingsSave() {
+  if (settingsSaveInFlight) {
+    settingsSaveQueued = true;
+    return;
+  }
+  settingsSaveInFlight = true;
+  try {
+    await saveSettingsForm();
+  } finally {
+    settingsSaveInFlight = false;
+    if (settingsSaveQueued) {
+      settingsSaveQueued = false;
+      void flushSettingsSave();
+    }
+  }
+}
+
+function wireSettingsAutoSave() {
+  const form = $("settingsForm");
+  if (!form || form.dataset.autoSaveWired) return;
+  form.dataset.autoSaveWired = "1";
+  form.addEventListener("input", (e) => {
+    if (settingsHydrating) return;
+    if (e.target?.name) scheduleSettingsAutoSave();
+  });
+  form.addEventListener("change", (e) => {
+    if (settingsHydrating) return;
+    const t = e.target;
+    if (t?.name || t?.matches?.(".settings-toggle input[role='switch']")) {
+      scheduleSettingsAutoSave({ immediate: true });
+    }
+  });
+}
+
 async function loadSettingsForm() {
+  settingsHydrating = true;
   const s = await agentResume.getSettings();
   loadedSettings = s;
   const form = $("settingsForm");
@@ -6225,22 +6342,34 @@ async function loadSettingsForm() {
     form.workbenchExternalLaunchMode.value =
       s.workbench?.externalLaunchMode || s.ghosttyLaunchMode || "executeCommand";
   }
+  if (form.workbenchCmdTAction) {
+    form.workbenchCmdTAction.value =
+      s.workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal";
+  }
   if (form.desktopTheme) {
     form.desktopTheme.value = s.desktop?.theme || "system";
   }
   updateSettingsNotesRootDisplay();
+  updateWorkbenchExternalLaunchVisibility();
+  updateMemoryScheduleVisibility();
+  syncSettingsToggleAria();
+  settingsHydrating = false;
 }
 
 async function saveSettingsForm() {
   const form = $("settingsForm");
   const status = $("settingsStatus");
-  const enabling = form.memoryEnabled.checked;
+  if (!form) return;
+  const wasMemoryEnabled = Boolean(loadedSettings?.memory?.enabled);
+  const enabling = form.memoryEnabled.checked && !wasMemoryEnabled;
   if (enabling) {
     const ok = window.confirm(
       "启用定时分析后，Desktop 将在设定时刻读取 session 数据并调用工具 LLM / embedding API，可能产生费用。是否继续？"
     );
     if (!ok) {
       form.memoryEnabled.checked = false;
+      updateMemoryScheduleVisibility();
+      syncSettingsToggleAria();
       return;
     }
   }
@@ -6313,21 +6442,24 @@ async function saveSettingsForm() {
       projectEditor: form.workbenchProjectEditor?.value || "auto",
       terminalMode:
         form.workbenchTerminalMode?.value === "external-system" ? "external-system" : "xterm",
-      externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand"
+      externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand",
+      cmdTAction:
+        form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal"
     },
     desktop: {
       ...(loadedSettings?.desktop || {}),
       theme: form.desktopTheme?.value || "system"
     }
   };
+  setStatus(status, "保存中…");
   try {
     const result = await agentResume.saveSettings(settings);
     loadedSettings = result.settings;
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
     await refreshSessionViews({ quiet: true });
-    const sched = result.schedulerEnabled ? " · scheduler ON" : " · scheduler OFF";
-    setStatus(status, `Saved · ${result.file}${sched}`, "ok");
+    const sched = result.schedulerEnabled ? " · 定时 ON" : " · 定时 OFF";
+    setStatus(status, `已保存${sched}`, "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
   }
@@ -7949,16 +8081,14 @@ function wire() {
   $("btnOpenSettings").addEventListener("click", () => {
     closeAllSheets();
     switchTab("settings");
-    showSettingsPane("provider");
+    showSettingsPane("general");
   });
-  $("btnSettingsBack").addEventListener("click", () => switchTab("memory"));
+  $("btnSettingsBack").addEventListener("click", () => {
+    if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
+    void flushSettingsSave().finally(() => switchTab("memory"));
+  });
   document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      showSettingsPane(btn.dataset.settingsPane);
-      if (btn.dataset.settingsPane === "usage") {
-        loadUsagePage();
-      }
-    });
+    btn.addEventListener("click", () => showSettingsPane(btn.dataset.settingsPane));
   });
   $("btnUsageRefresh")?.addEventListener("click", () => loadUsagePage());
   $("usageDays")?.addEventListener("change", () => loadUsagePage());
@@ -7986,9 +8116,20 @@ function wire() {
   $("calMonthSelect")?.addEventListener("change", () => applyCalPicker());
   $("btnCalMonthDigest")?.addEventListener("click", () => onMonthButton());
   $("btnCalDetailBack")?.addEventListener("click", () => returnToCalDigestDetail());
-  $("btnSaveSettings").addEventListener("click", () => saveSettingsForm());
+  wireSettingsAutoSave();
   $("settingsForm")?.panelHome?.addEventListener("input", () => updateSettingsNotesRootDisplay());
   $("settingsForm")?.desktopTheme?.addEventListener("change", () => applyDesktopTheme(getDesktopThemePref()));
+  $("settingsForm")?.workbenchTerminalMode?.addEventListener("change", () => updateWorkbenchExternalLaunchVisibility());
+  $("settingsForm")?.memoryEnabled?.addEventListener("change", () => {
+    updateMemoryScheduleVisibility();
+    syncSettingsToggleAria();
+  });
+  $("settingsForm")?.addEventListener("change", (e) => {
+    if (e.target?.matches?.(".settings-toggle input[role='switch']")) {
+      syncSettingsToggleAria();
+    }
+  });
+  wireSettingsDisclosure();
   wireSystemThemeListener();
   $("btnSettingsOpenNotesFolder")?.addEventListener("click", () => void agentResume.notesOpenFolder());
   $("btnSettingsOpenPanelHome")?.addEventListener("click", () => void agentResume.settingsOpenPanelHome());
@@ -8084,7 +8225,7 @@ function wire() {
     }
   });
 
-  $("btnWorkbenchNewSession")?.addEventListener("click", (e) => {
+  $("btnWorkbenchTabNewSession")?.addEventListener("click", (e) => {
     e.stopPropagation();
     void handleWorkbenchNewSessionClick();
   });
@@ -8092,12 +8233,12 @@ function wire() {
     wbTargetPopoverSearch = e.target.value ?? "";
     renderWorkbenchTargetList();
   });
-  $("btnWorkbenchNewTerminal")?.addEventListener("click", (e) => {
+  $("btnWorkbenchTabNewTerminal")?.addEventListener("click", (e) => {
     e.stopPropagation();
     void openBlankWorkbenchTerminal();
   });
   $("btnWorkbenchRefresh")?.addEventListener("click", () => void loadWorkbenchSessions());
-  $("btnWorkbenchRemove")?.addEventListener("click", () => void removeActiveWorkbenchSession());
+  document.addEventListener("keydown", handleWorkbenchCmdT, true);
   updateWorkbenchToolbarState();
   $("wbSearch")?.addEventListener("input", (e) => {
     wbSearch = e.target.value ?? "";
@@ -8298,7 +8439,8 @@ function wire() {
   document.addEventListener("click", (e) => {
     if (
       !e.target.closest("#wbTargetPopover") &&
-      !e.target.closest("#btnWorkbenchNewSession")
+      !e.target.closest("#btnWorkbenchTabNewSession") &&
+      !e.target.closest("#btnWorkbenchTabNewTerminal")
     ) {
       hideWorkbenchTargetPopover();
     }
@@ -8320,22 +8462,70 @@ function wire() {
   });
 }
 
-function showSettingsPane(name) {
-  const provider = $("settingsPaneProvider");
-  const data = $("settingsPaneData");
-  const general = $("settingsPaneGeneral");
-  const usage = $("settingsPaneUsage");
-  const form = $("settingsForm");
-  const saveBar = $("settingsSaveBar");
-  if (provider) provider.hidden = name !== "provider";
-  if (data) data.hidden = name !== "data";
-  if (general) general.hidden = name !== "general";
-  if (usage) usage.hidden = name !== "usage";
-  if (form) form.hidden = name === "usage";
-  if (saveBar) saveBar.hidden = name === "usage";
-  document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.settingsPane === name);
+const SETTINGS_PANE_META = {
+  general: { title: "通用", desc: "外观与日常偏好" },
+  models: { title: "模型", desc: "配置工具 LLM、对话与 Embedding" },
+  sessions: { title: "Sessions", desc: "同步策略与会话列表可见性" },
+  workbench: { title: "工作台", desc: "新建 Session、编辑器与终端" },
+  memory: { title: "Memory", desc: "定时 digests 与历史回填" },
+  storage: { title: "数据", desc: "Panel home、笔记与 Agent 数据目录" },
+  usage: { title: "用量", desc: "LLM 调用与定时任务统计" }
+};
+
+function syncSettingsToggleAria() {
+  document.querySelectorAll(".settings-toggle input[role='switch']").forEach((input) => {
+    input.setAttribute("aria-checked", input.checked ? "true" : "false");
   });
+}
+
+function updateWorkbenchExternalLaunchVisibility() {
+  const form = $("settingsForm");
+  const row = $("settingsExternalLaunchRow");
+  if (!form || !row) return;
+  const external = form.workbenchTerminalMode?.value === "external-system";
+  row.hidden = !external;
+}
+
+function updateMemoryScheduleVisibility() {
+  const form = $("settingsForm");
+  const fields = $("settingsMemoryScheduleFields");
+  if (!form || !fields) return;
+  fields.hidden = !form.memoryEnabled?.checked;
+}
+
+function wireSettingsDisclosure() {
+  const disclosure = $("settingsAgentHomesDisclosure");
+  const head = disclosure?.querySelector(".settings-disclosure-head");
+  if (!disclosure || !head || head.dataset.wired) return;
+  head.dataset.wired = "1";
+  head.addEventListener("click", () => {
+    const collapsed = disclosure.classList.toggle("collapsed");
+    head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  });
+}
+
+function showSettingsPane(name) {
+  const paneIds = ["general", "models", "sessions", "workbench", "memory", "storage", "usage"];
+  const resolved = paneIds.includes(name) ? name : "general";
+  for (const id of paneIds) {
+    const pane = $(`settingsPane${id.charAt(0).toUpperCase()}${id.slice(1)}`);
+    if (pane) pane.hidden = id !== resolved;
+  }
+  const form = $("settingsForm");
+  const saveStatus = $("settingsStatus");
+  const headerActions = $("settingsContentHeader")?.querySelector(".settings-header-actions");
+  const isUsage = resolved === "usage";
+  if (form) form.hidden = isUsage;
+  if (headerActions) headerActions.hidden = isUsage;
+  const meta = SETTINGS_PANE_META[resolved];
+  const titleEl = $("settingsPaneTitle");
+  const descEl = $("settingsPaneDesc");
+  if (titleEl && meta) titleEl.textContent = meta.title;
+  if (descEl && meta) descEl.textContent = meta.desc;
+  document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.settingsPane === resolved);
+  });
+  if (isUsage) loadUsagePage();
 }
 
 function fmtNum(n) {
