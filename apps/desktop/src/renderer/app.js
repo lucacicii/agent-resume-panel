@@ -172,8 +172,7 @@ function switchTab(name) {
   if (!name || name === activePrimaryTab) return;
   const prevTab = activePrimaryTab;
   if (activePrimaryTab === "settings" && name !== "settings") {
-    if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
-    void flushSettingsSave();
+    void flushAllPendingSectionSaves();
   }
   activePrimaryTab = name;
 
@@ -6376,36 +6375,107 @@ function updateSettingsNotesRootDisplay() {
 }
 
 let settingsHydrating = false;
-/** @type {ReturnType<typeof setTimeout> | null} */
-let settingsAutoSaveTimer = null;
+/** @type {Record<string, ReturnType<typeof setTimeout> | null>} */
+const settingsSectionTimers = {};
 let settingsSaveInFlight = false;
-let settingsSaveQueued = false;
+/** @type {Set<string>} */
+const settingsSaveQueued = new Set();
 
-function scheduleSettingsAutoSave({ immediate = false } = {}) {
-  if (settingsHydrating) return;
-  if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
+const SETTINGS_SECTIONS = ["general", "models", "sessions", "workbench", "report", "storage"];
+
+const SETTINGS_FIELD_SECTION = {
+  desktopTheme: "general",
+  uiLanguage: "general",
+  llmBaseUrl: "models",
+  llmModel: "models",
+  llmApiKey: "models",
+  llmLang: "models",
+  chatBaseUrl: "models",
+  chatModel: "models",
+  chatApiKey: "models",
+  embBaseUrl: "models",
+  embModel: "models",
+  embApiKey: "models",
+  syncMaxItems: "sessions",
+  syncStalePolicy: "sessions",
+  showArchivedCodex: "sessions",
+  showSubagentCodex: "sessions",
+  showArchivedOpenCode: "sessions",
+  showSubagentGrok: "sessions",
+  hideCronAlma: "sessions",
+  hideChannelAlma: "sessions",
+  showIncognitoAlma: "sessions",
+  workbenchDefaultProvider: "workbench",
+  workbenchScratchDir: "workbench",
+  workbenchProjectEditor: "workbench",
+  workbenchTerminalMode: "workbench",
+  workbenchExternalLaunchMode: "workbench",
+  workbenchCmdTAction: "workbench",
+  memoryEnabled: "report",
+  dailyHour: "report",
+  weeklyHour: "report",
+  monthlyHour: "report",
+  panelHome: "storage",
+  codexHome: "storage",
+  claudeHome: "storage",
+  antigravityHome: "storage",
+  grokHome: "storage",
+  almaDataDir: "storage",
+  opencodeHome: "storage",
+  piHome: "storage"
+};
+
+function resolveSettingsSection(fieldName) {
+  if (!fieldName) return null;
+  return SETTINGS_FIELD_SECTION[fieldName] || null;
+}
+
+function scheduleSectionSave(section, { immediate = false } = {}) {
+  if (settingsHydrating || !section) return;
+  if (settingsSectionTimers[section]) clearTimeout(settingsSectionTimers[section]);
   const delay = immediate ? 0 : 450;
-  settingsAutoSaveTimer = setTimeout(() => {
-    settingsAutoSaveTimer = null;
-    void flushSettingsSave();
+  settingsSectionTimers[section] = setTimeout(() => {
+    settingsSectionTimers[section] = null;
+    void flushSectionSave(section);
   }, delay);
 }
 
-async function flushSettingsSave() {
+async function flushSectionSave(section) {
   if (settingsSaveInFlight) {
-    settingsSaveQueued = true;
+    settingsSaveQueued.add(section);
     return;
   }
   settingsSaveInFlight = true;
   try {
-    await saveSettingsForm();
+    await saveSettingsSection(section);
   } finally {
     settingsSaveInFlight = false;
-    if (settingsSaveQueued) {
-      settingsSaveQueued = false;
-      void flushSettingsSave();
+    if (settingsSaveQueued.size > 0) {
+      const next = settingsSaveQueued.values().next().value;
+      settingsSaveQueued.delete(next);
+      void flushSectionSave(next);
     }
   }
+}
+
+async function flushAllPendingSectionSaves() {
+  const pending = SETTINGS_SECTIONS.filter((s) => settingsSectionTimers[s]);
+  for (const section of pending) {
+    clearTimeout(settingsSectionTimers[section]);
+    settingsSectionTimers[section] = null;
+  }
+  while (settingsSaveInFlight) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  for (const section of pending) {
+    settingsSaveInFlight = true;
+    try {
+      await saveSettingsSection(section);
+    } finally {
+      settingsSaveInFlight = false;
+    }
+  }
+  settingsSaveQueued.clear();
 }
 
 function wireSettingsAutoSave() {
@@ -6414,14 +6484,13 @@ function wireSettingsAutoSave() {
   form.dataset.autoSaveWired = "1";
   form.addEventListener("input", (e) => {
     if (settingsHydrating) return;
-    if (e.target?.name) scheduleSettingsAutoSave();
+    const section = resolveSettingsSection(e.target?.name);
+    if (section) scheduleSectionSave(section);
   });
   form.addEventListener("change", (e) => {
     if (settingsHydrating) return;
-    const t = e.target;
-    if (t?.name || t?.matches?.(".settings-toggle input[role='switch']")) {
-      scheduleSettingsAutoSave({ immediate: true });
-    }
+    const section = resolveSettingsSection(e.target?.name);
+    if (section) scheduleSectionSave(section, { immediate: true });
   });
 }
 
@@ -6527,10 +6596,10 @@ async function loadSettingsForm() {
   form.embBaseUrl.value = s.embedding?.baseUrl || "";
   form.embModel.value = s.embedding?.model || "";
   form.embApiKey.value = s.embedding?.apiKey || "";
-  form.memoryEnabled.checked = Boolean(s.memory?.enabled);
-  form.dailyHour.value = s.memory?.scheduleDailyHour ?? 22;
-  form.weeklyHour.value = s.memory?.scheduleWeeklyHour ?? 9;
-  form.monthlyHour.value = s.memory?.scheduleMonthlyHour ?? 9;
+  form.memoryEnabled.checked = Boolean(s.report?.enabled);
+  form.dailyHour.value = s.report?.scheduleDailyHour ?? 22;
+  form.weeklyHour.value = s.report?.scheduleWeeklyHour ?? 9;
+  form.monthlyHour.value = s.report?.scheduleMonthlyHour ?? 9;
   form.codexHome.value = s.agentHomes?.codexHome || "~/.codex";
   form.claudeHome.value = s.agentHomes?.claudeHome || "~/.claude";
   form.antigravityHome.value = s.agentHomes?.antigravityHome || "~/.gemini";
@@ -6583,32 +6652,24 @@ async function loadSettingsForm() {
   settingsHydrating = false;
 }
 
-async function saveSettingsForm() {
-  const form = $("settingsForm");
-  const status = $("settingsStatus");
-  if (!form) return;
-  const wasMemoryEnabled = Boolean(loadedSettings?.memory?.enabled);
-  const enabling = form.memoryEnabled.checked && !wasMemoryEnabled;
-  if (enabling) {
-const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
-    if (!ok) {
-      form.memoryEnabled.checked = false;
-      updateMemoryScheduleVisibility();
-      syncSettingsToggleAria();
-      return;
+function collectGeneralSettings(form) {
+  return {
+    uiLanguage: form.uiLanguage?.value || "en",
+    desktop: {
+      ...(loadedSettings?.desktop || {}),
+      theme: form.desktopTheme?.value || "system"
     }
-  }
+  };
+}
 
+function collectModelsSettings(form) {
   const llmBaseUrl = form.llmBaseUrl.value.trim();
   const llmModel = form.llmModel.value.trim();
   const llmApiKey = form.llmApiKey.value;
   const chatBaseUrl = form.chatBaseUrl.value.trim();
   const chatModel = form.chatModel.value.trim();
   const chatApiKey = form.chatApiKey.value;
-
-  const settings = {
-    ...(loadedSettings || {}),
-    panelHome: form.panelHome.value.trim() || undefined,
+  return {
     llm: {
       ...(loadedSettings?.llm || {}),
       baseUrl: llmBaseUrl,
@@ -6627,27 +6688,12 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
       baseUrl: form.embBaseUrl.value.trim() || undefined,
       model: form.embModel.value.trim() || "text-embedding-3-small",
       apiKey: form.embApiKey.value || undefined
-    },
-    report: {
-      ...(loadedSettings?.memory || {}),
-      enabled: form.memoryEnabled.checked,
-      includeTranscripts: true,
-      maxSessionsPerDigest: 40,
-      snippetMaxChars: 2500,
-      scheduleDailyHour: Number(form.dailyHour.value) || 22,
-      scheduleWeeklyHour: Number(form.weeklyHour.value) || 9,
-      scheduleMonthlyHour: Number(form.monthlyHour.value) || 9
-    },
-    agentHomes: {
-      ...(loadedSettings?.agentHomes || {}),
-      codexHome: form.codexHome.value.trim() || "~/.codex",
-      claudeHome: form.claudeHome.value.trim() || "~/.claude",
-      antigravityHome: form.antigravityHome.value.trim() || "~/.gemini",
-      grokHome: form.grokHome.value.trim() || "~/.grok",
-      almaDataDir: form.almaDataDir.value.trim() || "~/Library/Application Support/alma",
-      opencodeHome: form.opencodeHome.value.trim() || "~/.local/share/opencode",
-      piHome: form.piHome.value.trim() || "~/.pi/agent"
-    },
+    }
+  };
+}
+
+function collectSessionsSettings(form) {
+  return {
     sessionSync: {
       ...(loadedSettings?.sessionSync || {}),
       maxItems: Math.max(1, Math.min(50000, Number(form.syncMaxItems.value) || 10000)),
@@ -6659,7 +6705,12 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
       hideCronAlma: form.hideCronAlma.checked,
       hideChannelAlma: form.hideChannelAlma.checked,
       showIncognitoAlma: form.showIncognitoAlma.checked
-    },
+    }
+  };
+}
+
+function collectWorkbenchSettings(form) {
+  return {
     workbench: {
       ...(loadedSettings?.workbench || {}),
       scratchDir: form.workbenchScratchDir?.value.trim() || undefined,
@@ -6670,13 +6721,44 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
       externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand",
       cmdTAction:
         form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal"
-    },
-    uiLanguage: form.uiLanguage?.value || "en",
-    desktop: {
-      ...(loadedSettings?.desktop || {}),
-      theme: form.desktopTheme?.value || "system"
     }
   };
+}
+
+function collectReportSettings(form) {
+  return {
+    report: {
+      ...(loadedSettings?.report || {}),
+      enabled: form.memoryEnabled.checked,
+      includeTranscripts: true,
+      maxSessionsPerDigest: 40,
+      snippetMaxChars: 2500,
+      scheduleDailyHour: Number(form.dailyHour.value) || 22,
+      scheduleWeeklyHour: Number(form.weeklyHour.value) || 9,
+      scheduleMonthlyHour: Number(form.monthlyHour.value) || 9
+    }
+  };
+}
+
+function collectStorageSettings(form) {
+  return {
+    panelHome: form.panelHome.value.trim() || undefined,
+    agentHomes: {
+      ...(loadedSettings?.agentHomes || {}),
+      codexHome: form.codexHome.value.trim() || "~/.codex",
+      claudeHome: form.claudeHome.value.trim() || "~/.claude",
+      antigravityHome: form.antigravityHome.value.trim() || "~/.gemini",
+      grokHome: form.grokHome.value.trim() || "~/.grok",
+      almaDataDir: form.almaDataDir.value.trim() || "~/Library/Application Support/alma",
+      opencodeHome: form.opencodeHome.value.trim() || "~/.local/share/opencode",
+      piHome: form.piHome.value.trim() || "~/.pi/agent"
+    }
+  };
+}
+
+async function persistSettings(patch, { refreshSessions = true } = {}) {
+  const status = $("settingsStatus");
+  const settings = { ...(loadedSettings || {}), ...patch };
   setStatus(status, t("desktop.settings.saving"));
   const localeBeforeSave = getUiLocale();
   const uiLanguageBeforeSave = loadedSettings?.uiLanguage || "en";
@@ -6686,7 +6768,9 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
     loadedSettings = result.settings;
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
-    await refreshSessionViews({ quiet: true });
+    if (refreshSessions) {
+      await refreshSessionViews({ quiet: true });
+    }
     const savedUiLanguage = result.settings?.uiLanguage || "en";
     if (savedUiLanguage !== uiLanguageBeforeSave || savedUiLanguage !== uiLanguagePending) {
       populateUiLanguageSelect(savedUiLanguage);
@@ -6702,6 +6786,50 @@ const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
     setStatus(status, t("desktop.settings.saved", sched) + localeNote, "ok");
   } catch (error) {
     setStatus(status, error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+async function saveReportSection() {
+  const form = $("settingsForm");
+  if (!form) return;
+  const wasEnabled = Boolean(loadedSettings?.report?.enabled);
+  const patch = collectReportSettings(form);
+  if (patch.report.enabled && !wasEnabled) {
+    const ok = window.confirm(t("desktop.settings.memoryEnableConfirm"));
+    if (!ok) {
+      form.memoryEnabled.checked = false;
+      updateMemoryScheduleVisibility();
+      syncSettingsToggleAria();
+      return;
+    }
+  }
+  await persistSettings(patch, { refreshSessions: false });
+}
+
+async function saveSettingsSection(section) {
+  const form = $("settingsForm");
+  if (!form) return;
+  switch (section) {
+    case "general":
+      await persistSettings(collectGeneralSettings(form), { refreshSessions: false });
+      break;
+    case "models":
+      await persistSettings(collectModelsSettings(form), { refreshSessions: false });
+      break;
+    case "sessions":
+      await persistSettings(collectSessionsSettings(form));
+      break;
+    case "workbench":
+      await persistSettings(collectWorkbenchSettings(form), { refreshSessions: false });
+      break;
+    case "report":
+      await saveReportSection();
+      break;
+    case "storage":
+      await persistSettings(collectStorageSettings(form));
+      break;
+    default:
+      break;
   }
 }
 
@@ -8340,8 +8468,7 @@ function wire() {
     showSettingsPane("general");
   });
   $("btnSettingsBack").addEventListener("click", () => {
-    if (settingsAutoSaveTimer) clearTimeout(settingsAutoSaveTimer);
-    void flushSettingsSave().finally(() => switchTab("report"));
+    void flushAllPendingSectionSaves().finally(() => switchTab("report"));
   });
   $("btnOpenDesktopDoc")?.addEventListener("click", () => {
     void agentResume.openExternalUrl(DESKTOP_DOC_README);

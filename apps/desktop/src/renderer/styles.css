@@ -101,6 +101,10 @@ html:not(.i18n-ready) body {
   --agent-pi: #e07a3a;
   --agent-chat: var(--accent);
 
+  /* Workbench terminal (matches xterm theme) */
+  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.85);
+
   font-family: var(--font-family-system);
 }
 
@@ -129,6 +133,8 @@ html:not(.i18n-ready) body {
   --chat-bubble-assistant: var(--color-control-bg);
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 0.5px var(--color-separator);
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.09), 0 0 0 0.5px var(--color-separator);
+  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.85);
 }
 
 [data-theme="dark"] {
@@ -156,6 +162,8 @@ html:not(.i18n-ready) body {
   --chat-bubble-assistant: var(--color-control-bg);
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--color-separator);
+  --wb-terminal-surface: #1e1e1e;
+  --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.85);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -184,6 +192,8 @@ html:not(.i18n-ready) body {
     --chat-bubble-assistant: var(--color-control-bg);
     --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--color-separator);
+    --wb-terminal-surface: #1e1e1e;
+    --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.85);
   }
 }
 
@@ -3910,7 +3920,6 @@ code {
   flex-direction: column;
   min-height: 0;
   position: relative;
-  --wb-terminal-surface: #0d1117;
 }
 
 /* Finder-style tab strip: flat segments, no top rounding, + on the right */
@@ -4074,19 +4083,20 @@ code {
   display: block;
 }
 
-.wb-terminal-tab:hover .wb-terminal-tab-label,
-.wb-terminal-tab.active .wb-terminal-tab-label {
+.wb-terminal-tab:hover .wb-terminal-tab-label {
   color: var(--color-label-primary);
   background: transparent;
+}
+
+.wb-terminal-tab.active .wb-terminal-tab-label {
+  color: var(--wb-terminal-tab-active-label);
+  background: transparent;
+  font-weight: var(--font-weight-regular);
 }
 
 .wb-terminal-tab-label:hover,
 .wb-terminal-tab-label:focus-visible {
   background: transparent;
-}
-
-.wb-terminal-tab.active .wb-terminal-tab-label {
-  font-weight: var(--font-weight-regular);
 }
 
 .wb-terminal-tab-close {
@@ -4116,10 +4126,19 @@ code {
   opacity: 1;
 }
 
+.wb-terminal-tab.active .wb-terminal-tab-close {
+  color: var(--wb-terminal-tab-active-label);
+}
+
 .wb-terminal-tab-close:hover,
 .wb-terminal-tab-close:focus-visible {
   background: transparent;
   color: var(--color-label-primary);
+}
+
+.wb-terminal-tab.active .wb-terminal-tab-close:hover,
+.wb-terminal-tab.active .wb-terminal-tab-close:focus-visible {
+  color: var(--wb-terminal-tab-active-label);
 }
 
 .wb-terminal-stack {
@@ -4144,7 +4163,6 @@ code {
 .wb-terminal-host {
   flex: 1;
   min-height: 0;
-  padding: 6px;
   background: var(--wb-terminal-surface, #0d1117);
 }
 
