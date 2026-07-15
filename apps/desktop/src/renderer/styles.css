@@ -3850,8 +3850,9 @@ code {
   display: flex;
   align-items: stretch;
   gap: 0;
-  min-width: 100px;
-  max-width: 220px;
+  min-width: 0;
+  width: max-content;
+  max-width: 200px;
   height: 100%;
   border-radius: 0;
   background: color-mix(in srgb, var(--color-tertiary-bg) 55%, var(--color-window-bg));
@@ -3876,20 +3877,19 @@ code {
 .wb-terminal-tab-label {
   appearance: none;
   color: var(--color-label-secondary);
-  padding: 0 4px;
-  height: auto;
+  padding: 0 10px;
+  height: 100%;
   align-self: stretch;
   cursor: pointer;
   font-size: var(--font-size-body);
+  line-height: 30px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
   min-width: 0;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  text-align: left;
+  display: block;
 }
 
 .wb-terminal-tab:hover .wb-terminal-tab-label,
