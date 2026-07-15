@@ -1194,6 +1194,26 @@
       <button type="button" data-chat-action="resend" data-i18n="desktop.common.resend">Resend</button>
     </div>
 
+    <div class="app-startup-mask" id="appStartupMask" hidden>
+      <div class="app-startup-backdrop"></div>
+      <div class="app-startup-panel" role="status" aria-live="polite">
+        <div class="app-startup-icon" aria-hidden="true">
+          <img
+            class="app-startup-icon-img"
+            src="../resources/icon.png"
+            alt=""
+            width="72"
+            height="72"
+            decoding="async"
+          />
+        </div>
+        <div class="app-startup-status">
+          <span class="gen-progress-pulse" aria-hidden="true"></span>
+          <p class="app-startup-message" data-i18n="desktop.workbench.syncingSessions">Syncing agent sessions…</p>
+        </div>
+      </div>
+    </div>
+
     <div class="wb-note-created-overlay" id="wbRenameDialog" hidden>
       <div class="wb-note-created-backdrop" data-wb-rename-cancel></div>
       <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbRenameTitle">

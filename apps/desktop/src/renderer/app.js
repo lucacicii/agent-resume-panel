@@ -18,6 +18,36 @@ function setStatus(el, text, kind) {
   }
 }
 
+const APP_STARTUP_MASK_FADE_MS = 320;
+
+function showAppStartupMask() {
+  const el = $("appStartupMask");
+  if (!el) return;
+  el.classList.remove("is-hiding");
+  el.hidden = false;
+}
+
+function hideAppStartupMask() {
+  const el = $("appStartupMask");
+  if (!el || el.hidden) return Promise.resolve();
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (prefersReducedMotion) {
+    el.hidden = true;
+    el.classList.remove("is-hiding");
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      el.classList.add("is-hiding");
+      window.setTimeout(() => {
+        el.hidden = true;
+        el.classList.remove("is-hiding");
+        resolve();
+      }, APP_STARTUP_MASK_FADE_MS);
+    });
+  });
+}
+
 function formatTime(ms) {
   try {
     return new Date(ms).toLocaleString(getUiLocale());
@@ -8909,25 +8939,30 @@ async function registerRefreshLocalizedUiImpl() {
 
 async function boot() {
   await initI18n();
-  if (typeof populateCalMonthOptions === "function") populateCalMonthOptions();
-  await registerRefreshLocalizedUiImpl();
-  if (typeof agentResume.onLocaleChanged === "function") {
-    agentResume.onLocaleChanged((bundle) => {
-      void refreshLocalizedUi(bundle);
-    });
+  showAppStartupMask();
+  try {
+    if (typeof populateCalMonthOptions === "function") populateCalMonthOptions();
+    await registerRefreshLocalizedUiImpl();
+    if (typeof agentResume.onLocaleChanged === "function") {
+      agentResume.onLocaleChanged((bundle) => {
+        void refreshLocalizedUi(bundle);
+      });
+    }
+    initMarkdownHighlight();
+    wire();
+    refreshPinnedProjects();
+    await refreshProjectAliases();
+    selectedDayKey = todayInputValue();
+    updatePeriodLabel();
+    switchTab("report");
+    await loadSettingsForm();
+    applyDesktopTheme(getDesktopThemePref());
+    await loadMemory();
+    void loadAgentChat({ render: false });
+    await syncAndRefreshSessionViews($("reportStatus"));
+  } finally {
+    await hideAppStartupMask();
   }
-  initMarkdownHighlight();
-  wire();
-  refreshPinnedProjects();
-  await refreshProjectAliases();
-  selectedDayKey = todayInputValue();
-  updatePeriodLabel();
-  switchTab("report");
-  await loadSettingsForm();
-  applyDesktopTheme(getDesktopThemePref());
-  await loadMemory();
-  void loadAgentChat({ render: false });
-  void syncAndRefreshSessionViews($("reportStatus")).catch(() => undefined);
 }
 
 boot().catch((error) => {
