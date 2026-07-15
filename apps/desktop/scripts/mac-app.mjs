@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { downloadArtifact } from "@electron/get";
+
+const require = createRequire(import.meta.url);
+const PACKAGER_ATTEMPTS = 3;
+const DOWNLOAD_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 2000;
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
@@ -84,6 +91,60 @@ function signMacApp(appBundle) {
   });
 }
 
+function installedElectronVersion() {
+  return require("electron/package.json").version;
+}
+
+function electronZipDirForVersion(version = installedElectronVersion()) {
+  return path.join(root, ".electron-zips", `v${version}`);
+}
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRetry(label, attempts, fn) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      const delay = RETRY_DELAY_MS * attempt;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`${label} failed (attempt ${attempt}/${attempts}): ${message}. Retrying in ${delay}ms...`);
+      await sleep(delay);
+    }
+  }
+  throw lastError;
+}
+
+async function ensureElectronZipDir() {
+  const version = installedElectronVersion();
+  const zipDir = electronZipDirForVersion(version);
+  fs.mkdirSync(zipDir, { recursive: true });
+
+  for (const arch of ["x64", "arm64"]) {
+    const fileName = `electron-v${version}-darwin-${arch}.zip`;
+    const dest = path.join(zipDir, fileName);
+    if (fs.existsSync(dest)) continue;
+
+    console.log(`Fetching Electron ${version} darwin-${arch}...`);
+    const cached = await withRetry(`Electron ${arch} download`, DOWNLOAD_ATTEMPTS, () =>
+      downloadArtifact({
+        version,
+        platform: "darwin",
+        arch,
+        artifactName: "electron"
+      })
+    );
+    fs.copyFileSync(cached, dest);
+  }
+
+  return zipDir;
+}
+
 function materializeNodeModules() {
   const repoNm = path.join(root, "..", "..", "node_modules");
   const desktopNm = path.join(root, "node_modules");
@@ -98,7 +159,7 @@ function materializeNodeModules() {
   }
 }
 
-export function packMacApp() {
+export async function packMacApp() {
   if (process.platform !== "darwin") {
     throw new Error("pack:mac is only supported on macOS.");
   }
@@ -106,27 +167,32 @@ export function packMacApp() {
     throw new Error(`Missing app icon: ${iconPath}. Run npm run build first.`);
   }
   materializeNodeModules();
+  const electronZipDir = await ensureElectronZipDir();
   console.log("Packaging macOS .app...");
   fs.rmSync(releaseRoot, { recursive: true, force: true });
-  execFileSync(
-    "npx",
-    [
-      "@electron/packager",
-      ".",
-      "Agent Resume",
-      `--platform=darwin`,
-      `--arch=${targetArch}`,
-      `--app-bundle-id=${bundleId}`,
-      "--app-category-type=public.app-category.developer-tools",
-      `--icon=${iconPath}`,
-      `--out=${releaseRoot}`,
-      "--overwrite",
-      "--asar.unpackDir=node_modules/node-pty",
-      "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
-      "--prune=true"
-    ],
-    { cwd: root, stdio: "inherit", env: { ...process.env, ELECTRON_RUN_AS_NODE: "" } }
-  );
+  const packagerArgs = [
+    "@electron/packager",
+    ".",
+    "Agent Resume",
+    `--platform=darwin`,
+    `--arch=${targetArch}`,
+    `--app-bundle-id=${bundleId}`,
+    "--app-category-type=public.app-category.developer-tools",
+    `--icon=${iconPath}`,
+    `--out=${releaseRoot}`,
+    `--electron-zip-dir=${electronZipDir}`,
+    "--overwrite",
+    "--asar.unpackDir=node_modules/node-pty",
+    "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
+    "--prune=true"
+  ];
+  await withRetry("electron-packager", PACKAGER_ATTEMPTS, () => {
+    execFileSync("npx", packagerArgs, {
+      cwd: root,
+      stdio: "inherit",
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }
+    });
+  });
   const appBundle = findAppBundle();
   if (!appBundle) {
     throw new Error("Packaging finished but Agent Resume.app was not found under release/");

@@ -10,7 +10,7 @@ if (process.platform !== "darwin") {
 
 runDesktopBuild();
 
-const appBundle = needsRepack() ? packMacApp() : findAppBundle();
+const appBundle = needsRepack() ? await packMacApp() : findAppBundle();
 if (!appBundle) {
   throw new Error("Failed to locate Agent Resume.app");
 }
