@@ -113,6 +113,7 @@
     "build:core": "npm run build -w @agent-resume/core",
     "build:desktop": "npm run build -w @agent-resume/desktop",
     "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
+    "release:desktop:mac": "node scripts/release-desktop-mac.mjs",
     "dev:desktop": "npm run dev -w @agent-resume/desktop",
     "i18n:check": "node scripts/check-i18n.mjs"
   },
