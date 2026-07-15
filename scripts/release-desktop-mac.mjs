@@ -136,6 +136,36 @@ function createRelease(version, notesFile, dryRun) {
   );
 }
 
+function uploadWithRetries(label, upload, { dryRun, attempts = 5, delaySec = 15 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    console.log(`${label} (attempt ${attempt}/${attempts})...`);
+    if (dryRun) {
+      upload(true);
+      return;
+    }
+    try {
+      upload(false);
+      return;
+    } catch (error) {
+      if (attempt === attempts) throw error;
+      console.warn(`${label} failed; retrying in ${delaySec}s...`);
+      execFileSync("sleep", [String(delaySec)], { cwd: root, stdio: "inherit" });
+    }
+  }
+}
+
+function uploadAssetWithGh(version, dmgPath, dryRun) {
+  const tag = `v${version}`;
+  const assetName = path.basename(dmgPath);
+  uploadWithRetries(`Uploading ${assetName} via gh`, (isDryRun) => {
+    if (isDryRun) {
+      console.log(`[dry-run] gh release upload ${tag} ${dmgPath} --repo ${releaseRepo} --clobber`);
+      return;
+    }
+    run("gh", ["release", "upload", tag, dmgPath, "--repo", releaseRepo, "--clobber"], { dryRun: false });
+  }, { dryRun });
+}
+
 function ghAuthToken(dryRun) {
   if (dryRun) return "dry-run-token";
   return execFileSync("gh", ["auth", "token"], { cwd: root, encoding: "utf8" }).trim();
@@ -159,49 +189,50 @@ function uploadAssetWithCurl(version, dmgPath, dryRun) {
   const assetName = path.basename(dmgPath);
   const uploadUrl = `https://uploads.github.com/repos/${releaseRepo}/releases/${releaseId}/assets?name=${encodeURIComponent(assetName)}`;
   const token = ghAuthToken(dryRun);
-  const attempts = 5;
 
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    console.log(`Uploading ${assetName} (attempt ${attempt}/${attempts})...`);
-    if (dryRun) {
+  uploadWithRetries(`Uploading ${assetName} via curl`, (isDryRun) => {
+    if (isDryRun) {
       console.log(`[dry-run] curl --http1.1 --upload-file ${dmgPath} ${uploadUrl}`);
       return;
     }
-    try {
-      execFileSync(
-        "curl",
-        [
-          "--http1.1",
-          "--fail",
-          "--connect-timeout",
-          "60",
-          "--max-time",
-          "7200",
-          "-X",
-          "POST",
-          "-H",
-          `Authorization: Bearer ${token}`,
-          "-H",
-          "Accept: application/vnd.github+json",
-          "-H",
-          "Content-Type: application/octet-stream",
-          "--upload-file",
-          dmgPath,
-          uploadUrl
-        ],
-        { cwd: root, stdio: "inherit" }
-      );
-      return;
-    } catch (error) {
-      if (attempt === attempts) throw error;
-      console.warn(`Upload attempt ${attempt} failed; retrying in 15s...`);
-      execFileSync("sleep", ["15"], { cwd: root, stdio: "inherit" });
-    }
-  }
+    execFileSync(
+      "curl",
+      [
+        "--http1.1",
+        "--fail",
+        "--retry",
+        "3",
+        "--retry-delay",
+        "5",
+        "--retry-all-errors",
+        "--connect-timeout",
+        "60",
+        "--max-time",
+        "7200",
+        "-X",
+        "POST",
+        "-H",
+        `Authorization: Bearer ${token}`,
+        "-H",
+        "Accept: application/vnd.github+json",
+        "-H",
+        "Content-Type: application/octet-stream",
+        "--upload-file",
+        dmgPath,
+        uploadUrl
+      ],
+      { cwd: root, stdio: "inherit" }
+    );
+  }, { dryRun });
 }
 
 function uploadAsset(version, dmgPath, dryRun) {
-  uploadAssetWithCurl(version, dmgPath, dryRun);
+  try {
+    uploadAssetWithGh(version, dmgPath, dryRun);
+  } catch (error) {
+    console.warn("gh release upload failed; falling back to curl upload API...");
+    uploadAssetWithCurl(version, dmgPath, dryRun);
+  }
 }
 
 function main() {
