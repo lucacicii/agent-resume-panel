@@ -46,6 +46,39 @@ function llmRequestTimeoutMs(config: LlmRuntimeConfig): number {
     : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+function llmRequestSignal(timeoutMs: number, userSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!userSignal) {
+    return timeoutSignal;
+  }
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([timeoutSignal, userSignal]);
+  }
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  timeoutSignal.addEventListener("abort", onAbort, { once: true });
+  userSignal.addEventListener("abort", onAbort, { once: true });
+  return controller.signal;
+}
+
+function handleLlmFetchError(error: unknown, timeoutMs: number, url: string): never {
+  if (error instanceof DOMException) {
+    if (error.name === "AbortError") {
+      throw error;
+    }
+    if (error.name === "TimeoutError") {
+      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
+    }
+  }
+  throw error;
+}
+
 async function readLlmErrorMessage(response: Response, url: string): Promise<string> {
   try {
     const payload = (await response.json()) as ChatCompletionResponse;
@@ -58,11 +91,13 @@ async function readLlmErrorMessage(response: Response, url: string): Promise<str
 export async function chatCompletionDetailed(
   config: LlmRuntimeConfig,
   messages: ChatMessage[],
-  maxTokens = 1024
+  maxTokens = 1024,
+  signal?: AbortSignal
 ): Promise<LlmCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
   const started = Date.now();
   const timeoutMs = llmRequestTimeoutMs(config);
+  throwIfAborted(signal);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -77,13 +112,10 @@ export async function chatCompletionDetailed(
         max_tokens: maxTokens,
         temperature: 0.2
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: llmRequestSignal(timeoutMs, signal)
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError") {
-      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
-    }
-    throw error;
+    handleLlmFetchError(error, timeoutMs, url);
   }
 
   let payload: ChatCompletionResponse;
@@ -117,11 +149,13 @@ export async function chatCompletionWithTools(
   config: LlmRuntimeConfig,
   messages: ChatMessage[],
   tools: ToolDefinition[],
-  maxTokens = 1024
+  maxTokens = 1024,
+  signal?: AbortSignal
 ): Promise<LlmToolCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
   const started = Date.now();
   const timeoutMs = llmRequestTimeoutMs(config);
+  throwIfAborted(signal);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -137,13 +171,10 @@ export async function chatCompletionWithTools(
         temperature: 0.2,
         tools
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: llmRequestSignal(timeoutMs, signal)
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError") {
-      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
-    }
-    throw error;
+    handleLlmFetchError(error, timeoutMs, url);
   }
 
   let payload: ChatCompletionResponse;
@@ -195,11 +226,13 @@ export async function chatCompletionStream(
   config: LlmRuntimeConfig,
   messages: ChatMessage[],
   maxTokens = 1024,
-  callbacks?: ChatStreamCallbacks
+  callbacks?: ChatStreamCallbacks,
+  signal?: AbortSignal
 ): Promise<LlmCallResult> {
   const url = buildChatCompletionsUrl(config.baseUrl);
   const started = Date.now();
   const timeoutMs = llmRequestTimeoutMs(config);
+  throwIfAborted(signal);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -215,13 +248,10 @@ export async function chatCompletionStream(
         temperature: 0.2,
         stream: true
       }),
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: llmRequestSignal(timeoutMs, signal)
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError") {
-      throw new Error(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s (endpoint: ${url}).`);
-    }
-    throw error;
+    handleLlmFetchError(error, timeoutMs, url);
   }
 
   if (!response.ok) {
@@ -240,7 +270,12 @@ export async function chatCompletionStream(
   let usage: TokenUsage | undefined;
 
   while (true) {
+    throwIfAborted(signal);
     const { done, value } = await reader.read();
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => undefined);
+      throw new DOMException("Aborted", "AbortError");
+    }
     if (done) {
       break;
     }

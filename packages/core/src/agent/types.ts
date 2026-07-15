@@ -54,6 +54,8 @@ export interface AskMetaAgentOptions {
   threadId?: string;
   /** Enable MCP tool-calling for note operations. Default true. */
   enableTools?: boolean;
+  /** When aborted, in-flight LLM / tool work stops and no partial turn is persisted. */
+  signal?: AbortSignal;
   /** Override the MCP server spawn command. Defaults to auto-detect. */
   mcpServerCommand?: string;
   /** Override the MCP server spawn args. */

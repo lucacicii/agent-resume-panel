@@ -19,7 +19,14 @@ import { createNoteMcpServer } from "../mcp/server";
 import { NotesStore } from "../notes/store";
 import type { AgentCitation, AskMetaAgentOptions, AskMetaAgentResult } from "./types";
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
 export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMetaAgentResult> {
+  throwIfAborted(options.signal);
   const query = options.query?.trim();
   if (!query) {
     throw new Error("Question is empty.");
@@ -58,6 +65,7 @@ export async function askMetaAgent(options: AskMetaAgentOptions): Promise<AskMet
         chunkTotal: progress.chunkTotal
       })
   });
+  throwIfAborted(options.signal);
 
   const sourcesBlock = retrieved.digests
     .map((d, i) =>
@@ -151,12 +159,18 @@ async function runAskWithoutTools(
 
   options.onStream?.({ phase: "generating" });
 
-  const result = await chatCompletionStream(llm, messages, 2000, {
-    onChunk: async (delta) => {
-      options.onStream?.({ phase: "chunk", delta });
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-  });
+  const result = await chatCompletionStream(
+    llm,
+    messages,
+    2000,
+    {
+      onChunk: async (delta) => {
+        options.onStream?.({ phase: "chunk", delta });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    },
+    options.signal
+  );
   try {
     await recordLlmUsage(ctx.dbPath, {
       kind: "chat",
@@ -212,6 +226,7 @@ async function runAskWithTools(
       messages,
       mcpClient,
       maxTokens: 2000,
+      signal: options.signal,
       onProgress: (message) => {
         options.onStream?.({ phase: "generating", message });
       },

@@ -4260,6 +4260,43 @@ code {
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
+.chat-context-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.chat-context-menu[hidden] {
+  display: none !important;
+}
+
+.chat-context-menu button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  width: 100%;
+}
+
+.chat-context-menu button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.chat-context-menu button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Ask layout & Collapsible Sidebar */
 .ask-layout {
   display: flex;

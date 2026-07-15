@@ -206,6 +206,7 @@ function applyAppIcon(): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let activeAskAbort: AbortController | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 const SESSION_SYNC_INTERVAL_MS = 60_000;
@@ -631,20 +632,36 @@ function registerIpc(): void {
         enableTools?: boolean;
       }
     ) => {
-      return askMetaAgent({
-        query: args.query,
-        history: args.history,
-        threadId: args.threadId,
-        enableTools: args.enableTools ?? true,
-        onStream: async (streamEvent) => {
-          event.sender.send("agent:askStream", streamEvent);
-          if (streamEvent.phase === "chunk") {
-            await new Promise<void>((resolve) => setImmediate(resolve));
+      activeAskAbort?.abort();
+      activeAskAbort = new AbortController();
+      const signal = activeAskAbort.signal;
+      try {
+        return await askMetaAgent({
+          query: args.query,
+          history: args.history,
+          threadId: args.threadId,
+          enableTools: args.enableTools ?? true,
+          signal,
+          onStream: async (streamEvent) => {
+            event.sender.send("agent:askStream", streamEvent);
+            if (streamEvent.phase === "chunk") {
+              await new Promise<void>((resolve) => setImmediate(resolve));
+            }
           }
+        });
+      } finally {
+        if (activeAskAbort?.signal === signal) {
+          activeAskAbort = null;
         }
-      });
+      }
     }
   );
+
+  ipcMain.handle("agent:cancelAsk", async () => {
+    activeAskAbort?.abort();
+    activeAskAbort = null;
+    return { ok: true };
+  });
 
   ipcMain.handle("agent:listAskChat", async (_event, args?: { limit?: number; threadId?: string }) => {
     const settings = await loadSettings();

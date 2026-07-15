@@ -160,6 +160,7 @@ export interface DesktopApi {
     threadId?: string;
     enableTools?: boolean;
   }): Promise<AskMetaAgentResult>;
+  cancelAskAgent(): Promise<{ ok: boolean }>;
   listAskChat(args?: { limit?: number; threadId?: string }): Promise<{
     messages: AskChatMessage[];
     hasMore: boolean;
@@ -451,6 +452,7 @@ const api: DesktopApi = {
   },
   searchMemory: (args) => ipcRenderer.invoke("memory:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
+  cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
   listAskChat: (args) => ipcRenderer.invoke("agent:listAskChat", args),
   listOlderAskChat: (args) => ipcRenderer.invoke("agent:listOlderAskChat", args),
   clearAskChat: (args) => ipcRenderer.invoke("agent:clearAskChat", args),

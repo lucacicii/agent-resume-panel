@@ -26,9 +26,16 @@ export interface ToolLoopOptions {
   mcpClient: NoteMcpClient;
   maxTokens?: number;
   maxIterations?: number;
+  signal?: AbortSignal;
   onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, result: McpToolCallResult, error?: string) => void;
   onProgress?: (message: string) => void;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
 }
 
 export interface ToolLoopResult {
@@ -190,12 +197,19 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   }
 
   while (iterations < maxIterations) {
+    throwIfAborted(options.signal);
     iterations++;
     options.onProgress?.(
       iterations === 1 ? "正在请求 LLM…" : `第 ${iterations} 轮请求 LLM…`
     );
 
-    const result = await chatCompletionWithTools(options.llm, messages, tools, maxTokens);
+    const result = await chatCompletionWithTools(
+      options.llm,
+      messages,
+      tools,
+      maxTokens,
+      options.signal
+    );
 
     lastContent = result.content;
 
@@ -218,6 +232,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     });
 
     for (const toolCall of result.toolCalls) {
+      throwIfAborted(options.signal);
       const toolName = toolCall.function.name;
       let parsedArgs: Record<string, unknown> = {};
       try {

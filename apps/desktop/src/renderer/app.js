@@ -5937,6 +5937,10 @@ const CHAT_VIRTUAL_OVERSCAN_PX = 360;
 let activeAskStreamIdx = null;
 /** @type {(() => void) | null} */
 let activeAskStreamOff = null;
+/** @type {number | null} */
+let chatContextTurnIdx = null;
+let askCancelRequested = false;
+let activeAskSendGen = 0;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let askIndexProgressHideTimer = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
@@ -6567,6 +6571,7 @@ function onChatLogScroll() {
   if (!log || !chatTurns.length) {
     return;
   }
+  hideChatContextMenu();
   hideCitationPreview();
   if (log.scrollTop < 72 && askChatHasMoreOlder && !askChatLoadingOlder) {
     void loadOlderAskChat();
@@ -6813,12 +6818,95 @@ function stopAskStreamListener() {
   activeAskStreamIdx = null;
 }
 
-async function sendAgent() {
+function isAskAbortedError(error) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function hideChatContextMenu() {
+  const menu = $("chatContextMenu");
+  if (menu) {
+    menu.hidden = true;
+  }
+  chatContextTurnIdx = null;
+}
+
+function showChatUserContextMenu(event, turnIdx) {
+  const turn = chatTurns[turnIdx];
+  if (!turn || turn.role !== "user") {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  hideNotesContextMenu();
+  hideWorkbenchContextMenu();
+  chatContextTurnIdx = turnIdx;
+  const menu = $("chatContextMenu");
+  if (!menu) {
+    return;
+  }
+  const resendBtn = menu.querySelector('[data-chat-action="resend"]');
+  if (resendBtn) {
+    resendBtn.disabled = !turn.content?.trim();
+  }
+  menu.hidden = false;
+  const x = Math.min(event.clientX, window.innerWidth - 160);
+  const y = Math.min(event.clientY, window.innerHeight - 100);
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+}
+
+async function handleChatContextAction(action) {
+  const idx = chatContextTurnIdx;
+  hideChatContextMenu();
+  const turn = chatTurns[idx];
+  if (!turn || turn.role !== "user") {
+    return;
+  }
+  if (action === "copy") {
+    await copyText(turn.content);
+    setStatus($("agentStatus"), "已复制", "ok");
+    return;
+  }
+  if (action === "resend") {
+    const content = turn.content?.trim();
+    if (!content) {
+      return;
+    }
+    if (activeAskStreamIdx != null) {
+      await cancelActiveAsk({ reenableCompose: false });
+    }
+    await sendAgent(content);
+  }
+}
+
+async function cancelActiveAsk(options = {}) {
+  const { reenableCompose = true } = options;
+  if (activeAskStreamIdx == null) {
+    return;
+  }
+  askCancelRequested = true;
+  if (typeof agentResume.cancelAskAgent === "function") {
+    await agentResume.cancelAskAgent();
+  }
+  const streamIdx = activeAskStreamIdx;
+  stopAskStreamListener();
+  if (chatTurns[streamIdx]?.streaming) {
+    chatTurns.splice(streamIdx, 1);
+    renderChatFull();
+  }
+  hideAskIndexProgress(0);
+  if (reenableCompose) {
+    setAgentComposeEnabled(true);
+  }
+}
+
+async function sendAgent(queryOverride) {
   const input = $("agentInput");
-  const query = input.value.trim();
+  const query = (typeof queryOverride === "string" ? queryOverride : input.value).trim();
   if (!query || activeAskStreamIdx != null) {
     return;
   }
+  const sendGen = ++activeAskSendGen;
 
   // Auto-rename thread if it is still named "新对话"
   const activeThread = askThreads.find((t) => t.id === activeAskThreadId);
@@ -6832,7 +6920,9 @@ async function sendAgent() {
   }
 
   chatTurns.push({ role: "user", content: query });
-  input.value = "";
+  if (typeof queryOverride !== "string") {
+    input.value = "";
+  }
   appendChatTurn(chatTurns.length - 1);
   setAgentComposeEnabled(false);
   setStatus($("agentStatus"), "检索记忆…");
@@ -6903,10 +6993,17 @@ async function sendAgent() {
       void loadAskAudit();
     }
   } catch (error) {
+    if (askCancelRequested || isAskAbortedError(error)) {
+      askCancelRequested = false;
+      return;
+    }
     chatTurns.splice(streamIdx, 1);
     renderChatFull();
     setStatus($("agentStatus"), error instanceof Error ? error.message : String(error), "error");
   } finally {
+    if (sendGen !== activeAskSendGen) {
+      return;
+    }
     stopAskStreamListener();
     hideAskIndexProgress(800);
     setAgentComposeEnabled(true);
@@ -7327,7 +7424,26 @@ function wire() {
     }
   });
 
-  $("btnAgentSend").addEventListener("click", () => sendAgent());
+  $("btnAgentSend").addEventListener("click", () => void sendAgent());
+  $("chatLog")?.addEventListener("contextmenu", (e) => {
+    const bubble = e.target.closest(".chat-bubble.user");
+    if (!bubble) {
+      return;
+    }
+    const idx = Number(bubble.dataset.turnIdx);
+    if (!Number.isFinite(idx)) {
+      return;
+    }
+    showChatUserContextMenu(e, idx);
+  });
+  $("chatContextMenu")?.addEventListener("click", (e) => e.stopPropagation());
+  document.querySelectorAll("[data-chat-action]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void handleChatContextAction(btn.dataset.chatAction);
+    });
+  });
+  document.addEventListener("click", () => hideChatContextMenu());
   function syncAskToolsToggleUi(notifyStatus) {
     const btn = $("btnAgentTools");
     if (btn) {
@@ -7412,6 +7528,12 @@ function wire() {
     }
   });
   document.addEventListener("contextmenu", (e) => {
+    if (
+      !e.target.closest(".chat-bubble.user") &&
+      !e.target.closest("#chatContextMenu")
+    ) {
+      hideChatContextMenu();
+    }
     if (
       !e.target.closest(".wb-list-item") &&
       !e.target.closest(".wb-folder-row") &&
