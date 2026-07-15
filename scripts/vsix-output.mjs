@@ -5,11 +5,21 @@ import { join } from "node:path";
 const root = join(import.meta.dirname, "..");
 export const distDir = join(root, "dist");
 
-export function packageVsix(outName) {
+export function syncDependenciesForPackaging(cwd = root) {
+  console.log("Syncing dependencies for VSIX packaging...");
+  execFileSync("npm", ["install"], { cwd, stdio: "inherit" });
+}
+
+export function pruneProductionDependencies(cwd = root) {
+  console.log("Pruning extraneous production dependencies...");
+  execFileSync("npm", ["prune", "--omit=dev"], { cwd, stdio: "inherit" });
+}
+
+export function packageVsix(outName, cwd = root) {
   mkdirSync(distDir, { recursive: true });
   const outPath = join(distDir, outName);
   execFileSync("npx", ["vsce", "package", "-o", outPath], {
-    cwd: root,
+    cwd,
     stdio: "inherit",
   });
   return outPath;
