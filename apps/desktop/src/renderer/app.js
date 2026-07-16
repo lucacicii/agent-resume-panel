@@ -1521,6 +1521,7 @@ function switchWorkbenchTerminalTab(key) {
         }
         fitWorkbenchTerminal();
         void refreshWorkbenchTerminalGitInfo(pane);
+        scheduleWorkbenchSidePanelRefresh({ immediate: true });
       });
     }
   }
@@ -1663,6 +1664,8 @@ function handleWorkbenchTerminalCwdChange(pane, cwd) {
   if (prev === next) return;
   pane.liveCwd = next;
   updateWorkbenchTerminalStatusBar(pane);
+  invalidateWorkbenchFilesCache();
+  scheduleWorkbenchSidePanelRefresh();
   if (pane.gitQueryTimer) clearTimeout(pane.gitQueryTimer);
   pane.gitQueryTimer = window.setTimeout(() => {
     pane.gitQueryTimer = null;
@@ -1964,7 +1967,730 @@ async function createWorkbenchTerminalPane(opts) {
 
   switchWorkbenchTerminalTab(key);
   requestAnimationFrame(() => fitWorkbenchTerminal());
+  scheduleWorkbenchSidePanelRefresh();
   return paneRef;
+}
+
+// --- Workbench side panel (explorer + git diff) ---
+
+const WB_SIDE_PANEL_WIDTH_KEY = "wb-side-panel-width";
+const WB_SIDE_PANEL_LIMITS = { min: 240, max: 600, default: 320 };
+const WB_SIDE_GIT_DEBOUNCE_MS = 120;
+
+let wbSidePanelOpen = false;
+/** @type {"files" | "git"} */
+let wbSidePanelTab = "files";
+/** @type {"list" | "diff"} */
+let wbSideGitView = "list";
+let wbSidePanelWidth = WB_SIDE_PANEL_LIMITS.default;
+/** @type {Set<string>} */
+const wbFilesExpandedDirs = new Set();
+/** @type {Map<string, Array<{ name: string, path: string, isDirectory: boolean }>>} */
+const wbFilesDirCache = new Map();
+let wbFilesSelectedPath = "";
+/** @type {{ staged: Array<{ path: string, status: string }>, unstaged: Array<{ path: string, status: string }> } | null} */
+let wbGitStatusCache = null;
+/** @type {Set<string>} */
+const wbGitExpandedDirs = new Set();
+let wbSideGitQueryTimer = null;
+let wbSidePanelRefreshTimer = null;
+
+function clampWbSidePanelWidth(value) {
+  return Math.min(WB_SIDE_PANEL_LIMITS.max, Math.max(WB_SIDE_PANEL_LIMITS.min, Math.round(value)));
+}
+
+function loadWbSidePanelWidth() {
+  try {
+    const raw = localStorage.getItem(WB_SIDE_PANEL_WIDTH_KEY);
+    const parsed = Number.parseInt(raw ?? "", 10);
+    if (Number.isFinite(parsed)) wbSidePanelWidth = clampWbSidePanelWidth(parsed);
+  } catch {
+    // ignore
+  }
+}
+
+function persistWbSidePanelWidth() {
+  try {
+    localStorage.setItem(WB_SIDE_PANEL_WIDTH_KEY, String(wbSidePanelWidth));
+  } catch {
+    // ignore
+  }
+}
+
+function applyWbSidePanelLayout() {
+  const panel = $("wbSidePanel");
+  const resizer = $("wbSideResizer");
+  const filesBtn = $("btnWbSideFiles");
+  const gitBtn = $("btnWbSideGit");
+  const filesPane = $("wbFilesPane");
+  const gitPane = $("wbGitPane");
+  const diffPane = $("wbDiffPane");
+  const open = wbSidePanelOpen;
+
+  document.documentElement.style.setProperty("--wb-side-panel-width", `${wbSidePanelWidth}px`);
+  panel?.classList.toggle("is-hidden", !open);
+  resizer?.classList.toggle("is-hidden", !open);
+
+  filesBtn?.classList.toggle("active", open && wbSidePanelTab === "files");
+  gitBtn?.classList.toggle("active", open && wbSidePanelTab === "git");
+
+  if (filesPane) filesPane.hidden = !open || wbSidePanelTab !== "files";
+  if (gitPane) gitPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "list";
+  if (diffPane) diffPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "diff";
+
+  if (open) {
+    schedulePaneResizeFit(fitWorkbenchTerminal);
+  }
+}
+
+function getWorkbenchSideContextCwd() {
+  const pane = getActiveWorkbenchTerminalPane();
+  if (pane?.liveCwd) return pane.liveCwd;
+  if (pane?.cwd) return pane.cwd;
+  return getActiveWorkbenchProjectPath() || "";
+}
+
+function getWorkbenchSideRootPath() {
+  return getWorkbenchSideContextCwd();
+}
+
+function toggleWorkbenchSidePanel(tab) {
+  if (wbSidePanelOpen && wbSidePanelTab === tab) {
+    wbSidePanelOpen = false;
+    wbSideGitView = "list";
+    applyWbSidePanelLayout();
+    schedulePaneResizeFit(fitWorkbenchTerminal);
+    return;
+  }
+  wbSidePanelOpen = true;
+  wbSidePanelTab = tab;
+  if (tab === "git") wbSideGitView = "list";
+  applyWbSidePanelLayout();
+  scheduleWorkbenchSidePanelRefresh({ immediate: true });
+}
+
+function scheduleWorkbenchSidePanelRefresh(opts = {}) {
+  if (!wbSidePanelOpen) return;
+  if (opts.immediate) {
+    if (wbSidePanelRefreshTimer) clearTimeout(wbSidePanelRefreshTimer);
+    wbSidePanelRefreshTimer = null;
+    void refreshWorkbenchSidePanel();
+    return;
+  }
+  if (wbSidePanelRefreshTimer) clearTimeout(wbSidePanelRefreshTimer);
+  wbSidePanelRefreshTimer = window.setTimeout(() => {
+    wbSidePanelRefreshTimer = null;
+    void refreshWorkbenchSidePanel();
+  }, WB_SIDE_GIT_DEBOUNCE_MS);
+}
+
+async function refreshWorkbenchSidePanel() {
+  if (!wbSidePanelOpen) return;
+  if (wbSidePanelTab === "files") {
+    await refreshWorkbenchFileTree();
+  } else if (wbSidePanelTab === "git" && wbSideGitView === "list") {
+    await refreshWorkbenchGitPanel();
+  }
+}
+
+function wbFileTreeFolderIcon() {
+  return `<span class="wb-file-tree-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/></svg></span>`;
+}
+
+function wbFileTreeFileIcon() {
+  return `<span class="wb-file-tree-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h7l3 3v13H8z"/><path d="M15 4v4h4"/></svg></span>`;
+}
+
+async function loadWorkbenchDirectoryEntries(rootPath, dirPath) {
+  if (typeof agentResume.workbenchListDirectory !== "function") return [];
+  const cacheKey = dirPath;
+  if (wbFilesDirCache.has(cacheKey)) return wbFilesDirCache.get(cacheKey);
+  const result = await agentResume.workbenchListDirectory({ rootPath, dirPath });
+  const entries = result?.entries || [];
+  wbFilesDirCache.set(cacheKey, entries);
+  return entries;
+}
+
+function renderWorkbenchFileTreeRows(rootPath, dirPath, depth, container) {
+  const entries = wbFilesDirCache.get(dirPath);
+  if (!entries) return;
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "wb-file-tree-row";
+    row.setAttribute("role", "treeitem");
+    row.style.paddingLeft = `${8 + depth * 14}px`;
+    row.dataset.path = entry.path;
+    row.classList.toggle("is-selected", entry.path === wbFilesSelectedPath);
+
+    const chevron = document.createElement("button");
+    chevron.type = "button";
+    chevron.className = "wb-file-tree-chevron";
+    if (!entry.isDirectory) {
+      chevron.classList.add("is-placeholder");
+      chevron.disabled = true;
+    } else {
+      const expanded = wbFilesExpandedDirs.has(entry.path);
+      chevron.classList.toggle("is-expanded", expanded);
+      chevron.innerHTML = `<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>`;
+      chevron.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (wbFilesExpandedDirs.has(entry.path)) wbFilesExpandedDirs.delete(entry.path);
+        else wbFilesExpandedDirs.add(entry.path);
+        void refreshWorkbenchFileTree();
+      });
+    }
+
+    const iconWrap = document.createElement("span");
+    iconWrap.innerHTML = entry.isDirectory ? wbFileTreeFolderIcon() : wbFileTreeFileIcon();
+
+    const label = document.createElement("span");
+    label.className = "wb-file-tree-label";
+    label.textContent = entry.name;
+    label.title = entry.path;
+
+    row.appendChild(chevron);
+    row.appendChild(iconWrap.firstElementChild || iconWrap);
+    row.appendChild(label);
+    row.addEventListener("click", () => {
+      wbFilesSelectedPath = entry.path;
+      if (entry.isDirectory) {
+        if (wbFilesExpandedDirs.has(entry.path)) wbFilesExpandedDirs.delete(entry.path);
+        else wbFilesExpandedDirs.add(entry.path);
+        void refreshWorkbenchFileTree();
+        return;
+      }
+      void revealWorkbenchFile(entry.path, rootPath);
+      $("wbFileTree")?.querySelectorAll(".wb-file-tree-row.is-selected").forEach((el) => el.classList.remove("is-selected"));
+      row.classList.add("is-selected");
+    });
+
+    container.appendChild(row);
+
+    if (entry.isDirectory && wbFilesExpandedDirs.has(entry.path)) {
+      const childWrap = document.createElement("div");
+      childWrap.className = "wb-file-tree-children";
+      childWrap.setAttribute("role", "group");
+      container.appendChild(childWrap);
+      renderWorkbenchFileTreeRows(rootPath, entry.path, depth + 1, childWrap);
+    }
+  }
+}
+
+async function ensureWorkbenchTreeLoaded(rootPath, dirPath) {
+  await loadWorkbenchDirectoryEntries(rootPath, dirPath);
+  const entries = wbFilesDirCache.get(dirPath) || [];
+  for (const entry of entries) {
+    if (entry.isDirectory && wbFilesExpandedDirs.has(entry.path)) {
+      await ensureWorkbenchTreeLoaded(rootPath, entry.path);
+    }
+  }
+}
+
+async function refreshWorkbenchFileTree() {
+  const tree = $("wbFileTree");
+  if (!tree) return;
+  const rootPath = getWorkbenchSideRootPath();
+  tree.innerHTML = "";
+  if (!rootPath) {
+    const empty = document.createElement("p");
+    empty.className = "wb-file-tree-empty muted";
+    empty.textContent = t("desktop.workbench.sidePanelNoRoot");
+    tree.appendChild(empty);
+    return;
+  }
+
+  wbFilesExpandedDirs.add(rootPath);
+  try {
+    await ensureWorkbenchTreeLoaded(rootPath, rootPath);
+
+    const rootLabel = document.createElement("div");
+    rootLabel.className = "wb-file-tree-row";
+    rootLabel.style.paddingLeft = "8px";
+    const rootIcon = document.createElement("span");
+    rootIcon.innerHTML = wbFileTreeFolderIcon();
+    const rootText = document.createElement("span");
+    rootText.className = "wb-file-tree-label";
+    rootText.textContent = basename(rootPath) || rootPath;
+    rootText.title = rootPath;
+    rootLabel.appendChild(rootIcon.firstElementChild || rootIcon);
+    rootLabel.appendChild(rootText);
+    tree.appendChild(rootLabel);
+
+    const body = document.createElement("div");
+    body.setAttribute("role", "group");
+    tree.appendChild(body);
+    renderWorkbenchFileTreeRows(rootPath, rootPath, 1, body);
+  } catch (error) {
+    const empty = document.createElement("p");
+    empty.className = "wb-file-tree-empty muted";
+    empty.textContent = t("desktop.workbench.sidePanelLoadFailed", formatWorkbenchGitError(error));
+    tree.appendChild(empty);
+  }
+}
+
+async function revealWorkbenchFile(filePath, rootPath) {
+  if (typeof agentResume.workbenchRevealPath !== "function") return;
+  try {
+    await agentResume.workbenchRevealPath({ rootPath, targetPath: filePath });
+  } catch (error) {
+    alertWorkbenchError(t("desktop.workbench.sidePanelRevealFailed", formatWorkbenchGitError(error)));
+  }
+}
+
+function gitStatusLetter(status) {
+  const s = String(status || "?").trim();
+  if (s === "?" || s === "A") return "A";
+  if (s === "D") return "D";
+  return "M";
+}
+
+function gitStatusClass(status) {
+  const letter = gitStatusLetter(status);
+  if (letter === "A") return "is-add";
+  if (letter === "D") return "is-del";
+  return "is-mod";
+}
+
+function splitGitChangePath(filePath) {
+  return String(filePath || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function buildGitChangeTree(changes) {
+  /** @type {{ name: string, path: string, isDirectory: boolean, children: any[], change?: { path: string, status: string } }[]} */
+  const roots = [];
+  /** @type {Map<string, any>} */
+  const dirIndex = new Map();
+
+  for (const change of changes) {
+    const parts = splitGitChangePath(change.path);
+    if (!parts.length) continue;
+    let parentPath = "";
+    let siblings = roots;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isLast = i === parts.length - 1;
+      const nodePath = parentPath ? `${parentPath}/${part}` : part;
+      if (isLast) {
+        siblings.push({
+          name: part,
+          path: change.path,
+          isDirectory: false,
+          children: [],
+          change
+        });
+        break;
+      }
+      let dirNode = dirIndex.get(nodePath);
+      if (!dirNode) {
+        dirNode = {
+          name: part,
+          path: nodePath,
+          isDirectory: true,
+          children: []
+        };
+        dirIndex.set(nodePath, dirNode);
+        siblings.push(dirNode);
+      }
+      parentPath = nodePath;
+      siblings = dirNode.children;
+    }
+  }
+
+  const sortNodes = (nodes) => {
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+    for (const node of nodes) {
+      if (node.isDirectory && node.children.length) sortNodes(node.children);
+    }
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+function expandAllGitChangeDirs(changes) {
+  wbGitExpandedDirs.clear();
+  for (const change of changes) {
+    const parts = splitGitChangePath(change.path);
+    if (parts.length <= 1) continue;
+    let prefix = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
+      wbGitExpandedDirs.add(prefix);
+    }
+  }
+}
+
+function renderGitChangeTreeRows(nodes, depth, staged, container) {
+  for (const node of nodes) {
+    if (node.isDirectory) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "wb-file-tree-row wb-git-tree-row";
+      row.style.paddingLeft = `${8 + depth * 14}px`;
+
+      const chevron = document.createElement("span");
+      chevron.className = "wb-file-tree-chevron";
+      const expanded = wbGitExpandedDirs.has(node.path);
+      chevron.classList.toggle("is-expanded", expanded);
+      chevron.innerHTML = `<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>`;
+
+      const iconWrap = document.createElement("span");
+      iconWrap.innerHTML = wbFileTreeFolderIcon();
+
+      const label = document.createElement("span");
+      label.className = "wb-file-tree-label";
+      label.textContent = node.name;
+      label.title = node.path;
+
+      row.appendChild(chevron);
+      row.appendChild(iconWrap.firstElementChild || iconWrap);
+      row.appendChild(label);
+      row.addEventListener("click", () => {
+        if (wbGitExpandedDirs.has(node.path)) wbGitExpandedDirs.delete(node.path);
+        else wbGitExpandedDirs.add(node.path);
+        renderWorkbenchGitPanelFromCache();
+      });
+      container.appendChild(row);
+
+      if (expanded && node.children.length) {
+        const childWrap = document.createElement("div");
+        childWrap.className = "wb-file-tree-children";
+        container.appendChild(childWrap);
+        renderGitChangeTreeRows(node.children, depth + 1, staged, childWrap);
+      }
+      continue;
+    }
+
+    const change = node.change;
+    if (!change) continue;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "wb-file-tree-row wb-git-tree-file";
+    row.style.paddingLeft = `${8 + depth * 14}px`;
+
+    const chevron = document.createElement("span");
+    chevron.className = "wb-file-tree-chevron is-placeholder";
+    chevron.setAttribute("aria-hidden", "true");
+
+    const status = document.createElement("span");
+    status.className = `wb-git-file-status ${gitStatusClass(change.status)}`;
+    status.textContent = gitStatusLetter(change.status);
+
+    const label = document.createElement("span");
+    label.className = "wb-file-tree-label";
+    label.textContent = node.name;
+    label.title = change.path;
+
+    row.appendChild(chevron);
+    row.appendChild(status);
+    row.appendChild(label);
+    row.addEventListener("click", () => {
+      void openWorkbenchGitDiff(change, staged);
+    });
+    container.appendChild(row);
+  }
+}
+
+function renderWorkbenchGitSection(title, changes, staged) {
+  const section = document.createElement("div");
+  section.className = "wb-git-section";
+  const head = document.createElement("div");
+  head.className = "wb-git-section-title";
+  head.textContent = title;
+  section.appendChild(head);
+
+  if (!changes.length) {
+    const empty = document.createElement("p");
+    empty.className = "wb-git-empty muted";
+    empty.textContent = t("desktop.workbench.sidePanelNoChanges");
+    section.appendChild(empty);
+    return section;
+  }
+
+  const tree = document.createElement("div");
+  tree.className = "wb-git-tree";
+  tree.setAttribute("role", "tree");
+  renderGitChangeTreeRows(buildGitChangeTree(changes), 0, staged, tree);
+  section.appendChild(tree);
+  return section;
+}
+
+function renderWorkbenchGitPanelFromCache() {
+  const panel = $("wbGitPanel");
+  const result = wbGitStatusCache;
+  if (!panel || !result?.isRepo) return;
+  panel.innerHTML = "";
+  panel.appendChild(
+    renderWorkbenchGitSection(t("desktop.workbench.sidePanelStaged"), result.staged || [], true)
+  );
+  panel.appendChild(
+    renderWorkbenchGitSection(t("desktop.workbench.sidePanelChanges"), result.unstaged || [], false)
+  );
+}
+
+function workbenchGitNestedScanOptions(settings = loadedSettings) {
+  const wb = settings?.workbench || {};
+  const maxDepth = Math.min(10, Math.max(1, Math.floor(Number(wb.gitNestedScanMaxDepth) || 6)));
+  const ignoreDirs = Array.isArray(wb.gitNestedScanIgnoreDirs)
+    ? wb.gitNestedScanIgnoreDirs.map((d) => String(d).trim()).filter(Boolean)
+    : undefined;
+  const maxRepos = Math.max(1, Math.floor(Number(wb.gitNestedScanMaxRepos) || 32));
+  return {
+    maxDepth,
+    ...(ignoreDirs?.length ? { ignoreDirs } : {}),
+    maxRepos
+  };
+}
+
+async function refreshWorkbenchGitPanel() {
+  const panel = $("wbGitPanel");
+  if (!panel) return;
+  const cwd = getWorkbenchSideContextCwd();
+  panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  if (!cwd) {
+    panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.sidePanelNoRoot"))}</p>`;
+    return;
+  }
+  if (typeof agentResume.terminalGitStatus !== "function") {
+    panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.sidePanelGitUnavailable"))}</p>`;
+    return;
+  }
+
+  try {
+    const nestedScan = workbenchGitNestedScanOptions();
+    const result = await agentResume.terminalGitStatus({ cwd, nestedScan });
+    wbGitStatusCache = result;
+    panel.innerHTML = "";
+    if (!result?.isRepo) {
+      const depth = result?.nestedScanDepth ?? nestedScan.maxDepth;
+      panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+        t("desktop.workbench.sidePanelNoNestedRepos", depth)
+      )}</p>`;
+      return;
+    }
+    expandAllGitChangeDirs([...(result.staged || []), ...(result.unstaged || [])]);
+    renderWorkbenchGitPanelFromCache();
+  } catch (error) {
+    panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+      t("desktop.workbench.sidePanelLoadFailed", formatWorkbenchGitError(error))
+    )}</p>`;
+  }
+}
+
+function closeWorkbenchGitDiffView() {
+  wbSideGitView = "list";
+  applyWbSidePanelLayout();
+  if (wbGitStatusCache?.isRepo) renderWorkbenchGitPanelFromCache();
+  else void refreshWorkbenchGitPanel();
+}
+
+async function openWorkbenchGitDiff(change, staged) {
+  const repoRoot = change?.repoRoot || getWorkbenchSideContextCwd();
+  const repoPath = change?.repoPath || change?.path;
+  const displayPath = change?.path || repoPath;
+  if (!repoRoot || !repoPath || typeof agentResume.terminalGitDiffSides !== "function") return;
+  wbSideGitView = "diff";
+  applyWbSidePanelLayout();
+
+  const titleEl = $("wbDiffTitle");
+  const oldLabelEl = $("wbDiffOldLabel");
+  const newLabelEl = $("wbDiffNewLabel");
+  const colOld = $("wbDiffColOld");
+  const colNew = $("wbDiffColNew");
+  if (titleEl) titleEl.textContent = displayPath;
+  if (colOld) colOld.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  if (colNew) colNew.innerHTML = "";
+
+  try {
+    const result = await agentResume.terminalGitDiffSides({ cwd: repoRoot, path: repoPath, staged });
+    if (oldLabelEl) oldLabelEl.textContent = result.oldLabel;
+    if (newLabelEl) newLabelEl.textContent = result.newLabel;
+    renderWorkbenchSideBySideDiff(result.oldText || "", result.newText || "");
+  } catch (error) {
+    if (colOld) {
+      colOld.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+        t("desktop.workbench.sidePanelDiffFailed", formatWorkbenchGitError(error))
+      )}</p>`;
+    }
+    if (colNew) colNew.innerHTML = "";
+  }
+}
+
+function alignDiffLines(oldLines, newLines) {
+  const m = oldLines.length;
+  const n = newLines.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldLines[i - 1] === newLines[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  /** @type {Array<{ type: "equal" | "del" | "add", oldIndex?: number, newIndex?: number }>} */
+  const ops = [];
+  let i = m;
+  let j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      ops.push({ type: "equal", oldIndex: i - 1, newIndex: j - 1 });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.push({ type: "add", newIndex: j - 1 });
+      j--;
+    } else {
+      ops.push({ type: "del", oldIndex: i - 1 });
+      i--;
+    }
+  }
+  ops.reverse();
+
+  /** @type {Array<{ left: { num: number, text: string, kind: string }, right: { num: number, text: string, kind: string } }>} */
+  const rows = [];
+  const emptyCell = () => ({ num: 0, text: "", kind: "empty" });
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k];
+    if (op.type === "equal") {
+      rows.push({
+        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "equal" },
+        right: { num: op.newIndex + 1, text: newLines[op.newIndex], kind: "equal" }
+      });
+      continue;
+    }
+    if (op.type === "del" && ops[k + 1]?.type === "add") {
+      const next = ops[k + 1];
+      rows.push({
+        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "change" },
+        right: { num: next.newIndex + 1, text: newLines[next.newIndex], kind: "change" }
+      });
+      k++;
+      continue;
+    }
+    if (op.type === "del") {
+      rows.push({
+        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "del" },
+        right: emptyCell()
+      });
+      continue;
+    }
+    rows.push({
+      left: emptyCell(),
+      right: { num: op.newIndex + 1, text: newLines[op.newIndex], kind: "add" }
+    });
+  }
+  return rows;
+}
+
+function renderDiffColumn(container, side, rows) {
+  if (!container) return;
+  container.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (const row of rows) {
+    const cell = side === "left" ? row.left : row.right;
+    const line = document.createElement("div");
+    line.className = `wb-diff-line is-${cell.kind}`;
+    const no = document.createElement("span");
+    no.className = "wb-diff-line-no";
+    no.textContent = cell.num > 0 ? String(cell.num) : "";
+    const text = document.createElement("span");
+    text.className = "wb-diff-line-text";
+    text.textContent = cell.text;
+    line.appendChild(no);
+    line.appendChild(text);
+    frag.appendChild(line);
+  }
+  container.appendChild(frag);
+}
+
+function bindDiffColumnScrollSync(leftCol, rightCol) {
+  if (!leftCol || !rightCol) return;
+  let syncing = false;
+  const sync = (source, target) => {
+    if (syncing) return;
+    syncing = true;
+    target.scrollTop = source.scrollTop;
+    syncing = false;
+  };
+  leftCol.onscroll = () => sync(leftCol, rightCol);
+  rightCol.onscroll = () => sync(rightCol, leftCol);
+}
+
+function renderWorkbenchSideBySideDiff(oldText, newText) {
+  const oldLines = String(oldText || "").split("\n");
+  const newLines = String(newText || "").split("\n");
+  const rows = alignDiffLines(oldLines, newLines);
+  const colOld = $("wbDiffColOld");
+  const colNew = $("wbDiffColNew");
+  renderDiffColumn(colOld, "left", rows);
+  renderDiffColumn(colNew, "right", rows);
+  bindDiffColumnScrollSync(colOld, colNew);
+}
+
+function invalidateWorkbenchFilesCache() {
+  wbFilesDirCache.clear();
+}
+
+function initWbSideResizer() {
+  const handle = $("wbSideResizer");
+  const body = $("wbDetailBody");
+  const panel = $("wbSidePanel");
+  if (!handle || !body || !panel) return;
+
+  /** @type {{ startX: number, startWidth: number } | null} */
+  let dragState = null;
+
+  const applyWidth = (width, persist = false) => {
+    const bodyWidth = body.getBoundingClientRect().width;
+    const max = Math.max(WB_SIDE_PANEL_LIMITS.min, Math.floor(bodyWidth * 0.5));
+    wbSidePanelWidth = clampWbSidePanelWidth(Math.min(width, max));
+    applyWbSidePanelLayout();
+    if (persist) persistWbSidePanelWidth();
+    schedulePaneResizeFit(fitWorkbenchTerminal);
+  };
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (!wbSidePanelOpen || e.button !== 0) return;
+    e.preventDefault();
+    dragState = { startX: e.clientX, startWidth: wbSidePanelWidth };
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragState) return;
+    const delta = dragState.startX - e.clientX;
+    applyWidth(dragState.startWidth + delta, false);
+  });
+  const endDrag = (e) => {
+    if (!dragState) return;
+    dragState = null;
+    try {
+      handle.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    persistWbSidePanelWidth();
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  handle.addEventListener("keydown", (e) => {
+    if (!wbSidePanelOpen) return;
+    if (e.key === "ArrowLeft") applyWidth(wbSidePanelWidth + 8, true);
+    if (e.key === "ArrowRight") applyWidth(wbSidePanelWidth - 8, true);
+  });
+}
+
+function initWorkbenchSidePanel() {
+  loadWbSidePanelWidth();
+  applyWbSidePanelLayout();
+  initWbSideResizer();
+  $("btnWbSideFiles")?.addEventListener("click", () => toggleWorkbenchSidePanel("files"));
+  $("btnWbSideGit")?.addEventListener("click", () => toggleWorkbenchSidePanel("git"));
+  $("btnWbDiffBack")?.addEventListener("click", () => closeWorkbenchGitDiffView());
 }
 
 async function openWorkbenchTerminal(opts) {
@@ -2287,7 +3013,9 @@ function shouldKeepWorkbenchSelection(target) {
       target.closest(".wb-list-meta-row") ||
       target.closest("#wbTargetPopover") ||
       target.closest("#wbContextMenu") ||
-      target.closest("#wbRenameDialog")
+      target.closest("#wbRenameDialog") ||
+      target.closest("#wbSidePanel") ||
+      target.closest(".wb-detail-tools")
   );
 }
 
@@ -6938,6 +7666,8 @@ const SETTINGS_FIELD_SECTION = {
   workbenchTerminalMode: "workbench",
   workbenchExternalLaunchMode: "workbench",
   workbenchCmdTAction: "workbench",
+  workbenchGitNestedScanMaxDepth: "workbench",
+  workbenchGitNestedScanIgnoreDirs: "workbench",
   memoryEnabled: "report",
   dailyHour: "report",
   weeklyHour: "report",
@@ -7165,6 +7895,16 @@ async function loadSettingsForm() {
     form.workbenchCmdTAction.value =
       s.workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal";
   }
+  if (form.workbenchGitNestedScanMaxDepth) {
+    const depth = Math.min(10, Math.max(1, Math.floor(Number(s.workbench?.gitNestedScanMaxDepth) || 6)));
+    form.workbenchGitNestedScanMaxDepth.value = String(depth);
+  }
+  if (form.workbenchGitNestedScanIgnoreDirs) {
+    const ignoreDirs = Array.isArray(s.workbench?.gitNestedScanIgnoreDirs)
+      ? s.workbench.gitNestedScanIgnoreDirs
+      : [];
+    form.workbenchGitNestedScanIgnoreDirs.value = ignoreDirs.join("\n");
+  }
   if (form.desktopTheme) {
     form.desktopTheme.value = s.desktop?.theme || "system";
   }
@@ -7247,7 +7987,15 @@ function collectWorkbenchSettings(form) {
         form.workbenchTerminalMode?.value === "external-system" ? "external-system" : "xterm",
       externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand",
       cmdTAction:
-        form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal"
+        form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal",
+      gitNestedScanMaxDepth: Math.min(
+        10,
+        Math.max(1, Math.floor(Number(form.workbenchGitNestedScanMaxDepth?.value) || 6))
+      ),
+      gitNestedScanIgnoreDirs: String(form.workbenchGitNestedScanIgnoreDirs?.value || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
     }
   };
 }
@@ -9002,6 +9750,7 @@ function wire() {
   loadSidebarFoldersCollapsedState();
   syncFoldersResizerVisibility();
   initPaneResizers();
+  initWorkbenchSidePanel();
   $("btnNotesToggleFolders")?.addEventListener("click", () => toggleNotesFoldersCollapsed());
   $("btnWbToggleFolders")?.addEventListener("click", () => toggleWbFoldersCollapsed());
 

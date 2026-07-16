@@ -146,6 +146,51 @@ export interface DesktopApi {
     cwd: string;
     branch: string;
   }): Promise<{ branch: string | null }>;
+  workbenchListDirectory(args: {
+    rootPath: string;
+    dirPath: string;
+  }): Promise<{
+    entries: Array<{ name: string; path: string; isDirectory: boolean }>;
+  }>;
+  workbenchReadFileText(args: {
+    rootPath: string;
+    filePath: string;
+    maxBytes?: number;
+  }): Promise<{ content: string; truncated: boolean }>;
+  workbenchRevealPath(args: {
+    rootPath: string;
+    targetPath: string;
+  }): Promise<{ ok: boolean }>;
+  terminalGitStatus(args: {
+    cwd: string;
+    nestedScan?: { maxDepth?: number; ignoreDirs?: string[]; maxRepos?: number };
+  }): Promise<{
+    isRepo: boolean;
+    root: string | null;
+    staged: Array<{
+      path: string;
+      repoPath: string;
+      repoRoot: string;
+      status: string;
+      staged: boolean;
+      unstaged: boolean;
+    }>;
+    unstaged: Array<{
+      path: string;
+      repoPath: string;
+      repoRoot: string;
+      status: string;
+      staged: boolean;
+      unstaged: boolean;
+    }>;
+    nestedRepos?: Array<{ root: string; displayPath: string }>;
+    nestedScanDepth?: number;
+  }>;
+  terminalGitDiffSides(args: {
+    cwd: string;
+    path: string;
+    staged?: boolean;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -439,6 +484,11 @@ const api: DesktopApi = {
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
+  workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
+  workbenchReadFileText: (args) => ipcRenderer.invoke("workbench:readFileText", args),
+  workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
+  terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
+  terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);

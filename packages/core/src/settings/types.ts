@@ -57,6 +57,12 @@ export interface WorkbenchSettings {
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
   externalLaunchMode?: GhosttyLaunchMode;
   externalAutoPasteDelayMs?: number;
+  /** Max directory depth when scanning for nested Git repos (1–10). Default 6. */
+  gitNestedScanMaxDepth?: number;
+  /** Directory names to skip while scanning for nested Git repos. Empty uses built-in defaults. */
+  gitNestedScanIgnoreDirs?: string[];
+  /** Max nested Git repos to collect per scan. Default 32. */
+  gitNestedScanMaxRepos?: number;
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";

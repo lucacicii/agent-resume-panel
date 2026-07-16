@@ -67,6 +67,7 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, initI18nService } from "./i18nService";
@@ -979,6 +980,7 @@ app.whenReady().then(async () => {
   initI18nService(path.join(app.getAppPath()));
   applyAppIcon();
   registerIpc();
+  registerWorkbenchFsIpc();
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();

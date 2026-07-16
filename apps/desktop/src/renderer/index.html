@@ -485,41 +485,110 @@
           <main class="wb-detail">
             <div class="wb-detail-head">
               <span class="wb-detail-project-label" id="wbDetailProjectLabel" data-i18n="desktop.workbench.allSessions">All Sessions</span>
-            </div>
-            <div class="wb-terminal-shell" id="wbTerminalShell">
-              <div class="wb-terminal-tabs" id="wbTerminalTabs">
-                <div class="wb-terminal-tabs-list" id="wbTerminalTabsList" role="tablist" data-i18n-aria-label="desktop.workbench.terminalTabs" aria-label="Terminal tabs"></div>
-                <div class="wb-terminal-tabs-actions">
-                  <button
-                    type="button"
-                    class="wb-terminal-tab-action"
-                    id="btnWorkbenchTabNewTerminal"
-                    data-i18n-title="desktop.workbench.newTerminal"
-                    data-i18n-aria-label="desktop.workbench.newTerminal"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="m4 17 6-6-6-6" />
-                      <path d="M12 19h8" />
-                    </svg>
-                  </button>
-                  <span class="wb-terminal-tabs-action-sep" aria-hidden="true"></span>
-                  <button
-                    type="button"
-                    class="wb-terminal-tab-action"
-                    id="btnWorkbenchTabNewSession"
-                    data-i18n-title="desktop.workbench.newSession"
-                    data-i18n-aria-label="desktop.workbench.newSession"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <rect x="3" y="5" width="18" height="14" rx="2" />
-                      <path d="M12 9v6" />
-                      <path d="M9 12h6" />
-                    </svg>
-                  </button>
-                </div>
+              <div class="wb-detail-tools">
+                <button
+                  type="button"
+                  class="wb-detail-tool"
+                  id="btnWbSideFiles"
+                  data-i18n-title="desktop.workbench.sidePanelExplorer"
+                  data-i18n-aria-label="desktop.workbench.sidePanelExplorer"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h6l2 2h8v10H4z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="wb-detail-tool"
+                  id="btnWbSideGit"
+                  data-i18n-title="desktop.workbench.sidePanelGit"
+                  data-i18n-aria-label="desktop.workbench.sidePanelGit"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="6" cy="6" r="2.25" />
+                    <circle cx="18" cy="6" r="2.25" />
+                    <circle cx="12" cy="18" r="2.25" />
+                    <path d="M6 8.25v4.5c0 1.2 1 2.25 2.25 2.25H12" />
+                    <path d="M18 8.25v4.5c0 1.2-1 2.25-2.25 2.25H12" />
+                  </svg>
+                </button>
               </div>
-              <div class="wb-terminal-stack" id="wbTerminalStack"></div>
-              <p class="muted wb-terminal-hint" id="wbTerminalHint" data-i18n="desktop.workbench.selectSessionHint">Select a session to restore terminal</p>
+            </div>
+            <div class="wb-detail-body" id="wbDetailBody">
+              <div class="wb-terminal-shell" id="wbTerminalShell">
+                <div class="wb-terminal-tabs" id="wbTerminalTabs">
+                  <div class="wb-terminal-tabs-list" id="wbTerminalTabsList" role="tablist" data-i18n-aria-label="desktop.workbench.terminalTabs" aria-label="Terminal tabs"></div>
+                  <div class="wb-terminal-tabs-actions">
+                    <button
+                      type="button"
+                      class="wb-terminal-tab-action"
+                      id="btnWorkbenchTabNewTerminal"
+                      data-i18n-title="desktop.workbench.newTerminal"
+                      data-i18n-aria-label="desktop.workbench.newTerminal"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m4 17 6-6-6-6" />
+                        <path d="M12 19h8" />
+                      </svg>
+                    </button>
+                    <span class="wb-terminal-tabs-action-sep" aria-hidden="true"></span>
+                    <button
+                      type="button"
+                      class="wb-terminal-tab-action"
+                      id="btnWorkbenchTabNewSession"
+                      data-i18n-title="desktop.workbench.newSession"
+                      data-i18n-aria-label="desktop.workbench.newSession"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="2" />
+                        <path d="M12 9v6" />
+                        <path d="M9 12h6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="wb-terminal-stack" id="wbTerminalStack"></div>
+                <p class="muted wb-terminal-hint" id="wbTerminalHint" data-i18n="desktop.workbench.selectSessionHint">Select a session to restore terminal</p>
+              </div>
+              <div
+                class="pane-resizer is-hidden"
+                id="wbSideResizer"
+                role="separator"
+                aria-orientation="vertical"
+                data-i18n-aria-label="desktop.workbench.resizeSidePanel"
+                aria-label="Resize side panel"
+                tabindex="0"
+              ></div>
+              <aside class="wb-side-panel is-hidden" id="wbSidePanel" aria-label="Workbench side panel">
+                <div id="wbFilesPane" class="wb-side-pane">
+                  <div class="wb-side-pane-head">
+                    <span class="wb-side-pane-title" data-i18n="desktop.workbench.sidePanelExplorer">Explorer</span>
+                  </div>
+                  <div class="wb-file-tree" id="wbFileTree" role="tree"></div>
+                </div>
+                <div id="wbGitPane" class="wb-side-pane" hidden>
+                  <div class="wb-side-pane-head">
+                    <span class="wb-side-pane-title" data-i18n="desktop.workbench.sidePanelGit">Git Changes</span>
+                  </div>
+                  <div class="wb-git-panel" id="wbGitPanel"></div>
+                </div>
+                <div id="wbDiffPane" class="wb-side-pane" hidden>
+                  <div class="wb-diff-head">
+                    <button type="button" class="wb-diff-back" id="btnWbDiffBack" data-i18n-aria-label="desktop.workbench.sidePanelBack" aria-label="Back">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
+                    </button>
+                    <span class="wb-diff-title" id="wbDiffTitle"></span>
+                  </div>
+                  <div class="wb-diff-labels">
+                    <span class="wb-diff-label" id="wbDiffOldLabel"></span>
+                    <span class="wb-diff-label" id="wbDiffNewLabel"></span>
+                  </div>
+                  <div class="wb-diff-split" id="wbDiffSplit">
+                    <div class="wb-diff-col" id="wbDiffColOld"></div>
+                    <div class="wb-diff-col" id="wbDiffColNew"></div>
+                  </div>
+                </div>
+              </aside>
             </div>
           </main>
         </div>
@@ -831,6 +900,35 @@
                           <option value="newSession" data-i18n="desktop.settings.cmdTNewSession">New Session</option>
                         </select>
                       </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.gitNestedScanGroup">Git side panel</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.gitNestedScanMaxDepth">Nested repo scan depth</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.gitNestedScanMaxDepthDesc">When cwd is not a Git repo, scan subdirectories up to this depth (1–10)</span>
+                        </div>
+                        <select name="workbenchGitNestedScanMaxDepth" class="settings-row-control">
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                          <option value="6">6</option>
+                          <option value="7">7</option>
+                          <option value="8">8</option>
+                          <option value="9">9</option>
+                          <option value="10">10</option>
+                        </select>
+                      </div>
+                      <label class="settings-field">
+                        <span class="settings-field-label" data-i18n="desktop.settings.gitNestedScanIgnoreDirs">Ignored directories</span>
+                        <span class="settings-field-desc muted" data-i18n="desktop.settings.gitNestedScanIgnoreDirsDesc">One directory name per line. Leave empty for defaults (node_modules, dist, …).</span>
+                        <textarea name="workbenchGitNestedScanIgnoreDirs" rows="5" spellcheck="false" placeholder="node_modules&#10;dist"></textarea>
+                      </label>
                     </div>
                   </section>
                 </div>
