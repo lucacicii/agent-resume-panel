@@ -150,7 +150,6 @@ function materializeNodeModules() {
   const desktopNm = path.join(root, "node_modules");
   fs.mkdirSync(desktopNm, { recursive: true });
   for (const name of fs.readdirSync(desktopNm)) {
-    if (name === "electron") continue;
     fs.rmSync(path.join(desktopNm, name), { recursive: true, force: true });
   }
   for (const name of fs.readdirSync(repoNm)) {
