@@ -1,4 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer } from "electron";
+import type { UpdateCheckResult } from "../main/updateCheck";
 import type {
   AgentSession,
   AgentChatMessage,
@@ -384,6 +385,8 @@ export interface DesktopApi {
   listProjectAliases(): Promise<Record<string, string>>;
   setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
+  getAppVersion(): Promise<string>;
+  checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
   openExternalUrl(url: string): Promise<void>;
   onLocaleChanged(callback: (bundle: { locale: string; messages: Record<string, string> }) => void): () => void;
 }
@@ -520,6 +523,11 @@ const api: DesktopApi = {
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
   setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
+  getAppVersion: async () => {
+    const result = (await ipcRenderer.invoke("app:getVersion")) as { version?: string };
+    return typeof result?.version === "string" ? result.version : "";
+  },
+  checkForUpdate: (options) => ipcRenderer.invoke("update:check", options),
   openExternalUrl: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
   onLocaleChanged: (callback) => {
     const handler = (

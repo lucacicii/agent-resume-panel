@@ -67,6 +67,7 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
@@ -339,6 +340,12 @@ function registerIpc(): void {
       throw new Error("Invalid external URL");
     }
     await shell.openExternal(url);
+  });
+
+  safeHandle("app:getVersion", async () => ({ version: getAppVersion() }));
+
+  safeHandle("update:check", async (_event, options?: { force?: boolean }) => {
+    return checkForDesktopUpdate(options);
   });
 
   ipcMain.handle(

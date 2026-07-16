@@ -1,7 +1,6 @@
 /* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
 /* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
 
-const DESKTOP_APP_VERSION = "0.1.1";
 const DESKTOP_DOC_README = "https://github.com/thunder-luc/agent-resume-desktop-doc#readme";
 const DESKTOP_DOC_ISSUES = "https://github.com/thunder-luc/agent-resume-desktop-doc/issues";
 const PANEL_DOC_README = "https://github.com/thunder-luc/agent-resume-panel-doc#readme";
@@ -8533,9 +8532,10 @@ function wire() {
   });
 
   $("btnOpenSettings").addEventListener("click", () => {
-    closeAllSheets();
-    switchTab("settings");
-    showSettingsPane("general");
+    openSettingsPane("general");
+  });
+  $("btnOpenAboutUpdate")?.addEventListener("click", () => {
+    openSettingsPane("about");
   });
   $("btnSettingsBack").addEventListener("click", () => {
     void flushAllPendingSectionSaves().finally(() => switchTab("report"));
@@ -8548,6 +8548,13 @@ function wire() {
   });
   $("btnOpenExtensionDoc")?.addEventListener("click", () => {
     void agentResume.openExternalUrl(PANEL_DOC_README);
+  });
+  $("btnAboutUpdateDownload")?.addEventListener("click", () => {
+    const target = pendingDesktopUpdate?.downloadUrl || pendingDesktopUpdate?.releaseUrl;
+    if (target) void agentResume.openExternalUrl(target);
+  });
+  $("btnAboutUpdateRecheck")?.addEventListener("click", () => {
+    void refreshAboutUpdateStatus({ force: true });
   });
   document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
     btn.addEventListener("click", () => showSettingsPane(btn.dataset.settingsPane));
@@ -8994,13 +9001,94 @@ function showSettingsPane(name) {
     btn.classList.toggle("active", btn.dataset.settingsPane === resolved);
   });
   if (isUsage) loadUsagePage();
-  if (isAbout) updateAboutPaneVersion();
+  if (isAbout) {
+    void updateAboutPaneVersion();
+    void refreshAboutUpdateStatus();
+  }
 }
 
-function updateAboutPaneVersion() {
+let pendingDesktopUpdate = null;
+
+function isSettingsAboutPaneActive() {
+  const pane = $("settingsPaneAbout");
+  return Boolean(pane && !pane.hidden);
+}
+
+function openSettingsPane(pane) {
+  closeAllSheets();
+  switchTab("settings");
+  showSettingsPane(pane);
+}
+
+function renderUpdateAvailableButton() {
+  const btn = $("btnOpenAboutUpdate");
+  const hasUpdate = Boolean(pendingDesktopUpdate);
+  if (!btn) return;
+  btn.hidden = !hasUpdate;
+  if (!hasUpdate) return;
+  const title = t("desktop.top.settingsUpdateAvailable", pendingDesktopUpdate.latestVersion);
+  btn.title = title;
+  btn.setAttribute("aria-label", title);
+}
+
+function renderAboutUpdatePanel(result) {
+  const wrap = $("settingsAboutUpdate");
+  const textEl = $("settingsAboutUpdateText");
+  const downloadBtn = $("btnAboutUpdateDownload");
+  if (!wrap || !textEl) return;
+
+  wrap.hidden = false;
+  wrap.classList.remove("is-available");
+
+  if (!result) {
+    textEl.textContent = t("desktop.settings.updateChecking");
+    if (downloadBtn) downloadBtn.hidden = true;
+    return;
+  }
+
+  if (!result.ok) {
+    textEl.textContent = t("desktop.settings.updateCheckFailed");
+    if (downloadBtn) downloadBtn.hidden = true;
+    return;
+  }
+
+  if (result.updateAvailable) {
+    wrap.classList.add("is-available");
+    textEl.textContent = t("desktop.settings.updateAvailable", result.latestVersion);
+    if (downloadBtn) downloadBtn.hidden = false;
+    return;
+  }
+
+  textEl.textContent = t("desktop.settings.updateUpToDate");
+  if (downloadBtn) downloadBtn.hidden = true;
+}
+
+async function refreshDesktopUpdateStatus(options = {}) {
+  if (typeof agentResume.checkForUpdate !== "function") {
+    return null;
+  }
+  const result = await agentResume.checkForUpdate(options);
+  pendingDesktopUpdate = result?.ok && result.updateAvailable ? result : null;
+  renderUpdateAvailableButton();
+  if (isSettingsAboutPaneActive()) {
+    renderAboutUpdatePanel(result);
+  }
+  return result;
+}
+
+async function refreshAboutUpdateStatus(options = {}) {
+  renderAboutUpdatePanel(null);
+  return refreshDesktopUpdateStatus(options);
+}
+
+async function updateAboutPaneVersion() {
   const el = $("settingsAboutVersion");
   if (!el) return;
-  el.textContent = `${t("desktop.settings.aboutVersionLabel")} ${DESKTOP_APP_VERSION}`;
+  let version = "";
+  if (typeof agentResume.getAppVersion === "function") {
+    version = await agentResume.getAppVersion();
+  }
+  el.textContent = `${t("desktop.settings.aboutVersionLabel")} ${version || "—"}`;
 }
 
 function fmtNum(n) {
@@ -9100,6 +9188,7 @@ async function loadUsagePage() {
 
 async function registerRefreshLocalizedUiImpl() {
   window.refreshLocalizedUiImpl = async () => {
+    renderUpdateAvailableButton();
     populateUiLanguageSelect($("settingsForm")?.uiLanguage?.value);
     populateOutputLanguageSelect($("settingsForm")?.llmLang?.value);
     if (activePrimaryTab === "settings") {
@@ -9158,6 +9247,7 @@ async function boot() {
     await loadMemory();
     void loadAgentChat({ render: false });
     await syncAndRefreshSessionViews($("reportStatus"));
+    void refreshDesktopUpdateStatus();
   } finally {
     await hideAppStartupMask();
   }

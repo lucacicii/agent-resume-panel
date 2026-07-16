@@ -24,6 +24,20 @@
       <div class="top-actions">
         <button type="button" class="ghost-btn" id="btnOpenSessions" data-i18n-title="desktop.top.sessionsRefTitle" data-i18n="desktop.top.sessionsRef">Sessions</button>
         <button type="button" class="icon-btn" id="btnOpenSettings" data-i18n-title="desktop.top.settingsTitle" aria-label="Settings">⚙</button>
+        <button
+          type="button"
+          class="icon-btn icon-btn-update"
+          id="btnOpenAboutUpdate"
+          hidden
+          data-i18n-title="desktop.top.settingsUpdateAvailable"
+          aria-label="Update available"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -968,6 +982,14 @@
                   <p class="settings-about-version" id="settingsAboutVersion">Desktop</p>
                   <p class="settings-about-tagline" data-i18n="desktop.settings.aboutTagline">Session OS + Memory for coding agents</p>
                 </header>
+
+                <div id="settingsAboutUpdate" class="settings-about-update" hidden>
+                  <p class="settings-about-update-text" id="settingsAboutUpdateText"></p>
+                  <div class="settings-about-update-actions">
+                    <button type="button" class="btn primary" id="btnAboutUpdateDownload" hidden data-i18n="desktop.settings.updateDownload">Download update</button>
+                    <button type="button" class="btn ghost" id="btnAboutUpdateRecheck" data-i18n="desktop.settings.updateRecheck">Check again</button>
+                  </div>
+                </div>
 
                 <section class="settings-group">
                   <h3 class="settings-group-title" data-i18n="desktop.settings.aboutResources">Resources</h3>
