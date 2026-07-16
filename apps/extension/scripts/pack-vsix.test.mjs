@@ -27,6 +27,10 @@ try {
   const coreEntry = path.join(extRoot, "node_modules", "@agent-resume", "core", "dist", "extension.js");
   assert.ok(fs.existsSync(coreEntry), `VSIX must contain ${coreEntry}`);
 
+  const corePkgPath = path.join(extRoot, "node_modules", "@agent-resume", "core", "package.json");
+  const corePkg = JSON.parse(fs.readFileSync(corePkgPath, "utf8"));
+  assert.ok(corePkg.exports?.["./extension"], "vendored @agent-resume/core must expose ./extension in exports");
+
   let nodeModulesCount = 0;
   const nmRoot = path.join(extRoot, "node_modules");
   assert.ok(fs.existsSync(nmRoot), "VSIX must contain node_modules/");

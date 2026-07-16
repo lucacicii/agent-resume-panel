@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
+ * @deprecated Archived one-shot migration — do not run. Paths target pre-refactor layout.
  * One-shot codemod: Memory/Ask → Report/Agent across the monorepo.
- * Run from repo root: node scripts/rename-memory-ask.mjs
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

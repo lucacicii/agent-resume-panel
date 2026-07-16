@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
+ * @deprecated Archived one-shot migration — do not run.
  * Applies bulk i18n replacements to apps/desktop/src/renderer/app.js.
- * Run once; review diff before committing.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

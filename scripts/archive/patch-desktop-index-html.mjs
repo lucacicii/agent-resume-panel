@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** @deprecated Archived one-shot migration — do not run. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 

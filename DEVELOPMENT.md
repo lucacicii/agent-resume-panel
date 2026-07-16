@@ -94,11 +94,11 @@ npm run publish:openvsx
 
 When you add, remove, or reorder configurable **project** or **session** context menu actions:
 
-1. Update [`scripts/generate-project-menu-contributions.mjs`](scripts/generate-project-menu-contributions.mjs) / [`src/menu/projectContextMenu.ts`](src/menu/projectContextMenu.ts), or [`scripts/generate-session-menu-contributions.mjs`](scripts/generate-session-menu-contributions.mjs) / [`src/menu/sessionContextMenu.ts`](src/menu/sessionContextMenu.ts).
+1. Update [`apps/extension/scripts/generate-project-menu-contributions.mjs`](apps/extension/scripts/generate-project-menu-contributions.mjs) / [`apps/extension/src/menu/projectContextMenu.ts`](apps/extension/src/menu/projectContextMenu.ts), or [`apps/extension/scripts/generate-session-menu-contributions.mjs`](apps/extension/scripts/generate-session-menu-contributions.mjs) / [`apps/extension/src/menu/sessionContextMenu.ts`](apps/extension/src/menu/sessionContextMenu.ts).
 2. Regenerate menu contributions:
 
 ```sh
-node apps/extension/scripts/patch-project-menu-package.mjs
+npm run patch:menus
 ```
 
 This script regenerates menu blocks in `apps/extension/manifest/contributes.generated.json` and updates `base.openvsx.json`, and preserves ACP chat context menu entries.
@@ -110,6 +110,16 @@ npm run test:menus
 ```
 
 4. Run `npm run install:local`, then **Developer: Reload Window**.
+
+## Desktop i18n
+
+Desktop UI strings live under `desktop.*` keys in [`apps/extension/locales/`](apps/extension/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into locale files:
+
+```sh
+npm run merge:desktop-i18n
+```
+
+Then run `npm run build:desktop` (or `dev:desktop -- --fresh`) so `apps/desktop/dist/locales` picks up the changes.
 
 ## Change Checklist
 

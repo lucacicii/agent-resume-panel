@@ -7,7 +7,7 @@ import { overridesByLocale } from "./desktop-settings-i18n-overrides.mjs";
 const root = join(import.meta.dirname, "..");
 const catalogPath = join(root, "scripts", "desktop-i18n-catalog.json");
 const aliasesPath = join(root, "scripts", "desktop-settings-i18n-aliases.json");
-const localesDir = join(root, "locales");
+const localesDir = join(root, "apps", "extension", "locales");
 const settingsOverlayLocales = new Set(["ja", "ko", "de", "es", "fr", "it", "pt-br", "ru"]);
 
 function normalizePlaceholders(value) {

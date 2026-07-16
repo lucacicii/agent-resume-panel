@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** @deprecated Archived pre-refactor manifest splitter — do not run. Use manifest/ + merge-extension-manifest.mjs. */
 
 import fs from "node:fs";
 import path from "node:path";

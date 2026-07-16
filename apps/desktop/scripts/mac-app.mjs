@@ -223,7 +223,7 @@ export function createMacDmg(appBundle) {
   if (process.platform !== "darwin") {
     throw new Error("DMG packaging is only supported on macOS.");
   }
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, "..", "extension", "package.json"), "utf8"));
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const dmgName = `Agent Resume-${pkg.version}.dmg`;
   const dmgPath = path.join(releaseRoot, dmgName);
   const dmgStagingDir = path.join(releaseRoot, "dmg-root");

@@ -23,7 +23,7 @@ Load these references only when relevant:
 ## Verification
 
 - After code changes, run `npm run compile`.
-- After changing user-facing strings or `locales/*.json`, run `npm run i18n:check`.
+- After changing user-facing strings or `apps/extension/locales/*.json`, run `npm run i18n:check`.
 - After changing menu contribution generators, run `npm run test:menus`.
 - For VS Code extension contribution changes, run `npm run install:local`, then use **Developer: Reload Window** in VS Code.
 
