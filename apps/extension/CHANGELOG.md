@@ -8,6 +8,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.9]
+
+#### 修复
+
+- **扩展详情页 README/Changelog**：VSIX 重新打包 `apps/extension/README.md` 与 `CHANGELOG.md`，已安装扩展的 **Details** / **Changelog** 标签恢复显示。
+- **本地安装**：修复 `npm run install:local` 在 VS Code 任务中 `tsc: command not found`；新增 `scripts/run-tsc.mjs`，根目录安装流程先 `compile` 再打包。
+- **VSIX 打包**：staging 目录隔离 workspace 安装，修复 `vsce` 依赖缺失与 secretlint 模块解析问题。
+
+#### 变更
+
+- **文档归属**：扩展 README / Changelog 迁至 `apps/extension/`；发版前仅更新该目录内文件。
+
 ### [2.6.8]
 
 #### 改进
@@ -375,6 +387,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.9]
+
+#### Fixed
+
+- **Extension details README/Changelog**: The VSIX again bundles `apps/extension/README.md` and `CHANGELOG.md`, restoring the **Details** and **Changelog** tabs for installed builds.
+- **Local install**: Fixed `tsc: command not found` when running `npm run install:local` from VS Code tasks; added `scripts/run-tsc.mjs` and made the root install flow run `compile` before packaging.
+- **VSIX packaging**: Isolated staging installs from the monorepo workspace, fixing missing `vsce` dependencies and secretlint module resolution.
+
+#### Changed
+
+- **Documentation ownership**: Extension README and Changelog now live under `apps/extension/`; update only those files before publishing.
 
 ### [2.6.8]
 
