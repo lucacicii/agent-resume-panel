@@ -4256,6 +4256,166 @@ code {
   cursor: default;
 }
 
+.wb-git-action-btn.active {
+  color: var(--color-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 45%, var(--color-separator, var(--border)));
+  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
+}
+
+.wb-log-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 6px 0 4px;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-log-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wb-log-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+  overflow-x: auto;
+}
+
+.wb-git-log-graph-list {
+  min-width: 100%;
+  width: max-content;
+}
+
+.wb-git-log-graph-row {
+  appearance: none;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 6px 10px 6px 4px;
+  cursor: pointer;
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.wb-git-log-graph-row:hover,
+.wb-git-log-graph-row:focus-visible {
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+.wb-git-log-graph-connector {
+  display: flex;
+  padding: 0 10px 0 4px;
+  min-height: 14px;
+  pointer-events: none;
+}
+
+.wb-git-log-graph-line {
+  flex-shrink: 0;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  color: var(--color-accent, var(--accent));
+}
+
+.wb-git-log-graph-content {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wb-git-log-decorations {
+  color: var(--color-description, var(--muted));
+}
+
+.wb-git-log-subject {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.wb-git-log-meta {
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wb-git-log-hash {
+  font-family: Menlo, Monaco, "Courier New", monospace;
+}
+
+.wb-git-log-detail {
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wb-git-log-detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-git-log-detail-subject {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.wb-git-log-detail-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wb-git-log-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-git-log-file {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  padding: 3px 0;
+}
+
+.wb-git-log-file-status {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .wb-side-pane-title {
   font-size: 11px;
   font-weight: 600;

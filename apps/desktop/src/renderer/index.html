@@ -607,10 +607,34 @@
                         >
                           Pull
                         </button>
+                        <button
+                          type="button"
+                          class="wb-git-action-btn"
+                          id="btnWbGitLog"
+                          disabled
+                          data-i18n="desktop.workbench.gitLog"
+                        >
+                          Log
+                        </button>
                       </div>
                     </div>
                   </div>
                   <div class="wb-git-panel" id="wbGitPanel"></div>
+                </div>
+                <div id="wbLogPane" class="wb-side-pane" hidden>
+                  <div class="wb-log-head">
+                    <button
+                      type="button"
+                      class="wb-diff-back"
+                      id="btnWbLogBack"
+                      data-i18n-aria-label="desktop.workbench.gitLogBackToChanges"
+                      aria-label="Back"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
+                    </button>
+                    <span class="wb-log-title" id="wbLogTitle" data-i18n="desktop.workbench.gitLogTitle">Commit history</span>
+                  </div>
+                  <div class="wb-log-body" id="wbLogBody"></div>
                 </div>
                 <div id="wbDiffPane" class="wb-side-pane" hidden>
                   <div class="wb-diff-head">

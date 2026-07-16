@@ -2091,8 +2091,11 @@ const WB_SIDE_GIT_DEBOUNCE_MS = 120;
 let wbSidePanelOpen = false;
 /** @type {"files" | "git"} */
 let wbSidePanelTab = "files";
-/** @type {"list" | "diff"} */
+/** @type {"list" | "diff" | "log"} */
 let wbSideGitView = "list";
+/** @type {"list" | "detail"} */
+let wbGitLogSubView = "list";
+let wbGitLogRepoRoot = "";
 let wbSidePanelWidth = WB_SIDE_PANEL_LIMITS.default;
 /** @type {Set<string>} */
 const wbFilesExpandedDirs = new Set();
@@ -2139,6 +2142,7 @@ function applyWbSidePanelLayout() {
   const filesPane = $("wbFilesPane");
   const gitPane = $("wbGitPane");
   const diffPane = $("wbDiffPane");
+  const logPane = $("wbLogPane");
   const open = wbSidePanelOpen;
 
   document.documentElement.style.setProperty("--wb-side-panel-width", `${wbSidePanelWidth}px`);
@@ -2151,6 +2155,7 @@ function applyWbSidePanelLayout() {
   if (filesPane) filesPane.hidden = !open || wbSidePanelTab !== "files";
   if (gitPane) gitPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "list";
   if (diffPane) diffPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "diff";
+  if (logPane) logPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "log";
 
   if (open) {
     schedulePaneResizeFit(fitWorkbenchTerminal);
@@ -2167,8 +2172,10 @@ function getWorkbenchSideRootPath() {
 
 function notifyWorkbenchSideContextChanged() {
   invalidateWorkbenchFilesCache();
-  if (wbSideGitView === "diff") {
+  if (wbSideGitView === "diff" || wbSideGitView === "log") {
     wbSideGitView = "list";
+    wbGitLogSubView = "list";
+    wbGitLogRepoRoot = "";
     applyWbSidePanelLayout();
   }
   if (wbSidePanelOpen) {
@@ -2212,6 +2219,8 @@ async function refreshWorkbenchSidePanel() {
     await refreshWorkbenchFileTree();
   } else if (wbSidePanelTab === "git" && wbSideGitView === "list") {
     await refreshWorkbenchGitPanel();
+  } else if (wbSidePanelTab === "git" && wbSideGitView === "log") {
+    await refreshWorkbenchGitLog();
   }
 }
 
@@ -2635,14 +2644,251 @@ function syncWorkbenchGitRepoSelector(cache = wbGitStatusCache) {
 
 function updateWorkbenchGitActionButtons(cache = wbGitStatusCache) {
   const enabled = Boolean(cache?.isRepo && collectWorkbenchGitRepos(cache).length) && !wbGitActionBusy;
-  for (const id of ["btnWbGitCommit", "btnWbGitPush", "btnWbGitPull"]) {
+  for (const id of ["btnWbGitCommit", "btnWbGitPush", "btnWbGitPull", "btnWbGitLog"]) {
     const btn = $(id);
     if (btn) btn.disabled = !enabled;
   }
+  const logBtn = $("btnWbGitLog");
+  if (logBtn) logBtn.classList.toggle("active", wbSideGitView === "log");
+}
+
+function formatWorkbenchGitLogDate(unixSeconds) {
+  const ms = Math.floor(Number(unixSeconds) * 1000);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  return new Date(ms).toLocaleString(getUiLocale(), {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function workbenchGitLogRepoLabel(repoRoot) {
+  const repos = collectWorkbenchGitRepos();
+  const match = repos.find((repo) => repo.root === repoRoot);
+  return match?.displayPath || basename(repoRoot) || repoRoot;
+}
+
+function updateWorkbenchGitLogBackButton() {
+  const backBtn = $("btnWbLogBack");
+  if (!backBtn) return;
+  const key =
+    wbGitLogSubView === "detail"
+      ? "desktop.workbench.gitLogBackToList"
+      : "desktop.workbench.gitLogBackToChanges";
+  backBtn.setAttribute("aria-label", t(key));
+  backBtn.setAttribute("data-i18n-aria-label", key);
+}
+
+function renderWorkbenchGitLogList(commits, repoRoot) {
+  const body = $("wbLogBody");
+  const titleEl = $("wbLogTitle");
+  if (!body) return;
+  body.innerHTML = "";
+  if (titleEl) {
+    titleEl.textContent = `${t("desktop.workbench.gitLogTitle")} · ${workbenchGitLogRepoLabel(repoRoot)}`;
+  }
+  updateWorkbenchGitLogBackButton();
+
+  if (!commits.length) {
+    body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogEmpty"))}</p>`;
+    return;
+  }
+
+  const hasCommits = commits.some((commit) => !commit.isConnectorOnly && commit.hash);
+  if (!hasCommits) {
+    body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogEmpty"))}</p>`;
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "wb-git-log-graph-list";
+
+  for (const commit of commits) {
+    if (commit.isConnectorOnly || !commit.hash) {
+      const connector = document.createElement("div");
+      connector.className = "wb-git-log-graph-connector";
+      const graphLine = document.createElement("span");
+      graphLine.className = "wb-git-log-graph-line";
+      graphLine.textContent = commit.graphPrefix || "";
+      connector.appendChild(graphLine);
+      list.appendChild(connector);
+      continue;
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wb-git-log-graph-row";
+    btn.dataset.hash = commit.hash;
+
+    const graphLine = document.createElement("span");
+    graphLine.className = "wb-git-log-graph-line";
+    graphLine.textContent = commit.graphPrefix || "* ";
+
+    const content = document.createElement("span");
+    content.className = "wb-git-log-graph-content";
+
+    const subject = document.createElement("span");
+    subject.className = "wb-git-log-subject";
+    subject.textContent = commit.subject || t("desktop.workbench.gitLogUntitled");
+
+    const meta = document.createElement("span");
+    meta.className = "wb-git-log-meta";
+    const decorationHtml = commit.decorations
+      ? `<span class="wb-git-log-decorations">${escapeHtml(commit.decorations)}</span>`
+      : "";
+    meta.innerHTML = `<span class="wb-git-log-hash">${escapeHtml(commit.shortHash || commit.hash.slice(0, 7))}</span><span>${escapeHtml(commit.author || "")}</span><span>${escapeHtml(formatWorkbenchGitLogDate(commit.date))}</span>${decorationHtml}`;
+
+    content.appendChild(subject);
+    content.appendChild(meta);
+    btn.appendChild(graphLine);
+    btn.appendChild(content);
+    btn.addEventListener("click", () => {
+      void openWorkbenchGitLogDetail(commit.hash);
+    });
+    list.appendChild(btn);
+  }
+
+  body.appendChild(list);
+}
+
+function renderWorkbenchGitLogDetail(show) {
+  const body = $("wbLogBody");
+  const titleEl = $("wbLogTitle");
+  if (!body) return;
+  body.innerHTML = "";
+  if (titleEl) {
+    titleEl.textContent = show?.shortHash || show?.hash?.slice(0, 7) || t("desktop.workbench.gitLogTitle");
+  }
+  updateWorkbenchGitLogBackButton();
+
+  const detail = document.createElement("div");
+  detail.className = "wb-git-log-detail";
+
+  const head = document.createElement("div");
+  head.className = "wb-git-log-detail-head";
+  const subject = document.createElement("div");
+  subject.className = "wb-git-log-detail-subject";
+  subject.textContent = show?.subject || t("desktop.workbench.gitLogUntitled");
+  const meta = document.createElement("div");
+  meta.className = "wb-git-log-meta";
+  meta.innerHTML = `<span class="wb-git-log-hash">${escapeHtml(show?.shortHash || "")}</span><span>${escapeHtml(show?.author || "")}</span><span>${escapeHtml(formatWorkbenchGitLogDate(show?.date))}</span>`;
+  head.appendChild(subject);
+  head.appendChild(meta);
+  detail.appendChild(head);
+
+  if (show?.body?.trim()) {
+    const bodyText = document.createElement("pre");
+    bodyText.className = "wb-git-log-detail-body";
+    bodyText.textContent = show.body.trim();
+    detail.appendChild(bodyText);
+  }
+
+  const filesWrap = document.createElement("div");
+  filesWrap.className = "wb-git-log-files";
+  const files = show?.files || [];
+  if (!files.length) {
+    filesWrap.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogNoFiles"))}</p>`;
+  } else {
+    for (const file of files) {
+      const row = document.createElement("div");
+      row.className = "wb-git-log-file";
+      const status = document.createElement("span");
+      status.className = "wb-git-log-file-status";
+      status.textContent = file.status || "?";
+      const path = document.createElement("span");
+      path.textContent = file.path;
+      path.title = file.path;
+      row.appendChild(status);
+      row.appendChild(path);
+      filesWrap.appendChild(row);
+    }
+  }
+  detail.appendChild(filesWrap);
+  body.appendChild(detail);
+}
+
+async function refreshWorkbenchGitLog() {
+  const body = $("wbLogBody");
+  if (!body || typeof agentResume.terminalGitLog !== "function") return;
+  const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+  if (!repoRoot) {
+    body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitNoRepoSelected"))}</p>`;
+    return;
+  }
+  wbGitLogRepoRoot = repoRoot;
+  wbGitLogSubView = "list";
+  body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  updateWorkbenchGitLogBackButton();
+  try {
+    const result = await agentResume.terminalGitLog({ repoRoot });
+    renderWorkbenchGitLogList(result?.commits || [], repoRoot);
+  } catch (error) {
+    body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+      t("desktop.workbench.gitLogLoadFailed", formatWorkbenchGitError(error))
+    )}</p>`;
+  }
+}
+
+async function openWorkbenchGitLogDetail(hash) {
+  const body = $("wbLogBody");
+  const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+  if (!body || !repoRoot || !hash || typeof agentResume.terminalGitShow !== "function") return;
+  wbGitLogSubView = "detail";
+  body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  updateWorkbenchGitLogBackButton();
+  try {
+    const result = await agentResume.terminalGitShow({ repoRoot, hash });
+    renderWorkbenchGitLogDetail(result);
+  } catch (error) {
+    wbGitLogSubView = "list";
+    body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+      t("desktop.workbench.gitShowLoadFailed", formatWorkbenchGitError(error))
+    )}</p>`;
+    updateWorkbenchGitLogBackButton();
+  }
+}
+
+function openWorkbenchGitLogView() {
+  const repoRoot = resolveWorkbenchGitTargetRepo();
+  if (!repoRoot) {
+    alertWorkbenchError(t("desktop.workbench.gitNoRepoSelected"));
+    return;
+  }
+  wbSideGitView = "log";
+  wbGitLogSubView = "list";
+  wbGitLogRepoRoot = repoRoot;
+  applyWbSidePanelLayout();
+  updateWorkbenchGitActionButtons();
+  void refreshWorkbenchGitLog();
+}
+
+function closeWorkbenchGitLogView() {
+  wbSideGitView = "list";
+  wbGitLogSubView = "list";
+  wbGitLogRepoRoot = "";
+  applyWbSidePanelLayout();
+  updateWorkbenchGitActionButtons();
+  if (wbGitStatusCache?.isRepo) renderWorkbenchGitPanelFromCache();
+  else void refreshWorkbenchGitPanel();
+}
+
+function handleWorkbenchGitLogBack() {
+  if (wbGitLogSubView === "detail") {
+    wbGitLogSubView = "list";
+    void refreshWorkbenchGitLog();
+    return;
+  }
+  closeWorkbenchGitLogView();
 }
 
 async function refreshWorkbenchGitPanelAfterAction() {
-  await refreshWorkbenchGitPanel();
+  if (wbSideGitView === "log") {
+    await refreshWorkbenchGitLog();
+  } else {
+    await refreshWorkbenchGitPanel();
+  }
   const pane = getActiveWorkbenchTerminalPane();
   if (pane) void refreshWorkbenchTerminalGitInfo(pane);
 }
@@ -3046,6 +3292,17 @@ function initWorkbenchSidePanel() {
   $("btnWbGitCommit")?.addEventListener("click", () => void handleWorkbenchGitCommitClick());
   $("btnWbGitPush")?.addEventListener("click", () => void runWorkbenchGitPushPull("push"));
   $("btnWbGitPull")?.addEventListener("click", () => void runWorkbenchGitPushPull("pull"));
+  $("btnWbGitLog")?.addEventListener("click", () => {
+    if (wbSideGitView === "log") void refreshWorkbenchGitLog();
+    else openWorkbenchGitLogView();
+  });
+  $("btnWbLogBack")?.addEventListener("click", () => handleWorkbenchGitLogBack());
+  $("wbGitRepoSelect")?.addEventListener("change", () => {
+    if (wbSideGitView !== "log") return;
+    wbGitLogRepoRoot = resolveWorkbenchGitTargetRepo();
+    wbGitLogSubView = "list";
+    void refreshWorkbenchGitLog();
+  });
   $("btnWbGitCommitAuto")?.addEventListener("click", () => void runWorkbenchGitAutoCommitMessage());
   $("btnWbGitCommitConfirm")?.addEventListener("click", () => void confirmWorkbenchGitCommit());
   document.querySelectorAll("[data-wb-git-commit-cancel]").forEach((btn) => {

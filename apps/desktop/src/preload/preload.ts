@@ -181,6 +181,33 @@ export interface DesktopApi {
   terminalGitCommit(args: { repoRoot: string; message: string }): Promise<{ ok: boolean }>;
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
+  terminalGitLog(args: {
+    repoRoot: string;
+    limit?: number;
+  }): Promise<{
+    commits: Array<{
+      hash: string;
+      shortHash: string;
+      author: string;
+      date: number;
+      subject: string;
+      graphPrefix: string;
+      decorations: string;
+      isConnectorOnly?: boolean;
+    }>;
+  }>;
+  terminalGitShow(args: {
+    repoRoot: string;
+    hash: string;
+  }): Promise<{
+    hash: string;
+    shortHash: string;
+    author: string;
+    date: number;
+    subject: string;
+    body: string;
+    files: Array<{ status: string; path: string }>;
+  }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -528,6 +555,8 @@ const api: DesktopApi = {
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),
   terminalGitPull: (args) => ipcRenderer.invoke("terminal:gitPull", args),
+  terminalGitLog: (args) => ipcRenderer.invoke("terminal:gitLog", args),
+  terminalGitShow: (args) => ipcRenderer.invoke("terminal:gitShow", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
