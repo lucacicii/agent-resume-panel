@@ -12,7 +12,10 @@ import {
 } from "@agent-resume/core";
 import * as fs from "node:fs";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
+import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+
+export type { GitGraphLayout } from "./gitGraphLayout";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,15 +24,22 @@ const DEFAULT_GIT_LOG_LIMIT = 50;
 const MAX_GIT_LOG_LIMIT = 200;
 const GIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
+export interface GitCommitRefs {
+  heads: string[];
+  tags: string[];
+  isHead: boolean;
+  primaryLabel: string | null;
+}
+
 export interface GitLogEntry {
   hash: string;
   shortHash: string;
   author: string;
   date: number;
   subject: string;
-  graphPrefix: string;
+  parents: string[];
   decorations: string;
-  isConnectorOnly?: boolean;
+  refs: GitCommitRefs;
 }
 
 export interface GitShowFileEntry {
@@ -113,46 +123,86 @@ function assertValidGitHash(hash: string): string {
   return trimmed;
 }
 
-const GIT_LOG_HASH_FIELD_RE = /[0-9a-f]{40}\x1f/i;
-
 function normalizeGitDecorations(raw: string): string {
   return raw.trim().replace(/^\(|\)$/g, "").trim();
 }
 
-function parseGitGraphLogOutput(stdout: string): GitLogEntry[] {
-  const entries: GitLogEntry[] = [];
-  for (const line of stdout.split("\n")) {
-    if (!line.trim()) continue;
-    const hashFieldMatch = line.match(GIT_LOG_HASH_FIELD_RE);
-    if (!hashFieldMatch || hashFieldMatch.index == null) {
-      entries.push({
-        hash: "",
-        shortHash: "",
-        author: "",
-        date: 0,
-        subject: "",
-        graphPrefix: line.trimEnd(),
-        decorations: "",
-        isConnectorOnly: true
-      });
+function parseGitRefs(decorations: string): GitCommitRefs {
+  const normalized = normalizeGitDecorations(decorations);
+  if (!normalized) {
+    return { heads: [], tags: [], isHead: false, primaryLabel: null };
+  }
+
+  const heads: string[] = [];
+  const tags: string[] = [];
+  const remotes: string[] = [];
+  let isHead = false;
+
+  for (const rawPart of normalized.split(/,\s*/)) {
+    let part = rawPart.trim();
+    if (!part) continue;
+
+    if (/^HEAD\b/i.test(part)) {
+      isHead = true;
+      const arrowMatch = part.match(/^HEAD\s*->\s*(.+)$/i);
+      if (arrowMatch) {
+        part = arrowMatch[1].trim();
+      } else {
+        continue;
+      }
+    }
+
+    if (/^tag:\s*/i.test(part)) {
+      const tagName = part.replace(/^tag:\s*/i, "").trim();
+      if (tagName && !tags.includes(tagName)) tags.push(tagName);
       continue;
     }
 
-    const graphPrefix = line.slice(0, hashFieldMatch.index).trimEnd();
-    const payload = line.slice(hashFieldMatch.index);
-    const parts = payload.split("\x1f");
-    if (parts.length < 6) continue;
-    const [hash, shortHash, author, dateRaw, decorations, ...subjectParts] = parts;
+    if (/^[a-zA-Z0-9_.-]+\//.test(part)) {
+      if (!remotes.includes(part)) remotes.push(part);
+      continue;
+    }
+
+    if (!heads.includes(part)) heads.push(part);
+  }
+
+  let primaryLabel: string | null = null;
+  if (heads.length > 0) {
+    primaryLabel = heads[0];
+  } else if (remotes.length > 0) {
+    const remote = remotes[0];
+    const slash = remote.indexOf("/");
+    primaryLabel = slash >= 0 ? remote.slice(slash + 1) : remote;
+  }
+
+  return { heads, tags, isHead, primaryLabel };
+}
+
+function parseParentsField(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/\s+/).filter((hash) => GIT_HASH_PATTERN.test(hash));
+}
+
+function parseGitLogOutput(stdout: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const parts = line.split("\x1f");
+    if (parts.length < 7) continue;
+    const [hash, shortHash, author, dateRaw, decorations, parentsRaw, ...subjectParts] = parts;
     const date = Number.parseInt(dateRaw, 10);
     if (!hash || !Number.isFinite(date)) continue;
+    const normalizedDecorations = normalizeGitDecorations(decorations || "");
     entries.push({
       hash,
       shortHash: shortHash || hash.slice(0, 7),
       author: author || "",
       date,
       subject: subjectParts.join("\x1f") || "",
-      graphPrefix,
-      decorations: normalizeGitDecorations(decorations || "")
+      parents: parseParentsField(parentsRaw || ""),
+      decorations: normalizedDecorations,
+      refs: parseGitRefs(normalizedDecorations)
     });
   }
   return entries;
@@ -183,17 +233,16 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
       repoRoot,
       [
         "log",
-        "--graph",
         "--all",
         "--topo-order",
         `-n${n}`,
         "--date=unix",
-        "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%d%x1f%s"
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%d%x1f%P%x1f%s"
       ],
       30000,
       2 * 1024 * 1024
     );
-    return parseGitGraphLogOutput(stdout);
+    return parseGitLogOutput(stdout);
   } catch (error) {
     throw new Error(formatExecError(error));
   }
@@ -350,7 +399,15 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
   safeHandle("terminal:gitLog", async (_event, args: { repoRoot: string; limit?: number }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const commits = await queryGitLog(repoRoot, args.limit);
-    return { commits };
+    const layout = buildGitGraphLayout(
+      commits.map((commit) => ({
+        hash: commit.hash,
+        parents: commit.parents,
+        decorations: commit.decorations,
+        refs: commit.refs
+      }))
+    );
+    return { commits, layout };
   });
 
   safeHandle("terminal:gitShow", async (_event, args: { repoRoot: string; hash: string }) => {

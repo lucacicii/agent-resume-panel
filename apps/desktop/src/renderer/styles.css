@@ -105,6 +105,16 @@ html:not(.i18n-ready) body {
   --wb-terminal-surface: #f5f5f7;
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.85);
 
+  /* Workbench git graph lanes */
+  --wb-git-lane-0: #007aff;
+  --wb-git-lane-1: #af52de;
+  --wb-git-lane-2: #34c759;
+  --wb-git-lane-3: #ff9500;
+  --wb-git-lane-4: #ff2d55;
+  --wb-git-lane-5: #5ac8fa;
+  --wb-git-lane-6: #5856d6;
+  --wb-git-lane-7: #00c7be;
+
   font-family: var(--font-family-system);
 }
 
@@ -164,6 +174,14 @@ html:not(.i18n-ready) body {
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--color-separator);
   --wb-terminal-surface: #1e1e1e;
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.85);
+  --wb-git-lane-0: #0a84ff;
+  --wb-git-lane-1: #bf5af2;
+  --wb-git-lane-2: #30d158;
+  --wb-git-lane-3: #ff9f0a;
+  --wb-git-lane-4: #ff375f;
+  --wb-git-lane-5: #64d2ff;
+  --wb-git-lane-6: #5e5ce6;
+  --wb-git-lane-7: #63e6e2;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -194,6 +212,14 @@ html:not(.i18n-ready) body {
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--color-separator);
     --wb-terminal-surface: #1e1e1e;
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.85);
+    --wb-git-lane-0: #0a84ff;
+    --wb-git-lane-1: #bf5af2;
+    --wb-git-lane-2: #30d158;
+    --wb-git-lane-3: #ff9f0a;
+    --wb-git-lane-4: #ff375f;
+    --wb-git-lane-5: #64d2ff;
+    --wb-git-lane-6: #5e5ce6;
+    --wb-git-lane-7: #63e6e2;
   }
 }
 
@@ -4292,42 +4318,115 @@ code {
 
 .wb-git-log-graph-list {
   min-width: 100%;
-  width: max-content;
+}
+
+.wb-git-log-graph-entry {
+  display: flex;
+  align-items: stretch;
+  min-height: 52px;
+  height: 52px;
+  box-sizing: border-box;
+}
+
+.wb-git-log-graph-entry.is-connector {
+  pointer-events: none;
+}
+
+.wb-git-log-graph-gutter {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  padding: 0 4px 0 8px;
+  overflow: visible;
+}
+
+.wb-git-graph-lane-label {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.wb-git-graph-lane-label-0 { color: var(--wb-git-lane-0); }
+.wb-git-graph-lane-label-1 { color: var(--wb-git-lane-1); }
+.wb-git-graph-lane-label-2 { color: var(--wb-git-lane-2); }
+.wb-git-graph-lane-label-3 { color: var(--wb-git-lane-3); }
+.wb-git-graph-lane-label-4 { color: var(--wb-git-lane-4); }
+.wb-git-graph-lane-label-5 { color: var(--wb-git-lane-5); }
+.wb-git-graph-lane-label-6 { color: var(--wb-git-lane-6); }
+.wb-git-graph-lane-label-7 { color: var(--wb-git-lane-7); }
+
+.wb-git-log-graph-row-canvas {
+  display: block;
+  overflow: visible;
+}
+
+.wb-git-graph-lane {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.92;
+}
+
+.wb-git-graph-lane-0 { stroke: var(--wb-git-lane-0); }
+.wb-git-graph-lane-1 { stroke: var(--wb-git-lane-1); }
+.wb-git-graph-lane-2 { stroke: var(--wb-git-lane-2); }
+.wb-git-graph-lane-3 { stroke: var(--wb-git-lane-3); }
+.wb-git-graph-lane-4 { stroke: var(--wb-git-lane-4); }
+.wb-git-graph-lane-5 { stroke: var(--wb-git-lane-5); }
+.wb-git-graph-lane-6 { stroke: var(--wb-git-lane-6); }
+.wb-git-graph-lane-7 { stroke: var(--wb-git-lane-7); }
+
+.wb-git-graph-node {
+  stroke: var(--color-window-bg, var(--bg));
+  stroke-width: 1.5;
+}
+
+.wb-git-graph-node.wb-git-graph-lane-0 { fill: var(--wb-git-lane-0); }
+.wb-git-graph-node.wb-git-graph-lane-1 { fill: var(--wb-git-lane-1); }
+.wb-git-graph-node.wb-git-graph-lane-2 { fill: var(--wb-git-lane-2); }
+.wb-git-graph-node.wb-git-graph-lane-3 { fill: var(--wb-git-lane-3); }
+.wb-git-graph-node.wb-git-graph-lane-4 { fill: var(--wb-git-lane-4); }
+.wb-git-graph-node.wb-git-graph-lane-5 { fill: var(--wb-git-lane-5); }
+.wb-git-graph-node.wb-git-graph-lane-6 { fill: var(--wb-git-lane-6); }
+.wb-git-graph-node.wb-git-graph-lane-7 { fill: var(--wb-git-lane-7); }
+
+.wb-git-graph-head-ring {
+  fill: none;
+  stroke: var(--color-accent, var(--accent));
+  stroke-width: 2;
+  opacity: 0.95;
 }
 
 .wb-git-log-graph-row {
   appearance: none;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   text-align: left;
-  padding: 6px 10px 6px 4px;
+  padding: 6px 10px 6px 2px;
   cursor: pointer;
   color: var(--text);
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  overflow: hidden;
 }
 
-.wb-git-log-graph-row:hover,
+.wb-git-log-graph-entry:hover .wb-git-log-graph-row,
 .wb-git-log-graph-row:focus-visible {
   background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
-}
-
-.wb-git-log-graph-connector {
-  display: flex;
-  padding: 0 10px 0 4px;
-  min-height: 14px;
-  pointer-events: none;
-}
-
-.wb-git-log-graph-line {
-  flex-shrink: 0;
-  font-family: Menlo, Monaco, "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  white-space: pre;
-  color: var(--color-accent, var(--accent));
 }
 
 .wb-git-log-graph-content {
@@ -4338,8 +4437,17 @@ code {
   gap: 3px;
 }
 
-.wb-git-log-decorations {
-  color: var(--color-description, var(--muted));
+.wb-git-log-decoration-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .wb-git-log-subject {
@@ -4347,17 +4455,31 @@ code {
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
+}
+
+.wb-git-log-graph-row .wb-git-log-subject {
+  display: block;
 }
 
 .wb-git-log-meta {
   font-size: 10px;
   color: var(--muted);
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wb-git-log-graph-row .wb-git-log-meta {
+  line-height: 1.2;
+}
+
+.wb-git-log-meta-sep {
+  opacity: 0.55;
 }
 
 .wb-git-log-hash {

@@ -2664,6 +2664,182 @@ function formatWorkbenchGitLogDate(unixSeconds) {
   });
 }
 
+function formatWorkbenchGitLogDateShort(unixSeconds) {
+  const ms = Math.floor(Number(unixSeconds) * 1000);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  return new Date(ms).toLocaleString(getUiLocale(), {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+const WB_GIT_GRAPH_NODE_R = 4;
+
+function workbenchGitGraphLaneColorIndex(layout, col) {
+  const mapped = layout?.columnColors?.[col];
+  return mapped != null ? mapped : col % 8;
+}
+
+function workbenchGitGraphColumnX(layout, col) {
+  return col * layout.laneWidth + layout.laneWidth / 2;
+}
+
+function workbenchGitGraphCreateSvgEl(tag, attrs = {}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    el.setAttribute(key, String(value));
+  }
+  return el;
+}
+
+function workbenchGitGraphAppendLaneLine(svg, layout, x1, y1, x2, y2, col) {
+  if (y2 <= y1) return;
+  const colorIndex = workbenchGitGraphLaneColorIndex(layout, col);
+  svg.appendChild(
+    workbenchGitGraphCreateSvgEl("line", {
+      x1,
+      y1,
+      x2,
+      y2,
+      class: `wb-git-graph-lane wb-git-graph-lane-${colorIndex}`
+    })
+  );
+}
+
+function workbenchGitGraphSplitPath(x1, y1, x2, y2) {
+  const midY = y1 + (y2 - y1) * 0.45;
+  const bend = Math.max(10, Math.abs(x2 - x1) * 0.75);
+  const c1x = x1 + (x2 > x1 ? bend : -bend);
+  const c2x = x2 - (x2 > x1 ? bend * 0.35 : -bend * 0.35);
+  return `M ${x1} ${y1} C ${c1x} ${midY}, ${c2x} ${midY}, ${x2} ${y2}`;
+}
+
+function workbenchGitGraphMergePath(x1, y1, x2, y2) {
+  const midY = y1 + (y2 - y1) * 0.55;
+  const bend = Math.max(10, Math.abs(x2 - x1) * 0.75);
+  const c1x = x1 - bend * 0.35;
+  const c2x = x2 + bend * 0.35;
+  return `M ${x1} ${y1} C ${c1x} ${midY}, ${c2x} ${midY}, ${x2} ${y2}`;
+}
+
+function renderWorkbenchGitGraphRowSvg(row, layout) {
+  const { laneWidth, rowHeight, maxColumns } = layout;
+  const width = maxColumns * laneWidth;
+  const midY = rowHeight / 2;
+  const svg = workbenchGitGraphCreateSvgEl("svg", {
+    class: "wb-git-log-graph-row-canvas",
+    width,
+    height: rowHeight,
+    viewBox: `0 0 ${width} ${rowHeight}`,
+    "aria-hidden": "true"
+  });
+
+  const incoming = new Set(row.incomingTracks || []);
+  const outgoing = new Set(row.outgoingTracks || []);
+  const commitCol = row.commitColumn;
+
+  for (const col of incoming) {
+    let yEnd = midY;
+    if (commitCol === col) yEnd = midY - WB_GIT_GRAPH_NODE_R - 1;
+    workbenchGitGraphAppendLaneLine(
+      svg,
+      layout,
+      workbenchGitGraphColumnX(layout, col),
+      0,
+      workbenchGitGraphColumnX(layout, col),
+      yEnd,
+      col
+    );
+  }
+
+  for (const col of outgoing) {
+    if (!incoming.has(col)) continue;
+    let yStart = midY;
+    if (commitCol === col) yStart = midY + WB_GIT_GRAPH_NODE_R + 1;
+    workbenchGitGraphAppendLaneLine(
+      svg,
+      layout,
+      workbenchGitGraphColumnX(layout, col),
+      yStart,
+      workbenchGitGraphColumnX(layout, col),
+      rowHeight,
+      col
+    );
+  }
+
+  for (const curve of row.curves || []) {
+    const xFrom = workbenchGitGraphColumnX(layout, curve.fromCol);
+    const xTo = workbenchGitGraphColumnX(layout, curve.toCol);
+    const colorIndex =
+      curve.colorIndex != null ? curve.colorIndex : workbenchGitGraphLaneColorIndex(layout, curve.fromCol);
+    let pathD = "";
+    if (curve.side === "left" && curve.fromCol > curve.toCol) {
+      pathD = workbenchGitGraphSplitPath(xFrom, midY, xTo, rowHeight);
+    } else if (curve.side === "right") {
+      pathD = workbenchGitGraphMergePath(xTo, rowHeight, xFrom, midY);
+    }
+    if (!pathD) continue;
+    svg.appendChild(
+      workbenchGitGraphCreateSvgEl("path", {
+        d: pathD,
+        class: `wb-git-graph-lane wb-git-graph-lane-${colorIndex}`
+      })
+    );
+  }
+
+  if (commitCol != null) {
+    const cx = workbenchGitGraphColumnX(layout, commitCol);
+    const colorIndex = row.colorIndex;
+    if (row.isHead) {
+      svg.appendChild(
+        workbenchGitGraphCreateSvgEl("circle", {
+          cx,
+          cy: midY,
+          r: WB_GIT_GRAPH_NODE_R + 2.5,
+          class: "wb-git-graph-head-ring"
+        })
+      );
+    }
+    svg.appendChild(
+      workbenchGitGraphCreateSvgEl("circle", {
+        cx,
+        cy: midY,
+        r: WB_GIT_GRAPH_NODE_R,
+        class: `wb-git-graph-node wb-git-graph-lane-${colorIndex}`
+      })
+    );
+  }
+
+  return svg;
+}
+
+const WB_GIT_GRAPH_LANE_LABEL_GUTTER_EXTRA = 80;
+
+function renderWorkbenchGitGraphGutter(rowLayout, layout, fullLaneLabel, gutterMinWidth) {
+  const gutter = document.createElement("div");
+  gutter.className = "wb-git-log-graph-gutter";
+  if (gutterMinWidth > 0) {
+    gutter.style.minWidth = `${gutterMinWidth}px`;
+  }
+  gutter.appendChild(renderWorkbenchGitGraphRowSvg(rowLayout, layout));
+
+  if (rowLayout.laneLabel && rowLayout.commitColumn != null) {
+    const colorIndex = rowLayout.laneLabelColorIndex ?? rowLayout.colorIndex ?? 0;
+    const label = document.createElement("span");
+    label.className = `wb-git-graph-lane-label wb-git-graph-lane-label-${colorIndex}`;
+    label.textContent = rowLayout.laneLabel;
+    if (fullLaneLabel) label.title = fullLaneLabel;
+    const left =
+      rowLayout.commitColumn * layout.laneWidth + layout.laneWidth / 2 + WB_GIT_GRAPH_NODE_R + 4;
+    label.style.left = `${left}px`;
+    gutter.appendChild(label);
+  }
+
+  return gutter;
+}
+
 function workbenchGitLogRepoLabel(repoRoot) {
   const repos = collectWorkbenchGitRepos();
   const match = repos.find((repo) => repo.root === repoRoot);
@@ -2681,7 +2857,7 @@ function updateWorkbenchGitLogBackButton() {
   backBtn.setAttribute("data-i18n-aria-label", key);
 }
 
-function renderWorkbenchGitLogList(commits, repoRoot) {
+function renderWorkbenchGitLogList(commits, repoRoot, layout) {
   const body = $("wbLogBody");
   const titleEl = $("wbLogTitle");
   if (!body) return;
@@ -2696,8 +2872,8 @@ function renderWorkbenchGitLogList(commits, repoRoot) {
     return;
   }
 
-  const hasCommits = commits.some((commit) => !commit.isConnectorOnly && commit.hash);
-  if (!hasCommits) {
+  const hasCommits = commits.some((commit) => commit.hash);
+  if (!hasCommits || !layout?.rows?.length) {
     body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogEmpty"))}</p>`;
     return;
   }
@@ -2705,26 +2881,30 @@ function renderWorkbenchGitLogList(commits, repoRoot) {
   const list = document.createElement("div");
   list.className = "wb-git-log-graph-list";
 
-  for (const commit of commits) {
-    if (commit.isConnectorOnly || !commit.hash) {
-      const connector = document.createElement("div");
-      connector.className = "wb-git-log-graph-connector";
-      const graphLine = document.createElement("span");
-      graphLine.className = "wb-git-log-graph-line";
-      graphLine.textContent = commit.graphPrefix || "";
-      connector.appendChild(graphLine);
-      list.appendChild(connector);
-      continue;
-    }
+  const hasLaneLabels = layout.rows.some((row) => row.laneLabel);
+  const gutterMinWidth =
+    layout.maxColumns * layout.laneWidth + (hasLaneLabels ? WB_GIT_GRAPH_LANE_LABEL_GUTTER_EXTRA : 0);
+
+  for (let index = 0; index < commits.length; index++) {
+    const commit = commits[index];
+    const rowLayout = layout.rows[index];
+    if (!rowLayout) continue;
+
+    const rowWrap = document.createElement("div");
+    rowWrap.className = "wb-git-log-graph-entry";
+    rowWrap.style.height = `${layout.rowHeight}px`;
+
+    const fullLaneLabel = commit.refs?.primaryLabel || rowLayout.laneLabel || "";
+    rowWrap.appendChild(
+      renderWorkbenchGitGraphGutter(rowLayout, layout, fullLaneLabel, gutterMinWidth)
+    );
+
+    if (!commit.hash) continue;
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "wb-git-log-graph-row";
     btn.dataset.hash = commit.hash;
-
-    const graphLine = document.createElement("span");
-    graphLine.className = "wb-git-log-graph-line";
-    graphLine.textContent = commit.graphPrefix || "* ";
 
     const content = document.createElement("span");
     content.className = "wb-git-log-graph-content";
@@ -2735,19 +2915,16 @@ function renderWorkbenchGitLogList(commits, repoRoot) {
 
     const meta = document.createElement("span");
     meta.className = "wb-git-log-meta";
-    const decorationHtml = commit.decorations
-      ? `<span class="wb-git-log-decorations">${escapeHtml(commit.decorations)}</span>`
-      : "";
-    meta.innerHTML = `<span class="wb-git-log-hash">${escapeHtml(commit.shortHash || commit.hash.slice(0, 7))}</span><span>${escapeHtml(commit.author || "")}</span><span>${escapeHtml(formatWorkbenchGitLogDate(commit.date))}</span>${decorationHtml}`;
+    meta.innerHTML = `<span class="wb-git-log-hash">${escapeHtml(commit.shortHash || commit.hash.slice(0, 7))}</span><span class="wb-git-log-meta-sep" aria-hidden="true">·</span><span>${escapeHtml(formatWorkbenchGitLogDateShort(commit.date))}</span>`;
 
     content.appendChild(subject);
     content.appendChild(meta);
-    btn.appendChild(graphLine);
     btn.appendChild(content);
     btn.addEventListener("click", () => {
       void openWorkbenchGitLogDetail(commit.hash);
     });
-    list.appendChild(btn);
+    rowWrap.appendChild(btn);
+    list.appendChild(rowWrap);
   }
 
   body.appendChild(list);
@@ -2823,7 +3000,7 @@ async function refreshWorkbenchGitLog() {
   updateWorkbenchGitLogBackButton();
   try {
     const result = await agentResume.terminalGitLog({ repoRoot });
-    renderWorkbenchGitLogList(result?.commits || [], repoRoot);
+    renderWorkbenchGitLogList(result?.commits || [], repoRoot, result?.layout);
   } catch (error) {
     body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
       t("desktop.workbench.gitLogLoadFailed", formatWorkbenchGitError(error))

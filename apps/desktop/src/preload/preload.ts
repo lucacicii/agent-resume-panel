@@ -191,10 +191,37 @@ export interface DesktopApi {
       author: string;
       date: number;
       subject: string;
-      graphPrefix: string;
+      parents: string[];
       decorations: string;
-      isConnectorOnly?: boolean;
+      refs: {
+        heads: string[];
+        tags: string[];
+        isHead: boolean;
+        primaryLabel: string | null;
+      };
     }>;
+    layout: {
+      laneWidth: number;
+      rowHeight: number;
+      maxColumns: number;
+      columnColors: number[];
+      rows: Array<{
+        index: number;
+        commitColumn?: number;
+        incomingTracks: number[];
+        outgoingTracks: number[];
+        curves: Array<{
+          fromCol: number;
+          toCol: number;
+          side: "left" | "right";
+          colorIndex: number;
+        }>;
+        colorIndex: number;
+        isHead: boolean;
+        laneLabel?: string;
+        laneLabelColorIndex?: number;
+      }>;
+    };
   }>;
   terminalGitShow(args: {
     repoRoot: string;
