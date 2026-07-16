@@ -11,7 +11,7 @@
 | VS Code 扩展 | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
 | Desktop App | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) | [issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
 
-Desktop 专项开发见 [apps/desktop/README.md](apps/desktop/README.md)。
+Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.md)。
 
 ## Monorepo layout
 
@@ -88,7 +88,9 @@ npm run build:all
 
 ## Open VSX
 
-Release notes live in [`CHANGELOG.md`](CHANGELOG.md). Update that file before each Open VSX publish.
+Release notes live in [`apps/extension/CHANGELOG.md`](apps/extension/CHANGELOG.md). Update that file before each Open VSX publish.
+
+Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `npm run release:desktop:mac`.
 
 Publish (requires an [Open VSX access token](https://github.com/eclipse/openvsx/wiki/Deploying-Extensions)):
 

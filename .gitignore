@@ -5,6 +5,7 @@ out/
 apps/extension/out/
 apps/extension/dist/
 apps/extension/.pack-staging/
+apps/desktop/.release-notes.tmp.md
 packages/core/dist/
 apps/desktop/dist/
 apps/desktop/release/

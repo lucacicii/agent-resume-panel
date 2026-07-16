@@ -86,7 +86,7 @@ Before editing, identify the target product:
 
 ## Release Pipelines
 
-- **Extension** — workspace scripts in `apps/extension/package.json`; publish via Marketplace / Open VSX tooling.
-- **Desktop** — `npm run release:desktop:mac -- --build --notes-file scripts/desktop-release-notes/vX.Y.Z.md`; docs/changelog live in `agent-resume-desktop-doc` repo.
+- **Extension** — update `apps/extension/CHANGELOG.md`, then workspace scripts in `apps/extension/package.json`; publish via Marketplace / Open VSX tooling.
+- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `npm run release:desktop:mac -- --build`; user docs live in `agent-resume-desktop-doc` repo.
 
 A desktop release does not require an extension release, and the reverse is also true.

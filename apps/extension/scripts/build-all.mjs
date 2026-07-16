@@ -22,7 +22,7 @@ execSync("node scripts/merge-extension-manifest.mjs", { cwd: extensionRoot, stdi
 console.log("\nBuild complete:");
 console.log(`  Open VSX:             ${openvsxOut}`);
 console.log(`  VS Code Marketplace:  ${marketplaceOut}`);
-console.log(`  Changelog:            ${join(repoRoot, "CHANGELOG.md")} (v${openvsxPkg.version})`);
+console.log(`  Changelog:            ${join(extensionRoot, "CHANGELOG.md")} (v${openvsxPkg.version})`);
 console.log("\nPublish to Open VSX:");
 console.log("  export OVSX_PAT=<your-token>");
 console.log(`  npx ovsx publish ${openvsxOut}`);

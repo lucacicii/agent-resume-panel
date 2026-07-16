@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopRoot = path.join(root, "apps", "desktop");
+const desktopChangelogPath = path.join(desktopRoot, "CHANGELOG.md");
 const releaseRepo = "thunder-luc/agent-resume-desktop-doc";
 
 function usage() {
@@ -12,11 +13,57 @@ function usage() {
 
 Options:
   --build              Run npm run pack:desktop when the DMG is missing
-  --notes-file <path>  Markdown release notes (required unless --upload-only)
+  --notes-file <path>  Override release notes (default: extract from apps/desktop/CHANGELOG.md)
   --upload-only        Upload the DMG to an existing release only
   --dry-run            Print commands without executing them
   --help               Show this help
+
+Before releasing, update apps/desktop/CHANGELOG.md for the target version.
 `);
+}
+
+function extractReleaseNotes(changelogPath, version) {
+  const text = fs.readFileSync(changelogPath, "utf8");
+  const headings = [`### [${version}]`, `### [v${version}]`];
+  const sections = [];
+  let pos = 0;
+
+  while (pos < text.length) {
+    let idx = -1;
+    let headingLen = 0;
+    for (const heading of headings) {
+      const found = text.indexOf(heading, pos);
+      if (found !== -1 && (idx === -1 || found < idx)) {
+        idx = found;
+        headingLen = heading.length;
+      }
+    }
+    if (idx === -1) break;
+
+    const start = idx + headingLen;
+    const rest = text.slice(start);
+    const nextIdx = rest.search(/\n### \[/);
+    const body = (nextIdx === -1 ? rest : rest.slice(0, nextIdx)).trim();
+    if (body) sections.push(body);
+    pos = start;
+  }
+
+  if (sections.length === 0) {
+    throw new Error(`No changelog section found for version ${version} in ${changelogPath}`);
+  }
+
+  return `## Agent Resume Desktop v${version}\n\n${sections.join("\n\n---\n\n")}\n`;
+}
+
+function resolveNotesFile(version, notesFileOverride) {
+  if (notesFileOverride) return notesFileOverride;
+  if (!fs.existsSync(desktopChangelogPath)) {
+    throw new Error(`Missing desktop changelog: ${desktopChangelogPath}`);
+  }
+  const notes = extractReleaseNotes(desktopChangelogPath, version);
+  const tempPath = path.join(desktopRoot, ".release-notes.tmp.md");
+  fs.writeFileSync(tempPath, notes);
+  return tempPath;
 }
 
 function parseArgs(argv) {
@@ -47,13 +94,8 @@ function parseArgs(argv) {
     }
   }
 
-  if (!options.uploadOnly) {
-    if (!options.notesFile) {
-      throw new Error("--notes-file is required unless --upload-only is set");
-    }
-    if (!fs.existsSync(options.notesFile)) {
-      throw new Error(`Release notes file not found: ${options.notesFile}`);
-    }
+  if (!options.uploadOnly && options.notesFile && !fs.existsSync(options.notesFile)) {
+    throw new Error(`Release notes file not found: ${options.notesFile}`);
   }
 
   return options;
@@ -246,7 +288,9 @@ function main() {
 
   ensureGhAuth(options.dryRun);
   if (!options.uploadOnly) {
-    createRelease(version, options.notesFile, options.dryRun);
+    const notesFile = resolveNotesFile(version, options.notesFile);
+    console.log(`Release notes: ${notesFile}`);
+    createRelease(version, notesFile, options.dryRun);
   }
   uploadAsset(version, dmgPath, options.dryRun);
 

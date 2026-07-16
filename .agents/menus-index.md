@@ -35,6 +35,6 @@ Use this index for feature requests without a concrete path or searchable identi
 | Desktop IPC contract | `apps/desktop/src/preload/preload.ts` | Keep main/preload/renderer API changes synchronized. |
 | Desktop renderer | `apps/desktop/src/renderer/{index.html,app.js,styles.css}` | Plain JavaScript and CSS, with CSP enabled. |
 | Extension package metadata | `apps/extension/package.json`, `package-vscode.json` | Generated menu blocks must be regenerated, not hand-edited. |
-| Desktop release notes | `scripts/desktop-release-notes/`, `agent-resume-desktop-doc/` | Independent from extension VSIX publishing. |
+| Desktop release notes | `apps/desktop/CHANGELOG.md`, `agent-resume-desktop-doc/` | Independent from extension VSIX publishing. |
 
 Use `.agents/templates/menus-module.md.template` for new feature maps.

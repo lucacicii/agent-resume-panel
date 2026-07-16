@@ -31,6 +31,12 @@ try {
   const corePkg = JSON.parse(fs.readFileSync(corePkgPath, "utf8"));
   assert.ok(corePkg.exports?.["./extension"], "vendored @agent-resume/core must expose ./extension in exports");
 
+  for (const file of ["README.md", "CHANGELOG.md"]) {
+    const filePath = path.join(extRoot, file);
+    assert.ok(fs.existsSync(filePath), `VSIX must contain ${file} for extension details tabs`);
+    assert.ok(fs.statSync(filePath).size > 0, `VSIX ${file} must not be empty`);
+  }
+
   let nodeModulesCount = 0;
   const nmRoot = path.join(extRoot, "node_modules");
   assert.ok(fs.existsSync(nmRoot), "VSIX must contain node_modules/");

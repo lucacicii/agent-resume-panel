@@ -106,8 +106,8 @@
   "scripts": {
     "merge:manifest": "node scripts/merge-extension-manifest.mjs",
     "precompile": "npm run merge:manifest",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
+    "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
     "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
     "install:local-vscode": "npm run package && node scripts/install-local.mjs --editors=code --require-all",

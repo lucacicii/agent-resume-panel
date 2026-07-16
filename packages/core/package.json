@@ -22,8 +22,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p ./",
-    "watch": "tsc -p ./ -w",
+    "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
+    "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
