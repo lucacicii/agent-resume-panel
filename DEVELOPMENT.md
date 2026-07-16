@@ -64,6 +64,12 @@ Build and install the local VSIX into available VS Code-compatible editors:
 npm run install:local
 ```
 
+Install only into official VS Code via the `code` CLI (does not install into Cursor or VSCodium; requires `code` on PATH):
+
+```sh
+npm run install:local-vscode
+```
+
 After installing, run **Developer: Reload Window** in VS Code. The extension's own refresh command only reloads session data; it does not reload `package.json` contribution points.
 
 ## Packaging

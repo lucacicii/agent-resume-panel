@@ -5,6 +5,15 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
+const DEFAULT_EDITORS = ["code", "cursor", "codium"];
+const EDITOR_HINTS = {
+  code: 'Install VS Code shell command: "Shell Command: Install \'code\' command in PATH"',
+  cursor: "Ensure the Cursor CLI is on PATH.",
+  codium: "Ensure the VSCodium CLI (codium) is on PATH."
+};
+
+const options = parseArgs(process.argv.slice(2));
+
 const manifest = await import("../package.json", { with: { type: "json" } });
 const pkg = manifest.default;
 const extensionId = `${pkg.publisher}.${pkg.name}`;
@@ -15,19 +24,55 @@ if (!existsSync(vsixPath)) {
   throw new Error(`VSIX not found: ${vsixPath}`);
 }
 
-const installedEditors = installWithEditorCli(vsixPath);
+const installedEditors = installWithEditorCli(vsixPath, options.editors, options.requireAll);
 if (installedEditors.length > 0) {
   console.log(`Installed to: ${installedEditors.join(", ")}`);
   console.log("Run 'Developer: Reload Window' in each editor to reload extension contributions.");
   process.exit(0);
 }
 
+if (options.editors) {
+  throw new Error(`No requested editor CLI installed the extension (${options.editors.join(", ")}).`);
+}
+
 await installIntoVscodeOssExtensions(vsixPath, extensionDirName, extensionId);
 
-function installWithEditorCli(vsix) {
+function parseArgs(argv) {
+  const options = {
+    editors: null,
+    requireAll: false
+  };
+
+  for (const arg of argv) {
+    if (arg === "--require-all" || arg === "--strict") {
+      options.requireAll = true;
+    } else if (arg.startsWith("--editors=")) {
+      const value = arg.slice("--editors=".length).trim();
+      if (!value) {
+        throw new Error("Missing value for --editors");
+      }
+      options.editors = value.split(",").map((item) => item.trim()).filter(Boolean);
+      if (options.editors.length === 0) {
+        throw new Error("At least one editor is required for --editors");
+      }
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+
+  return options;
+}
+
+function installWithEditorCli(vsix, editors, requireAll) {
+  const targets = editors ?? DEFAULT_EDITORS;
   const installed = [];
-  for (const command of ["code", "cursor", "codium"]) {
+
+  for (const command of targets) {
     if (!hasCommand(command)) {
+      if (requireAll) {
+        const hint = EDITOR_HINTS[command] ?? `Ensure the ${command} CLI is on PATH.`;
+        throw new Error(`${command} CLI not found. ${hint}`);
+      }
       continue;
     }
 

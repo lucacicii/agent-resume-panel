@@ -32,7 +32,7 @@ Run checks for the product you changed:
 - **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `npm run merge:desktop-i18n`, then `npm run i18n:check`.
 - **Translation coverage** — `npm run i18n:check:translations` after locale work in either product.
 - **Extension menus** — `npm run test:menus` after menu contribution generators change.
-- **Extension contributions** — `npm run install:local`, then **Developer: Reload Window** in VS Code.
+- **Extension contributions** — `npm run install:local` (all detected editors) or `npm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
 - **Desktop build** — `npm run build:desktop` or `npm run pack:desktop` before distribution.
 
 Use `/qa` and `/review` for their respective quality workflows when available.
