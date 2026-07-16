@@ -1032,16 +1032,27 @@ function applyWorkbenchCmdTShortcut() {
 }
 
 function updateWorkbenchDetailHeader() {
-  const label = $("wbDetailProjectLabel");
-  if (!label) return;
+  const labelHost = $("wbDetailProjectLabel");
+  const labelText = $("wbDetailProjectLabelText");
+  const pathEl = $("wbDetailProjectPath");
+  if (!labelHost || !labelText) return;
   if (wbSelectedProject.kind !== "project") {
-    label.textContent = t("desktop.workbench.allSessions");
-    label.title = t("desktop.workbench.allSessions");
+    labelText.textContent = t("desktop.workbench.allSessions");
+    labelHost.title = t("desktop.workbench.allSessions");
+    if (pathEl) {
+      pathEl.hidden = true;
+      pathEl.textContent = "";
+    }
     return;
   }
-  const display = projectDisplayTitle(wbSelectedProject.projectPath);
-  label.textContent = display;
-  label.title = wbSelectedProject.projectPath;
+  const projectPath = wbSelectedProject.projectPath;
+  labelText.textContent = projectDisplayTitle(projectPath);
+  labelHost.title = projectPath;
+  if (pathEl) {
+    pathEl.textContent = projectPath;
+    pathEl.hidden = false;
+    pathEl.title = projectPath;
+  }
 }
 
 function getActiveWorkbenchSession() {

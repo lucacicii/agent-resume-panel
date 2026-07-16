@@ -57,7 +57,7 @@ const attrMap = [
   ['data-mode="edit">编辑</button>', 'data-mode="edit" data-i18n="desktop.common.edit">Edit</button>'],
   ['data-mode="view">查看</button>', 'data-mode="view" data-i18n="desktop.common.view">View</button>'],
   ['id="wbSearch" class="wb-search" placeholder="搜索"', 'id="wbSearch" class="wb-search" data-i18n-placeholder="desktop.common.search" placeholder="Search"'],
-  ['id="wbDetailProjectLabel">全部 Sessions</span>', 'id="wbDetailProjectLabel" data-i18n="desktop.workbench.allSessions">All Sessions</span>'],
+  ['id="wbDetailProjectLabel">全部 Sessions</span>', 'id="wbDetailProjectLabel">\n                <span class="wb-detail-project-label-text" id="wbDetailProjectLabelText" data-i18n="desktop.workbench.allSessions">All Sessions</span>\n                <span class="wb-detail-project-path" id="wbDetailProjectPath" hidden></span>\n              </span>'],
   ['id="btnWorkbenchTabNewTerminal"\n                    title="新建 Terminal"\n                    aria-label="新建 Terminal"', 'id="btnWorkbenchTabNewTerminal"\n                    data-i18n-title="desktop.workbench.newTerminal"\n                    data-i18n-aria-label="desktop.workbench.newTerminal"'],
   ['id="btnWorkbenchTabNewSession"\n                    title="新建 Session"\n                    aria-label="新建 Session"', 'id="btnWorkbenchTabNewSession"\n                    data-i18n-title="desktop.workbench.newSession"\n                    data-i18n-aria-label="desktop.workbench.newSession"'],
   ['<h2 class="quiet-title">Settings</h2>', '<h2 class="quiet-title" data-i18n="desktop.settings.title">Settings</h2>'],
