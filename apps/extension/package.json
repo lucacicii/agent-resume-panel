@@ -118,6 +118,7 @@
     "test:vsix": "node scripts/pack-vsix.test.mjs",
     "test:notes": "node scripts/note-uri.test.mjs",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "i18n:check:translations": "node scripts/check-i18n-translations.mjs",
     "test:locale": "node scripts/locale-separation.test.mjs"
   },
   "devDependencies": {

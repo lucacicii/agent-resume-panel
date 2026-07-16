@@ -1075,22 +1075,29 @@ const flat = {
 function nest(flatMap) {
   const en = {};
   const zhcn = {};
+  const ja = {};
   for (const [key, val] of Object.entries(flatMap)) {
     const parts = key.split(".");
     // Group under desktop.<section> but keep full desktop.* key at leaves for merge script.
     const groupParts = parts.slice(1, -1);
     let enNode = en;
     let zhNode = zhcn;
+    let jaNode = ja;
     for (const p of groupParts) {
       enNode[p] = enNode[p] || {};
       zhNode[p] = zhNode[p] || {};
+      jaNode[p] = jaNode[p] || {};
       enNode = enNode[p];
       zhNode = zhNode[p];
+      jaNode = jaNode[p];
     }
     enNode[key] = val.en;
     zhNode[key] = val["zh-cn"];
+    if (val.ja) {
+      jaNode[key] = val.ja;
+    }
   }
-  return { en, "zh-cn": zhcn };
+  return { en, "zh-cn": zhcn, ja };
 }
 
 const catalog = nest(flat);

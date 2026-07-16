@@ -25,6 +25,8 @@
     "test:core": "npm run test -w @agent-resume/core",
     "test:desktop": "npm run test:mac-app -w @agent-resume/desktop && npm run test:node-pty -w @agent-resume/desktop",
     "i18n:check": "npm run i18n:check -w agent-resume-panel",
+    "i18n:check:translations": "npm run i18n:check:translations -w agent-resume-panel",
+    "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs && npm run merge:desktop-i18n",
     "test:locale": "npm run test:locale -w agent-resume-panel",
     "merge:desktop-i18n": "node scripts/merge-desktop-i18n.mjs",
     "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs"

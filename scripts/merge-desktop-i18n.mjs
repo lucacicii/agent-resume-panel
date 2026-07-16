@@ -48,6 +48,8 @@ function writeLocale(filePath, locale) {
 const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
 const enKeys = flattenCatalog(catalog.en ?? catalog);
 const zhKeys = catalog["zh-cn"] ? flattenCatalog(catalog["zh-cn"]) : {};
+const jaKeys = catalog.ja ? flattenCatalog(catalog.ja) : {};
+const catalogSources = { en: enKeys, "zh-cn": zhKeys, ja: jaKeys };
 const settingsAliases = JSON.parse(readFileSync(aliasesPath, "utf8"));
 const settingsOverrides = overridesByLocale();
 
@@ -96,7 +98,12 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
   const localeCode = file.replace(/\.json$/, "");
   const localePath = join(desktopLocalesDir, file);
   const locale = existsSync(localePath) ? JSON.parse(readFileSync(localePath, "utf8")) : {};
-  const source = localeCode === "zh-cn" && Object.keys(zhKeys).length ? zhKeys : enKeys;
+  const source =
+    localeCode === "zh-cn" && Object.keys(zhKeys).length
+      ? zhKeys
+      : localeCode === "ja" && Object.keys(jaKeys).length
+        ? jaKeys
+        : enKeys;
   for (const [key, value] of Object.entries(source)) {
     if (!key.startsWith("desktop.")) continue;
     locale[key] = value;

@@ -16,7 +16,7 @@ export const overridesByKey = {
   "desktop.settings.paneReport": row("レポート"),
   "desktop.tabs.report": row("レポート"),
   "desktop.settings.paneUsage": row("使用量"),
-  "desktop.settings.paneAbout": row("About"),
+  "desktop.settings.paneAbout": row("について"),
   "desktop.settings.paneGeneralDesc": row("外観と日常の設定"),
   "desktop.settings.paneModelsDesc": row("ツール LLM、チャット、Embedding"),
   "desktop.settings.paneSessionsDesc": row("同期ポリシーとセッション一覧の表示"),
