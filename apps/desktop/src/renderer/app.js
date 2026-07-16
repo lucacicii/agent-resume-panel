@@ -4625,20 +4625,23 @@ function renderFocusDigestDetail(type, key) {
 
   if (type === "day" && generatingDays.has(key)) {
     showGeneratingDetail("day", key);
+    restoreProgressStripFor(type, key);
     return;
   }
   if (type === "week" && generatingPeriodKey === `weekly:${key}`) {
     showGeneratingDetail("week", key);
+    restoreProgressStripFor(type, key);
     return;
   }
   if (type === "month" && generatingPeriodKey === `monthly:${key}`) {
     showGeneratingDetail("month", key);
+    restoreProgressStripFor(type, key);
     return;
   }
 
-  if (!generatingDays.size && !weeklyMonthlyBusy) {
-    hideGenProgress();
-  }
+  // This focus is not generating — never show another period's loading strip.
+  // Background jobs keep progressByPeriod snapshots; re-focus restores them.
+  hideGenProgress();
 
   if (isFuturePeriod(type, key)) {
     detail.innerHTML = `<p class="empty-hint muted">${escapeHtml(t("desktop.report.futureDateHint", label))}</p>`;
@@ -5055,6 +5058,87 @@ function appendDayCellMark(marks, ctx) {
 }
 
 /**
+ * Progress identity for a focused period or digest event.
+ * @param {"day"|"week"|"month"|string} typeOrLevel
+ * @param {string} key
+ */
+function digestProgressKey(typeOrLevel, key) {
+  if (!key) return "";
+  if (typeOrLevel === "day" || typeOrLevel === "daily") return `daily:${key}`;
+  if (typeOrLevel === "week" || typeOrLevel === "weekly") return `weekly:${key}`;
+  if (typeOrLevel === "month" || typeOrLevel === "monthly") return `monthly:${key}`;
+  return `${typeOrLevel}:${key}`;
+}
+
+/**
+ * Resolve which job a progress event belongs to.
+ * Parallel dailies key by day; weekly/monthly keep parent identity during cascade.
+ * @param {{ level?: string, periodLabel?: string, dayKey?: string, message?: string }} event
+ */
+function progressKeyFromEvent(event) {
+  if (!event) return "";
+  // Weekly/monthly runs are single-flight; keep parent key even when nested dailies emit dayKey.
+  if ((event.level === "weekly" || event.level === "monthly") && event.periodLabel) {
+    return digestProgressKey(event.level, event.periodLabel);
+  }
+  if (event.level === "daily") {
+    const day =
+      (event.dayKey && /^\d{4}-\d{2}-\d{2}$/.test(event.dayKey) && event.dayKey) ||
+      (/^\d{4}-\d{2}-\d{2}$/.test(event.periodLabel || "") && event.periodLabel) ||
+      extractDayKeyFromProgressMessage(event.message);
+    if (day) return digestProgressKey("daily", day);
+  }
+  if (event.dayKey && /^\d{4}-\d{2}-\d{2}$/.test(event.dayKey)) {
+    return digestProgressKey("daily", event.dayKey);
+  }
+  if (event.level && event.periodLabel) {
+    return digestProgressKey(event.level, event.periodLabel);
+  }
+  const dayKey = extractDayKeyFromProgressMessage(event.message);
+  if (dayKey) return digestProgressKey("daily", dayKey);
+  return "";
+}
+
+function progressKeyFromFocus(focus = detailFocus) {
+  if (!focus?.type || !focus?.key) return "";
+  return digestProgressKey(focus.type, focus.key);
+}
+
+function isProgressForFocus(event, focus = detailFocus) {
+  const focusKey = progressKeyFromFocus(focus);
+  if (!focusKey) return false;
+  const eventKey = progressKeyFromEvent(event);
+  if (!eventKey) return true;
+  return eventKey === focusKey;
+}
+
+/**
+ * Restore progress strip for a specific generating period (not a sibling parallel job).
+ * @param {"day"|"week"|"month"} type
+ * @param {string} key
+ */
+function restoreProgressStripFor(type, key) {
+  const snap = progressByPeriod.get(digestProgressKey(type, key));
+  if (snap) {
+    paintDigestProgress(snap, { skipDetail: true });
+    return;
+  }
+  showGenProgress();
+  $("genProgress")?.classList.add("is-loading");
+  const line = $("genProgressLine");
+  if (line) {
+    const label = focusDigestLabel(type);
+    line.textContent = t("desktop.report.generatingLabel", label, key);
+    line.classList.remove("is-ok", "is-error");
+  }
+  hideGenSessionRow();
+  const bar = $("genProgressBar");
+  const barWrap = $("genProgressBarWrap");
+  if (bar) bar.style.width = "0%";
+  if (barWrap) barWrap.hidden = true;
+}
+
+/**
  * Jump right panel to a day/week/month that is currently generating.
  * @param {"day"|"week"|"month"} type
  * @param {string} key
@@ -5068,19 +5152,7 @@ function focusGeneratingDetail(type, key) {
   renderCalendar();
   renderCalSessionList();
   showGeneratingDetail(type, key);
-  // Keep / restore progress strip on the right
-  if (lastProgressSnapshot) {
-    applyDigestProgress(lastProgressSnapshot, { skipDetail: true });
-  } else {
-    showGenProgress();
-    $("genProgress")?.classList.add("is-loading");
-    const line = $("genProgressLine");
-    if (line) {
-      const label = focusDigestLabel(type);
-      line.textContent = t("desktop.report.generatingLabel", label, key);
-      line.classList.remove("is-ok", "is-error");
-    }
-  }
+  restoreProgressStripFor(type, key);
 }
 
 /**
@@ -5103,6 +5175,10 @@ function showGeneratingDetail(type, key) {
 }
 
 function selectDay(dayKey) {
+  if (generatingDays.has(dayKey)) {
+    focusGeneratingDetail("day", dayKey);
+    return;
+  }
   selectedDayKey = dayKey;
   detailFocus = { type: "day", key: dayKey };
   updatePeriodLabel();
@@ -5113,6 +5189,10 @@ function selectDay(dayKey) {
 
 function onWeekButton(weekLabel) {
   if (!weekLabel) return;
+  if (generatingPeriodKey === `weekly:${weekLabel}`) {
+    focusGeneratingDetail("week", weekLabel);
+    return;
+  }
   selectedDayKey = null;
   detailFocus = { type: "week", key: weekLabel };
   updatePeriodLabel();
@@ -5122,10 +5202,15 @@ function onWeekButton(weekLabel) {
 }
 
 function onMonthButton() {
+  const mLabel = viewMonthLabel();
+  if (generatingPeriodKey === `monthly:${mLabel}`) {
+    focusGeneratingDetail("month", mLabel);
+    return;
+  }
   focusViewedMonth();
   renderCalendar();
   renderCalSessionList();
-  renderFocusDigestDetail("month", viewMonthLabel());
+  renderFocusDigestDetail("month", mLabel);
 }
 
 function applyMonthSessions(sessions) {
@@ -5328,6 +5413,12 @@ function formatSummaryEnsureStats(result) {
 
 /** @type {Set<string>} */
 const activeSummarizeSessions = new Set();
+/** Per-period progress snapshots so parallel dailies don't clobber each other. */
+/** @type {Map<string, Record<string, unknown>>} */
+const progressByPeriod = new Map();
+/** Active summarize session keys scoped by progress period. */
+/** @type {Map<string, Set<string>>} */
+const activeSummarizeByPeriod = new Map();
 
 function showGenProgress() {
   const box = $("genProgress");
@@ -5349,7 +5440,6 @@ function hideGenProgress() {
   }
   const bar = $("genProgressBar");
   if (bar) bar.style.width = "0%";
-  lastProgressSnapshot = null;
 }
 
 function hideGenSessionRow() {
@@ -5360,16 +5450,12 @@ function hideGenSessionRow() {
   activeSummarizeSessions.clear();
 }
 
-/** @type {Record<string, unknown> | null} last progress for re-focus while loading */
-let lastProgressSnapshot = null;
-
 /**
+ * Paint progress strip UI from an event (caller decides focus filtering).
  * @param {{ phase?: string, message?: string, index?: number, total?: number, session?: { provider?: string, id?: string, title?: string }, level?: string, periodLabel?: string }} event
  * @param {{ skipDetail?: boolean }} [opts]
  */
-function applyDigestProgress(event, opts = {}) {
-  lastProgressSnapshot = { ...event };
-  syncCalendarFromDigestProgress(event);
+function paintDigestProgress(event, opts = {}) {
   const box = $("genProgress");
   const line = $("genProgressLine");
   const row = $("genProgressSessionRow");
@@ -5379,6 +5465,7 @@ function applyDigestProgress(event, opts = {}) {
   if (!box || !line) return;
 
   const phase = event.phase || "";
+  const periodKey = progressKeyFromEvent(event);
   showGenProgress();
   box.classList.remove("is-done", "is-error");
   box.classList.toggle("is-loading", phase !== "complete" && phase !== "error");
@@ -5388,8 +5475,8 @@ function applyDigestProgress(event, opts = {}) {
     line.textContent = event.message;
   }
 
-  // If user is focused on a generating day/week/month, keep detail in "正在生成" state.
-  if (!opts.skipDetail && detailFocus) {
+  // Keep detail in "generating" state only for the focused period this event belongs to.
+  if (!opts.skipDetail && detailFocus && isProgressForFocus(event)) {
     const { type, key } = detailFocus;
     const genDay = type === "day" && generatingDays.has(key);
     const genWeek = type === "week" && generatingPeriodKey === `weekly:${key}`;
@@ -5403,9 +5490,17 @@ function applyDigestProgress(event, opts = {}) {
     event.session?.provider && event.session?.id
       ? `${event.session.provider}:${event.session.id}`
       : "";
+  const periodSessions = periodKey
+    ? activeSummarizeByPeriod.get(periodKey) || new Set()
+    : activeSummarizeSessions;
+  if (periodKey && !activeSummarizeByPeriod.has(periodKey)) {
+    activeSummarizeByPeriod.set(periodKey, periodSessions);
+  }
 
   if (phase === "session_start" && sessionKey) {
-    activeSummarizeSessions.add(sessionKey);
+    periodSessions.add(sessionKey);
+    activeSummarizeSessions.clear();
+    for (const s of periodSessions) activeSummarizeSessions.add(s);
     if (row && sessionEl) {
       row.hidden = false;
       const title = event.session?.title || event.session?.id || "session";
@@ -5421,7 +5516,9 @@ function applyDigestProgress(event, opts = {}) {
     (phase === "session_done" || phase === "session_fail" || phase === "session_skip") &&
     sessionKey
   ) {
-    activeSummarizeSessions.delete(sessionKey);
+    periodSessions.delete(sessionKey);
+    activeSummarizeSessions.clear();
+    for (const s of periodSessions) activeSummarizeSessions.add(s);
     if (row && sessionEl && event.session) {
       row.hidden = false;
       const title = event.session.title || event.session.id || "session";
@@ -5442,21 +5539,13 @@ function applyDigestProgress(event, opts = {}) {
     bar.style.width = `${pct}%`;
   }
 
-  if (phase === "digest" || phase === "embed" || phase === "start" || phase === "ensure_summaries") {
-    if (phase === "digest" || phase === "embed") {
-      // keep last session line but stop emphasizing active work if none
-      if (!activeSummarizeSessions.size && row) {
-        // keep row visible with last session text; bar may stay
-      }
-    }
-  }
-
   if (phase === "complete") {
     box.classList.add("is-done");
     box.classList.remove("is-loading");
     line.classList.add("is-ok");
     if (bar) bar.style.width = "100%";
     if (barWrap) barWrap.hidden = false;
+    if (periodKey) activeSummarizeByPeriod.delete(periodKey);
   }
 
   if (phase === "error") {
@@ -5464,10 +5553,59 @@ function applyDigestProgress(event, opts = {}) {
     box.classList.remove("is-loading");
     line.classList.add("is-error");
     hideGenSessionRow();
+    if (periodKey) activeSummarizeByPeriod.delete(periodKey);
   }
 }
 
-function setGenFinal(text, kind) {
+/**
+ * Store progress per period; only paint the strip / detail when the event is for the focused period.
+ * Background parallel jobs still update calendar cells via syncCalendarFromDigestProgress.
+ * @param {{ phase?: string, message?: string, index?: number, total?: number, session?: { provider?: string, id?: string, title?: string }, level?: string, periodLabel?: string, dayKey?: string }} event
+ * @param {{ skipDetail?: boolean, forcePaint?: boolean }} [opts]
+ */
+function applyDigestProgress(event, opts = {}) {
+  const periodKey = progressKeyFromEvent(event);
+  if (periodKey) {
+    progressByPeriod.set(periodKey, { ...event });
+  }
+  syncCalendarFromDigestProgress(event);
+
+  const shouldPaint =
+    opts.forcePaint === true || !periodKey || isProgressForFocus(event) || !detailFocus;
+  if (!shouldPaint) return;
+
+  paintDigestProgress(event, opts);
+}
+
+/**
+ * @param {string} text
+ * @param {"ok"|"error"|string} kind
+ * @param {{ periodKey?: string, force?: boolean }} [opts]
+ */
+function setGenFinal(text, kind, opts = {}) {
+  const periodKey = opts.periodKey || progressKeyFromFocus();
+  if (periodKey) {
+    progressByPeriod.set(periodKey, {
+      phase: kind === "error" ? "error" : "complete",
+      message: text,
+      level: periodKey.startsWith("weekly:")
+        ? "weekly"
+        : periodKey.startsWith("monthly:")
+          ? "monthly"
+          : "daily",
+      periodLabel: periodKey.split(":").slice(1).join(":")
+    });
+  }
+  // When parallel jobs remain, only update strip if this final is for the focused period
+  // (or caller forces, e.g. single-job paths / busy errors with no period).
+  if (
+    !opts.force &&
+    periodKey &&
+    detailFocus &&
+    progressKeyFromFocus() !== periodKey
+  ) {
+    return;
+  }
   showGenProgress();
   const box = $("genProgress");
   const line = $("genProgressLine");
@@ -5708,23 +5846,36 @@ function formatParallelDailyStatus() {
  */
 async function runDaily(dayKey, opts = {}) {
   const day = dayKey || getActivePeriods().day;
-  if (generatingDays.has(day)) return;
-  if (weeklyMonthlyBusy) {
-    setGenFinal(t("desktop.report.weeklyMonthlyBusyError"), "error");
+  if (generatingDays.has(day)) {
+    focusGeneratingDetail("day", day);
     return;
   }
+  if (weeklyMonthlyBusy) {
+    setGenFinal(t("desktop.report.weeklyMonthlyBusyError"), "error", { force: true });
+    return;
+  }
+
+  // Capture user intent synchronously so parallel starts / navigation can't race after await.
+  detailFocus = { type: "day", key: day };
+  selectedDayKey = day;
+  updatePeriodLabel();
+  renderCalendar();
+
   if (!(await ensureLlmReady(focusDigestLabel("day")))) return;
 
   markDayGenerating(day, true);
-  detailFocus = { type: "day", key: day };
-  selectedDayKey = day;
-  showGeneratingDetail("day", day);
-  hideGenSessionRow();
+  const stillFocused = () => detailFocus?.type === "day" && detailFocus.key === day;
+  if (stillFocused()) {
+    showGeneratingDetail("day", day);
+    hideGenSessionRow();
+  }
   const reason = opts.reasonMessage ? ` · ${opts.reasonMessage}` : "";
+  const dayPeriodKey = digestProgressKey("daily", day);
   applyDigestProgress({
     phase: "start",
     level: "daily",
     periodLabel: day,
+    dayKey: day,
     message: t("desktop.report.parallelDaily", formatParallelDailyStatus(), reason)
   });
   try {
@@ -5746,16 +5897,17 @@ async function runDaily(dayKey, opts = {}) {
     );
     if (still) {
       applyDigestProgress({
-        phase: "start",
+        phase: "complete",
         level: "daily",
         periodLabel: day,
+        dayKey: day,
         message: `${msg}${t("desktop.report.stillGenerating", [...generatingDays].filter((d) => d !== day).sort().join(" · "))}`
       });
     } else {
-      setGenFinal(msg, "ok");
+      setGenFinal(msg, "ok", { periodKey: dayPeriodKey });
     }
     await loadMemory();
-    if (detailFocus?.type === "day" && detailFocus.key === day) {
+    if (stillFocused()) {
       renderFocusDigestDetail("day", day);
     }
   } catch (error) {
@@ -5765,6 +5917,7 @@ async function runDaily(dayKey, opts = {}) {
         phase: "error",
         level: "daily",
         periodLabel: day,
+        dayKey: day,
         message: t(
           "desktop.report.dailyFailedWithStill",
           day,
@@ -5775,17 +5928,19 @@ async function runDaily(dayKey, opts = {}) {
     } else if (isLlmConfigError(error)) {
       handleDigestError(focusDigestLabel("day"), error);
     } else {
-      setGenFinal(t("desktop.report.dailyFailed", day, err), "error");
+      setGenFinal(t("desktop.report.dailyFailed", day, err), "error", { periodKey: dayPeriodKey });
     }
   } finally {
     markDayGenerating(day, false);
-    if (generatingDays.size > 0) {
-      applyDigestProgress({
-        phase: "start",
-        level: "daily",
-        periodLabel: day,
-        message: formatParallelDailyStatus()
-      });
+    progressByPeriod.delete(dayPeriodKey);
+    activeSummarizeByPeriod.delete(dayPeriodKey);
+    // If user is still focused on this day but other days keep running, show their status only
+    // when focus moves — do not repaint with this finished day's periodLabel.
+    if (generatingDays.size > 0 && stillFocused()) {
+      // Stay on finished day detail (loadMemory/render above); strip already has this day's final.
+    } else if (generatingDays.size > 0 && detailFocus?.type === "day" && generatingDays.has(detailFocus.key)) {
+      const snap = progressByPeriod.get(digestProgressKey("daily", detailFocus.key));
+      if (snap) paintDigestProgress(snap, { skipDetail: true });
     }
   }
 }
@@ -5795,18 +5950,29 @@ async function runDaily(dayKey, opts = {}) {
  */
 async function runWeekly(weekKey) {
   const week = weekKey || getActivePeriods().week;
-  if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    setGenFinal(t("desktop.report.taskBusyGenWeekly"), "error");
+  if (generatingPeriodKey === `weekly:${week}`) {
+    focusGeneratingDetail("week", week);
     return;
   }
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    setGenFinal(t("desktop.report.taskBusyGenWeekly"), "error", { force: true });
+    return;
+  }
+
+  detailFocus = { type: "week", key: week };
+  selectedDayKey = null;
+  updatePeriodLabel();
+
   if (!(await ensureLlmReady(focusDigestLabel("week")))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `weekly:${week}`;
-  detailFocus = { type: "week", key: week };
   syncWeeklyMonthlyButtons();
   renderCalendar();
-  hideGenSessionRow();
-  showGeneratingDetail("week", week);
+  const stillFocused = () => detailFocus?.type === "week" && detailFocus.key === week;
+  if (stillFocused()) {
+    hideGenSessionRow();
+    showGeneratingDetail("week", week);
+  }
   applyDigestProgress({
     phase: "start",
     level: "weekly",
@@ -5827,12 +5993,15 @@ async function runWeekly(weekKey) {
         formatSummaryEnsureStats(result),
         embedded
       ),
-      "ok"
+      "ok",
+      { periodKey: digestProgressKey("weekly", week) }
     );
     await loadMemory();
   } catch (error) {
     handleDigestError(focusDigestLabel("week"), error);
   } finally {
+    progressByPeriod.delete(digestProgressKey("weekly", week));
+    activeSummarizeByPeriod.delete(digestProgressKey("weekly", week));
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
     syncWeeklyMonthlyButtons();
@@ -5846,18 +6015,28 @@ async function runWeekly(weekKey) {
  */
 async function runMonthly(monthKey) {
   const month = monthKey || getActivePeriods().month;
-  if (weeklyMonthlyBusy || generatingDays.size > 0) {
-    setGenFinal(t("desktop.report.taskBusyGenMonthly"), "error");
+  if (generatingPeriodKey === `monthly:${month}`) {
+    focusGeneratingDetail("month", month);
     return;
   }
+  if (weeklyMonthlyBusy || generatingDays.size > 0) {
+    setGenFinal(t("desktop.report.taskBusyGenMonthly"), "error", { force: true });
+    return;
+  }
+
+  detailFocus = { type: "month", key: month };
+  updatePeriodLabel();
+
   if (!(await ensureLlmReady(focusDigestLabel("month")))) return;
   weeklyMonthlyBusy = true;
   generatingPeriodKey = `monthly:${month}`;
-  detailFocus = { type: "month", key: month };
   syncWeeklyMonthlyButtons();
   renderCalendar();
-  hideGenSessionRow();
-  showGeneratingDetail("month", month);
+  const stillFocused = () => detailFocus?.type === "month" && detailFocus.key === month;
+  if (stillFocused()) {
+    hideGenSessionRow();
+    showGeneratingDetail("month", month);
+  }
   applyDigestProgress({
     phase: "start",
     level: "monthly",
@@ -5878,12 +6057,15 @@ async function runMonthly(monthKey) {
         formatSummaryEnsureStats(result),
         embedded
       ),
-      "ok"
+      "ok",
+      { periodKey: digestProgressKey("monthly", month) }
     );
     await loadMemory();
   } catch (error) {
     handleDigestError(focusDigestLabel("month"), error);
   } finally {
+    progressByPeriod.delete(digestProgressKey("monthly", month));
+    activeSummarizeByPeriod.delete(digestProgressKey("monthly", month));
     generatingPeriodKey = null;
     weeklyMonthlyBusy = false;
     syncWeeklyMonthlyButtons();
