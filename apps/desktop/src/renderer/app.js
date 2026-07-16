@@ -789,6 +789,9 @@ let wbLoaded = false;
 let wbResizeObserver = null;
 let wbBlankTerminalSeq = 0;
 let wbTargetPopoverSearch = "";
+let wbGitBranchPopover = null;
+let wbGitBranchPopoverPane = null;
+let wbGitBranchCheckoutBusy = false;
 let wbCreateBusy = false;
 let wbRenamePending = null;
 let wbProjectEditorInfo = null;
@@ -1597,6 +1600,15 @@ function fitWorkbenchTerminal() {
 
 const WB_TERMINAL_GIT_DEBOUNCE_MS = 80;
 
+function formatWorkbenchGitError(error) {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (error && typeof error === "object" && typeof error.message === "string" && error.message.trim()) {
+    return error.message.trim();
+  }
+  return t("desktop.common.unknownError");
+}
+
 function formatTerminalStatusPath(cwd) {
   const value = String(cwd || "").trim();
   if (!value) return "";
@@ -1627,6 +1639,12 @@ function updateWorkbenchTerminalStatusBar(pane) {
     const hasBranch = Boolean(pane.gitBranch);
     pane.statusBranchEl.textContent = hasBranch ? pane.gitBranch : "";
     pane.statusBranchEl.hidden = !hasBranch;
+    pane.statusBranchEl.disabled = !hasBranch || wbGitBranchCheckoutBusy;
+    if (hasBranch) {
+      pane.statusBranchEl.title = t("desktop.workbench.switchBranch");
+    } else {
+      pane.statusBranchEl.removeAttribute("title");
+    }
     if (pane.statusSepEl) pane.statusSepEl.hidden = !hasBranch;
   }
 }
@@ -1707,6 +1725,129 @@ function attachWorkbenchTerminalOscHandlers(term, pane) {
   if (osc7) pane.oscDisposables.push(osc7);
 }
 
+function ensureWorkbenchGitBranchPopover() {
+  if (wbGitBranchPopover) return wbGitBranchPopover;
+  const pop = document.createElement("div");
+  pop.id = "wbGitBranchPopover";
+  pop.className = "wb-git-branch-popover";
+  pop.hidden = true;
+  const list = document.createElement("div");
+  list.className = "wb-git-branch-list";
+  list.id = "wbGitBranchList";
+  pop.appendChild(list);
+  document.body.appendChild(pop);
+  wbGitBranchPopover = pop;
+  return pop;
+}
+
+function closeWorkbenchGitBranchPopover() {
+  if (wbGitBranchPopover) wbGitBranchPopover.hidden = true;
+  wbGitBranchPopoverPane = null;
+}
+
+function positionWorkbenchGitBranchPopover(anchorEl) {
+  const pop = ensureWorkbenchGitBranchPopover();
+  pop.hidden = false;
+  pop.style.visibility = "hidden";
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  let top = anchorRect.top - popRect.height - 6;
+  if (top < 8) top = anchorRect.bottom + 6;
+  let left = anchorRect.right - popRect.width;
+  left = Math.max(8, Math.min(left, window.innerWidth - popRect.width - 8));
+  pop.style.left = `${Math.round(left)}px`;
+  pop.style.top = `${Math.round(top)}px`;
+  pop.style.visibility = "";
+}
+
+function renderWorkbenchGitBranchPopover(pane, branches, current) {
+  const pop = ensureWorkbenchGitBranchPopover();
+  const list = pop.querySelector("#wbGitBranchList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!branches.length) {
+    const empty = document.createElement("p");
+    empty.className = "wb-git-branch-empty muted";
+    empty.textContent = t("desktop.workbench.noGitBranches");
+    list.appendChild(empty);
+    return;
+  }
+  for (const branch of branches) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wb-git-branch-item";
+    btn.textContent = branch;
+    btn.classList.toggle("active", branch === current);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (branch === current) {
+        closeWorkbenchGitBranchPopover();
+        return;
+      }
+      void checkoutWorkbenchGitBranch(pane, branch);
+    });
+    list.appendChild(btn);
+  }
+}
+
+async function openWorkbenchGitBranchPopover(pane, anchorEl) {
+  if (!pane || wbGitBranchCheckoutBusy) return;
+  if (
+    typeof agentResume.terminalGitBranches !== "function" ||
+    typeof agentResume.terminalGitCheckout !== "function"
+  ) {
+    return;
+  }
+  const cwd = pane.liveCwd || pane.cwd;
+  if (!cwd) return;
+
+  wbGitBranchPopoverPane = pane;
+  const pop = ensureWorkbenchGitBranchPopover();
+  const list = pop.querySelector("#wbGitBranchList");
+  if (list) {
+    list.innerHTML = `<p class="wb-git-branch-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  }
+  positionWorkbenchGitBranchPopover(anchorEl);
+
+  try {
+    const result = await agentResume.terminalGitBranches({ cwd });
+    if (wbGitBranchPopoverPane !== pane) return;
+    renderWorkbenchGitBranchPopover(pane, result?.branches || [], result?.current || pane.gitBranch);
+    positionWorkbenchGitBranchPopover(anchorEl);
+  } catch (error) {
+    if (wbGitBranchPopoverPane !== pane) return;
+    if (list) {
+      list.innerHTML = `<p class="wb-git-branch-empty muted">${escapeHtml(
+        t("desktop.workbench.loadBranchesFailed", formatWorkbenchGitError(error))
+      )}</p>`;
+    }
+  }
+}
+
+async function checkoutWorkbenchGitBranch(pane, branch) {
+  if (!pane || wbGitBranchCheckoutBusy) return;
+  const cwd = pane.liveCwd || pane.cwd;
+  if (!cwd || !branch) return;
+
+  wbGitBranchCheckoutBusy = true;
+  updateWorkbenchTerminalStatusBar(pane);
+  try {
+    const result = await agentResume.terminalGitCheckout({ cwd, branch });
+    pane.gitBranch = result?.branch || branch;
+    updateWorkbenchTerminalStatusBar(pane);
+    closeWorkbenchGitBranchPopover();
+    if (pane.ptyId > 0) {
+      void agentResume.terminalInput({ id: pane.ptyId, data: "\r" });
+    }
+    void refreshWorkbenchTerminalGitInfo(pane);
+  } catch (error) {
+    alertWorkbenchError(t("desktop.workbench.checkoutBranchFailed", formatWorkbenchGitError(error)));
+  } finally {
+    wbGitBranchCheckoutBusy = false;
+    updateWorkbenchTerminalStatusBar(pane);
+  }
+}
+
 async function createWorkbenchTerminalPane(opts) {
   const { key, projectPath, title, cwd, command } = opts;
   const stack = $("wbTerminalStack");
@@ -1739,7 +1880,8 @@ async function createWorkbenchTerminalPane(opts) {
   statusSepEl.textContent = "·";
   statusSepEl.hidden = true;
 
-  const statusBranchEl = document.createElement("span");
+  const statusBranchEl = document.createElement("button");
+  statusBranchEl.type = "button";
   statusBranchEl.className = "wb-terminal-status-branch";
   statusBranchEl.hidden = true;
 
@@ -1750,6 +1892,31 @@ async function createWorkbenchTerminalPane(opts) {
   paneEl.appendChild(hostEl);
   paneEl.appendChild(statusEl);
   stack.appendChild(paneEl);
+
+  const paneRef = {
+    key,
+    projectKey: wbProjectKeyFromPath(projectPath),
+    projectPath: projectPath || "",
+    title: title || basename(cwd),
+    ptyId: 0,
+    term: null,
+    fitAddon: null,
+    paneEl,
+    hostEl,
+    cwd,
+    liveCwd: cwd,
+    gitBranch: null,
+    statusEl,
+    statusPathEl,
+    statusSepEl,
+    statusBranchEl,
+    gitQueryTimer: null,
+    oscDisposables: []
+  };
+  statusBranchEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openWorkbenchGitBranchPopover(paneRef, statusBranchEl);
+  });
 
   const term = new Terminal({
     cursorBlink: true,
@@ -1782,39 +1949,22 @@ async function createWorkbenchTerminalPane(opts) {
   const rows = Math.max(2, term.rows || 24);
   const { id } = await agentResume.terminalSpawn({ cwd, command, cols, rows });
 
-  const pane = {
-    key,
-    projectKey: wbProjectKeyFromPath(projectPath),
-    projectPath: projectPath || "",
-    title: title || basename(cwd),
-    ptyId: id,
-    term,
-    fitAddon,
-    paneEl,
-    hostEl,
-    cwd,
-    liveCwd: cwd,
-    gitBranch: null,
-    statusEl,
-    statusPathEl,
-    statusSepEl,
-    statusBranchEl,
-    gitQueryTimer: null,
-    oscDisposables: []
-  };
-  ensureWorkbenchProjectDetail(pane.projectKey).terminalPanes.set(key, pane);
+  paneRef.ptyId = id;
+  paneRef.term = term;
+  paneRef.fitAddon = fitAddon;
+  ensureWorkbenchProjectDetail(paneRef.projectKey).terminalPanes.set(key, paneRef);
 
-  attachWorkbenchTerminalOscHandlers(term, pane);
-  updateWorkbenchTerminalStatusBar(pane);
-  void refreshWorkbenchTerminalGitInfo(pane);
+  attachWorkbenchTerminalOscHandlers(term, paneRef);
+  updateWorkbenchTerminalStatusBar(paneRef);
+  void refreshWorkbenchTerminalGitInfo(paneRef);
 
   term.onData((data) => {
-    void agentResume.terminalInput({ id: pane.ptyId, data });
+    void agentResume.terminalInput({ id: paneRef.ptyId, data });
   });
 
   switchWorkbenchTerminalTab(key);
   requestAnimationFrame(() => fitWorkbenchTerminal());
-  return pane;
+  return paneRef;
 }
 
 async function openWorkbenchTerminal(opts) {
@@ -9223,6 +9373,7 @@ function wire() {
       }
       hideNotesTargetPopover();
       hideWorkbenchTargetPopover();
+      closeWorkbenchGitBranchPopover();
       closeWorkbenchRenameDialog(null);
     }
   });
@@ -9245,6 +9396,9 @@ function wire() {
       !e.target.closest("#btnWorkbenchTabNewTerminal")
     ) {
       hideWorkbenchTargetPopover();
+    }
+    if (!e.target.closest("#wbGitBranchPopover") && !e.target.closest(".wb-terminal-status-branch")) {
+      closeWorkbenchGitBranchPopover();
     }
     if (
       !e.target.closest("#notesTargetPopover") &&

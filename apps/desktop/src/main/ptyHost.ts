@@ -256,6 +256,21 @@ function spawnPty(
   });
 }
 
+function formatExecError(error: unknown): string {
+  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
+  const stderr = err.stderr ? String(err.stderr).trim() : "";
+  if (stderr) return stderr;
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
+function isValidGitBranchRef(branch: string): boolean {
+  const trimmed = branch.trim();
+  if (!trimmed || trimmed.startsWith("-")) return false;
+  if (/[\0\r\n]/.test(trimmed)) return false;
+  return true;
+}
+
 async function queryGitInfo(cwd: string): Promise<{ isRepo: boolean; branch: string | null }> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"], {
@@ -278,6 +293,46 @@ async function queryGitInfo(cwd: string): Promise<{ isRepo: boolean; branch: str
     return { isRepo: true, branch };
   } catch {
     return { isRepo: true, branch: null };
+  }
+}
+
+async function listGitBranches(
+  cwd: string
+): Promise<{ current: string | null; branches: string[] }> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, "branch", "--list"], {
+      timeout: 5000,
+      maxBuffer: 1024 * 1024
+    });
+    const branches: string[] = [];
+    let current: string | null = null;
+    for (const line of stdout.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith("* ")) {
+        current = trimmed.slice(2).trim();
+        branches.push(current);
+      } else {
+        branches.push(trimmed);
+      }
+    }
+    return { current, branches };
+  } catch (error) {
+    throw new Error(formatExecError(error));
+  }
+}
+
+async function checkoutGitBranch(cwd: string, branch: string): Promise<void> {
+  if (!isValidGitBranchRef(branch)) {
+    throw new Error(`无效的分支名: ${branch}`);
+  }
+  try {
+    await execFileAsync("git", ["-C", cwd, "checkout", branch.trim()], {
+      timeout: 15000,
+      maxBuffer: 1024 * 1024
+    });
+  } catch (error) {
+    throw new Error(formatExecError(error));
   }
 }
 
@@ -405,6 +460,26 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   safeHandle("terminal:gitInfo", async (_event, args: { cwd: string }) => {
     const cwd = resolveCwd(args.cwd);
     return queryGitInfo(cwd);
+  });
+
+  safeHandle("terminal:gitBranches", async (_event, args: { cwd: string }) => {
+    const cwd = resolveCwd(args.cwd);
+    const info = await queryGitInfo(cwd);
+    if (!info.isRepo) {
+      return { current: null, branches: [] as string[] };
+    }
+    return listGitBranches(cwd);
+  });
+
+  safeHandle("terminal:gitCheckout", async (_event, args: { cwd: string; branch: string }) => {
+    const cwd = resolveCwd(args.cwd);
+    const info = await queryGitInfo(cwd);
+    if (!info.isRepo) {
+      throw new Error("当前目录不是 Git 仓库");
+    }
+    await checkoutGitBranch(cwd, args.branch);
+    const refreshed = await queryGitInfo(cwd);
+    return { branch: refreshed.branch };
   });
 }
 

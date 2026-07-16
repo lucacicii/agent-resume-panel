@@ -139,6 +139,13 @@ export interface DesktopApi {
   terminalGitInfo(args: {
     cwd: string;
   }): Promise<{ isRepo: boolean; branch: string | null }>;
+  terminalGitBranches(args: {
+    cwd: string;
+  }): Promise<{ current: string | null; branches: string[] }>;
+  terminalGitCheckout(args: {
+    cwd: string;
+    branch: string;
+  }): Promise<{ branch: string | null }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -430,6 +437,8 @@ const api: DesktopApi = {
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
+  terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
+  terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
