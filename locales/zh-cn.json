@@ -584,7 +584,7 @@
   "desktop.top.sessionsRefTitle": "Sessions 参考",
   "desktop.top.settings": "Settings",
   "desktop.top.settingsTitle": "Settings",
-  "desktop.top.settingsUpdateAvailable": "有新版本 {0}，打开 About",
+  "desktop.top.settingsUpdateAvailable": "有新版本 {0}，打开关于",
   "desktop.usage.byDay": "按日",
   "desktop.usage.bySource": "By source",
   "desktop.usage.chatEmbed": "Chat / Embed",

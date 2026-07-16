@@ -9009,6 +9009,10 @@ function showSettingsPane(name) {
 
 let pendingDesktopUpdate = null;
 
+function isDesktopUpdatePending(result) {
+  return Boolean(result?.ok && result.updateAvailable && result.latestVersion);
+}
+
 function isSettingsAboutPaneActive() {
   const pane = $("settingsPaneAbout");
   return Boolean(pane && !pane.hidden);
@@ -9022,14 +9026,19 @@ function openSettingsPane(pane) {
 
 function renderUpdateAvailableButton() {
   const btn = $("btnOpenAboutUpdate");
-  const hasUpdate = Boolean(pendingDesktopUpdate);
+  const hasUpdate = isDesktopUpdatePending(pendingDesktopUpdate);
   if (!btn) return;
   btn.hidden = !hasUpdate;
-  if (!hasUpdate) return;
+  if (!hasUpdate) {
+    btn.removeAttribute("title");
+    return;
+  }
   const title = t("desktop.top.settingsUpdateAvailable", pendingDesktopUpdate.latestVersion);
   btn.title = title;
   btn.setAttribute("aria-label", title);
 }
+
+window.renderUpdateAvailableButton = renderUpdateAvailableButton;
 
 function renderAboutUpdatePanel(result) {
   const wrap = $("settingsAboutUpdate");
@@ -9052,7 +9061,7 @@ function renderAboutUpdatePanel(result) {
     return;
   }
 
-  if (result.updateAvailable) {
+  if (isDesktopUpdatePending(result)) {
     wrap.classList.add("is-available");
     textEl.textContent = t("desktop.settings.updateAvailable", result.latestVersion);
     if (downloadBtn) downloadBtn.hidden = false;
@@ -9068,7 +9077,7 @@ async function refreshDesktopUpdateStatus(options = {}) {
     return null;
   }
   const result = await agentResume.checkForUpdate(options);
-  pendingDesktopUpdate = result?.ok && result.updateAvailable ? result : null;
+  pendingDesktopUpdate = isDesktopUpdatePending(result) ? result : null;
   renderUpdateAvailableButton();
   if (isSettingsAboutPaneActive()) {
     renderAboutUpdatePanel(result);
@@ -9188,7 +9197,6 @@ async function loadUsagePage() {
 
 async function registerRefreshLocalizedUiImpl() {
   window.refreshLocalizedUiImpl = async () => {
-    renderUpdateAvailableButton();
     populateUiLanguageSelect($("settingsForm")?.uiLanguage?.value);
     populateOutputLanguageSelect($("settingsForm")?.llmLang?.value);
     if (activePrimaryTab === "settings") {
@@ -9247,7 +9255,7 @@ async function boot() {
     await loadMemory();
     void loadAgentChat({ render: false });
     await syncAndRefreshSessionViews($("reportStatus"));
-    void refreshDesktopUpdateStatus();
+    await refreshDesktopUpdateStatus({ force: true });
   } finally {
     await hideAppStartupMask();
   }

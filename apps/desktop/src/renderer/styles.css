@@ -302,12 +302,21 @@ textarea:focus-visible,
 }
 
 .icon-btn {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
-  padding: 6px 8px;
-  min-width: 28px;
-  min-height: 28px;
+  padding: 5px 7px;
+  min-width: 30px;
+  min-height: 30px;
   border-radius: var(--radius-lg);
+}
+
+.icon-btn svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .quiet-select {

@@ -1,4 +1,6 @@
 import { app } from "electron";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 export const RELEASE_REPO = "thunder-luc/agent-resume-desktop-doc";
 const GITHUB_API_URL = `https://api.github.com/repos/${RELEASE_REPO}/releases/latest`;
@@ -118,6 +120,9 @@ function isCacheFresh(force: boolean): boolean {
   if (force || !cachedResult) {
     return false;
   }
+  if (cachedResult.ok && cachedResult.updateAvailable) {
+    return false;
+  }
   return Date.now() - cachedAt < CACHE_TTL_MS;
 }
 
@@ -130,13 +135,64 @@ function failureResult(currentVersion: string, error: UpdateCheckError): UpdateC
   };
 }
 
+export function resolveCurrentVersion(): string {
+  const fromElectron = app.getVersion().trim();
+  const parsedElectron = parseReleaseTag(fromElectron);
+  if (parsedElectron) {
+    return parsedElectron;
+  }
+  try {
+    const pkgPath = path.join(app.getAppPath(), "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    const fromPkg = typeof pkg.version === "string" ? pkg.version.trim() : "";
+    return parseReleaseTag(fromPkg) ?? fromPkg ?? fromElectron;
+  } catch {
+    return fromElectron;
+  }
+}
+
 export function getAppVersion(): string {
-  return app.getVersion();
+  return resolveCurrentVersion();
+}
+
+function buildUpdateSuccess(
+  latestVersion: string,
+  releaseUrl: string,
+  downloadUrl: string | null,
+  currentVersion = resolveCurrentVersion()
+): UpdateCheckSuccess {
+  const normalizedCurrent = parseReleaseTag(currentVersion) ?? currentVersion.trim();
+  const comparison = compareSemver(latestVersion, normalizedCurrent);
+  return {
+    ok: true,
+    currentVersion: normalizedCurrent,
+    latestVersion,
+    updateAvailable: comparison === 1,
+    releaseUrl,
+    downloadUrl,
+    checkedAt: Date.now()
+  };
+}
+
+function storeCache(result: UpdateCheckResult): void {
+  if (result.ok && result.updateAvailable) {
+    return;
+  }
+  cachedResult = result;
+  cachedAt = Date.now();
 }
 
 export async function checkForDesktopUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult> {
-  const currentVersion = getAppVersion();
+  const currentVersion = resolveCurrentVersion();
   if (isCacheFresh(options?.force === true)) {
+    if (cachedResult?.ok) {
+      return buildUpdateSuccess(
+        cachedResult.latestVersion,
+        cachedResult.releaseUrl,
+        cachedResult.downloadUrl,
+        currentVersion
+      );
+    }
     return cachedResult!;
   }
 
@@ -151,22 +207,19 @@ export async function checkForDesktopUpdate(options?: { force?: boolean }): Prom
     });
   } catch {
     const result = failureResult(currentVersion, "network");
-    cachedResult = result;
-    cachedAt = Date.now();
+    storeCache(result);
     return result;
   }
 
   if (response.status === 403 || response.status === 429) {
     const result = failureResult(currentVersion, "rate_limit");
-    cachedResult = result;
-    cachedAt = Date.now();
+    storeCache(result);
     return result;
   }
 
   if (!response.ok) {
     const result = failureResult(currentVersion, "network");
-    cachedResult = result;
-    cachedAt = Date.now();
+    storeCache(result);
     return result;
   }
 
@@ -175,32 +228,23 @@ export async function checkForDesktopUpdate(options?: { force?: boolean }): Prom
     payload = await response.json();
   } catch {
     const result = failureResult(currentVersion, "parse");
-    cachedResult = result;
-    cachedAt = Date.now();
+    storeCache(result);
     return result;
   }
 
   const parsed = parseGithubRelease(payload);
   if (!parsed) {
     const result = failureResult(currentVersion, "parse");
-    cachedResult = result;
-    cachedAt = Date.now();
+    storeCache(result);
     return result;
   }
 
-  const comparison = compareSemver(parsed.latestVersion, currentVersion);
-  const updateAvailable = comparison === 1;
-
-  const result: UpdateCheckSuccess = {
-    ok: true,
-    currentVersion,
-    latestVersion: parsed.latestVersion,
-    updateAvailable,
-    releaseUrl: parsed.releaseUrl,
-    downloadUrl: parsed.downloadUrl,
-    checkedAt: Date.now()
-  };
-  cachedResult = result;
-  cachedAt = Date.now();
+  const result = buildUpdateSuccess(
+    parsed.latestVersion,
+    parsed.releaseUrl,
+    parsed.downloadUrl,
+    currentVersion
+  );
+  storeCache(result);
   return result;
 }
