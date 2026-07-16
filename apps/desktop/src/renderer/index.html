@@ -570,8 +570,45 @@
                   <div class="wb-file-tree" id="wbFileTree" role="tree"></div>
                 </div>
                 <div id="wbGitPane" class="wb-side-pane" hidden>
-                  <div class="wb-side-pane-head">
+                  <div class="wb-side-pane-head wb-git-pane-head">
                     <span class="wb-side-pane-title" data-i18n="desktop.workbench.sidePanelGit">Git Changes</span>
+                    <div class="wb-git-pane-tools">
+                      <select
+                        id="wbGitRepoSelect"
+                        class="wb-git-repo-select"
+                        hidden
+                        data-i18n-aria-label="desktop.workbench.gitRepoSelect"
+                      ></select>
+                      <div class="wb-git-actions">
+                        <button
+                          type="button"
+                          class="wb-git-action-btn"
+                          id="btnWbGitCommit"
+                          disabled
+                          data-i18n="desktop.workbench.gitCommit"
+                        >
+                          Commit
+                        </button>
+                        <button
+                          type="button"
+                          class="wb-git-action-btn"
+                          id="btnWbGitPush"
+                          disabled
+                          data-i18n="desktop.workbench.gitPush"
+                        >
+                          Push
+                        </button>
+                        <button
+                          type="button"
+                          class="wb-git-action-btn"
+                          id="btnWbGitPull"
+                          disabled
+                          data-i18n="desktop.workbench.gitPull"
+                        >
+                          Pull
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <div class="wb-git-panel" id="wbGitPanel"></div>
                 </div>
@@ -1350,6 +1387,35 @@
         <div class="app-startup-status">
           <span class="gen-progress-pulse" aria-hidden="true"></span>
           <p class="app-startup-message" data-i18n="desktop.workbench.syncingSessions">Syncing agent sessions…</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="wb-note-created-overlay" id="wbGitCommitDialog" hidden>
+      <div class="wb-note-created-backdrop" data-wb-git-commit-cancel></div>
+      <div class="wb-note-created-panel" role="dialog" aria-labelledby="wbGitCommitTitle">
+        <div class="wb-rename-head">
+          <p class="wb-note-created-title" id="wbGitCommitTitle" data-i18n="desktop.workbench.gitCommitDialogTitle">Commit</p>
+          <button
+            type="button"
+            class="wb-rename-auto-btn"
+            id="btnWbGitCommitAuto"
+            data-i18n="desktop.workbench.gitCommitAutoGenerate"
+          >
+            Auto generate
+          </button>
+        </div>
+        <p class="wb-rename-status muted" id="wbGitCommitStatus" hidden></p>
+        <textarea
+          class="wb-git-commit-input"
+          id="wbGitCommitInput"
+          rows="5"
+          spellcheck="false"
+          data-i18n-aria-label="desktop.workbench.gitCommitDialogTitle"
+        ></textarea>
+        <div class="wb-note-created-actions">
+          <button type="button" class="wb-note-created-btn" data-wb-git-commit-cancel data-i18n="desktop.common.cancel">Cancel</button>
+          <button type="button" class="wb-note-created-btn primary" id="btnWbGitCommitConfirm" data-i18n="desktop.workbench.gitCommit">Commit</button>
         </div>
       </div>
     </div>

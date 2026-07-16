@@ -925,6 +925,7 @@ function selectWorkbenchProject(folder) {
   const detail = getWorkbenchProjectDetail();
   wbActiveKey = detail?.activeSessionKey || "";
   renderWorkbenchPanel();
+  notifyWorkbenchSideContextChanged();
   requestAnimationFrame(() => fitWorkbenchTerminal());
 }
 
@@ -1288,7 +1289,10 @@ async function loadWorkbenchSessions(opts = {}) {
       const hasProject = wbSessions.some(
         (s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath
       );
-      if (!hasProject) wbSelectedProject = { kind: "all" };
+      if (!hasProject) {
+        wbSelectedProject = { kind: "all" };
+        notifyWorkbenchSideContextChanged();
+      }
     }
     renderWorkbenchPanel();
   } catch (error) {
@@ -1532,7 +1536,6 @@ function switchWorkbenchTerminalTab(key) {
         }
         fitWorkbenchTerminal();
         void refreshWorkbenchTerminalGitInfo(pane);
-        scheduleWorkbenchSidePanelRefresh({ immediate: true });
       });
     }
   }
@@ -1702,8 +1705,6 @@ function handleWorkbenchTerminalCwdChange(pane, cwd) {
   if (prev === next) return;
   pane.liveCwd = next;
   updateWorkbenchTerminalStatusBar(pane);
-  invalidateWorkbenchFilesCache();
-  scheduleWorkbenchSidePanelRefresh();
   if (pane.gitQueryTimer) clearTimeout(pane.gitQueryTimer);
   pane.gitQueryTimer = window.setTimeout(() => {
     pane.gitQueryTimer = null;
@@ -2104,6 +2105,9 @@ let wbGitStatusCache = null;
 const wbGitExpandedDirs = new Set();
 let wbSideGitQueryTimer = null;
 let wbSidePanelRefreshTimer = null;
+let wbGitActionBusy = false;
+/** @type {{ repoRoot: string, resolve: (value: boolean) => void } | null} */
+let wbGitCommitPending = null;
 
 function clampWbSidePanelWidth(value) {
   return Math.min(WB_SIDE_PANEL_LIMITS.max, Math.max(WB_SIDE_PANEL_LIMITS.min, Math.round(value)));
@@ -2154,14 +2158,22 @@ function applyWbSidePanelLayout() {
 }
 
 function getWorkbenchSideContextCwd() {
-  const pane = getActiveWorkbenchTerminalPane();
-  if (pane?.liveCwd) return pane.liveCwd;
-  if (pane?.cwd) return pane.cwd;
   return getActiveWorkbenchProjectPath() || "";
 }
 
 function getWorkbenchSideRootPath() {
-  return getWorkbenchSideContextCwd();
+  return getActiveWorkbenchProjectPath() || "";
+}
+
+function notifyWorkbenchSideContextChanged() {
+  invalidateWorkbenchFilesCache();
+  if (wbSideGitView === "diff") {
+    wbSideGitView = "list";
+    applyWbSidePanelLayout();
+  }
+  if (wbSidePanelOpen) {
+    scheduleWorkbenchSidePanelRefresh({ immediate: true });
+  }
 }
 
 function toggleWorkbenchSidePanel(tab) {
@@ -2557,17 +2569,240 @@ function workbenchGitNestedScanOptions(settings = loadedSettings) {
   };
 }
 
+function collectWorkbenchGitRepos(cache = wbGitStatusCache) {
+  if (!cache?.isRepo) return [];
+  /** @type {Map<string, { root: string, displayPath: string }>} */
+  const repos = new Map();
+  const addRepo = (root, displayPath = "") => {
+    if (!root) return;
+    const existing = repos.get(root);
+    if (!existing) {
+      repos.set(root, { root, displayPath: displayPath || "" });
+      return;
+    }
+    if (!existing.displayPath && displayPath) {
+      existing.displayPath = displayPath;
+    }
+  };
+
+  if (cache.root) addRepo(cache.root, "");
+  if (Array.isArray(cache.nestedRepos)) {
+    for (const repo of cache.nestedRepos) {
+      addRepo(repo.root, repo.displayPath || "");
+    }
+  }
+  for (const change of [...(cache.staged || []), ...(cache.unstaged || [])]) {
+    if (change.repoRoot) {
+      const nested = cache.nestedRepos?.find((repo) => repo.root === change.repoRoot);
+      addRepo(change.repoRoot, nested?.displayPath || "");
+    }
+  }
+
+  return [...repos.values()].sort((a, b) =>
+    (a.displayPath || a.root).localeCompare(b.displayPath || b.root, undefined, { sensitivity: "base" })
+  );
+}
+
+function resolveWorkbenchGitTargetRepo() {
+  const select = $("wbGitRepoSelect");
+  if (select && !select.hidden && select.value) return select.value;
+  const repos = collectWorkbenchGitRepos();
+  return repos.length === 1 ? repos[0].root : "";
+}
+
+function syncWorkbenchGitRepoSelector(cache = wbGitStatusCache) {
+  const select = $("wbGitRepoSelect");
+  if (!select) return;
+  const repos = collectWorkbenchGitRepos(cache);
+  const prev = select.value;
+  select.innerHTML = "";
+  for (const repo of repos) {
+    const option = document.createElement("option");
+    option.value = repo.root;
+    option.textContent = repo.displayPath || repo.root;
+    select.appendChild(option);
+  }
+  if (repos.length > 1) {
+    select.hidden = false;
+    if (prev && repos.some((repo) => repo.root === prev)) {
+      select.value = prev;
+    }
+  } else {
+    select.hidden = true;
+    select.value = repos[0]?.root || "";
+  }
+}
+
+function updateWorkbenchGitActionButtons(cache = wbGitStatusCache) {
+  const enabled = Boolean(cache?.isRepo && collectWorkbenchGitRepos(cache).length) && !wbGitActionBusy;
+  for (const id of ["btnWbGitCommit", "btnWbGitPush", "btnWbGitPull"]) {
+    const btn = $(id);
+    if (btn) btn.disabled = !enabled;
+  }
+}
+
+async function refreshWorkbenchGitPanelAfterAction() {
+  await refreshWorkbenchGitPanel();
+  const pane = getActiveWorkbenchTerminalPane();
+  if (pane) void refreshWorkbenchTerminalGitInfo(pane);
+}
+
+function resetWorkbenchGitCommitDialogUi() {
+  const status = $("wbGitCommitStatus");
+  if (status) {
+    status.hidden = true;
+    status.textContent = "";
+  }
+}
+
+function setWorkbenchGitCommitBusy(busy) {
+  const autoBtn = $("btnWbGitCommitAuto");
+  const confirmBtn = $("btnWbGitCommitConfirm");
+  const input = $("wbGitCommitInput");
+  autoBtn?.toggleAttribute("disabled", busy);
+  confirmBtn?.toggleAttribute("disabled", busy);
+  input?.toggleAttribute("disabled", busy);
+  document.querySelectorAll("[data-wb-git-commit-cancel]").forEach((btn) => {
+    btn.toggleAttribute("disabled", busy);
+  });
+  if (autoBtn) {
+    autoBtn.textContent = busy
+      ? t("desktop.workbench.gitCommitGenerating")
+      : t("desktop.workbench.gitCommitAutoGenerate");
+  }
+}
+
+function closeWorkbenchGitCommitDialog(success = false) {
+  const pending = wbGitCommitPending;
+  wbGitCommitPending = null;
+  const dialog = $("wbGitCommitDialog");
+  if (dialog) dialog.hidden = true;
+  resetWorkbenchGitCommitDialogUi();
+  pending?.resolve(success);
+}
+
+async function runWorkbenchGitAutoCommitMessage() {
+  const pending = wbGitCommitPending;
+  if (!pending?.repoRoot || typeof agentResume.terminalGitSuggestCommit !== "function") return;
+  setWorkbenchGitCommitBusy(true);
+  const status = $("wbGitCommitStatus");
+  if (status) {
+    status.hidden = false;
+    status.textContent = t("desktop.workbench.gitCommitGenerating");
+  }
+  try {
+    const result = await agentResume.terminalGitSuggestCommit({ repoRoot: pending.repoRoot });
+    const input = $("wbGitCommitInput");
+    if (input) input.value = result?.message || "";
+    if (status) {
+      status.hidden = false;
+      status.textContent = t("desktop.workbench.gitCommitSuggested");
+    }
+    setWorkbenchGitCommitBusy(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.select();
+    });
+  } catch (error) {
+    if (status) status.hidden = true;
+    setWorkbenchGitCommitBusy(false);
+    alertWorkbenchError(t("desktop.workbench.gitCommitGenerateFailed", formatWorkbenchGitError(error)));
+  }
+}
+
+function openWorkbenchGitCommitDialog(repoRoot) {
+  return new Promise((resolve) => {
+    const dialog = $("wbGitCommitDialog");
+    const input = $("wbGitCommitInput");
+    if (!dialog || !input) {
+      resolve(false);
+      return;
+    }
+    wbGitCommitPending = { repoRoot, resolve };
+    resetWorkbenchGitCommitDialogUi();
+    input.value = "";
+    dialog.hidden = false;
+    void runWorkbenchGitAutoCommitMessage();
+  });
+}
+
+async function confirmWorkbenchGitCommit() {
+  const pending = wbGitCommitPending;
+  if (!pending?.repoRoot || typeof agentResume.terminalGitCommit !== "function") return;
+  const input = $("wbGitCommitInput");
+  const message = String(input?.value || "").trim();
+  if (!message) {
+    alertWorkbenchError(t("desktop.workbench.gitCommitMessageEmpty"));
+    return;
+  }
+  wbGitActionBusy = true;
+  updateWorkbenchGitActionButtons();
+  setWorkbenchGitCommitBusy(true);
+  try {
+    await agentResume.terminalGitCommit({ repoRoot: pending.repoRoot, message });
+    closeWorkbenchGitCommitDialog(true);
+    await refreshWorkbenchGitPanelAfterAction();
+  } catch (error) {
+    alertWorkbenchError(t("desktop.workbench.gitCommitFailed", formatWorkbenchGitError(error)));
+    setWorkbenchGitCommitBusy(false);
+  } finally {
+    wbGitActionBusy = false;
+    updateWorkbenchGitActionButtons();
+  }
+}
+
+async function runWorkbenchGitPushPull(action) {
+  const repoRoot = resolveWorkbenchGitTargetRepo();
+  if (!repoRoot) {
+    alertWorkbenchError(t("desktop.workbench.gitNoRepoSelected"));
+    return;
+  }
+  const fn =
+    action === "push"
+      ? agentResume.terminalGitPush
+      : action === "pull"
+        ? agentResume.terminalGitPull
+        : null;
+  if (typeof fn !== "function") return;
+
+  wbGitActionBusy = true;
+  updateWorkbenchGitActionButtons();
+  try {
+    await fn({ repoRoot });
+    await refreshWorkbenchGitPanelAfterAction();
+  } catch (error) {
+    const key =
+      action === "push" ? "desktop.workbench.gitPushFailed" : "desktop.workbench.gitPullFailed";
+    alertWorkbenchError(t(key, formatWorkbenchGitError(error)));
+  } finally {
+    wbGitActionBusy = false;
+    updateWorkbenchGitActionButtons();
+  }
+}
+
+async function handleWorkbenchGitCommitClick() {
+  const repoRoot = resolveWorkbenchGitTargetRepo();
+  if (!repoRoot) {
+    alertWorkbenchError(t("desktop.workbench.gitNoRepoSelected"));
+    return;
+  }
+  await openWorkbenchGitCommitDialog(repoRoot);
+}
+
 async function refreshWorkbenchGitPanel() {
   const panel = $("wbGitPanel");
   if (!panel) return;
   const cwd = getWorkbenchSideContextCwd();
   panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  updateWorkbenchGitActionButtons(null);
   if (!cwd) {
     panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.sidePanelNoRoot"))}</p>`;
+    syncWorkbenchGitRepoSelector(null);
     return;
   }
   if (typeof agentResume.terminalGitStatus !== "function") {
     panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.sidePanelGitUnavailable"))}</p>`;
+    syncWorkbenchGitRepoSelector(null);
     return;
   }
 
@@ -2581,14 +2816,21 @@ async function refreshWorkbenchGitPanel() {
       panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
         t("desktop.workbench.sidePanelNoNestedRepos", depth)
       )}</p>`;
+      syncWorkbenchGitRepoSelector(result);
+      updateWorkbenchGitActionButtons(result);
       return;
     }
     expandAllGitChangeDirs([...(result.staged || []), ...(result.unstaged || [])]);
     renderWorkbenchGitPanelFromCache();
+    syncWorkbenchGitRepoSelector(result);
+    updateWorkbenchGitActionButtons(result);
   } catch (error) {
+    wbGitStatusCache = null;
     panel.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
       t("desktop.workbench.sidePanelLoadFailed", formatWorkbenchGitError(error))
     )}</p>`;
+    syncWorkbenchGitRepoSelector(null);
+    updateWorkbenchGitActionButtons(null);
   }
 }
 
@@ -2801,6 +3043,14 @@ function initWorkbenchSidePanel() {
   $("btnWbSideFiles")?.addEventListener("click", () => toggleWorkbenchSidePanel("files"));
   $("btnWbSideGit")?.addEventListener("click", () => toggleWorkbenchSidePanel("git"));
   $("btnWbDiffBack")?.addEventListener("click", () => closeWorkbenchGitDiffView());
+  $("btnWbGitCommit")?.addEventListener("click", () => void handleWorkbenchGitCommitClick());
+  $("btnWbGitPush")?.addEventListener("click", () => void runWorkbenchGitPushPull("push"));
+  $("btnWbGitPull")?.addEventListener("click", () => void runWorkbenchGitPushPull("pull"));
+  $("btnWbGitCommitAuto")?.addEventListener("click", () => void runWorkbenchGitAutoCommitMessage());
+  $("btnWbGitCommitConfirm")?.addEventListener("click", () => void confirmWorkbenchGitCommit());
+  document.querySelectorAll("[data-wb-git-commit-cancel]").forEach((btn) => {
+    btn.addEventListener("click", () => closeWorkbenchGitCommitDialog(false));
+  });
 }
 
 async function openWorkbenchTerminal(opts) {
@@ -2814,6 +3064,7 @@ async function openWorkbenchTerminal(opts) {
       wbSelectedProject = { kind: "project", projectPath };
       saveWbProjectState();
       renderWorkbenchPanel();
+      notifyWorkbenchSideContextChanged();
     }
     switchWorkbenchTerminalTab(key);
     return existing;
@@ -2822,6 +3073,7 @@ async function openWorkbenchTerminal(opts) {
     wbSelectedProject = { kind: "project", projectPath };
     saveWbProjectState();
     renderWorkbenchPanel();
+    notifyWorkbenchSideContextChanged();
   }
   return createWorkbenchTerminalPane({ key, projectPath, title, cwd, command });
 }
@@ -2832,6 +3084,7 @@ async function openWorkbenchSession(session) {
     wbSelectedProject = { kind: "project", projectPath: session.projectPath };
     saveWbProjectState();
     renderWorkbenchPanel();
+    notifyWorkbenchSideContextChanged();
   }
   wbActiveKey = `${session.provider}:${session.id}`;
   activeSessionKey = wbActiveKey;
@@ -3238,6 +3491,7 @@ async function pickWorkbenchTarget(target, mode = wbTargetPopoverMode) {
       wbSelectedProject = { kind: "project", projectPath: cwd };
       saveWbProjectState();
       renderWorkbenchPanel();
+      notifyWorkbenchSideContextChanged();
       await openBlankWorkbenchTerminal();
     } else {
       await launchWorkbenchNewSession(cwd, provider);

@@ -387,6 +387,15 @@ export type {
   AutoRenameSessionResult,
   RenameSessionResult
 } from "./session/actions";
+export {
+  suggestCommitMessageFromGitContext,
+  buildHeuristicCommitMessage
+} from "./git/commitAssist";
+export {
+  buildCommitMessageSystemPrompt,
+  buildCommitMessageUserPrompt,
+  normalizeSuggestedCommitMessage
+} from "./git/prompts";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
 export {
   openProjectInEditor,

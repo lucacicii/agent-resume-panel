@@ -174,6 +174,13 @@ export interface DesktopApi {
     branch: string;
     repoRoot?: string;
   }): Promise<{ branch: string | null; repoRoot?: string | null }>;
+  terminalGitSuggestCommit(args: { repoRoot: string }): Promise<{
+    message: string;
+    source: "llm" | "heuristic";
+  }>;
+  terminalGitCommit(args: { repoRoot: string; message: string }): Promise<{ ok: boolean }>;
+  terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
+  terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -517,6 +524,10 @@ const api: DesktopApi = {
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
+  terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
+  terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
+  terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),
+  terminalGitPull: (args) => ipcRenderer.invoke("terminal:gitPull", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);

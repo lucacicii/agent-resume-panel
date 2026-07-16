@@ -68,6 +68,7 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
+import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, initI18nService } from "./i18nService";
@@ -981,6 +982,7 @@ app.whenReady().then(async () => {
   applyAppIcon();
   registerIpc();
   registerWorkbenchFsIpc();
+  registerWorkbenchGitIpc(() => app.getLocale());
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();
