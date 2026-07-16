@@ -7,8 +7,8 @@ const root = join(import.meta.dirname, "..");
 const srcDir = join(root, "src");
 const mediaDir = join(root, "media");
 const localesDir = join(root, "locales");
-const desktopRendererDir = join(root, "apps/desktop/src/renderer");
-const desktopMainDir = join(root, "apps/desktop/src/main");
+const desktopRendererDir = join(root, "..", "desktop", "src", "renderer");
+const desktopMainDir = join(root, "..", "desktop", "src", "main");
 const desktopIndexHtml = join(desktopRendererDir, "index.html");
 
 function walk(dir, filter) {

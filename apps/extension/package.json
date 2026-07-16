@@ -1,6 +1,6 @@
 {
-  "name": "agent-resume-panel-v2",
-  "displayName": "Agent Resume Panel V2",
+  "name": "agent-resume-panel",
+  "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
   "version": "2.6.7",
@@ -27,6 +27,7 @@
   "keywords": [
     "markdown",
     "gtd",
+    "note",
     "ai",
     "agent",
     "coding agent",
@@ -52,15 +53,17 @@
     "llm",
     "summarize",
     "rename",
-    "vscode"
+    "vscodium"
   ],
   "activationEvents": [
     "onStartupFinished",
     "onView:agentResume.sessions",
     "onView:agentResume.acpChats",
     "onView:agentResume.gtd",
+    "onView:agentResume.notes",
     "onCommand:agentResume.refresh",
     "onCommand:agentResume.refreshGtd",
+    "onCommand:agentResume.refreshNotes",
     "onCommand:agentResume.setSessionGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
@@ -91,17 +94,30 @@
     "onCommand:agentResume.renameAcpChat",
     "onCommand:agentResume.openAcpSettings",
     "onCommand:agentResume.openSettings",
-    "onCommand:agentResume.autoRenameSession"
+    "onCommand:agentResume.autoRenameSession",
+    "onCommand:agentResume.handoffTo.codex",
+    "onCommand:agentResume.handoffTo.claude",
+    "onCommand:agentResume.handoffTo.agy",
+    "onCommand:agentResume.handoffTo.grok",
+    "onCommand:agentResume.handoffTo.opencode",
+    "onCommand:agentResume.handoffTo.pi"
   ],
   "main": "./out/extension.js",
   "scripts": {
+    "merge:manifest": "node scripts/merge-extension-manifest.mjs",
+    "precompile": "npm run merge:manifest",
     "compile": "tsc -p ./",
-    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs",
+    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs && node scripts/generate-handoff-menu-contributions.test.mjs",
+    "test:manifest": "node scripts/manifest-equivalence.test.mjs",
+    "test:vsix": "node scripts/pack-vsix.test.mjs",
+    "test:notes": "node scripts/note-uri.test.mjs",
     "watch": "tsc -watch -p ./",
     "build:all": "node scripts/build-all.mjs",
+    "build:openvsx": "node scripts/build-openvsx.mjs",
     "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
-    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
+    "publish:openvsx": "npm run build:openvsx && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require(\"./package.json\").version\").vsix\"",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
@@ -168,11 +184,11 @@
         "agentResume.catalog.stalePolicy": {
           "type": "string",
           "enum": [
-            "hide",
+            "off",
             "purge"
           ],
-          "default": "hide",
-          "description": "When a session disappears from agent storage during sync: hide marks it hidden in the catalog; purge deletes the catalog row."
+          "default": "off",
+          "description": "When a session disappears from agent storage during sync: off keeps all catalog rows; purge deletes rows not refreshed in the latest sync."
         },
         "agentResume.catalog.sidebarMode": {
           "type": "string",
@@ -407,7 +423,7 @@
             "app"
           ],
           "default": "terminal",
-          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app uses Codex App."
+          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app opens the ChatGPT desktop app via codex:// deep link."
         },
         "agentResume.codexIdePanelResume.enabled": {
           "type": "boolean",
@@ -434,19 +450,20 @@
         "agentResume.llm.outputLanguage": {
           "type": "string",
           "enum": [
-            "English",
-            "Chinese",
-            "Japanese",
-            "Korean",
-            "Spanish",
-            "French",
-            "German",
-            "Portuguese",
-            "Italian",
-            "Russian"
+            "auto",
+            "en",
+            "zh-cn",
+            "ja",
+            "ko",
+            "es",
+            "fr",
+            "de",
+            "pt-br",
+            "it",
+            "ru"
           ],
-          "default": "English",
-          "description": "Language used for Summarize and Auto Rename results."
+          "default": "auto",
+          "description": "Language for Summarize, Auto Rename, and digests. auto follows UI Language."
         },
         "agentResume.llm.maxContextChars": {
           "type": "number",
@@ -597,6 +614,39 @@
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentResume",
+          "title": "Agent Resume",
+          "icon": "resources/agent-resume.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentResume": [
+        {
+          "id": "agentResume.sessions",
+          "name": "Sessions",
+          "icon": "$(history)"
+        },
+        {
+          "id": "agentResume.acpChats",
+          "name": "ACP Chats",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "id": "agentResume.gtd",
+          "name": "GTD",
+          "icon": "$(tag)"
+        },
+        {
+          "id": "agentResume.notes",
+          "name": "Notes",
+          "icon": "$(notebook)"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "agentResume.refresh",
@@ -660,6 +710,16 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "agentResume.newSessionNote",
+        "title": "New Session Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newProjectNote",
+        "title": "New Project Note",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.renameAcpChat",
         "title": "Rename ACP Chat",
         "category": "Agent Resume"
@@ -717,8 +777,259 @@
         "category": "Agent Resume"
       },
       {
+        "command": "agentResume.moveNote",
+        "title": "Move Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openDocumentation",
+        "title": "Open Documentation",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.reportIssue",
+        "title": "Report Issue",
+        "category": "Agent Resume"
+      },
+      {
         "command": "agentResume.openSession",
         "title": "Resume Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.copyResumeCommand",
+        "title": "Copy Resume Command",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openFolder",
+        "title": "Open Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openProject",
+        "title": "Open Folder and Resume",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInGhostty",
+        "title": "Open in Ghostty",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.previewSession",
+        "title": "Preview Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.renameSession",
+        "title": "Rename Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.removeSessionFromPanel",
+        "title": "Remove from Panel",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.autoRenameSession",
+        "title": "Auto Rename Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setSessionGtdStatus",
+        "title": "Set GTD Status…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openSessionNote",
+        "title": "Open Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteSessionNote",
+        "title": "Delete Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openProjectNote",
+        "title": "Open Project Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteProjectNote",
+        "title": "Delete Project Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume",
+        "icon": "$(plus)"
+      },
+      {
+        "command": "agentResume.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "agentResume.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentResume.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "agentResume.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "agentResume.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.configureSessionMenu",
+        "title": "Customize Session Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInCodexApp",
+        "title": "Resume in ChatGPT",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInClaudeCodePanel",
+        "title": "Resume in Claude Code Panel",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInCodexIdePanel",
+        "title": "Resume in Codex IDE Panel (Experimental)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsUpdatedDesc",
+        "title": "Sort by Updated (Newest First)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsUpdatedAsc",
+        "title": "Sort by Updated (Oldest First)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsTitleAsc",
+        "title": "Sort by Title (A–Z)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsTitleDesc",
+        "title": "Sort by Title (Z–A)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.favoriteProject",
+        "title": "Add to Favorites",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.unfavoriteProject",
+        "title": "Remove from Favorites",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setProjectAlias",
+        "title": "Set Project Alias…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.configureProjectMenu",
+        "title": "Customize Project Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newChatSession",
+        "title": "New Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newCodexSession",
+        "title": "New Codex Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newClaudeSession",
+        "title": "New Claude Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAgySession",
+        "title": "New Antigravity Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newGrokSession",
+        "title": "New Grok Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newOpenCodeSession",
+        "title": "New OpenCode Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newPiSession",
+        "title": "New Pi Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAlmaSession",
+        "title": "New Alma Thread",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newCodexAppSession",
+        "title": "New ChatGPT Session",
         "category": "Agent Resume"
       },
       {
@@ -767,11 +1078,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.copyResumeCommand",
-        "title": "Copy Resume Command",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.copyResumeCommand",
         "title": "复制恢复命令",
         "category": "Agent Resume"
@@ -814,11 +1120,6 @@
       {
         "command": "agentResume.ru.copyResumeCommand",
         "title": "Копировать команду возобновления",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openFolder",
-        "title": "Open Folder",
         "category": "Agent Resume"
       },
       {
@@ -867,11 +1168,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.openProject",
-        "title": "Open Folder and Resume",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.openProject",
         "title": "打开文件夹并恢复",
         "category": "Agent Resume"
@@ -914,11 +1210,6 @@
       {
         "command": "agentResume.ru.openProject",
         "title": "Открыть папку и возобновить",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openInGhostty",
-        "title": "Open in Ghostty",
         "category": "Agent Resume"
       },
       {
@@ -967,11 +1258,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.previewSession",
-        "title": "Preview Session",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.previewSession",
         "title": "预览会话",
         "category": "Agent Resume"
@@ -1014,11 +1300,6 @@
       {
         "command": "agentResume.ru.previewSession",
         "title": "Предпросмотр сессии",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.renameSession",
-        "title": "Rename Session",
         "category": "Agent Resume"
       },
       {
@@ -1067,11 +1348,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.removeSessionFromPanel",
-        "title": "Remove from Panel",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.removeSessionFromPanel",
         "title": "从面板移除",
         "category": "Agent Resume"
@@ -1114,11 +1390,6 @@
       {
         "command": "agentResume.ru.removeSessionFromPanel",
         "title": "Удалить из панели",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.autoRenameSession",
-        "title": "Auto Rename Session",
         "category": "Agent Resume"
       },
       {
@@ -1167,11 +1438,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.setSessionGtdStatus",
-        "title": "Set GTD Status…",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.setSessionGtdStatus",
         "title": "设置 GTD 状态…",
         "category": "Agent Resume"
@@ -1214,11 +1480,6 @@
       {
         "command": "agentResume.ru.setSessionGtdStatus",
         "title": "Set GTD Status…",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openSessionNote",
-        "title": "Open Note…",
         "category": "Agent Resume"
       },
       {
@@ -1267,11 +1528,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.deleteSessionNote",
-        "title": "Delete Notes",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.deleteSessionNote",
         "title": "删除全部笔记",
         "category": "Agent Resume"
@@ -1314,11 +1570,6 @@
       {
         "command": "agentResume.ru.deleteSessionNote",
         "title": "Delete Note",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openProjectNote",
-        "title": "Open Project Note…",
         "category": "Agent Resume"
       },
       {
@@ -1367,11 +1618,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.deleteProjectNote",
-        "title": "Delete Project Notes",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.deleteProjectNote",
         "title": "删除全部项目笔记",
         "category": "Agent Resume"
@@ -1414,11 +1660,6 @@
       {
         "command": "agentResume.ru.deleteProjectNote",
         "title": "Delete Project Note",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openNote",
-        "title": "Open Note",
         "category": "Agent Resume"
       },
       {
@@ -1467,11 +1708,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.renameNote",
-        "title": "Rename Note",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.renameNote",
         "title": "重命名笔记",
         "category": "Agent Resume"
@@ -1514,11 +1750,6 @@
       {
         "command": "agentResume.ru.renameNote",
         "title": "Rename Note",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.deleteNote",
-        "title": "Delete Note",
         "category": "Agent Resume"
       },
       {
@@ -1567,11 +1798,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.revealNoteInOS",
-        "title": "Reveal Note in File Explorer",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.revealNoteInOS",
         "title": "在文件管理器中显示",
         "category": "Agent Resume"
@@ -1614,11 +1840,6 @@
       {
         "command": "agentResume.ru.revealNoteInOS",
         "title": "Reveal Note in File Explorer",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.copyNotePath",
-        "title": "Copy Note Path",
         "category": "Agent Resume"
       },
       {
@@ -1665,12 +1886,6 @@
         "command": "agentResume.ru.copyNotePath",
         "title": "Copy Note Path",
         "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newNote",
-        "title": "New Note…",
-        "category": "Agent Resume",
-        "icon": "$(plus)"
       },
       {
         "command": "agentResume.zh-cn.newNote",
@@ -1727,12 +1942,6 @@
         "icon": "$(plus)"
       },
       {
-        "command": "agentResume.importNotes",
-        "title": "Import Markdown Notes…",
-        "category": "Agent Resume",
-        "icon": "$(desktop-download)"
-      },
-      {
         "command": "agentResume.zh-cn.importNotes",
         "title": "批量导入 Markdown…",
         "category": "Agent Resume",
@@ -1785,12 +1994,6 @@
         "title": "Import Markdown Notes…",
         "category": "Agent Resume",
         "icon": "$(desktop-download)"
-      },
-      {
-        "command": "agentResume.filterNotes",
-        "title": "Filter Notes",
-        "category": "Agent Resume",
-        "icon": "$(filter)"
       },
       {
         "command": "agentResume.zh-cn.filterNotes",
@@ -1847,12 +2050,6 @@
         "icon": "$(filter)"
       },
       {
-        "command": "agentResume.clearNotesFilter",
-        "title": "Clear Notes Filter",
-        "category": "Agent Resume",
-        "icon": "$(clear-all)"
-      },
-      {
         "command": "agentResume.zh-cn.clearNotesFilter",
         "title": "清除筛选",
         "category": "Agent Resume",
@@ -1905,12 +2102,6 @@
         "title": "Clear Notes Filter",
         "category": "Agent Resume",
         "icon": "$(clear-all)"
-      },
-      {
-        "command": "agentResume.refreshNotes",
-        "title": "Refresh Notes",
-        "category": "Agent Resume",
-        "icon": "$(refresh)"
       },
       {
         "command": "agentResume.zh-cn.refreshNotes",
@@ -1967,12 +2158,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "agentResume.openNotesFolder",
-        "title": "Open Notes Folder",
-        "category": "Agent Resume",
-        "icon": "$(folder-opened)"
-      },
-      {
         "command": "agentResume.zh-cn.openNotesFolder",
         "title": "打开笔记文件夹",
         "category": "Agent Resume",
@@ -2027,11 +2212,6 @@
         "icon": "$(folder-opened)"
       },
       {
-        "command": "agentResume.insertNoteImage",
-        "title": "Insert Image into Note",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.insertNoteImage",
         "title": "插入图片到笔记",
         "category": "Agent Resume"
@@ -2074,11 +2254,6 @@
       {
         "command": "agentResume.ru.insertNoteImage",
         "title": "Insert Image into Note",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.configureSessionMenu",
-        "title": "Customize Session Menu",
         "category": "Agent Resume"
       },
       {
@@ -2127,58 +2302,48 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.openInCodexApp",
-        "title": "Resume in Codex App",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.openInCodexApp",
-        "title": "在 Codex App 中恢复",
+        "title": "在 ChatGPT 中恢复",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ja.openInCodexApp",
-        "title": "Codex App で再開",
+        "title": "ChatGPT で再開",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ko.openInCodexApp",
-        "title": "Codex App에서 재개",
+        "title": "ChatGPT에서 재개",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.es.openInCodexApp",
-        "title": "Reanudar en Codex App",
+        "title": "Reanudar en ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.fr.openInCodexApp",
-        "title": "Reprendre dans Codex App",
+        "title": "Reprendre dans ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.de.openInCodexApp",
-        "title": "In Codex App fortsetzen",
+        "title": "In ChatGPT fortsetzen",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.pt-br.openInCodexApp",
-        "title": "Retomar no Codex App",
+        "title": "Retomar no ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.it.openInCodexApp",
-        "title": "Riprendi in Codex App",
+        "title": "Riprendi in ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ru.openInCodexApp",
-        "title": "Возобновить в Codex App",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openInClaudeCodePanel",
-        "title": "Resume in Claude Code Panel",
+        "title": "Возобновить в ChatGPT",
         "category": "Agent Resume"
       },
       {
@@ -2227,11 +2392,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.openInCodexIdePanel",
-        "title": "Resume in Codex IDE Panel (Experimental)",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.openInCodexIdePanel",
         "title": "在 Codex IDE 面板中恢复（实验性）",
         "category": "Agent Resume"
@@ -2274,11 +2434,6 @@
       {
         "command": "agentResume.ru.openInCodexIdePanel",
         "title": "Возобновить в панели Codex IDE (экспериментально)",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.sortProjectSessionsUpdatedDesc",
-        "title": "Sort by Updated (Newest First)",
         "category": "Agent Resume"
       },
       {
@@ -2327,11 +2482,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.sortProjectSessionsUpdatedAsc",
-        "title": "Sort by Updated (Oldest First)",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.sortProjectSessionsUpdatedAsc",
         "title": "按更新时间排序（最早优先）",
         "category": "Agent Resume"
@@ -2374,11 +2524,6 @@
       {
         "command": "agentResume.ru.sortProjectSessionsUpdatedAsc",
         "title": "Сортировать по обновлению (сначала старые)",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.sortProjectSessionsTitleAsc",
-        "title": "Sort by Title (A–Z)",
         "category": "Agent Resume"
       },
       {
@@ -2427,11 +2572,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.sortProjectSessionsTitleDesc",
-        "title": "Sort by Title (Z–A)",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.sortProjectSessionsTitleDesc",
         "title": "按标题排序（Z–A）",
         "category": "Agent Resume"
@@ -2474,11 +2614,6 @@
       {
         "command": "agentResume.ru.sortProjectSessionsTitleDesc",
         "title": "Сортировать по названию (Z–A)",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.favoriteProject",
-        "title": "Add to Favorites",
         "category": "Agent Resume"
       },
       {
@@ -2527,11 +2662,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.unfavoriteProject",
-        "title": "Remove from Favorites",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.unfavoriteProject",
         "title": "从收藏夹移除",
         "category": "Agent Resume"
@@ -2574,11 +2704,6 @@
       {
         "command": "agentResume.ru.unfavoriteProject",
         "title": "Удалить из избранного",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.setProjectAlias",
-        "title": "Set Project Alias…",
         "category": "Agent Resume"
       },
       {
@@ -2627,11 +2752,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.configureProjectMenu",
-        "title": "Customize Project Menu",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.configureProjectMenu",
         "title": "自定义项目菜单",
         "category": "Agent Resume"
@@ -2674,11 +2794,6 @@
       {
         "command": "agentResume.ru.configureProjectMenu",
         "title": "Настроить меню проекта",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newChatSession",
-        "title": "New Chat Session",
         "category": "Agent Resume"
       },
       {
@@ -2727,11 +2842,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.newCodexSession",
-        "title": "New Codex Session",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.newCodexSession",
         "title": "新建 Codex 会话",
         "category": "Agent Resume"
@@ -2774,11 +2884,6 @@
       {
         "command": "agentResume.ru.newCodexSession",
         "title": "Новая сессия Codex",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newClaudeSession",
-        "title": "New Claude Session",
         "category": "Agent Resume"
       },
       {
@@ -2827,11 +2932,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.newAgySession",
-        "title": "New Antigravity Session",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.newAgySession",
         "title": "新建 Antigravity 会话",
         "category": "Agent Resume"
@@ -2874,11 +2974,6 @@
       {
         "command": "agentResume.ru.newAgySession",
         "title": "Новая сессия Antigravity",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newGrokSession",
-        "title": "New Grok Session",
         "category": "Agent Resume"
       },
       {
@@ -2927,11 +3022,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.newOpenCodeSession",
-        "title": "New OpenCode Session",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.newOpenCodeSession",
         "title": "新建 OpenCode 会话",
         "category": "Agent Resume"
@@ -2974,11 +3064,6 @@
       {
         "command": "agentResume.ru.newOpenCodeSession",
         "title": "Новая сессия OpenCode",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newPiSession",
-        "title": "New Pi Session",
         "category": "Agent Resume"
       },
       {
@@ -3027,11 +3112,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.newAlmaSession",
-        "title": "New Alma Thread",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.newAlmaSession",
         "title": "新建 Alma 线程",
         "category": "Agent Resume"
@@ -3077,63 +3157,48 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.newCodexAppSession",
-        "title": "New Codex App Session",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.zh-cn.newCodexAppSession",
-        "title": "新建 Codex App 会话",
+        "title": "新建 ChatGPT 会话",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ja.newCodexAppSession",
-        "title": "新しい Codex App セッション",
+        "title": "新しい ChatGPT セッション",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ko.newCodexAppSession",
-        "title": "새 Codex App 세션",
+        "title": "새 ChatGPT 세션",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.es.newCodexAppSession",
-        "title": "Nueva sesión de Codex App",
+        "title": "Nueva sesión de ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.fr.newCodexAppSession",
-        "title": "Nouvelle session Codex App",
+        "title": "Nouvelle session ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.de.newCodexAppSession",
-        "title": "Neue Codex-App-Sitzung",
+        "title": "Neue ChatGPT-Sitzung",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.pt-br.newCodexAppSession",
-        "title": "Nova sessão Codex App",
+        "title": "Nova sessão ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.it.newCodexAppSession",
-        "title": "Nuova sessione Codex App",
+        "title": "Nuova sessione ChatGPT",
         "category": "Agent Resume"
       },
       {
         "command": "agentResume.ru.newCodexAppSession",
-        "title": "Новая сессия Codex App",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openDocumentation",
-        "title": "Open Documentation",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.reportIssue",
-        "title": "Report Issue",
+        "title": "Новая сессия ChatGPT",
         "category": "Agent Resume"
       }
     ],
@@ -3303,34 +3368,6 @@
         "label": "Hand Off to Another Agent"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "agentResume",
-          "title": "Agent Resume",
-          "icon": "resources/agent-resume.svg"
-        }
-      ]
-    },
-    "views": {
-      "agentResume": [
-        {
-          "id": "agentResume.sessions",
-          "name": "Sessions",
-          "icon": "$(history)"
-        },
-        {
-          "id": "agentResume.acpChats",
-          "name": "ACP Chats",
-          "icon": "$(comment-discussion)"
-        },
-        {
-          "id": "agentResume.gtd",
-          "name": "GTD",
-          "icon": "$(tag)"
-        }
-      ]
-    },
     "menus": {
       "editor/title": [
         {
@@ -197288,6 +197325,7 @@
     }
   },
   "dependencies": {
+    "@agent-resume/core": "0.1.0",
     "@agentclientprotocol/sdk": "^1.1.0",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",

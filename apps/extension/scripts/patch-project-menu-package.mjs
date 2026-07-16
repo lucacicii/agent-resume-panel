@@ -15,8 +15,47 @@ import {
   loadAllLocaleCatalogs
 } from "./menu-i18n.mjs";
 
-const root = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.join(root, "..");
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const extensionRoot = path.join(scriptDir, "..");
+const manifestDir = path.join(extensionRoot, "manifest");
+
+function loadWorkspacePackage() {
+  const base = JSON.parse(fs.readFileSync(path.join(manifestDir, "base.openvsx.json"), "utf8"));
+  const generated = JSON.parse(fs.readFileSync(path.join(manifestDir, "contributes.generated.json"), "utf8"));
+  return {
+    base,
+    generated,
+    pkg: {
+      ...base,
+      contributes: {
+        configuration: base.contributes?.configuration,
+        viewsContainers: base.contributes?.viewsContainers,
+        views: base.contributes?.views,
+        commands: [...(base.contributes?.commands ?? []), ...(generated.commands ?? [])],
+        submenus: generated.submenus ?? [],
+        menus: generated.menus ?? {}
+      }
+    }
+  };
+}
+
+function saveWorkspacePackage(base, generated, pkg) {
+  generated.commands = (pkg.contributes.commands ?? []).filter((entry) =>
+    /^agentResume\.(zh-cn|ja|ko|es|fr|de|pt-br|it|ru)\./.test(entry.command)
+  );
+  generated.submenus = pkg.contributes.submenus ?? [];
+  generated.menus = pkg.contributes.menus ?? {};
+  base.contributes = {
+    configuration: pkg.contributes.configuration,
+    viewsContainers: pkg.contributes.viewsContainers,
+    views: pkg.contributes.views,
+    commands: (pkg.contributes.commands ?? []).filter(
+      (entry) => !/^agentResume\.(zh-cn|ja|ko|es|fr|de|pt-br|it|ru)\./.test(entry.command)
+    )
+  };
+  fs.writeFileSync(path.join(manifestDir, "base.openvsx.json"), `${JSON.stringify(base, null, 2)}\n`);
+  fs.writeFileSync(path.join(manifestDir, "contributes.generated.json"), `${JSON.stringify(generated, null, 2)}\n`);
+}
 
 function expandBlock(entries) {
   return expandMenuEntriesForLocales(entries);
@@ -28,10 +67,9 @@ function assignLocalizedSubmenus(pkg, baseId, entries) {
   }
 }
 
-function patchPackage(fileName) {
-  const filePath = path.join(repoRoot, fileName);
-  const pkg = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const catalogs = loadAllLocaleCatalogs(repoRoot);
+function patchManifest() {
+  const { base, generated, pkg } = loadWorkspacePackage();
+  const catalogs = loadAllLocaleCatalogs(extensionRoot);
   const handoffBlocks = buildHandoffMenuContributionBlocks();
   const projectBlocks = buildProjectMenuContributionBlocks();
   const sessionBlocks = buildSessionMenuContributionBlocks();
@@ -89,36 +127,12 @@ function patchPackage(fileName) {
   ];
 
   const notesTitleEntries = [
-    {
-      command: "agentResume.filterNotes",
-      when: "view == agentResume.notes",
-      group: "navigation@0"
-    },
-    {
-      command: "agentResume.clearNotesFilter",
-      when: "view == agentResume.notes",
-      group: "navigation@1"
-    },
-    {
-      command: "agentResume.newNote",
-      when: "view == agentResume.notes",
-      group: "navigation@2"
-    },
-    {
-      command: "agentResume.importNotes",
-      when: "view == agentResume.notes",
-      group: "navigation@3"
-    },
-    {
-      command: "agentResume.refreshNotes",
-      when: "view == agentResume.notes",
-      group: "navigation@4"
-    },
-    {
-      command: "agentResume.openNotesFolder",
-      when: "view == agentResume.notes",
-      group: "navigation@5"
-    }
+    { command: "agentResume.filterNotes", when: "view == agentResume.notes", group: "navigation@0" },
+    { command: "agentResume.clearNotesFilter", when: "view == agentResume.notes", group: "navigation@1" },
+    { command: "agentResume.newNote", when: "view == agentResume.notes", group: "navigation@2" },
+    { command: "agentResume.importNotes", when: "view == agentResume.notes", group: "navigation@3" },
+    { command: "agentResume.refreshNotes", when: "view == agentResume.notes", group: "navigation@4" },
+    { command: "agentResume.openNotesFolder", when: "view == agentResume.notes", group: "navigation@5" }
   ];
 
   pkg.contributes.menus["view/item/context"] = [
@@ -136,7 +150,6 @@ function patchPackage(fileName) {
     ...expandBlock([projectMoreTrigger])
   ];
 
-  // Keep non-notes title menus, then append localized Notes title actions.
   const previousTitle = pkg.contributes.menus["view/title"] ?? [];
   pkg.contributes.menus["view/title"] = [
     ...previousTitle.filter((entry) => !String(entry.when ?? "").includes("view == agentResume.notes")),
@@ -161,8 +174,8 @@ function patchPackage(fileName) {
   ensureSessionConfiguration(pkg);
   ensureHandoffConfiguration(pkg, handoffBlocks.handoffConfiguration);
 
-  fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`);
-  console.log(`Patched ${fileName} (session + project menus with locale variants)`);
+  saveWorkspacePackage(base, generated, pkg);
+  console.log("Patched manifest/contributes.generated.json and base.openvsx.json");
 }
 
 function ensureSubmenus(pkg, handoffSubmenu, catalogs) {
@@ -257,5 +270,7 @@ function ensureSessionConfiguration(pkg) {
   }
 }
 
-patchPackage("package.json");
-patchPackage("package-vscode.json");
+import { execSync } from "node:child_process";
+
+patchManifest();
+execSync("node scripts/merge-extension-manifest.mjs", { cwd: extensionRoot, stdio: "inherit" });

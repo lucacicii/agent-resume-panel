@@ -50,9 +50,9 @@ function repackInputs() {
   return [
     path.join(root, "src"),
     path.join(root, "dist", "renderer"),
-    path.join(root, "package.json"),
+    path.join(root, "..", "extension", "package.json"),
     path.join(root, "scripts"),
-    path.join(root, "..", "..", "resources", "app-icon.png"),
+    path.join(root, "..", "extension", "resources", "app-icon.png"),
     path.join(root, "..", "..", "packages", "core", "src"),
     path.join(root, "..", "..", "packages", "core", "package.json")
   ];
@@ -223,7 +223,7 @@ export function createMacDmg(appBundle) {
   if (process.platform !== "darwin") {
     throw new Error("DMG packaging is only supported on macOS.");
   }
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "..", "extension", "package.json"), "utf8"));
   const dmgName = `Agent Resume-${pkg.version}.dmg`;
   const dmgPath = path.join(releaseRoot, dmgName);
   const dmgStagingDir = path.join(releaseRoot, "dmg-root");

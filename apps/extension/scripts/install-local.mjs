@@ -2,36 +2,40 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { cp, mkdtemp, rename, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import process from "node:process";
 
 const manifest = await import("../package.json", { with: { type: "json" } });
 const pkg = manifest.default;
 const extensionId = `${pkg.publisher}.${pkg.name}`;
 const extensionDirName = `${extensionId}-${pkg.version}`;
-const vsixPath = join(process.cwd(), "dist", `${pkg.name}-${pkg.version}.vsix`);
+const vsixPath = join(import.meta.dirname, "..", "dist", `${pkg.name}-${pkg.version}.vsix`);
 
 if (!existsSync(vsixPath)) {
   throw new Error(`VSIX not found: ${vsixPath}`);
 }
 
-if (installWithEditorCli(vsixPath)) {
+const installedEditors = installWithEditorCli(vsixPath);
+if (installedEditors.length > 0) {
+  console.log(`Installed to: ${installedEditors.join(", ")}`);
+  console.log("Run 'Developer: Reload Window' in each editor to reload extension contributions.");
   process.exit(0);
 }
 
 await installIntoVscodeOssExtensions(vsixPath, extensionDirName, extensionId);
 
 function installWithEditorCli(vsix) {
+  const installed = [];
   for (const command of ["code", "cursor", "codium"]) {
     if (!hasCommand(command)) {
       continue;
     }
 
     execFileSync(command, ["--install-extension", vsix, "--force"], { stdio: "inherit" });
-    return true;
+    installed.push(command);
   }
 
-  return false;
+  return installed;
 }
 
 function hasCommand(command) {

@@ -17,12 +17,13 @@ Desktop 专项开发见 [apps/desktop/README.md](apps/desktop/README.md)。
 
 | 路径 | 说明 |
 |------|------|
-| `src/` | VS Code 扩展 |
+| `apps/extension/` | VS Code 扩展（源码、manifest、VSIX） |
 | `packages/core/` | 共享 TypeScript 核心（`@agent-resume/core`） |
 | `apps/desktop/` | Electron 桌面应用 |
-| `locales/` | 扩展 i18n 文案 |
-| `media/` | 扩展 Webview 静态资源 |
-| `scripts/` | 构建、菜单生成、i18n 检查等 |
+| `apps/extension/locales/` | 扩展 i18n 文案 |
+| `apps/extension/media/` | 扩展 Webview 静态资源 |
+| `apps/extension/scripts/` | 扩展构建、菜单生成、i18n 检查 |
+| `scripts/` | 跨产品脚本（desktop release、i18n merge 等） |
 
 ## Secrets & local config
 
@@ -97,10 +98,10 @@ When you add, remove, or reorder configurable **project** or **session** context
 2. Regenerate menu contributions:
 
 ```sh
-node scripts/patch-project-menu-package.mjs
+node apps/extension/scripts/patch-project-menu-package.mjs
 ```
 
-This script regenerates the **session** and **project** menu blocks in `package.json` and `package-vscode.json`, and preserves ACP chat context menu entries.
+This script regenerates menu blocks in `apps/extension/manifest/contributes.generated.json` and updates `base.openvsx.json`, and preserves ACP chat context menu entries.
 
 3. Verify the generator:
 
