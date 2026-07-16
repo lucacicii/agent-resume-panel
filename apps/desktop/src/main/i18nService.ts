@@ -25,9 +25,9 @@ let localesDir = "";
 function resolveLocalesDir(appRoot: string): string {
   const distLocales = path.join(appRoot, "dist", "locales");
   if (process.env.AGENT_RESUME_DEV === "1") {
-    const repoLocales = path.join(appRoot, "..", "..", "locales");
-    if (fs.existsSync(repoLocales)) {
-      return repoLocales;
+    const devLocales = path.join(appRoot, "locales");
+    if (fs.existsSync(devLocales)) {
+      return devLocales;
     }
   }
   return distLocales;
@@ -50,9 +50,12 @@ export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLoc
 
 export function buildI18nBundle(settings: PanelSettings | undefined): I18nBundle {
   const locale = resolveDesktopLocale(settings);
+  const messages = Object.fromEntries(
+    Object.entries(getCatalogForLocale(locale)).filter(([key]) => key.startsWith("desktop."))
+  );
   return {
     locale,
-    messages: getCatalogForLocale(locale)
+    messages
   };
 }
 

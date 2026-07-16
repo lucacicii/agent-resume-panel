@@ -17,12 +17,14 @@ Desktop 专项开发见 [apps/desktop/README.md](apps/desktop/README.md)。
 
 | 路径 | 说明 |
 |------|------|
-| `src/` | VS Code 扩展 |
+| `apps/extension/` | VS Code 扩展（源码、manifest、VSIX） |
 | `packages/core/` | 共享 TypeScript 核心（`@agent-resume/core`） |
 | `apps/desktop/` | Electron 桌面应用 |
-| `locales/` | 扩展 i18n 文案 |
-| `media/` | 扩展 Webview 静态资源 |
-| `scripts/` | 构建、菜单生成、i18n 检查等 |
+| `apps/extension/locales/` | 扩展 i18n 文案（无 `desktop.*` 键） |
+| `apps/desktop/locales/` | Desktop i18n 文案（仅 `desktop.*` 键） |
+| `apps/extension/media/` | 扩展 Webview 静态资源 |
+| `apps/extension/scripts/` | 扩展构建、菜单生成、i18n 检查 |
+| `scripts/` | 跨产品脚本（desktop release、i18n merge 等） |
 
 ## Secrets & local config
 
@@ -62,6 +64,12 @@ Build and install the local VSIX into available VS Code-compatible editors:
 npm run install:local
 ```
 
+Install only into official VS Code via the `code` CLI (does not install into Cursor or VSCodium; requires `code` on PATH):
+
+```sh
+npm run install:local-vscode
+```
+
 After installing, run **Developer: Reload Window** in VS Code. The extension's own refresh command only reloads session data; it does not reload `package.json` contribution points.
 
 ## Packaging
@@ -93,14 +101,14 @@ npm run publish:openvsx
 
 When you add, remove, or reorder configurable **project** or **session** context menu actions:
 
-1. Update [`scripts/generate-project-menu-contributions.mjs`](scripts/generate-project-menu-contributions.mjs) / [`src/menu/projectContextMenu.ts`](src/menu/projectContextMenu.ts), or [`scripts/generate-session-menu-contributions.mjs`](scripts/generate-session-menu-contributions.mjs) / [`src/menu/sessionContextMenu.ts`](src/menu/sessionContextMenu.ts).
+1. Update [`apps/extension/scripts/generate-project-menu-contributions.mjs`](apps/extension/scripts/generate-project-menu-contributions.mjs) / [`apps/extension/src/menu/projectContextMenu.ts`](apps/extension/src/menu/projectContextMenu.ts), or [`apps/extension/scripts/generate-session-menu-contributions.mjs`](apps/extension/scripts/generate-session-menu-contributions.mjs) / [`apps/extension/src/menu/sessionContextMenu.ts`](apps/extension/src/menu/sessionContextMenu.ts).
 2. Regenerate menu contributions:
 
 ```sh
-node scripts/patch-project-menu-package.mjs
+npm run patch:menus
 ```
 
-This script regenerates the **session** and **project** menu blocks in `package.json` and `package-vscode.json`, and preserves ACP chat context menu entries.
+This script regenerates menu blocks in `apps/extension/manifest/contributes.generated.json` and updates `base.openvsx.json`, and preserves ACP chat context menu entries.
 
 3. Verify the generator:
 
@@ -109,6 +117,16 @@ npm run test:menus
 ```
 
 4. Run `npm run install:local`, then **Developer: Reload Window**.
+
+## Desktop i18n
+
+Desktop UI strings live under `desktop.*` keys in [`apps/desktop/locales/`](apps/desktop/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into desktop locale files:
+
+```sh
+npm run merge:desktop-i18n
+```
+
+Then run `npm run build:desktop` (or `dev:desktop -- --fresh`) so `apps/desktop/dist/locales` picks up the changes.
 
 ## Change Checklist
 

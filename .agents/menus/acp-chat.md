@@ -1,6 +1,8 @@
 # ACP Chat Feature Map
 
 > Parent index: `.agents/menus-index.md`
+>
+> **Scope:** VS Code extension only. Desktop has no ACP Chat surface.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |

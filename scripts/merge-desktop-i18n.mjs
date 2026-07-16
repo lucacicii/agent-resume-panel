@@ -7,8 +7,9 @@ import { overridesByLocale } from "./desktop-settings-i18n-overrides.mjs";
 const root = join(import.meta.dirname, "..");
 const catalogPath = join(root, "scripts", "desktop-i18n-catalog.json");
 const aliasesPath = join(root, "scripts", "desktop-settings-i18n-aliases.json");
-const localesDir = join(root, "locales");
-const settingsOverlayLocales = new Set(["ja", "ko", "de", "es", "fr", "it", "pt-br", "ru"]);
+const extensionLocalesDir = join(root, "apps", "extension", "locales");
+const desktopLocalesDir = join(root, "apps", "desktop", "locales");
+const settingsOverlayLocales = new Set(["ja"]);
 
 function normalizePlaceholders(value) {
   const names = [];
@@ -35,14 +36,33 @@ function flattenCatalog(node, out = {}) {
   return out;
 }
 
+function writeLocale(filePath, locale) {
+  const desktopOnly = Object.fromEntries(
+    Object.entries(locale)
+      .filter(([key]) => key.startsWith("desktop."))
+      .sort(([a], [b]) => a.localeCompare(b))
+  );
+  writeFileSync(filePath, `${JSON.stringify(desktopOnly)}\n`);
+}
+
 const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
 const enKeys = flattenCatalog(catalog.en ?? catalog);
 const zhKeys = catalog["zh-cn"] ? flattenCatalog(catalog["zh-cn"]) : {};
+const jaKeys = catalog.ja ? flattenCatalog(catalog.ja) : {};
+const catalogSources = { en: enKeys, "zh-cn": zhKeys, ja: jaKeys };
 const settingsAliases = JSON.parse(readFileSync(aliasesPath, "utf8"));
 const settingsOverrides = overridesByLocale();
 
+function loadExtensionLocale(localeCode) {
+  const localePath = join(extensionLocalesDir, `${localeCode}.json`);
+  if (!existsSync(localePath)) {
+    return {};
+  }
+  return JSON.parse(readFileSync(localePath, "utf8"));
+}
+
 function applyDesktopSettingsOverlay(localeCode, locale) {
-  if (!settingsOverlayLocales.has(localeCode)) return 0;
+  const extensionLocale = loadExtensionLocale(localeCode);
   let applied = 0;
   const overrides = settingsOverrides[localeCode] ?? {};
   const settingsKeys = new Set([
@@ -56,8 +76,8 @@ function applyDesktopSettingsOverlay(localeCode, locale) {
       continue;
     }
     const aliasKey = settingsAliases[desktopKey];
-    if (aliasKey && typeof locale[aliasKey] === "string") {
-      locale[desktopKey] = locale[aliasKey];
+    if (aliasKey && typeof extensionLocale[aliasKey] === "string") {
+      locale[desktopKey] = extensionLocale[aliasKey];
       applied += 1;
     }
   }
@@ -66,32 +86,41 @@ function applyDesktopSettingsOverlay(localeCode, locale) {
     locale[key] = value;
     applied += 1;
   }
+  if (settingsOverlayLocales.has(localeCode)) {
+    return applied;
+  }
   return applied;
 }
 
-for (const file of readdirSync(localesDir).filter((name) => name.endsWith(".json"))) {
-  const localePath = join(localesDir, file);
-  const locale = JSON.parse(readFileSync(localePath, "utf8"));
+mkdirSync(desktopLocalesDir, { recursive: true });
+
+for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith(".json"))) {
   const localeCode = file.replace(/\.json$/, "");
-  const source = localeCode === "zh-cn" && Object.keys(zhKeys).length ? zhKeys : enKeys;
+  const localePath = join(desktopLocalesDir, file);
+  const locale = existsSync(localePath) ? JSON.parse(readFileSync(localePath, "utf8")) : {};
+  const source =
+    localeCode === "zh-cn" && Object.keys(zhKeys).length
+      ? zhKeys
+      : localeCode === "ja" && Object.keys(jaKeys).length
+        ? jaKeys
+        : enKeys;
   for (const [key, value] of Object.entries(source)) {
     if (!key.startsWith("desktop.")) continue;
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
-  const sorted = Object.fromEntries(Object.keys(locale).sort().map((key) => [key, locale[key]]));
-  writeFileSync(localePath, `${JSON.stringify(sorted, null, 2)}\n`);
+  writeLocale(localePath, locale);
   const overlayNote = overlayCount ? ` (+${overlayCount} settings i18n)` : "";
-  console.log(`merged ${Object.keys(source).length} desktop keys into locales/${file}${overlayNote}`);
+  console.log(`merged ${Object.keys(source).length} desktop keys into apps/desktop/locales/${file}${overlayNote}`);
 }
 
 const desktopDistLocales = join(root, "apps", "desktop", "dist", "locales");
-if (existsSync(localesDir)) {
+if (existsSync(desktopLocalesDir)) {
   mkdirSync(desktopDistLocales, { recursive: true });
   let copied = 0;
-  for (const name of readdirSync(localesDir)) {
+  for (const name of readdirSync(desktopLocalesDir)) {
     if (!name.endsWith(".json")) continue;
-    copyFileSync(join(localesDir, name), join(desktopDistLocales, name));
+    copyFileSync(join(desktopLocalesDir, name), join(desktopDistLocales, name));
     copied += 1;
   }
   console.log(`copied ${copied} locale files → apps/desktop/dist/locales`);

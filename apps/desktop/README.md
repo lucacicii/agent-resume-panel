@@ -22,13 +22,15 @@ npm run dev:desktop
 | `npm run dev:once -w @agent-resume/desktop` | 单次 build + 启动，无 watch | 快速验证 |
 | `npm run dev:mac -w @agent-resume/desktop` | macOS `.app` 启动 | 验证 node-pty / 打包路径 |
 | `npm run build:desktop` | 全量构建 | 发布前、CI |
-| `npm run pack:desktop` | 打 macOS 安装包 | 分发测试 |
+| `npm run pack:desktop` | 打 macOS 安装包（`Agent Resume-<desktop-version>.dmg`） | 分发测试 |
+| `npm run merge:desktop-i18n` | 合并 desktop i18n 到 `apps/extension/locales/` | 改 desktop 文案后 |
 
 ### 架构
 
 - **Main / Preload**（`src/main`、`src/preload`）：TypeScript 编译到 `dist/main`、`dist/preload`，`tsc -w` 监听。
 - **Renderer**（`src/renderer`）：纯 JS/CSS/HTML，由 `watch-renderer.mjs` 同步到 `dist/renderer`。
 - **Core**（`packages/core`）：独立 workspace，`tsc -w` 输出到 `packages/core/dist`；desktop 运行时读取该目录。
+- **共享资源**：构建时从 `apps/extension/resources/app-icon.png` 生成 `dist/resources/icon.icns`；i18n 从 `apps/desktop/locales/` 复制到 `dist/locales/`（与扩展 locale 分离）。
 - **自动重启**：`electronmon` 监听 `dist/main`、`dist/preload`、`dist/renderer` 与 `packages/core/dist` 的变更。
 
 ### 修改不同层时的预期行为
@@ -48,6 +50,7 @@ npm run dev:desktop
 
 ### 常见问题
 
+- **Electron failed to install correctly**：`postinstall` 与 `dev.mjs` 会自动运行 `ensure-electron.mjs` 修复；仍失败时在仓库根目录执行 `rm -rf node_modules/electron apps/desktop/node_modules/electron && npm install`。
 - **白屏 / 找不到 main**：执行 `npm run build:desktop` 或 `npm run dev:desktop -- --fresh`。
 - **core 改动不生效**：确认 `packages/core/dist` 已更新；dev 会 watch core。
 - **renderer 改了没反应**：确认 `dist/renderer` 已同步；或按 Cmd+R 手动刷新。

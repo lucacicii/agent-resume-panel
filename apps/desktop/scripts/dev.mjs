@@ -4,6 +4,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+import { ensureElectron, resolveElectronPath } from "./ensure-electron.mjs";
+
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(root, "..", "..");
 const require = createRequire(import.meta.url);
@@ -108,7 +110,7 @@ function startWatchers() {
 }
 
 function launchElectronOnce() {
-  const electronPath = require("electron");
+  const electronPath = resolveElectronPath();
   return new Promise((resolve) => {
     const child = spawnTracked(electronPath, ["."], { cwd: root, env: devEnv() });
     child.on("close", (code) => resolve(code ?? 1));
@@ -117,7 +119,7 @@ function launchElectronOnce() {
 
 async function launchElectronMon() {
   const electronmon = require("electronmon");
-  const electronPath = require("electron");
+  const electronPath = resolveElectronPath();
 
   electronApp = await electronmon({
     cwd: root,
@@ -138,6 +140,7 @@ async function launchElectronMon() {
 }
 
 async function main() {
+  ensureElectron();
   await ensureInitialBuild();
 
   if (noWatch) {

@@ -50,9 +50,9 @@ function repackInputs() {
   return [
     path.join(root, "src"),
     path.join(root, "dist", "renderer"),
-    path.join(root, "package.json"),
+    path.join(root, "..", "extension", "package.json"),
     path.join(root, "scripts"),
-    path.join(root, "..", "..", "resources", "app-icon.png"),
+    path.join(root, "..", "extension", "resources", "app-icon.png"),
     path.join(root, "..", "..", "packages", "core", "src"),
     path.join(root, "..", "..", "packages", "core", "package.json")
   ];
@@ -150,7 +150,6 @@ function materializeNodeModules() {
   const desktopNm = path.join(root, "node_modules");
   fs.mkdirSync(desktopNm, { recursive: true });
   for (const name of fs.readdirSync(desktopNm)) {
-    if (name === "electron") continue;
     fs.rmSync(path.join(desktopNm, name), { recursive: true, force: true });
   }
   for (const name of fs.readdirSync(repoNm)) {

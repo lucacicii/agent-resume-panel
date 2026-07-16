@@ -1,0 +1,2846 @@
+{
+  "jaGap": [
+    {
+      "key": "desktop.agent.audit",
+      "en": "Trace",
+      "zh": "追踪"
+    },
+    {
+      "key": "desktop.agent.auditActionAppend",
+      "en": "Append",
+      "zh": "追加内容"
+    },
+    {
+      "key": "desktop.agent.auditActionCreate",
+      "en": "Create note",
+      "zh": "新建笔记"
+    },
+    {
+      "key": "desktop.agent.auditActionDefault",
+      "en": "Note action",
+      "zh": "笔记操作"
+    },
+    {
+      "key": "desktop.agent.auditActionDelete",
+      "en": "Delete note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "desktop.agent.auditActionMove",
+      "en": "Move note",
+      "zh": "移动笔记"
+    },
+    {
+      "key": "desktop.agent.auditActionRename",
+      "en": "Rename",
+      "zh": "重命名"
+    },
+    {
+      "key": "desktop.agent.auditActionWrite",
+      "en": "Edit note",
+      "zh": "修改笔记"
+    },
+    {
+      "key": "desktop.agent.auditEmpty",
+      "en": "No trace records yet",
+      "zh": "暂无追踪记录"
+    },
+    {
+      "key": "desktop.agent.auditStatusApplied",
+      "en": "Applied",
+      "zh": "已执行"
+    },
+    {
+      "key": "desktop.agent.auditStatusConfirmed",
+      "en": "Confirmed",
+      "zh": "已确认"
+    },
+    {
+      "key": "desktop.agent.auditStatusFailed",
+      "en": "Failed",
+      "zh": "失败"
+    },
+    {
+      "key": "desktop.agent.auditStatusProposed",
+      "en": "Pending",
+      "zh": "待确认"
+    },
+    {
+      "key": "desktop.agent.auditStatusRejected",
+      "en": "Rejected",
+      "zh": "已拒绝"
+    },
+    {
+      "key": "desktop.agent.auditStatusUnknown",
+      "en": "Unknown",
+      "zh": "未知"
+    },
+    {
+      "key": "desktop.agent.auditTitle",
+      "en": "Ask note trace",
+      "zh": "Ask 笔记追踪"
+    },
+    {
+      "key": "desktop.agent.auditUnspecifiedNote",
+      "en": "Unspecified note",
+      "zh": "未指定笔记"
+    },
+    {
+      "key": "desktop.agent.callingTool",
+      "en": "Calling tool: {0}…",
+      "zh": "调用工具: {0}…"
+    },
+    {
+      "key": "desktop.agent.cannotResolveNote",
+      "en": "Cannot resolve note citation",
+      "zh": "无法解析笔记引用"
+    },
+    {
+      "key": "desktop.agent.cannotResolveReport",
+      "en": "Cannot resolve report citation",
+      "zh": "无法解析引用报告"
+    },
+    {
+      "key": "desktop.agent.citationHover",
+      "en": "Hover to preview",
+      "zh": "悬停预览"
+    },
+    {
+      "key": "desktop.agent.citationNoPreview",
+      "en": "No preview{0}",
+      "zh": "暂无预览内容{0}"
+    },
+    {
+      "key": "desktop.agent.citationNotes",
+      "en": "Note citations",
+      "zh": "笔记引用"
+    },
+    {
+      "key": "desktop.agent.citationRef",
+      "en": "Citation",
+      "zh": "引用"
+    },
+    {
+      "key": "desktop.agent.citationReports",
+      "en": "Report citations",
+      "zh": "报告引用"
+    },
+    {
+      "key": "desktop.agent.citationUnnamedNote",
+      "en": "Untitled note",
+      "zh": "未命名笔记"
+    },
+    {
+      "key": "desktop.agent.copied",
+      "en": "Copied",
+      "zh": "已复制"
+    },
+    {
+      "key": "desktop.agent.copiedAnswer",
+      "en": "Answer copied",
+      "zh": "已复制回答"
+    },
+    {
+      "key": "desktop.agent.createFailed",
+      "en": "Create chat failed: {0}",
+      "zh": "创建对话失败：{0}"
+    },
+    {
+      "key": "desktop.agent.createFailedPrefix",
+      "en": "Create chat failed: {0}",
+      "zh": "创建对话失败：{0}"
+    },
+    {
+      "key": "desktop.agent.deleteChat",
+      "en": "Delete chat",
+      "zh": "删除对话"
+    },
+    {
+      "key": "desktop.agent.deleteConfirm",
+      "en": "Delete chat \"{0}\"?",
+      "zh": "确定要删除对话 \"{0}\" 吗？"
+    },
+    {
+      "key": "desktop.agent.deleteConfirmSimple",
+      "en": "Delete chat \"{0}\"?",
+      "zh": "确定要删除对话 \"{0}\" 吗？"
+    },
+    {
+      "key": "desktop.agent.deleteFailed",
+      "en": "Delete failed: {0}",
+      "zh": "删除失败：{0}"
+    },
+    {
+      "key": "desktop.agent.deleteFailedPrefix",
+      "en": "Delete failed: {0}",
+      "zh": "删除失败：{0}"
+    },
+    {
+      "key": "desktop.agent.deleteThreadTitle",
+      "en": "Delete chat",
+      "zh": "删除对话"
+    },
+    {
+      "key": "desktop.agent.emptyChat",
+      "en": "Start a conversation…",
+      "zh": "开始对话…"
+    },
+    {
+      "key": "desktop.agent.executingTool",
+      "en": "Executing tool: {0}…",
+      "zh": "执行工具: {0}…"
+    },
+    {
+      "key": "desktop.agent.fetchingTools",
+      "en": "Fetching tool list…",
+      "zh": "正在获取工具列表…"
+    },
+    {
+      "key": "desktop.agent.indexingNotes",
+      "en": "Indexing notes…",
+      "zh": "正在索引笔记…"
+    },
+    {
+      "key": "desktop.agent.inputPlaceholder",
+      "en": "Type a message…",
+      "zh": "输入消息…"
+    },
+    {
+      "key": "desktop.agent.loadChatFailed",
+      "en": "Load chat failed: {0}",
+      "zh": "加载对话失败：{0}"
+    },
+    {
+      "key": "desktop.agent.loadChatFailedPrefix",
+      "en": "Load chat failed: {0}",
+      "zh": "加载对话失败：{0}"
+    },
+    {
+      "key": "desktop.agent.loadOlder",
+      "en": "Load older messages",
+      "zh": "加载更早消息"
+    },
+    {
+      "key": "desktop.agent.loadOlderFailed",
+      "en": "Load older messages failed: {0}",
+      "zh": "加载更早消息失败：{0}"
+    },
+    {
+      "key": "desktop.agent.loadOlderFailedPrefix",
+      "en": "Load older messages failed: {0}",
+      "zh": "加载更早消息失败：{0}"
+    },
+    {
+      "key": "desktop.agent.loadThreadsFailed",
+      "en": "Load chats failed: {0}",
+      "zh": "加载对话列表失败：{0}"
+    },
+    {
+      "key": "desktop.agent.loadThreadsFailedPrefix",
+      "en": "Load chats failed: {0}",
+      "zh": "加载对话列表失败：{0}"
+    },
+    {
+      "key": "desktop.agent.newChat",
+      "en": "New chat",
+      "zh": "新建对话"
+    },
+    {
+      "key": "desktop.agent.newThread",
+      "en": "New chat",
+      "zh": "新对话"
+    },
+    {
+      "key": "desktop.agent.noteDeleted",
+      "en": "Note was deleted; cannot open in Notes",
+      "zh": "该笔记已被删除，无法在 Notes 中打开"
+    },
+    {
+      "key": "desktop.agent.noteLevel",
+      "en": "Note",
+      "zh": "笔记"
+    },
+    {
+      "key": "desktop.agent.noteOpAppend",
+      "en": "Append",
+      "zh": "追加"
+    },
+    {
+      "key": "desktop.agent.noteOpCreate",
+      "en": "Create",
+      "zh": "新建"
+    },
+    {
+      "key": "desktop.agent.noteOpWrite",
+      "en": "Edit",
+      "zh": "修改"
+    },
+    {
+      "key": "desktop.agent.openInNotes",
+      "en": "Open in Notes",
+      "zh": "在 Notes 中查看"
+    },
+    {
+      "key": "desktop.agent.openInReport",
+      "en": "Open in Memory",
+      "zh": "在 Memory 中查看"
+    },
+    {
+      "key": "desktop.agent.persistFailed",
+      "en": "Failed to save chat: {0}",
+      "zh": "对话保存失败：{0}"
+    },
+    {
+      "key": "desktop.agent.recentSummary",
+      "en": "Recent summary",
+      "zh": "近期摘要"
+    },
+    {
+      "key": "desktop.agent.renameChat",
+      "en": "Rename",
+      "zh": "重命名"
+    },
+    {
+      "key": "desktop.agent.renameDialogTitle",
+      "en": "Rename chat",
+      "zh": "重命名对话"
+    },
+    {
+      "key": "desktop.agent.renameFailed",
+      "en": "Rename failed: {0}",
+      "zh": "重命名失败：{0}"
+    },
+    {
+      "key": "desktop.agent.renameFailedPrefix",
+      "en": "Rename failed: {0}",
+      "zh": "重命名失败：{0}"
+    },
+    {
+      "key": "desktop.agent.renameInputLabel",
+      "en": "Chat title",
+      "zh": "对话标题"
+    },
+    {
+      "key": "desktop.agent.reportRetrieval",
+      "en": "Memory retrieval",
+      "zh": "记忆检索"
+    },
+    {
+      "key": "desktop.agent.requestingLlm",
+      "en": "Requesting LLM…",
+      "zh": "正在请求 LLM…"
+    },
+    {
+      "key": "desktop.agent.requestingLlmRound",
+      "en": "LLM request round {0}…",
+      "zh": "第 {0} 轮请求 LLM…"
+    },
+    {
+      "key": "desktop.agent.resizeSidebar",
+      "en": "Resize thread sidebar",
+      "zh": "调整对话侧栏宽度"
+    },
+    {
+      "key": "desktop.agent.searchingReports",
+      "en": "Searching memory…",
+      "zh": "检索记忆…"
+    },
+    {
+      "key": "desktop.agent.statusGenerating",
+      "en": "Generating answer…",
+      "zh": "生成回答…"
+    },
+    {
+      "key": "desktop.agent.toolAppend",
+      "en": "📝 Append",
+      "zh": "📝 追加"
+    },
+    {
+      "key": "desktop.agent.toolCreate",
+      "en": "➕ Create",
+      "zh": "➕ 新建"
+    },
+    {
+      "key": "desktop.agent.toolDelete",
+      "en": "🗑 Delete",
+      "zh": "🗑 删除"
+    },
+    {
+      "key": "desktop.agent.toolRead",
+      "en": "📖 Read",
+      "zh": "📖 读取"
+    },
+    {
+      "key": "desktop.agent.toolSearch",
+      "en": "🔍 Search",
+      "zh": "🔍 搜索"
+    },
+    {
+      "key": "desktop.agent.toolWrite",
+      "en": "✏️ Edit",
+      "zh": "✏️ 修改"
+    },
+    {
+      "key": "desktop.agent.toolsMaxIterations",
+      "en": "Tool call limit reached; narrow the request and try again.",
+      "zh": "已达到工具调用次数上限，请缩小请求范围后重试。"
+    },
+    {
+      "key": "desktop.agent.toolsNoResponse",
+      "en": "LLM returned no valid answer (endpoint may not support function calling). Confirm your LLM endpoint supports the tools parameter in Settings.",
+      "zh": "LLM 未返回有效回答（可能是端点不支持 function calling）。请在设置中确认你的 LLM 端点支持 tools 参数。"
+    },
+    {
+      "key": "desktop.agent.toolsOffStatus",
+      "en": "Tools mode disabled",
+      "zh": "工具模式已关闭"
+    },
+    {
+      "key": "desktop.agent.toolsOffTitle",
+      "en": "Enable to operate notes via chat (create/search)",
+      "zh": "开启后可通过对话操作笔记（新建/搜索）"
+    },
+    {
+      "key": "desktop.agent.toolsOn",
+      "en": "Tools on: operate notes via chat",
+      "zh": "工具已开启：可通过对话操作笔记"
+    },
+    {
+      "key": "desktop.agent.toolsOnStatus",
+      "en": "Tools mode enabled",
+      "zh": "工具模式已开启"
+    },
+    {
+      "key": "desktop.agent.toolsReady",
+      "en": "Tools ready: {0}",
+      "zh": "工具就绪: {0}"
+    },
+    {
+      "key": "desktop.agent.toolsToggle",
+      "en": "Tools toggle",
+      "zh": "工具开关"
+    },
+    {
+      "key": "desktop.agent.typing",
+      "en": "Typing…",
+      "zh": "正在输入…"
+    },
+    {
+      "key": "desktop.backfill.confirm",
+      "en": "Batch-generate historical digests (day→week→month).\n\nSessions scanned: {0}\nDays: {1} · Weeks: {2} · Months: {3}\nEstimated LLM calls: ~{4}{5}\n\nMay be slow and incur API cost. Continue?",
+      "zh": "将批量生成历史 digests（日→周→月）。\n\nSessions 扫描: {0}\nDays: {1} · Weeks: {2} · Months: {3}\n预计 LLM 调用: ~{4}{5}\n\n可能较慢并产生 API 费用。是否继续？"
+    },
+    {
+      "key": "desktop.backfill.dateRange",
+      "en": "\nDate range: {0} → {1}\n",
+      "zh": "\n日期范围: {0} → {1}\n"
+    },
+    {
+      "key": "desktop.calendar.month1",
+      "en": "Jan",
+      "zh": "1 月"
+    },
+    {
+      "key": "desktop.calendar.month10",
+      "en": "Oct",
+      "zh": "10 月"
+    },
+    {
+      "key": "desktop.calendar.month11",
+      "en": "Nov",
+      "zh": "11 月"
+    },
+    {
+      "key": "desktop.calendar.month12",
+      "en": "Dec",
+      "zh": "12 月"
+    },
+    {
+      "key": "desktop.calendar.month2",
+      "en": "Feb",
+      "zh": "2 月"
+    },
+    {
+      "key": "desktop.calendar.month3",
+      "en": "Mar",
+      "zh": "3 月"
+    },
+    {
+      "key": "desktop.calendar.month4",
+      "en": "Apr",
+      "zh": "4 月"
+    },
+    {
+      "key": "desktop.calendar.month5",
+      "en": "May",
+      "zh": "5 月"
+    },
+    {
+      "key": "desktop.calendar.month6",
+      "en": "Jun",
+      "zh": "6 月"
+    },
+    {
+      "key": "desktop.calendar.month7",
+      "en": "Jul",
+      "zh": "7 月"
+    },
+    {
+      "key": "desktop.calendar.month8",
+      "en": "Aug",
+      "zh": "8 月"
+    },
+    {
+      "key": "desktop.calendar.month9",
+      "en": "Sep",
+      "zh": "9 月"
+    },
+    {
+      "key": "desktop.common.active",
+      "en": "Active",
+      "zh": "活动"
+    },
+    {
+      "key": "desktop.common.all",
+      "en": "All",
+      "zh": "全部"
+    },
+    {
+      "key": "desktop.common.cancel",
+      "en": "Cancel",
+      "zh": "取消"
+    },
+    {
+      "key": "desktop.common.close",
+      "en": "Close",
+      "zh": "关闭"
+    },
+    {
+      "key": "desktop.common.closeFind",
+      "en": "Close find",
+      "zh": "关闭查找"
+    },
+    {
+      "key": "desktop.common.confirm",
+      "en": "Confirm",
+      "zh": "确定"
+    },
+    {
+      "key": "desktop.common.copy",
+      "en": "Copy",
+      "zh": "复制"
+    },
+    {
+      "key": "desktop.common.daysAgo",
+      "en": "{0} d ago",
+      "zh": "{0} 天前"
+    },
+    {
+      "key": "desktop.common.edit",
+      "en": "Edit",
+      "zh": "编辑"
+    },
+    {
+      "key": "desktop.common.filter",
+      "en": "Filter…",
+      "zh": "筛选…"
+    },
+    {
+      "key": "desktop.common.hideSidebar",
+      "en": "Hide sidebar",
+      "zh": "隐藏侧栏"
+    },
+    {
+      "key": "desktop.common.hoursAgo",
+      "en": "{0} h ago",
+      "zh": "{0} 小时前"
+    },
+    {
+      "key": "desktop.common.importMarkdown",
+      "en": "Import Markdown",
+      "zh": "导入 Markdown"
+    },
+    {
+      "key": "desktop.common.justNow",
+      "en": "Just now",
+      "zh": "刚刚"
+    },
+    {
+      "key": "desktop.common.loading",
+      "en": "Loading…",
+      "zh": "加载中…"
+    },
+    {
+      "key": "desktop.common.loadingPreview",
+      "en": "Loading preview…",
+      "zh": "加载预览…"
+    },
+    {
+      "key": "desktop.common.minutesAgo",
+      "en": "{0} min ago",
+      "zh": "{0} 分钟前"
+    },
+    {
+      "key": "desktop.common.month",
+      "en": "Month",
+      "zh": "月"
+    },
+    {
+      "key": "desktop.common.newNote",
+      "en": "New note",
+      "zh": "新建笔记"
+    },
+    {
+      "key": "desktop.common.next",
+      "en": "Next",
+      "zh": "下一个"
+    },
+    {
+      "key": "desktop.common.oneMinute",
+      "en": "1 min",
+      "zh": "1 分钟"
+    },
+    {
+      "key": "desktop.common.pinned",
+      "en": "Pinned",
+      "zh": "置顶"
+    },
+    {
+      "key": "desktop.common.previous",
+      "en": "Previous",
+      "zh": "上一个"
+    },
+    {
+      "key": "desktop.common.refresh",
+      "en": "Refresh",
+      "zh": "刷新"
+    },
+    {
+      "key": "desktop.common.rename",
+      "en": "Rename",
+      "zh": "重命名"
+    },
+    {
+      "key": "desktop.common.resend",
+      "en": "Resend",
+      "zh": "重新发送"
+    },
+    {
+      "key": "desktop.common.revealInFinder",
+      "en": "Reveal in Finder",
+      "zh": "在 Finder 中显示"
+    },
+    {
+      "key": "desktop.common.search",
+      "en": "Search",
+      "zh": "搜索"
+    },
+    {
+      "key": "desktop.common.send",
+      "en": "Send",
+      "zh": "发送"
+    },
+    {
+      "key": "desktop.common.showSidebar",
+      "en": "Show sidebar",
+      "zh": "显示侧栏"
+    },
+    {
+      "key": "desktop.common.today",
+      "en": "Today",
+      "zh": "今天"
+    },
+    {
+      "key": "desktop.common.unknownError",
+      "en": "Unknown error",
+      "zh": "未知错误"
+    },
+    {
+      "key": "desktop.common.view",
+      "en": "View",
+      "zh": "查看"
+    },
+    {
+      "key": "desktop.common.year",
+      "en": "Year",
+      "zh": "年"
+    },
+    {
+      "key": "desktop.common.yearSuffix",
+      "en": "{0}",
+      "zh": "{0} 年"
+    },
+    {
+      "key": "desktop.notes.allNotes",
+      "en": "All notes",
+      "zh": "全部笔记"
+    },
+    {
+      "key": "desktop.notes.changeOwner",
+      "en": "Change owner…",
+      "zh": "更改归属…"
+    },
+    {
+      "key": "desktop.notes.clickZoom",
+      "en": "Click to zoom",
+      "zh": "点击放大"
+    },
+    {
+      "key": "desktop.notes.closeImagePreview",
+      "en": "Close image preview",
+      "zh": "关闭图片预览"
+    },
+    {
+      "key": "desktop.notes.closeImagePreviewBtn",
+      "en": "Close",
+      "zh": "关闭"
+    },
+    {
+      "key": "desktop.notes.copyPath",
+      "en": "Copy path",
+      "zh": "复制路径"
+    },
+    {
+      "key": "desktop.notes.dblClickEdit",
+      "en": "Double-click to edit title",
+      "zh": "双击编辑标题"
+    },
+    {
+      "key": "desktop.notes.deleteConfirm",
+      "en": "Delete note \"{0}\"? Its assets folder will also be removed.",
+      "zh": "删除笔记「{0}」？将同时删除其 assets 文件夹。"
+    },
+    {
+      "key": "desktop.notes.deleteNote",
+      "en": "Delete note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "desktop.notes.editorPlaceholder",
+      "en": "Edit Markdown… (⌘V to paste images)",
+      "zh": "编辑 Markdown…（⌘V 可粘贴图片）"
+    },
+    {
+      "key": "desktop.notes.filterProjects",
+      "en": "Filter projects",
+      "zh": "筛选项目"
+    },
+    {
+      "key": "desktop.notes.findInNote",
+      "en": "Find in note",
+      "zh": "查找当前笔记"
+    },
+    {
+      "key": "desktop.notes.generatingVectors",
+      "en": "Generating vectors {0}/{1}",
+      "zh": "正在生成向量 {0}/{1}"
+    },
+    {
+      "key": "desktop.notes.indexComplete",
+      "en": "Note index complete: {0} notes, {1} chunks",
+      "zh": "笔记索引完成：{0} 篇，{1} 个片段"
+    },
+    {
+      "key": "desktop.notes.indexFailed",
+      "en": "Note index failed: {0}",
+      "zh": "笔记索引失败：{0}"
+    },
+    {
+      "key": "desktop.notes.indexUpToDate",
+      "en": "Note index up to date",
+      "zh": "笔记索引已是最新"
+    },
+    {
+      "key": "desktop.notes.indexingProgress",
+      "en": "Indexing note {0}/{1}",
+      "zh": "正在索引笔记 {0}/{1}"
+    },
+    {
+      "key": "desktop.notes.libraryArea",
+      "en": "Standalone notes",
+      "zh": "独立笔记区"
+    },
+    {
+      "key": "desktop.notes.libraryDesc",
+      "en": "Personal notes not tied to a project or session",
+      "zh": "不关联项目或会话的个人笔记"
+    },
+    {
+      "key": "desktop.notes.librarySection",
+      "en": "Standalone",
+      "zh": "独立笔记"
+    },
+    {
+      "key": "desktop.notes.listMeta",
+      "en": "{0} · {1} notes",
+      "zh": "{0} · {1} 条"
+    },
+    {
+      "key": "desktop.notes.listMetaSearch",
+      "en": "{0} · search \"{1}\" · {2} notes",
+      "zh": "{0} · 搜索「{1}」· {2} 条"
+    },
+    {
+      "key": "desktop.notes.loadingFolders",
+      "en": "Loading folders…",
+      "zh": "加载文件夹…"
+    },
+    {
+      "key": "desktop.notes.loadingNotes",
+      "en": "Loading notes…",
+      "zh": "加载笔记…"
+    },
+    {
+      "key": "desktop.notes.nameEmpty",
+      "en": "Name cannot be empty",
+      "zh": "名称不能为空"
+    },
+    {
+      "key": "desktop.notes.nameInvalid",
+      "en": "Name cannot contain path separators",
+      "zh": "名称不能包含路径分隔符"
+    },
+    {
+      "key": "desktop.notes.noExtraText",
+      "en": "No extra text",
+      "zh": "无额外文本"
+    },
+    {
+      "key": "desktop.notes.noFilterProjects",
+      "en": "No projects match filter",
+      "zh": "没有符合筛选的项目"
+    },
+    {
+      "key": "desktop.notes.noFolders",
+      "en": "No folders yet",
+      "zh": "暂无文件夹"
+    },
+    {
+      "key": "desktop.notes.noMatchingNotes",
+      "en": "No matching notes",
+      "zh": "没有匹配的笔记"
+    },
+    {
+      "key": "desktop.notes.noMatchingProjects",
+      "en": "No matching projects",
+      "zh": "没有匹配的项目"
+    },
+    {
+      "key": "desktop.notes.noNotesInFolder",
+      "en": "No notes in this folder",
+      "zh": "此文件夹暂无笔记"
+    },
+    {
+      "key": "desktop.notes.noProjectsSync",
+      "en": "No projects; sync Sessions first",
+      "zh": "暂无可用项目，请先同步 Sessions"
+    },
+    {
+      "key": "desktop.notes.noSessionsSync",
+      "en": "No sessions; sync Sessions first",
+      "zh": "暂无可用会话，请先同步 Sessions"
+    },
+    {
+      "key": "desktop.notes.noteNotFound",
+      "en": "Created note not found",
+      "zh": "新建的笔记未找到"
+    },
+    {
+      "key": "desktop.notes.pinProject",
+      "en": "Pin project",
+      "zh": "置顶项目"
+    },
+    {
+      "key": "desktop.notes.projectFilter",
+      "en": "Project filter",
+      "zh": "项目筛选"
+    },
+    {
+      "key": "desktop.notes.projectLabel",
+      "en": "Project",
+      "zh": "项目"
+    },
+    {
+      "key": "desktop.notes.renameProject",
+      "en": "Rename project",
+      "zh": "重命名项目"
+    },
+    {
+      "key": "desktop.notes.resizeFolders",
+      "en": "Resize folder sidebar",
+      "zh": "调整文件夹侧栏宽度"
+    },
+    {
+      "key": "desktop.notes.resizeList",
+      "en": "Resize note list",
+      "zh": "调整笔记列表宽度"
+    },
+    {
+      "key": "desktop.notes.scanningNotes",
+      "en": "Scanning notes…",
+      "zh": "正在扫描笔记…"
+    },
+    {
+      "key": "desktop.notes.selectOrCreate",
+      "en": "Select or create a note",
+      "zh": "选择或创建一条笔记"
+    },
+    {
+      "key": "desktop.notes.sessionsSection",
+      "en": "Sessions",
+      "zh": "会话"
+    },
+    {
+      "key": "desktop.notes.targetLibrary",
+      "en": "Standalone",
+      "zh": "独立笔记"
+    },
+    {
+      "key": "desktop.notes.targetProject",
+      "en": "Project",
+      "zh": "项目"
+    },
+    {
+      "key": "desktop.notes.targetSession",
+      "en": "Session",
+      "zh": "会话"
+    },
+    {
+      "key": "desktop.notes.targetTabs",
+      "en": "Note target",
+      "zh": "笔记目标"
+    },
+    {
+      "key": "desktop.notes.titleLabel",
+      "en": "Note title",
+      "zh": "笔记标题"
+    },
+    {
+      "key": "desktop.notes.unpinProject",
+      "en": "Unpin project",
+      "zh": "取消置顶"
+    },
+    {
+      "key": "desktop.notes.viewMode",
+      "en": "View mode",
+      "zh": "视图模式"
+    },
+    {
+      "key": "desktop.report.aggregateMonthlyFromDailies",
+      "en": "Aggregating monthly from {0} dailies this month",
+      "zh": "使用本月 {0} 篇日报聚合月报"
+    },
+    {
+      "key": "desktop.report.aggregateMonthlyPlaceholder",
+      "en": "No dailies this month (will generate placeholder monthly)",
+      "zh": "本月无可用日报（将生成占位月报）"
+    },
+    {
+      "key": "desktop.report.aggregateWeeklyFromDailies",
+      "en": "Aggregating weekly from {0} dailies",
+      "zh": "使用 {0} 篇日报聚合周报"
+    },
+    {
+      "key": "desktop.report.aggregateWeeklyPlaceholder",
+      "en": "No dailies this week (will generate placeholder weekly)",
+      "zh": "本周无可用日报（将生成占位周报）"
+    },
+    {
+      "key": "desktop.report.backToReport",
+      "en": "Back to report",
+      "zh": "返回报告"
+    },
+    {
+      "key": "desktop.report.backfillDaily",
+      "en": "backfill daily +{0}/skip {1}{2}",
+      "zh": "补日报 +{0}/skip {1}{2}"
+    },
+    {
+      "key": "desktop.report.backfillDailyProgress",
+      "en": "Backfilling daily {0}/{1} · {2}",
+      "zh": "补全日报 {0}/{1} · {2}"
+    },
+    {
+      "key": "desktop.report.backfillWeekly",
+      "en": "backfill weekly +{0}/skip {1}{2}",
+      "zh": "补周报 +{0}/skip {1}{2}"
+    },
+    {
+      "key": "desktop.report.backfillWeeklyProgress",
+      "en": "Backfilling weekly {0}/{1} · {2}",
+      "zh": "补全周报 {0}/{1} · {2}"
+    },
+    {
+      "key": "desktop.report.cannotParseDigestId",
+      "en": "Cannot parse digest id",
+      "zh": "无法解析 digest id"
+    },
+    {
+      "key": "desktop.report.created",
+      "en": "created",
+      "zh": "新建"
+    },
+    {
+      "key": "desktop.report.dailiesCompleteMonth",
+      "en": "This month's dailies complete (or no session activity days)",
+      "zh": "本月日报已齐全（或无 session 活动日）"
+    },
+    {
+      "key": "desktop.report.dailiesCompletePeriod",
+      "en": "Period dailies complete (or no session activity days)",
+      "zh": "本期日报已齐全（或无 session 活动日）"
+    },
+    {
+      "key": "desktop.report.dailiesCompleteWeek",
+      "en": "This week's dailies complete (or no session activity days)",
+      "zh": "本周日报已齐全（或无 session 活动日）"
+    },
+    {
+      "key": "desktop.report.dailyCompleteCount",
+      "en": "Daily complete · {0} sessions",
+      "zh": "日报完成 · {0} sessions"
+    },
+    {
+      "key": "desktop.report.dailyFailed",
+      "en": "Daily {0} failed: {1}",
+      "zh": "日报 {0} 失败：{1}"
+    },
+    {
+      "key": "desktop.report.dailyMissingTitle",
+      "en": "Sessions exist; daily not generated · {0}",
+      "zh": "有 session，日报未生成 · {0}"
+    },
+    {
+      "key": "desktop.report.dailyStaleTitle",
+      "en": "Daily exists; {0} · {1}",
+      "zh": "日报已有，{0} · {1}"
+    },
+    {
+      "key": "desktop.report.dailyUpToDate",
+      "en": "Daily up to date · {0}",
+      "zh": "日报已是最新 · {0}"
+    },
+    {
+      "key": "desktop.report.detailHint",
+      "en": "Click a date / week / month to view sessions and reports; click a session to preview here.",
+      "zh": "点击日期 / 周 / 月查看 session 与报告；点击 session 可在本列预览。"
+    },
+    {
+      "key": "desktop.report.digestDaily",
+      "en": "Daily",
+      "zh": "日报"
+    },
+    {
+      "key": "desktop.report.digestFailed",
+      "en": "{0} failed: {1}",
+      "zh": "{0} 失败：{1}"
+    },
+    {
+      "key": "desktop.report.digestMonthly",
+      "en": "Monthly",
+      "zh": "月报"
+    },
+    {
+      "key": "desktop.report.digestReport",
+      "en": "Report",
+      "zh": "报告"
+    },
+    {
+      "key": "desktop.report.digestWeekly",
+      "en": "Weekly",
+      "zh": "周报"
+    },
+    {
+      "key": "desktop.report.emptyHasSessions",
+      "en": "{0} has activity; {1} not ready. Tap below to generate (configure tool LLM in Settings first).",
+      "zh": "{0}有会话活动，{1}还没整理好。如果想汇总一下，可以点下方按钮（需先在 Settings 配置工具 LLM）。"
+    },
+    {
+      "key": "desktop.report.emptyNoSessions",
+      "en": "No CLI sessions for {0} yet; no need to generate {1}.",
+      "zh": "{0}还没有 CLI 会话记录，暂时不必生成{1}。"
+    },
+    {
+      "key": "desktop.report.ensureDailiesCheckMonth",
+      "en": "Checking and backfilling this month's dailies · {0} days to generate…",
+      "zh": "检查并补全本月日报 · 需生成 {0} 天…"
+    },
+    {
+      "key": "desktop.report.ensureDailiesCheckPeriod",
+      "en": "Checking and backfilling period dailies · {0} days to generate…",
+      "zh": "检查并补全本期日报 · 需生成 {0} 天…"
+    },
+    {
+      "key": "desktop.report.ensureDailiesCheckWeek",
+      "en": "Checking and backfilling this week's dailies · {0} days to generate…",
+      "zh": "检查并补全本周日报 · 需生成 {0} 天…"
+    },
+    {
+      "key": "desktop.report.ensureWeekliesCheck",
+      "en": "Checking and backfilling weeklies · {0} weeks to generate…",
+      "zh": "检查并补全周报 · 需生成 {0} 周…"
+    },
+    {
+      "key": "desktop.report.extractDailyFromSummary",
+      "en": "Extracting daily {0} from summaries…",
+      "zh": "从 summary 提取日报 {0}…"
+    },
+    {
+      "key": "desktop.report.extractMonthlyFromDailies",
+      "en": "Extracting monthly from {0} dailies this month…",
+      "zh": "从本月 {0} 篇日报提取月报…"
+    },
+    {
+      "key": "desktop.report.extractMonthlyPlaceholder",
+      "en": "No dailies this month; generating placeholder monthly…",
+      "zh": "本月无日报，生成占位月报…"
+    },
+    {
+      "key": "desktop.report.extractWeeklyFromDailies",
+      "en": "Extracting weekly from {0} dailies…",
+      "zh": "从 {0} 篇日报提取周报…"
+    },
+    {
+      "key": "desktop.report.extractWeeklyPlaceholder",
+      "en": "No dailies this week; generating placeholder weekly…",
+      "zh": "本周无日报，生成占位周报…"
+    },
+    {
+      "key": "desktop.report.freshDailiesRefreshMonth",
+      "en": "Refreshing stale dailies this month · {0} days…",
+      "zh": "先更新本月待刷新日报 · 共 {0} 天…"
+    },
+    {
+      "key": "desktop.report.freshDailiesRefreshPeriod",
+      "en": "Refreshing stale dailies this period · {0} days…",
+      "zh": "先更新本期待刷新日报 · 共 {0} 天…"
+    },
+    {
+      "key": "desktop.report.freshDailiesRefreshWeek",
+      "en": "Refreshing stale dailies this week · {0} days…",
+      "zh": "先更新本周待刷新日报 · 共 {0} 天…"
+    },
+    {
+      "key": "desktop.report.freshDailiesUpToDateMonth",
+      "en": "This month's dailies are up to date",
+      "zh": "本月日报已是最新"
+    },
+    {
+      "key": "desktop.report.freshDailiesUpToDatePeriod",
+      "en": "Period dailies are up to date",
+      "zh": "本期日报已是最新"
+    },
+    {
+      "key": "desktop.report.freshDailiesUpToDateWeek",
+      "en": "This week's dailies are up to date",
+      "zh": "本周日报已是最新"
+    },
+    {
+      "key": "desktop.report.freshDailiesUpdateProgress",
+      "en": "Updating daily {0}/{1} · {2}",
+      "zh": "更新日报 {0}/{1} · {2}"
+    },
+    {
+      "key": "desktop.report.freshWeekliesRefreshMonth",
+      "en": "Refreshing stale weeklies this month · {0} weeks…",
+      "zh": "先更新本月待刷新周报 · 共 {0} 周…"
+    },
+    {
+      "key": "desktop.report.freshWeekliesUpToDateMonth",
+      "en": "This month's weeklies are up to date",
+      "zh": "本月周报已是最新"
+    },
+    {
+      "key": "desktop.report.freshWeekliesUpdateProgress",
+      "en": "Updating weekly {0}/{1} · {2}",
+      "zh": "更新周报 {0}/{1} · {2}"
+    },
+    {
+      "key": "desktop.report.futureDateHint",
+      "en": "Future dates cannot generate {0} yet; check back after activity.",
+      "zh": "未来的日期还无法生成{0}，等有活动后再来看看吧。"
+    },
+    {
+      "key": "desktop.report.futureMonth",
+      "en": "Future month",
+      "zh": "未来月份"
+    },
+    {
+      "key": "desktop.report.futureWeek",
+      "en": "Future week {0}",
+      "zh": "未来周 {0}"
+    },
+    {
+      "key": "desktop.report.generateBtn",
+      "en": "Generate {0}",
+      "zh": "生成{0}"
+    },
+    {
+      "key": "desktop.report.generatingDaily",
+      "en": "Generating daily {0}…",
+      "zh": "正在生成日报 {0}…"
+    },
+    {
+      "key": "desktop.report.generatingHint",
+      "en": "See progress bar and session details above.",
+      "zh": "进度见上方进度条与 session 明细。"
+    },
+    {
+      "key": "desktop.report.generatingLabel",
+      "en": "Generating {0} {1}…",
+      "zh": "正在生成{0} {1}…"
+    },
+    {
+      "key": "desktop.report.generatingMonthly",
+      "en": "Generating monthly {0}…",
+      "zh": "生成月报 {0}…"
+    },
+    {
+      "key": "desktop.report.generatingSessionSummary",
+      "en": "Generating summary · {0}",
+      "zh": "正在生成摘要 · {0}"
+    },
+    {
+      "key": "desktop.report.generatingStrong",
+      "en": "Generating",
+      "zh": "正在生成"
+    },
+    {
+      "key": "desktop.report.generatingWeekly",
+      "en": "Generating weekly {0}…",
+      "zh": "生成周报 {0}…"
+    },
+    {
+      "key": "desktop.report.gtdAddBtn",
+      "en": "Add GTD",
+      "zh": "添加GTD"
+    },
+    {
+      "key": "desktop.report.gtdAddFailed",
+      "en": "Save failed",
+      "zh": "落库失败"
+    },
+    {
+      "key": "desktop.report.gtdAdding",
+      "en": "Adding…",
+      "zh": "添加中…"
+    },
+    {
+      "key": "desktop.report.gtdBtn",
+      "en": "GTD analyze",
+      "zh": "GTD分析"
+    },
+    {
+      "key": "desktop.report.gtdCachePreview",
+      "en": "Cached preview · {0} items · source {1}:{2} · click Re-analyze to refresh",
+      "zh": "缓存预览 · {0} 项 · 源 {1}:{2} · 点「重新分析」可刷新"
+    },
+    {
+      "key": "desktop.report.gtdCollapseTitle",
+      "en": "Click to expand/collapse",
+      "zh": "点击折叠/展开"
+    },
+    {
+      "key": "desktop.report.gtdFallbackSessions",
+      "en": "report_links empty; loaded {0} sessions from digest time range as fallback.",
+      "zh": "report_links 为空，已按 digest 时间范围回退加载 {0} 个 session。"
+    },
+    {
+      "key": "desktop.report.gtdFocusEditor",
+      "en": "Focus to open large editor",
+      "zh": "聚焦后打开大编辑窗口"
+    },
+    {
+      "key": "desktop.report.gtdInvalidProposal",
+      "en": "Invalid proposal",
+      "zh": "无效的提议项"
+    },
+    {
+      "key": "desktop.report.gtdJsonParseFailed",
+      "en": "Could not parse JSON from LLM: {0}",
+      "zh": "LLM 返回的 JSON 无法解析: {0}"
+    },
+    {
+      "key": "desktop.report.gtdMdDialog",
+      "en": "Edit todolist.md",
+      "zh": "todolist.md 编辑"
+    },
+    {
+      "key": "desktop.report.gtdMdDone",
+      "en": "Done",
+      "zh": "完成"
+    },
+    {
+      "key": "desktop.report.gtdNoDigest",
+      "en": "Click GTD Analyze on a detail card first to choose a digest.",
+      "zh": "请先在详情卡片点击「GTD分析」，指定要分析的 digest。"
+    },
+    {
+      "key": "desktop.report.gtdNoLinkedSessions",
+      "en": "This digest is not linked to any catalog session (no report_links and no sessions in period). Cannot generate GTD proposals.",
+      "zh": "该 digest 未关联到任何 catalog session（无 report_links，且周期内无 session）。无法生成 GTD 提议。"
+    },
+    {
+      "key": "desktop.report.gtdNoSessionsReason",
+      "en": "Possible reasons: no sessions in this digest period, or the model did not return session ids.",
+      "zh": "可能原因：该 digest 周期内无关联 session，或模型未给出可落库的 session id。"
+    },
+    {
+      "key": "desktop.report.gtdNotSaved",
+      "en": " · not saved yet (cached; re-analyze to refresh)",
+      "zh": " · 尚未落库（已缓存，重新分析可刷新）"
+    },
+    {
+      "key": "desktop.report.gtdReanalyze",
+      "en": "Re-analyze",
+      "zh": "重新分析"
+    },
+    {
+      "key": "desktop.report.gtdTasksLabel",
+      "en": "Tasks (one per line)",
+      "zh": "Tasks（每行一项）"
+    },
+    {
+      "key": "desktop.report.gtdTodoLabel",
+      "en": "todolist.md (editable, written on add)",
+      "zh": "todolist.md（可编辑，添加时写入）"
+    },
+    {
+      "key": "desktop.report.gtdWarnDefault",
+      "en": "Possible reasons: no sessions in period, or model did not return session ids.",
+      "zh": "可能原因：该 digest 周期内无关联 session，或模型未给出可落库的 session id。"
+    },
+    {
+      "key": "desktop.report.legendDailyMissing",
+      "en": "+ Not generated",
+      "zh": "+ 待生成"
+    },
+    {
+      "key": "desktop.report.legendDailyOk",
+      "en": "D generated",
+      "zh": "D 已生成"
+    },
+    {
+      "key": "desktop.report.legendDailyStale",
+      "en": "↻ Update pending",
+      "zh": "↻ 待更新"
+    },
+    {
+      "key": "desktop.report.legendDates",
+      "en": "Dates:",
+      "zh": "日期："
+    },
+    {
+      "key": "desktop.report.legendMonthly",
+      "en": "Monthly",
+      "zh": "月报"
+    },
+    {
+      "key": "desktop.report.legendNoSession",
+      "en": "— No activity",
+      "zh": "— 无活动"
+    },
+    {
+      "key": "desktop.report.legendWeekly",
+      "en": "Weekly",
+      "zh": "周报"
+    },
+    {
+      "key": "desktop.report.llmRequiredBody1",
+      "en": "Calendar sessions come from local index; daily/weekly/monthly digests require tool LLM API.",
+      "zh": "日历中的 session 来自本地索引；生成日报 / 周报 / 月报需要调用工具 LLM API（会先补全缺失的日报，再聚合为周报 / 月报）。"
+    },
+    {
+      "key": "desktop.report.llmRequiredBody2",
+      "en": "Fill Base URL, Model, API Key under Settings → Models; auto-saves. Retry after saving.",
+      "zh": "请在 设置 → 模型 填写 Base URL、Model、API Key，会自动保存，保存后重试。"
+    },
+    {
+      "key": "desktop.report.llmRequiredGenFinal",
+      "en": "Cannot generate {0}: configure tool LLM in Settings → Provider first",
+      "zh": "无法生成{0}：请先在 Settings → Provider 配置工具 LLM"
+    },
+    {
+      "key": "desktop.report.llmRequiredTitle",
+      "en": "Cannot generate {0}: tool LLM not configured",
+      "zh": "无法生成{0}：尚未配置工具 LLM"
+    },
+    {
+      "key": "desktop.report.llmRequiredToast",
+      "en": "Cannot generate {0}: configure tool LLM under Settings → Models",
+      "zh": "无法生成{0}：请先在设置 → 模型配置工具 LLM（baseUrl / model / apiKey）"
+    },
+    {
+      "key": "desktop.report.llmSettingsBtn",
+      "en": "Open Settings",
+      "zh": "去 Settings 配置"
+    },
+    {
+      "key": "desktop.report.manualRegenerate",
+      "en": "Manual regenerate",
+      "zh": "手动重新生成"
+    },
+    {
+      "key": "desktop.report.missingDigestId",
+      "en": "Missing digest id",
+      "zh": "缺少 digest id"
+    },
+    {
+      "key": "desktop.report.monthBtn",
+      "en": "Month",
+      "zh": "月"
+    },
+    {
+      "key": "desktop.report.monthFuture",
+      "en": "Month (future)",
+      "zh": "月（未来）"
+    },
+    {
+      "key": "desktop.report.monthTitleGenerate",
+      "en": "Month {0} · click sessions; generate monthly in side panel",
+      "zh": "月 {0} · 点击查看 session，右侧面板生成月报"
+    },
+    {
+      "key": "desktop.report.monthTitleStale",
+      "en": "Month {0} · {1}",
+      "zh": "月 {0} · {1}"
+    },
+    {
+      "key": "desktop.report.monthTitleView",
+      "en": "Month {0} · click sessions & monthly report (regenerate in side panel)",
+      "zh": "月 {0} · 点击查看 session 与月报（右侧面板可重新生成）"
+    },
+    {
+      "key": "desktop.report.monthlyCompleteStats",
+      "en": "Monthly complete · dailies {0} · daily +{1} · weekly +{2}",
+      "zh": "月报完成 · dailies {0} · 日报 +{1} · 周报 +{2}"
+    },
+    {
+      "key": "desktop.report.monthlyStale",
+      "en": "Monthly update pending",
+      "zh": "月报待更新"
+    },
+    {
+      "key": "desktop.report.monthlyStaleShort",
+      "en": "Monthly update pending",
+      "zh": "月报待更新"
+    },
+    {
+      "key": "desktop.report.nestedDailyDetail",
+      "en": "Daily {0} · {1}",
+      "zh": "日报 {0} · {1}"
+    },
+    {
+      "key": "desktop.report.nestedDailyLabel",
+      "en": "Daily {0}",
+      "zh": "日报 {0}"
+    },
+    {
+      "key": "desktop.report.nestedWeeklyDetail",
+      "en": "Weekly {0} · {1}",
+      "zh": "周报 {0} · {1}"
+    },
+    {
+      "key": "desktop.report.nestedWeeklyLabel",
+      "en": "Weekly {0}",
+      "zh": "周报 {0}"
+    },
+    {
+      "key": "desktop.report.newSessions",
+      "en": "{0} new sessions",
+      "zh": "{0} 个新 session"
+    },
+    {
+      "key": "desktop.report.nextMonth",
+      "en": "Next month",
+      "zh": "下月"
+    },
+    {
+      "key": "desktop.report.noDigest",
+      "en": "No digest yet.",
+      "zh": "暂无 digest。"
+    },
+    {
+      "key": "desktop.report.noSessionTitle",
+      "en": "No sessions · {0}",
+      "zh": "无 session · {0}"
+    },
+    {
+      "key": "desktop.report.noSessionsInRange",
+      "en": "No sessions in this range",
+      "zh": "该范围内没有 session"
+    },
+    {
+      "key": "desktop.report.openedDigest",
+      "en": "Opened {0} {1}",
+      "zh": "已打开 {0} {1}"
+    },
+    {
+      "key": "desktop.report.openedDigestStatus",
+      "en": "Opened {0} {1}",
+      "zh": "已打开 {0} {1}"
+    },
+    {
+      "key": "desktop.report.parallelDaily",
+      "en": "{0} (summarize sessions first){1}",
+      "zh": "{0}（先 summarize sessions）{1}"
+    },
+    {
+      "key": "desktop.report.parallelDailyMany",
+      "en": "Generating {0} dailies in parallel: {1}",
+      "zh": "并行生成 {0} 天日报：{1}"
+    },
+    {
+      "key": "desktop.report.parallelDailyOne",
+      "en": "Generating daily {0}…",
+      "zh": "生成日报 {0}…"
+    },
+    {
+      "key": "desktop.report.periodMissing",
+      "en": "No {0} yet · {1} sessions",
+      "zh": "尚无{0} · {1} sessions"
+    },
+    {
+      "key": "desktop.report.periodNoSessions",
+      "en": "{0}: no sessions in period",
+      "zh": "{0}：当期无 session"
+    },
+    {
+      "key": "desktop.report.periodUnderlyingBoth",
+      "en": "{0}: {1} new dailies, {2} days with stale dailies",
+      "zh": "{0}：{1} 篇新日报、{2} 天日报待更新"
+    },
+    {
+      "key": "desktop.report.periodUnderlyingNewOnly",
+      "en": "{0}: {1} new dailies",
+      "zh": "{0}：{1} 篇新日报"
+    },
+    {
+      "key": "desktop.report.periodUnderlyingStaleOnly",
+      "en": "{0}: {1} days with stale dailies",
+      "zh": "{0}：{1} 天日报待更新"
+    },
+    {
+      "key": "desktop.report.periodUpToDate",
+      "en": "{0} up to date",
+      "zh": "{0}已是最新"
+    },
+    {
+      "key": "desktop.report.periodUpdatedSessions",
+      "en": "{0}: {1} sessions updated",
+      "zh": "{0}：{1} 个 session 有更新"
+    },
+    {
+      "key": "desktop.report.prepareSummarize",
+      "en": "Preparing to summarize {0} sessions…",
+      "zh": "准备 summarize {0} 个 session…"
+    },
+    {
+      "key": "desktop.report.prevMonth",
+      "en": "Previous month",
+      "zh": "上月"
+    },
+    {
+      "key": "desktop.report.rangeDay",
+      "en": "Day {0}",
+      "zh": "日 {0}"
+    },
+    {
+      "key": "desktop.report.rangeMonth",
+      "en": "Month {0}",
+      "zh": "月 {0}"
+    },
+    {
+      "key": "desktop.report.rangeWeek",
+      "en": "Week {0}",
+      "zh": "周 {0}"
+    },
+    {
+      "key": "desktop.report.refreshDailyMissing",
+      "en": "No daily yet · {0} sessions; will generate",
+      "zh": "尚无日报 · {0} sessions，将生成"
+    },
+    {
+      "key": "desktop.report.refreshDailyUpToDateCount",
+      "en": "Daily up to date ({0} sessions)",
+      "zh": "日报已是最新（{0} sessions）"
+    },
+    {
+      "key": "desktop.report.refreshNewSessionsDaily",
+      "en": "Detected {0} new sessions; will regenerate daily",
+      "zh": "检测到 {0} 个新 session，将重新生成日报"
+    },
+    {
+      "key": "desktop.report.refreshNoSessionsSkip",
+      "en": "No sessions this day; skipping generation",
+      "zh": "当日无 session，跳过生成"
+    },
+    {
+      "key": "desktop.report.refreshUpdatedSessionsDaily",
+      "en": "Detected {0} updated sessions; will regenerate daily",
+      "zh": "检测到 {0} 个 session 有更新，将重新生成日报"
+    },
+    {
+      "key": "desktop.report.regenerateBtn",
+      "en": "Regenerate",
+      "zh": "重新生成"
+    },
+    {
+      "key": "desktop.report.replaced",
+      "en": "replaced",
+      "zh": "覆盖"
+    },
+    {
+      "key": "desktop.report.reportDetail",
+      "en": "Report detail",
+      "zh": "报告详情"
+    },
+    {
+      "key": "desktop.report.scopeDay",
+      "en": "this day",
+      "zh": "这一天"
+    },
+    {
+      "key": "desktop.report.scopeMonth",
+      "en": "this month",
+      "zh": "这一月"
+    },
+    {
+      "key": "desktop.report.scopePeriod",
+      "en": "this period",
+      "zh": "本期"
+    },
+    {
+      "key": "desktop.report.scopeWeek",
+      "en": "this week",
+      "zh": "这一周"
+    },
+    {
+      "key": "desktop.report.sessionChanged",
+      "en": "sessions changed",
+      "zh": "session 有变化"
+    },
+    {
+      "key": "desktop.report.sessionCountMeta",
+      "en": "{0} items · click to preview",
+      "zh": "{0} 条 · 点击预览"
+    },
+    {
+      "key": "desktop.report.sessionEmpty",
+      "en": "Select a month or date / week to show sessions",
+      "zh": "切换月份或选择日期 / 周后显示 session"
+    },
+    {
+      "key": "desktop.report.skipEmbedding",
+      "en": "Skipping embedding…",
+      "zh": "跳过 embedding…"
+    },
+    {
+      "key": "desktop.report.staleDefault",
+      "en": "The digest may be outdated; consider regenerating.",
+      "zh": "日报可能不是最新的，方便的话可以再生成一次。"
+    },
+    {
+      "key": "desktop.report.staleNewSessions",
+      "en": "{0} new sessions not in daily; consider regenerating.",
+      "zh": "有 {0} 个新 session 还没写进日报，方便的话可以再生成一次同步一下。"
+    },
+    {
+      "key": "desktop.report.staleUnderlyingDaily",
+      "en": "Underlying dailies changed; {0} may be outdated. Consider regenerating.",
+      "zh": "底层日报有变化，{0}可能不是最新的。方便的话可以再生成一次同步一下。"
+    },
+    {
+      "key": "desktop.report.staleUpdatedAfterDigest",
+      "en": "{0} sessions updated after {1}; consider regenerating.",
+      "zh": "有 {0} 个 session 在{1}之后又更新了，方便的话可以再生成一次保持最新。"
+    },
+    {
+      "key": "desktop.report.staleUpdatedSessions",
+      "en": "{0} sessions updated after daily; consider regenerating.",
+      "zh": "有 {0} 个 session 在日报之后又更新了，方便的话可以再生成一次保持最新。"
+    },
+    {
+      "key": "desktop.report.startDaily",
+      "en": "Generating daily {0}… (summarize sessions first)",
+      "zh": "生成日报 {0}…（先 summarize sessions）"
+    },
+    {
+      "key": "desktop.report.stillGenerating",
+      "en": " · still generating: {0}",
+      "zh": " · 仍在生成：{0}"
+    },
+    {
+      "key": "desktop.report.summaryDone",
+      "en": "Summary complete · {0}",
+      "zh": "摘要完成 · {0}"
+    },
+    {
+      "key": "desktop.report.summaryFailed",
+      "en": "Summary failed · {0}",
+      "zh": "摘要失败 · {0}"
+    },
+    {
+      "key": "desktop.report.summarySkipped",
+      "en": "Skipped (summary exists) · {0}",
+      "zh": "跳过（已有 summary）· {0}"
+    },
+    {
+      "key": "desktop.report.taskBusyGenMonthly",
+      "en": "A task is running; wait before generating monthly…",
+      "zh": "有任务进行中，请稍候再生成月报…"
+    },
+    {
+      "key": "desktop.report.taskBusyGenWeekly",
+      "en": "A task is running; wait before generating weekly…",
+      "zh": "有任务进行中，请稍候再生成周报…"
+    },
+    {
+      "key": "desktop.report.taskBusyRegenMonthly",
+      "en": "A task is running; wait before regenerating monthly…",
+      "zh": "有任务进行中，请稍候再重新生成月报…"
+    },
+    {
+      "key": "desktop.report.taskBusyRegenWeekly",
+      "en": "A task is running; wait before regenerating weekly…",
+      "zh": "有任务进行中，请稍候再重新生成周报…"
+    },
+    {
+      "key": "desktop.report.unknownLevel",
+      "en": "Unknown level: {0}",
+      "zh": "未知 level: {0}"
+    },
+    {
+      "key": "desktop.report.updatedSessions",
+      "en": "{0} updated",
+      "zh": "{0} 个有更新"
+    },
+    {
+      "key": "desktop.report.weekCol",
+      "en": "Wk",
+      "zh": "周"
+    },
+    {
+      "key": "desktop.report.weekdayFri",
+      "en": "Fri",
+      "zh": "五"
+    },
+    {
+      "key": "desktop.report.weekdayMon",
+      "en": "Mon",
+      "zh": "一"
+    },
+    {
+      "key": "desktop.report.weekdaySat",
+      "en": "Sat",
+      "zh": "六"
+    },
+    {
+      "key": "desktop.report.weekdaySun",
+      "en": "Sun",
+      "zh": "日"
+    },
+    {
+      "key": "desktop.report.weekdayThu",
+      "en": "Thu",
+      "zh": "四"
+    },
+    {
+      "key": "desktop.report.weekdayTue",
+      "en": "Tue",
+      "zh": "二"
+    },
+    {
+      "key": "desktop.report.weekdayWed",
+      "en": "Wed",
+      "zh": "三"
+    },
+    {
+      "key": "desktop.report.weekliesCompleteMonth",
+      "en": "This month's weeklies complete (or no session activity weeks)",
+      "zh": "本月周报已齐全（或无 session 活动周）"
+    },
+    {
+      "key": "desktop.report.weeklyCompleteStats",
+      "en": "Weekly complete · dailies {0} · backfill +{1}/skip {2}",
+      "zh": "周报完成 · dailies {0} · 补全 +{1}/skip {2}"
+    },
+    {
+      "key": "desktop.report.weeklyMonthlyBusy",
+      "en": "Weekly/monthly generation in progress, please wait…",
+      "zh": "周报/月报生成中，请稍候…"
+    },
+    {
+      "key": "desktop.report.weeklyMonthlyBusyError",
+      "en": "Weekly/monthly generation in progress, please wait…",
+      "zh": "周报/月报生成中，请稍候…"
+    },
+    {
+      "key": "desktop.report.weeklyStale",
+      "en": "Weekly update pending",
+      "zh": "周报待更新"
+    },
+    {
+      "key": "desktop.report.weeklyStaleShort",
+      "en": "Weekly update pending",
+      "zh": "周报待更新"
+    },
+    {
+      "key": "desktop.report.weeklyTitleGenerate",
+      "en": "Weekly {0} · click sessions; generate in side panel",
+      "zh": "周报 {0} · 点击查看 session，右侧面板生成"
+    },
+    {
+      "key": "desktop.report.weeklyTitleStale",
+      "en": "Weekly {0} · {1}",
+      "zh": "周报 {0} · {1}"
+    },
+    {
+      "key": "desktop.report.weeklyTitleView",
+      "en": "Weekly {0} · click to view (regenerate in side panel)",
+      "zh": "周报 {0} · 点击查看（右侧面板可重新生成）"
+    },
+    {
+      "key": "desktop.report.writeEmbedding",
+      "en": "Writing embedding…",
+      "zh": "写入 embedding…"
+    },
+    {
+      "key": "desktop.sessions.lastSynced",
+      "en": " · last sync {0}",
+      "zh": " · 最近同步 {0}"
+    },
+    {
+      "key": "desktop.sessions.meta",
+      "en": "{0} sessions · sync every {1} when visible{2} · click to preview",
+      "zh": "{0} sessions · 可见时每 {1} 同步{2} · 点击预览"
+    },
+    {
+      "key": "desktop.sessions.noMessages",
+      "en": "No messages to preview.",
+      "zh": "无消息可预览。"
+    },
+    {
+      "key": "desktop.sessions.previewHint",
+      "en": "Click a session on the left to preview. Supports Summarize / Auto Rename (like the VS Code extension).",
+      "zh": "点击左侧 session 查看对话预览。支持 Summarize / Auto Rename（与 VS Code 扩展类似）。"
+    },
+    {
+      "key": "desktop.sessions.refreshList",
+      "en": "Refresh list",
+      "zh": "刷新列表"
+    },
+    {
+      "key": "desktop.sessions.renamed",
+      "en": "Renamed to \"{0}\"",
+      "zh": "已重命名为「{0}」"
+    },
+    {
+      "key": "desktop.sessions.renamedNativeError",
+      "en": " (catalog updated; native: {0})",
+      "zh": "（catalog 已更新；原生存储：{0}）"
+    },
+    {
+      "key": "desktop.sessions.renaming",
+      "en": "Renaming…",
+      "zh": "正在 Auto Rename…"
+    },
+    {
+      "key": "desktop.sessions.sheetTitle",
+      "en": "Sessions (reference)",
+      "zh": "Sessions（参考）"
+    },
+    {
+      "key": "desktop.sessions.summarizing",
+      "en": "Summarizing…",
+      "zh": "正在 Summarize…"
+    },
+    {
+      "key": "desktop.sessions.summaryGenerated",
+      "en": "Summary generated and saved to catalog",
+      "zh": "Summary 已生成并写入 catalog"
+    },
+    {
+      "key": "desktop.sessions.truncated",
+      "en": "(truncated)",
+      "zh": "（已截断）"
+    },
+    {
+      "key": "desktop.settings.fieldOutputLanguageOptionAuto",
+      "en": "Auto (follow UI language)",
+      "zh": "自动（跟随界面语言）"
+    },
+    {
+      "key": "desktop.settings.gitNestedScanGroup",
+      "en": "Git side panel",
+      "zh": "Git 侧栏"
+    },
+    {
+      "key": "desktop.settings.gitNestedScanIgnoreDirs",
+      "en": "Ignored directories",
+      "zh": "忽略的目录"
+    },
+    {
+      "key": "desktop.settings.gitNestedScanIgnoreDirsDesc",
+      "en": "One directory name per line. Leave empty for defaults (node_modules, dist, …).",
+      "zh": "每行一个目录名。留空则使用默认列表（node_modules、dist 等）。"
+    },
+    {
+      "key": "desktop.settings.gitNestedScanMaxDepth",
+      "en": "Nested repo scan depth",
+      "zh": "嵌套仓库扫描深度"
+    },
+    {
+      "key": "desktop.settings.gitNestedScanMaxDepthDesc",
+      "en": "When cwd is not a Git repo, scan subdirectories up to this depth (1–10)",
+      "zh": "当工作目录不是 Git 仓库时，向下扫描子目录的最大层数（1–10）"
+    },
+    {
+      "key": "desktop.settings.paneAbout",
+      "en": "About",
+      "zh": "关于"
+    },
+    {
+      "key": "desktop.settings.updateAvailable",
+      "en": "A new version is available: {0}",
+      "zh": "新版本 {0} 可用"
+    },
+    {
+      "key": "desktop.settings.updateCheckFailed",
+      "en": "Could not check for updates. Try again later.",
+      "zh": "无法检查更新，请稍后重试"
+    },
+    {
+      "key": "desktop.settings.updateChecking",
+      "en": "Checking for updates…",
+      "zh": "正在检查更新…"
+    },
+    {
+      "key": "desktop.settings.updateDownload",
+      "en": "Download update",
+      "zh": "下载更新"
+    },
+    {
+      "key": "desktop.settings.updateRecheck",
+      "en": "Check again",
+      "zh": "重新检查"
+    },
+    {
+      "key": "desktop.settings.updateUpToDate",
+      "en": "You're on the latest version.",
+      "zh": "当前已是最新版本"
+    },
+    {
+      "key": "desktop.sheet.gtdDesc",
+      "en": "Based on the selected daily / weekly / monthly digest in detail (today's daily is not auto-generated). Preview is editable; confirm to save.",
+      "zh": "基于详情中选中的 daily / weekly / monthly digest 分析（不会自动生成今日日报）。预览可编辑，确认后再落库。"
+    },
+    {
+      "key": "desktop.tabs.notes",
+      "en": "Notes",
+      "zh": "笔记"
+    },
+    {
+      "key": "desktop.tabs.workbench",
+      "en": "Workbench",
+      "zh": "工作台"
+    },
+    {
+      "key": "desktop.top.sessionsRefTitle",
+      "en": "Sessions reference",
+      "zh": "Sessions 参考"
+    },
+    {
+      "key": "desktop.top.settingsUpdateAvailable",
+      "en": "Update available ({0}) — open About",
+      "zh": "有新版本 {0}，打开关于"
+    },
+    {
+      "key": "desktop.usage.byDay",
+      "en": "By day",
+      "zh": "按日"
+    },
+    {
+      "key": "desktop.usage.colCalls",
+      "en": "Calls",
+      "zh": "调用"
+    },
+    {
+      "key": "desktop.usage.colDate",
+      "en": "Date",
+      "zh": "日期"
+    },
+    {
+      "key": "desktop.usage.colScheduleRuns",
+      "en": "Scheduled runs",
+      "zh": "定时 runs"
+    },
+    {
+      "key": "desktop.usage.colTime",
+      "en": "Time",
+      "zh": "时间"
+    },
+    {
+      "key": "desktop.usage.last30",
+      "en": "Last 30 days",
+      "zh": "近 30 天"
+    },
+    {
+      "key": "desktop.usage.last7",
+      "en": "Last 7 days",
+      "zh": "近 7 天"
+    },
+    {
+      "key": "desktop.usage.last90",
+      "en": "Last 90 days",
+      "zh": "近 90 天"
+    },
+    {
+      "key": "desktop.usage.llmDetails",
+      "en": "LLM call details",
+      "zh": "LLM 调用明细"
+    },
+    {
+      "key": "desktop.usage.noData",
+      "en": "No data",
+      "zh": "暂无数据"
+    },
+    {
+      "key": "desktop.usage.noLlmEvents",
+      "en": "No call details yet (appears after digests / Ask)",
+      "zh": "暂无调用明细（生成 digests / Ask 后会出现）"
+    },
+    {
+      "key": "desktop.usage.noScheduleRuns",
+      "en": "No scheduled runs",
+      "zh": "暂无定时执行记录"
+    },
+    {
+      "key": "desktop.usage.scheduleLog",
+      "en": "Scheduled run log",
+      "zh": "定时执行日志"
+    },
+    {
+      "key": "desktop.usage.scope",
+      "en": "Range",
+      "zh": "范围"
+    },
+    {
+      "key": "desktop.usage.summaryStatus",
+      "en": "Last {0} days · {1} calls",
+      "zh": "近 {0} 天 · {1} 次调用"
+    },
+    {
+      "key": "desktop.workbench.allSessions",
+      "en": "All Sessions",
+      "zh": "全部 Sessions"
+    },
+    {
+      "key": "desktop.workbench.autoRename",
+      "en": "Auto rename",
+      "zh": "自动重命名"
+    },
+    {
+      "key": "desktop.workbench.autoRenaming",
+      "en": "Auto renaming…",
+      "zh": "正在自动重命名…"
+    },
+    {
+      "key": "desktop.workbench.checkoutBranchFailed",
+      "en": "Could not switch branch: {0}",
+      "zh": "无法切换分支：{0}"
+    },
+    {
+      "key": "desktop.workbench.closeTerminal",
+      "en": "Close terminal",
+      "zh": "关闭终端"
+    },
+    {
+      "key": "desktop.workbench.editorAuto",
+      "en": "Editor",
+      "zh": "编辑器"
+    },
+    {
+      "key": "desktop.workbench.editorNotFound",
+      "en": "{0} not found; confirm the app is installed or CLI tools are available.",
+      "zh": "未找到 {0}，请确认应用已安装或命令行工具可用。"
+    },
+    {
+      "key": "desktop.workbench.editorNotFoundAuto",
+      "en": "No available VS Code, VSCodium, Cursor, or Windsurf found.",
+      "zh": "未找到可用的 VS Code、VSCodium、Cursor 或 Windsurf。"
+    },
+    {
+      "key": "desktop.workbench.externalTerminalHint",
+      "en": "Terminal mode: system default. Click a session to restore in external terminal.",
+      "zh": "终端模式：系统默认终端。点击左侧 session 在外部终端中恢复。"
+    },
+    {
+      "key": "desktop.workbench.filterProjects",
+      "en": "Filter projects…",
+      "zh": "筛选项目…"
+    },
+    {
+      "key": "desktop.workbench.generatingTitle",
+      "en": "Generating title from conversation…",
+      "zh": "正在根据对话内容生成标题…"
+    },
+    {
+      "key": "desktop.workbench.gitCommitAutoGenerate",
+      "en": "Auto generate",
+      "zh": "自动生成"
+    },
+    {
+      "key": "desktop.workbench.gitCommitDialogTitle",
+      "en": "Commit changes",
+      "zh": "提交改动"
+    },
+    {
+      "key": "desktop.workbench.gitCommitFailed",
+      "en": "Commit failed: {0}",
+      "zh": "提交失败：{0}"
+    },
+    {
+      "key": "desktop.workbench.gitCommitGenerateFailed",
+      "en": "Could not generate commit message: {0}",
+      "zh": "无法生成提交信息：{0}"
+    },
+    {
+      "key": "desktop.workbench.gitCommitGenerating",
+      "en": "Generating commit message…",
+      "zh": "正在生成提交信息…"
+    },
+    {
+      "key": "desktop.workbench.gitCommitMessageEmpty",
+      "en": "Commit message cannot be empty",
+      "zh": "提交信息不能为空"
+    },
+    {
+      "key": "desktop.workbench.gitCommitSuggested",
+      "en": "Suggested message filled in; edit before committing",
+      "zh": "已填入建议提交信息，可编辑后提交"
+    },
+    {
+      "key": "desktop.workbench.gitLogBackToChanges",
+      "en": "Back to changes",
+      "zh": "返回改动列表"
+    },
+    {
+      "key": "desktop.workbench.gitLogBackToList",
+      "en": "Back to commit history",
+      "zh": "返回提交历史"
+    },
+    {
+      "key": "desktop.workbench.gitLogEmpty",
+      "en": "No commits found",
+      "zh": "暂无提交记录"
+    },
+    {
+      "key": "desktop.workbench.gitLogLoadFailed",
+      "en": "Could not load commit history: {0}",
+      "zh": "无法加载提交历史：{0}"
+    },
+    {
+      "key": "desktop.workbench.gitLogNoFiles",
+      "en": "No files changed",
+      "zh": "无文件改动"
+    },
+    {
+      "key": "desktop.workbench.gitLogTitle",
+      "en": "Branch graph",
+      "zh": "分支图"
+    },
+    {
+      "key": "desktop.workbench.gitLogUntitled",
+      "en": "(no subject)",
+      "zh": "（无标题）"
+    },
+    {
+      "key": "desktop.workbench.gitNoRepoSelected",
+      "en": "Select a Git repository first",
+      "zh": "请先选择 Git 仓库"
+    },
+    {
+      "key": "desktop.workbench.gitPullFailed",
+      "en": "Pull failed: {0}",
+      "zh": "Pull 失败：{0}"
+    },
+    {
+      "key": "desktop.workbench.gitPushFailed",
+      "en": "Push failed: {0}",
+      "zh": "Push 失败：{0}"
+    },
+    {
+      "key": "desktop.workbench.gitRepoSelect",
+      "en": "Git repository",
+      "zh": "Git 仓库"
+    },
+    {
+      "key": "desktop.workbench.gitShowLoadFailed",
+      "en": "Could not load commit details: {0}",
+      "zh": "无法加载提交详情：{0}"
+    },
+    {
+      "key": "desktop.workbench.listMeta",
+      "en": "{0} · {1} sessions",
+      "zh": "{0} · {1} 条"
+    },
+    {
+      "key": "desktop.workbench.listMetaSearch",
+      "en": "{0} · search \"{1}\" · {2} sessions",
+      "zh": "{0} · 搜索「{1}」· {2} 条"
+    },
+    {
+      "key": "desktop.workbench.loadBranchesFailed",
+      "en": "Could not load branches: {0}",
+      "zh": "无法加载分支列表：{0}"
+    },
+    {
+      "key": "desktop.workbench.loadingProjects",
+      "en": "Loading projects…",
+      "zh": "加载项目…"
+    },
+    {
+      "key": "desktop.workbench.loadingSessions",
+      "en": "Loading sessions…",
+      "zh": "加载 sessions…"
+    },
+    {
+      "key": "desktop.workbench.mountNote",
+      "en": "Mount note",
+      "zh": "挂载笔记"
+    },
+    {
+      "key": "desktop.workbench.nameEmpty",
+      "en": "Name cannot be empty",
+      "zh": "名称不能为空"
+    },
+    {
+      "key": "desktop.workbench.nestedRepoCount",
+      "en": "{0} repos",
+      "zh": "{0} 个仓库"
+    },
+    {
+      "key": "desktop.workbench.nestedRepoUntitled",
+      "en": "Repository",
+      "zh": "仓库"
+    },
+    {
+      "key": "desktop.workbench.newSession",
+      "en": "New Session",
+      "zh": "新建 Session"
+    },
+    {
+      "key": "desktop.workbench.newSessionTitle",
+      "en": "New session · {0}",
+      "zh": "新 session · {0}"
+    },
+    {
+      "key": "desktop.workbench.newSessionWithProject",
+      "en": "New Session · {0}",
+      "zh": "新建 Session · {0}"
+    },
+    {
+      "key": "desktop.workbench.newTerminal",
+      "en": "New Terminal",
+      "zh": "新建 Terminal"
+    },
+    {
+      "key": "desktop.workbench.newTerminalWithProject",
+      "en": "New Terminal · {0}",
+      "zh": "新建 Terminal · {0}"
+    },
+    {
+      "key": "desktop.workbench.noGitBranches",
+      "en": "No branches found",
+      "zh": "未找到分支"
+    },
+    {
+      "key": "desktop.workbench.noMatchingSessions",
+      "en": "No matching sessions",
+      "zh": "没有匹配的 session"
+    },
+    {
+      "key": "desktop.workbench.noProjects",
+      "en": "No projects yet",
+      "zh": "暂无项目"
+    },
+    {
+      "key": "desktop.workbench.noSessionsInProject",
+      "en": "No sessions in this project",
+      "zh": "此项目暂无 session"
+    },
+    {
+      "key": "desktop.workbench.openInApp",
+      "en": "Open in {0}",
+      "zh": "在 {0} 中打开"
+    },
+    {
+      "key": "desktop.workbench.openInChatGpt",
+      "en": "Open in ChatGPT",
+      "zh": "在 ChatGPT 中打开"
+    },
+    {
+      "key": "desktop.workbench.openInEditor",
+      "en": "Open in editor",
+      "zh": "在编辑器中打开"
+    },
+    {
+      "key": "desktop.workbench.pinProject",
+      "en": "Pin project",
+      "zh": "置顶项目"
+    },
+    {
+      "key": "desktop.workbench.preview",
+      "en": "Preview",
+      "zh": "预览"
+    },
+    {
+      "key": "desktop.workbench.projectFilterMeta",
+      "en": "Projects{0}{1} · {2}",
+      "zh": "项目{0}{1} · {2}"
+    },
+    {
+      "key": "desktop.workbench.removeConfirm",
+      "en": "Remove \"{0}\" from panel? (native storage unchanged)",
+      "zh": "从面板移除「{0}」？（不会删除原生存储）"
+    },
+    {
+      "key": "desktop.workbench.removeFromPanel",
+      "en": "Remove from panel",
+      "zh": "从面板移除"
+    },
+    {
+      "key": "desktop.workbench.renameDisplayHint",
+      "en": "Display name only; disk path unchanged",
+      "zh": "仅改显示名，不影响磁盘路径"
+    },
+    {
+      "key": "desktop.workbench.renameProject",
+      "en": "Rename project",
+      "zh": "重命名项目"
+    },
+    {
+      "key": "desktop.workbench.renameProjectDisplay",
+      "en": "Project display name",
+      "zh": "项目显示名"
+    },
+    {
+      "key": "desktop.workbench.renameSession",
+      "en": "Rename Session",
+      "zh": "重命名 Session"
+    },
+    {
+      "key": "desktop.workbench.renameSessionTitle",
+      "en": "Session title",
+      "zh": "Session 标题"
+    },
+    {
+      "key": "desktop.workbench.resizeProjects",
+      "en": "Resize project sidebar",
+      "zh": "调整项目侧栏宽度"
+    },
+    {
+      "key": "desktop.workbench.resizeSessions",
+      "en": "Resize session list",
+      "zh": "调整 Session 列表宽度"
+    },
+    {
+      "key": "desktop.workbench.resizeSidePanel",
+      "en": "Resize side panel",
+      "zh": "调整侧栏宽度"
+    },
+    {
+      "key": "desktop.workbench.scratchDir",
+      "en": "Scratch dir (new)",
+      "zh": "临时目录（新建）"
+    },
+    {
+      "key": "desktop.workbench.scratchDirTitle",
+      "en": "New session in workbench scratch dir",
+      "zh": "在工作台临时目录中新建 session"
+    },
+    {
+      "key": "desktop.workbench.scratchSearch",
+      "en": "scratch",
+      "zh": "临时目录"
+    },
+    {
+      "key": "desktop.workbench.selectProject",
+      "en": "Select a project",
+      "zh": "请选择一个 project"
+    },
+    {
+      "key": "desktop.workbench.selectProjectHint",
+      "en": "Select a project; new Terminal or a session opens in that project's workbench.",
+      "zh": "选择项目后，新建 Terminal 或点击 session 会在该项目的工作台中打开。"
+    },
+    {
+      "key": "desktop.workbench.selectSessionHint",
+      "en": "Select a session to restore terminal",
+      "zh": "选择 session 以恢复终端"
+    },
+    {
+      "key": "desktop.workbench.shellRestored",
+      "en": "[Interactive shell restored]",
+      "zh": "[已恢复交互式 shell]"
+    },
+    {
+      "key": "desktop.workbench.sidePanelBack",
+      "en": "Back",
+      "zh": "返回"
+    },
+    {
+      "key": "desktop.workbench.sidePanelChanges",
+      "en": "Changes",
+      "zh": "工作区改动"
+    },
+    {
+      "key": "desktop.workbench.sidePanelDiffFailed",
+      "en": "Could not load diff: {0}",
+      "zh": "无法加载 diff：{0}"
+    },
+    {
+      "key": "desktop.workbench.sidePanelExplorer",
+      "en": "Explorer",
+      "zh": "文件目录"
+    },
+    {
+      "key": "desktop.workbench.sidePanelGit",
+      "en": "Git Changes",
+      "zh": "Git 改动"
+    },
+    {
+      "key": "desktop.workbench.sidePanelGitUnavailable",
+      "en": "Git panel unavailable.",
+      "zh": "Git 面板不可用。"
+    },
+    {
+      "key": "desktop.workbench.sidePanelLoadFailed",
+      "en": "Could not load: {0}",
+      "zh": "加载失败：{0}"
+    },
+    {
+      "key": "desktop.workbench.sidePanelNoChanges",
+      "en": "No changes",
+      "zh": "无改动"
+    },
+    {
+      "key": "desktop.workbench.sidePanelNoNestedRepos",
+      "en": "No Git repositories found in subdirectories (scan depth {0}).",
+      "zh": "未在子目录中发现 Git 仓库（扫描深度 {0}）。"
+    },
+    {
+      "key": "desktop.workbench.sidePanelNoRoot",
+      "en": "Select a project to browse files and Git changes.",
+      "zh": "请选择项目后再浏览文件和 Git 改动。"
+    },
+    {
+      "key": "desktop.workbench.sidePanelRevealFailed",
+      "en": "Could not reveal in Finder: {0}",
+      "zh": "无法在 Finder 中显示：{0}"
+    },
+    {
+      "key": "desktop.workbench.sidePanelStaged",
+      "en": "Staged",
+      "zh": "已暂存"
+    },
+    {
+      "key": "desktop.workbench.switchBranch",
+      "en": "Switch branch",
+      "zh": "切换分支"
+    },
+    {
+      "key": "desktop.workbench.syncedCount",
+      "en": "Synced {0} sessions",
+      "zh": "已同步 {0} sessions"
+    },
+    {
+      "key": "desktop.workbench.syncingSessions",
+      "en": "Syncing agent sessions…",
+      "zh": "正在同步 Agent sessions…"
+    },
+    {
+      "key": "desktop.workbench.terminalClosed",
+      "en": "[Terminal closed]",
+      "zh": "[终端已关闭]"
+    },
+    {
+      "key": "desktop.workbench.terminalLabel",
+      "en": "Terminal {0}",
+      "zh": "终端 {0}"
+    },
+    {
+      "key": "desktop.workbench.terminalNotLoaded",
+      "en": "Terminal component not loaded",
+      "zh": "终端组件未加载"
+    },
+    {
+      "key": "desktop.workbench.terminalTabs",
+      "en": "Terminal tabs",
+      "zh": "终端标签"
+    },
+    {
+      "key": "desktop.workbench.titleEmpty",
+      "en": "Title cannot be empty",
+      "zh": "标题不能为空"
+    },
+    {
+      "key": "desktop.workbench.titleSuggested",
+      "en": "Suggested title filled; edit and confirm",
+      "zh": "已填入建议标题，可编辑后点确定保存"
+    },
+    {
+      "key": "desktop.workbench.unpinProject",
+      "en": "Unpin project",
+      "zh": "取消置顶"
+    }
+  ],
+  "zhGap": [
+    {
+      "key": "desktop.agent.auditLoading",
+      "en": "Loading trace records…",
+      "zh": "Loading trace records…"
+    },
+    {
+      "key": "desktop.agent.completeDone",
+      "en": "Done · {0} sources{1}",
+      "zh": "Done · {0} sources{1}"
+    },
+    {
+      "key": "desktop.agent.completeFallback",
+      "en": "Done · {0} sources · fallback search",
+      "zh": "Done · {0} sources · fallback search"
+    },
+    {
+      "key": "desktop.agent.completeToolCalls",
+      "en": " · {0} tool calls",
+      "zh": " · {0} tool calls"
+    },
+    {
+      "key": "desktop.agent.openInNotesTitle",
+      "en": "Open in Notes: {0}",
+      "zh": "Open in Notes: {0}"
+    },
+    {
+      "key": "desktop.agent.previewLoadFailed",
+      "en": "Preview failed: {0}",
+      "zh": "Preview failed: {0}"
+    },
+    {
+      "key": "desktop.app.title",
+      "en": "Agent Resume Desktop",
+      "zh": "Agent Resume Desktop"
+    },
+    {
+      "key": "desktop.backfill.cancelled",
+      "en": "Cancelled",
+      "zh": "Cancelled"
+    },
+    {
+      "key": "desktop.backfill.noActivity",
+      "en": " · no activity days",
+      "zh": " · no activity days"
+    },
+    {
+      "key": "desktop.backfill.preview",
+      "en": "Preview · sessions {0} · days {1} · weeks {2} · months {3} · ~{4} LLM calls{5}",
+      "zh": "Preview · sessions {0} · days {1} · weeks {2} · months {3} · ~{4} LLM calls{5}"
+    },
+    {
+      "key": "desktop.backfill.previewRange",
+      "en": " · range {0} → {1}",
+      "zh": " · range {0} → {1}"
+    },
+    {
+      "key": "desktop.backfill.running",
+      "en": "Backfilling (daily → weekly → monthly)… this may take a while",
+      "zh": "Backfilling (daily → weekly → monthly)… this may take a while"
+    },
+    {
+      "key": "desktop.backfill.scanning",
+      "en": "Scanning catalog…",
+      "zh": "Scanning catalog…"
+    },
+    {
+      "key": "desktop.backfill.scanningShort",
+      "en": "Scanning…",
+      "zh": "Scanning…"
+    },
+    {
+      "key": "desktop.backfill.stats",
+      "en": "{0}: ok {1} / skip {2} / fail {3} (planned {4})",
+      "zh": "{0}: ok {1} / skip {2} / fail {3} (planned {4})"
+    },
+    {
+      "key": "desktop.common.intervalSeconds",
+      "en": "{0}s",
+      "zh": "{0}s"
+    },
+    {
+      "key": "desktop.dialog.markdown",
+      "en": "Markdown",
+      "zh": "Markdown"
+    },
+    {
+      "key": "desktop.report.dailyFailedWithStill",
+      "en": "Daily {0} failed: {1} · still generating: {2}",
+      "zh": "Daily {0} failed: {1} · still generating: {2}"
+    },
+    {
+      "key": "desktop.report.digestDetailTitle",
+      "en": "{0} · {1}",
+      "zh": "{0} · {1}"
+    },
+    {
+      "key": "desktop.report.digestOk",
+      "en": "{0} {1} OK · {2} · {3} sessions · summary {4}{5}",
+      "zh": "{0} {1} OK · {2} · {3} sessions · summary {4}{5}"
+    },
+    {
+      "key": "desktop.report.embeddedSuffix",
+      "en": " · embedded",
+      "zh": " · embedded"
+    },
+    {
+      "key": "desktop.report.generatingMonthlyCascade",
+      "en": "Generating monthly {0}… (refresh dailies, then weeklies)",
+      "zh": "Generating monthly {0}… (refresh dailies, then weeklies)"
+    },
+    {
+      "key": "desktop.report.generatingWeeklyCascade",
+      "en": "Generating weekly {0}… (refresh stale dailies first)",
+      "zh": "Generating weekly {0}… (refresh stale dailies first)"
+    },
+    {
+      "key": "desktop.report.gtdAddingItem",
+      "en": "Adding GTD: {0}…",
+      "zh": "Adding GTD: {0}…"
+    },
+    {
+      "key": "desktop.report.gtdAllApplied",
+      "en": "All items added.",
+      "zh": "All items added."
+    },
+    {
+      "key": "desktop.report.gtdAnalyzing",
+      "en": "Analyzing GTD from current {0} digest…",
+      "zh": "Analyzing GTD from current {0} digest…"
+    },
+    {
+      "key": "desktop.report.gtdApplied",
+      "en": "GTD added · {0}{1}",
+      "zh": "GTD added · {0}{1}"
+    },
+    {
+      "key": "desktop.report.gtdMdHint",
+      "en": "Esc or Done to close",
+      "zh": "Esc or Done to close"
+    },
+    {
+      "key": "desktop.report.gtdNoProposals",
+      "en": "No GTD proposals.",
+      "zh": "No GTD proposals."
+    },
+    {
+      "key": "desktop.report.gtdPreviewPartial",
+      "en": "Editable preview · {0} items (partially added)",
+      "zh": "Editable preview · {0} items (partially added)"
+    },
+    {
+      "key": "desktop.report.gtdPreviewStatus",
+      "en": "Editable preview · {0} items · source {1}:{2}{3}",
+      "zh": "Editable preview · {0} items · source {1}:{2}{3}"
+    },
+    {
+      "key": "desktop.report.gtdReasonLabel",
+      "en": "Reason",
+      "zh": "Reason"
+    },
+    {
+      "key": "desktop.report.gtdStatusLabel",
+      "en": "GTD",
+      "zh": "GTD"
+    },
+    {
+      "key": "desktop.report.gtdWasLabel",
+      "en": "was {0}",
+      "zh": "was {0}"
+    },
+    {
+      "key": "desktop.report.gtdWasNone",
+      "en": "(none)",
+      "zh": "(none)"
+    },
+    {
+      "key": "desktop.report.monthlyDigestOk",
+      "en": "Monthly {0} OK · {1} · sources {2} (dailies {3}){4}{5}",
+      "zh": "Monthly {0} OK · {1} · sources {2} (dailies {3}){4}{5}"
+    },
+    {
+      "key": "desktop.report.sessionsTitle",
+      "en": "Sessions",
+      "zh": "Sessions"
+    },
+    {
+      "key": "desktop.report.summarizeStats",
+      "en": "summarize +{0}/skip {1}{2}",
+      "zh": "summarize +{0}/skip {1}{2}"
+    },
+    {
+      "key": "desktop.report.weeklyDigestOk",
+      "en": "Weekly {0} OK · {1} · sources {2} (dailies {3}){4}{5}",
+      "zh": "Weekly {0} OK · {1} · sources {2} (dailies {3}){4}{5}"
+    },
+    {
+      "key": "desktop.settings.aboutVersionLabel",
+      "en": "Desktop",
+      "zh": "Desktop"
+    },
+    {
+      "key": "desktop.settings.dailyHour",
+      "en": "Daily hour",
+      "zh": "Daily hour"
+    },
+    {
+      "key": "desktop.settings.embedding",
+      "en": "Embedding",
+      "zh": "Embedding"
+    },
+    {
+      "key": "desktop.settings.monthlyHour",
+      "en": "Monthly hour (day 1)",
+      "zh": "Monthly hour (day 1)"
+    },
+    {
+      "key": "desktop.settings.navLabel",
+      "en": "Settings menu",
+      "zh": "Settings menu"
+    },
+    {
+      "key": "desktop.settings.weeklyHour",
+      "en": "Weekly hour (Mon)",
+      "zh": "Weekly hour (Mon)"
+    },
+    {
+      "key": "desktop.sheet.gtdTitle",
+      "en": "Digest → GTD + todolist",
+      "zh": "Digest → GTD + todolist"
+    },
+    {
+      "key": "desktop.tabs.agent",
+      "en": "Agent",
+      "zh": "Agent"
+    },
+    {
+      "key": "desktop.top.sessionsRef",
+      "en": "Sessions",
+      "zh": "Sessions"
+    },
+    {
+      "key": "desktop.top.settings",
+      "en": "Settings",
+      "zh": "Settings"
+    },
+    {
+      "key": "desktop.top.settingsTitle",
+      "en": "Settings",
+      "zh": "Settings"
+    },
+    {
+      "key": "desktop.usage.bySource",
+      "en": "By source",
+      "zh": "By source"
+    },
+    {
+      "key": "desktop.usage.chatEmbed",
+      "en": "Chat / Embed",
+      "zh": "Chat / Embed"
+    },
+    {
+      "key": "desktop.usage.colError",
+      "en": "Error",
+      "zh": "Error"
+    },
+    {
+      "key": "desktop.usage.colKind",
+      "en": "Kind",
+      "zh": "Kind"
+    },
+    {
+      "key": "desktop.usage.colLevel",
+      "en": "Level",
+      "zh": "Level"
+    },
+    {
+      "key": "desktop.usage.colModel",
+      "en": "Model",
+      "zh": "Model"
+    },
+    {
+      "key": "desktop.usage.colMs",
+      "en": "ms",
+      "zh": "ms"
+    },
+    {
+      "key": "desktop.usage.colPeriod",
+      "en": "Period",
+      "zh": "Period"
+    },
+    {
+      "key": "desktop.usage.colSource",
+      "en": "Source",
+      "zh": "Source"
+    },
+    {
+      "key": "desktop.usage.colStatus",
+      "en": "Status",
+      "zh": "Status"
+    },
+    {
+      "key": "desktop.usage.colTokens",
+      "en": "Tokens",
+      "zh": "Tokens"
+    },
+    {
+      "key": "desktop.usage.events",
+      "en": "Events",
+      "zh": "Events"
+    },
+    {
+      "key": "desktop.usage.loading",
+      "en": "Loading usage…",
+      "zh": "Loading usage…"
+    },
+    {
+      "key": "desktop.usage.promptCompletion",
+      "en": "Prompt / Completion",
+      "zh": "Prompt / Completion"
+    },
+    {
+      "key": "desktop.usage.totalTokens",
+      "en": "Total tokens",
+      "zh": "Total tokens"
+    },
+    {
+      "key": "desktop.workbench.gitCommit",
+      "en": "Commit",
+      "zh": "Commit"
+    },
+    {
+      "key": "desktop.workbench.gitLog",
+      "en": "Log",
+      "zh": "Log"
+    },
+    {
+      "key": "desktop.workbench.gitPull",
+      "en": "Pull",
+      "zh": "Pull"
+    },
+    {
+      "key": "desktop.workbench.gitPush",
+      "en": "Push",
+      "zh": "Push"
+    }
+  ]
+}

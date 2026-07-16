@@ -1,6 +1,8 @@
 # Notes Feature Map
 
 > Parent index: `.agents/menus-index.md`
+>
+> **Scope:** Notes share on-disk files and core helpers; extension and desktop each have their own UI and indexing entry points.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |

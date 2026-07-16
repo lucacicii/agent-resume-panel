@@ -17,27 +17,13 @@ export const DEFAULT_CATALOG_OUTPUT_LANGUAGE = "English";
 const UI_LOCALE_TO_CATALOG_LANGUAGE: Record<UiLocale, string> = {
   en: "English",
   "zh-cn": "Chinese",
-  ja: "Japanese",
-  ko: "Korean",
-  es: "Spanish",
-  fr: "French",
-  de: "German",
-  "pt-br": "Portuguese",
-  it: "Italian",
-  ru: "Russian"
+  ja: "Japanese"
 };
 
 const LEGACY_CATALOG_TO_LOCALE: Record<string, UiLocale> = {
   English: "en",
   Chinese: "zh-cn",
-  Japanese: "ja",
-  Korean: "ko",
-  Spanish: "es",
-  French: "fr",
-  German: "de",
-  Portuguese: "pt-br",
-  Italian: "it",
-  Russian: "ru"
+  Japanese: "ja"
 };
 
 const LEGACY_LOCALE_ALIASES: Record<string, UiLocale> = {
@@ -49,15 +35,7 @@ const LEGACY_LOCALE_ALIASES: Record<string, UiLocale> = {
   zh: "zh-cn",
   "zh-tw": "zh-cn",
   "zh-hk": "zh-cn",
-  ja: "ja",
-  ko: "ko",
-  es: "es",
-  fr: "fr",
-  de: "de",
-  "pt-br": "pt-br",
-  pt: "pt-br",
-  it: "it",
-  ru: "ru"
+  ja: "ja"
 };
 
 export interface EffectiveOutputLanguage {

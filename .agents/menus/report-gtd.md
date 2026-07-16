@@ -1,6 +1,8 @@
 # Memory, Ask, And GTD Feature Map
 
 > Parent index: `.agents/menus-index.md`
+>
+> **Scope:** Memory, Ask, and desktop scheduler are desktop-primary. GTD also appears in the extension sidebar. Core stores shared persistence; each product owns its UI.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |

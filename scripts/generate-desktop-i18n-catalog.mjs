@@ -9,7 +9,7 @@ const root = join(import.meta.dirname, "..");
 const flat = {
   "desktop.app.title": { en: "Agent Resume Desktop", "zh-cn": "Agent Resume Desktop" },
   "desktop.common.close": { en: "Close", "zh-cn": "关闭" },
-  "desktop.common.done": { en: "Done", "zh-cn": "完成" },
+
   "desktop.common.cancel": { en: "Cancel", "zh-cn": "取消" },
   "desktop.common.confirm": { en: "Confirm", "zh-cn": "确定" },
   "desktop.common.refresh": { en: "Refresh", "zh-cn": "刷新" },
@@ -21,7 +21,7 @@ const flat = {
   "desktop.common.copy": { en: "Copy", "zh-cn": "复制" },
   "desktop.common.resend": { en: "Resend", "zh-cn": "重新发送" },
   "desktop.common.rename": { en: "Rename", "zh-cn": "重命名" },
-  "desktop.common.delete": { en: "Delete", "zh-cn": "删除" },
+
   "desktop.common.showSidebar": { en: "Show sidebar", "zh-cn": "显示侧栏" },
   "desktop.common.hideSidebar": { en: "Hide sidebar", "zh-cn": "隐藏侧栏" },
   "desktop.common.revealInFinder": { en: "Reveal in Finder", "zh-cn": "在 Finder 中显示" },
@@ -102,9 +102,6 @@ const flat = {
   "desktop.report.scopeMonth": { en: "this month", "zh-cn": "这一月" },
   "desktop.report.scopePeriod": { en: "this period", "zh-cn": "本期" },
   // Deprecated for visible UI — calendar badges use CAL_MARK in app.js; kept for aria / legacy keys.
-  "desktop.report.markStale": { en: "Update", "zh-cn": "更" },
-  "desktop.report.markMissing": { en: "Missing", "zh-cn": "未" },
-  "desktop.report.markNone": { en: "None", "zh-cn": "无" },
   "desktop.report.weeklyStale": { en: "Weekly update pending", "zh-cn": "周报待更新" },
   "desktop.report.monthlyStale": { en: "Monthly update pending", "zh-cn": "月报待更新" },
   "desktop.report.monthFuture": { en: "Month (future)", "zh-cn": "月（未来）" },
@@ -124,14 +121,6 @@ const flat = {
   "desktop.report.weeklyMonthlyBusy": {
     en: "Weekly/monthly generation in progress, please wait…",
     "zh-cn": "周报/月报生成中，请稍候…"
-  },
-  "desktop.report.taskBusyWeekly": {
-    en: "A task is running; wait before regenerating weekly…",
-    "zh-cn": "有任务进行中，请稍候再重新生成周报…"
-  },
-  "desktop.report.taskBusyMonthly": {
-    en: "A task is running; wait before regenerating monthly…",
-    "zh-cn": "有任务进行中，请稍候再重新生成月报…"
   },
   "desktop.report.taskBusyGenWeekly": {
     en: "A task is running; wait before generating weekly…",
@@ -252,7 +241,6 @@ const flat = {
   "desktop.agent.toolsOffStatus": { en: "Tools mode disabled", "zh-cn": "工具模式已关闭" },
   "desktop.agent.toolsOffTitle": { en: "Enable to operate notes via chat (create/search)", "zh-cn": "开启后可通过对话操作笔记（新建/搜索）" },
   "desktop.agent.searchingReports": { en: "Searching memory…", "zh-cn": "检索记忆…" },
-  "desktop.agent.generatingAnswer": { en: "Generating answer…", "zh-cn": "生成回答…" },
   "desktop.agent.callingTool": { en: "Calling tool: {0}…", "zh-cn": "调用工具: {0}…" },
   "desktop.agent.executingTool": { en: "Executing tool: {0}…", "zh-cn": "执行工具: {0}…" },
   "desktop.agent.copiedAnswer": { en: "Answer copied", "zh-cn": "已复制回答" },
@@ -421,12 +409,10 @@ const flat = {
     "zh-cn": "{0} sessions · 可见时每 {1} 同步{2} · 点击预览"
   },
   "desktop.sessions.lastSynced": { en: " · last sync {0}", "zh-cn": " · 最近同步 {0}" },
-  "desktop.sessions.summarize": { en: "Summarize", "zh-cn": "Summarize" },
-  "desktop.sessions.autoRename": { en: "Auto Rename", "zh-cn": "Auto Rename" },
+
   "desktop.sessions.summarizing": { en: "Summarizing…", "zh-cn": "正在 Summarize…" },
   "desktop.sessions.renaming": { en: "Renaming…", "zh-cn": "正在 Auto Rename…" },
   "desktop.sessions.summaryGenerated": { en: "Summary generated and saved to catalog", "zh-cn": "Summary 已生成并写入 catalog" },
-  "desktop.sessions.summaryLabel": { en: "Summary", "zh-cn": "Summary" },
   "desktop.sessions.noMessages": { en: "No messages to preview.", "zh-cn": "无消息可预览。" },
   "desktop.sessions.truncated": { en: "(truncated)", "zh-cn": "（已截断）" },
 
@@ -726,8 +712,7 @@ const flat = {
     en: " (catalog updated; native: {0})",
     "zh-cn": "（catalog 已更新；原生存储：{0}）"
   },
-  "desktop.sessions.regenerate": { en: "Regenerate", "zh-cn": "重新生成" },
-  "desktop.sessions.gtdAnalyze": { en: "GTD analyze", "zh-cn": "GTD分析" },
+
   "desktop.report.regenerateBtn": { en: "Regenerate", "zh-cn": "重新生成" },
   "desktop.report.gtdBtn": { en: "GTD analyze", "zh-cn": "GTD分析" },
   "desktop.report.noDigest": { en: "No digest yet.", "zh-cn": "暂无 digest。" },
@@ -1033,7 +1018,7 @@ const flat = {
   },
   "desktop.agent.deleteConfirmSimple": { en: 'Delete chat "{0}"?', "zh-cn": '确定要删除对话 "{0}" 吗？' },
   "desktop.agent.auditIndexWithTitle": { en: "{0} · {1}", "zh-cn": "{0} · {1}" },
-  "desktop.agent.indexProgress": { en: "Indexing notes…", "zh-cn": "正在索引笔记…" },
+
   "desktop.agent.statusGenerating": { en: "Generating answer…", "zh-cn": "生成回答…" },
   "desktop.agent.deleteFailedPrefix": { en: "Delete failed: {0}", "zh-cn": "删除失败：{0}" },
   "desktop.agent.renameFailedPrefix": { en: "Rename failed: {0}", "zh-cn": "重命名失败：{0}" },
@@ -1043,13 +1028,10 @@ const flat = {
   "desktop.agent.loadOlderFailedPrefix": { en: "Load older messages failed: {0}", "zh-cn": "加载更早消息失败：{0}" },
   "desktop.agent.auditFailedPrefix": { en: "Failed to load trace: {0}", "zh-cn": "加载追踪失败：{0}" },
   "desktop.agent.sendFailedPrefix": { en: "Send failed: {0}", "zh-cn": "发送失败：{0}" },
-  "desktop.agent.cancelled": { en: "Cancelled", "zh-cn": "已取消" },
-  "desktop.agent.stopped": { en: "Stopped", "zh-cn": "已停止" },
+
   "desktop.agent.errorPrefix": { en: "Error: {0}", "zh-cn": "错误：{0}" },
   "desktop.agent.emptyChat": { en: "Start a conversation…", "zh-cn": "开始对话…" },
   "desktop.agent.loadOlder": { en: "Load older messages", "zh-cn": "加载更早消息" },
-  "desktop.agent.renameProjectDialog": { en: "Rename project", "zh-cn": "重命名项目" },
-  "desktop.agent.traceRefresh": { en: "Refresh trace", "zh-cn": "刷新追踪" },
   "desktop.report.openedDigestStatus": { en: "Opened {0} {1}", "zh-cn": "已打开 {0} {1}" },
   "desktop.report.weeklyMonthlyBusyError": {
     en: "Weekly/monthly generation in progress, please wait…",
@@ -1088,31 +1070,34 @@ const flat = {
     "zh-cn": "可能原因：该 digest 周期内无关联 session，或模型未给出可落库的 session id。"
   },
   "desktop.report.gtdMdDone": { en: "Done", "zh-cn": "完成" },
-  "desktop.sessions.summarizeBtn": { en: "Summarize", "zh-cn": "Summarize" },
-  "desktop.sessions.autoRenameBtn": { en: "Auto Rename", "zh-cn": "Auto Rename" },
-  "desktop.sessions.summarizingBtn": { en: "Summarizing…", "zh-cn": "Summarizing…" },
-  "desktop.sessions.renamingBtn": { en: "Renaming…", "zh-cn": "Renaming…" }
 };
 
 function nest(flatMap) {
   const en = {};
   const zhcn = {};
+  const ja = {};
   for (const [key, val] of Object.entries(flatMap)) {
     const parts = key.split(".");
     // Group under desktop.<section> but keep full desktop.* key at leaves for merge script.
     const groupParts = parts.slice(1, -1);
     let enNode = en;
     let zhNode = zhcn;
+    let jaNode = ja;
     for (const p of groupParts) {
       enNode[p] = enNode[p] || {};
       zhNode[p] = zhNode[p] || {};
+      jaNode[p] = jaNode[p] || {};
       enNode = enNode[p];
       zhNode = zhNode[p];
+      jaNode = jaNode[p];
     }
     enNode[key] = val.en;
     zhNode[key] = val["zh-cn"];
+    if (val.ja) {
+      jaNode[key] = val.ja;
+    }
   }
-  return { en, "zh-cn": zhcn };
+  return { en, "zh-cn": zhcn, ja };
 }
 
 const catalog = nest(flat);

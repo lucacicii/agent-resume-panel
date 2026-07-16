@@ -2,18 +2,7 @@ export const UI_LANGUAGE_SETTING = "uiLanguage";
 
 export const UI_LANGUAGE_AUTO = "auto" as const;
 
-export const UI_LOCALES = [
-  "en",
-  "zh-cn",
-  "ja",
-  "ko",
-  "es",
-  "fr",
-  "de",
-  "pt-br",
-  "it",
-  "ru"
-] as const;
+export const UI_LOCALES = ["en", "zh-cn", "ja"] as const;
 
 export type UiLocale = (typeof UI_LOCALES)[number];
 
@@ -25,14 +14,7 @@ export const UI_LANGUAGE_OPTIONS: UiLanguagePreference[] = [UI_LANGUAGE_AUTO, ..
 export const NATIVE_LOCALE_LABELS: Record<UiLocale, string> = {
   en: "English",
   "zh-cn": "简体中文",
-  ja: "日本語",
-  ko: "한국어",
-  es: "Español",
-  fr: "Français",
-  de: "Deutsch",
-  "pt-br": "Português (Brasil)",
-  it: "Italiano",
-  ru: "Русский"
+  ja: "日本語"
 };
 
 export const SYSTEM_LOCALE_MAP: Record<string, UiLocale> = {
@@ -42,15 +24,7 @@ export const SYSTEM_LOCALE_MAP: Record<string, UiLocale> = {
   "zh-cn": "zh-cn",
   "zh-tw": "zh-cn",
   "zh-hk": "zh-cn",
-  ja: "ja",
-  ko: "ko",
-  es: "es",
-  fr: "fr",
-  de: "de",
-  "pt-br": "pt-br",
-  pt: "pt-br",
-  it: "it",
-  ru: "ru"
+  ja: "ja"
 };
 
 export function normalizeSystemLocale(language: string | undefined): UiLocale {

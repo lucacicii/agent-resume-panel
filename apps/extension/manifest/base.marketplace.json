@@ -1,0 +1,1007 @@
+{
+  "name": "agent-resume-panel-v2",
+  "displayName": "Agent Resume Panel V2",
+  "publisher": "thunder-luc",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "version": "2.6.8",
+  "icon": "resources/icon.png",
+  "private": true,
+  "author": "thunder-luc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-luc/agent-resume-panel.git"
+  },
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel-doc#readme",
+  "bugs": {
+    "url": "https://github.com/thunder-luc/agent-resume-panel-doc/issues"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "gtd",
+    "ai",
+    "agent",
+    "coding agent",
+    "codex",
+    "claude",
+    "claude code",
+    "grok",
+    "opencode",
+    "pi",
+    "alma",
+    "antigravity",
+    "session",
+    "resume",
+    "chat",
+    "acp",
+    "sidebar",
+    "desktop",
+    "session os",
+    "preview",
+    "search",
+    "sqlite",
+    "terminal",
+    "llm",
+    "summarize",
+    "rename",
+    "vscode"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:agentResume.sessions",
+    "onView:agentResume.acpChats",
+    "onView:agentResume.gtd",
+    "onCommand:agentResume.refresh",
+    "onCommand:agentResume.refreshGtd",
+    "onCommand:agentResume.setSessionGtdStatus",
+    "onCommand:agentResume.search",
+    "onCommand:agentResume.openSessionManager",
+    "onCommand:agentResume.newSession",
+    "onCommand:agentResume.openFolder",
+    "onCommand:agentResume.openProject",
+    "onCommand:agentResume.openInGhostty",
+    "onCommand:agentResume.openInCodexApp",
+    "onCommand:agentResume.openInClaudeCodePanel",
+    "onCommand:agentResume.openInCodexIdePanel",
+    "onCommand:agentResume.newCodexSession",
+    "onCommand:agentResume.newClaudeSession",
+    "onCommand:agentResume.newAgySession",
+    "onCommand:agentResume.newGrokSession",
+    "onCommand:agentResume.newOpenCodeSession",
+    "onCommand:agentResume.newPiSession",
+    "onCommand:agentResume.newAlmaSession",
+    "onCommand:agentResume.newCodexAppSession",
+    "onCommand:agentResume.favoriteProject",
+    "onCommand:agentResume.unfavoriteProject",
+    "onCommand:agentResume.configureProjectMenu",
+    "onCommand:agentResume.newSessionFromEditor",
+    "onCommand:agentResume.newChatSession",
+    "onCommand:agentResume.openChatSession",
+    "onCommand:agentResume.openAcpChat",
+    "onCommand:agentResume.newAcpChat",
+    "onCommand:agentResume.refreshAcpChats",
+    "onCommand:agentResume.renameAcpChat",
+    "onCommand:agentResume.openAcpSettings",
+    "onCommand:agentResume.openSettings",
+    "onCommand:agentResume.autoRenameSession"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && node scripts/package.mjs",
+    "install:local": "npm run package && node scripts/install-local.mjs",
+    "install:local-vscode": "npm run package && node scripts/install-local.mjs --editors=code --require-all",
+    "build:all": "node scripts/build-all.mjs",
+    "publish:openvsx": "npm run build:all && node scripts/publish-openvsx.mjs",
+    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "@types/vscode": "1.92.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "zod": "^4.4.3"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Agent Resume Panel",
+      "properties": {
+        "agentResume.codexHome": {
+          "type": "string",
+          "default": "~/.codex",
+          "description": "Codex home directory containing state_*.sqlite, session_index.jsonl, and history.jsonl."
+        },
+        "agentResume.claudeHome": {
+          "type": "string",
+          "default": "~/.claude",
+          "description": "Claude Code home directory containing history.jsonl and projects."
+        },
+        "agentResume.antigravityHome": {
+          "type": "string",
+          "default": "~/.gemini",
+          "description": "Antigravity data root. The extension scans antigravity-cli and antigravity subdirectories for sessions."
+        },
+        "agentResume.grokHome": {
+          "type": "string",
+          "default": "~/.grok",
+          "description": "Grok Build home directory containing sessions."
+        },
+        "agentResume.almaDataDir": {
+          "type": "string",
+          "default": "~/Library/Application Support/alma",
+          "description": "Alma data directory containing chat_threads.db. On macOS this is usually ~/Library/Application Support/alma."
+        },
+        "agentResume.opencodeHome": {
+          "type": "string",
+          "default": "~/.local/share/opencode",
+          "description": "OpenCode data directory containing opencode.db."
+        },
+        "agentResume.piHome": {
+          "type": "string",
+          "default": "~/.pi/agent",
+          "description": "Pi agent home directory containing sessions."
+        },
+        "agentResume.panelHome": {
+          "type": "string",
+          "default": "~/.agent-resume-panel",
+          "description": "Agent Resume Panel data directory for ACP chat sessions."
+        },
+        "agentResume.catalog.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "SQLite catalog database path. Empty uses <panelHome>/catalog.db."
+        },
+        "agentResume.catalog.syncMaxItems": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 500,
+          "maximum": 50000,
+          "description": "Maximum sessions per sync pass written into the catalog (per-provider loaders use this cap during sync)."
+        },
+        "agentResume.catalog.stalePolicy": {
+          "type": "string",
+          "enum": [
+            "hide",
+            "purge"
+          ],
+          "default": "hide",
+          "description": "When a session disappears from agent storage during sync: hide marks it hidden in the catalog; purge deletes the catalog row."
+        },
+        "agentResume.catalog.sidebarMode": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "full"
+          ],
+          "default": "legacy",
+          "description": "Sidebar session cap. legacy uses Max Sessions; full shows up to syncMaxItems."
+        },
+        "agentResume.acp.autoApprovePermissions": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "allowAll"
+          ],
+          "default": "ask",
+          "description": "How ACP Chat handles agent permission requests. ask shows a quick pick; allowAll auto-approves when possible."
+        },
+        "agentResume.acp.agents.codex.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Codex ACP agent."
+        },
+        "agentResume.acp.agents.codex.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@zed-industries/codex-acp@latest"
+          ],
+          "description": "Launch arguments for Codex ACP agent."
+        },
+        "agentResume.acp.agents.claude.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Claude ACP agent."
+        },
+        "agentResume.acp.agents.claude.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/claude-agent-acp@latest"
+          ],
+          "description": "Launch arguments for Claude ACP agent."
+        },
+        "agentResume.acp.agents.grok.command": {
+          "type": "string",
+          "default": "grok",
+          "description": "Launch command for Grok ACP agent. Uses the locally installed Grok Build CLI (see https://x.ai/cli)."
+        },
+        "agentResume.acp.agents.grok.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "agent",
+            "stdio"
+          ],
+          "description": "Launch arguments for Grok ACP agent."
+        },
+        "agentResume.acp.agents.opencode.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.opencode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "opencode-ai@latest",
+            "acp"
+          ],
+          "description": "Launch arguments for OpenCode ACP agent."
+        },
+        "agentResume.acp.agents.pi.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "Launch command for Pi ACP agent."
+        },
+        "agentResume.acp.agents.pi.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "pi-acp"
+          ],
+          "description": "Launch arguments for Pi ACP agent."
+        },
+        "agentResume.uiLanguage": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn",
+            "ja",
+            "ko",
+            "es",
+            "fr",
+            "de",
+            "pt-br",
+            "it",
+            "ru"
+          ],
+          "default": "auto",
+          "description": "Extension UI language. auto follows the VS Code display language; choose a language to override."
+        },
+        "agentResume.maxItems": {
+          "type": "number",
+          "default": 500,
+          "minimum": 20,
+          "maximum": 5000,
+          "description": "Maximum number of sessions to load into the panel."
+        },
+        "agentResume.terminalMode": {
+          "type": "string",
+          "enum": [
+            "newPerSession"
+          ],
+          "default": "newPerSession",
+          "description": "Terminal launch behavior. The first version opens one terminal per resumed session."
+        },
+        "agentResume.terminalLocation": {
+          "type": "string",
+          "enum": [
+            "editorBeside",
+            "panel"
+          ],
+          "default": "editorBeside",
+          "description": "Where VS Code integrated resume terminals should open."
+        },
+        "agentResume.enableVsCodeTerminalImagesHint": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time hint about VS Code terminal image support and the Ghostty fallback."
+        },
+        "agentResume.ghosttyExecutable": {
+          "type": "string",
+          "default": "Ghostty",
+          "description": "Ghostty app name on macOS or ghostty CLI executable/path used by Open in Ghostty."
+        },
+        "agentResume.ghosttyLaunchMode": {
+          "type": "string",
+          "enum": [
+            "pasteCommand",
+            "copyCommand",
+            "executeCommand"
+          ],
+          "default": "pasteCommand",
+          "description": "How Open in Ghostty starts a session. pasteCommand opens Ghostty, pastes the copied resume command, and presses Enter without using Ghostty's execute-command path."
+        },
+        "agentResume.ghosttyAutoPasteDelayMs": {
+          "type": "number",
+          "default": 900,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
+        },
+        "agentResume.showArchivedCodex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived Codex threads."
+        },
+        "agentResume.showSubagentCodex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Codex subagent threads in the panel (threads whose source field contains subagent)."
+        },
+        "agentResume.showArchivedOpenCode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived OpenCode sessions."
+        },
+        "agentResume.showSubagentGrok": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Grok Build subagent sessions (session_kind: subagent) in the panel. Ephemeral subagent shells with no title and at most one message are always hidden."
+        },
+        "agentResume.hideCronAlma": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide Alma cron threads (titles starting with ⏰ Cron:)."
+        },
+        "agentResume.hideChannelAlma": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide Alma channel threads (WeChat, Telegram, Discord, Slack)."
+        },
+        "agentResume.showIncognitoAlma": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Alma incognito threads in the panel."
+        },
+        "agentResume.editorNewSessionProvider": {
+          "type": "string",
+          "enum": [
+            "codex",
+            "claude",
+            "agy",
+            "grok",
+            "opencode",
+            "pi"
+          ],
+          "default": "codex",
+          "description": "CLI agent provider started by the editor title bar New Session button."
+        },
+        "agentResume.claudeResumeMode": {
+          "type": "string",
+          "enum": [
+            "terminal",
+            "panel"
+          ],
+          "default": "panel",
+          "description": "How Claude sessions resume from a click or Open Folder and Resume. panel opens the Claude Code VS Code extension; terminal uses the integrated terminal CLI (claude --resume)."
+        },
+        "agentResume.codexResumeMode": {
+          "type": "string",
+          "enum": [
+            "terminal",
+            "panel",
+            "app"
+          ],
+          "default": "terminal",
+          "description": "How Codex sessions resume from a click or Open Folder and Resume. terminal uses the integrated terminal CLI; panel uses the Codex VS Code extension (experimental); app uses Codex App."
+        },
+        "agentResume.codexIdePanelResume.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "[Experimental] Enable Resume in Codex IDE Panel. Set to false to disable immediately if a Codex extension update breaks panel resume."
+        },
+        "agentResume.codexIdePanelResume.implementationVersion": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 99,
+          "description": "[Experimental] Must match the Codex IDE panel integration version built into Agent Resume Panel (currently 1). Lower this only after updating the extension code for a new Codex routing scheme."
+        },
+        "agentResume.llm.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "OpenAI-compatible API base URL for session summarize and auto-rename."
+        },
+        "agentResume.llm.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model name for session summarize and auto-rename. Prefer a fast, inexpensive model when possible (e.g. gpt-4o-mini, deepseek-chat)."
+        },
+        "agentResume.llm.outputLanguage": {
+          "type": "string",
+          "enum": [
+            "English",
+            "Chinese",
+            "Japanese",
+            "Korean",
+            "Spanish",
+            "French",
+            "German",
+            "Portuguese",
+            "Italian",
+            "Russian"
+          ],
+          "default": "English",
+          "description": "Language used for Summarize and Auto Rename results."
+        },
+        "agentResume.llm.maxContextChars": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "maximum": 500000,
+          "description": "Maximum characters of conversation sent to the LLM."
+        },
+        "agentResume.projectMenu.mainActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "favorite",
+              "setProjectAlias",
+              "openProject",
+              "openInGhostty",
+              "newChatSession",
+              "newCodexSession",
+              "newClaudeSession",
+              "newAgySession",
+              "newGrokSession",
+              "newOpenCodeSession",
+              "newPiSession",
+              "newAlmaSession",
+              "newCodexAppSession",
+              "openProjectNote",
+              "deleteProjectNote"
+            ]
+          },
+          "default": [
+            "newCodexSession",
+            "newClaudeSession"
+          ],
+          "description": "Project context menu items shown outside Show More. Array order is the preferred sequence. Open Folder is always visible."
+        },
+        "agentResume.projectMenu.itemOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "favorite",
+              "setProjectAlias",
+              "openProject",
+              "openInGhostty",
+              "newCodexSession",
+              "newClaudeSession",
+              "newAgySession",
+              "newGrokSession",
+              "newOpenCodeSession",
+              "newPiSession",
+              "newAlmaSession",
+              "newCodexAppSession",
+              "openProjectNote",
+              "deleteProjectNote"
+            ]
+          },
+          "default": [
+            "favorite",
+            "setProjectAlias",
+            "openProject",
+            "openInGhostty",
+            "newCodexSession",
+            "newClaudeSession",
+            "newAgySession",
+            "newGrokSession",
+            "newOpenCodeSession",
+            "newPiSession",
+            "newAlmaSession",
+            "newCodexAppSession",
+            "openProjectNote",
+            "deleteProjectNote"
+          ],
+          "description": "Preferred display order for all configurable project context menu actions."
+        },
+        "agentResume.sessionMenu.mainActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "copyResumeCommand",
+              "openProject",
+              "openInGhostty",
+              "previewSession",
+              "renameSession",
+              "removeSessionFromPanel",
+              "autoRenameSession",
+              "setGtdStatus",
+              "collapseParentProject",
+              "openSessionNote",
+              "deleteSessionNote"
+            ]
+          },
+          "default": [
+            "copyResumeCommand",
+            "openProject",
+            "previewSession",
+            "renameSession"
+          ],
+          "description": "Session context menu items shown outside Show More. Array order is the preferred sequence. Open Folder is always visible."
+        },
+        "agentResume.sessionMenu.itemOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "copyResumeCommand",
+              "openProject",
+              "openInGhostty",
+              "previewSession",
+              "renameSession",
+              "removeSessionFromPanel",
+              "autoRenameSession",
+              "setGtdStatus",
+              "collapseParentProject",
+              "openSessionNote",
+              "deleteSessionNote"
+            ]
+          },
+          "default": [
+            "copyResumeCommand",
+            "openProject",
+            "openInGhostty",
+            "previewSession",
+            "renameSession",
+            "removeSessionFromPanel",
+            "autoRenameSession",
+            "setGtdStatus",
+            "collapseParentProject",
+            "openSessionNote",
+            "deleteSessionNote"
+          ],
+          "description": "Preferred display order for all configurable session context menu actions."
+        },
+        "agentResume.handoff.attachRecentVerbatim": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Number of recent verbatim exchanges appended after the handoff brief."
+        },
+        "agentResume.handoff.maxBriefTokens": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 500,
+          "maximum": 8000,
+          "description": "Maximum LLM output tokens for the generated handoff brief."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentResume",
+          "title": "Agent Resume",
+          "icon": "resources/agent-resume.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentResume": [
+        {
+          "id": "agentResume.sessions",
+          "name": "Sessions",
+          "icon": "$(history)"
+        },
+        {
+          "id": "agentResume.acpChats",
+          "name": "ACP Chats",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "id": "agentResume.gtd",
+          "name": "GTD",
+          "icon": "$(tag)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agentResume.refresh",
+        "title": "Refresh",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.search",
+        "title": "Search Sessions",
+        "category": "Agent Resume",
+        "icon": "$(search)"
+      },
+      {
+        "command": "agentResume.openSessionManager",
+        "title": "Session Manager",
+        "category": "Agent Resume",
+        "icon": "$(database)"
+      },
+      {
+        "command": "agentResume.newSession",
+        "title": "New Session",
+        "category": "Agent Resume",
+        "icon": "$(plus)"
+      },
+      {
+        "command": "agentResume.newSessionFromEditor",
+        "title": "New Session",
+        "category": "Agent Resume",
+        "icon": {
+          "light": "resources/icon.png",
+          "dark": "resources/icon.png"
+        }
+      },
+      {
+        "command": "agentResume.newAcpChat",
+        "title": "New ACP Chat",
+        "category": "Agent Resume",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentResume.openChatSession",
+        "title": "Open ACP Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpChat",
+        "title": "Open ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.refreshAcpChats",
+        "title": "Refresh ACP Chats",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.refreshGtd",
+        "title": "Refresh GTD",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.renameAcpChat",
+        "title": "Rename ACP Chat",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openAcpSettings",
+        "title": "ACP Chat Settings",
+        "category": "Agent Resume",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.openSettings",
+        "title": "Agent Resume Settings",
+        "category": "Agent Resume",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentResume.collapseParentProject",
+        "title": "Collapse Project",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.collapseProject",
+        "title": "Collapse Project",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.codex",
+        "title": "Hand Off to Codex",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.claude",
+        "title": "Hand Off to Claude Code",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.agy",
+        "title": "Hand Off to Antigravity CLI",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.grok",
+        "title": "Hand Off to Grok Build",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.opencode",
+        "title": "Hand Off to OpenCode",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.pi",
+        "title": "Hand Off to Pi",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openSession",
+        "title": "Resume Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.copyResumeCommand",
+        "title": "Copy Resume Command",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openFolder",
+        "title": "Open Folder",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openProject",
+        "title": "Open Folder and Resume",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInGhostty",
+        "title": "Open in Ghostty",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.previewSession",
+        "title": "Preview Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.renameSession",
+        "title": "Rename Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.removeSessionFromPanel",
+        "title": "Remove from Panel",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.autoRenameSession",
+        "title": "Auto Rename Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setSessionGtdStatus",
+        "title": "Set GTD Status…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openSessionNote",
+        "title": "Open Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteSessionNote",
+        "title": "Delete Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openProjectNote",
+        "title": "Open Project Note…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteProjectNote",
+        "title": "Delete Project Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openNote",
+        "title": "Open Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.renameNote",
+        "title": "Rename Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.deleteNote",
+        "title": "Delete Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.revealNoteInOS",
+        "title": "Reveal Note in File Explorer",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.copyNotePath",
+        "title": "Copy Note Path",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newNote",
+        "title": "New Note…",
+        "category": "Agent Resume",
+        "icon": "$(plus)"
+      },
+      {
+        "command": "agentResume.importNotes",
+        "title": "Import Markdown Notes…",
+        "category": "Agent Resume",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "agentResume.filterNotes",
+        "title": "Filter Notes",
+        "category": "Agent Resume",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentResume.clearNotesFilter",
+        "title": "Clear Notes Filter",
+        "category": "Agent Resume",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "agentResume.refreshNotes",
+        "title": "Refresh Notes",
+        "category": "Agent Resume",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentResume.openNotesFolder",
+        "title": "Open Notes Folder",
+        "category": "Agent Resume",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "agentResume.insertNoteImage",
+        "title": "Insert Image into Note",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.configureSessionMenu",
+        "title": "Customize Session Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInCodexApp",
+        "title": "Resume in Codex App",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInClaudeCodePanel",
+        "title": "Resume in Claude Code Panel",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openInCodexIdePanel",
+        "title": "Resume in Codex IDE Panel (Experimental)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsUpdatedDesc",
+        "title": "Sort by Updated (Newest First)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsUpdatedAsc",
+        "title": "Sort by Updated (Oldest First)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsTitleAsc",
+        "title": "Sort by Title (A–Z)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.sortProjectSessionsTitleDesc",
+        "title": "Sort by Title (Z–A)",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.favoriteProject",
+        "title": "Add to Favorites",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.unfavoriteProject",
+        "title": "Remove from Favorites",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setProjectAlias",
+        "title": "Set Project Alias…",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.configureProjectMenu",
+        "title": "Customize Project Menu",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newChatSession",
+        "title": "New Chat Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newCodexSession",
+        "title": "New Codex Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newClaudeSession",
+        "title": "New Claude Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAgySession",
+        "title": "New Antigravity Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newGrokSession",
+        "title": "New Grok Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newOpenCodeSession",
+        "title": "New OpenCode Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newPiSession",
+        "title": "New Pi Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newAlmaSession",
+        "title": "New Alma Thread",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newCodexAppSession",
+        "title": "New Codex App Session",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.openDocumentation",
+        "title": "Open Documentation",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.reportIssue",
+        "title": "Report Issue",
+        "category": "Agent Resume"
+      }
+    ]
+  }
+}

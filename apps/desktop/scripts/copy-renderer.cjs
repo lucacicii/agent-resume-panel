@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..");
+const extensionRoot = path.join(root, "..", "extension");
 const rendererOnly = process.argv.includes("--renderer-only");
 const src = path.join(root, "src", "renderer");
 const dest = path.join(root, "dist", "renderer");
@@ -34,7 +35,7 @@ fs.copyFileSync(path.join(fitPkg, "lib", "addon-fit.js"), path.join(vendorDest, 
 const webglPkg = path.dirname(require.resolve("@xterm/addon-webgl/package.json"));
 fs.copyFileSync(path.join(webglPkg, "lib", "addon-webgl.js"), path.join(vendorDest, "xterm-addon-webgl.js"));
 
-const iconSrc = path.join(root, "..", "..", "resources", "app-icon.png");
+const iconSrc = path.join(extensionRoot, "resources", "app-icon.png");
 const iconDestDir = path.join(root, "dist", "resources");
 const iconPng = path.join(iconDestDir, "icon.png");
 fs.mkdirSync(iconDestDir, { recursive: true });
@@ -72,7 +73,7 @@ if (process.platform === "darwin") {
 }
 }
 
-const repoLocales = path.join(root, "..", "..", "locales");
+const repoLocales = path.join(root, "locales");
 const distLocales = path.join(root, "dist", "locales");
 if (fs.existsSync(repoLocales)) {
   fs.mkdirSync(distLocales, { recursive: true });
