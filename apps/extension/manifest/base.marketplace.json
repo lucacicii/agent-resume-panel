@@ -99,8 +99,9 @@
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
+    "install:local-vscode": "npm run package && node scripts/install-local.mjs --editors=code --require-all",
     "build:all": "node scripts/build-all.mjs",
-    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\"",
+    "publish:openvsx": "npm run build:all && node scripts/publish-openvsx.mjs",
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs"
   },
   "devDependencies": {
