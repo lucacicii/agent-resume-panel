@@ -14,6 +14,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - **扩展无法激活**：修复 VSIX 未正确打包共享 `@agent-resume/core` workspace 依赖及残留开发期相对路径的问题。安装后的扩展现在可正常激活并注册全部命令，不再出现 `agentResume.refresh` 等命令 `not found`。
 - **扩展运行时依赖隔离**：新增仅供 VS Code 扩展使用的轻量 Core 入口，避免加载 Desktop 专用的 MCP 依赖链。
+- **Open VSX 构建**：依赖同步阶段不再执行 Desktop workspace 的 Electron lifecycle script，同时显式恢复所有 workspace 编译依赖，避免 `build:openvsx` 因 Electron postinstall 或缺少 `@types/node` 失败。
 
 ### [2.6.6]
 
@@ -369,6 +370,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 - **Extension activation failure**: Fixed VSIX packaging of the shared `@agent-resume/core` workspace dependency and removed a development-only relative import. Installed builds now activate and register all commands instead of reporting commands such as `agentResume.refresh` as `not found`.
 - **Extension runtime isolation**: Added a lightweight Core entry point for the VS Code extension so it does not load the Desktop-only MCP dependency chain.
+- **Open VSX build**: Dependency synchronization no longer runs the Desktop workspace Electron lifecycle script and now explicitly restores all workspace build dependencies, preventing `build:openvsx` failures from Electron postinstall or missing `@types/node`.
 
 ### [2.6.6]
 

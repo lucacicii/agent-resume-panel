@@ -7,7 +7,13 @@ export const distDir = join(root, "dist");
 
 export function syncDependenciesForPackaging(cwd = root) {
   console.log("Syncing dependencies for VSIX packaging...");
-  execFileSync("npm", ["install"], { cwd, stdio: "inherit" });
+  // VSIX builds only need the dependency tree; workspace lifecycle scripts can
+  // trigger unrelated Electron installs and make extension packaging fail.
+  execFileSync(
+    "npm",
+    ["install", "--ignore-scripts", "--include=dev", "--workspaces", "--include-workspace-root"],
+    { cwd, stdio: "inherit" }
+  );
 }
 
 export function pruneProductionDependencies(cwd = root) {
