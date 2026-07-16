@@ -2,17 +2,11 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  packageVsix,
-  pruneProductionDependencies,
-  syncDependenciesForPackaging,
-} from "./vsix-output.mjs";
+import { packageVsix } from "./vsix-output.mjs";
 
 const root = join(import.meta.dirname, "..");
 const manifestPath = join(root, "package.json");
 const vscodeManifestPath = join(root, "package-vscode.json");
-
-syncDependenciesForPackaging(root);
 
 const original = readFileSync(manifestPath, "utf-8");
 const pkg = JSON.parse(original);
@@ -32,15 +26,13 @@ try {
   writeFileSync(manifestPath, vscodeManifest);
 
   const vscodePkg = JSON.parse(vscodeManifest);
-  pruneProductionDependencies(root);
 
   console.log("Building VS Code Marketplace version...");
   vscodeOut = packageVsix(`${vscodePkg.name}-${vscodePkg.version}.vsix`);
 } finally {
-  // Always restore the original package.json and workspace dependency tree.
+  // Always restore the original package.json.
   writeFileSync(manifestPath, original);
   console.log("Restored original package.json.");
-  syncDependenciesForPackaging(root);
 }
 
 console.log("\nBuild complete:");
