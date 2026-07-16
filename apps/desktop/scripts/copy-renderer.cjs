@@ -73,7 +73,7 @@ if (process.platform === "darwin") {
 }
 }
 
-const repoLocales = path.join(extensionRoot, "locales");
+const repoLocales = path.join(root, "locales");
 const distLocales = path.join(root, "dist", "locales");
 if (fs.existsSync(repoLocales)) {
   fs.mkdirSync(distLocales, { recursive: true });

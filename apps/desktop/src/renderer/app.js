@@ -8549,31 +8549,17 @@ function wireSettingsAutoSave() {
   });
 }
 
-const UI_LANGUAGE_VALUES = ["auto", "en", "zh-cn", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"];
+const UI_LANGUAGE_VALUES = ["auto", "en", "zh-cn", "ja"];
 const NATIVE_LOCALE_LABELS = {
   en: "English",
   "zh-cn": "简体中文",
-  ja: "日本語",
-  ko: "한국어",
-  es: "Español",
-  fr: "Français",
-  de: "Deutsch",
-  "pt-br": "Português (Brasil)",
-  it: "Italiano",
-  ru: "Русский"
+  ja: "日本語"
 };
 
 const LEGACY_OUTPUT_LANGUAGE_MAP = {
   English: "en",
   Chinese: "zh-cn",
   Japanese: "ja",
-  Korean: "ko",
-  Spanish: "es",
-  French: "fr",
-  German: "de",
-  Portuguese: "pt-br",
-  Italian: "it",
-  Russian: "ru",
   "zh-CN": "zh-cn",
   zh_CN: "zh-cn",
   zh: "zh-cn"

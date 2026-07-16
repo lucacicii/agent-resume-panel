@@ -41,7 +41,7 @@ function loadWorkspacePackage() {
 
 function saveWorkspacePackage(base, generated, pkg) {
   generated.commands = (pkg.contributes.commands ?? []).filter((entry) =>
-    /^agentResume\.(zh-cn|ja|ko|es|fr|de|pt-br|it|ru)\./.test(entry.command)
+    /^agentResume\.(zh-cn|ja)\./.test(entry.command)
   );
   generated.submenus = pkg.contributes.submenus ?? [];
   generated.menus = pkg.contributes.menus ?? {};
@@ -50,7 +50,7 @@ function saveWorkspacePackage(base, generated, pkg) {
     viewsContainers: pkg.contributes.viewsContainers,
     views: pkg.contributes.views,
     commands: (pkg.contributes.commands ?? []).filter(
-      (entry) => !/^agentResume\.(zh-cn|ja|ko|es|fr|de|pt-br|it|ru)\./.test(entry.command)
+      (entry) => !/^agentResume\.(zh-cn|ja)\./.test(entry.command)
     )
   };
   fs.writeFileSync(path.join(manifestDir, "base.openvsx.json"), `${JSON.stringify(base, null, 2)}\n`);

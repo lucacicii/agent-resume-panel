@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const UI_LOCALES = ["en", "zh-cn", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"];
+export const UI_LOCALES = ["en", "zh-cn", "ja"];
 export const UI_LOCALE_CONTEXT = "agentResume.uiLocale";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

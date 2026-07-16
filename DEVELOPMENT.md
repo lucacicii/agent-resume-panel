@@ -20,7 +20,8 @@ Desktop 专项开发见 [apps/desktop/README.md](apps/desktop/README.md)。
 | `apps/extension/` | VS Code 扩展（源码、manifest、VSIX） |
 | `packages/core/` | 共享 TypeScript 核心（`@agent-resume/core`） |
 | `apps/desktop/` | Electron 桌面应用 |
-| `apps/extension/locales/` | 扩展 i18n 文案 |
+| `apps/extension/locales/` | 扩展 i18n 文案（无 `desktop.*` 键） |
+| `apps/desktop/locales/` | Desktop i18n 文案（仅 `desktop.*` 键） |
 | `apps/extension/media/` | 扩展 Webview 静态资源 |
 | `apps/extension/scripts/` | 扩展构建、菜单生成、i18n 检查 |
 | `scripts/` | 跨产品脚本（desktop release、i18n merge 等） |
@@ -113,7 +114,7 @@ npm run test:menus
 
 ## Desktop i18n
 
-Desktop UI strings live under `desktop.*` keys in [`apps/extension/locales/`](apps/extension/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into locale files:
+Desktop UI strings live under `desktop.*` keys in [`apps/desktop/locales/`](apps/desktop/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into desktop locale files:
 
 ```sh
 npm run merge:desktop-i18n

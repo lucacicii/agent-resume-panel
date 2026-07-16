@@ -30,7 +30,7 @@ npm run dev:desktop
 - **Main / Preload**（`src/main`、`src/preload`）：TypeScript 编译到 `dist/main`、`dist/preload`，`tsc -w` 监听。
 - **Renderer**（`src/renderer`）：纯 JS/CSS/HTML，由 `watch-renderer.mjs` 同步到 `dist/renderer`。
 - **Core**（`packages/core`）：独立 workspace，`tsc -w` 输出到 `packages/core/dist`；desktop 运行时读取该目录。
-- **共享资源**：构建时从 `apps/extension/resources/app-icon.png` 生成 `dist/resources/icon.icns`，从 `apps/extension/locales/` 复制到 `dist/locales/`。
+- **共享资源**：构建时从 `apps/extension/resources/app-icon.png` 生成 `dist/resources/icon.icns`；i18n 从 `apps/desktop/locales/` 复制到 `dist/locales/`（与扩展 locale 分离）。
 - **自动重启**：`electronmon` 监听 `dist/main`、`dist/preload`、`dist/renderer` 与 `packages/core/dist` 的变更。
 
 ### 修改不同层时的预期行为
