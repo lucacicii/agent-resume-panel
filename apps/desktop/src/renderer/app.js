@@ -5498,7 +5498,7 @@ function isLlmConfigured(settings) {
 function openLlmSettings() {
   closeAllSheets();
   switchTab("settings");
-  showSettingsPane("models");
+  void showSettingsPane("models");
 }
 
 function showLlmRequiredDetail(digestLabel) {
@@ -8550,14 +8550,14 @@ function wire() {
     void agentResume.openExternalUrl(PANEL_DOC_README);
   });
   $("btnAboutUpdateDownload")?.addEventListener("click", () => {
-    const target = pendingDesktopUpdate?.downloadUrl || pendingDesktopUpdate?.releaseUrl;
+    const target = lastDesktopUpdateCheck?.downloadUrl || lastDesktopUpdateCheck?.releaseUrl;
     if (target) void agentResume.openExternalUrl(target);
   });
   $("btnAboutUpdateRecheck")?.addEventListener("click", () => {
     void refreshAboutUpdateStatus({ force: true });
   });
   document.querySelectorAll("[data-settings-pane]").forEach((btn) => {
-    btn.addEventListener("click", () => showSettingsPane(btn.dataset.settingsPane));
+    btn.addEventListener("click", () => void showSettingsPane(btn.dataset.settingsPane));
   });
   $("btnUsageRefresh")?.addEventListener("click", () => loadUsagePage());
   $("usageDays")?.addEventListener("change", () => loadUsagePage());
@@ -8978,7 +8978,7 @@ function wireSettingsDisclosure() {
   });
 }
 
-function showSettingsPane(name) {
+async function showSettingsPane(name) {
   const paneIds = ["general", "models", "sessions", "workbench", "report", "storage", "usage", "about"];
   const resolved = paneIds.includes(name) ? name : "general";
   for (const id of paneIds) {
@@ -8986,7 +8986,6 @@ function showSettingsPane(name) {
     if (pane) pane.hidden = id !== resolved;
   }
   const form = $("settingsForm");
-  const saveStatus = $("settingsStatus");
   const headerActions = $("settingsContentHeader")?.querySelector(".settings-header-actions");
   const isUsage = resolved === "usage";
   const isAbout = resolved === "about";
@@ -9002,15 +9001,21 @@ function showSettingsPane(name) {
   });
   if (isUsage) loadUsagePage();
   if (isAbout) {
-    void updateAboutPaneVersion();
-    void refreshAboutUpdateStatus();
+    await updateAboutPaneVersion();
+    await refreshAboutUpdateStatus();
+  } else if (lastDesktopUpdateCheck) {
+    applyDesktopUpdateCheckResult(lastDesktopUpdateCheck);
   }
 }
 
-let pendingDesktopUpdate = null;
+let lastDesktopUpdateCheck = null;
 
 function isDesktopUpdatePending(result) {
-  return Boolean(result?.ok && result.updateAvailable && result.latestVersion);
+  if (!result?.ok || !result.latestVersion || !result.currentVersion) return false;
+  const latest = String(result.latestVersion).trim();
+  const current = String(result.currentVersion).trim();
+  if (!latest || !current || latest === current) return false;
+  return result.updateAvailable === true;
 }
 
 function isSettingsAboutPaneActive() {
@@ -9021,24 +9026,23 @@ function isSettingsAboutPaneActive() {
 function openSettingsPane(pane) {
   closeAllSheets();
   switchTab("settings");
-  showSettingsPane(pane);
+  void showSettingsPane(pane);
 }
 
-function renderUpdateAvailableButton() {
+function setUpdateAvailableButtonVisible(show, latestVersion) {
   const btn = $("btnOpenAboutUpdate");
-  const hasUpdate = isDesktopUpdatePending(pendingDesktopUpdate);
   if (!btn) return;
-  btn.hidden = !hasUpdate;
-  if (!hasUpdate) {
+  btn.hidden = !show;
+  btn.classList.toggle("is-hidden", !show);
+  btn.setAttribute("aria-hidden", show ? "false" : "true");
+  if (!show) {
     btn.removeAttribute("title");
     return;
   }
-  const title = t("desktop.top.settingsUpdateAvailable", pendingDesktopUpdate.latestVersion);
+  const title = t("desktop.top.settingsUpdateAvailable", latestVersion);
   btn.title = title;
   btn.setAttribute("aria-label", title);
 }
-
-window.renderUpdateAvailableButton = renderUpdateAvailableButton;
 
 function renderAboutUpdatePanel(result) {
   const wrap = $("settingsAboutUpdate");
@@ -9046,47 +9050,61 @@ function renderAboutUpdatePanel(result) {
   const downloadBtn = $("btnAboutUpdateDownload");
   if (!wrap || !textEl) return;
 
-  wrap.hidden = false;
   wrap.classList.remove("is-available");
 
   if (!result) {
+    wrap.hidden = false;
     textEl.textContent = t("desktop.settings.updateChecking");
     if (downloadBtn) downloadBtn.hidden = true;
     return;
   }
 
   if (!result.ok) {
+    wrap.hidden = false;
     textEl.textContent = t("desktop.settings.updateCheckFailed");
     if (downloadBtn) downloadBtn.hidden = true;
     return;
   }
 
   if (isDesktopUpdatePending(result)) {
+    wrap.hidden = false;
     wrap.classList.add("is-available");
     textEl.textContent = t("desktop.settings.updateAvailable", result.latestVersion);
     if (downloadBtn) downloadBtn.hidden = false;
     return;
   }
 
+  wrap.hidden = true;
   textEl.textContent = t("desktop.settings.updateUpToDate");
   if (downloadBtn) downloadBtn.hidden = true;
 }
 
-async function refreshDesktopUpdateStatus(options = {}) {
-  if (typeof agentResume.checkForUpdate !== "function") {
-    return null;
-  }
-  const result = await agentResume.checkForUpdate(options);
-  pendingDesktopUpdate = isDesktopUpdatePending(result) ? result : null;
-  renderUpdateAvailableButton();
+function applyDesktopUpdateCheckResult(result) {
+  lastDesktopUpdateCheck = result;
+  window.lastDesktopUpdateCheck = result;
+  const hasUpdate = isDesktopUpdatePending(result);
+  setUpdateAvailableButtonVisible(hasUpdate, hasUpdate ? result.latestVersion : "");
   if (isSettingsAboutPaneActive()) {
     renderAboutUpdatePanel(result);
   }
+}
+
+window.applyDesktopUpdateCheckResult = applyDesktopUpdateCheckResult;
+
+async function refreshDesktopUpdateStatus(options = {}) {
+  if (typeof agentResume.checkForUpdate !== "function") {
+    applyDesktopUpdateCheckResult(null);
+    return null;
+  }
+  const result = await agentResume.checkForUpdate(options);
+  applyDesktopUpdateCheckResult(result);
   return result;
 }
 
 async function refreshAboutUpdateStatus(options = {}) {
-  renderAboutUpdatePanel(null);
+  if (isSettingsAboutPaneActive()) {
+    renderAboutUpdatePanel(null);
+  }
   return refreshDesktopUpdateStatus(options);
 }
 
@@ -9201,7 +9219,7 @@ async function registerRefreshLocalizedUiImpl() {
     populateOutputLanguageSelect($("settingsForm")?.llmLang?.value);
     if (activePrimaryTab === "settings") {
       const pane = document.querySelector(".settings-nav-item.active")?.dataset.settingsPane || "general";
-      showSettingsPane(pane);
+      void showSettingsPane(pane);
     }
     if (activePrimaryTab === "report") {
       ensureYearOptions();

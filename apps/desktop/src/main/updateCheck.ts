@@ -167,7 +167,7 @@ function buildUpdateSuccess(
     ok: true,
     currentVersion: normalizedCurrent,
     latestVersion,
-    updateAvailable: comparison === 1,
+    updateAvailable: comparison === 1 && latestVersion !== normalizedCurrent,
     releaseUrl,
     downloadUrl,
     checkedAt: Date.now()

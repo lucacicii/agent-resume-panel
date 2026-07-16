@@ -9,8 +9,8 @@ async function refreshLocalizedUi(bundle) {
     setI18nBundle(bundle);
   }
   applyDomI18n();
-  if (typeof window.renderUpdateAvailableButton === "function") {
-    window.renderUpdateAvailableButton();
+  if (typeof window.applyDesktopUpdateCheckResult === "function") {
+    window.applyDesktopUpdateCheckResult(window.lastDesktopUpdateCheck ?? null);
   }
   populateCalMonthOptions();
   if (typeof window.refreshLocalizedUiImpl === "function") {

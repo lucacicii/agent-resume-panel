@@ -289,6 +289,10 @@ textarea:focus-visible,
   background: var(--color-fill-primary);
 }
 
+#btnOpenAboutUpdate.is-hidden {
+  display: none !important;
+}
+
 .icon-btn-update {
   color: var(--cal-dot-stale, #f97316);
 }
