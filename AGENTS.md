@@ -1,6 +1,8 @@
 # AI Task Router
 
-This repository is an npm workspaces monorepo for the Agent Resume Panel VS Code extension, its shared TypeScript core, and Electron desktop app.
+This repository is an npm workspaces monorepo with **two independent products** — the Agent Resume Panel VS Code extension and the Agent Resume Desktop Electron app — plus shared `@agent-resume/core`. They share panel-home data contracts but have separate codebases, locales, versions, UI stacks, and release pipelines.
+
+Read [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md) when a task might touch both products, shared core, i18n, settings, or release tooling.
 
 ## Boundaries
 
@@ -16,15 +18,21 @@ Skip the menu index when the user supplies a concrete path, a searchable identif
 
 Load these references only when relevant:
 
+- Product boundaries (extension vs desktop vs core): [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md)
 - TypeScript, VS Code extension, Electron, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
 - UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) and [`.agents/extended/ui-design-system.md`](.agents/extended/ui-design-system.md) (desktop visual spec)
 - Filesystem, process, database, authentication, network, or secret handling: [`.agents/extended/security.md`](.agents/extended/security.md)
 
 ## Verification
 
-- After code changes, run `npm run compile`.
-- After changing user-facing strings or `apps/extension/locales/*.json`, run `npm run i18n:check`.
-- After changing menu contribution generators, run `npm run test:menus`.
-- For VS Code extension contribution changes, run `npm run install:local`, then use **Developer: Reload Window** in VS Code.
+Run checks for the product you changed:
+
+- **Shared / extension TypeScript** — `npm run compile` after source changes.
+- **Extension strings** — `npm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
+- **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `npm run merge:desktop-i18n`, then `npm run i18n:check`.
+- **Translation coverage** — `npm run i18n:check:translations` after locale work in either product.
+- **Extension menus** — `npm run test:menus` after menu contribution generators change.
+- **Extension contributions** — `npm run install:local`, then **Developer: Reload Window** in VS Code.
+- **Desktop build** — `npm run build:desktop` or `npm run pack:desktop` before distribution.
 
 Use `/qa` and `/review` for their respective quality workflows when available.

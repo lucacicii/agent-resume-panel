@@ -1,17 +1,20 @@
 # Development Rules
 
+See [product-independence.md](product-independence.md) for the full extension vs desktop vs core boundary.
+
 ## Workspace Layout
 
-- `apps/extension`: VS Code extension workspace. TypeScript 5.9, strict mode, Node16 modules, ES2022 target, and VS Code `^1.92.0`.
-- `packages/core`: `@agent-resume/core`, the shared TypeScript domain library for catalog, settings, session sync, LLM, memory, notes, GTD, transcripts, and terminal actions. Node.js `>=18`.
-- `apps/desktop`: Electron 35 desktop app. Main and preload are strict CommonJS TypeScript; renderer is plain JavaScript and CSS bundled with esbuild.
+- `apps/extension` (`agent-resume-panel`): VS Code extension. TypeScript 5.9, strict mode, Node16 modules, ES2022 target, VS Code `^1.92.0`. Independent version and VSIX release.
+- `packages/core` (`@agent-resume/core`): Shared TypeScript domain library — catalog helpers, settings, session sync, LLM, memory, notes, GTD, transcripts. Node.js `>=18`. Not a standalone shipped product.
+- `apps/desktop` (`@agent-resume/desktop`): Electron 35 desktop app. Main/preload are strict CommonJS TypeScript; renderer is plain JavaScript and CSS bundled with esbuild. Independent version and DMG release.
 
 ## Ownership
 
-- Put reusable data, filesystem, SQLite, provider-adapter, LLM, memory, and session behavior in `packages/core`, then expose it through `packages/core/src/index.ts`.
-- Keep VS Code APIs, tree views, webviews, commands, and extension configuration in `apps/extension/src/`.
-- Keep Electron lifecycle, IPC handlers, native terminal integration, and desktop-only services in `apps/desktop/src/main/`; expose a narrow typed contract from `apps/desktop/src/preload/preload.ts`; consume it in the renderer.
-- The extension still owns extension-specific catalog, history, notes, and LLM code. Do not migrate it to core as incidental cleanup. Make a deliberate, scoped extraction only when both clients need the behavior.
+- Put reusable data, filesystem, SQLite, provider-adapter, LLM, memory, and session behavior in `packages/core`, then expose it through `packages/core/src/index.ts` — **only when both products need it**.
+- Keep VS Code APIs, tree views, webviews, commands, ACP Chat, and extension configuration in `apps/extension/src/`. Extension code must not depend on Electron or desktop renderer assets.
+- Keep Electron lifecycle, IPC handlers, native terminal integration, Memory/Ask/Workbench UI, and desktop-only services in `apps/desktop/src/`. Desktop code must not depend on `vscode` APIs or extension webviews.
+- The extension still owns extension-specific catalog bootstrap, history readers, notes sidebar, and ACP. Do not migrate to core or desktop as incidental cleanup.
+- Desktop owns its renderer, scheduler, embedded terminal, and `settings.desktop.json`. Do not port desktop UI flows into extension webviews.
 
 ## Build And Test
 
@@ -19,7 +22,7 @@
 - Run `npm run compile` after source changes. It builds core before compiling the extension.
 - For core-only work, use `npm run build -w @agent-resume/core` and its package test script when applicable.
 - For desktop work, use `npm run dev:desktop` for daily watch-mode development (see [`apps/desktop/README.md`](../../apps/desktop/README.md)); use `npm run build:desktop` for full builds; use `npm run dev:mac -w @agent-resume/desktop` on macOS to verify the packaged `.app` path; use `npm run pack:desktop` before distribution tests.
-- User-facing extension strings require `npm run i18n:check`. The checker validates `t()` references, webview string consumers, and all locale catalog keys.
+- Extension and desktop locales are separate. Extension strings live in `apps/extension/locales/`; desktop strings live in `apps/desktop/locales/` (`desktop.*` keys only, generated from `scripts/desktop-i18n-catalog.json`). Run `npm run i18n:check` after either changes. Run `npm run i18n:check:translations` for coverage audits.
 - Context-menu contribution changes require `node apps/extension/scripts/patch-project-menu-package.mjs`, then `npm run test:menus`. The patch script updates `manifest/contributes.generated.json` and `base.openvsx.json`, then merges `package.json`.
 - Extension contributions, commands, views, or activation events require `npm run install:local` and **Developer: Reload Window** to test the installed extension.
 
