@@ -136,6 +136,9 @@ export interface DesktopApi {
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
+  terminalGitInfo(args: {
+    cwd: string;
+  }): Promise<{ isRepo: boolean; branch: string | null }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -426,6 +429,7 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
+  terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);

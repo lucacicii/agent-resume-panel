@@ -781,7 +781,7 @@ let wbProjectSearch = "";
 let wbProjectFilter = "all";
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
-/** @type {Map<string, { terminalPanes: Map<string, { key: string, projectKey: string, projectPath: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string }>, activeTerminalKey: string, activeSessionKey: string }>} */
+/** @type {Map<string, { terminalPanes: Map<string, { key: string, projectKey: string, projectPath: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string, liveCwd: string, gitBranch: string | null, statusEl: HTMLElement, statusPathEl: HTMLElement, statusSepEl: HTMLElement, statusBranchEl: HTMLElement, gitQueryTimer: number | null, oscDisposables: any[] }>, activeTerminalKey: string, activeSessionKey: string }>} */
 const wbProjectDetails = new Map();
 let wbTerminalIpcReady = false;
 let wbContextNode = null;
@@ -1517,6 +1517,7 @@ function switchWorkbenchTerminalTab(key) {
           // ignore
         }
         fitWorkbenchTerminal();
+        void refreshWorkbenchTerminalGitInfo(pane);
       });
     }
   }
@@ -1537,6 +1538,8 @@ async function closeWorkbenchTerminalTab(key) {
   const detail = getWorkbenchProjectDetail();
   const pane = detail?.terminalPanes.get(key);
   if (!pane) return;
+
+  disposeWorkbenchTerminalPane(pane);
 
   try {
     if (typeof agentResume.terminalDestroy === "function") {
@@ -1592,6 +1595,118 @@ function fitWorkbenchTerminal() {
   }
 }
 
+const WB_TERMINAL_GIT_DEBOUNCE_MS = 80;
+
+function formatTerminalStatusPath(cwd) {
+  const value = String(cwd || "").trim();
+  if (!value) return "";
+  const max = 56;
+  if (value.length <= max) return value;
+  return `${value.slice(0, 22)}…${value.slice(-30)}`;
+}
+
+function parseOsc7FileUri(data) {
+  const raw = String(data || "").trim();
+  if (!raw.startsWith("file://")) return "";
+  try {
+    const url = new URL(raw);
+    let pathname = decodeURIComponent(url.pathname);
+    if (/^\/[A-Za-z]:/.test(pathname)) pathname = pathname.slice(1);
+    return pathname;
+  } catch {
+    return raw.replace(/^file:\/\//, "");
+  }
+}
+
+function updateWorkbenchTerminalStatusBar(pane) {
+  if (!pane?.statusPathEl) return;
+  const cwd = pane.liveCwd || pane.cwd || "";
+  pane.statusPathEl.textContent = formatTerminalStatusPath(cwd);
+  pane.statusPathEl.title = cwd;
+  if (pane.statusBranchEl) {
+    const hasBranch = Boolean(pane.gitBranch);
+    pane.statusBranchEl.textContent = hasBranch ? pane.gitBranch : "";
+    pane.statusBranchEl.hidden = !hasBranch;
+    if (pane.statusSepEl) pane.statusSepEl.hidden = !hasBranch;
+  }
+}
+
+function normalizeTerminalCwd(cwd) {
+  const value = String(cwd || "").trim();
+  if (!value) return "";
+  if (value.length > 1 && value.endsWith("/")) return value.replace(/\/+$/, "");
+  return value;
+}
+
+function handleWorkbenchTerminalCwdChange(pane, cwd) {
+  const next = normalizeTerminalCwd(cwd);
+  if (!next) return;
+  const prev = normalizeTerminalCwd(pane.liveCwd);
+  if (prev === next) return;
+  pane.liveCwd = next;
+  updateWorkbenchTerminalStatusBar(pane);
+  if (pane.gitQueryTimer) clearTimeout(pane.gitQueryTimer);
+  pane.gitQueryTimer = window.setTimeout(() => {
+    pane.gitQueryTimer = null;
+    void refreshWorkbenchTerminalGitInfo(pane);
+  }, WB_TERMINAL_GIT_DEBOUNCE_MS);
+}
+
+async function refreshWorkbenchTerminalGitInfo(pane) {
+  if (!pane || typeof agentResume.terminalGitInfo !== "function") return;
+  const cwd = pane.liveCwd || pane.cwd;
+  if (!cwd) return;
+  try {
+    const info = await agentResume.terminalGitInfo({ cwd });
+    pane.gitBranch = info?.isRepo && info.branch ? info.branch : null;
+  } catch {
+    pane.gitBranch = null;
+  }
+  updateWorkbenchTerminalStatusBar(pane);
+}
+
+function disposeWorkbenchTerminalPane(pane) {
+  if (!pane) return;
+  if (pane.gitQueryTimer) {
+    clearTimeout(pane.gitQueryTimer);
+    pane.gitQueryTimer = null;
+  }
+  if (pane.oscDisposables?.length) {
+    for (const disposable of pane.oscDisposables) {
+      try {
+        disposable.dispose();
+      } catch {
+        // ignore
+      }
+    }
+    pane.oscDisposables = [];
+  }
+}
+
+function attachWorkbenchTerminalOscHandlers(term, pane) {
+  if (!term?.parser || typeof term.parser.registerOscHandler !== "function") return;
+  pane.oscDisposables = pane.oscDisposables || [];
+
+  const osc633 = term.parser.registerOscHandler(633, (data) => {
+    if (data.startsWith("P;Cwd=")) {
+      handleWorkbenchTerminalCwdChange(pane, data.slice("P;Cwd=".length));
+      return true;
+    }
+    return false;
+  });
+  if (osc633) pane.oscDisposables.push(osc633);
+
+  const osc7 = term.parser.registerOscHandler(7, (data) => {
+    const cwd = parseOsc7FileUri(data);
+    if (cwd) {
+      handleWorkbenchTerminalCwdChange(pane, cwd);
+      return true;
+    }
+    return false;
+  });
+  if (osc7) pane.oscDisposables.push(osc7);
+}
+
 async function createWorkbenchTerminalPane(opts) {
   const { key, projectPath, title, cwd, command } = opts;
   const stack = $("wbTerminalStack");
@@ -1611,7 +1726,29 @@ async function createWorkbenchTerminalPane(opts) {
 
   const hostEl = document.createElement("div");
   hostEl.className = "wb-terminal-host";
+
+  const statusEl = document.createElement("div");
+  statusEl.className = "wb-terminal-status";
+  statusEl.setAttribute("aria-live", "polite");
+
+  const statusPathEl = document.createElement("span");
+  statusPathEl.className = "wb-terminal-status-path";
+
+  const statusSepEl = document.createElement("span");
+  statusSepEl.className = "wb-terminal-status-sep";
+  statusSepEl.textContent = "·";
+  statusSepEl.hidden = true;
+
+  const statusBranchEl = document.createElement("span");
+  statusBranchEl.className = "wb-terminal-status-branch";
+  statusBranchEl.hidden = true;
+
+  statusEl.appendChild(statusPathEl);
+  statusEl.appendChild(statusSepEl);
+  statusEl.appendChild(statusBranchEl);
+
   paneEl.appendChild(hostEl);
+  paneEl.appendChild(statusEl);
   stack.appendChild(paneEl);
 
   const term = new Terminal({
@@ -1655,9 +1792,21 @@ async function createWorkbenchTerminalPane(opts) {
     fitAddon,
     paneEl,
     hostEl,
-    cwd
+    cwd,
+    liveCwd: cwd,
+    gitBranch: null,
+    statusEl,
+    statusPathEl,
+    statusSepEl,
+    statusBranchEl,
+    gitQueryTimer: null,
+    oscDisposables: []
   };
   ensureWorkbenchProjectDetail(pane.projectKey).terminalPanes.set(key, pane);
+
+  attachWorkbenchTerminalOscHandlers(term, pane);
+  updateWorkbenchTerminalStatusBar(pane);
+  void refreshWorkbenchTerminalGitInfo(pane);
 
   term.onData((data) => {
     void agentResume.terminalInput({ id: pane.ptyId, data });

@@ -83,4 +83,16 @@ if (fs.existsSync(repoLocales)) {
   console.log("copied locales → dist/locales");
 }
 
+const shellIntegrationSrc = path.join(root, "src", "main", "shellIntegration");
+const shellIntegrationDest = path.join(root, "dist", "main", "shellIntegration");
+if (fs.existsSync(shellIntegrationSrc)) {
+  fs.mkdirSync(shellIntegrationDest, { recursive: true });
+  for (const name of fs.readdirSync(shellIntegrationSrc)) {
+    const from = path.join(shellIntegrationSrc, name);
+    if (!fs.statSync(from).isFile()) continue;
+    fs.copyFileSync(from, path.join(shellIntegrationDest, name));
+  }
+  console.log("copied shellIntegration → dist/main/shellIntegration");
+}
+
 console.log("copied renderer → dist/renderer");
