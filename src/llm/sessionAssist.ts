@@ -7,7 +7,8 @@ import {
   buildRenameSystemPrompt,
   buildRenameUserPrompt,
   buildSummarizeSystemPrompt,
-  buildSummarizeUserPrompt
+  buildSummarizeUserPrompt,
+  normalizeSuggestedTitle
 } from "./prompts";
 import { formatTranscript, truncateTranscript } from "./transcript";
 
@@ -61,7 +62,7 @@ export async function suggestSessionTitle(
     120
   );
 
-  return raw.replace(/^["'`]+|["'`]+$/g, "").replace(/\s+/g, " ").trim();
+  return normalizeSuggestedTitle(raw);
 }
 
 export async function testLlmConnection(

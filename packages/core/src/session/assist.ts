@@ -7,7 +7,8 @@ import {
   buildRenameSystemPrompt,
   buildRenameUserPrompt,
   buildSummarizeSystemPrompt,
-  buildSummarizeUserPrompt
+  buildSummarizeUserPrompt,
+  normalizeSuggestedTitle
 } from "./prompts";
 
 function buildTranscript(messages: PreviewMessage[], maxContextChars: number): string {
@@ -56,11 +57,7 @@ export async function suggestSessionTitleFromMessages(
     ],
     120
   );
-  const title = result.content
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 180);
+  const title = normalizeSuggestedTitle(result.content);
   if (!title) {
     throw new Error("LLM returned an empty title.");
   }
