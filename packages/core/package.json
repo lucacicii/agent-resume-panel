@@ -15,22 +15,22 @@
       "default": "./dist/extension.js"
     }
   },
-  "scripts": {
-    "build": "tsc -p ./",
-    "test": "npm run build && node --test test/*.test.mjs",
-    "watch": "tsc -p ./ -w"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.1",
-    "typescript": "^5.9.3"
+  "bin": {
+    "agent-resume-mcp": "./dist/mcp/cli.js"
   },
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -p ./ -w",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
-  "bin": {
-    "agent-resume-mcp": "./dist/mcp/cli.js"
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "typescript": "^5.9.3"
   }
 }

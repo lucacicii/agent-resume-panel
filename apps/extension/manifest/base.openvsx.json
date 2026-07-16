@@ -107,16 +107,16 @@
     "merge:manifest": "node scripts/merge-extension-manifest.mjs",
     "precompile": "npm run merge:manifest",
     "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && node scripts/package.mjs",
+    "install:local": "npm run package && node scripts/install-local.mjs",
+    "build:openvsx": "node scripts/build-openvsx.mjs",
+    "build:all": "node scripts/build-all.mjs",
+    "publish:openvsx": "npm run build:openvsx && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require(\"./package.json\").version\").vsix\"",
     "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs && node scripts/generate-handoff-menu-contributions.test.mjs",
     "test:manifest": "node scripts/manifest-equivalence.test.mjs",
     "test:vsix": "node scripts/pack-vsix.test.mjs",
     "test:notes": "node scripts/note-uri.test.mjs",
-    "watch": "tsc -watch -p ./",
-    "build:all": "node scripts/build-all.mjs",
-    "build:openvsx": "node scripts/build-openvsx.mjs",
-    "package": "npm run compile && node scripts/package.mjs",
-    "install:local": "npm run package && node scripts/install-local.mjs",
-    "publish:openvsx": "npm run build:openvsx && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require(\"./package.json\").version\").vsix\"",
     "i18n:check": "node scripts/check-i18n.mjs"
   },
   "devDependencies": {
@@ -124,6 +124,13 @@
     "@types/vscode": "1.92.0",
     "@vscode/vsce": "^3.2.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@agent-resume/core": "0.1.0",
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "zod": "^4.4.3"
   },
   "contributes": {
     "configuration": {
@@ -1033,12 +1040,5 @@
         "category": "Agent Resume"
       }
     ]
-  },
-  "dependencies": {
-    "@agent-resume/core": "0.1.0",
-    "@agentclientprotocol/sdk": "^1.1.0",
-    "dompurify": "^3.4.11",
-    "marked": "^18.0.5",
-    "zod": "^4.4.3"
   }
 }

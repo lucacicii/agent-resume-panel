@@ -96,18 +96,24 @@
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
-    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs",
     "watch": "tsc -watch -p ./",
-    "build:all": "node scripts/build-all.mjs",
     "package": "npm run compile && node scripts/package.mjs",
     "install:local": "npm run package && node scripts/install-local.mjs",
-    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\""
+    "build:all": "node scripts/build-all.mjs",
+    "publish:openvsx": "npm run build:all && npx --yes ovsx publish \"dist/agent-resume-panel-$(node -p \"require('./package.json').version\").vsix\"",
+    "test:menus": "node scripts/generate-project-menu-contributions.test.mjs && node scripts/generate-session-menu-contributions.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
     "@types/vscode": "1.92.0",
     "@vscode/vsce": "^3.2.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5",
+    "zod": "^4.4.3"
   },
   "contributes": {
     "configuration": {
@@ -996,11 +1002,5 @@
         "category": "Agent Resume"
       }
     ]
-  },
-  "dependencies": {
-    "@agentclientprotocol/sdk": "^1.1.0",
-    "dompurify": "^3.4.11",
-    "marked": "^18.0.5",
-    "zod": "^4.4.3"
   }
 }
