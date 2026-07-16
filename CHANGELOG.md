@@ -8,6 +8,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.8]
+
+#### 改进
+
+- **i18n 补全**：英文、简体中文、日文界面文案以中文为基准校对并补全。
+- **自动重命名**：优化 LLM 自动 session 重命名提示词，避免模型回答 transcript 中的问题而非生成标题；新增后处理剥离 `Title:` 等前缀。
+
+#### 变更
+
+- **UI 语言精简**：**UI Language** 仅保留 English、简体中文、日本語；移除韩语、西班牙语、法语、德语、葡萄牙语、意大利语、俄语 locale。
+- **扩展 locale 独立**：扩展语言包与 Agent Resume Desktop 分离，仅包含扩展 UI 键；清理无用 i18n 键并加强 `i18n:check` 校验。
+
 ### [2.6.7]
 
 #### 修复
@@ -363,6 +375,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.8]
+
+#### Improved
+
+- **i18n coverage**: English, Simplified Chinese, and Japanese UI strings were audited against the zh-cn baseline and completed.
+- **Auto rename**: Refined the LLM auto-rename prompt so the model labels sessions instead of answering questions found in the transcript; added post-processing to strip prefixes such as `Title:`.
+
+#### Changed
+
+- **UI languages trimmed**: **UI Language** now offers only English, Simplified Chinese, and Japanese; Korean, Spanish, French, German, Portuguese, Italian, and Russian locale catalogs were removed.
+- **Extension locales isolated**: Extension locale files are separate from Agent Resume Desktop and contain extension UI keys only; unused i18n keys were pruned and `i18n:check` validation was tightened.
 
 ### [2.6.7]
 
