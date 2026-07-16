@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.6.6",
+  "version": "2.6.7",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",

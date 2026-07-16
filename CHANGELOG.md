@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.7]
+
+#### 修复
+
+- **扩展无法激活**：修复 VSIX 未正确打包共享 `@agent-resume/core` workspace 依赖及残留开发期相对路径的问题。安装后的扩展现在可正常激活并注册全部命令，不再出现 `agentResume.refresh` 等命令 `not found`。
+- **扩展运行时依赖隔离**：新增仅供 VS Code 扩展使用的轻量 Core 入口，避免加载 Desktop 专用的 MCP 依赖链。
+
 ### [2.6.6]
 
 #### 修复
@@ -355,6 +362,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.7]
+
+#### Fixed
+
+- **Extension activation failure**: Fixed VSIX packaging of the shared `@agent-resume/core` workspace dependency and removed a development-only relative import. Installed builds now activate and register all commands instead of reporting commands such as `agentResume.refresh` as `not found`.
+- **Extension runtime isolation**: Added a lightweight Core entry point for the VS Code extension so it does not load the Desktop-only MCP dependency chain.
 
 ### [2.6.6]
 
