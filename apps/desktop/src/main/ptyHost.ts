@@ -1,14 +1,16 @@
 import { BrowserWindow } from "electron";
-import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import * as pty from "node-pty";
 import { expandHome } from "@agent-resume/core";
+import {
+  checkoutGitBranch,
+  listGitBranchesWithNested,
+  queryGitInfoWithNested,
+  type GitNestedScanOptions
+} from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
-
-const execFileAsync = promisify(execFile);
 
 interface PtySession {
   pty: pty.IPty;
@@ -256,86 +258,6 @@ function spawnPty(
   });
 }
 
-function formatExecError(error: unknown): string {
-  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
-  const stderr = err.stderr ? String(err.stderr).trim() : "";
-  if (stderr) return stderr;
-  if (error instanceof Error && error.message) return error.message;
-  return String(error);
-}
-
-function isValidGitBranchRef(branch: string): boolean {
-  const trimmed = branch.trim();
-  if (!trimmed || trimmed.startsWith("-")) return false;
-  if (/[\0\r\n]/.test(trimmed)) return false;
-  return true;
-}
-
-async function queryGitInfo(cwd: string): Promise<{ isRepo: boolean; branch: string | null }> {
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, "rev-parse", "--is-inside-work-tree"], {
-      timeout: 3000,
-      maxBuffer: 4096
-    });
-    if (stdout.trim() !== "true") {
-      return { isRepo: false, branch: null };
-    }
-  } catch {
-    return { isRepo: false, branch: null };
-  }
-
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], {
-      timeout: 3000,
-      maxBuffer: 4096
-    });
-    const branch = stdout.trim() || null;
-    return { isRepo: true, branch };
-  } catch {
-    return { isRepo: true, branch: null };
-  }
-}
-
-async function listGitBranches(
-  cwd: string
-): Promise<{ current: string | null; branches: string[] }> {
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, "branch", "--list"], {
-      timeout: 5000,
-      maxBuffer: 1024 * 1024
-    });
-    const branches: string[] = [];
-    let current: string | null = null;
-    for (const line of stdout.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith("* ")) {
-        current = trimmed.slice(2).trim();
-        branches.push(current);
-      } else {
-        branches.push(trimmed);
-      }
-    }
-    return { current, branches };
-  } catch (error) {
-    throw new Error(formatExecError(error));
-  }
-}
-
-async function checkoutGitBranch(cwd: string, branch: string): Promise<void> {
-  if (!isValidGitBranchRef(branch)) {
-    throw new Error(`无效的分支名: ${branch}`);
-  }
-  try {
-    await execFileAsync("git", ["-C", cwd, "checkout", branch.trim()], {
-      timeout: 15000,
-      maxBuffer: 1024 * 1024
-    });
-  } catch (error) {
-    throw new Error(formatExecError(error));
-  }
-}
-
 function attachPtyHandlers(
   ptyInstance: pty.IPty,
   id: number,
@@ -457,30 +379,39 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return { ok: true };
   });
 
-  safeHandle("terminal:gitInfo", async (_event, args: { cwd: string }) => {
-    const cwd = resolveCwd(args.cwd);
-    return queryGitInfo(cwd);
-  });
-
-  safeHandle("terminal:gitBranches", async (_event, args: { cwd: string }) => {
-    const cwd = resolveCwd(args.cwd);
-    const info = await queryGitInfo(cwd);
-    if (!info.isRepo) {
-      return { current: null, branches: [] as string[] };
+  safeHandle(
+    "terminal:gitInfo",
+    async (_event, args: { cwd: string; nestedScan?: GitNestedScanOptions }) => {
+      const cwd = resolveCwd(args.cwd);
+      return queryGitInfoWithNested(cwd, args.nestedScan);
     }
-    return listGitBranches(cwd);
-  });
+  );
 
-  safeHandle("terminal:gitCheckout", async (_event, args: { cwd: string; branch: string }) => {
-    const cwd = resolveCwd(args.cwd);
-    const info = await queryGitInfo(cwd);
-    if (!info.isRepo) {
-      throw new Error("当前目录不是 Git 仓库");
+  safeHandle(
+    "terminal:gitBranches",
+    async (_event, args: { cwd: string; nestedScan?: GitNestedScanOptions }) => {
+      const cwd = resolveCwd(args.cwd);
+      return listGitBranchesWithNested(cwd, args.nestedScan);
     }
-    await checkoutGitBranch(cwd, args.branch);
-    const refreshed = await queryGitInfo(cwd);
-    return { branch: refreshed.branch };
-  });
+  );
+
+  safeHandle(
+    "terminal:gitCheckout",
+    async (_event, args: { cwd: string; branch: string; repoRoot?: string }) => {
+      const cwd = resolveCwd(args.cwd);
+      const info = await queryGitInfoWithNested(cwd);
+      if (info.mode === "none") {
+        throw new Error("当前目录不是 Git 仓库");
+      }
+      if (info.mode === "nested" && !args.repoRoot?.trim()) {
+        throw new Error("请指定要切换分支的仓库");
+      }
+      const targetRoot = args.repoRoot?.trim() ? resolveCwd(args.repoRoot) : info.repoRoot || cwd;
+      await checkoutGitBranch(targetRoot, args.branch);
+      const refreshed = await queryGitInfoWithNested(targetRoot);
+      return { branch: refreshed.branch, repoRoot: targetRoot };
+    }
+  );
 }
 
 export function destroyPtyOnQuit(): void {

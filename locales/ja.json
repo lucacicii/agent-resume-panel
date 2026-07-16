@@ -671,6 +671,8 @@
   "desktop.workbench.scratchSearch": "scratch",
   "desktop.workbench.selectProject": "Select a project",
   "desktop.workbench.selectProjectHint": "Select a project; new Terminal or a session opens in that project's workbench.",
+  "desktop.workbench.nestedRepoCount": "{0} repos",
+  "desktop.workbench.nestedRepoUntitled": "Repository",
   "desktop.workbench.noGitBranches": "No branches found",
   "desktop.workbench.selectSessionHint": "Select a session to restore terminal",
   "desktop.workbench.shellRestored": "[Interactive shell restored]",

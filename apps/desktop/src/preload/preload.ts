@@ -138,14 +138,42 @@ export interface DesktopApi {
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   terminalGitInfo(args: {
     cwd: string;
-  }): Promise<{ isRepo: boolean; branch: string | null }>;
+    nestedScan?: {
+      maxDepth?: number;
+      ignoreDirs?: string[];
+      maxRepos?: number;
+    };
+  }): Promise<{
+    mode: "none" | "direct" | "nested";
+    isRepo: boolean;
+    branch: string | null;
+    repoRoot: string | null;
+    nestedRepos: Array<{ root: string; displayPath: string; branch: string | null }>;
+  }>;
   terminalGitBranches(args: {
     cwd: string;
-  }): Promise<{ current: string | null; branches: string[] }>;
+    nestedScan?: {
+      maxDepth?: number;
+      ignoreDirs?: string[];
+      maxRepos?: number;
+    };
+  }): Promise<{
+    mode: "none" | "direct" | "nested";
+    current?: string | null;
+    branches?: string[];
+    repoRoot?: string | null;
+    repos?: Array<{
+      root: string;
+      displayPath: string;
+      current: string | null;
+      branches: string[];
+    }>;
+  }>;
   terminalGitCheckout(args: {
     cwd: string;
     branch: string;
-  }): Promise<{ branch: string | null }>;
+    repoRoot?: string;
+  }): Promise<{ branch: string | null; repoRoot?: string | null }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;

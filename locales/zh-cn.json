@@ -671,6 +671,8 @@
   "desktop.workbench.scratchSearch": "临时目录",
   "desktop.workbench.selectProject": "请选择一个 project",
   "desktop.workbench.selectProjectHint": "选择项目后，新建 Terminal 或点击 session 会在该项目的工作台中打开。",
+  "desktop.workbench.nestedRepoCount": "{0} 个仓库",
+  "desktop.workbench.nestedRepoUntitled": "仓库",
   "desktop.workbench.noGitBranches": "未找到分支",
   "desktop.workbench.selectSessionHint": "选择 session 以恢复终端",
   "desktop.workbench.shellRestored": "[已恢复交互式 shell]",

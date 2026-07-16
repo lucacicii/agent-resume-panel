@@ -4831,6 +4831,30 @@ code {
   gap: 2px;
 }
 
+.wb-git-branch-repo-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-git-branch-repo-group + .wb-git-branch-repo-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-separator, var(--border));
+}
+
+.wb-git-branch-repo-head {
+  padding: 4px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-description, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wb-git-branch-item {
   appearance: none;
   border: none;

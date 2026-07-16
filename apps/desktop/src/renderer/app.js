@@ -1631,22 +1631,49 @@ function parseOsc7FileUri(data) {
   }
 }
 
+function formatNestedRepoBranchesTooltip(nestedRepos) {
+  if (!Array.isArray(nestedRepos) || !nestedRepos.length) return "";
+  return nestedRepos
+    .map((repo) => {
+      const label = repo.displayPath || repo.root || "";
+      const branch = repo.branch || "—";
+      return `${label}: ${branch}`;
+    })
+    .join(", ");
+}
+
+function getWorkbenchTerminalGitStatusLabel(pane) {
+  if (!pane) return "";
+  if (pane.gitBranchMode === "nested" && Array.isArray(pane.gitNestedRepos) && pane.gitNestedRepos.length) {
+    return t("desktop.workbench.nestedRepoCount", pane.gitNestedRepos.length);
+  }
+  return pane.gitBranch || "";
+}
+
 function updateWorkbenchTerminalStatusBar(pane) {
   if (!pane?.statusPathEl) return;
   const cwd = pane.liveCwd || pane.cwd || "";
   pane.statusPathEl.textContent = formatTerminalStatusPath(cwd);
   pane.statusPathEl.title = cwd;
   if (pane.statusBranchEl) {
-    const hasBranch = Boolean(pane.gitBranch);
-    pane.statusBranchEl.textContent = hasBranch ? pane.gitBranch : "";
-    pane.statusBranchEl.hidden = !hasBranch;
-    pane.statusBranchEl.disabled = !hasBranch || wbGitBranchCheckoutBusy;
-    if (hasBranch) {
-      pane.statusBranchEl.title = t("desktop.workbench.switchBranch");
+    const hasGitInfo =
+      pane.gitBranchMode === "nested"
+        ? Array.isArray(pane.gitNestedRepos) && pane.gitNestedRepos.length > 0
+        : Boolean(pane.gitBranch);
+    const label = hasGitInfo ? getWorkbenchTerminalGitStatusLabel(pane) : "";
+    pane.statusBranchEl.textContent = label;
+    pane.statusBranchEl.hidden = !hasGitInfo;
+    pane.statusBranchEl.disabled = !hasGitInfo || wbGitBranchCheckoutBusy;
+    if (hasGitInfo) {
+      if (pane.gitBranchMode === "nested") {
+        pane.statusBranchEl.title = formatNestedRepoBranchesTooltip(pane.gitNestedRepos);
+      } else {
+        pane.statusBranchEl.title = t("desktop.workbench.switchBranch");
+      }
     } else {
       pane.statusBranchEl.removeAttribute("title");
     }
-    if (pane.statusSepEl) pane.statusSepEl.hidden = !hasBranch;
+    if (pane.statusSepEl) pane.statusSepEl.hidden = !hasGitInfo;
   }
 }
 
@@ -1673,15 +1700,37 @@ function handleWorkbenchTerminalCwdChange(pane, cwd) {
   }, WB_TERMINAL_GIT_DEBOUNCE_MS);
 }
 
+function applyWorkbenchTerminalGitInfo(pane, info) {
+  if (!pane) return;
+  const mode = info?.mode || (info?.isRepo ? "direct" : "none");
+  pane.gitBranchMode = mode;
+  if (mode === "nested") {
+    pane.gitBranch = null;
+    pane.gitRepoRoot = null;
+    pane.gitNestedRepos = Array.isArray(info?.nestedRepos) ? info.nestedRepos : [];
+  } else if (mode === "direct") {
+    pane.gitBranch = info?.branch || null;
+    pane.gitRepoRoot = info?.repoRoot || null;
+    pane.gitNestedRepos = [];
+  } else {
+    pane.gitBranch = null;
+    pane.gitRepoRoot = null;
+    pane.gitNestedRepos = [];
+  }
+}
+
 async function refreshWorkbenchTerminalGitInfo(pane) {
   if (!pane || typeof agentResume.terminalGitInfo !== "function") return;
   const cwd = pane.liveCwd || pane.cwd;
   if (!cwd) return;
   try {
-    const info = await agentResume.terminalGitInfo({ cwd });
-    pane.gitBranch = info?.isRepo && info.branch ? info.branch : null;
+    const info = await agentResume.terminalGitInfo({
+      cwd,
+      nestedScan: workbenchGitNestedScanOptions()
+    });
+    applyWorkbenchTerminalGitInfo(pane, info);
   } catch {
-    pane.gitBranch = null;
+    applyWorkbenchTerminalGitInfo(pane, { mode: "none", isRepo: false });
   }
   updateWorkbenchTerminalStatusBar(pane);
 }
@@ -1763,18 +1812,7 @@ function positionWorkbenchGitBranchPopover(anchorEl) {
   pop.style.visibility = "";
 }
 
-function renderWorkbenchGitBranchPopover(pane, branches, current) {
-  const pop = ensureWorkbenchGitBranchPopover();
-  const list = pop.querySelector("#wbGitBranchList");
-  if (!list) return;
-  list.innerHTML = "";
-  if (!branches.length) {
-    const empty = document.createElement("p");
-    empty.className = "wb-git-branch-empty muted";
-    empty.textContent = t("desktop.workbench.noGitBranches");
-    list.appendChild(empty);
-    return;
-  }
+function appendWorkbenchGitBranchItems(parent, pane, branches, current, repoRoot) {
   for (const branch of branches) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1787,10 +1825,55 @@ function renderWorkbenchGitBranchPopover(pane, branches, current) {
         closeWorkbenchGitBranchPopover();
         return;
       }
-      void checkoutWorkbenchGitBranch(pane, branch);
+      void checkoutWorkbenchGitBranch(pane, branch, repoRoot);
     });
-    list.appendChild(btn);
+    parent.appendChild(btn);
   }
+}
+
+function renderWorkbenchGitBranchPopover(pane, result) {
+  const pop = ensureWorkbenchGitBranchPopover();
+  const list = pop.querySelector("#wbGitBranchList");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const mode = result?.mode || "none";
+  if (mode === "nested" && Array.isArray(result?.repos) && result.repos.length) {
+    for (const repo of result.repos) {
+      const group = document.createElement("div");
+      group.className = "wb-git-branch-repo-group";
+
+      const head = document.createElement("div");
+      head.className = "wb-git-branch-repo-head";
+      head.textContent = repo.displayPath || repo.root || t("desktop.workbench.nestedRepoUntitled");
+      group.appendChild(head);
+
+      const branches = repo.branches || [];
+      if (!branches.length) {
+        const empty = document.createElement("p");
+        empty.className = "wb-git-branch-empty muted";
+        empty.textContent = t("desktop.workbench.noGitBranches");
+        group.appendChild(empty);
+      } else {
+        appendWorkbenchGitBranchItems(group, pane, branches, repo.current, repo.root);
+      }
+
+      list.appendChild(group);
+    }
+    return;
+  }
+
+  const branches = result?.branches || [];
+  const current = result?.current ?? pane.gitBranch;
+  const repoRoot = result?.repoRoot || pane.gitRepoRoot || null;
+  if (!branches.length) {
+    const empty = document.createElement("p");
+    empty.className = "wb-git-branch-empty muted";
+    empty.textContent = t("desktop.workbench.noGitBranches");
+    list.appendChild(empty);
+    return;
+  }
+  appendWorkbenchGitBranchItems(list, pane, branches, current, repoRoot);
 }
 
 async function openWorkbenchGitBranchPopover(pane, anchorEl) {
@@ -1813,9 +1896,12 @@ async function openWorkbenchGitBranchPopover(pane, anchorEl) {
   positionWorkbenchGitBranchPopover(anchorEl);
 
   try {
-    const result = await agentResume.terminalGitBranches({ cwd });
+    const result = await agentResume.terminalGitBranches({
+      cwd,
+      nestedScan: workbenchGitNestedScanOptions()
+    });
     if (wbGitBranchPopoverPane !== pane) return;
-    renderWorkbenchGitBranchPopover(pane, result?.branches || [], result?.current || pane.gitBranch);
+    renderWorkbenchGitBranchPopover(pane, result);
     positionWorkbenchGitBranchPopover(anchorEl);
   } catch (error) {
     if (wbGitBranchPopoverPane !== pane) return;
@@ -1827,7 +1913,7 @@ async function openWorkbenchGitBranchPopover(pane, anchorEl) {
   }
 }
 
-async function checkoutWorkbenchGitBranch(pane, branch) {
+async function checkoutWorkbenchGitBranch(pane, branch, repoRoot) {
   if (!pane || wbGitBranchCheckoutBusy) return;
   const cwd = pane.liveCwd || pane.cwd;
   if (!cwd || !branch) return;
@@ -1835,8 +1921,18 @@ async function checkoutWorkbenchGitBranch(pane, branch) {
   wbGitBranchCheckoutBusy = true;
   updateWorkbenchTerminalStatusBar(pane);
   try {
-    const result = await agentResume.terminalGitCheckout({ cwd, branch });
-    pane.gitBranch = result?.branch || branch;
+    const checkoutArgs = { cwd, branch };
+    if (repoRoot) checkoutArgs.repoRoot = repoRoot;
+    const result = await agentResume.terminalGitCheckout(checkoutArgs);
+    if (pane.gitBranchMode === "nested" && repoRoot && Array.isArray(pane.gitNestedRepos)) {
+      const nextBranch = result?.branch || branch;
+      pane.gitNestedRepos = pane.gitNestedRepos.map((repo) =>
+        repo.root === repoRoot ? { ...repo, branch: nextBranch } : repo
+      );
+    } else {
+      pane.gitBranch = result?.branch || branch;
+      if (result?.repoRoot) pane.gitRepoRoot = result.repoRoot;
+    }
     updateWorkbenchTerminalStatusBar(pane);
     closeWorkbenchGitBranchPopover();
     if (pane.ptyId > 0) {
@@ -1909,6 +2005,9 @@ async function createWorkbenchTerminalPane(opts) {
     cwd,
     liveCwd: cwd,
     gitBranch: null,
+    gitBranchMode: "none",
+    gitRepoRoot: null,
+    gitNestedRepos: [],
     statusEl,
     statusPathEl,
     statusSepEl,
