@@ -1,1 +1,1 @@
-export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "@agent-resume/core";
+export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "@agent-resume/core/extension";

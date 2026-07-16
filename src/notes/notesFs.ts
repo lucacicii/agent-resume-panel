@@ -9,4 +9,4 @@ export {
   newNoteId,
   pathExists,
   fileMtimeMs
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";

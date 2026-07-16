@@ -1,6 +1,6 @@
 import { AcpAgentProvider } from "../acp/types";
 import { AgentProvider, AgentSession } from "../history/types";
-import { summaryLanguagesMatch } from "@agent-resume/core";
+import { summaryLanguagesMatch } from "@agent-resume/core/extension";
 import { LlmOutputLanguage } from "../llm/languages";
 
 export type CatalogStalePolicy = "off" | "purge";

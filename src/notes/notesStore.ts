@@ -3,7 +3,7 @@ import {
   NotesStore as CoreNotesStore,
   type ImportNotesResult,
   type NoteRecord
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";
 
 export type { ImportNotesResult, NoteRecord };
 

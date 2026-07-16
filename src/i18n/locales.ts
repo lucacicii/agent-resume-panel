@@ -11,5 +11,5 @@ export {
   isUiLocale,
   normalizeUiLanguagePreference,
   normalizeOutputLanguagePreference
-} from "@agent-resume/core";
-export type { UiLocale, UiLanguagePreference } from "@agent-resume/core";
+} from "@agent-resume/core/extension";
+export type { UiLocale, UiLanguagePreference } from "@agent-resume/core/extension";

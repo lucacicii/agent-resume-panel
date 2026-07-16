@@ -8,4 +8,4 @@ export {
   normalizeNoteFilename,
   rewriteAssetReferences,
   uniqueNoteFilename
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";

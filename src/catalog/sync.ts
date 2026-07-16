@@ -1,4 +1,4 @@
-import { syncAgentSessions, type AgentSessionSyncOptions } from "../../packages/core";
+import { syncAgentSessions, type AgentSessionSyncOptions } from "@agent-resume/core/extension";
 import { HistoryLoadOptions, HistoryLoadResult } from "../history/types";
 import { CatalogSettings } from "./types";
 

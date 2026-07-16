@@ -5,4 +5,4 @@ export {
   contentPreview,
   type NoteFrontmatter,
   type ParsedNoteDocument
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";

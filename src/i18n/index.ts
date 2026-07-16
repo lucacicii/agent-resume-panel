@@ -16,7 +16,7 @@ import {
   UiLocale,
   isUiLocale,
   normalizeOutputLanguagePreference
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";
 import { readAgentResumeSetting } from "../llm/config";
 
 function getExtensionRoot(): string {

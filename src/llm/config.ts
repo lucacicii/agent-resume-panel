@@ -5,7 +5,7 @@ import {
   resolveEffectiveOutputLanguage,
   UI_LANGUAGE_AUTO,
   UI_LANGUAGE_SETTING
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";
 import { DEFAULT_LLM_OUTPUT_LANGUAGE, LlmOutputLanguage } from "./languages";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import {

@@ -20,5 +20,5 @@ export {
   type ProjectNoteOwner,
   type SessionNoteOwner,
   type NoteOwnerJson
-} from "@agent-resume/core";
-export { resolvePanelHome } from "@agent-resume/core";
+} from "@agent-resume/core/extension";
+export { resolvePanelHome } from "@agent-resume/core/extension";

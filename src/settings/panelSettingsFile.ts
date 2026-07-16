@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { sanitizeAgentHomes } from "@agent-resume/core";
+import { sanitizeAgentHomes } from "@agent-resume/core/extension";
 import { expandHome } from "../history/pathUtils";
 
 /** Mirrors packages/core PanelSettings LLM fields used by Desktop. */

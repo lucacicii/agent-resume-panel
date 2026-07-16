@@ -3,4 +3,4 @@ export {
   getProjectAliasFromCatalog,
   setProjectAliasInCatalog,
   upsertProjectAliasesBatch
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";

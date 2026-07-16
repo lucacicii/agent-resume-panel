@@ -1,4 +1,4 @@
-export type { NoteRecord } from "@agent-resume/core";
+export type { NoteRecord } from "@agent-resume/core/extension";
 export {
   listAllNotes,
   getNoteById,
@@ -14,4 +14,4 @@ export {
   setCatalogMeta,
   listLegacySessionNotes,
   listLegacyProjectNotes
-} from "@agent-resume/core";
+} from "@agent-resume/core/extension";

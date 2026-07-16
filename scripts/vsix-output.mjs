@@ -18,7 +18,7 @@ export function pruneProductionDependencies(cwd = root) {
 export function packageVsix(outName, cwd = root) {
   mkdirSync(distDir, { recursive: true });
   const outPath = join(distDir, outName);
-  execFileSync("npx", ["vsce", "package", "-o", outPath], {
+  execFileSync("npx", ["vsce", "package", "--follow-symlinks", "-o", outPath], {
     cwd,
     stdio: "inherit",
   });

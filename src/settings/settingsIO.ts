@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { normalizeOutputLanguagePreference } from "@agent-resume/core";
+import { normalizeOutputLanguagePreference } from "@agent-resume/core/extension";
 import { readAgentResumeSetting } from "../llm/config";
 import {
   applyProjectMenuContext,
