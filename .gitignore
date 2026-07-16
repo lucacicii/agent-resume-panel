@@ -1,9 +1,12 @@
 node_modules/
 
 # Build output
+out/
 apps/extension/out/
 apps/extension/dist/
 apps/extension/.pack-staging/
+packages/core/dist/
+apps/desktop/dist/
 apps/desktop/release/
 apps/desktop/.dev-app-stamp
 apps/desktop/.electron-zips/
@@ -32,4 +35,4 @@ npm-debug.log*
 
 # Vendored doc repos (track content only, not nested .git)
 agent-resume-desktop-doc/.git/
-agent-resume-panel-doc/.git/apps/extension/node_modules/
+agent-resume-panel-doc/.git/
