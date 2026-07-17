@@ -1004,6 +1004,21 @@ textarea:focus-visible,
   max-width: 220px;
 }
 
+.settings-number-control {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+}
+
+.settings-number-input {
+  width: 76px;
+  min-width: 76px;
+  text-align: right;
+}
+
 .settings-footnote {
   margin: 0;
   font-size: var(--font-size-caption);
@@ -1374,6 +1389,10 @@ textarea:focus-visible,
   .settings-row-control {
     max-width: none;
     width: 100%;
+  }
+
+  .settings-number-control {
+    align-self: flex-start;
   }
 
   .settings-content-header {
@@ -5151,6 +5170,10 @@ code {
 .wb-editor-pane.is-conflict .wb-editor-status-state {
   color: var(--color-warning, #b35c00);
   font-weight: 600;
+}
+
+.wb-editor-pane.is-readonly .wb-editor-status-state {
+  color: var(--color-label-secondary);
 }
 
 .wb-editor-conflict-actions {

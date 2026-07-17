@@ -1,11 +1,12 @@
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   LanguageDescription,
   syntaxHighlighting,
   defaultHighlightStyle,
   indentOnInput,
-  bracketMatching
+  bracketMatching,
+  indentUnit
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
@@ -22,6 +23,7 @@ import {
 
 const setFindHighlight = StateEffect.define();
 const languageCompartment = new Compartment();
+const editorOptionsCompartment = new Compartment();
 
 const findHighlightField = StateField.define({
   create() {
@@ -99,6 +101,25 @@ async function configureLanguage(view, options) {
   }
 }
 
+function editorFontSizeTheme(fontSize) {
+  if (!Number.isFinite(fontSize)) return [];
+  return EditorView.theme({
+    "&": { fontSize: `${Math.min(24, Math.max(11, Math.round(fontSize)))}px` }
+  });
+}
+
+function buildEditorOptions(options) {
+  const tabSize = [2, 4, 8].includes(Number(options.tabSize)) ? Number(options.tabSize) : 4;
+  return [
+    EditorState.readOnly.of(options.editable === false),
+    EditorState.tabSize.of(tabSize),
+    indentUnit.of(" ".repeat(tabSize)),
+    ...(options.tabIndent === true ? [keymap.of([indentWithTab])] : []),
+    ...(options.lineWrapping === false ? [] : [EditorView.lineWrapping]),
+    editorFontSizeTheme(Number(options.fontSize))
+  ];
+}
+
 function buildExtensions(options) {
   const pref = options.theme;
   const useLight =
@@ -125,10 +146,10 @@ function buildExtensions(options) {
     history(),
     findHighlightField,
     languageCompartment.of(initialLanguage(options)),
+    editorOptionsCompartment.of(buildEditorOptions(options)),
     indentOnInput(),
     bracketMatching(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
-    ...(options.lineWrapping === false ? [] : [EditorView.lineWrapping]),
     placeholder(options.placeholder || ""),
     pasteHandler,
     EditorView.updateListener.of((update) => {
@@ -161,6 +182,10 @@ const desktopCodeMirror = {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: text ?? "" }
     });
+  },
+  setOptions(view, options = {}) {
+    if (!view) return;
+    view.dispatch({ effects: editorOptionsCompartment.reconfigure(buildEditorOptions(options)) });
   },
   focus(view) {
     view?.focus?.();

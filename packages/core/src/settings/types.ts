@@ -44,6 +44,21 @@ export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghos
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
+export type WorkbenchEditorTabSize = 2 | 4 | 8;
+export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
+
+export interface WorkbenchEditorSettings {
+  /** Whether project text files can be edited in the embedded editor. Default true. */
+  editable?: boolean;
+  /** Embedded editor font size in pixels (11–24). Default 13. */
+  fontSize?: number;
+  /** Wrap long lines in the embedded editor. Default false. */
+  wordWrap?: boolean;
+  /** Tab display and indentation width. Default 4. */
+  tabSize?: WorkbenchEditorTabSize;
+  /** Delay before automatically saving a changed file. Default 600ms. */
+  autoSaveDelayMs?: WorkbenchEditorAutoSaveDelayMs;
+}
 
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/.desktop/scratch */
@@ -63,6 +78,8 @@ export interface WorkbenchSettings {
   gitNestedScanIgnoreDirs?: string[];
   /** Max nested Git repos to collect per scan. Default 32. */
   gitNestedScanMaxRepos?: number;
+  /** Embedded Workbench file editor preferences. */
+  editor?: WorkbenchEditorSettings;
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -165,7 +182,14 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     showIncognitoAlma: false
   },
   workbench: {
-    projectEditor: "auto"
+    projectEditor: "auto",
+    editor: {
+      editable: true,
+      fontSize: 13,
+      wordWrap: false,
+      tabSize: 4,
+      autoSaveDelayMs: 600
+    }
   },
   desktop: {
     theme: "system"

@@ -10,6 +10,28 @@ import { sanitizeAgentHomes } from "../transcript/homes";
 import { DEFAULT_SETTINGS, PanelSettings } from "./types";
 
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
+const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
+const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
+
+function normalizeWorkbenchEditorSettings(
+  settings: NonNullable<PanelSettings["workbench"]>["editor"]
+) {
+  const defaults = DEFAULT_SETTINGS.workbench?.editor;
+  const fontSize = Math.round(Number(settings?.fontSize ?? defaults?.fontSize ?? 13));
+  const tabSize = Number(settings?.tabSize ?? defaults?.tabSize ?? 4);
+  const autoSaveDelayMs = Number(
+    settings?.autoSaveDelayMs ?? defaults?.autoSaveDelayMs ?? 600
+  );
+  return {
+    editable: settings?.editable !== false,
+    fontSize: Math.min(24, Math.max(11, Number.isFinite(fontSize) ? fontSize : 13)),
+    wordWrap: settings?.wordWrap === true,
+    tabSize: WORKBENCH_EDITOR_TAB_SIZES.has(tabSize) ? (tabSize as 2 | 4 | 8) : 4,
+    autoSaveDelayMs: WORKBENCH_EDITOR_SAVE_DELAYS.has(autoSaveDelayMs)
+      ? (autoSaveDelayMs as 300 | 600 | 1000 | 2000)
+      : 600
+  };
+}
 
 function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSettings> {
   if (partial.memory && !partial.report) {
@@ -63,7 +85,8 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     workbench: {
       ...base.workbench,
-      ...(partial.workbench || {})
+      ...(partial.workbench || {}),
+      editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,

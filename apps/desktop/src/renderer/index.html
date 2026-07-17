@@ -918,6 +918,74 @@
                   </section>
 
                   <section class="settings-group">
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.embeddedEditorGroup">Embedded file editor</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.editorEditable">Allow editing</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.editorEditableDesc">Turn off to open project text files in read-only mode</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="workbenchEditorEditable" type="checkbox" role="switch" data-i18n-aria-label="desktop.settings.editorEditable" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.editorFontSize">Font size</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.editorFontSizeDesc">Text size in the embedded file editor</span>
+                        </div>
+                        <label class="settings-number-control">
+                          <input
+                            name="workbenchEditorFontSize"
+                            class="settings-number-input"
+                            type="number"
+                            min="11"
+                            max="24"
+                            step="1"
+                            inputmode="numeric"
+                            data-i18n-aria-label="desktop.settings.editorFontSize"
+                          />
+                          <span aria-hidden="true">px</span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.editorWordWrap">Word wrap</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.editorWordWrapDesc">Wrap long lines to the editor width</span>
+                        </div>
+                        <label class="settings-toggle">
+                          <input name="workbenchEditorWordWrap" type="checkbox" role="switch" data-i18n-aria-label="desktop.settings.editorWordWrap" />
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </label>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.editorTabSize">Tab width</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.editorTabSizeDesc">Spaces used for tabs and indentation</span>
+                        </div>
+                        <select name="workbenchEditorTabSize" class="settings-row-control" data-i18n-aria-label="desktop.settings.editorTabSize">
+                          <option value="2" data-i18n="desktop.settings.editorTabSize2">2 spaces</option>
+                          <option value="4" data-i18n="desktop.settings.editorTabSize4">4 spaces</option>
+                          <option value="8" data-i18n="desktop.settings.editorTabSize8">8 spaces</option>
+                        </select>
+                      </div>
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.editorAutoSaveDelay">Auto-save delay</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.editorAutoSaveDelayDesc">Wait time after editing before saving the file</span>
+                        </div>
+                        <select name="workbenchEditorAutoSaveDelayMs" class="settings-row-control" data-i18n-aria-label="desktop.settings.editorAutoSaveDelay">
+                          <option value="300" data-i18n="desktop.settings.editorAutoSaveDelay300">300 ms</option>
+                          <option value="600" data-i18n="desktop.settings.editorAutoSaveDelay600">600 ms (default)</option>
+                          <option value="1000" data-i18n="desktop.settings.editorAutoSaveDelay1000">1 second</option>
+                          <option value="2000" data-i18n="desktop.settings.editorAutoSaveDelay2000">2 seconds</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
                     <h3 class="settings-group-title" data-i18n="desktop.settings.editorTerminal">Editor & terminal</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">

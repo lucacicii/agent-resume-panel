@@ -2165,9 +2165,33 @@ let wbSidePanelRefreshTimer = null;
 let wbGitActionBusy = false;
 /** @type {{ repoRoot: string, resolve: (value: boolean) => void } | null} */
 let wbGitCommitPending = null;
-const WB_EDITOR_SAVE_DEBOUNCE_MS = 600;
+const WB_EDITOR_DEFAULTS = Object.freeze({
+  editable: true,
+  fontSize: 13,
+  wordWrap: false,
+  tabSize: 4,
+  autoSaveDelayMs: 600
+});
+const WB_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
+const WB_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 let wbWindowCloseAllowed = false;
 let wbWindowCloseFlushPending = false;
+
+function resolveWorkbenchEditorSettings(settings = loadedSettings) {
+  const editor = settings?.workbench?.editor || {};
+  const fontSize = Math.round(Number(editor.fontSize ?? WB_EDITOR_DEFAULTS.fontSize));
+  const tabSize = Number(editor.tabSize ?? WB_EDITOR_DEFAULTS.tabSize);
+  const autoSaveDelayMs = Number(
+    editor.autoSaveDelayMs ?? WB_EDITOR_DEFAULTS.autoSaveDelayMs
+  );
+  return {
+    editable: editor.editable !== false,
+    fontSize: Math.min(24, Math.max(11, Number.isFinite(fontSize) ? fontSize : 13)),
+    wordWrap: editor.wordWrap === true,
+    tabSize: WB_EDITOR_TAB_SIZES.has(tabSize) ? tabSize : 4,
+    autoSaveDelayMs: WB_EDITOR_SAVE_DELAYS.has(autoSaveDelayMs) ? autoSaveDelayMs : 600
+  };
+}
 
 function clampWbSidePanelWidth(value) {
   return Math.min(WB_SIDE_PANEL_LIMITS.max, Math.max(WB_SIDE_PANEL_LIMITS.min, Math.round(value)));
@@ -2459,8 +2483,11 @@ function workbenchRelativeFilePath(filePath, rootPath) {
 function renderWorkbenchEditorState(pane) {
   if (!pane) return;
   pane.paneEl.classList.toggle("is-conflict", pane.state === "conflict");
+  pane.paneEl.classList.toggle("is-readonly", pane.editorSettings?.editable === false);
   pane.conflictActionsEl.hidden = pane.state !== "conflict";
-  if (pane.state === "saving") pane.stateEl.textContent = t("desktop.workbench.fileSaving");
+  if (pane.editorSettings?.editable === false) {
+    pane.stateEl.textContent = t("desktop.workbench.fileReadOnly");
+  } else if (pane.state === "saving") pane.stateEl.textContent = t("desktop.workbench.fileSaving");
   else if (pane.state === "conflict") pane.stateEl.textContent = t("desktop.workbench.fileConflict");
   else if (pane.state === "error") pane.stateEl.textContent = t("desktop.workbench.fileSaveFailed", pane.error || "");
   else if (pane.dirty) pane.stateEl.textContent = t("desktop.workbench.fileModified");
@@ -2468,13 +2495,15 @@ function renderWorkbenchEditorState(pane) {
   renderWorkbenchTerminalTabs();
 }
 
-function scheduleWorkbenchEditorSave(pane, delay = WB_EDITOR_SAVE_DEBOUNCE_MS) {
-  if (!pane || pane.closed || pane.conflict) return;
+function scheduleWorkbenchEditorSave(pane, delay) {
+  if (!pane || pane.closed || pane.conflict || pane.editorSettings?.editable === false) return;
   if (pane.saveTimer) clearTimeout(pane.saveTimer);
+  const effectiveDelay =
+    delay ?? pane.editorSettings?.autoSaveDelayMs ?? WB_EDITOR_DEFAULTS.autoSaveDelayMs;
   pane.saveTimer = window.setTimeout(() => {
     pane.saveTimer = null;
     void flushWorkbenchEditorPane(pane);
-  }, Math.max(0, delay));
+  }, Math.max(0, effectiveDelay));
 }
 
 async function flushWorkbenchEditorPane(pane, options = {}) {
@@ -2519,6 +2548,10 @@ async function flushWorkbenchEditorPane(pane, options = {}) {
       pane.diskVersion = "";
       pane.dirty = (DesktopCodeMirror?.getValue?.(pane.view) ?? "") !== snapshot;
       pane.state = pane.dirty ? "modified" : "saved";
+      const desiredSettings = resolveWorkbenchEditorSettings();
+      if (!pane.dirty && desiredSettings.editable === false && pane.editorSettings?.editable !== false) {
+        updateWorkbenchEditorPaneOptions(pane, desiredSettings);
+      }
       return true;
     } catch (error) {
       pane.state = "error";
@@ -2559,7 +2592,7 @@ async function reloadWorkbenchEditorPane(pane) {
     pane.conflict = false;
     pane.state = "saved";
     pane.error = "";
-    renderWorkbenchEditorState(pane);
+    updateWorkbenchEditorPaneOptions(pane, resolveWorkbenchEditorSettings());
   } catch (error) {
     pane.state = "error";
     pane.error = formatWorkbenchGitError(error);
@@ -2580,6 +2613,7 @@ function createWorkbenchEditorPane(filePath, rootPath, inspected) {
     return null;
   }
   const key = workbenchEditorKey(filePath);
+  const editorSettings = resolveWorkbenchEditorSettings();
   const paneEl = document.createElement("div");
   paneEl.className = "wb-terminal-pane wb-editor-pane";
   paneEl.dataset.key = key;
@@ -2618,6 +2652,7 @@ function createWorkbenchEditorPane(filePath, rootPath, inspected) {
     title: basename(filePath),
     encoding: inspected.encoding,
     version: inspected.version,
+    editorSettings,
     paneEl,
     hostEl,
     statusEl,
@@ -2639,9 +2674,13 @@ function createWorkbenchEditorPane(filePath, rootPath, inspected) {
     value: inspected.content,
     filename: basename(filePath),
     theme: resolveDesktopTheme(getDesktopThemePref()),
-    lineWrapping: false,
+    editable: editorSettings.editable,
+    fontSize: editorSettings.fontSize,
+    lineWrapping: editorSettings.wordWrap,
+    tabSize: editorSettings.tabSize,
+    tabIndent: true,
     onChange: () => {
-      if (pane.suppressChange || pane.closed) return;
+      if (pane.suppressChange || pane.closed || pane.editorSettings?.editable === false) return;
       pane.dirty = true;
       pane.state = pane.conflict ? "conflict" : "modified";
       renderWorkbenchEditorState(pane);
@@ -2721,6 +2760,37 @@ async function flushAllWorkbenchEditors() {
   for (const detail of wbProjectDetails.values()) panes.push(...detail.editorPanes.values());
   const results = await Promise.all(panes.map((pane) => flushWorkbenchEditorPane(pane)));
   return results.every(Boolean);
+}
+
+function updateWorkbenchEditorPaneOptions(pane, settings) {
+  if (!pane || pane.closed) return;
+  pane.editorSettings = { ...settings };
+  DesktopCodeMirror?.setOptions?.(pane.view, {
+    editable: settings.editable,
+    fontSize: settings.fontSize,
+    lineWrapping: settings.wordWrap,
+    tabSize: settings.tabSize,
+    tabIndent: true
+  });
+  if (pane.saveTimer) {
+    clearTimeout(pane.saveTimer);
+    pane.saveTimer = null;
+    if (pane.dirty && settings.editable) scheduleWorkbenchEditorSave(pane);
+  }
+  renderWorkbenchEditorState(pane);
+}
+
+async function applyWorkbenchEditorSettingsToOpenPanes(settings = resolveWorkbenchEditorSettings()) {
+  for (const detail of wbProjectDetails.values()) {
+    for (const pane of detail.editorPanes.values()) {
+      let paneSettings = settings;
+      if (settings.editable === false && pane.dirty) {
+        const saved = await flushWorkbenchEditorPane(pane);
+        if (!saved) paneSettings = { ...settings, editable: true };
+      }
+      updateWorkbenchEditorPaneOptions(pane, paneSettings);
+    }
+  }
 }
 
 function handleWorkbenchWindowBeforeUnload(event) {
@@ -8817,9 +8887,13 @@ function remountWorkbenchEditorsForTheme() {
         value: text,
         filename: basename(pane.filePath),
         theme: resolveDesktopTheme(getDesktopThemePref()),
-        lineWrapping: false,
+        editable: pane.editorSettings?.editable !== false,
+        fontSize: pane.editorSettings?.fontSize,
+        lineWrapping: pane.editorSettings?.wordWrap === true,
+        tabSize: pane.editorSettings?.tabSize,
+        tabIndent: true,
         onChange: () => {
-          if (pane.suppressChange || pane.closed) return;
+          if (pane.suppressChange || pane.closed || pane.editorSettings?.editable === false) return;
           pane.dirty = true;
           pane.state = pane.conflict ? "conflict" : "modified";
           renderWorkbenchEditorState(pane);
@@ -8874,6 +8948,11 @@ const SETTINGS_FIELD_SECTION = {
   workbenchTerminalMode: "workbench",
   workbenchExternalLaunchMode: "workbench",
   workbenchCmdTAction: "workbench",
+  workbenchEditorEditable: "workbench",
+  workbenchEditorFontSize: "workbench",
+  workbenchEditorWordWrap: "workbench",
+  workbenchEditorTabSize: "workbench",
+  workbenchEditorAutoSaveDelayMs: "workbench",
   workbenchGitNestedScanMaxDepth: "workbench",
   workbenchGitNestedScanIgnoreDirs: "workbench",
   memoryEnabled: "report",
@@ -9089,6 +9168,22 @@ async function loadSettingsForm() {
     form.workbenchCmdTAction.value =
       s.workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal";
   }
+  const editorSettings = resolveWorkbenchEditorSettings(s);
+  if (form.workbenchEditorEditable) {
+    form.workbenchEditorEditable.checked = editorSettings.editable;
+  }
+  if (form.workbenchEditorFontSize) {
+    form.workbenchEditorFontSize.value = String(editorSettings.fontSize);
+  }
+  if (form.workbenchEditorWordWrap) {
+    form.workbenchEditorWordWrap.checked = editorSettings.wordWrap;
+  }
+  if (form.workbenchEditorTabSize) {
+    form.workbenchEditorTabSize.value = String(editorSettings.tabSize);
+  }
+  if (form.workbenchEditorAutoSaveDelayMs) {
+    form.workbenchEditorAutoSaveDelayMs.value = String(editorSettings.autoSaveDelayMs);
+  }
   if (form.workbenchGitNestedScanMaxDepth) {
     const depth = Math.min(10, Math.max(1, Math.floor(Number(s.workbench?.gitNestedScanMaxDepth) || 6)));
     form.workbenchGitNestedScanMaxDepth.value = String(depth);
@@ -9171,6 +9266,13 @@ function collectSessionsSettings(form) {
 }
 
 function collectWorkbenchSettings(form) {
+  const fontSize = Math.min(
+    24,
+    Math.max(11, Math.round(Number(form.workbenchEditorFontSize?.value) || 13))
+  );
+  const tabSize = Number(form.workbenchEditorTabSize?.value);
+  const autoSaveDelayMs = Number(form.workbenchEditorAutoSaveDelayMs?.value);
+  if (form.workbenchEditorFontSize) form.workbenchEditorFontSize.value = String(fontSize);
   return {
     workbench: {
       ...(loadedSettings?.workbench || {}),
@@ -9182,6 +9284,13 @@ function collectWorkbenchSettings(form) {
       externalLaunchMode: form.workbenchExternalLaunchMode?.value || "executeCommand",
       cmdTAction:
         form.workbenchCmdTAction?.value === "newSession" ? "newSession" : "newTerminal",
+      editor: {
+        editable: form.workbenchEditorEditable?.checked !== false,
+        fontSize,
+        wordWrap: form.workbenchEditorWordWrap?.checked === true,
+        tabSize: WB_EDITOR_TAB_SIZES.has(tabSize) ? tabSize : 4,
+        autoSaveDelayMs: WB_EDITOR_SAVE_DELAYS.has(autoSaveDelayMs) ? autoSaveDelayMs : 600
+      },
       gitNestedScanMaxDepth: Math.min(
         10,
         Math.max(1, Math.floor(Number(form.workbenchGitNestedScanMaxDepth?.value) || 6))
@@ -9243,6 +9352,9 @@ async function persistSettings(patch, { refreshSessions = true } = {}) {
   try {
     const result = await agentResume.saveSettings(settings, { triggerSync: refreshSessions });
     loadedSettings = result.settings;
+    if (patch.workbench?.editor) {
+      await applyWorkbenchEditorSettingsToOpenPanes(resolveWorkbenchEditorSettings(result.settings));
+    }
     wbProjectEditorInfo = null;
     if (result.sync) lastSessionSyncAt = result.sync.syncedAt || Date.now();
     if (refreshSessions) {
