@@ -4815,61 +4815,103 @@ code {
   border-left: 1px solid var(--color-separator);
 }
 
-.wb-diff-split {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.wb-diff-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.wb-git-diff-host {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.wb-diff-col {
+.wb-git-diff-host .cm-mergeView {
+  height: 100%;
+  min-height: 0;
   overflow: auto;
-  font-family: Menlo, Monaco, "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  background: var(--wb-terminal-surface);
+  background: var(--color-window-bg);
 }
 
-.wb-diff-col + .wb-diff-col {
-  border-left: 1px solid var(--color-separator);
-}
-
-.wb-diff-line {
-  display: flex;
-  min-height: 18px;
-  white-space: pre;
-}
-
-.wb-diff-line-no {
-  flex: 0 0 36px;
-  padding: 0 6px;
-  text-align: right;
-  color: var(--muted);
-  user-select: none;
-  background: color-mix(in srgb, var(--color-separator) 30%, transparent);
-}
-
-.wb-diff-line-text {
-  flex: 1;
-  padding: 0 6px;
+.wb-git-diff-host .cm-mergeView .cm-editor {
   min-width: 0;
 }
 
-.wb-diff-line.is-add .wb-diff-line-text {
-  background: color-mix(in srgb, #2ea043 18%, transparent);
+.wb-git-diff-host .cm-mergeView .cm-scroller {
+  overflow: visible;
 }
 
-.wb-diff-line.is-del .wb-diff-line-text {
-  background: color-mix(in srgb, #f85149 18%, transparent);
+.wb-git-diff-host .cm-mergeView .cm-gutters {
+  background: var(--color-secondary-bg);
 }
 
-.wb-diff-line.is-change .wb-diff-line-text {
-  background: color-mix(in srgb, #d29922 16%, transparent);
+.wb-git-diff-host .cm-mergeView .cm-changedText {
+  background-image: none !important;
+  text-decoration: none;
 }
 
-.wb-diff-line.is-empty .wb-diff-line-text {
-  background: transparent;
+.wb-diff-overview {
+  position: relative;
+  flex: 0 0 12px;
+  width: 12px;
+  min-height: 0;
+  border-left: 1px solid var(--color-separator);
+  background: var(--color-tertiary-bg);
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.wb-diff-overview:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.wb-diff-overview-viewport,
+.wb-diff-overview-marker {
+  position: absolute;
+  left: 2px;
+  width: 7px;
+  min-height: 2px;
+}
+
+.wb-diff-overview-viewport {
+  z-index: 2;
+  border: 1px solid var(--color-label-secondary);
+  background: color-mix(in srgb, var(--color-label-secondary) 18%, transparent);
+  pointer-events: none;
+}
+
+.wb-diff-overview-marker {
+  z-index: 1;
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.wb-diff-overview-marker.is-add {
+  background: var(--color-success);
+}
+
+.wb-diff-overview-marker.is-delete {
+  background: var(--color-destructive);
+}
+
+.wb-diff-overview-marker.is-change {
+  background: var(--color-warning);
+}
+
+.wb-diff-overview-marker:hover,
+.wb-diff-overview-marker:focus-visible {
+  z-index: 3;
+  width: 9px;
+  left: 1px;
+  outline: 1px solid var(--color-label-primary);
 }
 
 .wb-terminal-shell {
@@ -5174,6 +5216,20 @@ code {
 
 .wb-editor-pane.is-readonly .wb-editor-status-state {
   color: var(--color-label-secondary);
+}
+
+.wb-git-diff-pane {
+  background: var(--color-window-bg);
+}
+
+.wb-git-diff-pane .wb-diff-head {
+  padding-left: 10px;
+  background: var(--color-window-bg);
+}
+
+.wb-git-diff-pane .cm-editor {
+  background: var(--color-window-bg);
+  font-size: 12px;
 }
 
 .wb-editor-conflict-actions {

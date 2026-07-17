@@ -1,5 +1,5 @@
 /* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
-/* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror, DesktopCodeMirror */
+/* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror, DesktopCodeMirror, GitDiffCodeMirror */
 
 const DESKTOP_DOC_README = "https://github.com/thunder-luc/agent-resume-desktop-doc#readme";
 const DESKTOP_DOC_ISSUES = "https://github.com/thunder-luc/agent-resume-desktop-doc/issues";
@@ -781,7 +781,7 @@ let wbProjectSearch = "";
 let wbProjectFilter = "all";
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
-/** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
+/** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, diffPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
 const wbProjectDetails = new Map();
 let wbTerminalIpcReady = false;
 let wbContextNode = null;
@@ -865,12 +865,15 @@ function ensureWorkbenchProjectDetail(projectKey = currentWorkbenchProjectKey())
     detail = {
       terminalPanes: new Map(),
       editorPanes: new Map(),
+      diffPanes: new Map(),
       paneOrder: [],
       activePaneKey: "",
       activeTerminalKey: "",
       activeSessionKey: ""
     };
     wbProjectDetails.set(projectKey, detail);
+  } else if (!detail.diffPanes) {
+    detail.diffPanes = new Map();
   }
   return detail;
 }
@@ -886,7 +889,11 @@ function getActiveWorkbenchProjectPath() {
 function hasWorkbenchProjectActivity(projectPath) {
   const detail = getWorkbenchProjectDetail(wbProjectKeyFromPath(projectPath));
   return Boolean(
-    detail && (detail.terminalPanes.size > 0 || detail.editorPanes.size > 0 || Boolean(detail.activeSessionKey))
+    detail &&
+      (detail.terminalPanes.size > 0 ||
+        detail.editorPanes.size > 0 ||
+        detail.diffPanes.size > 0 ||
+        Boolean(detail.activeSessionKey))
   );
 }
 
@@ -1416,7 +1423,7 @@ function updateWorkbenchTerminalHint() {
   const hint = $("wbTerminalHint");
   if (!hint) return;
   const detail = getWorkbenchProjectDetail();
-  if (detail && (detail.terminalPanes.size > 0 || detail.editorPanes.size > 0)) {
+  if (detail && (detail.terminalPanes.size > 0 || detail.editorPanes.size > 0 || detail.diffPanes.size > 0)) {
     hint.classList.add("hidden");
     return;
   }
@@ -1476,6 +1483,10 @@ function syncWorkbenchTerminalVisibility() {
       const active = projectKey === activeProjectKey && paneKey === detail.activePaneKey;
       pane.paneEl.classList.toggle("active", active);
     }
+    for (const [paneKey, pane] of detail.diffPanes) {
+      const active = projectKey === activeProjectKey && paneKey === detail.activePaneKey;
+      pane.paneEl.classList.toggle("active", active);
+    }
   }
 }
 
@@ -1501,9 +1512,10 @@ function renderWorkbenchTerminalTabs() {
   if (!detail) return;
 
   for (const key of detail.paneOrder) {
-    const pane = detail.terminalPanes.get(key) || detail.editorPanes.get(key);
+    const pane = detail.terminalPanes.get(key) || detail.editorPanes.get(key) || detail.diffPanes.get(key);
     if (!pane) continue;
     const isEditor = pane.kind === "editor";
+    const isDiff = pane.kind === "diff";
     const tab = document.createElement("div");
     tab.className = "wb-terminal-tab";
     tab.dataset.key = key;
@@ -1524,12 +1536,17 @@ function renderWorkbenchTerminalTabs() {
     closeBtn.className = "wb-terminal-tab-close";
     closeBtn.setAttribute(
       "aria-label",
-      isEditor ? t("desktop.workbench.closeFile") : t("desktop.workbench.closeTerminal")
+      isEditor
+        ? t("desktop.workbench.closeFile")
+        : isDiff
+          ? t("desktop.workbench.closeDiff")
+          : t("desktop.workbench.closeTerminal")
     );
     closeBtn.textContent = "×";
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (isEditor) void closeWorkbenchEditorTab(key);
+      else if (isDiff) void closeWorkbenchGitDiffTab(key);
       else void closeWorkbenchTerminalTab(key);
     });
 
@@ -1541,7 +1558,12 @@ function renderWorkbenchTerminalTabs() {
 
 function switchWorkbenchPane(key) {
   const detail = getWorkbenchProjectDetail();
-  if (!detail || (!detail.terminalPanes.has(key) && !detail.editorPanes.has(key))) return;
+  if (
+    !detail ||
+    (!detail.terminalPanes.has(key) && !detail.editorPanes.has(key) && !detail.diffPanes.has(key))
+  ) {
+    return;
+  }
   const previousEditor = detail.editorPanes.get(detail.activePaneKey);
   if (previousEditor && previousEditor.key !== key) void flushWorkbenchEditorPane(previousEditor);
 
@@ -1556,6 +1578,9 @@ function switchWorkbenchPane(key) {
     const active = paneKey === key;
     pane.paneEl.classList.toggle("active", active);
     if (active) requestAnimationFrame(() => DesktopCodeMirror?.focus?.(pane.view));
+  }
+  for (const [paneKey, pane] of detail.diffPanes) {
+    pane.paneEl.classList.toggle("active", paneKey === key);
   }
 
   if (terminalPane) {
@@ -1617,7 +1642,8 @@ async function closeWorkbenchTerminalTab(key) {
 
   if (detail.activePaneKey === key) {
     const remaining = detail.paneOrder.filter(
-      (paneKey) => detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey)
+      (paneKey) =>
+        detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey) || detail.diffPanes.has(paneKey)
     );
     detail.activePaneKey = remaining.length ? remaining[remaining.length - 1] : "";
     if (detail.activePaneKey) {
@@ -1646,6 +1672,7 @@ async function closeActiveWorkbenchPane() {
   const key = detail?.activePaneKey || "";
   if (!key) return false;
   if (detail?.editorPanes.has(key)) return closeWorkbenchEditorTab(key);
+  if (detail?.diffPanes.has(key)) return closeWorkbenchGitDiffTab(key);
   return closeActiveWorkbenchTerminal();
 }
 
@@ -2145,7 +2172,7 @@ const WB_SIDE_GIT_DEBOUNCE_MS = 120;
 let wbSidePanelOpen = false;
 /** @type {"files" | "git"} */
 let wbSidePanelTab = "files";
-/** @type {"list" | "diff" | "log"} */
+/** @type {"list" | "log"} */
 let wbSideGitView = "list";
 /** @type {"list" | "detail"} */
 let wbGitLogSubView = "list";
@@ -2222,7 +2249,6 @@ function applyWbSidePanelLayout() {
   const gitBtn = $("btnWbSideGit");
   const filesPane = $("wbFilesPane");
   const gitPane = $("wbGitPane");
-  const diffPane = $("wbDiffPane");
   const logPane = $("wbLogPane");
   const open = wbSidePanelOpen;
 
@@ -2235,7 +2261,6 @@ function applyWbSidePanelLayout() {
 
   if (filesPane) filesPane.hidden = !open || wbSidePanelTab !== "files";
   if (gitPane) gitPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "list";
-  if (diffPane) diffPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "diff";
   if (logPane) logPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "log";
 
   if (open) {
@@ -2253,7 +2278,7 @@ function getWorkbenchSideRootPath() {
 
 function notifyWorkbenchSideContextChanged() {
   invalidateWorkbenchFilesCache();
-  if (wbSideGitView === "diff" || wbSideGitView === "log") {
+  if (wbSideGitView === "log") {
     wbSideGitView = "list";
     wbGitLogSubView = "list";
     wbGitLogRepoRoot = "";
@@ -2735,7 +2760,8 @@ async function closeWorkbenchEditorTab(key) {
 
   if (detail.activePaneKey === key) {
     const remaining = detail.paneOrder.filter(
-      (paneKey) => detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey)
+      (paneKey) =>
+        detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey) || detail.diffPanes.has(paneKey)
     );
     detail.activePaneKey = remaining.length ? remaining[remaining.length - 1] : "";
     if (detail.activePaneKey) switchWorkbenchPane(detail.activePaneKey);
@@ -3700,154 +3726,216 @@ async function refreshWorkbenchGitPanel() {
   }
 }
 
-function closeWorkbenchGitDiffView() {
-  wbSideGitView = "list";
-  applyWbSidePanelLayout();
-  if (wbGitStatusCache?.isRepo) renderWorkbenchGitPanelFromCache();
-  else void refreshWorkbenchGitPanel();
+function workbenchGitDiffPaneKey(repoRoot, repoPath, staged) {
+  return `diff:${repoRoot}:${staged ? "staged" : "working"}:${repoPath}`;
+}
+
+function createWorkbenchGitDiffPane({ key, projectPath, repoRoot, repoPath, displayPath, staged }) {
+  const stack = $("wbTerminalStack");
+  if (!stack) return null;
+
+  const paneEl = document.createElement("div");
+  paneEl.className = "wb-terminal-pane wb-git-diff-pane";
+  paneEl.dataset.key = key;
+
+  const head = document.createElement("div");
+  head.className = "wb-diff-head";
+  const titleEl = document.createElement("span");
+  titleEl.className = "wb-diff-title";
+  titleEl.textContent = displayPath;
+  titleEl.title = displayPath;
+  head.appendChild(titleEl);
+
+  const labels = document.createElement("div");
+  labels.className = "wb-diff-labels";
+  const oldLabelEl = document.createElement("span");
+  oldLabelEl.className = "wb-diff-label";
+  const newLabelEl = document.createElement("span");
+  newLabelEl.className = "wb-diff-label";
+  labels.append(oldLabelEl, newLabelEl);
+
+  const contentEl = document.createElement("div");
+  contentEl.className = "wb-diff-content";
+  const hostEl = document.createElement("div");
+  hostEl.className = "wb-git-diff-host";
+  const overviewEl = document.createElement("div");
+  overviewEl.className = "wb-diff-overview";
+  overviewEl.setAttribute("role", "navigation");
+  overviewEl.setAttribute("aria-label", t("desktop.workbench.diffOverview"));
+  const overviewViewportEl = document.createElement("div");
+  overviewViewportEl.className = "wb-diff-overview-viewport";
+  overviewViewportEl.setAttribute("aria-hidden", "true");
+  overviewEl.appendChild(overviewViewportEl);
+  contentEl.append(hostEl, overviewEl);
+  paneEl.append(head, labels, contentEl);
+  stack.appendChild(paneEl);
+
+  return {
+    kind: "diff",
+    key,
+    projectKey: wbProjectKeyFromPath(projectPath),
+    projectPath,
+    repoRoot,
+    repoPath,
+    staged,
+    title: displayPath,
+    paneEl,
+    titleEl,
+    oldLabelEl,
+    newLabelEl,
+    hostEl,
+    overviewEl,
+    overviewViewportEl,
+    diffView: null,
+    oldText: "",
+    newText: "",
+    closed: false,
+    overviewPointerId: null
+  };
+}
+
+function updateWorkbenchGitDiffOverviewViewport(pane) {
+  if (!pane?.diffView || !pane.overviewViewportEl) return;
+  const metrics = GitDiffCodeMirror?.getScrollMetrics?.(pane.diffView);
+  if (!metrics || metrics.scrollHeight <= 0 || metrics.clientHeight <= 0) return;
+  const maxScroll = Math.max(0, metrics.scrollHeight - metrics.clientHeight);
+  const top = maxScroll > 0 ? (metrics.scrollTop / maxScroll) * 100 : 0;
+  const height = Math.max(5, Math.min(100, (metrics.clientHeight / metrics.scrollHeight) * 100));
+  pane.overviewViewportEl.style.top = `${Math.min(100 - height, Math.max(0, top))}%`;
+  pane.overviewViewportEl.style.height = `${height}%`;
+  pane.overviewViewportEl.hidden = maxScroll <= 0;
+}
+
+function renderWorkbenchGitDiffOverview(pane) {
+  if (!pane?.overviewEl || !pane.overviewViewportEl) return;
+  pane.overviewEl.replaceChildren(pane.overviewViewportEl);
+  const overview = GitDiffCodeMirror?.getOverview?.(pane.diffView) || [];
+  for (const item of overview) {
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = `wb-diff-overview-marker is-${item.kind}`;
+    marker.style.top = `${Math.max(0, Math.min(99.5, item.ratio * 100))}%`;
+    marker.style.height = `${Math.max(0.7, Math.min(100, item.sizeRatio * 100))}%`;
+    marker.title = t("desktop.workbench.diffNavigateChange", item.index + 1);
+    marker.setAttribute("aria-label", marker.title);
+    marker.addEventListener("pointerdown", (event) => event.stopPropagation());
+    marker.addEventListener("click", () => {
+      GitDiffCodeMirror?.scrollToChange?.(pane.diffView, item.index);
+      requestAnimationFrame(() => updateWorkbenchGitDiffOverviewViewport(pane));
+    });
+    pane.overviewEl.appendChild(marker);
+  }
+  updateWorkbenchGitDiffOverviewViewport(pane);
+}
+
+function bindWorkbenchGitDiffOverview(pane) {
+  const scrollToPointer = (event) => {
+    const rect = pane.overviewEl.getBoundingClientRect();
+    if (!rect.height) return;
+    GitDiffCodeMirror?.scrollToRatio?.(pane.diffView, (event.clientY - rect.top) / rect.height);
+    requestAnimationFrame(() => updateWorkbenchGitDiffOverviewViewport(pane));
+  };
+  pane.overviewEl.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".wb-diff-overview-marker")) return;
+    pane.overviewPointerId = event.pointerId;
+    pane.overviewEl.setPointerCapture?.(event.pointerId);
+    scrollToPointer(event);
+  });
+  pane.overviewEl.addEventListener("pointermove", (event) => {
+    if (pane.overviewPointerId === event.pointerId) scrollToPointer(event);
+  });
+  const releasePointer = (event) => {
+    if (pane.overviewPointerId !== event.pointerId) return;
+    pane.overviewPointerId = null;
+    pane.overviewEl.releasePointerCapture?.(event.pointerId);
+  };
+  pane.overviewEl.addEventListener("pointerup", releasePointer);
+  pane.overviewEl.addEventListener("pointercancel", releasePointer);
+}
+
+function mountWorkbenchGitDiffPane(pane, scrollRatio = 0) {
+  if (!pane || pane.closed || typeof GitDiffCodeMirror?.mount !== "function") return false;
+  GitDiffCodeMirror?.unmount?.(pane.diffView);
+  pane.hostEl.replaceChildren();
+  pane.diffView = GitDiffCodeMirror.mount(pane.hostEl, {
+    oldText: pane.oldText,
+    newText: pane.newText,
+    filename: basename(pane.repoPath),
+    theme: resolveDesktopTheme(getDesktopThemePref()),
+    onScroll: () => updateWorkbenchGitDiffOverviewViewport(pane)
+  });
+  renderWorkbenchGitDiffOverview(pane);
+  if (scrollRatio > 0) GitDiffCodeMirror.restoreScrollRatio?.(pane.diffView, scrollRatio);
+  return true;
 }
 
 async function openWorkbenchGitDiff(change, staged) {
+  const projectPath = getWorkbenchSideRootPath();
   const repoRoot = change?.repoRoot || getWorkbenchSideContextCwd();
   const repoPath = change?.repoPath || change?.path;
   const displayPath = change?.path || repoPath;
-  if (!repoRoot || !repoPath || typeof agentResume.terminalGitDiffSides !== "function") return;
-  wbSideGitView = "diff";
-  applyWbSidePanelLayout();
+  if (!projectPath || !repoRoot || !repoPath || typeof agentResume.terminalGitDiffSides !== "function") return;
 
-  const titleEl = $("wbDiffTitle");
-  const oldLabelEl = $("wbDiffOldLabel");
-  const newLabelEl = $("wbDiffNewLabel");
-  const colOld = $("wbDiffColOld");
-  const colNew = $("wbDiffColNew");
-  if (titleEl) titleEl.textContent = displayPath;
-  if (colOld) colOld.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
-  if (colNew) colNew.innerHTML = "";
+  const detail = ensureWorkbenchProjectDetail(wbProjectKeyFromPath(projectPath));
+  const key = workbenchGitDiffPaneKey(repoRoot, repoPath, staged);
+  if (detail.diffPanes.has(key)) {
+    switchWorkbenchPane(key);
+    return;
+  }
+
+  const pane = createWorkbenchGitDiffPane({
+    key,
+    projectPath,
+    repoRoot,
+    repoPath,
+    displayPath,
+    staged
+  });
+  if (!pane) return;
+  detail.diffPanes.set(key, pane);
+  detail.paneOrder.push(key);
+  pane.hostEl.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  bindWorkbenchGitDiffOverview(pane);
+  switchWorkbenchPane(key);
 
   try {
     const result = await agentResume.terminalGitDiffSides({ cwd: repoRoot, path: repoPath, staged });
-    if (oldLabelEl) oldLabelEl.textContent = result.oldLabel;
-    if (newLabelEl) newLabelEl.textContent = result.newLabel;
-    renderWorkbenchSideBySideDiff(result.oldText || "", result.newText || "");
+    if (pane.closed || detail.diffPanes.get(key) !== pane) return;
+    pane.oldLabelEl.textContent = result.oldLabel;
+    pane.newLabelEl.textContent = result.newLabel;
+    pane.oldText = result.oldText || "";
+    pane.newText = result.newText || "";
+    mountWorkbenchGitDiffPane(pane);
   } catch (error) {
-    if (colOld) {
-      colOld.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
-        t("desktop.workbench.sidePanelDiffFailed", formatWorkbenchGitError(error))
-      )}</p>`;
-    }
-    if (colNew) colNew.innerHTML = "";
+    if (pane.closed || detail.diffPanes.get(key) !== pane) return;
+    pane.hostEl.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+      t("desktop.workbench.sidePanelDiffFailed", formatWorkbenchGitError(error))
+    )}</p>`;
+    pane.overviewEl.hidden = true;
   }
 }
 
-function alignDiffLines(oldLines, newLines) {
-  const m = oldLines.length;
-  const n = newLines.length;
-  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (oldLines[i - 1] === newLines[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
-      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-    }
+function closeWorkbenchGitDiffTab(key) {
+  const detail = getWorkbenchProjectDetail();
+  const pane = detail?.diffPanes.get(key);
+  if (!pane) return false;
+  pane.closed = true;
+  GitDiffCodeMirror?.unmount?.(pane.diffView);
+  pane.paneEl.remove();
+  detail.diffPanes.delete(key);
+  detail.paneOrder = detail.paneOrder.filter((paneKey) => paneKey !== key);
+
+  if (detail.activePaneKey === key) {
+    const remaining = detail.paneOrder.filter(
+      (paneKey) =>
+        detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey) || detail.diffPanes.has(paneKey)
+    );
+    detail.activePaneKey = remaining.length ? remaining[remaining.length - 1] : "";
+    if (detail.activePaneKey) switchWorkbenchPane(detail.activePaneKey);
   }
-
-  /** @type {Array<{ type: "equal" | "del" | "add", oldIndex?: number, newIndex?: number }>} */
-  const ops = [];
-  let i = m;
-  let j = n;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-      ops.push({ type: "equal", oldIndex: i - 1, newIndex: j - 1 });
-      i--;
-      j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      ops.push({ type: "add", newIndex: j - 1 });
-      j--;
-    } else {
-      ops.push({ type: "del", oldIndex: i - 1 });
-      i--;
-    }
-  }
-  ops.reverse();
-
-  /** @type {Array<{ left: { num: number, text: string, kind: string }, right: { num: number, text: string, kind: string } }>} */
-  const rows = [];
-  const emptyCell = () => ({ num: 0, text: "", kind: "empty" });
-  for (let k = 0; k < ops.length; k++) {
-    const op = ops[k];
-    if (op.type === "equal") {
-      rows.push({
-        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "equal" },
-        right: { num: op.newIndex + 1, text: newLines[op.newIndex], kind: "equal" }
-      });
-      continue;
-    }
-    if (op.type === "del" && ops[k + 1]?.type === "add") {
-      const next = ops[k + 1];
-      rows.push({
-        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "change" },
-        right: { num: next.newIndex + 1, text: newLines[next.newIndex], kind: "change" }
-      });
-      k++;
-      continue;
-    }
-    if (op.type === "del") {
-      rows.push({
-        left: { num: op.oldIndex + 1, text: oldLines[op.oldIndex], kind: "del" },
-        right: emptyCell()
-      });
-      continue;
-    }
-    rows.push({
-      left: emptyCell(),
-      right: { num: op.newIndex + 1, text: newLines[op.newIndex], kind: "add" }
-    });
-  }
-  return rows;
-}
-
-function renderDiffColumn(container, side, rows) {
-  if (!container) return;
-  container.innerHTML = "";
-  const frag = document.createDocumentFragment();
-  for (const row of rows) {
-    const cell = side === "left" ? row.left : row.right;
-    const line = document.createElement("div");
-    line.className = `wb-diff-line is-${cell.kind}`;
-    const no = document.createElement("span");
-    no.className = "wb-diff-line-no";
-    no.textContent = cell.num > 0 ? String(cell.num) : "";
-    const text = document.createElement("span");
-    text.className = "wb-diff-line-text";
-    text.textContent = cell.text;
-    line.appendChild(no);
-    line.appendChild(text);
-    frag.appendChild(line);
-  }
-  container.appendChild(frag);
-}
-
-function bindDiffColumnScrollSync(leftCol, rightCol) {
-  if (!leftCol || !rightCol) return;
-  let syncing = false;
-  const sync = (source, target) => {
-    if (syncing) return;
-    syncing = true;
-    target.scrollTop = source.scrollTop;
-    syncing = false;
-  };
-  leftCol.onscroll = () => sync(leftCol, rightCol);
-  rightCol.onscroll = () => sync(rightCol, leftCol);
-}
-
-function renderWorkbenchSideBySideDiff(oldText, newText) {
-  const oldLines = String(oldText || "").split("\n");
-  const newLines = String(newText || "").split("\n");
-  const rows = alignDiffLines(oldLines, newLines);
-  const colOld = $("wbDiffColOld");
-  const colNew = $("wbDiffColNew");
-  renderDiffColumn(colOld, "left", rows);
-  renderDiffColumn(colNew, "right", rows);
-  bindDiffColumnScrollSync(colOld, colNew);
+  renderWorkbenchTerminalTabs();
+  updateWorkbenchTerminalHint();
+  return true;
 }
 
 function invalidateWorkbenchFilesCache() {
@@ -3908,7 +3996,6 @@ function initWorkbenchSidePanel() {
   initWbSideResizer();
   $("btnWbSideFiles")?.addEventListener("click", () => toggleWorkbenchSidePanel("files"));
   $("btnWbSideGit")?.addEventListener("click", () => toggleWorkbenchSidePanel("git"));
-  $("btnWbDiffBack")?.addEventListener("click", () => closeWorkbenchGitDiffView());
   $("btnWbGitCommit")?.addEventListener("click", () => void handleWorkbenchGitCommitClick());
   $("btnWbGitPush")?.addEventListener("click", () => void runWorkbenchGitPushPull("push"));
   $("btnWbGitPull")?.addEventListener("click", () => void runWorkbenchGitPushPull("pull"));
@@ -8826,6 +8913,7 @@ function applyDesktopTheme(pref) {
   syncHighlightJsTheme(resolveDesktopTheme(pref));
   remountNotesEditorForTheme();
   remountWorkbenchEditorsForTheme();
+  remountWorkbenchGitDiffsForTheme();
 }
 
 function wireSystemThemeListener() {
@@ -8901,6 +8989,17 @@ function remountWorkbenchEditorsForTheme() {
         }
       });
       if (hadFocus) DesktopCodeMirror.focus(pane.view);
+    }
+  }
+}
+
+function remountWorkbenchGitDiffsForTheme() {
+  if (typeof GitDiffCodeMirror?.mount !== "function") return;
+  for (const detail of wbProjectDetails.values()) {
+    for (const pane of detail.diffPanes.values()) {
+      if (pane.closed || !pane.diffView) continue;
+      const scrollRatio = GitDiffCodeMirror.getScrollRatio?.(pane.diffView) ?? 0;
+      mountWorkbenchGitDiffPane(pane, scrollRatio);
     }
   }
 }

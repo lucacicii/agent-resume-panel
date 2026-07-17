@@ -10,6 +10,7 @@ const aliasesPath = join(root, "scripts", "desktop-settings-i18n-aliases.json");
 const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
+const obsoleteDesktopKeys = new Set(["desktop.workbench.sidePanelBack"]);
 
 function normalizePlaceholders(value) {
   const names = [];
@@ -104,6 +105,9 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
       : localeCode === "ja" && Object.keys(jaKeys).length
         ? jaKeys
         : enKeys;
+  for (const key of obsoleteDesktopKeys) {
+    delete locale[key];
+  }
   for (const [key, value] of Object.entries(source)) {
     if (!key.startsWith("desktop.")) continue;
     locale[key] = value;
