@@ -1608,6 +1608,7 @@ function switchWorkbenchPane(key) {
   renderWorkbenchTerminalTabs();
   renderWorkbenchFolders();
   updateWorkbenchTerminalHint();
+  syncWorkbenchGitLogFilePreviewSelection();
 }
 
 function switchWorkbenchTerminalTab(key) {
@@ -2177,6 +2178,7 @@ let wbSideGitView = "list";
 /** @type {"list" | "detail"} */
 let wbGitLogSubView = "list";
 let wbGitLogRepoRoot = "";
+let wbGitLogDetailHash = "";
 let wbSidePanelWidth = WB_SIDE_PANEL_LIMITS.default;
 /** @type {Set<string>} */
 const wbFilesExpandedDirs = new Set();
@@ -3407,6 +3409,7 @@ function renderWorkbenchGitLogDetail(show) {
   if (titleEl) {
     titleEl.textContent = show?.shortHash || show?.hash?.slice(0, 7) || t("desktop.workbench.gitLogTitle");
   }
+  wbGitLogDetailHash = show?.hash || "";
   updateWorkbenchGitLogBackButton();
 
   const detail = document.createElement("div");
@@ -3438,8 +3441,11 @@ function renderWorkbenchGitLogDetail(show) {
     filesWrap.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogNoFiles"))}</p>`;
   } else {
     for (const file of files) {
-      const row = document.createElement("div");
+      const row = document.createElement("button");
+      row.type = "button";
       row.className = "wb-git-log-file";
+      row.dataset.gitLogPath = file.path;
+      row.title = file.path;
       const status = document.createElement("span");
       status.className = "wb-git-log-file-status";
       status.textContent = file.status || "?";
@@ -3448,11 +3454,32 @@ function renderWorkbenchGitLogDetail(show) {
       path.title = file.path;
       row.appendChild(status);
       row.appendChild(path);
+      row.addEventListener("click", () => {
+        void openWorkbenchGitLogFileDiff(show, file);
+      });
       filesWrap.appendChild(row);
     }
+    filesWrap.addEventListener(
+      "wheel",
+      (event) => {
+        if (!event.deltaY) return;
+        const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+        const pane = getActiveWorkbenchGitLogDiffPane(repoRoot, show?.hash);
+        if (!pane) return;
+
+        const currentIndex = files.findIndex((file) => file.path === pane.repoPath);
+        const nextIndex = currentIndex + (event.deltaY > 0 ? 1 : -1);
+        if (currentIndex < 0 || nextIndex < 0 || nextIndex >= files.length) return;
+
+        event.preventDefault();
+        void previewWorkbenchGitLogFileDiff(show, files[nextIndex], pane);
+      },
+      { passive: false }
+    );
   }
   detail.appendChild(filesWrap);
   body.appendChild(detail);
+  syncWorkbenchGitLogFilePreviewSelection();
 }
 
 async function refreshWorkbenchGitLog() {
@@ -3465,6 +3492,7 @@ async function refreshWorkbenchGitLog() {
   }
   wbGitLogRepoRoot = repoRoot;
   wbGitLogSubView = "list";
+  wbGitLogDetailHash = "";
   body.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
   updateWorkbenchGitLogBackButton();
   try {
@@ -3730,7 +3758,19 @@ function workbenchGitDiffPaneKey(repoRoot, repoPath, staged) {
   return `diff:${repoRoot}:${staged ? "staged" : "working"}:${repoPath}`;
 }
 
-function createWorkbenchGitDiffPane({ key, projectPath, repoRoot, repoPath, displayPath, staged }) {
+function workbenchGitLogDiffPaneKey(repoRoot, hash, repoPath) {
+  return `diff:${repoRoot}:commit:${hash}:${repoPath}`;
+}
+
+function createWorkbenchGitDiffPane({
+  key,
+  projectPath,
+  repoRoot,
+  repoPath,
+  displayPath,
+  staged,
+  gitLogHash = ""
+}) {
   const stack = $("wbTerminalStack");
   if (!stack) return null;
 
@@ -3778,6 +3818,7 @@ function createWorkbenchGitDiffPane({ key, projectPath, repoRoot, repoPath, disp
     repoRoot,
     repoPath,
     staged,
+    gitLogHash,
     title: displayPath,
     paneEl,
     titleEl,
@@ -3790,7 +3831,8 @@ function createWorkbenchGitDiffPane({ key, projectPath, repoRoot, repoPath, disp
     oldText: "",
     newText: "",
     closed: false,
-    overviewPointerId: null
+    overviewPointerId: null,
+    loadRevision: 0
   };
 }
 
@@ -3913,6 +3955,139 @@ async function openWorkbenchGitDiff(change, staged) {
     )}</p>`;
     pane.overviewEl.hidden = true;
   }
+}
+
+async function openWorkbenchGitLogFileDiff(show, file) {
+  const projectPath = getWorkbenchSideRootPath();
+  const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+  const hash = show?.hash;
+  const repoPath = file?.path;
+  if (
+    !projectPath ||
+    !repoRoot ||
+    !hash ||
+    !repoPath ||
+    typeof agentResume.terminalGitShowFileDiffSides !== "function"
+  ) {
+    return;
+  }
+
+  const detail = ensureWorkbenchProjectDetail(wbProjectKeyFromPath(projectPath));
+  const key = workbenchGitLogDiffPaneKey(repoRoot, hash, repoPath);
+  if (detail.diffPanes.has(key)) {
+    switchWorkbenchPane(key);
+    return;
+  }
+
+  const pane = createWorkbenchGitDiffPane({
+    key,
+    projectPath,
+    repoRoot,
+    repoPath,
+    displayPath: repoPath,
+    staged: false,
+    gitLogHash: hash
+  });
+  if (!pane) return;
+  detail.diffPanes.set(key, pane);
+  detail.paneOrder.push(key);
+  pane.hostEl.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  bindWorkbenchGitDiffOverview(pane);
+  switchWorkbenchPane(key);
+
+  await loadWorkbenchGitLogFileDiffPane(detail, pane, hash);
+}
+
+function getActiveWorkbenchGitLogDiffPane(repoRoot, hash) {
+  const detail = getWorkbenchProjectDetail();
+  const pane = detail?.diffPanes.get(detail.activePaneKey);
+  if (!pane || pane.repoRoot !== repoRoot || pane.gitLogHash !== hash) return null;
+  return pane;
+}
+
+function syncWorkbenchGitLogFilePreviewSelection() {
+  const activePane = getActiveWorkbenchGitLogDiffPane(wbGitLogRepoRoot, wbGitLogDetailHash);
+  for (const row of document.querySelectorAll("#wbLogBody .wb-git-log-file")) {
+    const selected = Boolean(activePane && row.dataset.gitLogPath === activePane.repoPath);
+    row.classList.toggle("is-previewing", selected);
+    row.setAttribute("aria-current", selected ? "true" : "false");
+  }
+}
+
+async function loadWorkbenchGitLogFileDiffPane(detail, pane, hash) {
+  const revision = ++pane.loadRevision;
+  GitDiffCodeMirror?.unmount?.(pane.diffView);
+  pane.diffView = null;
+  pane.hostEl.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.common.loading"))}</p>`;
+  pane.overviewEl.hidden = true;
+
+  try {
+    const result = await agentResume.terminalGitShowFileDiffSides({
+      repoRoot: pane.repoRoot,
+      hash,
+      path: pane.repoPath
+    });
+    if (
+      pane.closed ||
+      detail.diffPanes.get(pane.key) !== pane ||
+      pane.gitLogHash !== hash ||
+      pane.loadRevision !== revision
+    ) {
+      return;
+    }
+    pane.oldLabelEl.textContent = result.oldLabel;
+    pane.newLabelEl.textContent = result.newLabel;
+    pane.oldText = result.oldText || "";
+    pane.newText = result.newText || "";
+    pane.overviewEl.hidden = false;
+    mountWorkbenchGitDiffPane(pane);
+  } catch (error) {
+    if (
+      pane.closed ||
+      detail.diffPanes.get(pane.key) !== pane ||
+      pane.gitLogHash !== hash ||
+      pane.loadRevision !== revision
+    ) {
+      return;
+    }
+    pane.hostEl.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(
+      t("desktop.workbench.sidePanelDiffFailed", formatWorkbenchGitError(error))
+    )}</p>`;
+    pane.overviewEl.hidden = true;
+  }
+}
+
+async function previewWorkbenchGitLogFileDiff(show, file, pane) {
+  const detail = getWorkbenchProjectDetail();
+  const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+  const hash = show?.hash;
+  const repoPath = file?.path;
+  if (!detail || !repoRoot || !hash || !repoPath || pane.repoPath === repoPath) return;
+
+  const nextKey = workbenchGitLogDiffPaneKey(repoRoot, hash, repoPath);
+  const existingPane = detail.diffPanes.get(nextKey);
+  if (existingPane && existingPane !== pane) {
+    switchWorkbenchPane(nextKey);
+    return;
+  }
+
+  const previousKey = pane.key;
+  detail.diffPanes.delete(previousKey);
+  detail.diffPanes.set(nextKey, pane);
+  detail.paneOrder = detail.paneOrder.map((key) => (key === previousKey ? nextKey : key));
+  if (detail.activePaneKey === previousKey) detail.activePaneKey = nextKey;
+
+  pane.key = nextKey;
+  pane.repoPath = repoPath;
+  pane.title = repoPath;
+  pane.paneEl.dataset.key = nextKey;
+  pane.titleEl.textContent = repoPath;
+  pane.titleEl.title = repoPath;
+  pane.oldLabelEl.textContent = "";
+  pane.newLabelEl.textContent = "";
+  renderWorkbenchTerminalTabs();
+  syncWorkbenchGitLogFilePreviewSelection();
+  await loadWorkbenchGitLogFileDiffPane(detail, pane, hash);
 }
 
 function closeWorkbenchGitDiffTab(key) {
@@ -4577,7 +4752,7 @@ const NOTES_LIST_PANE_WIDTH_KEY = "notes-list-pane-width";
 const PANE_DETAIL_MIN = 280;
 const PANE_RESIZER_GUTTER = 6;
 const PANE_WIDTH_LIMITS = {
-  folders: { min: 140, max: 400, default: 200 },
+  folders: { min: 140, max: 400, default: 220 },
   list: { min: 240, max: 520, default: 320 }
 };
 

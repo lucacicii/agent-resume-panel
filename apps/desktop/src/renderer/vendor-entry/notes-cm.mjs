@@ -12,7 +12,6 @@ import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
 import { Chunk, MergeView } from "@codemirror/merge";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { showMinimap } from "@replit/codemirror-minimap";
 import {
   EditorView,
   Decoration,
@@ -192,12 +191,6 @@ function buildExtensions(options) {
   ];
 }
 
-const DIFF_MINIMAP_COLORS = {
-  add: "#34c759",
-  delete: "#ff3b30",
-  change: "#ff9500"
-};
-
 function classifyDiffChunk(chunk) {
   let added = false;
   let deleted = false;
@@ -220,18 +213,7 @@ function lineNumberAt(doc, position) {
   return doc.lineAt(clampDocPosition(doc, position)).number;
 }
 
-function createDiffMinimapExtension(gutters) {
-  return showMinimap.of({
-    create() {
-      return { dom: document.createElement("div") };
-    },
-    displayText: "characters",
-    showOverlay: "always",
-    gutters: [gutters]
-  });
-}
-
-function buildDiffExtensions(options, minimapGutters = null) {
+function buildDiffExtensions(options) {
   const pref = options.theme;
   const useLight =
     pref === "light" || pref === "dark"
@@ -248,7 +230,6 @@ function buildDiffExtensions(options, minimapGutters = null) {
     highlightActiveLineGutter(),
     highlightSpecialChars(),
     languageCompartment.of(initialLanguage(options)),
-    ...(minimapGutters ? [createDiffMinimapExtension(minimapGutters)] : []),
     ...themePack
   ];
 }
@@ -346,13 +327,6 @@ const gitDiffCodeMirror = {
     const newText = String(options.newText ?? "");
     const oldDoc = EditorState.create({ doc: oldText }).doc;
     const newDoc = EditorState.create({ doc: newText }).doc;
-    const chunks = Chunk.build(oldDoc, newDoc, { scanLimit: 500, timeout: 1000 });
-    const minimapGutters = {};
-    for (const item of buildDiffOverview(chunks, oldDoc, newDoc)) {
-      const line = lineNumberAt(newDoc, item.fromB);
-      minimapGutters[line] = DIFF_MINIMAP_COLORS[item.kind];
-    }
-
     const merge = new MergeView({
       a: {
         doc: oldText,
@@ -360,7 +334,7 @@ const gitDiffCodeMirror = {
       },
       b: {
         doc: newText,
-        extensions: buildDiffExtensions(options, minimapGutters)
+        extensions: buildDiffExtensions(options)
       },
       parent: host,
       orientation: "a-b",

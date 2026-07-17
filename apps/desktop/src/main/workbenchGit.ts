@@ -57,6 +57,13 @@ export interface GitShowResult {
   files: GitShowFileEntry[];
 }
 
+export interface GitCommitFileDiffSidesResult {
+  oldLabel: string;
+  newLabel: string;
+  oldText: string;
+  newText: string;
+}
+
 function formatExecError(error: unknown): string {
   const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
   const stderr = err.stderr ? String(err.stderr).trim() : "";
@@ -121,6 +128,14 @@ function assertValidGitHash(hash: string): string {
     throw new Error(`无效的 commit hash: ${hash}`);
   }
   return trimmed;
+}
+
+function assertValidGitFilePath(filePath: string): string {
+  const normalized = filePath.trim();
+  if (!normalized || normalized.includes("\0")) {
+    throw new Error("无效的文件路径");
+  }
+  return normalized;
 }
 
 function normalizeGitDecorations(raw: string): string {
@@ -282,6 +297,40 @@ async function queryGitShow(repoRoot: string, hash: string): Promise<GitShowResu
   }
 }
 
+async function gitShowCommitFile(repoRoot: string, ref: string, filePath: string): Promise<string | null> {
+  try {
+    return await gitExec(repoRoot, ["show", `${ref}:${filePath}`], 10000, 512 * 1024 + 65536);
+  } catch (error) {
+    const message = formatExecError(error);
+    if (/does not exist|exists on disk, but not in|invalid object name|unknown revision|bad object/i.test(message)) {
+      return null;
+    }
+    throw new Error(message);
+  }
+}
+
+async function queryGitCommitFileDiffSides(
+  repoRoot: string,
+  hash: string,
+  filePath: string
+): Promise<GitCommitFileDiffSidesResult> {
+  const commit = assertValidGitHash(hash);
+  const path = assertValidGitFilePath(filePath);
+  const shortHash = commit.slice(0, 7);
+
+  const [oldFile, newFile] = await Promise.all([
+    gitShowCommitFile(repoRoot, `${commit}^`, path),
+    gitShowCommitFile(repoRoot, commit, path)
+  ]);
+
+  return {
+    oldLabel: oldFile === null ? "(empty)" : `${shortHash}^`,
+    newLabel: newFile === null ? "(deleted)" : shortHash,
+    oldText: oldFile ?? "",
+    newText: newFile ?? ""
+  };
+}
+
 async function collectGitCommitContext(repoRoot: string): Promise<{ statusText: string; diffText: string }> {
   const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1"], 10000);
   let diffText = "";
@@ -414,4 +463,12 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     return queryGitShow(repoRoot, args.hash);
   });
+
+  safeHandle(
+    "terminal:gitShowFileDiffSides",
+    async (_event, args: { repoRoot: string; hash: string; path: string }) => {
+      const repoRoot = await resolveRepoRoot(args.repoRoot);
+      return queryGitCommitFileDiffSides(repoRoot, args.hash, args.path);
+    }
+  );
 }

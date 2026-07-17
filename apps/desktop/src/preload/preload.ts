@@ -235,6 +235,11 @@ export interface DesktopApi {
     body: string;
     files: Array<{ status: string; path: string }>;
   }>;
+  terminalGitShowFileDiffSides(args: {
+    repoRoot: string;
+    hash: string;
+    path: string;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -610,6 +615,7 @@ const api: DesktopApi = {
   terminalGitPull: (args) => ipcRenderer.invoke("terminal:gitPull", args),
   terminalGitLog: (args) => ipcRenderer.invoke("terminal:gitLog", args),
   terminalGitShow: (args) => ipcRenderer.invoke("terminal:gitShow", args),
+  terminalGitShowFileDiffSides: (args) => ipcRenderer.invoke("terminal:gitShowFileDiffSides", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
