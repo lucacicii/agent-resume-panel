@@ -15,7 +15,7 @@ const extensionRoot = path.join(scriptDir, "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
 
 if (!fs.existsSync(path.join(extensionRoot, "out", "extension.js"))) {
-  throw new Error("Missing out/extension.js — run npm run compile first.");
+  throw new Error("Missing out/extension.js — run pnpm run compile first.");
 }
 
 const vsixPath = packageVsix(`${pkg.name}-${pkg.version}.test.vsix`);
@@ -30,6 +30,15 @@ try {
   const corePkgPath = path.join(extRoot, "node_modules", "@agent-resume", "core", "package.json");
   const corePkg = JSON.parse(fs.readFileSync(corePkgPath, "utf8"));
   assert.ok(corePkg.exports?.["./extension"], "vendored @agent-resume/core must expose ./extension in exports");
+
+  for (const dependency of ["@agentclientprotocol/sdk", "dompurify", "marked", "zod"]) {
+    const dependencyPath = path.join(extRoot, "node_modules", ...dependency.split("/"));
+    assert.ok(fs.existsSync(dependencyPath), `VSIX must contain runtime dependency ${dependency}`);
+  }
+
+  for (const metadata of ["pnpm-lock.yaml", "pnpm-workspace.yaml", ".pnpm-workspace-state-v1.json", ".npmrc"]) {
+    assert.equal(fs.existsSync(path.join(extRoot, metadata)), false, `VSIX must exclude ${metadata}`);
+  }
 
   for (const file of ["README.md", "CHANGELOG.md"]) {
     const filePath = path.join(extRoot, file);

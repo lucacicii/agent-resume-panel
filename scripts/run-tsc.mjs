@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.join(scriptDir, "..");
 
 function parseArgs(argv) {
   const args = [...argv];
@@ -25,18 +21,19 @@ function parseArgs(argv) {
   return { cwd, tscArgs: args };
 }
 
-function resolveTscBin() {
-  const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
-  if (!fs.existsSync(tscBin)) {
+function resolveTscBin(cwd) {
+  const require = createRequire(path.join(cwd, "package.json"));
+  try {
+    return require.resolve("typescript/bin/tsc");
+  } catch {
     throw new Error(
-      `Missing TypeScript at ${tscBin}. Run \`npm install\` from the repo root.`
+      `Missing TypeScript for ${cwd}. Run \`pnpm install\` from the repo root.`
     );
   }
-  return tscBin;
 }
 
 const { cwd, tscArgs } = parseArgs(process.argv.slice(2));
-const tscBin = resolveTscBin();
+const tscBin = resolveTscBin(cwd);
 
 execFileSync(process.execPath, [tscBin, ...tscArgs], {
   cwd,

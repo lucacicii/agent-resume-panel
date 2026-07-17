@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+nodeLinker: isolated
+
+allowBuilds:
+  "@vscode/vsce-sign": true
+  electron: true
+  esbuild: true
+  keytar: true
+  node-pty: true

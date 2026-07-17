@@ -19,7 +19,7 @@
 | Concern | Path | Notes |
 | --- | --- | --- |
 | locale catalogs | `apps/desktop/locales/{en,zh-cn,ja}.json` | Shipped keys only; `desktop.*` namespace. |
-| catalog source | `scripts/desktop-i18n-catalog.json` | Authoritative desktop strings; run `npm run merge:desktop-i18n` to regenerate locales. |
+| catalog source | `scripts/desktop-i18n-catalog.json` | Authoritative desktop strings; run `pnpm run merge:desktop-i18n` to regenerate locales. |
 | settings aliases | `scripts/desktop-settings-i18n-aliases.json`, `scripts/desktop-settings-i18n-overrides.mjs` | Map shared setting labels where desktop reuses extension wording. |
 | renderer bundle | `apps/desktop/scripts/copy-renderer.cjs` | Copies merged locales to `dist/locales` at build time. |
 
@@ -30,5 +30,5 @@ Do not edit extension `apps/extension/locales/` for desktop UI copy.
 - Keep `contextIsolation: true` and `nodeIntegration: false`.
 - Any new capability follows main handler, preload method, and renderer call as one contract change.
 - Desktop UI visual work must follow [`.agents/extended/ui-design-system.md`](../extended/ui-design-system.md) (macOS HIG tokens, components, migration phases).
-- Use `npm run build:desktop` for compilation and asset verification; use `npm run dev:desktop` for interactive checks.
-- Desktop releases are independent: bump `apps/desktop/package.json`, then `npm run release:desktop:mac`.
+- Use `pnpm run build:desktop` for compilation and asset verification; use `pnpm run dev:desktop` for interactive checks.
+- Desktop releases are independent: bump `apps/desktop/package.json`, then `pnpm run release:desktop:mac`.

@@ -41,19 +41,20 @@ Never commit:
 Install dependencies:
 
 ```sh
-npm install
+corepack enable
+pnpm install --frozen-lockfile
 ```
 
 Compile the extension:
 
 ```sh
-npm run compile
+pnpm run compile
 ```
 
 For active development, run the TypeScript watcher:
 
 ```sh
-npm run watch
+pnpm run watch
 ```
 
 ## Local Install
@@ -61,13 +62,13 @@ npm run watch
 Build and install the local VSIX into available VS Code-compatible editors:
 
 ```sh
-npm run install:local
+pnpm run install:local
 ```
 
 Install only into official VS Code via the `code` CLI (does not install into Cursor or VSCodium; requires `code` on PATH):
 
 ```sh
-npm run install:local-vscode
+pnpm run install:local-vscode
 ```
 
 After installing, run **Developer: Reload Window** in VS Code. The extension's own refresh command only reloads session data; it does not reload `package.json` contribution points.
@@ -77,26 +78,26 @@ After installing, run **Developer: Reload Window** in VS Code. The extension's o
 Package a local VSIX into `dist/`:
 
 ```sh
-npm run package
+pnpm run package
 ```
 
 Build both Open VSX and VS Code Marketplace VSIX files into `dist/`:
 
 ```sh
-npm run build:all
+pnpm run build:all
 ```
 
 ## Open VSX
 
 Release notes live in [`apps/extension/CHANGELOG.md`](apps/extension/CHANGELOG.md). Update that file before each Open VSX publish.
 
-Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `npm run release:desktop:mac`.
+Desktop release notes live in [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md). Update that file before `pnpm run release:desktop:mac`.
 
 Publish (requires an [Open VSX access token](https://github.com/eclipse/openvsx/wiki/Deploying-Extensions)):
 
 ```sh
 export OVSX_PAT=<your-token>
-npm run publish:openvsx
+pnpm run publish:openvsx
 ```
 
 ## Project Menu Contributions
@@ -107,7 +108,7 @@ When you add, remove, or reorder configurable **project** or **session** context
 2. Regenerate menu contributions:
 
 ```sh
-npm run patch:menus
+pnpm run patch:menus
 ```
 
 This script regenerates menu blocks in `apps/extension/manifest/contributes.generated.json` and updates `base.openvsx.json`, and preserves ACP chat context menu entries.
@@ -115,24 +116,24 @@ This script regenerates menu blocks in `apps/extension/manifest/contributes.gene
 3. Verify the generator:
 
 ```sh
-npm run test:menus
+pnpm run test:menus
 ```
 
-4. Run `npm run install:local`, then **Developer: Reload Window**.
+4. Run `pnpm run install:local`, then **Developer: Reload Window**.
 
 ## Desktop i18n
 
 Desktop UI strings live under `desktop.*` keys in [`apps/desktop/locales/`](apps/desktop/locales/). After editing [`scripts/desktop-i18n-catalog.json`](scripts/desktop-i18n-catalog.json) or desktop-only overrides, merge into desktop locale files:
 
 ```sh
-npm run merge:desktop-i18n
+pnpm run merge:desktop-i18n
 ```
 
-Then run `npm run build:desktop` (or `dev:desktop -- --fresh`) so `apps/desktop/dist/locales` picks up the changes.
+Then run `pnpm run build:desktop` (or `dev:desktop -- --fresh`) so `apps/desktop/dist/locales` picks up the changes.
 
 ## Change Checklist
 
-- Run `npm run compile` after code changes.
-- Run `npm run test:menus` after changing project menu generation scripts.
-- Run `npm run install:local` after changes that affect extension contributions, menus, commands, views, activation events, or anything the installed extension must show in VS Code.
-- After `npm run install:local`, reload VS Code with **Developer: Reload Window**.
+- Run `pnpm run compile` after code changes.
+- Run `pnpm run test:menus` after changing project menu generation scripts.
+- Run `pnpm run install:local` after changes that affect extension contributions, menus, commands, views, activation events, or anything the installed extension must show in VS Code.
+- After `pnpm run install:local`, reload VS Code with **Developer: Reload Window**.

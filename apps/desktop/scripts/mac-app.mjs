@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadArtifact } from "@electron/get";
+import { ensureSpawnHelpersExecutable } from "./fix-node-pty.mjs";
 
 const require = createRequire(import.meta.url);
 const PACKAGER_ATTEMPTS = 3;
@@ -12,6 +13,8 @@ const RETRY_DELAY_MS = 2000;
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
+const packagingRoot = path.join(root, ".pack-staging");
+const repoRoot = path.join(root, "..", "..");
 const stampFile = path.join(root, ".dev-app-stamp");
 const iconPath = path.join(root, "dist", "resources", "icon.icns");
 const targetArch = "universal";
@@ -26,7 +29,7 @@ export const desktopRoot = root;
 export const macTargetArch = targetArch;
 
 export function runDesktopBuild() {
-  execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
+  execFileSync("pnpm", ["run", "build"], { cwd: root, stdio: "inherit" });
 }
 
 export function findAppBundle() {
@@ -145,32 +148,30 @@ async function ensureElectronZipDir() {
   return zipDir;
 }
 
-function materializeNodeModules() {
-  const repoNm = path.join(root, "..", "..", "node_modules");
-  const desktopNm = path.join(root, "node_modules");
-  fs.mkdirSync(desktopNm, { recursive: true });
-  for (const name of fs.readdirSync(repoNm)) {
-    if (name === ".bin") continue;
-    const source = path.join(repoNm, name);
-    const destination = path.join(desktopNm, name);
+function deployDesktop() {
+  fs.rmSync(packagingRoot, { recursive: true, force: true });
+  execFileSync(
+    "pnpm",
+    ["--filter", "@agent-resume/desktop", "--prod", "deploy", "--legacy", packagingRoot],
+    { cwd: repoRoot, stdio: "inherit" }
+  );
 
-    if (!name.startsWith("@")) {
-      if (!fs.existsSync(destination)) {
-        fs.symlinkSync(source, destination, "dir");
-      }
-      continue;
-    }
+  removeDesktopSelfReferences(packagingRoot);
 
-    if (fs.existsSync(destination) && fs.lstatSync(destination).isSymbolicLink()) {
-      fs.rmSync(destination, { recursive: true, force: true });
-    }
-    fs.mkdirSync(destination, { recursive: true });
-    for (const packageName of fs.readdirSync(source)) {
-      const scopedDestination = path.join(destination, packageName);
-      if (!fs.existsSync(scopedDestination)) {
-        fs.symlinkSync(path.join(source, packageName), scopedDestination, "dir");
-      }
-    }
+  const nodePtyRoot = path.join(packagingRoot, "node_modules", "node-pty");
+  const helpers = ensureSpawnHelpersExecutable(nodePtyRoot, "darwin");
+  if (helpers.length === 0) {
+    throw new Error(`No macOS node-pty spawn-helper found under ${nodePtyRoot}`);
+  }
+}
+
+export function removeDesktopSelfReferences(deployRoot) {
+  const selfReferences = [
+    path.join(deployRoot, "node_modules", "@agent-resume", "desktop"),
+    path.join(deployRoot, "node_modules", ".pnpm", "node_modules", "@agent-resume", "desktop")
+  ];
+  for (const selfReference of selfReferences) {
+    fs.rmSync(selfReference, { recursive: true, force: true });
   }
 }
 
@@ -179,15 +180,16 @@ export async function packMacApp() {
     throw new Error("pack:mac is only supported on macOS.");
   }
   if (!fs.existsSync(iconPath)) {
-    throw new Error(`Missing app icon: ${iconPath}. Run npm run build first.`);
+    throw new Error(`Missing app icon: ${iconPath}. Run pnpm run build first.`);
   }
-  materializeNodeModules();
+  deployDesktop();
   const electronZipDir = await ensureElectronZipDir();
   console.log("Packaging macOS .app...");
   fs.rmSync(releaseRoot, { recursive: true, force: true });
   const packagerArgs = [
-    "@electron/packager",
-    ".",
+    "exec",
+    "electron-packager",
+    packagingRoot,
     "Agent Resume",
     `--platform=darwin`,
     `--arch=${targetArch}`,
@@ -199,10 +201,10 @@ export async function packMacApp() {
     "--overwrite",
     "--asar.unpackDir=node_modules/node-pty",
     "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
-    "--prune=true"
+    "--no-prune"
   ];
   await withRetry("electron-packager", PACKAGER_ATTEMPTS, () => {
-    execFileSync("npx", packagerArgs, {
+    execFileSync("pnpm", packagerArgs, {
       cwd: root,
       stdio: "inherit",
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }

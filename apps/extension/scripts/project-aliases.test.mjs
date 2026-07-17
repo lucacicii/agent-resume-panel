@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-// Compile output required; run after `npm run compile`.
+// Compile output required; run after `pnpm run compile`.
 const { formatProjectLabel, normalizeProjectPath } = require("../out/projects/projectAliases.js");
 
 assert.equal(formatProjectLabel("/Users/me/agent-resume-panel"), "agent-resume-panel");

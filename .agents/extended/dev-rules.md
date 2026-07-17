@@ -18,13 +18,13 @@ See [product-independence.md](product-independence.md) for the full extension vs
 
 ## Build And Test
 
-- Use npm workspaces from the repository root. Add a dependency only to the workspace that owns it: `npm install <package> -w <workspace-name>`.
-- Run `npm run compile` after source changes. It builds core before compiling the extension.
-- For core-only work, use `npm run build -w @agent-resume/core` and its package test script when applicable.
-- For desktop work, use `npm run dev:desktop` for daily watch-mode development (see [`apps/desktop/DEVELOPMENT.md`](../../apps/desktop/DEVELOPMENT.md)); use `npm run build:desktop` for full builds; use `npm run dev:mac -w @agent-resume/desktop` on macOS to verify the packaged `.app` path; use `npm run pack:desktop` before distribution tests.
-- Extension and desktop locales are separate. Extension strings live in `apps/extension/locales/`; desktop strings live in `apps/desktop/locales/` (`desktop.*` keys only, generated from `scripts/desktop-i18n-catalog.json`). Run `npm run i18n:check` after either changes. Run `npm run i18n:check:translations` for coverage audits.
-- Context-menu contribution changes require `node apps/extension/scripts/patch-project-menu-package.mjs`, then `npm run test:menus`. The patch script updates `manifest/contributes.generated.json` and `base.openvsx.json`, then merges `package.json`.
-- Extension contributions, commands, views, or activation events require `npm run install:local` and **Developer: Reload Window** to test the installed extension.
+- Use pnpm `11.13.1` workspaces from the repository root with Node.js `>=22.13`. Add a dependency only to the workspace that owns it: `pnpm --filter <workspace-name> add <package>`.
+- Run `pnpm run compile` after source changes. It builds core before compiling the extension.
+- For core-only work, use `pnpm --filter @agent-resume/core run build` and its package test script when applicable.
+- For desktop work, use `pnpm run dev:desktop` for daily watch-mode development (see [`apps/desktop/DEVELOPMENT.md`](../../apps/desktop/DEVELOPMENT.md)); use `pnpm run build:desktop` for full builds; use `pnpm --filter @agent-resume/desktop run dev:mac` on macOS to verify the packaged `.app` path; use `pnpm run pack:desktop` before distribution tests.
+- Extension and desktop locales are separate. Extension strings live in `apps/extension/locales/`; desktop strings live in `apps/desktop/locales/` (`desktop.*` keys only, generated from `scripts/desktop-i18n-catalog.json`). Run `pnpm run i18n:check` after either changes. Run `pnpm run i18n:check:translations` for coverage audits.
+- Context-menu contribution changes require `node apps/extension/scripts/patch-project-menu-package.mjs`, then `pnpm run test:menus`. The patch script updates `manifest/contributes.generated.json` and `base.openvsx.json`, then merges `package.json`.
+- Extension contributions, commands, views, or activation events require `pnpm run install:local` and **Developer: Reload Window** to test the installed extension.
 
 ## Data Contracts
 

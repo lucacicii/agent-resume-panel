@@ -8,7 +8,7 @@ This monorepo ships **two independent products** plus a shared library. Treat th
 | --- | --- | --- | --- |
 | VS Code extension | `agent-resume-panel` (`apps/extension/`) | `apps/extension/package.json` | `.vsix` → VS Marketplace / Open VSX |
 | Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `thunder-luc/agent-resume-desktop-doc` GitHub Releases |
-| Shared core | `@agent-resume/core` (`packages/core/`) | `packages/core/package.json` | npm workspace library (not published standalone) |
+| Shared core | `@agent-resume/core` (`packages/core/`) | `packages/core/package.json` | pnpm workspace library (not published standalone) |
 
 Versions, release cadence, and changelogs are **independent**. Bumping the extension does not bump desktop, and vice versa.
 
@@ -27,7 +27,7 @@ Versions, release cadence, and changelogs are **independent**. Bumping the exten
 - **ACP Chat** — entire `apps/extension/src/acp/` stack; no desktop equivalent.
 - Extension settings — VS Code `agentResume.*` + `settings.json` LLM bridge.
 - Extension i18n — `apps/extension/locales/{en,zh-cn,ja}.json`; keys are extension-scoped (no `desktop.*`).
-- Extension packaging — `npm run package`, `install:local`, menu contribution generators.
+- Extension packaging — `pnpm run package`, `install:local`, menu contribution generators.
 
 ### Desktop-only
 
@@ -36,7 +36,7 @@ Versions, release cadence, and changelogs are **independent**. Bumping the exten
 - Desktop settings — `settings.desktop.json` under panel home.
 - Desktop-private runtime — `.desktop/` (`desktop.db`, workbench scratch).
 - Desktop i18n — `apps/desktop/locales/{en,zh-cn,ja}.json`; keys are `desktop.*` only.
-- Desktop packaging — `npm run pack:desktop`, `release:desktop:mac`.
+- Desktop packaging — `pnpm run pack:desktop`, `release:desktop:mac`.
 
 ## i18n Separation
 
@@ -44,14 +44,14 @@ Extension and desktop **do not share locale JSON files**.
 
 | Surface | Locale source | Key namespace | Checker |
 | --- | --- | --- | --- |
-| Extension | `apps/extension/locales/*.json` | `tree.*`, `settings.*`, `webview.*`, etc. | `npm run i18n:check` |
-| Desktop | `apps/desktop/locales/*.json` (generated from `scripts/desktop-i18n-catalog.json`) | `desktop.*` only | `npm run i18n:check` (desktop section) |
-| Translation coverage | — | — | `npm run i18n:check:translations` |
+| Extension | `apps/extension/locales/*.json` | `tree.*`, `settings.*`, `webview.*`, etc. | `pnpm run i18n:check` |
+| Desktop | `apps/desktop/locales/*.json` (generated from `scripts/desktop-i18n-catalog.json`) | `desktop.*` only | `pnpm run i18n:check` (desktop section) |
+| Translation coverage | — | — | `pnpm run i18n:check:translations` |
 
 Rules:
 
 - Do **not** add `desktop.*` keys to extension locales or extension keys to desktop locales.
-- Desktop locale changes go through `scripts/desktop-i18n-catalog.json` and `npm run merge:desktop-i18n`.
+- Desktop locale changes go through `scripts/desktop-i18n-catalog.json` and `pnpm run merge:desktop-i18n`.
 - Do **not** run `build:en-catalog` (removed); extension `en.json` is the source of truth.
 - `packages/core` may reference i18n keys via `pt()` / `progressText()`; the checker scans core for both products.
 
@@ -78,15 +78,15 @@ Before editing, identify the target product:
 
 | Change type | Extension | Desktop |
 | --- | --- | --- |
-| TypeScript / compile | `npm run compile` | `npm run build:desktop` |
-| User-facing strings | `npm run i18n:check` on extension locales | `npm run i18n:check` + `merge:desktop-i18n` if catalog changed |
-| Translation audit | `npm run i18n:check:translations` | same (covers both) |
-| Menu contributions | `npm run test:menus`, `install:local`, reload VS Code | — |
-| Pack / release smoke | — | `npm run pack:desktop` or `release:desktop:mac` |
+| TypeScript / compile | `pnpm run compile` | `pnpm run build:desktop` |
+| User-facing strings | `pnpm run i18n:check` on extension locales | `pnpm run i18n:check` + `merge:desktop-i18n` if catalog changed |
+| Translation audit | `pnpm run i18n:check:translations` | same (covers both) |
+| Menu contributions | `pnpm run test:menus`, `install:local`, reload VS Code | — |
+| Pack / release smoke | — | `pnpm run pack:desktop` or `release:desktop:mac` |
 
 ## Release Pipelines
 
 - **Extension** — update `apps/extension/CHANGELOG.md`, then workspace scripts in `apps/extension/package.json`; publish via Marketplace / Open VSX tooling.
-- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `npm run release:desktop:mac -- --build`; user docs live in `agent-resume-desktop-doc` repo.
+- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `pnpm run release:desktop:mac -- --build`; user docs live in `agent-resume-desktop-doc` repo.
 
 A desktop release does not require an extension release, and the reverse is also true.

@@ -18,7 +18,7 @@
 ## Constraints
 
 - Menu contribution blocks are generated. Run `node apps/extension/scripts/patch-project-menu-package.mjs` before tests instead of manually changing those blocks.
-- Installed extension changes are visible only after `npm run install:local` and a VS Code window reload.
+- Installed extension changes are visible only after `pnpm run install:local` and a VS Code window reload.
 - Keep extension i18n changes synchronized across `t()` keys, `uiStrings.ts`, webview consumers, and every file in `apps/extension/locales/`.
 - Do not add `desktop.*` keys to extension locales. Desktop strings belong in `scripts/desktop-i18n-catalog.json`.
 - Extension releases (VSIX) are independent from desktop DMG releases.

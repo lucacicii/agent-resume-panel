@@ -1,14 +1,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const desktopRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const repoRoot = path.join(desktopRoot, "..", "..");
-
-function electronPackageDir(nodeModulesRoot) {
-  return path.join(nodeModulesRoot, "electron");
-}
+const require = createRequire(import.meta.url);
 
 function hasElectronBinary(pkgDir) {
   return fs.existsSync(path.join(pkgDir, "path.txt"));
@@ -29,18 +26,12 @@ function readElectronPath(pkgDir) {
   return path.join(pkgDir, "dist", relative);
 }
 
-function removeBrokenNestedElectron() {
-  const nested = electronPackageDir(path.join(desktopRoot, "node_modules"));
-  if (!fs.existsSync(nested)) {
-    return;
+function resolveElectronPackageDir() {
+  try {
+    return path.dirname(require.resolve("electron/package.json"));
+  } catch {
+    throw new Error("Missing Electron for @agent-resume/desktop. Run `pnpm install` from the repo root.");
   }
-  if (fs.lstatSync(nested).isSymbolicLink()) {
-    return;
-  }
-  if (hasElectronBinary(nested)) {
-    return;
-  }
-  fs.rmSync(nested, { recursive: true, force: true });
 }
 
 function runElectronInstall(pkgDir) {
@@ -55,46 +46,24 @@ function runElectronInstall(pkgDir) {
   });
 }
 
-function reinstallElectronAtRoot() {
-  execFileSync("npm", ["install", "electron", "-w", "@agent-resume/desktop", "--no-audit", "--no-fund"], {
-    cwd: repoRoot,
-    stdio: "inherit"
-  });
-}
-
-/**
- * Ensures a hoisted root electron install with a downloaded binary.
- * Removes broken nested copies that win Node's module resolution.
- */
 export function ensureElectron() {
-  removeBrokenNestedElectron();
-
-  const rootPkgDir = electronPackageDir(path.join(repoRoot, "node_modules"));
-  if (!fs.existsSync(rootPkgDir)) {
-    reinstallElectronAtRoot();
+  const pkgDir = resolveElectronPackageDir();
+  if (!hasElectronBinary(pkgDir)) {
+    runElectronInstall(pkgDir);
   }
 
-  if (!hasElectronBinary(rootPkgDir)) {
-    try {
-      runElectronInstall(rootPkgDir);
-    } catch {
-      fs.rmSync(rootPkgDir, { recursive: true, force: true });
-      reinstallElectronAtRoot();
-    }
-  }
-
-  if (!hasElectronBinary(rootPkgDir)) {
+  if (!hasElectronBinary(pkgDir)) {
     throw new Error(
-      "Electron failed to install correctly. Run from repo root: rm -rf node_modules/electron apps/desktop/node_modules/electron && npm install"
+      "Electron failed to install correctly. Run `pnpm install --force` from the repo root."
     );
   }
 
-  return readElectronPath(rootPkgDir);
+  return readElectronPath(pkgDir);
 }
 
 export function resolveElectronPath() {
-  const rootPkgDir = electronPackageDir(path.join(repoRoot, "node_modules"));
-  const executablePath = readElectronPath(rootPkgDir);
+  const pkgDir = resolveElectronPackageDir();
+  const executablePath = readElectronPath(pkgDir);
   if (executablePath && fs.existsSync(executablePath)) {
     return executablePath;
   }

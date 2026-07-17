@@ -4,7 +4,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 Desktop release notes for [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) releases. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-Update this file before each Desktop release (`npm run release:desktop:mac`).
+Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 

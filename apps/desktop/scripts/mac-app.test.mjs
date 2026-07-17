@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isBuildStampCurrent, macTargetArch, stageMacDmgContents } from "./mac-app.mjs";
+import {
+  isBuildStampCurrent,
+  macTargetArch,
+  removeDesktopSelfReferences,
+  stageMacDmgContents
+} from "./mac-app.mjs";
 
 assert.equal(macTargetArch, "universal");
 assert.equal(
@@ -61,6 +66,23 @@ try {
   assert.equal(fs.readFileSync(path.join(stagingDir, "Agent Resume.app", "Contents", "Info.plist"), "utf8"), "test");
   assert.equal(fs.lstatSync(path.join(stagingDir, "Applications")).isSymbolicLink(), true);
   assert.equal(fs.readlinkSync(path.join(stagingDir, "Applications")), "/Applications");
+
+  const deployRoot = path.join(testRoot, "deploy");
+  const selfReferences = [
+    path.join(deployRoot, "node_modules", "@agent-resume", "desktop"),
+    path.join(deployRoot, "node_modules", ".pnpm", "node_modules", "@agent-resume", "desktop")
+  ];
+  for (const selfReference of selfReferences) {
+    fs.mkdirSync(path.dirname(selfReference), { recursive: true });
+    fs.symlinkSync(deployRoot, selfReference, "dir");
+  }
+  const coreReference = path.join(deployRoot, "node_modules", "@agent-resume", "core");
+  fs.mkdirSync(coreReference, { recursive: true });
+
+  removeDesktopSelfReferences(deployRoot);
+
+  assert.equal(selfReferences.some((selfReference) => fs.existsSync(selfReference)), false);
+  assert.equal(fs.existsSync(coreReference), true);
 } finally {
   fs.rmSync(testRoot, { recursive: true, force: true });
 }
