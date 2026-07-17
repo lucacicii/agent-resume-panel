@@ -421,16 +421,75 @@ function visibleFilteredProjectGroups(projectGroups, options) {
   });
 }
 
-function sidebarProjectFilterSectionTitle(filterMode, searchText, visibleCount) {
+function sidebarFilterSectionTitle(baseLabel, metaKey, filterMode, searchText, visibleCount) {
   const filterActive = filterMode !== "all" || searchText.trim();
-  if (!filterActive) return t("desktop.notes.projectLabel");
-  const filterLabel = filterMode === "pinned" ? t("desktop.common.pinned") : filterMode === "active" ? t("desktop.common.active") : "";
+  if (!filterActive) return baseLabel;
+  const filterLabel =
+    filterMode === "pinned" ? t("desktop.common.pinned") : filterMode === "active" ? t("desktop.common.active") : "";
   return t(
-    "desktop.workbench.projectFilterMeta",
+    metaKey,
     filterLabel ? ` · ${filterLabel}` : "",
     searchText.trim() ? ` · 「${searchText.trim()}」` : "",
     visibleCount
   );
+}
+
+function sidebarProjectFilterSectionTitle(filterMode, searchText, visibleCount) {
+  return sidebarFilterSectionTitle(
+    t("desktop.notes.projectLabel"),
+    "desktop.workbench.projectFilterMeta",
+    filterMode,
+    searchText,
+    visibleCount
+  );
+}
+
+function sidebarSessionFilterSectionTitle(filterMode, searchText, visibleCount) {
+  return sidebarFilterSectionTitle(
+    t("desktop.notes.sessionsSection"),
+    "desktop.notes.sessionFilterMeta",
+    filterMode,
+    searchText,
+    visibleCount
+  );
+}
+
+function sessionMatchesSearch(group, searchText, title) {
+  if (!searchText.trim()) return true;
+  const q = searchText.trim().toLowerCase();
+  const haystack = [
+    title,
+    group.sessionId,
+    group.provider,
+    group.projectPath,
+    group.projectPath ? basename(group.projectPath) : ""
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function sessionMatchesFilter(group, filterMode) {
+  if (filterMode === "pinned") {
+    return Boolean(group.projectPath && isProjectPinned(group.projectPath));
+  }
+  if (filterMode === "active") {
+    return hasWorkbenchSessionActivity({ provider: group.provider, id: group.sessionId });
+  }
+  return true;
+}
+
+function visibleFilteredSessionGroups(sessionGroups, options) {
+  const { searchText, filterMode, selectedSessionKey, resolveTitle } = options;
+  return sessionGroups.filter((group) => {
+    const key = `${group.provider}:${group.sessionId}`;
+    const title = typeof resolveTitle === "function" ? resolveTitle(group) : group.title || group.sessionId;
+    const matches =
+      sessionMatchesFilter(group, filterMode) && sessionMatchesSearch(group, searchText, title);
+    if (matches) return true;
+    return selectedSessionKey && key === selectedSessionKey;
+  });
 }
 
 function syncSidebarProjectFilterUi(hostId, filterMode) {
@@ -779,6 +838,8 @@ let wbSearch = "";
 let wbProjectSearch = "";
 /** @type {"all" | "pinned" | "active"} */
 let wbProjectFilter = "all";
+/** @type {"all" | "active"} */
+let wbSessionFilter = "all";
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
 /** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, diffPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
@@ -985,10 +1046,19 @@ function filterWorkbenchSessionsBySearch(sessions) {
   });
 }
 
+function filterWorkbenchSessionsByStatus(sessions) {
+  if (wbSessionFilter !== "active") return sessions;
+  return sessions.filter((s) => {
+    if (hasWorkbenchSessionActivity(s)) return true;
+    // Keep the currently selected session visible under Active filter.
+    return workbenchSessionKey(s) === wbActiveKey;
+  });
+}
+
 function visibleWorkbenchSessions() {
-  return filterWorkbenchSessionsBySearch(filterWorkbenchSessionsByProject(wbSessions)).sort(
-    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-  );
+  return filterWorkbenchSessionsByStatus(
+    filterWorkbenchSessionsBySearch(filterWorkbenchSessionsByProject(wbSessions))
+  ).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
 function updateWorkbenchToolbarState() {
@@ -1120,10 +1190,15 @@ function highlightWorkbenchSession(key) {
   wbActiveKey = key || "";
   const detail = getWorkbenchProjectDetail();
   if (detail) detail.activeSessionKey = wbActiveKey;
-  document.querySelectorAll(".wb-list-item").forEach((el) => {
-    el.classList.toggle("active", el.dataset.key === wbActiveKey);
-    syncWorkbenchListItemActivity(el);
-  });
+  if (wbSessionFilter === "active") {
+    // Active membership can change when terminals open/close — rebuild list.
+    renderWorkbenchSessionList();
+  } else {
+    document.querySelectorAll(".wb-list-item").forEach((el) => {
+      el.classList.toggle("active", el.dataset.key === wbActiveKey);
+      syncWorkbenchListItemActivity(el);
+    });
+  }
   renderWorkbenchFolders();
   updateWorkbenchToolbarState();
 }
@@ -1227,6 +1302,7 @@ function renderWorkbenchSessionList() {
 
   const sessions = visibleWorkbenchSessions();
   list.innerHTML = "";
+  syncSidebarProjectFilterUi("wbSessionFilter", wbSessionFilter);
 
   if (meta) {
     const folderLabel =
@@ -1234,6 +1310,8 @@ function renderWorkbenchSessionList() {
     const total = wbSessionCounts.total || sessions.length;
     if (wbSearch.trim()) {
       meta.textContent = t("desktop.workbench.listMetaSearch", folderLabel, wbSearch.trim(), sessions.length);
+    } else if (wbSessionFilter === "active") {
+      meta.textContent = t("desktop.workbench.listMetaFilter", folderLabel, t("desktop.common.active"), sessions.length);
     } else if (total > sessions.length) {
       meta.textContent = t("desktop.workbench.listMetaWithTotal", folderLabel, sessions.length, total);
     } else {
@@ -1244,7 +1322,11 @@ function renderWorkbenchSessionList() {
   if (!sessions.length) {
     const empty = document.createElement("p");
     empty.className = "muted wb-list-empty";
-    empty.textContent = wbSearch.trim() ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject");
+    empty.textContent = wbSearch.trim()
+      ? t("desktop.workbench.noMatchingSessions")
+      : wbSessionFilter === "active"
+        ? t("desktop.workbench.noFilterSessions")
+        : t("desktop.workbench.noSessionsInProject");
     list.appendChild(empty);
     return;
   }
@@ -1658,6 +1740,10 @@ async function closeWorkbenchTerminalTab(key) {
 
   renderWorkbenchTerminalTabs();
   renderWorkbenchFolders();
+  if (wbSessionFilter === "active") renderWorkbenchSessionList();
+  else {
+    document.querySelectorAll(".wb-list-item").forEach((el) => syncWorkbenchListItemActivity(el));
+  }
   updateWorkbenchTerminalHint();
 }
 
@@ -3585,9 +3671,11 @@ function resetWorkbenchGitCommitDialogUi() {
 function setWorkbenchGitCommitBusy(busy) {
   const autoBtn = $("btnWbGitCommitAuto");
   const confirmBtn = $("btnWbGitCommitConfirm");
+  const commitAndPushBtn = $("btnWbGitCommitAndPush");
   const input = $("wbGitCommitInput");
   autoBtn?.toggleAttribute("disabled", busy);
   confirmBtn?.toggleAttribute("disabled", busy);
+  commitAndPushBtn?.toggleAttribute("disabled", busy);
   input?.toggleAttribute("disabled", busy);
   document.querySelectorAll("[data-wb-git-commit-cancel]").forEach((btn) => {
     btn.toggleAttribute("disabled", busy);
@@ -3653,9 +3741,11 @@ function openWorkbenchGitCommitDialog(repoRoot) {
   });
 }
 
-async function confirmWorkbenchGitCommit() {
+async function confirmWorkbenchGitCommit(options = {}) {
+  const pushAfter = Boolean(options?.pushAfter);
   const pending = wbGitCommitPending;
   if (!pending?.repoRoot || typeof agentResume.terminalGitCommit !== "function") return;
+  if (pushAfter && typeof agentResume.terminalGitPush !== "function") return;
   const input = $("wbGitCommitInput");
   const message = String(input?.value || "").trim();
   if (!message) {
@@ -3667,6 +3757,17 @@ async function confirmWorkbenchGitCommit() {
   setWorkbenchGitCommitBusy(true);
   try {
     await agentResume.terminalGitCommit({ repoRoot: pending.repoRoot, message });
+    if (pushAfter) {
+      try {
+        await agentResume.terminalGitPush({ repoRoot: pending.repoRoot });
+      } catch (error) {
+        // Commit already succeeded; close dialog and surface push failure.
+        closeWorkbenchGitCommitDialog(true);
+        await refreshWorkbenchGitPanelAfterAction();
+        alertWorkbenchError(t("desktop.workbench.gitPushFailed", formatWorkbenchGitError(error)));
+        return;
+      }
+    }
     closeWorkbenchGitCommitDialog(true);
     await refreshWorkbenchGitPanelAfterAction();
   } catch (error) {
@@ -4194,6 +4295,9 @@ function initWorkbenchSidePanel() {
   });
   $("btnWbGitCommitAuto")?.addEventListener("click", () => void runWorkbenchGitAutoCommitMessage());
   $("btnWbGitCommitConfirm")?.addEventListener("click", () => void confirmWorkbenchGitCommit());
+  $("btnWbGitCommitAndPush")?.addEventListener("click", () =>
+    void confirmWorkbenchGitCommit({ pushAfter: true })
+  );
   document.querySelectorAll("[data-wb-git-commit-cancel]").forEach((btn) => {
     btn.addEventListener("click", () => closeWorkbenchGitCommitDialog(false));
   });
@@ -4756,8 +4860,6 @@ async function openOrCreateWorkbenchNote(owner) {
 const SIDEBAR_FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const WB_LIST_PANE_WIDTH_KEY = "wb-list-pane-width";
 const NOTES_LIST_PANE_WIDTH_KEY = "notes-list-pane-width";
-const PANE_DETAIL_MIN = 280;
-const PANE_RESIZER_GUTTER = 6;
 const PANE_WIDTH_LIMITS = {
   folders: { min: 140, max: 400, default: 220 },
   list: { min: 240, max: 520, default: 320 }
@@ -4818,30 +4920,15 @@ function persistPaneWidth(widthKind, width) {
   }
 }
 
-function setPaneWidth(widthKind, width, { persist = true, layout = null } = {}) {
+function setPaneWidth(widthKind, width, { persist = true } = {}) {
   const limits = widthKind === "folders" ? PANE_WIDTH_LIMITS.folders : PANE_WIDTH_LIMITS.list;
-  let maxAllowed = limits.max;
-  if (layout) {
-    maxAllowed = Math.min(maxAllowed, computeMaxPaneWidth(layout, widthKind));
-  }
-  const clamped = clampPaneWidth(width, limits.min, maxAllowed);
+  const clamped = clampPaneWidth(width, limits.min, limits.max);
   if (widthKind === "folders") paneWidthState.folders = clamped;
   else if (widthKind === "wbList") paneWidthState.wbList = clamped;
   else paneWidthState.notesList = clamped;
   applyPaneWidths();
   if (persist) persistPaneWidth(widthKind, clamped);
   return clamped;
-}
-
-function computeMaxPaneWidth(layout, widthKind) {
-  if (!layout) return PANE_WIDTH_LIMITS[widthKind === "folders" ? "folders" : "list"].max;
-  const foldersPane = layout.querySelector(".sidebar-folders-pane");
-  const listPane = layout.querySelector(".wb-list-pane, .notes-list-pane");
-  const foldersW = foldersPane?.getBoundingClientRect().width || 0;
-  const listW = listPane?.getBoundingClientRect().width || 0;
-  const available = layout.clientWidth - PANE_DETAIL_MIN - PANE_RESIZER_GUTTER;
-  if (widthKind === "folders") return Math.max(PANE_WIDTH_LIMITS.folders.min, available - listW);
-  return Math.max(PANE_WIDTH_LIMITS.list.min, available - foldersW);
 }
 
 function syncFoldersResizerVisibility() {
@@ -4864,7 +4951,7 @@ function initPaneResizer({ handle, layout, targetPane, widthKind, onResize, onBe
   let dragState = null;
 
   function applyWidth(width, { persist = false } = {}) {
-    const next = setPaneWidth(widthKind, width, { persist, layout });
+    const next = setPaneWidth(widthKind, width, { persist });
     onResize?.();
     return next;
   }
@@ -4931,20 +5018,6 @@ function initPaneResizer({ handle, layout, targetPane, widthKind, onResize, onBe
   });
 }
 
-function reclampPaneWidthsOnResize() {
-  const wbLayout = document.querySelector(".workbench-layout");
-  const notesLayout = document.querySelector(".notes-layout");
-  const agentLayout = document.querySelector(".agent-layout");
-  for (const layout of [wbLayout, notesLayout, agentLayout]) {
-    if (layout) {
-      setPaneWidth("folders", paneWidthState.folders, { persist: false, layout });
-    }
-  }
-  if (wbLayout) setPaneWidth("wbList", paneWidthState.wbList, { persist: false, layout: wbLayout });
-  if (notesLayout) setPaneWidth("notesList", paneWidthState.notesList, { persist: false, layout: notesLayout });
-  schedulePaneResizeFit(fitWorkbenchTerminal);
-}
-
 function initPaneResizers() {
   const wbLayout = document.querySelector(".workbench-layout");
   const notesLayout = document.querySelector(".notes-layout");
@@ -4983,7 +5056,8 @@ function initPaneResizers() {
     targetPane: $("notesListPane"),
     widthKind: "notesList"
   });
-  window.addEventListener("resize", reclampPaneWidthsOnResize);
+  // Pane widths are fixed (default or user-set); only fit terminal on window resize.
+  window.addEventListener("resize", () => schedulePaneResizeFit(fitWorkbenchTerminal));
 }
 
 // --- Notes ---
@@ -5629,10 +5703,13 @@ function renderNotesFolderRow(label, folder, options = {}) {
   if (isSameNotesFolder(notesSelectedFolder, folder)) btn.classList.add("active");
   const isPinned = folder.kind === "project" && isProjectPinned(folder.projectPath);
   if (isPinned) btn.classList.add("is-pinned");
+  if (options.hasActivity) btn.classList.add("has-wb-activity");
+  const activityDot = options.hasActivity ? workbenchSessionActivityDotHtml() : "";
   const inner =
     folder.kind === "project" && folder.projectPath
       ? `${isPinned ? projectPinIconHtml() : ""}${projectFolderRowInnerHtml("notes", folder.projectPath, options)}`
       : `
+    ${activityDot}
     <span class="notes-folder-row-label" title="${escapeHtml(options.title || label)}">${escapeHtml(label)}</span>
     ${options.count != null ? `<span class="notes-folder-row-count">${options.count}</span>` : ""}
   `;
@@ -5751,21 +5828,48 @@ function renderNotesFolders() {
     .sort((a, b) => (b.notes[0]?.updatedAtMs ?? 0) - (a.notes[0]?.updatedAtMs ?? 0));
 
   if (sessionGroups.length) {
+    const selectedSessionKey =
+      notesSelectedFolder.kind === "session"
+        ? `${notesSelectedFolder.provider}:${notesSelectedFolder.sessionId}`
+        : "";
+    const resolveSessionTitle = (group) =>
+      sessionsByKey.get(`${group.provider}:${group.sessionId}`)?.title || group.title || group.sessionId;
+    const visibleSessionGroups = visibleFilteredSessionGroups(sessionGroups, {
+      searchText: notesProjectSearch,
+      filterMode: notesProjectFilter,
+      selectedSessionKey,
+      resolveTitle: resolveSessionTitle
+    });
     const section = document.createElement("div");
     section.className = "notes-folder-section";
-    section.innerHTML = `<div class="notes-folder-section-label">${escapeHtml(t("desktop.notes.sessionsSection"))}</div>`;
-    for (const group of sessionGroups) {
-      const label =
-        sessionsByKey.get(`${group.provider}:${group.sessionId}`)?.title || group.title || group.sessionId;
-      const folder = { kind: "session", provider: group.provider, sessionId: group.sessionId };
-      const desc = [group.provider, group.projectPath ? basename(group.projectPath) : ""].filter(Boolean).join(" · ");
-      section.appendChild(
-        renderNotesFolderRow(label, folder, {
-          title: desc || label,
-          count: group.notes.length,
-          context: { kind: "session", ...group }
-        })
-      );
+    const sessionSectionTitle = sidebarSessionFilterSectionTitle(
+      notesProjectFilter,
+      notesProjectSearch,
+      visibleSessionGroups.length
+    );
+    section.innerHTML = `<div class="notes-folder-section-label">${escapeHtml(sessionSectionTitle)}</div>`;
+    if (visibleSessionGroups.length) {
+      for (const group of visibleSessionGroups) {
+        const label = resolveSessionTitle(group);
+        const folder = { kind: "session", provider: group.provider, sessionId: group.sessionId };
+        const desc = [group.provider, group.projectPath ? basename(group.projectPath) : ""].filter(Boolean).join(" · ");
+        const hasActivity = hasWorkbenchSessionActivity({ provider: group.provider, id: group.sessionId });
+        section.appendChild(
+          renderNotesFolderRow(label, folder, {
+            title: desc || label,
+            count: group.notes.length,
+            context: { kind: "session", ...group },
+            hasActivity
+          })
+        );
+      }
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "muted notes-folders-empty";
+      empty.textContent = notesProjectSearch.trim()
+        ? t("desktop.notes.noMatchingSessions")
+        : t("desktop.notes.noFilterSessions");
+      section.appendChild(empty);
     }
     host.appendChild(section);
   }
@@ -11543,6 +11647,15 @@ function wire() {
       wbProjectFilter = next;
       syncSidebarProjectFilterUi("wbProjectFilter", wbProjectFilter);
       renderWorkbenchFolders();
+    });
+  });
+  $("wbSessionFilter")?.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.dataset.filter;
+      if (!next || next === wbSessionFilter) return;
+      wbSessionFilter = next;
+      syncSidebarProjectFilterUi("wbSessionFilter", wbSessionFilter);
+      renderWorkbenchSessionList();
     });
   });
   $("tab-workbench")?.addEventListener("click", (e) => {

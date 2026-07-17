@@ -64,8 +64,11 @@
   "desktop.usage.loading": "正在加载用量…",
   "desktop.usage.promptCompletion": "Prompt / Completion",
   "desktop.usage.totalTokens": "总 Tokens",
-  "desktop.workbench.gitCommit": "Commit",
-  "desktop.workbench.gitLog": "Log",
-  "desktop.workbench.gitPull": "Pull",
-  "desktop.workbench.gitPush": "Push"
+  "desktop.workbench.gitCommit": "提交",
+  "desktop.workbench.gitCommitAndPush": "提交并推送",
+  "desktop.workbench.gitLog": "日志",
+  "desktop.workbench.gitPull": "拉取",
+  "desktop.workbench.gitPullFailed": "拉取失败：{0}",
+  "desktop.workbench.gitPush": "推送",
+  "desktop.workbench.gitPushFailed": "推送失败：{0}"
 }

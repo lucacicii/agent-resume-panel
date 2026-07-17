@@ -459,6 +459,19 @@
               </button>
               <input type="search" id="wbSearch" class="wb-search" data-i18n-placeholder="desktop.common.search" placeholder="Search" autocomplete="off" spellcheck="false" />
             </div>
+            <div class="sidebar-project-filter-wrap wb-session-filter-wrap">
+              <div
+                class="sidebar-project-filter-segmented"
+                id="wbSessionFilter"
+                role="tablist"
+                data-i18n-aria-label="desktop.workbench.sessionFilter"
+                aria-label="Session filter"
+              >
+                <span class="sidebar-project-filter-thumb" aria-hidden="true"></span>
+                <button type="button" role="tab" data-filter="all" class="active" data-i18n="desktop.common.all">All</button>
+                <button type="button" role="tab" data-filter="active" data-i18n="desktop.common.active">Active</button>
+              </div>
+            </div>
             <div class="wb-list-meta-row">
               <p class="wb-list-meta" id="wbMeta"></p>
               <button type="button" class="wb-icon-btn" id="btnWorkbenchRefresh" data-i18n-title="desktop.common.refresh" data-i18n-aria-label="desktop.common.refresh">
@@ -585,36 +598,62 @@
                           class="wb-git-action-btn"
                           id="btnWbGitCommit"
                           disabled
-                          data-i18n="desktop.workbench.gitCommit"
+                          data-i18n-title="desktop.workbench.gitCommit"
+                          data-i18n-aria-label="desktop.workbench.gitCommit"
+                          title="Commit"
+                          aria-label="Commit"
                         >
-                          Commit
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M3 12h6" />
+                            <path d="M15 12h6" />
+                          </svg>
                         </button>
                         <button
                           type="button"
                           class="wb-git-action-btn"
                           id="btnWbGitPush"
                           disabled
-                          data-i18n="desktop.workbench.gitPush"
+                          data-i18n-title="desktop.workbench.gitPush"
+                          data-i18n-aria-label="desktop.workbench.gitPush"
+                          title="Push"
+                          aria-label="Push"
                         >
-                          Push
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 19V5" />
+                            <path d="m5 12 7-7 7 7" />
+                          </svg>
                         </button>
                         <button
                           type="button"
                           class="wb-git-action-btn"
                           id="btnWbGitPull"
                           disabled
-                          data-i18n="desktop.workbench.gitPull"
+                          data-i18n-title="desktop.workbench.gitPull"
+                          data-i18n-aria-label="desktop.workbench.gitPull"
+                          title="Pull"
+                          aria-label="Pull"
                         >
-                          Pull
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 5v14" />
+                            <path d="m19 12-7 7-7-7" />
+                          </svg>
                         </button>
                         <button
                           type="button"
                           class="wb-git-action-btn"
                           id="btnWbGitLog"
                           disabled
-                          data-i18n="desktop.workbench.gitLog"
+                          data-i18n-title="desktop.workbench.gitLog"
+                          data-i18n-aria-label="desktop.workbench.gitLog"
+                          title="Log"
+                          aria-label="Log"
                         >
-                          Log
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                            <path d="M3 3v5h5" />
+                            <path d="M12 7v5l3 2" />
+                          </svg>
                         </button>
                       </div>
                     </div>
@@ -1493,7 +1532,15 @@
         ></textarea>
         <div class="wb-note-created-actions">
           <button type="button" class="wb-note-created-btn" data-wb-git-commit-cancel data-i18n="desktop.common.cancel">Cancel</button>
-          <button type="button" class="wb-note-created-btn primary" id="btnWbGitCommitConfirm" data-i18n="desktop.workbench.gitCommit">Commit</button>
+          <button type="button" class="wb-note-created-btn" id="btnWbGitCommitConfirm" data-i18n="desktop.workbench.gitCommit">Commit</button>
+          <button
+            type="button"
+            class="wb-note-created-btn primary"
+            id="btnWbGitCommitAndPush"
+            data-i18n="desktop.workbench.gitCommitAndPush"
+          >
+            Commit &amp; Push
+          </button>
         </div>
       </div>
     </div>

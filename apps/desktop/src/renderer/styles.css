@@ -4258,22 +4258,25 @@ code {
   flex: 0 0 auto;
   min-height: 30px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0 10px;
+  gap: 4px 8px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--color-separator);
 }
 
 .wb-git-pane-head {
-  gap: 8px;
+  gap: 6px 8px;
   justify-content: space-between;
 }
 
 .wb-git-pane-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex-shrink: 1;
+  flex: 1 1 auto;
 }
 
 .wb-git-repo-select {
@@ -4297,16 +4300,29 @@ code {
 
 .wb-git-action-btn {
   appearance: none;
-  border: 1px solid var(--color-separator, var(--border));
-  background: var(--color-control-bg, var(--bg));
+  border: none;
+  background: transparent;
   color: var(--text);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 3px 7px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: 5px;
   cursor: pointer;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wb-git-action-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .wb-git-action-btn:hover:not(:disabled) {
@@ -4320,7 +4336,6 @@ code {
 
 .wb-git-action-btn.active {
   color: var(--color-accent, var(--accent));
-  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 45%, var(--color-separator, var(--border)));
   background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
 }
 
@@ -4749,6 +4764,7 @@ code {
 .wb-file-tree-label {
   flex: 1 1 auto;
   min-width: 0;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5596,6 +5612,7 @@ code {
 
 .wb-note-created-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 4px;
@@ -6302,6 +6319,15 @@ body.is-pane-resizing * {
   padding: 4px 10px 6px;
 }
 
+.wb-session-filter-wrap {
+  padding: 0 10px 6px;
+  border-bottom: none;
+}
+
+.wb-session-filter-wrap .sidebar-project-filter-segmented {
+  --segment-count: 2;
+}
+
 .notes-search,
 .wb-search {
   width: 100%;
@@ -6422,7 +6448,8 @@ body.is-pane-resizing * {
   box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 18%, transparent);
 }
 
-.wb-list-item.has-wb-activity:not(.active) .wb-session-activity-dot {
+.wb-list-item.has-wb-activity:not(.active) .wb-session-activity-dot,
+.notes-folder-row.has-wb-activity:not(.active) .wb-session-activity-dot {
   opacity: 0.85;
 }
 
