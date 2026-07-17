@@ -149,12 +149,28 @@ function materializeNodeModules() {
   const repoNm = path.join(root, "..", "..", "node_modules");
   const desktopNm = path.join(root, "node_modules");
   fs.mkdirSync(desktopNm, { recursive: true });
-  for (const name of fs.readdirSync(desktopNm)) {
-    fs.rmSync(path.join(desktopNm, name), { recursive: true, force: true });
-  }
   for (const name of fs.readdirSync(repoNm)) {
     if (name === ".bin") continue;
-    fs.symlinkSync(path.join(repoNm, name), path.join(desktopNm, name), "dir");
+    const source = path.join(repoNm, name);
+    const destination = path.join(desktopNm, name);
+
+    if (!name.startsWith("@")) {
+      if (!fs.existsSync(destination)) {
+        fs.symlinkSync(source, destination, "dir");
+      }
+      continue;
+    }
+
+    if (fs.existsSync(destination) && fs.lstatSync(destination).isSymbolicLink()) {
+      fs.rmSync(destination, { recursive: true, force: true });
+    }
+    fs.mkdirSync(destination, { recursive: true });
+    for (const packageName of fs.readdirSync(source)) {
+      const scopedDestination = path.join(destination, packageName);
+      if (!fs.existsSync(scopedDestination)) {
+        fs.symlinkSync(path.join(source, packageName), scopedDestination, "dir");
+      }
+    }
   }
 }
 
