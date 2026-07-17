@@ -8,6 +8,26 @@ Update this file before each Desktop release (`npm run release:desktop:mac`).
 
 ## English
 
+### [0.1.3]
+
+#### Added
+
+- Embedded Workbench file editor with syntax highlighting, editable tabs, and configurable font size, tab width, and word wrap
+- Git commit and push workflow, including AI-generated commit message suggestions
+- Commit history file previews and inline diff inspection
+- Session filters plus note pinning and collapsible note search
+
+#### Improved
+
+- Richer Git diff views and nested repository handling
+- Stable Workbench side panel widths across window resizing
+- Automatic selection of the first Workbench project
+
+#### Fixed
+
+- Arrow keys now switch files correctly in commit history previews
+- macOS packaging now installs the complete Electron download dependency tree and preserves workspace-owned scoped packages
+
 ### [0.1.2]
 
 #### Added
@@ -58,6 +78,26 @@ Update this file before each Desktop release (`npm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.1.3]
+
+#### 新增
+
+- Workbench 内嵌文件编辑器，支持语法高亮、可编辑标签页，以及字号、缩进宽度和自动换行设置
+- Git 提交与推送工作流，并支持 AI 生成提交信息建议
+- 提交历史文件预览与行内差异查看
+- 会话筛选、笔记置顶与可折叠的笔记搜索
+
+#### 改进
+
+- 增强 Git 差异视图与嵌套仓库处理
+- 调整窗口大小时保持 Workbench 侧栏宽度稳定
+- 进入 Workbench 时自动选中首个项目
+
+#### 修复
+
+- 修复提交历史预览中方向键无法正确切换文件的问题
+- 补全 Electron 下载依赖，并在 macOS 打包时保留 workspace 自有的 scoped packages
 
 ### [0.1.2]
 
