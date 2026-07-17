@@ -1,0 +1,36 @@
+{
+  "name": "@agent-resume/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared catalog, settings, LLM, and memory for Agent Resume Panel and Desktop",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
+    }
+  },
+  "bin": {
+    "agent-resume-mcp": "./dist/mcp/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
+    "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "typescript": "^5.9.3"
+  }
+}

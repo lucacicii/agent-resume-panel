@@ -1,0 +1,766 @@
+{
+  "jaGap": [
+    {
+      "key": "dialog.buttonReloadWindow",
+      "en": "Reload Window",
+      "zh": "重新加载窗口"
+    },
+    {
+      "key": "dialog.deleteNoteButton",
+      "en": "Delete Note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "dialog.deleteNoteConfirm",
+      "en": "Delete note \"{0}\"? This also removes its assets folder.",
+      "zh": "删除笔记 \"{0}\"？资源文件夹也会一并删除。"
+    },
+    {
+      "key": "dialog.deleteProjectNoteButton",
+      "en": "Delete Note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "dialog.deleteProjectNotesConfirm",
+      "en": "Delete {1} note(s) for project \"{0}\"?",
+      "zh": "删除项目 \"{0}\" 的 {1} 条笔记？"
+    },
+    {
+      "key": "dialog.deleteSessionNoteButton",
+      "en": "Delete Note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "dialog.deleteSessionNotesConfirm",
+      "en": "Delete {1} note(s) for session \"{0}\"?",
+      "zh": "删除会话 \"{0}\" 的 {1} 条笔记？"
+    },
+    {
+      "key": "dialog.filterNotesPrompt",
+      "en": "Filter by filename, title, project, or session",
+      "zh": "按文件名、标题、项目或会话筛选"
+    },
+    {
+      "key": "dialog.filterNotesTitle",
+      "en": "Filter Notes",
+      "zh": "筛选笔记"
+    },
+    {
+      "key": "dialog.importNotesOpenLabel",
+      "en": "Import",
+      "zh": "导入"
+    },
+    {
+      "key": "dialog.importNotesTitle",
+      "en": "Import Markdown Notes",
+      "zh": "批量导入 Markdown 笔记"
+    },
+    {
+      "key": "dialog.moveNoteTitle",
+      "en": "Move note to…",
+      "zh": "更改归属…"
+    },
+    {
+      "key": "dialog.newNoteKindLibrary",
+      "en": "Personal note (library)",
+      "zh": "独立笔记"
+    },
+    {
+      "key": "dialog.newNoteKindProject",
+      "en": "Project note",
+      "zh": "项目笔记"
+    },
+    {
+      "key": "dialog.newNoteKindSession",
+      "en": "Session note",
+      "zh": "会话笔记"
+    },
+    {
+      "key": "dialog.newNoteTitle",
+      "en": "New Note",
+      "zh": "新建笔记"
+    },
+    {
+      "key": "dialog.pickNotePlaceholder",
+      "en": "Select a note",
+      "zh": "选择笔记"
+    },
+    {
+      "key": "dialog.pickProjectForNote",
+      "en": "Choose a project",
+      "zh": "选择项目"
+    },
+    {
+      "key": "dialog.pickProjectNoteTitle",
+      "en": "Open Project Note",
+      "zh": "打开项目笔记"
+    },
+    {
+      "key": "dialog.pickSessionForNote",
+      "en": "Choose a session",
+      "zh": "选择会话"
+    },
+    {
+      "key": "dialog.pickSessionNoteTitle",
+      "en": "Open Session Note",
+      "zh": "打开会话笔记"
+    },
+    {
+      "key": "dialog.renameNotePrompt",
+      "en": "Enter a new file name (optional .md suffix).",
+      "zh": "输入新文件名（可省略 .md 后缀）。"
+    },
+    {
+      "key": "dialog.renameNoteTitle",
+      "en": "Rename Note",
+      "zh": "重命名笔记"
+    },
+    {
+      "key": "dialog.renameNoteValidateEmpty",
+      "en": "Name cannot be empty.",
+      "zh": "名称不能为空。"
+    },
+    {
+      "key": "dialog.renameNoteValidatePath",
+      "en": "Name cannot contain path separators.",
+      "zh": "名称不能包含路径分隔符。"
+    },
+    {
+      "key": "dialog.setGtdStatusCurrent",
+      "en": "Current",
+      "zh": "当前"
+    },
+    {
+      "key": "dialog.setGtdStatusPlaceholder",
+      "en": "Choose a GTD bucket for this session",
+      "zh": "为此 session 选择 GTD 状态"
+    },
+    {
+      "key": "dialog.setGtdStatusTitle",
+      "en": "Set GTD Status",
+      "zh": "设置 GTD 状态"
+    },
+    {
+      "key": "dialog.setProjectAliasPlaceholder",
+      "en": "e.g. Backend API",
+      "zh": "例如：后端 API"
+    },
+    {
+      "key": "dialog.setProjectAliasPrompt",
+      "en": "Enter a display alias shown after the folder name. Leave empty to clear.",
+      "zh": "输入显示在文件夹名后的别名。留空可清除别名。"
+    },
+    {
+      "key": "dialog.setProjectAliasTitle",
+      "en": "Set Project Alias",
+      "zh": "设置项目别名"
+    },
+    {
+      "key": "error.settingsConfigurationRequiresReload",
+      "en": "Settings could not be saved: the extension was upgraded in place, but this window has not been reloaded yet. Press Cmd+Shift+P (macOS) or Ctrl+Shift+P (Win/Linux), run Developer: Reload Window, or click Reload Window in the notification, then save again. Sidebar Refresh does not apply package.json changes.",
+      "zh": "无法保存设置：扩展已就地升级，但当前窗口尚未重新加载。请按 Cmd+Shift+P（macOS）或 Ctrl+Shift+P（Win/Linux）打开命令面板，运行「Developer: Reload Window」（中文界面可能显示为「开发人员: 重新加载窗口」），或点击通知中的「重新加载窗口」，然后再次保存。侧栏 Refresh 不能替代此操作。"
+    },
+    {
+      "key": "menu.notes.clearFilter",
+      "en": "Clear Notes Filter",
+      "zh": "清除筛选"
+    },
+    {
+      "key": "menu.notes.copyPath",
+      "en": "Copy Note Path",
+      "zh": "复制笔记路径"
+    },
+    {
+      "key": "menu.notes.delete",
+      "en": "Delete Note",
+      "zh": "删除笔记"
+    },
+    {
+      "key": "menu.notes.filter",
+      "en": "Filter Notes",
+      "zh": "筛选笔记"
+    },
+    {
+      "key": "menu.notes.import",
+      "en": "Import Markdown Notes…",
+      "zh": "批量导入 Markdown…"
+    },
+    {
+      "key": "menu.notes.insertImage",
+      "en": "Insert Image into Note",
+      "zh": "插入图片到笔记"
+    },
+    {
+      "key": "menu.notes.new",
+      "en": "New Note…",
+      "zh": "新建笔记…"
+    },
+    {
+      "key": "menu.notes.open",
+      "en": "Open Note",
+      "zh": "打开笔记"
+    },
+    {
+      "key": "menu.notes.openFolder",
+      "en": "Open Notes Folder",
+      "zh": "打开笔记文件夹"
+    },
+    {
+      "key": "menu.notes.refresh",
+      "en": "Refresh Notes",
+      "zh": "刷新笔记"
+    },
+    {
+      "key": "menu.notes.rename",
+      "en": "Rename Note",
+      "zh": "重命名笔记"
+    },
+    {
+      "key": "menu.notes.revealInOS",
+      "en": "Reveal Note in File Explorer",
+      "zh": "在文件管理器中显示"
+    },
+    {
+      "key": "menu.project.setProjectAlias",
+      "en": "Set Project Alias…",
+      "zh": "设置项目别名…"
+    },
+    {
+      "key": "menu.session.clearGtdStatus",
+      "en": "Clear GTD Status",
+      "zh": "清除 GTD 状态"
+    },
+    {
+      "key": "menu.session.setGtdStatus",
+      "en": "Set GTD Status…",
+      "zh": "设置 GTD 状态…"
+    },
+    {
+      "key": "notification.gtdStatusCleared",
+      "en": "GTD status cleared.",
+      "zh": "GTD 状态已清除。"
+    },
+    {
+      "key": "notification.gtdStatusSet",
+      "en": "GTD status set to {0}.",
+      "zh": "GTD 状态已设为 {0}。"
+    },
+    {
+      "key": "notification.importNotesFailed",
+      "en": "Failed to import notes.",
+      "zh": "导入笔记失败。"
+    },
+    {
+      "key": "notification.importNotesNoFiles",
+      "en": "No Markdown files selected.",
+      "zh": "未选择 Markdown 文件。"
+    },
+    {
+      "key": "notification.importNotesPartial",
+      "en": "Imported {0} note(s); skipped {1} (errors: {2}).",
+      "zh": "已导入 {0} 条；跳过 {1}（错误 {2}）。"
+    },
+    {
+      "key": "notification.importNotesSuccess",
+      "en": "Imported {0} note(s).",
+      "zh": "已导入 {0} 条笔记。"
+    },
+    {
+      "key": "notification.insertImageNotANote",
+      "en": "Active editor is not an Agent Resume note.",
+      "zh": "当前编辑器不是 Agent Resume 笔记。"
+    },
+    {
+      "key": "notification.noNotesToDelete",
+      "en": "No notes to delete.",
+      "zh": "没有可删除的笔记。"
+    },
+    {
+      "key": "notification.noteDeleted",
+      "en": "Note deleted.",
+      "zh": "笔记已删除。"
+    },
+    {
+      "key": "notification.notePathCopied",
+      "en": "Note path copied.",
+      "zh": "笔记路径已复制。"
+    },
+    {
+      "key": "notification.noteRenameFailed",
+      "en": "Rename failed: {0}",
+      "zh": "重命名失败：{0}"
+    },
+    {
+      "key": "notification.noteRenamed",
+      "en": "Note renamed to {0}.",
+      "zh": "笔记已重命名为 {0}。"
+    },
+    {
+      "key": "notification.projectAliasCleared",
+      "en": "Project alias cleared.",
+      "zh": "项目别名已清除。"
+    },
+    {
+      "key": "notification.projectAliasSet",
+      "en": "Project alias saved.",
+      "zh": "项目别名已保存。"
+    },
+    {
+      "key": "notification.projectNoteDeleted",
+      "en": "Project note deleted.",
+      "zh": "项目笔记已删除。"
+    },
+    {
+      "key": "notification.sessionNoteDeleted",
+      "en": "Session note deleted.",
+      "zh": "会话笔记已删除。"
+    },
+    {
+      "key": "settings.fieldLlmOutputLanguageOptionAuto",
+      "en": "Auto (follow UI language)",
+      "zh": "自动（跟随界面语言）"
+    },
+    {
+      "key": "tree.gtd.noTaggedSessions",
+      "en": "No tagged sessions yet",
+      "zh": "暂无已打标 session"
+    },
+    {
+      "key": "tree.gtd.noTaggedSessionsDescription",
+      "en": "Right-click a session in Sessions and choose Set GTD Status",
+      "zh": "在 Sessions 中右键 session，选择「设置 GTD 状态」"
+    },
+    {
+      "key": "tree.hasNote",
+      "en": "Note",
+      "zh": "笔记"
+    },
+    {
+      "key": "tree.notes.empty",
+      "en": "No notes yet",
+      "zh": "暂无笔记"
+    },
+    {
+      "key": "tree.notes.emptyDescription",
+      "en": "Create a note from a session/project or use +",
+      "zh": "从会话/项目创建，或使用 +"
+    },
+    {
+      "key": "tree.notes.filterEmpty",
+      "en": "No notes match the filter",
+      "zh": "没有匹配筛选的笔记"
+    },
+    {
+      "key": "tree.notes.filterMessage",
+      "en": "Filter: {0}",
+      "zh": "筛选：{0}"
+    },
+    {
+      "key": "tree.notes.libraryRoot",
+      "en": "Library",
+      "zh": "独立笔记"
+    },
+    {
+      "key": "tree.notes.orphanedSessionTooltip",
+      "en": "Session is no longer in the sidebar; note files remain on disk.",
+      "zh": "会话已不在侧栏；笔记文件仍保留在磁盘上。"
+    },
+    {
+      "key": "tree.notes.projectsRoot",
+      "en": "Projects",
+      "zh": "项目"
+    },
+    {
+      "key": "tree.notes.sessionsRoot",
+      "en": "Sessions",
+      "zh": "会话"
+    },
+    {
+      "key": "tree.tooltipHasNote",
+      "en": "Has note",
+      "zh": "有笔记"
+    },
+    {
+      "key": "tree.tooltipProjectAlias",
+      "en": "Alias: {0}",
+      "zh": "别名：{0}"
+    },
+    {
+      "key": "warning.extensionReloadRequiredAfterUpgrade",
+      "en": "Agent Resume Panel was upgraded in place, but this window has not been reloaded yet, so new settings (such as UI language) are not active. Press Cmd+Shift+P (macOS) or Ctrl+Shift+P (Win/Linux), run Developer: Reload Window, or click Reload Window below. Sidebar Refresh does not apply package.json changes.",
+      "zh": "Agent Resume Panel 已就地升级，但当前窗口尚未重新加载，新设置（如界面语言）暂无法生效。请按 Cmd+Shift+P（macOS）或 Ctrl+Shift+P（Win/Linux）打开命令面板，运行「Developer: Reload Window」，或点击下方「重新加载窗口」。侧栏 Refresh 不能替代此操作。"
+    },
+    {
+      "key": "webview.manager.gtdFilterAll",
+      "en": "All GTD",
+      "zh": "全部 GTD"
+    },
+    {
+      "key": "webview.manager.gtdFilterLabel",
+      "en": "GTD filter",
+      "zh": "GTD 筛选"
+    },
+    {
+      "key": "webview.manager.gtdFilterUntagged",
+      "en": "Untagged",
+      "zh": "未打标"
+    },
+    {
+      "key": "webview.search.chipAllGtd",
+      "en": "All GTD",
+      "zh": "全部 GTD"
+    },
+    {
+      "key": "webview.search.chipAllGtdTooltip",
+      "en": "Show sessions regardless of GTD status",
+      "zh": "显示所有 session，不限 GTD 状态"
+    },
+    {
+      "key": "webview.search.chipUntagged",
+      "en": "Untagged",
+      "zh": "未打标"
+    },
+    {
+      "key": "webview.search.chipUntaggedTooltip",
+      "en": "Show sessions without a GTD status",
+      "zh": "仅显示未设置 GTD 状态的 session"
+    }
+  ],
+  "zhGap": [
+    {
+      "key": "menu.handoff.targetAgy",
+      "en": "Antigravity CLI",
+      "zh": "Antigravity CLI"
+    },
+    {
+      "key": "menu.handoff.targetClaude",
+      "en": "Claude Code",
+      "zh": "Claude Code"
+    },
+    {
+      "key": "menu.handoff.targetCodex",
+      "en": "Codex",
+      "zh": "Codex"
+    },
+    {
+      "key": "menu.handoff.targetGrok",
+      "en": "Grok Build",
+      "zh": "Grok Build"
+    },
+    {
+      "key": "menu.handoff.targetOpenCode",
+      "en": "OpenCode",
+      "zh": "OpenCode"
+    },
+    {
+      "key": "menu.handoff.targetPi",
+      "en": "Pi",
+      "zh": "Pi"
+    },
+    {
+      "key": "quickpick.acpAgentClaudeLabel",
+      "en": "$(comment-discussion) Claude",
+      "zh": "$(comment-discussion) Claude"
+    },
+    {
+      "key": "quickpick.acpAgentCodexLabel",
+      "en": "$(hubot) Codex",
+      "zh": "$(hubot) Codex"
+    },
+    {
+      "key": "quickpick.acpAgentGrokLabel",
+      "en": "$(rocket) Grok Build",
+      "zh": "$(rocket) Grok Build"
+    },
+    {
+      "key": "quickpick.acpAgentOpenCodeLabel",
+      "en": "$(terminal) OpenCode",
+      "zh": "$(terminal) OpenCode"
+    },
+    {
+      "key": "quickpick.acpAgentPiLabel",
+      "en": "$(symbol-method) Pi",
+      "zh": "$(symbol-method) Pi"
+    },
+    {
+      "key": "quickpick.newSessionAgyLabel",
+      "en": "$(sparkle) Antigravity CLI",
+      "zh": "$(sparkle) Antigravity CLI"
+    },
+    {
+      "key": "quickpick.newSessionClaudeLabel",
+      "en": "$(comment-discussion) Claude",
+      "zh": "$(comment-discussion) Claude"
+    },
+    {
+      "key": "quickpick.newSessionCodexAppLabel",
+      "en": "$(window) ChatGPT",
+      "zh": "$(window) ChatGPT"
+    },
+    {
+      "key": "quickpick.newSessionCodexLabel",
+      "en": "$(hubot) Codex",
+      "zh": "$(hubot) Codex"
+    },
+    {
+      "key": "quickpick.newSessionGhosttyLabel",
+      "en": "$(terminal) Ghostty",
+      "zh": "$(terminal) Ghostty"
+    },
+    {
+      "key": "quickpick.newSessionGrokLabel",
+      "en": "$(rocket) Grok Build",
+      "zh": "$(rocket) Grok Build"
+    },
+    {
+      "key": "quickpick.newSessionOpenCodeLabel",
+      "en": "$(terminal) OpenCode",
+      "zh": "$(terminal) OpenCode"
+    },
+    {
+      "key": "quickpick.newSessionPiLabel",
+      "en": "$(symbol-method) Pi",
+      "zh": "$(symbol-method) Pi"
+    },
+    {
+      "key": "quickpick.resumeWithCodexAppLabel",
+      "en": "ChatGPT",
+      "zh": "ChatGPT"
+    },
+    {
+      "key": "quickpick.resumeWithGhosttyLabel",
+      "en": "Ghostty",
+      "zh": "Ghostty"
+    },
+    {
+      "key": "settings.enum.acpAutoApprovePermissionsAllowAll",
+      "en": "allowAll",
+      "zh": "allowAll"
+    },
+    {
+      "key": "settings.enum.acpAutoApprovePermissionsAsk",
+      "en": "ask",
+      "zh": "ask"
+    },
+    {
+      "key": "settings.enum.catalogSidebarModeFull",
+      "en": "full",
+      "zh": "full"
+    },
+    {
+      "key": "settings.enum.catalogSidebarModeLegacy",
+      "en": "legacy",
+      "zh": "legacy"
+    },
+    {
+      "key": "settings.enum.catalogStalePolicyOff",
+      "en": "off",
+      "zh": "off"
+    },
+    {
+      "key": "settings.enum.catalogStalePolicyPurge",
+      "en": "purge",
+      "zh": "purge"
+    },
+    {
+      "key": "settings.enum.claudeResumeModePanel",
+      "en": "panel",
+      "zh": "panel"
+    },
+    {
+      "key": "settings.enum.claudeResumeModeTerminal",
+      "en": "terminal",
+      "zh": "terminal"
+    },
+    {
+      "key": "settings.enum.codexResumeModeApp",
+      "en": "app",
+      "zh": "app"
+    },
+    {
+      "key": "settings.enum.codexResumeModePanel",
+      "en": "panel",
+      "zh": "panel"
+    },
+    {
+      "key": "settings.enum.codexResumeModeTerminal",
+      "en": "terminal",
+      "zh": "terminal"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderAgy",
+      "en": "agy",
+      "zh": "agy"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderClaude",
+      "en": "claude",
+      "zh": "claude"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderCodex",
+      "en": "codex",
+      "zh": "codex"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderGrok",
+      "en": "grok",
+      "zh": "grok"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderOpencode",
+      "en": "opencode",
+      "zh": "opencode"
+    },
+    {
+      "key": "settings.enum.editorNewSessionProviderPi",
+      "en": "pi",
+      "zh": "pi"
+    },
+    {
+      "key": "settings.enum.ghosttyLaunchModeCopyCommand",
+      "en": "copyCommand",
+      "zh": "copyCommand"
+    },
+    {
+      "key": "settings.enum.ghosttyLaunchModeExecuteCommand",
+      "en": "executeCommand",
+      "zh": "executeCommand"
+    },
+    {
+      "key": "settings.enum.ghosttyLaunchModePasteCommand",
+      "en": "pasteCommand",
+      "zh": "pasteCommand"
+    },
+    {
+      "key": "settings.enum.terminalLocationEditorBeside",
+      "en": "editorBeside",
+      "zh": "editorBeside"
+    },
+    {
+      "key": "settings.enum.terminalLocationPanel",
+      "en": "panel",
+      "zh": "panel"
+    },
+    {
+      "key": "settings.enum.terminalModeNewPerSession",
+      "en": "newPerSession",
+      "zh": "newPerSession"
+    },
+    {
+      "key": "settings.groupAcpClaudeTitle",
+      "en": "Claude",
+      "zh": "Claude"
+    },
+    {
+      "key": "settings.groupAcpCodexTitle",
+      "en": "Codex",
+      "zh": "Codex"
+    },
+    {
+      "key": "settings.groupAcpGrokTitle",
+      "en": "Grok Build",
+      "zh": "Grok Build"
+    },
+    {
+      "key": "settings.groupAcpOpenCodeTitle",
+      "en": "OpenCode",
+      "zh": "OpenCode"
+    },
+    {
+      "key": "settings.groupAcpPiTitle",
+      "en": "Pi",
+      "zh": "Pi"
+    },
+    {
+      "key": "terminal.providerLabelAgy",
+      "en": "agy",
+      "zh": "agy"
+    },
+    {
+      "key": "terminal.providerLabelAlma",
+      "en": "Alma",
+      "zh": "Alma"
+    },
+    {
+      "key": "terminal.providerLabelClaude",
+      "en": "Claude",
+      "zh": "Claude"
+    },
+    {
+      "key": "terminal.providerLabelCodex",
+      "en": "Codex",
+      "zh": "Codex"
+    },
+    {
+      "key": "terminal.providerLabelGrok",
+      "en": "Grok Build",
+      "zh": "Grok Build"
+    },
+    {
+      "key": "terminal.providerLabelOpencode",
+      "en": "OpenCode",
+      "zh": "OpenCode"
+    },
+    {
+      "key": "terminal.providerLabelPi",
+      "en": "Pi",
+      "zh": "Pi"
+    },
+    {
+      "key": "tree.acp.description",
+      "en": "acp/{0} · {1}",
+      "zh": "acp/{0} · {1}"
+    },
+    {
+      "key": "tree.descriptionAcp",
+      "en": "acp · {0} · {1}",
+      "zh": "acp · {0} · {1}"
+    },
+    {
+      "key": "tree.descriptionProvider",
+      "en": "{0} · {1}",
+      "zh": "{0} · {1}"
+    },
+    {
+      "key": "tree.gtd.status.inbox",
+      "en": "@inbox",
+      "zh": "@inbox"
+    },
+    {
+      "key": "tree.gtd.status.next",
+      "en": "@next",
+      "zh": "@next"
+    },
+    {
+      "key": "tree.gtd.status.reference",
+      "en": "@reference",
+      "zh": "@reference"
+    },
+    {
+      "key": "tree.gtd.status.someday",
+      "en": "@someday",
+      "zh": "@someday"
+    },
+    {
+      "key": "tree.gtd.status.waiting",
+      "en": "@waiting",
+      "zh": "@waiting"
+    },
+    {
+      "key": "webview.search.sectionGtd",
+      "en": "GTD",
+      "zh": "GTD"
+    },
+    {
+      "key": "webview.settings.apiKeyPlaceholderConfigured",
+      "en": "••••••••",
+      "zh": "••••••••"
+    },
+    {
+      "key": "webview.settings.apiKeyPlaceholderEmpty",
+      "en": "sk-...",
+      "zh": "sk-..."
+    }
+  ]
+}

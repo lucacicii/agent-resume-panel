@@ -6,6 +6,12 @@
       "script": "compile",
       "group": "build",
       "problemMatcher": "$tsc"
+    },
+    {
+      "type": "npm",
+      "script": "install:local",
+      "group": "build",
+      "problemMatcher": []
     }
   ]
 }

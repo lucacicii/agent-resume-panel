@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src {{cspSource}}; script-src 'nonce-{{nonce}}';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="{{styleUri}}" />
+  </head>
+  <body>
+    <div class="preview-shell">
+      <div class="preview-card">
+        <div class="preview-header">
+          <div id="preview-title" class="preview-title">Loading preview...</div>
+          <div class="preview-actions">
+            <button id="preview-resume" type="button" class="preview-action preview-action-primary" aria-label="Resume session">Resume</button>
+            <button id="preview-resume-with" type="button" class="preview-action" aria-label="Resume session with">Resume with…</button>
+            <button id="preview-summarize" type="button" class="preview-action hidden" aria-label="Summarize session">Summarize</button>
+            <button id="preview-auto-rename" type="button" class="preview-action hidden" aria-label="Auto rename session">Auto Rename</button>
+            <button id="preview-handoff" type="button" class="preview-action hidden" aria-label="Hand off to another agent">Hand Off to…</button>
+            <button id="preview-rename" type="button" class="preview-action" aria-label="Rename session">Rename</button>
+            <button id="preview-close" type="button" class="preview-action" aria-label="Close preview">Close</button>
+          </div>
+        </div>
+        <div id="preview-notice" class="preview-notice hidden"></div>
+        <div id="preview-summary" class="preview-summary hidden"></div>
+        <div id="preview-messages" class="preview-messages">
+          <div class="preview-loading">Loading conversation...</div>
+        </div>
+      </div>
+    </div>
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+  </body>
+</html>

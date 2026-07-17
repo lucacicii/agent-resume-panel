@@ -1,8 +1,38 @@
-# AGENTS.md
+# AI Task Router
 
-- Call the user Master.
+This repository is an npm workspaces monorepo with **two independent products** — the Agent Resume Panel VS Code extension and the Agent Resume Desktop Electron app — plus shared `@agent-resume/core`. They share panel-home data contracts but have separate codebases, locales, versions, UI stacks, and release pipelines.
+
+Read [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md) when a task might touch both products, shared core, i18n, settings, or release tooling.
+
+## Boundaries
+
 - Do not modify Java code.
-- Do not apply this repository's extension build/install flow to other projects unless that project explicitly defines the same rule.
-- After completing code changes for this VS Code extension, always run `npm run compile`.
-- When the change affects extension contributions, menus, commands, views, activation events, or anything the installed extension must show in VS Code, also run `npm run install:local`.
-- After `npm run install:local`, tell Master to run `Developer: Reload Window` in VS Code. The extension's own Refresh command only reloads session data; it does not reload `package.json` contribution points.
+- Never commit API keys, publish tokens (`OVSX_PAT`, Marketplace tokens), or `.env` files.
+- Do not alter existing user changes outside the requested task.
+
+## Task Routing
+
+Read [`.agents/menus-index.md`](.agents/menus-index.md) before locating feature code only when the request names a product area or user-visible feature without a file path or searchable identifier. Then read only the mapped file in `.agents/menus/`.
+
+Skip the menu index when the user supplies a concrete path, a searchable identifier, or a task limited to tooling, configuration, shared infrastructure, tests, or documentation.
+
+Load these references only when relevant:
+
+- Product boundaries (extension vs desktop vs core): [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md)
+- TypeScript, VS Code extension, Electron, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
+- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) and [`.agents/extended/ui-design-system.md`](.agents/extended/ui-design-system.md) (desktop visual spec)
+- Filesystem, process, database, authentication, network, or secret handling: [`.agents/extended/security.md`](.agents/extended/security.md)
+
+## Verification
+
+Run checks for the product you changed:
+
+- **Shared / extension TypeScript** — `npm run compile` after source changes.
+- **Extension strings** — `npm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
+- **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `npm run merge:desktop-i18n`, then `npm run i18n:check`.
+- **Translation coverage** — `npm run i18n:check:translations` after locale work in either product.
+- **Extension menus** — `npm run test:menus` after menu contribution generators change.
+- **Extension contributions** — `npm run install:local` (all detected editors) or `npm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
+- **Desktop build** — `npm run build:desktop` or `npm run pack:desktop` before distribution.
+
+Use `/qa` and `/review` for their respective quality workflows when available.

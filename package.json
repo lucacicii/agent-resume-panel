@@ -1,319 +1,35 @@
 {
-  "name": "agent-resume-panel",
-  "displayName": "Agent Resume Panel",
-  "publisher": "thunder-luc",
-  "description": "Unified VS Code resume panel for Codex, Claude Code, and Antigravity CLI sessions.",
-  "version": "1.1.3",
-  "icon": "resources/icon.png",
+  "name": "agent-resume-panel-monorepo",
   "private": true,
-  "author": "thunder-luc",
-  "license": "MIT",
-  "engines": {
-    "vscode": "^1.92.0"
-  },
-  "categories": [
-    "Other"
+  "workspaces": [
+    "packages/*",
+    "apps/*"
   ],
-  "activationEvents": [
-    "onStartupFinished",
-    "onView:agentResume.sessions",
-    "onCommand:agentResume.refresh",
-    "onCommand:agentResume.search",
-    "onCommand:agentResume.newSession",
-    "onCommand:agentResume.openProject",
-    "onCommand:agentResume.openInGhostty",
-    "onCommand:agentResume.openInCodexApp",
-    "onCommand:agentResume.newCodexSession",
-    "onCommand:agentResume.newClaudeSession",
-    "onCommand:agentResume.newAgySession",
-    "onCommand:agentResume.newCodexAppSession"
-  ],
-  "main": "./out/extension.js",
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "package": "npm run compile && vsce package --no-dependencies",
-    "install:local": "npm run package && node scripts/install-local.mjs"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.1",
-    "@types/vscode": "1.92.0",
-    "@vscode/vsce": "^3.2.0",
-    "typescript": "^5.9.3"
-  },
-  "contributes": {
-    "configuration": {
-      "title": "Agent Resume Panel",
-      "properties": {
-        "agentResume.codexHome": {
-          "type": "string",
-          "default": "~/.codex",
-          "description": "Codex home directory containing state_*.sqlite, session_index.jsonl, and history.jsonl."
-        },
-        "agentResume.claudeHome": {
-          "type": "string",
-          "default": "~/.claude",
-          "description": "Claude Code home directory containing history.jsonl and projects."
-        },
-        "agentResume.antigravityHome": {
-          "type": "string",
-          "default": "~/.gemini",
-          "description": "Antigravity data root. The extension scans antigravity-cli and antigravity subdirectories for sessions."
-        },
-        "agentResume.maxItems": {
-          "type": "number",
-          "default": 500,
-          "minimum": 20,
-          "maximum": 5000,
-          "description": "Maximum number of sessions to load into the panel."
-        },
-        "agentResume.terminalMode": {
-          "type": "string",
-          "enum": [
-            "newPerSession"
-          ],
-          "default": "newPerSession",
-          "description": "Terminal launch behavior. The first version opens one terminal per resumed session."
-        },
-        "agentResume.terminalLocation": {
-          "type": "string",
-          "enum": [
-            "editorBeside",
-            "panel"
-          ],
-          "default": "editorBeside",
-          "description": "Where VS Code integrated resume terminals should open."
-        },
-        "agentResume.enableVsCodeTerminalImagesHint": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a one-time hint about VS Code terminal image support and the Ghostty fallback."
-        },
-        "agentResume.ghosttyExecutable": {
-          "type": "string",
-          "default": "Ghostty",
-          "description": "Ghostty app name on macOS or ghostty CLI executable/path used by Open in Ghostty."
-        },
-        "agentResume.ghosttyLaunchMode": {
-          "type": "string",
-          "enum": [
-            "pasteCommand",
-            "copyCommand",
-            "executeCommand"
-          ],
-          "default": "pasteCommand",
-          "description": "How Open in Ghostty starts a session. pasteCommand opens Ghostty, pastes the copied resume command, and presses Enter without using Ghostty's execute-command path."
-        },
-        "agentResume.ghosttyAutoPasteDelayMs": {
-          "type": "number",
-          "default": 900,
-          "minimum": 100,
-          "maximum": 5000,
-          "description": "Delay before auto-pasting the resume command into Ghostty when ghosttyLaunchMode is pasteCommand."
-        },
-        "agentResume.showArchivedCodex": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show archived Codex threads."
-        }
-      }
-    },
-    "commands": [
-      {
-        "command": "agentResume.refresh",
-        "title": "Refresh",
-        "category": "Agent Resume",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "agentResume.search",
-        "title": "Search Sessions",
-        "category": "Agent Resume",
-        "icon": "$(search)"
-      },
-      {
-        "command": "agentResume.newSession",
-        "title": "New Session",
-        "category": "Agent Resume",
-        "icon": "$(plus)"
-      },
-      {
-        "command": "agentResume.openSession",
-        "title": "Resume Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.copyResumeCommand",
-        "title": "Copy Resume Command",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openProject",
-        "title": "Open Folder and Resume",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openInGhostty",
-        "title": "Open in Ghostty",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.openInCodexApp",
-        "title": "Resume in Codex App",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newCodexSession",
-        "title": "New Codex Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newClaudeSession",
-        "title": "New Claude Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newAgySession",
-        "title": "New Antigravity Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newCodexAppSession",
-        "title": "New Codex App Session",
-        "category": "Agent Resume"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "agentResume",
-          "title": "Agent Resume",
-          "icon": "resources/agent-resume.svg"
-        }
-      ]
-    },
-    "views": {
-      "agentResume": [
-        {
-          "id": "agentResume.sessions",
-          "name": "Sessions",
-          "icon": "$(comment-discussion)"
-        }
-      ]
-    },
-    "menus": {
-      "commandPalette": [
-        {
-          "command": "agentResume.openSession",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.copyResumeCommand",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.openProject",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.openInGhostty",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.openInCodexApp",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.newCodexSession",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.newClaudeSession",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.newAgySession",
-          "when": "false"
-        },
-        {
-          "command": "agentResume.newCodexAppSession",
-          "when": "false"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "agentResume.newSession",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@0"
-        },
-        {
-          "command": "agentResume.search",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@1"
-        },
-        {
-          "command": "agentResume.refresh",
-          "when": "view == agentResume.sessions",
-          "group": "navigation@2"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "agentResume.openSession",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
-          "group": "inline@1"
-        },
-        {
-          "command": "agentResume.copyResumeCommand",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
-          "group": "navigation@1"
-        },
-        {
-          "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
-          "group": "navigation@2"
-        },
-        {
-          "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\./",
-          "group": "navigation@3"
-        },
-        {
-          "command": "agentResume.openInCodexApp",
-          "when": "view == agentResume.sessions && viewItem == agentResume.session.codex",
-          "group": "navigation@4"
-        },
-        {
-          "command": "agentResume.openProject",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@1"
-        },
-        {
-          "command": "agentResume.openInGhostty",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@2"
-        },
-        {
-          "command": "agentResume.newCodexSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@3"
-        },
-        {
-          "command": "agentResume.newClaudeSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@4"
-        },
-        {
-          "command": "agentResume.newAgySession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@5"
-        },
-        {
-          "command": "agentResume.newCodexAppSession",
-          "when": "view == agentResume.sessions && viewItem == agentResume.project",
-          "group": "navigation@6"
-        }
-      ]
-    }
+    "build:core": "npm run build -w @agent-resume/core",
+    "compile": "npm run build:core && npm run compile -w agent-resume-panel",
+    "watch": "npm run watch -w agent-resume-panel",
+    "package": "npm run package -w agent-resume-panel",
+    "install:local": "npm run compile && npm run package -w agent-resume-panel && node apps/extension/scripts/install-local.mjs",
+    "install:local-vscode": "npm run compile && npm run package -w agent-resume-panel && node apps/extension/scripts/install-local.mjs --editors=code --require-all",
+    "build:openvsx": "npm run build:openvsx -w agent-resume-panel",
+    "build:all": "npm run build:all -w agent-resume-panel",
+    "publish:openvsx": "npm run publish:openvsx -w agent-resume-panel",
+    "build:desktop": "npm run build -w @agent-resume/desktop",
+    "dev:desktop": "npm run dev -w @agent-resume/desktop",
+    "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
+    "release:desktop:mac": "node scripts/release-desktop-mac.mjs",
+    "test:menus": "npm run test:menus -w agent-resume-panel",
+    "test:manifest": "npm run test:manifest -w agent-resume-panel",
+    "test:vsix": "npm run test:vsix -w agent-resume-panel",
+    "test:notes": "npm run test:notes -w agent-resume-panel",
+    "test:core": "npm run test -w @agent-resume/core",
+    "test:desktop": "npm run test:mac-app -w @agent-resume/desktop && npm run test:node-pty -w @agent-resume/desktop && npm run test:workbench-files -w @agent-resume/desktop",
+    "i18n:check": "npm run i18n:check -w agent-resume-panel",
+    "i18n:check:translations": "npm run i18n:check:translations -w agent-resume-panel",
+    "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs && npm run merge:desktop-i18n",
+    "test:locale": "npm run test:locale -w agent-resume-panel",
+    "merge:desktop-i18n": "node scripts/merge-desktop-i18n.mjs",
+    "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs"
   }
 }

@@ -1,0 +1,3 @@
+Follow AGENTS.md. The VS Code extension (apps/extension) and Electron desktop (apps/desktop) are independent products with separate locales, versions, UI, and releases; shared code lives in packages/core. Read .agents/extended/product-independence.md when a task may touch both products.
+
+For feature requests without a concrete path or searchable identifier, consult .agents/menus-index.md and then only the matching .agents/menus detail file. Load .agents/extended references only when their subject is relevant.
