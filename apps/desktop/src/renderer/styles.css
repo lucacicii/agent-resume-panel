@@ -4346,6 +4346,9 @@ code {
   top: 50%;
   transform: translateY(-50%);
   max-width: 72px;
+  padding: 2px 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-window-bg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

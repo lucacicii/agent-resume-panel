@@ -2815,7 +2815,7 @@ function renderWorkbenchGitGraphRowSvg(row, layout) {
   return svg;
 }
 
-const WB_GIT_GRAPH_LANE_LABEL_GUTTER_EXTRA = 80;
+const WB_GIT_GRAPH_LANE_LABEL_GUTTER_EXTRA = 88;
 
 function renderWorkbenchGitGraphGutter(rowLayout, layout, fullLaneLabel, gutterMinWidth) {
   const gutter = document.createElement("div");
@@ -2832,7 +2832,7 @@ function renderWorkbenchGitGraphGutter(rowLayout, layout, fullLaneLabel, gutterM
     label.textContent = rowLayout.laneLabel;
     if (fullLaneLabel) label.title = fullLaneLabel;
     const left =
-      rowLayout.commitColumn * layout.laneWidth + layout.laneWidth / 2 + WB_GIT_GRAPH_NODE_R + 4;
+      rowLayout.commitColumn * layout.laneWidth + layout.laneWidth / 2 + WB_GIT_GRAPH_NODE_R + 12;
     label.style.left = `${left}px`;
     gutter.appendChild(label);
   }
