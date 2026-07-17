@@ -1901,7 +1901,8 @@ function fitWorkbenchTerminal() {
   }
 }
 
-const WB_TERMINAL_GIT_DEBOUNCE_MS = 80;
+/** Debounce shell-prompt OSC → branch/status/graph sync (same cwd still fires). */
+const WB_TERMINAL_GIT_DEBOUNCE_MS = 200;
 
 function formatWorkbenchGitError(error) {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
@@ -1986,18 +1987,48 @@ function normalizeTerminalCwd(cwd) {
   return value;
 }
 
+/**
+ * Shell integration emits OSC cwd on every prompt (precmd / PROMPT_COMMAND),
+ * not only on directory change. Treat each pulse as "command finished" so
+ * terminal/session git ops (checkout, commit, pull, …) refresh outer UI.
+ */
 function handleWorkbenchTerminalCwdChange(pane, cwd) {
   const next = normalizeTerminalCwd(cwd);
   if (!next) return;
   const prev = normalizeTerminalCwd(pane.liveCwd);
-  if (prev === next) return;
-  pane.liveCwd = next;
-  updateWorkbenchTerminalStatusBar(pane);
+  if (prev !== next) {
+    pane.liveCwd = next;
+    updateWorkbenchTerminalStatusBar(pane);
+  }
+  scheduleWorkbenchGitUiSyncFromTerminal(pane);
+}
+
+function scheduleWorkbenchGitUiSyncFromTerminal(pane) {
+  if (!pane) return;
   if (pane.gitQueryTimer) clearTimeout(pane.gitQueryTimer);
   pane.gitQueryTimer = window.setTimeout(() => {
     pane.gitQueryTimer = null;
-    void refreshWorkbenchTerminalGitInfo(pane);
+    void syncWorkbenchGitUiFromTerminal(pane);
   }, WB_TERMINAL_GIT_DEBOUNCE_MS);
+}
+
+/**
+ * Refresh terminal status-bar branch; if Git side panel is open for this
+ * project, also refresh Changes list or Git graph/log.
+ */
+async function syncWorkbenchGitUiFromTerminal(pane) {
+  if (!pane) return;
+  await refreshWorkbenchTerminalGitInfo(pane);
+
+  if (!wbSidePanelOpen || wbSidePanelTab !== "git") return;
+  const activePath = getActiveWorkbenchProjectPath();
+  if (activePath && pane.projectPath && pane.projectPath !== activePath) return;
+
+  if (wbSideGitView === "log") {
+    await refreshWorkbenchGitLog();
+  } else {
+    await refreshWorkbenchGitPanel();
+  }
 }
 
 function applyWorkbenchTerminalGitInfo(pane, info) {
@@ -2238,7 +2269,8 @@ async function checkoutWorkbenchGitBranch(pane, branch, repoRoot) {
     if (pane.ptyId > 0) {
       void agentResume.terminalInput({ id: pane.ptyId, data: "\r" });
     }
-    void refreshWorkbenchTerminalGitInfo(pane);
+    // Branch + side panel Changes / Git graph (same path as commit/push/pull).
+    void refreshWorkbenchGitPanelAfterAction();
   } catch (error) {
     alertWorkbenchError(t("desktop.workbench.checkoutBranchFailed", formatWorkbenchGitError(error)));
   } finally {
@@ -3774,10 +3806,12 @@ function handleWorkbenchGitLogBack() {
 }
 
 async function refreshWorkbenchGitPanelAfterAction() {
-  if (wbSideGitView === "log") {
-    await refreshWorkbenchGitLog();
-  } else {
-    await refreshWorkbenchGitPanel();
+  if (wbSidePanelOpen && wbSidePanelTab === "git") {
+    if (wbSideGitView === "log") {
+      await refreshWorkbenchGitLog();
+    } else {
+      await refreshWorkbenchGitPanel();
+    }
   }
   const pane = getActiveWorkbenchTerminalPane();
   if (pane) void refreshWorkbenchTerminalGitInfo(pane);
