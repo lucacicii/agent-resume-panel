@@ -60,7 +60,13 @@ export function translateKey(
 
 export function getCatalogForLocale(locale: UiLocale): MessageCatalog {
   loadCatalogs();
-  return { ...(catalogs.get(locale) ?? catalogs.get("en") ?? {}) };
+  // Always layer locale on top of English so new keys missing in a
+  // translated catalog still resolve instead of leaking raw key strings.
+  const en = catalogs.get("en") ?? {};
+  if (locale === "en") {
+    return { ...en };
+  }
+  return { ...en, ...(catalogs.get(locale) ?? {}) };
 }
 
 export function resetI18nCache(): void {

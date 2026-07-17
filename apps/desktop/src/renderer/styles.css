@@ -6143,27 +6143,6 @@ body.is-pane-resizing * {
   flex-shrink: 0;
 }
 
-.notes-list-toolbar,
-.wb-list-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 10px 4px;
-}
-
-.notes-toolbar-delete {
-  margin-left: auto;
-}
-
-.notes-toolbar-delete:not(:disabled) {
-  color: color-mix(in srgb, var(--text) 88%, #c44);
-}
-
-.notes-toolbar-delete:not(:disabled):hover {
-  background: color-mix(in srgb, #e05252 14%, transparent);
-  color: #d04040;
-}
-
 .notes-target-popover,
 .wb-target-popover {
   position: absolute;
@@ -6310,22 +6289,69 @@ body.is-pane-resizing * {
   pointer-events: none;
 }
 
-.notes-search-wrap,
-.wb-search-wrap {
+.notes-list-search-wrap,
+.wb-session-filter-wrap {
   flex-shrink: 0;
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 4px 10px 6px;
+  min-width: 0;
 }
 
 .wb-session-filter-wrap {
-  padding: 0 10px 6px;
   border-bottom: none;
 }
 
+.notes-list-search-wrap .sidebar-collapse-toggle,
+.notes-list-search-wrap #btnNotesNew,
+.notes-list-search-wrap .notes-list-search-btn,
+.wb-session-filter-wrap .sidebar-collapse-toggle,
+.wb-session-filter-wrap .wb-session-search-btn {
+  flex: 0 0 auto;
+}
+
+.notes-list-search-wrap .sidebar-project-filter-segmented,
 .wb-session-filter-wrap .sidebar-project-filter-segmented {
   --segment-count: 2;
+  flex: 1 1 auto;
+  min-width: 88px;
+}
+
+.notes-list-search-input,
+.wb-session-search-input {
+  display: none;
+  flex: 1 1 120px;
+  min-width: 0;
+  width: auto;
+  height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: var(--radius-md);
+}
+
+.notes-list-search-wrap.is-search-open .notes-list-search-btn,
+.wb-session-filter-wrap.is-search-open .wb-session-search-btn {
+  display: none;
+}
+
+.notes-list-search-wrap.is-search-open .notes-list-search-input,
+.wb-session-filter-wrap.is-search-open .wb-session-search-input {
+  display: block;
+}
+
+.notes-list-search-wrap.is-search-open .sidebar-project-filter-segmented,
+.wb-session-filter-wrap.is-search-open .sidebar-project-filter-segmented {
+  flex: 0 1 auto;
+  min-width: 88px;
+  max-width: 46%;
+}
+
+.notes-list-search-btn.has-query,
+.wb-session-search-btn.has-query {
+  color: var(--color-accent, var(--accent));
+  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
 }
 
 .notes-search,
@@ -6338,13 +6364,6 @@ body.is-pane-resizing * {
   font-size: 13px;
   background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
   color: var(--text);
-}
-
-.notes-search-wrap .notes-search,
-.wb-search-wrap .wb-search {
-  flex: 1;
-  min-width: 0;
-  width: auto;
 }
 
 .notes-search:focus,
@@ -6400,6 +6419,29 @@ body.is-pane-resizing * {
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+.notes-list-item.is-pinned:not(.active) {
+  color: color-mix(in srgb, var(--text) 92%, #f59e0b);
+}
+
+.notes-list-item-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notes-list-item-title-wrap .project-pin-icon {
+  flex: 0 0 auto;
+}
+
+.notes-list-item-title-wrap .notes-list-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notes-list-item:hover,

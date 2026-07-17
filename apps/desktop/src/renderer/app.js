@@ -378,6 +378,10 @@ function refreshPinnedProjects() {
   pinnedProjects = loadPinnedProjects();
 }
 
+function refreshPinnedNotes() {
+  pinnedNotes = loadPinnedNotes();
+}
+
 function projectFolderBaseName(projectPath) {
   if (!projectPath || projectPath === "(no project)") return projectPath || "";
   return basename(projectPath);
@@ -827,9 +831,12 @@ async function runSessionAutoRename(opts = {}) {
 
 const WB_PROJECT_KEY = "workbench-selected-project";
 const PINNED_PROJECTS_KEY = "pinned-projects";
+const PINNED_NOTES_KEY = "pinned-notes";
 /** @type {Record<string, string>} */
 let projectAliasMap = {};
 let pinnedProjects = [];
+/** @type {string[]} */
+let pinnedNotes = [];
 let wbSessions = [];
 /** @type {{ total: number, visible: number, hidden: number }} */
 let wbSessionCounts = { total: 0, visible: 0, hidden: 0 };
@@ -840,6 +847,7 @@ let wbProjectSearch = "";
 let wbProjectFilter = "all";
 /** @type {"all" | "active"} */
 let wbSessionFilter = "all";
+let wbSessionSearchOpen = false;
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
 /** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, diffPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
@@ -916,6 +924,46 @@ function setProjectPinned(projectPath, pinned) {
   if (notesLoaded) renderNotesFolders();
 }
 
+function loadPinnedNotes() {
+  try {
+    const raw = localStorage.getItem(PINNED_NOTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set();
+    return parsed
+      .map((value) => String(value || "").trim())
+      .filter((value) => {
+        if (!value || seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+  } catch {
+    return [];
+  }
+}
+
+function savePinnedNotes() {
+  try {
+    localStorage.setItem(PINNED_NOTES_KEY, JSON.stringify(pinnedNotes));
+  } catch {
+    // ignore
+  }
+}
+
+function isNotePinned(noteId) {
+  return Boolean(noteId && pinnedNotes.includes(noteId));
+}
+
+function setNotePinned(noteId, pinned) {
+  if (!noteId) return;
+  const current = new Set(pinnedNotes);
+  if (pinned) current.add(noteId);
+  else current.delete(noteId);
+  pinnedNotes = [...current];
+  savePinnedNotes();
+  if (notesLoaded) renderNotesList();
+}
+
 function currentWorkbenchProjectKey() {
   return wbProjectKey(wbSelectedProject);
 }
@@ -971,6 +1019,40 @@ function hasWorkbenchSessionActivity(session) {
 
 function isSameWbProject(a, b) {
   return wbProjectKey(a) === wbProjectKey(b);
+}
+
+/** Prefer the first sidebar project; use All sessions only when there are none. */
+function defaultWorkbenchProjectSelection(sessions = wbSessions) {
+  const projects = groupSessionsByProject(sessions);
+  if (projects.length > 0) {
+    return { kind: "project", projectPath: projects[0].projectPath };
+  }
+  return { kind: "all" };
+}
+
+function hasSavedWbProjectState() {
+  try {
+    return localStorage.getItem(WB_PROJECT_KEY) != null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve workbench folder selection after sessions load.
+ * Keeps a still-valid project or an explicit All sessions choice;
+ * otherwise activates the first project (or All sessions if empty).
+ */
+function resolveWorkbenchProjectSelection(sessions = wbSessions, current = wbSelectedProject) {
+  const projects = groupSessionsByProject(sessions);
+  if (current.kind === "project") {
+    const stillExists = projects.some((p) => p.projectPath === current.projectPath);
+    if (stillExists) return current;
+    return defaultWorkbenchProjectSelection(sessions);
+  }
+  // kind === "all": only keep when the user has an explicit saved preference
+  if (hasSavedWbProjectState()) return current;
+  return defaultWorkbenchProjectSelection(sessions);
 }
 
 function loadWbProjectState() {
@@ -1059,6 +1141,43 @@ function visibleWorkbenchSessions() {
   return filterWorkbenchSessionsByStatus(
     filterWorkbenchSessionsBySearch(filterWorkbenchSessionsByProject(wbSessions))
   ).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function syncWbSessionSearchUi() {
+  const toolbar = $("wbSessionToolbar");
+  const btn = $("btnWbSessionSearch");
+  const input = $("wbSearch");
+  if (!toolbar || !btn || !input) return;
+  toolbar.classList.toggle("is-search-open", wbSessionSearchOpen);
+  btn.setAttribute("aria-expanded", wbSessionSearchOpen ? "true" : "false");
+  btn.classList.toggle("has-query", Boolean(wbSearch.trim()) && !wbSessionSearchOpen);
+  input.hidden = !wbSessionSearchOpen;
+  if (input.value !== wbSearch) input.value = wbSearch;
+}
+
+function openWbSessionSearch(opts = {}) {
+  const select = opts.select !== false;
+  wbSessionSearchOpen = true;
+  syncWbSessionSearchUi();
+  const input = $("wbSearch");
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    if (select && input.value) input.select();
+  });
+}
+
+function closeWbSessionSearch(opts = {}) {
+  const clear = Boolean(opts.clear);
+  if (clear) {
+    wbSearch = "";
+    const input = $("wbSearch");
+    if (input) input.value = "";
+    renderWorkbenchSessionList();
+  }
+  wbSessionSearchOpen = false;
+  syncWbSessionSearchUi();
+  $("btnWbSessionSearch")?.focus();
 }
 
 function updateWorkbenchToolbarState() {
@@ -1303,6 +1422,7 @@ function renderWorkbenchSessionList() {
   const sessions = visibleWorkbenchSessions();
   list.innerHTML = "";
   syncSidebarProjectFilterUi("wbSessionFilter", wbSessionFilter);
+  syncWbSessionSearchUi();
 
   if (meta) {
     const folderLabel =
@@ -1384,14 +1504,17 @@ async function loadWorkbenchSessions(opts = {}) {
   try {
     wbSessions = await agentResume.listSessions(2000);
     await refreshWorkbenchSessionCounts();
-    if (wbSelectedProject.kind === "project") {
-      const hasProject = wbSessions.some(
-        (s) => (s.projectPath || "(no project)") === wbSelectedProject.projectPath
-      );
-      if (!hasProject) {
-        wbSelectedProject = { kind: "all" };
-        notifyWorkbenchSideContextChanged();
+    const previousSelection = wbSelectedProject;
+    const resolved = resolveWorkbenchProjectSelection(wbSessions, wbSelectedProject);
+    if (!isSameWbProject(previousSelection, resolved)) {
+      wbSelectedProject = resolved;
+      // Persist project defaults; skip empty All so a later project list can still auto-select.
+      if (resolved.kind === "project" || hasSavedWbProjectState()) {
+        saveWbProjectState();
       }
+      notifyWorkbenchSideContextChanged();
+    } else if (!hasSavedWbProjectState() && resolved.kind === "project") {
+      saveWbProjectState();
     }
     renderWorkbenchPanel();
   } catch (error) {
@@ -5069,6 +5192,9 @@ let notesFoldersCollapsed = false;
 let wbFoldersCollapsed = false;
 let notesCache = [];
 let notesSearch = "";
+let notesListSearchOpen = false;
+/** @type {"all" | "pinned"} */
+let notesListFilter = "all";
 let notesProjectSearch = "";
 /** @type {"all" | "pinned" | "active"} */
 let notesProjectFilter = "all";
@@ -5404,6 +5530,17 @@ function filterNotesBySearch(notes) {
   });
 }
 
+function noteMatchesListFilter(note) {
+  if (notesListFilter !== "pinned") return true;
+  if (note.noteId === notesActiveId) return true;
+  return isNotePinned(note.noteId);
+}
+
+function filterNotesByListStatus(notes) {
+  if (notesListFilter !== "pinned") return notes;
+  return notes.filter((n) => noteMatchesListFilter(n));
+}
+
 function filterNotesByFolder(notes) {
   if (notesSelectedFolder.kind === "all") return notes;
   if (notesSelectedFolder.kind === "library") {
@@ -5422,7 +5559,10 @@ function filterNotesByFolder(notes) {
 
 /** Notes list order: most recently updated first (`updatedAtMs` descending). */
 function visibleNotesList() {
-  return filterNotesBySearch(filterNotesByFolder(notesCache)).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  return filterNotesByListStatus(filterNotesBySearch(filterNotesByFolder(notesCache))).sort((a, b) => {
+    const pinnedDiff = Number(isNotePinned(b.noteId)) - Number(isNotePinned(a.noteId));
+    return pinnedDiff || b.updatedAtMs - a.updatedAtMs;
+  });
 }
 
 function ownerFromSelectedFolder() {
@@ -5471,22 +5611,21 @@ function selectNotesFolderForOwner(owner) {
   }
 }
 
-function updateNotesToolbarState() {
-  const canDelete = Boolean(notesActiveId) && !notesCreateBusy;
-  const deleteBtn = $("btnNotesDelete");
-  if (deleteBtn) {
-    deleteBtn.toggleAttribute("disabled", !canDelete);
-  }
-}
-
 function setNotesCreateBusy(busy) {
   notesCreateBusy = busy;
   $("btnNotesNew")?.toggleAttribute("disabled", busy);
-  $("btnNotesImport")?.toggleAttribute("disabled", busy);
   $("btnNotesNew")?.classList.toggle("is-busy", busy);
-  $("btnNotesImport")?.classList.toggle("is-busy", busy);
-  updateNotesToolbarState();
   updateWorkbenchToolbarState();
+}
+
+async function handleNotesNewClick() {
+  if (notesCreateBusy) return;
+  const owner = resolveNoteOwner();
+  if (owner) {
+    await createNoteWithOwner(owner);
+    return;
+  }
+  openNotesTargetPopover("create");
 }
 
 async function createNoteWithOwner(owner) {
@@ -5669,26 +5808,6 @@ async function pickNotesTarget(owner) {
   } else {
     await createNoteWithOwner(owner);
   }
-}
-
-async function handleNotesNewClick() {
-  if (notesCreateBusy) return;
-  const owner = resolveNoteOwner();
-  if (owner) {
-    await createNoteWithOwner(owner);
-    return;
-  }
-  openNotesTargetPopover("create");
-}
-
-async function handleNotesImportClick() {
-  if (notesCreateBusy) return;
-  const owner = resolveNoteOwner();
-  if (owner) {
-    await importNotesWithOwner(owner);
-    return;
-  }
-  openNotesTargetPopover("import");
 }
 
 function renderNotesPanel() {
@@ -5884,6 +6003,43 @@ function renderNotesFolders() {
   syncSidebarProjectFilterUi("notesProjectFilter", notesProjectFilter);
 }
 
+function syncNotesListSearchUi() {
+  const toolbar = $("notesListToolbar");
+  const btn = $("btnNotesListSearch");
+  const input = $("notesSearch");
+  if (!toolbar || !btn || !input) return;
+  toolbar.classList.toggle("is-search-open", notesListSearchOpen);
+  btn.setAttribute("aria-expanded", notesListSearchOpen ? "true" : "false");
+  btn.classList.toggle("has-query", Boolean(notesSearch.trim()) && !notesListSearchOpen);
+  input.hidden = !notesListSearchOpen;
+  if (input.value !== notesSearch) input.value = notesSearch;
+}
+
+function openNotesListSearch(opts = {}) {
+  const select = opts.select !== false;
+  notesListSearchOpen = true;
+  syncNotesListSearchUi();
+  const input = $("notesSearch");
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    if (select && input.value) input.select();
+  });
+}
+
+function closeNotesListSearch(opts = {}) {
+  const clear = Boolean(opts.clear);
+  if (clear) {
+    notesSearch = "";
+    const input = $("notesSearch");
+    if (input) input.value = "";
+    renderNotesPanel();
+  }
+  notesListSearchOpen = false;
+  syncNotesListSearchUi();
+  $("btnNotesListSearch")?.focus();
+}
+
 function renderNotesList() {
   const list = $("notesList");
   const meta = $("notesMeta");
@@ -5891,6 +6047,8 @@ function renderNotesList() {
 
   const notes = visibleNotesList();
   list.innerHTML = "";
+  syncNotesListSearchUi();
+  syncSidebarProjectFilterUi("notesListFilter", notesListFilter);
 
   if (meta) {
     const folderLabel =
@@ -5901,15 +6059,23 @@ function renderNotesList() {
           : notesSelectedFolder.kind === "project"
             ? basename(notesSelectedFolder.projectPath)
             : notesSelectedFolder.sessionId;
-    meta.textContent = notesSearch.trim()
-      ? t("desktop.notes.listMetaSearch", folderLabel, notesSearch.trim(), notes.length)
-      : t("desktop.notes.listMeta", folderLabel, notes.length);
+    if (notesSearch.trim()) {
+      meta.textContent = t("desktop.notes.listMetaSearch", folderLabel, notesSearch.trim(), notes.length);
+    } else if (notesListFilter === "pinned") {
+      meta.textContent = t("desktop.notes.listMetaFilter", folderLabel, t("desktop.common.pinned"), notes.length);
+    } else {
+      meta.textContent = t("desktop.notes.listMeta", folderLabel, notes.length);
+    }
   }
 
   if (!notes.length) {
     const empty = document.createElement("p");
     empty.className = "muted notes-list-empty";
-    empty.textContent = notesSearch.trim() ? t("desktop.notes.noMatchingNotes") : t("desktop.notes.noNotesInFolder");
+    empty.textContent = notesSearch.trim()
+      ? t("desktop.notes.noMatchingNotes")
+      : notesListFilter === "pinned"
+        ? t("desktop.notes.noFilterNotes")
+        : t("desktop.notes.noNotesInFolder");
     list.appendChild(empty);
     return;
   }
@@ -5919,11 +6085,16 @@ function renderNotesList() {
     btn.type = "button";
     btn.className = "notes-list-item";
     if (note.noteId === notesActiveId) btn.classList.add("active");
+    const pinned = isNotePinned(note.noteId);
+    if (pinned) btn.classList.add("is-pinned");
     btn.dataset.noteId = note.noteId;
     const preview = (note.contentPreview || "").trim() || t("desktop.notes.noExtraText");
     btn.innerHTML = `
       <div class="notes-list-item-top">
-        <span class="notes-list-item-title">${escapeHtml(noteDisplayTitle(note))}</span>
+        <span class="notes-list-item-title-wrap">
+          ${pinned ? projectPinIconHtml() : ""}
+          <span class="notes-list-item-title">${escapeHtml(noteDisplayTitle(note))}</span>
+        </span>
         <span class="notes-list-item-date">${escapeHtml(notesRelativeTime(note.updatedAtMs))}</span>
       </div>
       <span class="notes-list-item-preview">${escapeHtml(preview)}</span>
@@ -6285,15 +6456,14 @@ function showNotesEditor(show) {
     notesDirty = false;
   }
   if (show) renderNotesViewMode();
-  updateNotesToolbarState();
 }
 
 function shouldKeepNotesSelection(target) {
   return Boolean(
     target.closest(".notes-list-item") ||
       target.closest("#notesEditorShell") ||
-      target.closest(".notes-list-toolbar") ||
       target.closest(".notes-list-meta-row") ||
+      target.closest(".notes-list-toolbar-wrap") ||
       target.closest("#notesTargetPopover") ||
       target.closest("#notesContextMenu")
   );
@@ -6323,6 +6493,7 @@ async function deleteNoteById(noteId) {
       notesSaveTimer = null;
     }
     await agentResume.notesDelete({ noteId: note.noteId });
+    if (isNotePinned(note.noteId)) setNotePinned(note.noteId, false);
     if (notesActiveId === note.noteId) {
       notesActiveId = "";
       notesDirty = false;
@@ -6335,16 +6506,11 @@ async function deleteNoteById(noteId) {
   }
 }
 
-async function deleteActiveNote() {
-  await deleteNoteById(notesActiveId);
-}
-
 async function openNoteInEditor(noteId) {
   if (notesDirty && notesActiveId && notesActiveId !== noteId) {
     await flushNotesSave({ render: false });
   }
   notesActiveId = noteId;
-  updateNotesToolbarState();
   renderNotesList();
 
   try {
@@ -6357,10 +6523,8 @@ async function openNoteInEditor(noteId) {
     updateNotesPreview(content, noteAbs);
     showNotesEditor(true);
     renderNotesPanel();
-    updateNotesToolbarState();
   } catch (error) {
     notesActiveId = "";
-    updateNotesToolbarState();
     alertNotesError(error);
   }
 }
@@ -6435,8 +6599,28 @@ function showNotesContextMenu(event, node) {
   const isGroup = node.kind === "library" || node.kind === "project" || node.kind === "session";
   const canMove = isNote && node.note?.filename !== "todolist.md";
   const isProject = node.kind === "project";
-  menu.querySelector('[data-notes-action="pinProject"]').hidden = !isProject || isProjectPinned(node.projectPath);
-  menu.querySelector('[data-notes-action="unpinProject"]').hidden = !isProject || !isProjectPinned(node.projectPath);
+  const noteId = isNote ? node.note?.noteId : "";
+  const notePinned = Boolean(noteId && isNotePinned(noteId));
+  const pinProjectBtn = menu.querySelector('[data-notes-action="pinProject"]');
+  const unpinProjectBtn = menu.querySelector('[data-notes-action="unpinProject"]');
+  const pinNoteBtn = menu.querySelector('[data-notes-action="pinNote"]');
+  const unpinNoteBtn = menu.querySelector('[data-notes-action="unpinNote"]');
+  if (pinProjectBtn) {
+    pinProjectBtn.hidden = !isProject || isProjectPinned(node.projectPath);
+    pinProjectBtn.textContent = t("desktop.notes.pinProject");
+  }
+  if (unpinProjectBtn) {
+    unpinProjectBtn.hidden = !isProject || !isProjectPinned(node.projectPath);
+    unpinProjectBtn.textContent = t("desktop.notes.unpinProject");
+  }
+  if (pinNoteBtn) {
+    pinNoteBtn.hidden = !isNote || notePinned;
+    pinNoteBtn.textContent = t("desktop.notes.pinNote");
+  }
+  if (unpinNoteBtn) {
+    unpinNoteBtn.hidden = !isNote || !notePinned;
+    unpinNoteBtn.textContent = t("desktop.notes.unpinNote");
+  }
   menu.querySelector('[data-notes-action="new"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="import"]').hidden = !isGroup;
   menu.querySelector('[data-notes-action="renameProject"]').hidden = !isProject;
@@ -6506,6 +6690,14 @@ async function handleNotesContextAction(action) {
     }
     if (action === "unpinProject" && node?.kind === "project" && node.projectPath) {
       setProjectPinned(node.projectPath, false);
+      return;
+    }
+    if (action === "pinNote" && node?.kind === "note" && node.note?.noteId) {
+      setNotePinned(node.note.noteId, true);
+      return;
+    }
+    if (action === "unpinNote" && node?.kind === "note" && node.note?.noteId) {
+      setNotePinned(node.note.noteId, false);
       return;
     }
     if (action === "import") {
@@ -11632,9 +11824,43 @@ function wire() {
     agentResume.onWorkbenchCmdT(() => applyWorkbenchCmdTShortcut());
   }
   updateWorkbenchToolbarState();
+  $("btnWbSessionSearch")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openWbSessionSearch({ select: true });
+  });
   $("wbSearch")?.addEventListener("input", (e) => {
     wbSearch = e.target.value ?? "";
+    syncWbSessionSearchUi();
     renderWorkbenchSessionList();
+  });
+  $("wbSearch")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const input = e.currentTarget;
+    if (wbSearch.trim()) {
+      wbSearch = "";
+      if (input) input.value = "";
+      syncWbSessionSearchUi();
+      renderWorkbenchSessionList();
+      return;
+    }
+    closeWbSessionSearch();
+  });
+  $("wbSearch")?.addEventListener("blur", () => {
+    // Defer so clicks on clear / toolbar buttons are not cancelled mid-action.
+    setTimeout(() => {
+      if (!wbSessionSearchOpen) return;
+      const active = document.activeElement;
+      if (active && $("wbSessionToolbar")?.contains(active)) return;
+      if (wbSearch.trim()) {
+        // Keep filter, collapse UI, mark icon active.
+        wbSessionSearchOpen = false;
+        syncWbSessionSearchUi();
+      } else {
+        closeWbSessionSearch();
+      }
+    }, 0);
   });
   $("wbProjectSearch")?.addEventListener("input", (e) => {
     wbProjectSearch = e.target.value ?? "";
@@ -11718,9 +11944,45 @@ function wire() {
     }
   }
 
+  $("btnNotesNew")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void handleNotesNewClick();
+  });
+  $("btnNotesListSearch")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openNotesListSearch({ select: true });
+  });
   $("notesSearch")?.addEventListener("input", (e) => {
     notesSearch = e.target.value ?? "";
+    syncNotesListSearchUi();
     renderNotesPanel();
+  });
+  $("notesSearch")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const input = e.currentTarget;
+    if (notesSearch.trim()) {
+      notesSearch = "";
+      if (input) input.value = "";
+      syncNotesListSearchUi();
+      renderNotesPanel();
+      return;
+    }
+    closeNotesListSearch();
+  });
+  $("notesSearch")?.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (!notesListSearchOpen) return;
+      const active = document.activeElement;
+      if (active && $("notesListToolbar")?.contains(active)) return;
+      if (notesSearch.trim()) {
+        notesListSearchOpen = false;
+        syncNotesListSearchUi();
+      } else {
+        closeNotesListSearch();
+      }
+    }, 0);
   });
   $("notesProjectSearch")?.addEventListener("input", (e) => {
     notesProjectSearch = e.target.value ?? "";
@@ -11733,6 +11995,15 @@ function wire() {
       notesProjectFilter = next;
       syncSidebarProjectFilterUi("notesProjectFilter", notesProjectFilter);
       renderNotesFolders();
+    });
+  });
+  $("notesListFilter")?.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.dataset.filter;
+      if (!next || next === notesListFilter) return;
+      notesListFilter = next;
+      syncSidebarProjectFilterUi("notesListFilter", notesListFilter);
+      renderNotesList();
     });
   });
   $("notesFindInput")?.addEventListener("input", () => updateNotesFindResults({ select: true }));
@@ -11748,16 +12019,7 @@ function wire() {
   $("btnNotesFindPrev")?.addEventListener("click", () => navigateNotesFind(-1));
   $("btnNotesFindNext")?.addEventListener("click", () => navigateNotesFind(1));
   $("btnNotesFindClose")?.addEventListener("click", () => closeNotesFind());
-  $("btnNotesNew")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void handleNotesNewClick();
-  });
-  $("btnNotesImport")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void handleNotesImportClick();
-  });
   $("btnNotesRefresh")?.addEventListener("click", () => void loadNotes());
-  $("btnNotesDelete")?.addEventListener("click", () => void deleteActiveNote());
   $("notesPreview")?.addEventListener("click", (e) => {
     const img = e.target?.closest?.("img");
     if (!img) return;
@@ -11774,7 +12036,6 @@ function wire() {
     if (e.target === e.currentTarget) closeNotesImagePreview();
   });
   $("btnNotesImagePreviewClose")?.addEventListener("click", closeNotesImagePreview);
-  updateNotesToolbarState();
   $("notesViewSegmented")?.querySelectorAll("[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => void switchNotesViewMode(btn.dataset.mode));
   });
@@ -11865,7 +12126,6 @@ function wire() {
     if (
       !e.target.closest("#notesTargetPopover") &&
       !e.target.closest("#btnNotesNew") &&
-      !e.target.closest("#btnNotesImport") &&
       !e.target.closest("#notesContextMenu")
     ) {
       hideNotesTargetPopover();
@@ -12211,6 +12471,7 @@ async function boot() {
     initMarkdownHighlight();
     wire();
     refreshPinnedProjects();
+    refreshPinnedNotes();
     await refreshProjectAliases();
     selectedDayKey = todayInputValue();
     updatePeriodLabel();
