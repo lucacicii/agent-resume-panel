@@ -3440,6 +3440,7 @@ function renderWorkbenchGitLogDetail(show) {
   if (!files.length) {
     filesWrap.innerHTML = `<p class="wb-git-empty muted">${escapeHtml(t("desktop.workbench.gitLogNoFiles"))}</p>`;
   } else {
+    const fileRows = [];
     for (const file of files) {
       const row = document.createElement("button");
       row.type = "button";
@@ -3457,25 +3458,31 @@ function renderWorkbenchGitLogDetail(show) {
       row.addEventListener("click", () => {
         void openWorkbenchGitLogFileDiff(show, file);
       });
+      fileRows.push(row);
       filesWrap.appendChild(row);
     }
-    filesWrap.addEventListener(
-      "wheel",
-      (event) => {
-        if (!event.deltaY) return;
-        const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
-        const pane = getActiveWorkbenchGitLogDiffPane(repoRoot, show?.hash);
-        if (!pane) return;
+    filesWrap.addEventListener("keydown", (event) => {
+      if (
+        (event.key !== "ArrowDown" && event.key !== "ArrowUp") ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      const repoRoot = wbGitLogRepoRoot || resolveWorkbenchGitTargetRepo();
+      const pane = getActiveWorkbenchGitLogDiffPane(repoRoot, show?.hash);
+      if (!pane) return;
 
-        const currentIndex = files.findIndex((file) => file.path === pane.repoPath);
-        const nextIndex = currentIndex + (event.deltaY > 0 ? 1 : -1);
-        if (currentIndex < 0 || nextIndex < 0 || nextIndex >= files.length) return;
+      const currentIndex = files.findIndex((file) => file.path === pane.repoPath);
+      if (currentIndex < 0) return;
+      event.preventDefault();
+      const nextIndex = currentIndex + (event.key === "ArrowDown" ? 1 : -1);
+      if (nextIndex < 0 || nextIndex >= files.length) return;
 
-        event.preventDefault();
-        void previewWorkbenchGitLogFileDiff(show, files[nextIndex], pane);
-      },
-      { passive: false }
-    );
+      fileRows[nextIndex]?.focus();
+      void previewWorkbenchGitLogFileDiff(show, files[nextIndex], pane);
+    });
   }
   detail.appendChild(filesWrap);
   body.appendChild(detail);
