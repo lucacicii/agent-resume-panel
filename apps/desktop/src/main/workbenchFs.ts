@@ -13,6 +13,12 @@ import {
   type NestedGitRepoInfo
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
+import {
+  inspectWorkbenchFile,
+  resolveCanonicalWorkbenchPath,
+  saveWorkbenchFile,
+  type WorkbenchTextEncoding
+} from "./workbenchFileIo";
 
 const execFileAsync = promisify(execFile);
 
@@ -371,6 +377,53 @@ export function registerWorkbenchFsIpc(): void {
       return { content: fs.readFileSync(filePath, "utf8"), truncated: false };
     }
   );
+
+  safeHandle(
+    "workbench:inspectFile",
+    async (_event, args: { rootPath: string; filePath: string }) => {
+      const rootPath = resolveCwd(args.rootPath);
+      return inspectWorkbenchFile(rootPath, args.filePath);
+    }
+  );
+
+  safeHandle(
+    "workbench:saveFileText",
+    async (
+      _event,
+      args: {
+        rootPath: string;
+        filePath: string;
+        content: string;
+        encoding: WorkbenchTextEncoding;
+        expectedVersion: string;
+        force?: boolean;
+      }
+    ) => {
+      const rootPath = resolveCwd(args.rootPath);
+      if (typeof args.content !== "string" || typeof args.expectedVersion !== "string") {
+        throw new Error("无效的保存参数");
+      }
+      if (!["utf8", "utf8-bom", "utf16le", "utf16be"].includes(args.encoding)) {
+        throw new Error("不支持的文件编码");
+      }
+      return saveWorkbenchFile(
+        rootPath,
+        args.filePath,
+        args.content,
+        args.encoding,
+        args.expectedVersion,
+        Boolean(args.force)
+      );
+    }
+  );
+
+  safeHandle("workbench:openPath", async (_event, args: { rootPath: string; filePath: string }) => {
+    const rootPath = resolveCwd(args.rootPath);
+    const filePath = resolveCanonicalWorkbenchPath(rootPath, args.filePath);
+    const error = await shell.openPath(filePath);
+    if (error) throw new Error(error);
+    return { ok: true };
+  });
 
   safeHandle("workbench:revealPath", async (_event, args: { rootPath: string; targetPath: string }) => {
     const rootPath = resolveCwd(args.rootPath);

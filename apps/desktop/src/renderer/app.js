@@ -1,5 +1,5 @@
 /* global t, initI18n, applyDomI18n, setI18nBundle, getUiLocale, refreshLocalizedUi */
-/* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror */
+/* global agentResume, marked, DOMPurify, hljs, NotesCodeMirror, DesktopCodeMirror */
 
 const DESKTOP_DOC_README = "https://github.com/thunder-luc/agent-resume-desktop-doc#readme";
 const DESKTOP_DOC_ISSUES = "https://github.com/thunder-luc/agent-resume-desktop-doc/issues";
@@ -781,7 +781,7 @@ let wbProjectSearch = "";
 let wbProjectFilter = "all";
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
-/** @type {Map<string, { terminalPanes: Map<string, { key: string, projectKey: string, projectPath: string, title: string, ptyId: number, term: any, fitAddon: any, paneEl: HTMLElement, hostEl: HTMLElement, cwd: string, liveCwd: string, gitBranch: string | null, statusEl: HTMLElement, statusPathEl: HTMLElement, statusSepEl: HTMLElement, statusBranchEl: HTMLElement, gitQueryTimer: number | null, oscDisposables: any[] }>, activeTerminalKey: string, activeSessionKey: string }>} */
+/** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
 const wbProjectDetails = new Map();
 let wbTerminalIpcReady = false;
 let wbContextNode = null;
@@ -862,7 +862,14 @@ function currentWorkbenchProjectKey() {
 function ensureWorkbenchProjectDetail(projectKey = currentWorkbenchProjectKey()) {
   let detail = wbProjectDetails.get(projectKey);
   if (!detail) {
-    detail = { terminalPanes: new Map(), activeTerminalKey: "", activeSessionKey: "" };
+    detail = {
+      terminalPanes: new Map(),
+      editorPanes: new Map(),
+      paneOrder: [],
+      activePaneKey: "",
+      activeTerminalKey: "",
+      activeSessionKey: ""
+    };
     wbProjectDetails.set(projectKey, detail);
   }
   return detail;
@@ -878,7 +885,9 @@ function getActiveWorkbenchProjectPath() {
 
 function hasWorkbenchProjectActivity(projectPath) {
   const detail = getWorkbenchProjectDetail(wbProjectKeyFromPath(projectPath));
-  return Boolean(detail && (detail.terminalPanes.size > 0 || Boolean(detail.activeSessionKey)));
+  return Boolean(
+    detail && (detail.terminalPanes.size > 0 || detail.editorPanes.size > 0 || Boolean(detail.activeSessionKey))
+  );
 }
 
 function hasWorkbenchSessionActivity(session) {
@@ -920,6 +929,7 @@ function saveWbProjectState() {
 }
 
 function selectWorkbenchProject(folder) {
+  void flushActiveWorkbenchEditor();
   wbSelectedProject = folder;
   saveWbProjectState();
   const detail = getWorkbenchProjectDetail();
@@ -1406,7 +1416,7 @@ function updateWorkbenchTerminalHint() {
   const hint = $("wbTerminalHint");
   if (!hint) return;
   const detail = getWorkbenchProjectDetail();
-  if (detail && detail.terminalPanes.size > 0) {
+  if (detail && (detail.terminalPanes.size > 0 || detail.editorPanes.size > 0)) {
     hint.classList.add("hidden");
     return;
   }
@@ -1459,7 +1469,11 @@ function syncWorkbenchTerminalVisibility() {
   const activeProjectKey = currentWorkbenchProjectKey();
   for (const [projectKey, detail] of wbProjectDetails) {
     for (const [paneKey, pane] of detail.terminalPanes) {
-      const active = projectKey === activeProjectKey && paneKey === detail.activeTerminalKey;
+      const active = projectKey === activeProjectKey && paneKey === detail.activePaneKey;
+      pane.paneEl.classList.toggle("active", active);
+    }
+    for (const [paneKey, pane] of detail.editorPanes) {
+      const active = projectKey === activeProjectKey && paneKey === detail.activePaneKey;
       pane.paneEl.classList.toggle("active", active);
     }
   }
@@ -1476,40 +1490,47 @@ function renderWorkbenchTerminalTabs() {
   tabsEl.hidden = !onWorkbench;
   if (!onWorkbench) return;
 
-  listEl.hidden = !internalTerminal;
+  listEl.hidden = false;
   listEl.innerHTML = "";
   const newTerminalBtn = $("btnWorkbenchTabNewTerminal");
   if (newTerminalBtn) newTerminalBtn.hidden = !internalTerminal;
 
-  if (!hasProject || !internalTerminal) return;
+  if (!hasProject) return;
 
   const detail = getWorkbenchProjectDetail();
-  const terminalPanes = detail?.terminalPanes || new Map();
+  if (!detail) return;
 
-  for (const [key, pane] of terminalPanes) {
+  for (const key of detail.paneOrder) {
+    const pane = detail.terminalPanes.get(key) || detail.editorPanes.get(key);
+    if (!pane) continue;
+    const isEditor = pane.kind === "editor";
     const tab = document.createElement("div");
     tab.className = "wb-terminal-tab";
     tab.dataset.key = key;
     tab.setAttribute("role", "tab");
-    const isActive = key === detail?.activeTerminalKey;
+    const isActive = key === detail.activePaneKey;
     tab.classList.toggle("active", isActive);
     tab.setAttribute("aria-selected", isActive ? "true" : "false");
 
     const label = document.createElement("button");
     label.type = "button";
     label.className = "wb-terminal-tab-label";
-    label.textContent = pane.title || basename(pane.cwd);
-    label.title = pane.title || pane.cwd;
-    label.addEventListener("click", () => switchWorkbenchTerminalTab(key));
+    label.textContent = `${pane.dirty ? "• " : ""}${pane.title || basename(pane.cwd || pane.filePath)}`;
+    label.title = pane.filePath || pane.title || pane.cwd;
+    label.addEventListener("click", () => switchWorkbenchPane(key));
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "wb-terminal-tab-close";
-    closeBtn.setAttribute("aria-label", t("desktop.workbench.closeTerminal"));
+    closeBtn.setAttribute(
+      "aria-label",
+      isEditor ? t("desktop.workbench.closeFile") : t("desktop.workbench.closeTerminal")
+    );
     closeBtn.textContent = "×";
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      void closeWorkbenchTerminalTab(key);
+      if (isEditor) void closeWorkbenchEditorTab(key);
+      else void closeWorkbenchTerminalTab(key);
     });
 
     tab.appendChild(label);
@@ -1518,38 +1539,56 @@ function renderWorkbenchTerminalTabs() {
   }
 }
 
-function switchWorkbenchTerminalTab(key) {
+function switchWorkbenchPane(key) {
   const detail = getWorkbenchProjectDetail();
-  if (!detail?.terminalPanes.has(key)) return;
-  detail.activeTerminalKey = key;
+  if (!detail || (!detail.terminalPanes.has(key) && !detail.editorPanes.has(key))) return;
+  const previousEditor = detail.editorPanes.get(detail.activePaneKey);
+  if (previousEditor && previousEditor.key !== key) void flushWorkbenchEditorPane(previousEditor);
+
+  detail.activePaneKey = key;
+  const terminalPane = detail.terminalPanes.get(key);
+  detail.activeTerminalKey = terminalPane ? key : "";
 
   for (const [paneKey, pane] of detail.terminalPanes) {
+    pane.paneEl.classList.toggle("active", paneKey === key);
+  }
+  for (const [paneKey, pane] of detail.editorPanes) {
     const active = paneKey === key;
     pane.paneEl.classList.toggle("active", active);
-    if (active) {
-      requestAnimationFrame(() => {
-        try {
-          pane.fitAddon?.fit();
-          pane.term?.focus();
-        } catch {
-          // ignore
-        }
-        fitWorkbenchTerminal();
-        void refreshWorkbenchTerminalGitInfo(pane);
-      });
-    }
+    if (active) requestAnimationFrame(() => DesktopCodeMirror?.focus?.(pane.view));
   }
 
-  if (!key.startsWith("new:") && !key.startsWith("term:")) {
-    detail.activeSessionKey = key;
-    highlightWorkbenchSession(key);
-  } else if (key.startsWith("term:")) {
+  if (terminalPane) {
+    requestAnimationFrame(() => {
+      try {
+        terminalPane.fitAddon?.fit();
+        terminalPane.term?.focus();
+      } catch {
+        // ignore
+      }
+      fitWorkbenchTerminal();
+      void refreshWorkbenchTerminalGitInfo(terminalPane);
+    });
+    if (!key.startsWith("new:") && !key.startsWith("term:")) {
+      detail.activeSessionKey = key;
+      highlightWorkbenchSession(key);
+    } else if (key.startsWith("term:")) {
+      detail.activeSessionKey = "";
+      highlightWorkbenchSession("");
+    }
+  } else {
     detail.activeSessionKey = "";
     highlightWorkbenchSession("");
   }
   renderWorkbenchTerminalTabs();
   renderWorkbenchFolders();
   updateWorkbenchTerminalHint();
+}
+
+function switchWorkbenchTerminalTab(key) {
+  const detail = getWorkbenchProjectDetail();
+  if (!detail?.terminalPanes.has(key)) return;
+  switchWorkbenchPane(key);
 }
 
 async function closeWorkbenchTerminalTab(key) {
@@ -1574,13 +1613,17 @@ async function closeWorkbenchTerminalTab(key) {
   }
   pane.paneEl.remove();
   detail.terminalPanes.delete(key);
+  detail.paneOrder = detail.paneOrder.filter((paneKey) => paneKey !== key);
 
-  if (detail.activeTerminalKey === key) {
-    const remaining = [...detail.terminalPanes.keys()];
-    detail.activeTerminalKey = remaining.length ? remaining[remaining.length - 1] : "";
-    if (detail.activeTerminalKey) {
-      switchWorkbenchTerminalTab(detail.activeTerminalKey);
+  if (detail.activePaneKey === key) {
+    const remaining = detail.paneOrder.filter(
+      (paneKey) => detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey)
+    );
+    detail.activePaneKey = remaining.length ? remaining[remaining.length - 1] : "";
+    if (detail.activePaneKey) {
+      switchWorkbenchPane(detail.activePaneKey);
     } else {
+      detail.activeTerminalKey = "";
       wbActiveKey = "";
       highlightWorkbenchSession("");
     }
@@ -1596,6 +1639,14 @@ async function closeActiveWorkbenchTerminal() {
   if (!key) return false;
   await closeWorkbenchTerminalTab(key);
   return true;
+}
+
+async function closeActiveWorkbenchPane() {
+  const detail = getWorkbenchProjectDetail();
+  const key = detail?.activePaneKey || "";
+  if (!key) return false;
+  if (detail?.editorPanes.has(key)) return closeWorkbenchEditorTab(key);
+  return closeActiveWorkbenchTerminal();
 }
 
 function fitWorkbenchTerminal() {
@@ -2005,6 +2056,7 @@ async function createWorkbenchTerminalPane(opts) {
   stack.appendChild(paneEl);
 
   const paneRef = {
+    kind: "terminal",
     key,
     projectKey: wbProjectKeyFromPath(projectPath),
     projectPath: projectPath || "",
@@ -2066,7 +2118,9 @@ async function createWorkbenchTerminalPane(opts) {
   paneRef.ptyId = id;
   paneRef.term = term;
   paneRef.fitAddon = fitAddon;
-  ensureWorkbenchProjectDetail(paneRef.projectKey).terminalPanes.set(key, paneRef);
+  const detail = ensureWorkbenchProjectDetail(paneRef.projectKey);
+  detail.terminalPanes.set(key, paneRef);
+  if (!detail.paneOrder.includes(key)) detail.paneOrder.push(key);
 
   attachWorkbenchTerminalOscHandlers(term, paneRef);
   updateWorkbenchTerminalStatusBar(paneRef);
@@ -2111,6 +2165,9 @@ let wbSidePanelRefreshTimer = null;
 let wbGitActionBusy = false;
 /** @type {{ repoRoot: string, resolve: (value: boolean) => void } | null} */
 let wbGitCommitPending = null;
+const WB_EDITOR_SAVE_DEBOUNCE_MS = 600;
+let wbWindowCloseAllowed = false;
+let wbWindowCloseFlushPending = false;
 
 function clampWbSidePanelWidth(value) {
   return Math.min(WB_SIDE_PANEL_LIMITS.max, Math.max(WB_SIDE_PANEL_LIMITS.min, Math.round(value)));
@@ -2290,9 +2347,15 @@ function renderWorkbenchFileTreeRows(rootPath, dirPath, depth, container) {
         void refreshWorkbenchFileTree();
         return;
       }
-      void revealWorkbenchFile(entry.path, rootPath);
+      void openWorkbenchFile(entry.path, rootPath);
       $("wbFileTree")?.querySelectorAll(".wb-file-tree-row.is-selected").forEach((el) => el.classList.remove("is-selected"));
       row.classList.add("is-selected");
+    });
+    row.addEventListener("contextmenu", (event) => {
+      if (entry.isDirectory) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showWorkbenchFileContextMenu(entry.path, rootPath, event.clientX, event.clientY);
     });
 
     container.appendChild(row);
@@ -2366,6 +2429,316 @@ async function revealWorkbenchFile(filePath, rootPath) {
   } catch (error) {
     alertWorkbenchError(t("desktop.workbench.sidePanelRevealFailed", formatWorkbenchGitError(error)));
   }
+}
+
+function showWorkbenchFileContextMenu(filePath, rootPath, x, y) {
+  void showWorkbenchContextMenu({ kind: "file", filePath, rootPath }, x, y);
+}
+
+async function openWorkbenchFileExternally(filePath, rootPath) {
+  try {
+    await agentResume.workbenchOpenPath({ rootPath, filePath });
+  } catch (error) {
+    alertWorkbenchError(t("desktop.workbench.fileOpenExternalFailed", formatWorkbenchGitError(error)));
+  }
+}
+
+function workbenchEditorKey(filePath) {
+  return `file:${filePath}`;
+}
+
+function workbenchRelativeFilePath(filePath, rootPath) {
+  const normalizedRoot = String(rootPath || "").replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedFile = String(filePath || "").replace(/\\/g, "/");
+  if (normalizedRoot && normalizedFile.startsWith(`${normalizedRoot}/`)) {
+    return normalizedFile.slice(normalizedRoot.length + 1);
+  }
+  return normalizedFile;
+}
+
+function renderWorkbenchEditorState(pane) {
+  if (!pane) return;
+  pane.paneEl.classList.toggle("is-conflict", pane.state === "conflict");
+  pane.conflictActionsEl.hidden = pane.state !== "conflict";
+  if (pane.state === "saving") pane.stateEl.textContent = t("desktop.workbench.fileSaving");
+  else if (pane.state === "conflict") pane.stateEl.textContent = t("desktop.workbench.fileConflict");
+  else if (pane.state === "error") pane.stateEl.textContent = t("desktop.workbench.fileSaveFailed", pane.error || "");
+  else if (pane.dirty) pane.stateEl.textContent = t("desktop.workbench.fileModified");
+  else pane.stateEl.textContent = t("desktop.workbench.fileSaved");
+  renderWorkbenchTerminalTabs();
+}
+
+function scheduleWorkbenchEditorSave(pane, delay = WB_EDITOR_SAVE_DEBOUNCE_MS) {
+  if (!pane || pane.closed || pane.conflict) return;
+  if (pane.saveTimer) clearTimeout(pane.saveTimer);
+  pane.saveTimer = window.setTimeout(() => {
+    pane.saveTimer = null;
+    void flushWorkbenchEditorPane(pane);
+  }, Math.max(0, delay));
+}
+
+async function flushWorkbenchEditorPane(pane, options = {}) {
+  if (!pane || pane.closed) return true;
+  if (pane.saveTimer) {
+    clearTimeout(pane.saveTimer);
+    pane.saveTimer = null;
+  }
+  if (pane.savePromise) {
+    pane.saveAgain = pane.saveAgain || pane.dirty;
+    await pane.savePromise;
+    if (pane.dirty && !pane.conflict) return flushWorkbenchEditorPane(pane, options);
+    return !pane.dirty;
+  }
+  if (!pane.dirty) return true;
+  if (pane.conflict && !options.force) return false;
+
+  pane.saveAgain = false;
+  const snapshot = DesktopCodeMirror?.getValue?.(pane.view) ?? "";
+  pane.state = "saving";
+  pane.error = "";
+  renderWorkbenchEditorState(pane);
+
+  pane.savePromise = (async () => {
+    try {
+      const result = await agentResume.workbenchSaveFileText({
+        rootPath: pane.rootPath,
+        filePath: pane.filePath,
+        content: snapshot,
+        encoding: pane.encoding,
+        expectedVersion: pane.version,
+        force: options.force === true
+      });
+      if (!result?.ok && result?.reason === "conflict") {
+        pane.conflict = true;
+        pane.state = "conflict";
+        pane.diskVersion = result.version;
+        return false;
+      }
+      pane.version = result.version;
+      pane.conflict = false;
+      pane.diskVersion = "";
+      pane.dirty = (DesktopCodeMirror?.getValue?.(pane.view) ?? "") !== snapshot;
+      pane.state = pane.dirty ? "modified" : "saved";
+      return true;
+    } catch (error) {
+      pane.state = "error";
+      pane.error = formatWorkbenchGitError(error);
+      pane.dirty = true;
+      return false;
+    } finally {
+      pane.savePromise = null;
+      renderWorkbenchEditorState(pane);
+      if (pane.saveAgain && pane.dirty && !pane.conflict) {
+        pane.saveAgain = false;
+        scheduleWorkbenchEditorSave(pane, 0);
+      } else if (!pane.dirty) {
+        pane.saveAgain = false;
+      }
+    }
+  })();
+  return pane.savePromise;
+}
+
+async function reloadWorkbenchEditorPane(pane) {
+  if (!pane || pane.closed) return;
+  try {
+    const result = await agentResume.workbenchInspectFile({
+      rootPath: pane.rootPath,
+      filePath: pane.filePath
+    });
+    if (result?.kind !== "text") {
+      await agentResume.workbenchOpenPath({ rootPath: pane.rootPath, filePath: pane.filePath });
+      return;
+    }
+    pane.suppressChange = true;
+    DesktopCodeMirror?.setValue?.(pane.view, result.content);
+    pane.suppressChange = false;
+    pane.encoding = result.encoding;
+    pane.version = result.version;
+    pane.dirty = false;
+    pane.conflict = false;
+    pane.state = "saved";
+    pane.error = "";
+    renderWorkbenchEditorState(pane);
+  } catch (error) {
+    pane.state = "error";
+    pane.error = formatWorkbenchGitError(error);
+    renderWorkbenchEditorState(pane);
+  }
+}
+
+async function overwriteWorkbenchEditorPane(pane) {
+  if (!pane || pane.closed) return;
+  pane.conflict = false;
+  await flushWorkbenchEditorPane(pane, { force: true });
+}
+
+function createWorkbenchEditorPane(filePath, rootPath, inspected) {
+  const stack = $("wbTerminalStack");
+  if (!stack || typeof DesktopCodeMirror?.mount !== "function") {
+    alertWorkbenchError(t("desktop.workbench.fileEditorUnavailable"));
+    return null;
+  }
+  const key = workbenchEditorKey(filePath);
+  const paneEl = document.createElement("div");
+  paneEl.className = "wb-terminal-pane wb-editor-pane";
+  paneEl.dataset.key = key;
+
+  const hostEl = document.createElement("div");
+  hostEl.className = "wb-editor-host";
+  const statusEl = document.createElement("div");
+  statusEl.className = "wb-editor-status";
+  const pathEl = document.createElement("span");
+  pathEl.className = "wb-editor-status-path";
+  pathEl.textContent = workbenchRelativeFilePath(filePath, rootPath);
+  pathEl.title = filePath;
+  const stateEl = document.createElement("span");
+  stateEl.className = "wb-editor-status-state";
+  stateEl.setAttribute("aria-live", "polite");
+  const conflictActionsEl = document.createElement("span");
+  conflictActionsEl.className = "wb-editor-conflict-actions";
+  conflictActionsEl.hidden = true;
+  const reloadBtn = document.createElement("button");
+  reloadBtn.type = "button";
+  reloadBtn.textContent = t("desktop.workbench.fileReload");
+  const overwriteBtn = document.createElement("button");
+  overwriteBtn.type = "button";
+  overwriteBtn.textContent = t("desktop.workbench.fileOverwrite");
+  conflictActionsEl.append(reloadBtn, overwriteBtn);
+  statusEl.append(pathEl, stateEl, conflictActionsEl);
+  paneEl.append(hostEl, statusEl);
+  stack.appendChild(paneEl);
+
+  const pane = {
+    kind: "editor",
+    key,
+    projectKey: wbProjectKeyFromPath(rootPath),
+    rootPath,
+    filePath,
+    title: basename(filePath),
+    encoding: inspected.encoding,
+    version: inspected.version,
+    paneEl,
+    hostEl,
+    statusEl,
+    stateEl,
+    conflictActionsEl,
+    view: null,
+    dirty: false,
+    conflict: false,
+    diskVersion: "",
+    state: "saved",
+    error: "",
+    saveTimer: null,
+    savePromise: null,
+    saveAgain: false,
+    suppressChange: false,
+    closed: false
+  };
+  pane.view = DesktopCodeMirror.mount(hostEl, {
+    value: inspected.content,
+    filename: basename(filePath),
+    theme: resolveDesktopTheme(getDesktopThemePref()),
+    lineWrapping: false,
+    onChange: () => {
+      if (pane.suppressChange || pane.closed) return;
+      pane.dirty = true;
+      pane.state = pane.conflict ? "conflict" : "modified";
+      renderWorkbenchEditorState(pane);
+      scheduleWorkbenchEditorSave(pane);
+    }
+  });
+  reloadBtn.addEventListener("click", () => void reloadWorkbenchEditorPane(pane));
+  overwriteBtn.addEventListener("click", () => void overwriteWorkbenchEditorPane(pane));
+  renderWorkbenchEditorState(pane);
+  return pane;
+}
+
+async function openWorkbenchFile(filePath, rootPath) {
+  const detail = ensureWorkbenchProjectDetail(wbProjectKeyFromPath(rootPath));
+  const key = workbenchEditorKey(filePath);
+  if (detail.editorPanes.has(key)) {
+    switchWorkbenchPane(key);
+    return;
+  }
+  try {
+    const inspected = await agentResume.workbenchInspectFile({ rootPath, filePath });
+    if (inspected?.kind !== "text") {
+      await agentResume.workbenchOpenPath({ rootPath, filePath });
+      return;
+    }
+    if (getActiveWorkbenchProjectPath() !== rootPath) return;
+    const pane = createWorkbenchEditorPane(filePath, rootPath, inspected);
+    if (!pane) return;
+    detail.editorPanes.set(key, pane);
+    if (!detail.paneOrder.includes(key)) detail.paneOrder.push(key);
+    switchWorkbenchPane(key);
+  } catch (error) {
+    alertWorkbenchError(t("desktop.workbench.fileOpenFailed", formatWorkbenchGitError(error)));
+  }
+}
+
+async function closeWorkbenchEditorTab(key) {
+  const detail = getWorkbenchProjectDetail();
+  const pane = detail?.editorPanes.get(key);
+  if (!pane) return false;
+  const saved = await flushWorkbenchEditorPane(pane);
+  if (!saved && pane.dirty) {
+    const discard = window.confirm(t("desktop.workbench.fileDiscardConfirm", pane.title));
+    if (!discard) return false;
+  }
+  pane.closed = true;
+  if (pane.saveTimer) clearTimeout(pane.saveTimer);
+  DesktopCodeMirror?.unmount?.(pane.view);
+  pane.paneEl.remove();
+  detail.editorPanes.delete(key);
+  detail.paneOrder = detail.paneOrder.filter((paneKey) => paneKey !== key);
+
+  if (detail.activePaneKey === key) {
+    const remaining = detail.paneOrder.filter(
+      (paneKey) => detail.terminalPanes.has(paneKey) || detail.editorPanes.has(paneKey)
+    );
+    detail.activePaneKey = remaining.length ? remaining[remaining.length - 1] : "";
+    if (detail.activePaneKey) switchWorkbenchPane(detail.activePaneKey);
+  }
+  renderWorkbenchTerminalTabs();
+  updateWorkbenchTerminalHint();
+  return true;
+}
+
+function getActiveWorkbenchEditorPane() {
+  const detail = getWorkbenchProjectDetail();
+  return detail?.editorPanes.get(detail.activePaneKey) || null;
+}
+
+async function flushActiveWorkbenchEditor() {
+  const pane = getActiveWorkbenchEditorPane();
+  return pane ? flushWorkbenchEditorPane(pane) : true;
+}
+
+async function flushAllWorkbenchEditors() {
+  const panes = [];
+  for (const detail of wbProjectDetails.values()) panes.push(...detail.editorPanes.values());
+  const results = await Promise.all(panes.map((pane) => flushWorkbenchEditorPane(pane)));
+  return results.every(Boolean);
+}
+
+function handleWorkbenchWindowBeforeUnload(event) {
+  if (wbWindowCloseAllowed) return;
+  const pending = [...wbProjectDetails.values()].some((detail) =>
+    [...detail.editorPanes.values()].some((pane) => pane.dirty || pane.savePromise || pane.saveTimer)
+  );
+  if (!pending) return;
+  event.preventDefault();
+  event.returnValue = false;
+  if (wbWindowCloseFlushPending) return;
+  wbWindowCloseFlushPending = true;
+  void flushAllWorkbenchEditors().then((saved) => {
+    wbWindowCloseFlushPending = false;
+    if (!saved) return;
+    wbWindowCloseAllowed = true;
+    window.close();
+  });
 }
 
 function gitStatusLetter(status) {
@@ -3658,6 +4031,7 @@ async function showWorkbenchContextMenu(node, x, y) {
   if (!menu) return;
   const isProject = node.kind === "project";
   const isSession = node.kind === "session";
+  const isFile = node.kind === "file";
   const session = isSession ? node.session : null;
   menu.querySelector('[data-wb-action="pinProject"]').hidden = !isProject || isProjectPinned(node.projectPath);
   menu.querySelector('[data-wb-action="unpinProject"]').hidden = !isProject || !isProjectPinned(node.projectPath);
@@ -3670,6 +4044,8 @@ async function showWorkbenchContextMenu(node, x, y) {
   menu.querySelector('[data-wb-action="preview"]').hidden = !isSession;
   menu.querySelector('[data-wb-action="rename"]').hidden = !isSession;
   menu.querySelector('[data-wb-action="remove"]').hidden = !isSession;
+  menu.querySelector('[data-wb-action="openFileDefault"]').hidden = !isFile;
+  menu.querySelector('[data-wb-action="revealFile"]').hidden = !isFile;
   menu.hidden = false;
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
@@ -3715,6 +4091,14 @@ async function openWorkbenchCodexApp(session) {
 async function handleWorkbenchContextAction(action) {
   const node = wbContextNode;
   hideWorkbenchContextMenu();
+  if (action === "openFileDefault" && node?.kind === "file") {
+    await openWorkbenchFileExternally(node.filePath, node.rootPath);
+    return;
+  }
+  if (action === "revealFile" && node?.kind === "file") {
+    await revealWorkbenchFile(node.filePath, node.rootPath);
+    return;
+  }
   if (action === "newSession" && node?.kind === "project") {
     await startWorkbenchNewSessionForProject(node.projectPath);
     return;
@@ -8371,6 +8755,7 @@ function applyDesktopTheme(pref) {
   }
   syncHighlightJsTheme(resolveDesktopTheme(pref));
   remountNotesEditorForTheme();
+  remountWorkbenchEditorsForTheme();
 }
 
 function wireSystemThemeListener() {
@@ -8418,6 +8803,31 @@ function remountNotesEditorForTheme() {
   });
   if (hadFocus && typeof NotesCodeMirror?.focus === "function") {
     NotesCodeMirror.focus(notesCmView);
+  }
+}
+
+function remountWorkbenchEditorsForTheme() {
+  if (typeof DesktopCodeMirror?.mount !== "function") return;
+  for (const detail of wbProjectDetails.values()) {
+    for (const pane of detail.editorPanes.values()) {
+      const text = DesktopCodeMirror.getValue(pane.view);
+      const hadFocus = Boolean(pane.paneEl.contains(document.activeElement));
+      DesktopCodeMirror.unmount(pane.view);
+      pane.view = DesktopCodeMirror.mount(pane.hostEl, {
+        value: text,
+        filename: basename(pane.filePath),
+        theme: resolveDesktopTheme(getDesktopThemePref()),
+        lineWrapping: false,
+        onChange: () => {
+          if (pane.suppressChange || pane.closed) return;
+          pane.dirty = true;
+          pane.state = pane.conflict ? "conflict" : "modified";
+          renderWorkbenchEditorState(pane);
+          scheduleWorkbenchEditorSave(pane);
+        }
+      });
+      if (hadFocus) DesktopCodeMirror.focus(pane.view);
+    }
   }
 }
 
@@ -10786,6 +11196,7 @@ function wire() {
     if (
       !e.target.closest(".wb-list-item") &&
       !e.target.closest(".wb-folder-row") &&
+      !e.target.closest(".wb-file-tree-row") &&
       !e.target.closest("#wbContextMenu")
     ) {
       hideWorkbenchContextMenu();
@@ -10883,6 +11294,17 @@ function wire() {
       return;
     }
     if (
+      (e.metaKey || e.ctrlKey) &&
+      !e.altKey &&
+      e.key?.toLowerCase() === "s" &&
+      isWorkbenchActive() &&
+      getActiveWorkbenchEditorPane()
+    ) {
+      e.preventDefault();
+      void flushActiveWorkbenchEditor();
+      return;
+    }
+    if (
       e.metaKey &&
       !e.ctrlKey &&
       !e.altKey &&
@@ -10892,7 +11314,7 @@ function wire() {
       $("wbTargetPopover")?.hidden !== false
     ) {
       e.preventDefault();
-      void closeActiveWorkbenchTerminal();
+      void closeActiveWorkbenchPane();
       return;
     }
     if (e.key === "Escape") {
@@ -10910,6 +11332,7 @@ function wire() {
       closeWorkbenchRenameDialog(null);
     }
   });
+  window.addEventListener("beforeunload", handleWorkbenchWindowBeforeUnload);
   document.querySelectorAll("[data-notes-action]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();

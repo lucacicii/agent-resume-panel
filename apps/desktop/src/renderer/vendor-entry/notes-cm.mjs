@@ -1,18 +1,5 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { cpp } from "@codemirror/lang-cpp";
-import { css } from "@codemirror/lang-css";
-import { go } from "@codemirror/lang-go";
-import { html } from "@codemirror/lang-html";
-import { java } from "@codemirror/lang-java";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { php } from "@codemirror/lang-php";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { yaml } from "@codemirror/lang-yaml";
 import {
   LanguageDescription,
   syntaxHighlighting,
@@ -20,7 +7,8 @@ import {
   indentOnInput,
   bracketMatching
 } from "@codemirror/language";
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { languages } from "@codemirror/language-data";
+import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   EditorView,
@@ -32,24 +20,8 @@ import {
   placeholder
 } from "@codemirror/view";
 
-const codeLanguages = [
-  LanguageDescription.of({ name: "javascript", alias: ["js"], support: javascript() }),
-  LanguageDescription.of({ name: "typescript", alias: ["ts"], support: javascript({ typescript: true }) }),
-  LanguageDescription.of({ name: "python", alias: ["py"], support: python() }),
-  LanguageDescription.of({ name: "css", support: css() }),
-  LanguageDescription.of({ name: "html", support: html() }),
-  LanguageDescription.of({ name: "xml", support: xml() }),
-  LanguageDescription.of({ name: "json", support: json() }),
-  LanguageDescription.of({ name: "rust", support: rust() }),
-  LanguageDescription.of({ name: "cpp", alias: ["c"], support: cpp() }),
-  LanguageDescription.of({ name: "java", support: java() }),
-  LanguageDescription.of({ name: "php", support: php() }),
-  LanguageDescription.of({ name: "sql", support: sql() }),
-  LanguageDescription.of({ name: "yaml", alias: ["yml"], support: yaml() }),
-  LanguageDescription.of({ name: "go", support: go() })
-];
-
 const setFindHighlight = StateEffect.define();
+const languageCompartment = new Compartment();
 
 const findHighlightField = StateField.define({
   create() {
@@ -106,6 +78,27 @@ function notesEditorTheme() {
   });
 }
 
+function initialLanguage(options) {
+  if (options.mode === "markdown" || !options.filename) {
+    return markdown({ base: markdownLanguage, codeLanguages: languages });
+  }
+  return [];
+}
+
+async function configureLanguage(view, options) {
+  if (!view || options.mode === "markdown" || !options.filename) return;
+  const description = LanguageDescription.matchFilename(languages, options.filename);
+  if (!description) return;
+  try {
+    const support = await description.load();
+    if (view.dom?.isConnected) {
+      view.dispatch({ effects: languageCompartment.reconfigure(support) });
+    }
+  } catch {
+    // Keep plain text mode when a language package cannot be loaded.
+  }
+}
+
 function buildExtensions(options) {
   const pref = options.theme;
   const useLight =
@@ -131,12 +124,12 @@ function buildExtensions(options) {
     highlightSpecialChars(),
     history(),
     findHighlightField,
+    languageCompartment.of(initialLanguage(options)),
     indentOnInput(),
     bracketMatching(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
-    markdown({ base: markdownLanguage, codeLanguages }),
-    EditorView.lineWrapping,
-    placeholder(options.placeholder || "编辑 Markdown…（⌘V 可粘贴图片）"),
+    ...(options.lineWrapping === false ? [] : [EditorView.lineWrapping]),
+    placeholder(options.placeholder || ""),
     pasteHandler,
     EditorView.updateListener.of((update) => {
       if (update.docChanged && typeof options.onChange === "function") {
@@ -147,13 +140,15 @@ function buildExtensions(options) {
   ];
 }
 
-globalThis.NotesCodeMirror = {
+const desktopCodeMirror = {
   mount(host, options = {}) {
     const state = EditorState.create({
       doc: options.value ?? "",
       extensions: buildExtensions(options)
     });
-    return new EditorView({ state, parent: host });
+    const view = new EditorView({ state, parent: host });
+    void configureLanguage(view, options);
+    return view;
   },
   unmount(view) {
     view?.destroy?.();
@@ -197,3 +192,6 @@ globalThis.NotesCodeMirror = {
     });
   }
 };
+
+globalThis.DesktopCodeMirror = desktopCodeMirror;
+globalThis.NotesCodeMirror = desktopCodeMirror;

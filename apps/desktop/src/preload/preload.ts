@@ -246,6 +246,29 @@ export interface DesktopApi {
     filePath: string;
     maxBytes?: number;
   }): Promise<{ content: string; truncated: boolean }>;
+  workbenchInspectFile(args: { rootPath: string; filePath: string }): Promise<
+    | {
+        kind: "text";
+        content: string;
+        encoding: "utf8" | "utf8-bom" | "utf16le" | "utf16be";
+        version: string;
+        size: number;
+        mtimeMs: number;
+      }
+    | { kind: "external"; reason: "binary" | "too-large"; size: number; mtimeMs: number }
+  >;
+  workbenchSaveFileText(args: {
+    rootPath: string;
+    filePath: string;
+    content: string;
+    encoding: "utf8" | "utf8-bom" | "utf16le" | "utf16be";
+    expectedVersion: string;
+    force?: boolean;
+  }): Promise<
+    | { ok: true; version: string; size: number; mtimeMs: number }
+    | { ok: false; reason: "conflict"; version: string; size: number; mtimeMs: number }
+  >;
+  workbenchOpenPath(args: { rootPath: string; filePath: string }): Promise<{ ok: boolean }>;
   workbenchRevealPath(args: {
     rootPath: string;
     targetPath: string;
@@ -575,6 +598,9 @@ const api: DesktopApi = {
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
   workbenchReadFileText: (args) => ipcRenderer.invoke("workbench:readFileText", args),
+  workbenchInspectFile: (args) => ipcRenderer.invoke("workbench:inspectFile", args),
+  workbenchSaveFileText: (args) => ipcRenderer.invoke("workbench:saveFileText", args),
+  workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
