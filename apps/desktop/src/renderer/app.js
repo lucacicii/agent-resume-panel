@@ -848,6 +848,12 @@ let wbProjectFilter = "all";
 /** @type {"all" | "active"} */
 let wbSessionFilter = "all";
 let wbSessionSearchOpen = false;
+const SEARCH_INPUT_COLLAPSE_DELAY_MS = 220;
+let wbSessionSearchCloseTimer = null;
+const searchInputCollapseDelay = () =>
+  window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+    ? 0
+    : SEARCH_INPUT_COLLAPSE_DELAY_MS;
 /** @type {{ kind: "all" } | { kind: "project"; projectPath: string }} */
 let wbSelectedProject = { kind: "all" };
 /** @type {Map<string, { terminalPanes: Map<string, any>, editorPanes: Map<string, any>, diffPanes: Map<string, any>, paneOrder: string[], activePaneKey: string, activeTerminalKey: string, activeSessionKey: string }>} */
@@ -1155,8 +1161,34 @@ function syncWbSessionSearchUi() {
   if (input.value !== wbSearch) input.value = wbSearch;
 }
 
+function cancelWbSessionSearchClose() {
+  if (wbSessionSearchCloseTimer !== null) {
+    clearTimeout(wbSessionSearchCloseTimer);
+    wbSessionSearchCloseTimer = null;
+  }
+  $("wbSessionToolbar")?.classList.remove("is-search-closing");
+}
+
+function scheduleWbSessionSearchClose() {
+  cancelWbSessionSearchClose();
+  $("wbSessionToolbar")?.classList.add("is-search-closing");
+  wbSessionSearchCloseTimer = setTimeout(() => {
+    wbSessionSearchCloseTimer = null;
+    if (!wbSessionSearchOpen) return;
+    if (wbSearch.trim()) {
+      // Keep filter, collapse UI, mark icon active.
+      cancelWbSessionSearchClose();
+      wbSessionSearchOpen = false;
+      syncWbSessionSearchUi();
+      return;
+    }
+    closeWbSessionSearch();
+  }, searchInputCollapseDelay());
+}
+
 function openWbSessionSearch(opts = {}) {
   const select = opts.select !== false;
+  cancelWbSessionSearchClose();
   wbSessionSearchOpen = true;
   syncWbSessionSearchUi();
   const input = $("wbSearch");
@@ -1168,6 +1200,7 @@ function openWbSessionSearch(opts = {}) {
 }
 
 function closeWbSessionSearch(opts = {}) {
+  cancelWbSessionSearchClose();
   const clear = Boolean(opts.clear);
   if (clear) {
     wbSearch = "";
@@ -5227,6 +5260,7 @@ let wbFoldersCollapsed = false;
 let notesCache = [];
 let notesSearch = "";
 let notesListSearchOpen = false;
+let notesListSearchCloseTimer = null;
 /** @type {"all" | "pinned"} */
 let notesListFilter = "all";
 let notesProjectSearch = "";
@@ -6049,8 +6083,33 @@ function syncNotesListSearchUi() {
   if (input.value !== notesSearch) input.value = notesSearch;
 }
 
+function cancelNotesListSearchClose() {
+  if (notesListSearchCloseTimer !== null) {
+    clearTimeout(notesListSearchCloseTimer);
+    notesListSearchCloseTimer = null;
+  }
+  $("notesListToolbar")?.classList.remove("is-search-closing");
+}
+
+function scheduleNotesListSearchClose() {
+  cancelNotesListSearchClose();
+  $("notesListToolbar")?.classList.add("is-search-closing");
+  notesListSearchCloseTimer = setTimeout(() => {
+    notesListSearchCloseTimer = null;
+    if (!notesListSearchOpen) return;
+    if (notesSearch.trim()) {
+      cancelNotesListSearchClose();
+      notesListSearchOpen = false;
+      syncNotesListSearchUi();
+      return;
+    }
+    closeNotesListSearch();
+  }, searchInputCollapseDelay());
+}
+
 function openNotesListSearch(opts = {}) {
   const select = opts.select !== false;
+  cancelNotesListSearchClose();
   notesListSearchOpen = true;
   syncNotesListSearchUi();
   const input = $("notesSearch");
@@ -6062,6 +6121,7 @@ function openNotesListSearch(opts = {}) {
 }
 
 function closeNotesListSearch(opts = {}) {
+  cancelNotesListSearchClose();
   const clear = Boolean(opts.clear);
   if (clear) {
     notesSearch = "";
@@ -11867,6 +11927,7 @@ function wire() {
     syncWbSessionSearchUi();
     renderWorkbenchSessionList();
   });
+  $("wbSearch")?.addEventListener("focus", cancelWbSessionSearchClose);
   $("wbSearch")?.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
@@ -11883,17 +11944,18 @@ function wire() {
   });
   $("wbSearch")?.addEventListener("blur", () => {
     // Defer so clicks on clear / toolbar buttons are not cancelled mid-action.
+    $("wbSessionToolbar")?.classList.add("is-search-closing");
     setTimeout(() => {
-      if (!wbSessionSearchOpen) return;
-      const active = document.activeElement;
-      if (active && $("wbSessionToolbar")?.contains(active)) return;
-      if (wbSearch.trim()) {
-        // Keep filter, collapse UI, mark icon active.
-        wbSessionSearchOpen = false;
-        syncWbSessionSearchUi();
-      } else {
-        closeWbSessionSearch();
+      if (!wbSessionSearchOpen) {
+        cancelWbSessionSearchClose();
+        return;
       }
+      const active = document.activeElement;
+      if (active && $("wbSessionToolbar")?.contains(active)) {
+        cancelWbSessionSearchClose();
+        return;
+      }
+      scheduleWbSessionSearchClose();
     }, 0);
   });
   $("wbProjectSearch")?.addEventListener("input", (e) => {
@@ -11991,6 +12053,7 @@ function wire() {
     syncNotesListSearchUi();
     renderNotesPanel();
   });
+  $("notesSearch")?.addEventListener("focus", cancelNotesListSearchClose);
   $("notesSearch")?.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
@@ -12006,16 +12069,18 @@ function wire() {
     closeNotesListSearch();
   });
   $("notesSearch")?.addEventListener("blur", () => {
+    $("notesListToolbar")?.classList.add("is-search-closing");
     setTimeout(() => {
-      if (!notesListSearchOpen) return;
-      const active = document.activeElement;
-      if (active && $("notesListToolbar")?.contains(active)) return;
-      if (notesSearch.trim()) {
-        notesListSearchOpen = false;
-        syncNotesListSearchUi();
-      } else {
-        closeNotesListSearch();
+      if (!notesListSearchOpen) {
+        cancelNotesListSearchClose();
+        return;
       }
+      const active = document.activeElement;
+      if (active && $("notesListToolbar")?.contains(active)) {
+        cancelNotesListSearchClose();
+        return;
+      }
+      scheduleNotesListSearchClose();
     }, 0);
   });
   $("notesProjectSearch")?.addEventListener("input", (e) => {

@@ -6293,7 +6293,7 @@ body.is-pane-resizing * {
 .wb-session-filter-wrap {
   flex-shrink: 0;
   display: flex;
-  flex-direction: row;
+  flex-flow: row wrap;
   align-items: center;
   gap: 6px;
   padding: 4px 10px 6px;
@@ -6315,20 +6315,35 @@ body.is-pane-resizing * {
 .notes-list-search-wrap .sidebar-project-filter-segmented,
 .wb-session-filter-wrap .sidebar-project-filter-segmented {
   --segment-count: 2;
-  flex: 1 1 auto;
-  min-width: 88px;
+  flex: 1 0 100%;
+  min-width: 0;
 }
 
 .notes-list-search-input,
 .wb-session-search-input {
   display: none;
-  flex: 1 1 120px;
+  flex: 0 1 132px;
   min-width: 0;
   width: auto;
   height: 28px;
   padding: 4px 8px;
   font-size: 12px;
   border-radius: var(--radius-md);
+  transition:
+    flex-basis var(--duration-normal) var(--ease-out),
+    flex-grow var(--duration-normal) var(--ease-out);
+}
+
+.notes-list-search-input:focus,
+.wb-session-search-input:focus {
+  flex-grow: 1;
+}
+
+.notes-list-search-wrap.is-search-closing .notes-list-search-input,
+.wb-session-filter-wrap.is-search-closing .wb-session-search-input {
+  flex-basis: 28px;
+  flex-grow: 0;
+  pointer-events: none;
 }
 
 .notes-list-search-wrap.is-search-open .notes-list-search-btn,
@@ -6343,9 +6358,9 @@ body.is-pane-resizing * {
 
 .notes-list-search-wrap.is-search-open .sidebar-project-filter-segmented,
 .wb-session-filter-wrap.is-search-open .sidebar-project-filter-segmented {
-  flex: 0 1 auto;
-  min-width: 88px;
-  max-width: 46%;
+  flex: 1 0 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .notes-list-search-btn.has-query,
