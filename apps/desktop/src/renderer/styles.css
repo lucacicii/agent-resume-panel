@@ -967,6 +967,10 @@ textarea:focus-visible,
   gap: 4px;
 }
 
+#settingsGitCommitCustomInstructions[hidden] {
+  display: none !important;
+}
+
 .settings-field-label {
   font-size: var(--font-size-caption);
   color: var(--muted);

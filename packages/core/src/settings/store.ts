@@ -8,6 +8,10 @@ import {
 } from "../panelHome";
 import { sanitizeAgentHomes } from "../transcript/homes";
 import { DEFAULT_SETTINGS, PanelSettings } from "./types";
+import {
+  normalizeCommitMessageStyle,
+  normalizeCustomCommitInstructions
+} from "../git/prompts";
 
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
@@ -86,6 +90,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     workbench: {
       ...base.workbench,
       ...(partial.workbench || {}),
+      gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
+      gitCommitCustomInstructions: normalizeCustomCommitInstructions(
+        partial.workbench?.gitCommitCustomInstructions
+      ),
       editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,

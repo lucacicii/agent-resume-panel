@@ -1,4 +1,8 @@
 import type { AgentProvider } from "../catalog/types";
+import {
+  DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
+  type CommitMessageStyle
+} from "../git/prompts";
 import type { UiLanguagePreference } from "../i18n/locales";
 
 /** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
@@ -46,6 +50,7 @@ export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" |
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
 export type WorkbenchEditorTabSize = 2 | 4 | 8;
 export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
+export type { CommitMessageStyle } from "../git/prompts";
 
 export interface WorkbenchEditorSettings {
   /** Whether project text files can be edited in the embedded editor. Default true. */
@@ -78,6 +83,10 @@ export interface WorkbenchSettings {
   gitNestedScanIgnoreDirs?: string[];
   /** Max nested Git repos to collect per scan. Default 32. */
   gitNestedScanMaxRepos?: number;
+  /** AI-generated Git commit message format. Default Conventional Commits. */
+  gitCommitMessageStyle?: CommitMessageStyle;
+  /** Format rules used when gitCommitMessageStyle is custom. */
+  gitCommitCustomInstructions?: string;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
 }
@@ -183,6 +192,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   workbench: {
     projectEditor: "auto",
+    gitCommitMessageStyle: "conventional",
+    gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     editor: {
       editable: true,
       fontSize: 13,

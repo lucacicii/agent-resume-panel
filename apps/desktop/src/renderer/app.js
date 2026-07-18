@@ -9633,6 +9633,8 @@ const SETTINGS_FIELD_SECTION = {
   workbenchEditorWordWrap: "workbench",
   workbenchEditorTabSize: "workbench",
   workbenchEditorAutoSaveDelayMs: "workbench",
+  workbenchGitCommitMessageStyle: "workbench",
+  workbenchGitCommitCustomInstructions: "workbench",
   workbenchGitNestedScanMaxDepth: "workbench",
   workbenchGitNestedScanIgnoreDirs: "workbench",
   memoryEnabled: "report",
@@ -9864,6 +9866,12 @@ async function loadSettingsForm() {
   if (form.workbenchEditorAutoSaveDelayMs) {
     form.workbenchEditorAutoSaveDelayMs.value = String(editorSettings.autoSaveDelayMs);
   }
+  if (form.workbenchGitCommitMessageStyle) {
+    form.workbenchGitCommitMessageStyle.value = s.workbench?.gitCommitMessageStyle || "conventional";
+  }
+  if (form.workbenchGitCommitCustomInstructions) {
+    form.workbenchGitCommitCustomInstructions.value = s.workbench?.gitCommitCustomInstructions || "";
+  }
   if (form.workbenchGitNestedScanMaxDepth) {
     const depth = Math.min(10, Math.max(1, Math.floor(Number(s.workbench?.gitNestedScanMaxDepth) || 6)));
     form.workbenchGitNestedScanMaxDepth.value = String(depth);
@@ -9883,6 +9891,7 @@ async function loadSettingsForm() {
   }
   updateSettingsNotesRootDisplay();
   updateWorkbenchExternalLaunchVisibility();
+  updateWorkbenchGitCommitInstructionsVisibility();
   updateMemoryScheduleVisibility();
   syncSettingsToggleAria();
   settingsHydrating = false;
@@ -9952,6 +9961,11 @@ function collectWorkbenchSettings(form) {
   );
   const tabSize = Number(form.workbenchEditorTabSize?.value);
   const autoSaveDelayMs = Number(form.workbenchEditorAutoSaveDelayMs?.value);
+  const gitCommitMessageStyle = ["conventional", "gitmoji", "custom"].includes(
+    form.workbenchGitCommitMessageStyle?.value
+  )
+    ? form.workbenchGitCommitMessageStyle.value
+    : "conventional";
   if (form.workbenchEditorFontSize) form.workbenchEditorFontSize.value = String(fontSize);
   return {
     workbench: {
@@ -9971,6 +9985,8 @@ function collectWorkbenchSettings(form) {
         tabSize: WB_EDITOR_TAB_SIZES.has(tabSize) ? tabSize : 4,
         autoSaveDelayMs: WB_EDITOR_SAVE_DELAYS.has(autoSaveDelayMs) ? autoSaveDelayMs : 600
       },
+      gitCommitMessageStyle,
+      gitCommitCustomInstructions: form.workbenchGitCommitCustomInstructions?.value || "",
       gitNestedScanMaxDepth: Math.min(
         10,
         Math.max(1, Math.floor(Number(form.workbenchGitNestedScanMaxDepth?.value) || 6))
@@ -11812,6 +11828,9 @@ function wire() {
   $("settingsForm")?.panelHome?.addEventListener("input", () => updateSettingsNotesRootDisplay());
   $("settingsForm")?.desktopTheme?.addEventListener("change", () => applyDesktopTheme(getDesktopThemePref()));
   $("settingsForm")?.workbenchTerminalMode?.addEventListener("change", () => updateWorkbenchExternalLaunchVisibility());
+  $("settingsForm")?.workbenchGitCommitMessageStyle?.addEventListener("change", () => {
+    updateWorkbenchGitCommitInstructionsVisibility();
+  });
   $("settingsForm")?.memoryEnabled?.addEventListener("change", () => {
     updateMemoryScheduleVisibility();
     syncSettingsToggleAria();
@@ -12280,6 +12299,13 @@ function updateWorkbenchExternalLaunchVisibility() {
   if (!form || !row) return;
   const external = form.workbenchTerminalMode?.value === "external-system";
   row.hidden = !external;
+}
+
+function updateWorkbenchGitCommitInstructionsVisibility() {
+  const form = $("settingsForm");
+  const field = $("settingsGitCommitCustomInstructions");
+  if (!form || !field) return;
+  field.hidden = form.workbenchGitCommitMessageStyle?.value !== "custom";
 }
 
 function updateMemoryScheduleVisibility() {

@@ -1108,6 +1108,28 @@
                   </section>
 
                   <section class="settings-group">
+                    <h3 class="settings-group-title" data-i18n="desktop.settings.gitCommitMessageGroup">Commit message</h3>
+                    <div class="settings-group-body">
+                      <div class="settings-row">
+                        <div class="settings-row-label">
+                          <span class="settings-row-title" data-i18n="desktop.settings.gitCommitMessageStyle">Style</span>
+                          <span class="settings-row-desc" data-i18n="desktop.settings.gitCommitMessageStyleDesc">Format for AI-generated Git commit messages</span>
+                        </div>
+                        <select name="workbenchGitCommitMessageStyle" class="settings-row-control">
+                          <option value="conventional" data-i18n="desktop.settings.gitCommitMessageStyleConventional">Conventional Commits</option>
+                          <option value="gitmoji" data-i18n="desktop.settings.gitCommitMessageStyleGitmoji">Gitmoji</option>
+                          <option value="custom" data-i18n="desktop.settings.gitCommitMessageStyleCustom">Custom</option>
+                        </select>
+                      </div>
+                      <label id="settingsGitCommitCustomInstructions" class="settings-field" hidden>
+                        <span class="settings-field-label" data-i18n="desktop.settings.gitCommitCustomInstructions">Custom format rules</span>
+                        <span class="settings-field-desc muted" data-i18n="desktop.settings.gitCommitCustomInstructionsDesc">Used only when Custom is selected. Default is Conventional Commits.</span>
+                        <textarea name="workbenchGitCommitCustomInstructions" rows="6" maxlength="4000" spellcheck="false"></textarea>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="settings-group">
                     <h3 class="settings-group-title" data-i18n="desktop.settings.gitNestedScanGroup">Git side panel</h3>
                     <div class="settings-group-body">
                       <div class="settings-row">

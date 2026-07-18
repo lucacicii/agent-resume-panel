@@ -4,7 +4,8 @@ import { LlmRuntimeConfig } from "../llm/types";
 import {
   buildCommitMessageSystemPrompt,
   buildCommitMessageUserPrompt,
-  normalizeSuggestedCommitMessage
+  normalizeSuggestedCommitMessage,
+  type CommitMessagePromptOptions
 } from "./prompts";
 
 const DEFAULT_MAX_DIFF_CHARS = 32_000;
@@ -38,25 +39,40 @@ function uniqueFileNames(statusText: string): string[] {
   return names;
 }
 
-/** Heuristic commit message when LLM is unavailable. */
-export function buildHeuristicCommitMessage(statusText: string): string {
+function heuristicDescription(statusText: string): string {
   const files = uniqueFileNames(statusText);
   if (!files.length) {
-    return "Update project files";
+    return "update project files";
   }
   if (files.length === 1) {
-    return `Update ${files[0]}`;
+    return `update ${files[0]}`;
   }
   if (files.length === 2) {
-    return `Update ${files[0]} and ${files[1]}`;
+    return `update ${files[0]} and ${files[1]}`;
   }
-  return `Update ${files[0]}, ${files[1]} and ${files.length - 2} more files`;
+  return `update ${files[0]}, ${files[1]} and ${files.length - 2} more files`;
+}
+
+/** Heuristic commit message when LLM is unavailable. */
+export function buildHeuristicCommitMessage(
+  statusText: string,
+  options?: CommitMessagePromptOptions
+): string {
+  const description = heuristicDescription(statusText);
+  if (options?.style === "gitmoji") {
+    return `🔧 chore: ${description}`;
+  }
+  if (options?.style === "conventional" || !options?.style) {
+    return `chore: ${description}`;
+  }
+  return description.charAt(0).toUpperCase() + description.slice(1);
 }
 
 export async function suggestCommitMessageFromGitContext(
   config: LlmRuntimeConfig,
   statusText: string,
-  diffText: string
+  diffText: string,
+  options?: CommitMessagePromptOptions
 ): Promise<{
   message: string;
   model?: string;
@@ -70,12 +86,12 @@ export async function suggestCommitMessageFromGitContext(
   const result = await chatCompletionDetailed(
     config,
     [
-      { role: "system", content: buildCommitMessageSystemPrompt(lang) },
+      { role: "system", content: buildCommitMessageSystemPrompt(lang, options) },
       { role: "user", content: buildCommitMessageUserPrompt(status, diff, lang) }
     ],
     500
   );
-  const message = normalizeSuggestedCommitMessage(result.content);
+  const message = normalizeSuggestedCommitMessage(result.content, options);
   if (!message) {
     throw new Error("LLM returned an empty commit message.");
   }

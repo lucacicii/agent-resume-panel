@@ -32,6 +32,7 @@ export type {
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
+  CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
   GhosttyLaunchMode,
@@ -397,8 +398,12 @@ export {
 export {
   buildCommitMessageSystemPrompt,
   buildCommitMessageUserPrompt,
-  normalizeSuggestedCommitMessage
+  normalizeSuggestedCommitMessage,
+  normalizeCommitMessageStyle,
+  normalizeCustomCommitInstructions,
+  DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS
 } from "./git/prompts";
+export type { CommitMessagePromptOptions } from "./git/prompts";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
 export {
   openProjectInEditor,

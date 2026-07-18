@@ -359,16 +359,20 @@ async function suggestCommitMessage(
   }
 
   const settings = await loadSettings();
+  const commitPrompt = {
+    style: settings.workbench?.gitCommitMessageStyle,
+    customInstructions: settings.workbench?.gitCommitCustomInstructions
+  };
   const llm = llmConfigFromSettings(settings, systemLocale);
   if (!llm) {
-    return { message: buildHeuristicCommitMessage(statusText), source: "heuristic" };
+    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic" };
   }
 
   const paths = await preparePanelDatabasesFromSettings();
   await ensureExtensionCatalogSchema(paths.catalogDb);
 
   try {
-    const result = await suggestCommitMessageFromGitContext(llm, statusText, diffText);
+    const result = await suggestCommitMessageFromGitContext(llm, statusText, diffText, commitPrompt);
     await recordLlmUsage(paths.desktopDb, {
       kind: "chat",
       source: "git-commit",
@@ -387,7 +391,7 @@ async function suggestCommitMessage(
       ok: false,
       error: error instanceof Error ? error.message : String(error)
     }).catch(() => undefined);
-    return { message: buildHeuristicCommitMessage(statusText), source: "heuristic" };
+    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic" };
   }
 }
 
