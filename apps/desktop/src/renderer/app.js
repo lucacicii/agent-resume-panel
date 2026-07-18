@@ -1772,15 +1772,19 @@ function renderWorkbenchTerminalTabs() {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "wb-terminal-tab-close";
-    closeBtn.setAttribute(
-      "aria-label",
-      isEditor
-        ? t("desktop.workbench.closeFile")
-        : isDiff
-          ? t("desktop.workbench.closeDiff")
-          : t("desktop.workbench.closeTerminal")
-    );
-    closeBtn.textContent = "×";
+    const closeLabel = isEditor
+      ? t("desktop.workbench.closeFile")
+      : isDiff
+        ? t("desktop.workbench.closeDiff")
+        : t("desktop.workbench.closeTerminal");
+    closeBtn.title = closeLabel;
+    closeBtn.setAttribute("aria-label", closeLabel);
+    closeBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    `;
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (isEditor) void closeWorkbenchEditorTab(key);
@@ -2534,6 +2538,8 @@ function applyWbSidePanelLayout() {
 
   filesBtn?.classList.toggle("active", open && wbSidePanelTab === "files");
   gitBtn?.classList.toggle("active", open && wbSidePanelTab === "git");
+  filesBtn?.setAttribute("aria-pressed", open && wbSidePanelTab === "files" ? "true" : "false");
+  gitBtn?.setAttribute("aria-pressed", open && wbSidePanelTab === "git" ? "true" : "false");
 
   if (filesPane) filesPane.hidden = !open || wbSidePanelTab !== "files";
   if (gitPane) gitPane.hidden = !open || wbSidePanelTab !== "git" || wbSideGitView !== "list";
@@ -3598,7 +3604,10 @@ function updateWorkbenchGitLogBackButton() {
     wbGitLogSubView === "detail"
       ? "desktop.workbench.gitLogBackToList"
       : "desktop.workbench.gitLogBackToChanges";
-  backBtn.setAttribute("aria-label", t(key));
+  const label = t(key);
+  backBtn.title = label;
+  backBtn.setAttribute("aria-label", label);
+  backBtn.setAttribute("data-i18n-title", key);
   backBtn.setAttribute("data-i18n-aria-label", key);
 }
 
@@ -11610,30 +11619,37 @@ function renderAgentThreadsSidebar() {
   list.innerHTML = "";
 
   for (const thread of agentThreads) {
-    const row = document.createElement("button");
-    row.type = "button";
+    const row = document.createElement("div");
     row.className = `ask-thread-row${thread.id === activeAgentThreadId ? " active" : ""}`;
-    row.addEventListener("click", () => selectAgentThread(thread.id));
+
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = "ask-thread-row-select";
+    selectBtn.addEventListener("click", () => selectAgentThread(thread.id));
 
     const label = document.createElement("span");
     label.className = "ask-thread-row-label";
     label.textContent = thread.title;
     label.title = thread.title;
-    row.appendChild(label);
+    selectBtn.appendChild(label);
+    row.appendChild(selectBtn);
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "ask-thread-row-delete";
-    delBtn.title = t("desktop.agent.deleteThreadTitle");
+    const deleteLabel = t("desktop.agent.deleteThreadTitle");
+    delBtn.title = deleteLabel;
+    delBtn.setAttribute("aria-label", deleteLabel);
     delBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="pointer-events: none;">
-        <path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="m19 6-1 14H6L5 6" />
+        <path d="M10 11v5" />
+        <path d="M14 11v5" />
       </svg>
     `;
-    delBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void deleteAgentThreadConfirm(thread.id);
-    });
+    delBtn.addEventListener("click", () => void deleteAgentThreadConfirm(thread.id));
     row.appendChild(delBtn);
 
     list.appendChild(row);

@@ -301,6 +301,7 @@ button {
 | `.btn-ghost` | Transparent; maps to `.ghost-btn` |
 | `.btn-tool` | Maps to `.tool-btn` |
 | `.btn-icon` | Maps to `.icon-btn` / `.notes-icon-btn` |
+| `.btn-icon-toggle` | Frameless icon-only mode switch; maps to `.notes-segmented button` |
 | `.tab` | Primary navigation tab (extends `.btn-ghost` or underline variant) |
 
 Existing class names (`.ghost-btn`, `.tool-btn`, etc.) may be kept as aliases during migration.
@@ -376,16 +377,55 @@ Padding: `5px 10px`; font: `--font-size-body`.
 
 No border in default state. `.ask-toolbar .ghost-btn.active` uses accent border — keep for toggle tools (Audit).
 
-#### Icon button (`.icon-btn`, `.notes-icon-btn`)
+#### Icon button (`.icon-btn`, `.notes-icon-btn`, `.btn-icon-toggle`)
 
-- Size: 28×28px touch area, SVG 17×17px (notes) or 16px (gear).
-- Border: none; background transparent.
-- Hover: circular `--color-fill-tertiary` fill, `--radius-full`.
+- Size: 28×28px hit target; SVG: 16×16px, `display: block`, `fill: none`, `stroke: currentColor`, `stroke-width: 2`, round caps and joins.
+- Default: border none; transparent background; primary label color; `display: grid` with `place-items: center`; `--radius-md` hover target.
+- Hover: a subtle `color-mix(in srgb, var(--text) 5%, transparent)` fill. Do not add a persistent track, outer border, or separator solely to contain icon buttons.
 - Destructive variant (`.notes-toolbar-delete`): hover uses `--color-destructive` at 14% fill.
+
+#### Icon mode toggle (`.btn-icon-toggle`, `.notes-segmented button`)
+
+Use this for compact mutually exclusive view modes represented unambiguously by familiar icons, such as Notes Edit (pencil) and View (eye). This is the project standard for icon-only mode switching.
+
+- Group: `inline-flex` with a 2px gap; no border, background, overflow clipping, track, or inter-button divider.
+- Each button: follows the icon button dimensions above and has `role="tab"`; the parent has `role="tablist"`.
+- State: the active button has `color: var(--accent)`; inactive buttons use `var(--text)`. The hover fill remains transient, not a selected-state container.
+- Accessibility: use localized `data-i18n-title` and `data-i18n-aria-label` on each button; keep SVG `aria-hidden="true"`; update `aria-selected` whenever the mode changes.
+
+For a toolbar control that can independently open or close a surface, keep it as an icon button with `aria-pressed` rather than using tab semantics. Its pressed state uses the accent icon color without a persistent container fill.
+
+Reference markup and CSS:
+
+```html
+<div class="notes-segmented" role="tablist" aria-label="View mode">
+  <button type="button" role="tab" aria-selected="true" data-i18n-title="desktop.common.edit" data-i18n-aria-label="desktop.common.edit">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><!-- pencil paths --></svg>
+  </button>
+  <button type="button" role="tab" aria-selected="false" data-i18n-title="desktop.common.view" data-i18n-aria-label="desktop.common.view">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><!-- eye paths --></svg>
+  </button>
+</div>
+```
+
+```css
+.notes-segmented { display: inline-flex; gap: 2px; }
+.notes-segmented button {
+  appearance: none; border: none; background: transparent; color: var(--text);
+  width: 28px; height: 28px; padding: 5px; border-radius: 6px;
+  display: grid; place-items: center; cursor: pointer;
+}
+.notes-segmented button svg {
+  display: block; width: 16px; height: 16px; fill: none;
+  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.notes-segmented button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.notes-segmented button.active { color: var(--accent); }
+```
 
 ### 4.4 Segmented Control (reference implementation)
 
-**Classes:** `.sidebar-project-filter-segmented`, `.sidebar-project-filter-thumb`, `.notes-segmented`, `.notes-target-tabs`
+**Classes:** `.sidebar-project-filter-segmented`, `.sidebar-project-filter-thumb`, `.notes-target-tabs`
 
 This is the **gold standard** macOS control in the codebase. All multi-option toggles should match:
 
@@ -394,7 +434,7 @@ This is the **gold standard** macOS control in the codebase. All multi-option to
 - Segments: caption font 11px; inactive `--color-label-secondary`; active `--color-label-primary` weight 500
 - `role="tablist"` / `role="tab"` where applicable (already in Notes)
 
-Migrate `.notes-target-tabs` and `.notes-segmented` to use thumb pattern if they do not already.
+Migrate `.notes-target-tabs` to use the thumb pattern if it does not already. Do not apply this pattern to icon mode toggles; use §4.3 instead.
 
 ### 4.5 Popover Menu
 
@@ -574,7 +614,7 @@ Remove: `box-shadow` on bubbles, radial-gradient on `.chat-log`.
 **Classes:** `.notes-detail`, `.notes-editor-shell`, `.notes-detail-head`, `.notes-segmented`, `.notes-find-bar`, CodeMirror wrappers
 
 - Title: `.notes-detail-title` uses Title 3.
-- Edit/View segmented control: same thumb pattern as §4.4.
+- Edit/View: use the frameless pencil/eye icon mode toggle from §4.3. Preserve `tablist` / `tab`, localized title and aria-label attributes, and `aria-selected` updates in `renderNotesViewMode`.
 - Find bar: secondary bg strip below title; icon buttons 24px.
 - Editor surface: `--color-control-bg`; focus within editor does not change outer chrome.
 

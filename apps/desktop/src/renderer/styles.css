@@ -296,8 +296,7 @@ textarea:focus-visible,
   margin: 0;
 }
 
-.ghost-btn,
-.icon-btn {
+.ghost-btn {
   appearance: none;
   border: none;
   background: transparent;
@@ -310,8 +309,7 @@ textarea:focus-visible,
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-.ghost-btn:hover,
-.icon-btn:hover {
+.ghost-btn:hover {
   background: var(--color-fill-primary);
 }
 
@@ -320,11 +318,7 @@ textarea:focus-visible,
 }
 
 .icon-btn-update {
-  color: var(--cal-dot-stale, #f97316);
-}
-
-.icon-btn-update:hover {
-  background: rgba(249, 115, 22, 0.12);
+  color: var(--color-warning);
 }
 
 .icon-btn-update svg {
@@ -332,21 +326,37 @@ textarea:focus-visible,
 }
 
 .icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  padding: 5px 7px;
-  min-width: 30px;
-  min-height: 30px;
-  border-radius: var(--radius-lg);
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
 }
 
 .icon-btn svg {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.icon-btn.icon-btn-update:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
 }
 
 .quiet-select {
@@ -1471,7 +1481,8 @@ h2 {
   gap: var(--space-2);
 }
 
-button {
+.btn,
+.btn-default {
   appearance: none;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -1484,7 +1495,8 @@ button {
   transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-button:hover:not(:disabled) {
+.btn:hover:not(:disabled),
+.btn-default:hover:not(:disabled) {
   background: var(--color-fill-tertiary);
   border-color: var(--border);
   color: var(--text);
@@ -4174,38 +4186,37 @@ code {
 .wb-detail-tool {
   appearance: none;
   margin: 0;
-  padding: 0;
+  padding: 5px;
   border: none;
   background: transparent;
   box-shadow: none;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
 }
 
 .wb-detail-tool svg {
+  display: block;
   width: 16px;
   height: 16px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.75;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .wb-detail-tool:hover:not(:disabled) {
-  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.06));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
 }
 
 .wb-detail-tool.active {
-  background: var(--color-fill-primary);
-  color: var(--text);
+  color: var(--accent);
 }
 
 .wb-detail-tool:focus-visible {
@@ -4303,20 +4314,20 @@ code {
   border: none;
   background: transparent;
   color: var(--text);
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
 }
 
 .wb-git-action-btn svg {
-  width: 14px;
-  height: 14px;
+  display: block;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -4326,7 +4337,7 @@ code {
 }
 
 .wb-git-action-btn:hover:not(:disabled) {
-  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .wb-git-action-btn:disabled {
@@ -4336,7 +4347,7 @@ code {
 
 .wb-git-action-btn.active {
   color: var(--color-accent, var(--accent));
-  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
+  background: transparent;
 }
 
 .wb-log-head {
@@ -4879,20 +4890,20 @@ code {
 .wb-diff-back {
   appearance: none;
   margin: 0;
-  padding: 0;
+  padding: 5px;
   border: none;
   background: transparent;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
   color: var(--text);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
 }
 
 .wb-diff-back svg {
+  display: block;
   width: 16px;
   height: 16px;
   stroke: currentColor;
@@ -4903,7 +4914,7 @@ code {
 }
 
 .wb-diff-back:hover {
-  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.04));
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .wb-diff-title {
@@ -5092,16 +5103,12 @@ code {
   margin: 0 1px;
 }
 
-/* Beat global `button { padding; border; background }` inside the tab strip. */
+/* Normalize tab-strip buttons against their local flat surface. */
 .wb-terminal-tabs button {
   margin: 0;
   border: none;
   background: transparent;
   box-shadow: none;
-}
-
-.wb-terminal-tabs button:not(.wb-terminal-tab-label) {
-  padding: 0;
 }
 
 .wb-terminal-tabs button:hover:not(:disabled) {
@@ -5112,21 +5119,21 @@ code {
 .wb-terminal-tab-action {
   appearance: none;
   color: var(--text);
-  width: 26px;
-  height: 26px;
-  min-width: 26px;
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 5px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
 }
 
 .wb-terminal-tab-action svg {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -5146,7 +5153,7 @@ code {
 }
 
 .wb-terminal-tab-action:hover:not(:disabled) {
-  background: var(--color-fill-tertiary);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--color-label-primary);
 }
 
@@ -5224,22 +5231,20 @@ code {
 .wb-terminal-tab-close {
   appearance: none;
   color: var(--color-label-secondary);
-  width: 26px;
-  min-width: 26px;
-  height: 100%;
-  align-self: stretch;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  align-self: center;
   margin-right: 2px;
-  border-radius: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1;
-  padding-bottom: 1px;
+  display: grid;
+  place-items: center;
+  padding: 5px;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
 
@@ -5254,13 +5259,24 @@ code {
 
 .wb-terminal-tab-close:hover,
 .wb-terminal-tab-close:focus-visible {
-  background: transparent;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--color-label-primary);
 }
 
 .wb-terminal-tab.active .wb-terminal-tab-close:hover,
 .wb-terminal-tab.active .wb-terminal-tab-close:focus-visible {
   color: var(--wb-terminal-tab-active-label);
+}
+
+.wb-terminal-tab-close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .wb-terminal-stack {
@@ -5936,19 +5952,19 @@ code {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  padding: 0;
+  padding: 5px;
 }
 
 .sidebar-collapse-toggle svg {
-  width: 17px;
-  height: 17px;
+  display: block;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -5960,7 +5976,7 @@ code {
 }
 
 .sidebar-collapse-toggle:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
 }
 
@@ -6256,15 +6272,16 @@ body.is-pane-resizing * {
   color: var(--text);
   width: 28px;
   height: 28px;
+  padding: 5px;
   border-radius: 6px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
 }
 
 .notes-icon-btn svg,
 .wb-icon-btn svg {
+  display: block;
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -6277,7 +6294,7 @@ body.is-pane-resizing * {
 
 .notes-icon-btn:hover,
 .wb-icon-btn:hover {
-  background: color-mix(in srgb, var(--text) 7%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .notes-icon-btn:disabled,
@@ -6595,10 +6612,7 @@ body.is-pane-resizing * {
 .notes-segmented {
   display: inline-flex;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--panel) 90%, var(--bg));
+  gap: 2px;
 }
 
 .notes-segmented button {
@@ -6606,14 +6620,24 @@ body.is-pane-resizing * {
   border: none;
   background: transparent;
   color: var(--text);
-  padding: 5px 10px;
-  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: 6px;
   cursor: pointer;
-  border-right: 1px solid var(--border);
+  display: grid;
+  place-items: center;
 }
 
-.notes-segmented button:last-child {
-  border-right: none;
+.notes-segmented button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .notes-segmented button:hover {
@@ -6621,8 +6645,7 @@ body.is-pane-resizing * {
 }
 
 .notes-segmented button.active {
-  background: var(--accent);
-  color: #fff;
+  color: var(--accent);
 }
 
 .notes-find-bar {
@@ -6673,9 +6696,9 @@ body.is-pane-resizing * {
   appearance: none;
   width: 28px;
   height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  padding: 5px;
+  display: grid;
+  place-items: center;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -6684,10 +6707,11 @@ body.is-pane-resizing * {
 }
 
 .notes-find-btn:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
 .notes-find-btn svg {
+  display: block;
   width: 16px;
   height: 16px;
   fill: none;
@@ -6976,23 +7000,44 @@ body.is-pane-resizing * {
 }
 
 .ask-thread-row-label {
+  display: block;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.ask-thread-row-select {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  padding: 0;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  text-align: left;
+}
+
+.ask-thread-row-select:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
 .ask-thread-row-delete {
   opacity: 0;
   background: transparent;
   border: none;
-  color: inherit;
+  color: var(--color-destructive);
   cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
@@ -7002,11 +7047,22 @@ body.is-pane-resizing * {
 
 .ask-thread-row-delete:hover {
   opacity: 1 !important;
-  background: rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
 }
 
 .ask-thread-row.active .ask-thread-row-delete:hover {
-  background: var(--color-fill-secondary);
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
+}
+
+.ask-thread-row-delete svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .chat-tools-toggle {
