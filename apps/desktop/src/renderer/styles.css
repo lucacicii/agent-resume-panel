@@ -4193,7 +4193,7 @@ code {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
-  color: var(--muted);
+  color: var(--text);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -6290,6 +6290,12 @@ body.is-pane-resizing * {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.notes-icon-btn .list-refresh-icon,
+.wb-icon-btn .list-refresh-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .notes-icon-btn:hover,
