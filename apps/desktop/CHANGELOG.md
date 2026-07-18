@@ -8,6 +8,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.1.4]
+
+#### Added
+
+- Configurable AI Git commit message formats: Conventional Commits, Gitmoji, or custom rules
+- Desktop environment doctor for Node, pnpm, Electron, and node-pty setup checks
+
+#### Improved
+
+- Workbench and Notes search toolbar interactions, motion, and visual consistency
+- macOS packaging and deployment reliability
+
+#### Fixed
+
+- Workbench settings layout and styling issues
+
 ### [0.1.3]
 
 #### Added
@@ -78,6 +94,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.1.4]
+
+#### 新增
+
+- AI 生成 Git 提交信息支持 Conventional Commits、Gitmoji 和自定义规则三种格式
+- 新增 Desktop 环境诊断工具，检查 Node、pnpm、Electron 和 node-pty 配置
+
+#### 改进
+
+- 优化 Workbench 与 Notes 搜索工具栏的交互、动画和视觉一致性
+- 提升 macOS 打包与部署稳定性
+
+#### 修复
+
+- 修复 Workbench 设置页的布局和样式问题
 
 ### [0.1.3]
 

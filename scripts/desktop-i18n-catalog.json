@@ -1974,8 +1974,7 @@
       "desktop.workbench.sidePanelNoNestedRepos": "サブディレクトリに Git リポジトリが見つかりません（スキャン深度 {0}）。",
       "desktop.workbench.sidePanelNoRoot": "プロジェクトを選択してからファイルと Git 変更を閲覧してください。",
       "desktop.workbench.sidePanelRevealFailed": "Finder で表示できませんでした: {0}",
-      "desktop.workbench.sidePanelStaged": "ステージ済み",
-      "desktop.workbench.sidePanelBack": "戻る"
+      "desktop.workbench.sidePanelStaged": "ステージ済み"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

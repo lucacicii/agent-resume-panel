@@ -64,9 +64,16 @@ if (process.platform === "darwin") {
       { stdio: "ignore" }
     );
   }
-  execFileSync("iconutil", ["-c", "icns", iconset, "-o", path.join(iconDestDir, "icon.icns")], {
-    stdio: "ignore"
-  });
+  const iconIcns = path.join(iconDestDir, "icon.icns");
+  try {
+    execFileSync("iconutil", ["-c", "icns", iconset, "-o", iconIcns], { stdio: "ignore" });
+  } catch (error) {
+    // Some macOS iconutil versions reject otherwise valid iconsets. Only retain a non-stale icon.
+    const canReuseExistingIcon =
+      fs.existsSync(iconIcns) && fs.statSync(iconIcns).mtimeMs >= fs.statSync(iconSrc).mtimeMs;
+    if (!canReuseExistingIcon) throw error;
+    console.warn("iconutil failed; reusing the existing up-to-date icon.icns");
+  }
   fs.rmSync(iconset, { recursive: true, force: true });
 } else {
   fs.copyFileSync(iconSrc, iconPng);
