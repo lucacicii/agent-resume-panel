@@ -45,6 +45,21 @@ corepack enable
 pnpm install --frozen-lockfile
 ```
 
+**Do not copy `node_modules` between machines** (especially Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
+
+### Desktop (macOS)
+
+| | Intel Mac | Apple Silicon |
+|--|-----------|---------------|
+| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ |
+| `pnpm run pack:desktop` (universal) | ✅ | ✅ |
+
+After install or when Electron / node-pty / pack fails with env-looking errors:
+
+```sh
+pnpm run doctor:desktop
+```
+
 Compile the extension:
 
 ```sh

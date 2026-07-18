@@ -2,7 +2,9 @@
 
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function parseArgs(argv) {
   const args = [...argv];
@@ -21,15 +23,43 @@ function parseArgs(argv) {
   return { cwd, tscArgs: args };
 }
 
+/**
+ * Resolve typescript/bin/tsc for a package cwd.
+ * Walks package → parents → monorepo root so isolated pnpm links or a
+ * partially repaired node_modules still find a workspace TypeScript.
+ */
 function resolveTscBin(cwd) {
-  const require = createRequire(path.join(cwd, "package.json"));
-  try {
-    return require.resolve("typescript/bin/tsc");
-  } catch {
-    throw new Error(
-      `Missing TypeScript for ${cwd}. Run \`pnpm install\` from the repo root.`
-    );
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.resolve(scriptDir, "..");
+  const candidates = [];
+
+  let dir = path.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    candidates.push(dir);
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+  if (!candidates.includes(repoRoot)) {
+    candidates.push(repoRoot);
+  }
+
+  const errors = [];
+  for (const base of candidates) {
+    const pkgJson = path.join(base, "package.json");
+    if (!fs.existsSync(pkgJson)) continue;
+    try {
+      const require = createRequire(pkgJson);
+      return require.resolve("typescript/bin/tsc");
+    } catch (error) {
+      errors.push(`${base}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(
+    `Missing TypeScript for ${cwd}. Run \`pnpm install\` from the repo root.\n` +
+      `Tried:\n- ${errors.join("\n- ")}`
+  );
 }
 
 const { cwd, tscArgs } = parseArgs(process.argv.slice(2));

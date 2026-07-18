@@ -119,6 +119,7 @@
     "test:vsix": "node scripts/pack-vsix.test.mjs",
     "test:notes": "node scripts/note-uri.test.mjs",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "i18n:check:translations": "node scripts/check-i18n-translations.mjs",
     "test:locale": "node scripts/locale-separation.test.mjs"
   },
   "devDependencies": {
@@ -2826,7 +2827,7 @@
       },
       {
         "command": "agentResume.ja.setSessionGtdStatus",
-        "title": "Set GTD Status…",
+        "title": "GTD 状態を設定…",
         "category": "Agent Resume"
       },
       {
@@ -2876,7 +2877,7 @@
       },
       {
         "command": "agentResume.ja.openNote",
-        "title": "Open Note",
+        "title": "ノートを開く",
         "category": "Agent Resume"
       },
       {
@@ -2886,7 +2887,7 @@
       },
       {
         "command": "agentResume.ja.renameNote",
-        "title": "Rename Note",
+        "title": "ノートの名前を変更",
         "category": "Agent Resume"
       },
       {
@@ -2896,7 +2897,7 @@
       },
       {
         "command": "agentResume.ja.deleteNote",
-        "title": "Delete Note",
+        "title": "ノートを削除",
         "category": "Agent Resume"
       },
       {
@@ -2906,7 +2907,7 @@
       },
       {
         "command": "agentResume.ja.revealNoteInOS",
-        "title": "Reveal Note in File Explorer",
+        "title": "ファイルエクスプローラーでノートを表示",
         "category": "Agent Resume"
       },
       {
@@ -2916,7 +2917,7 @@
       },
       {
         "command": "agentResume.ja.copyNotePath",
-        "title": "Copy Note Path",
+        "title": "ノートのパスをコピー",
         "category": "Agent Resume"
       },
       {
@@ -2927,7 +2928,7 @@
       },
       {
         "command": "agentResume.ja.newNote",
-        "title": "New Note…",
+        "title": "新しいノート…",
         "category": "Agent Resume",
         "icon": "$(plus)"
       },
@@ -2939,7 +2940,7 @@
       },
       {
         "command": "agentResume.ja.importNotes",
-        "title": "Import Markdown Notes…",
+        "title": "Markdown ノートを一括インポート…",
         "category": "Agent Resume",
         "icon": "$(desktop-download)"
       },
@@ -2951,7 +2952,7 @@
       },
       {
         "command": "agentResume.ja.filterNotes",
-        "title": "Filter Notes",
+        "title": "ノートをフィルター",
         "category": "Agent Resume",
         "icon": "$(filter)"
       },
@@ -2963,7 +2964,7 @@
       },
       {
         "command": "agentResume.ja.clearNotesFilter",
-        "title": "Clear Notes Filter",
+        "title": "フィルターをクリア",
         "category": "Agent Resume",
         "icon": "$(clear-all)"
       },
@@ -2975,7 +2976,7 @@
       },
       {
         "command": "agentResume.ja.refreshNotes",
-        "title": "Refresh Notes",
+        "title": "ノートを更新",
         "category": "Agent Resume",
         "icon": "$(refresh)"
       },
@@ -2987,7 +2988,7 @@
       },
       {
         "command": "agentResume.ja.openNotesFolder",
-        "title": "Open Notes Folder",
+        "title": "ノートフォルダーを開く",
         "category": "Agent Resume",
         "icon": "$(folder-opened)"
       },
@@ -2998,7 +2999,7 @@
       },
       {
         "command": "agentResume.ja.insertNoteImage",
-        "title": "Insert Image into Note",
+        "title": "ノートに画像を挿入",
         "category": "Agent Resume"
       },
       {
@@ -3108,7 +3109,7 @@
       },
       {
         "command": "agentResume.ja.setProjectAlias",
-        "title": "Set Project Alias…",
+        "title": "プロジェクトエイリアスを設定…",
         "category": "Agent Resume"
       },
       {

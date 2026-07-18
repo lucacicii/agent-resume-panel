@@ -5,14 +5,16 @@
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "node scripts/fix-node-pty.mjs && tsc -p tsconfig.json && node scripts/copy-renderer.cjs && node scripts/build-renderer-vendor.mjs",
+    "build": "node scripts/fix-node-pty.mjs && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.json && node scripts/copy-renderer.cjs && node scripts/build-renderer-vendor.mjs",
     "start": "electron .",
     "dev": "node scripts/dev.mjs",
     "dev:once": "node scripts/dev.mjs --fresh --no-watch",
     "dev:mac": "node scripts/dev-mac.mjs",
     "pack:mac": "node scripts/pack-mac.mjs",
+    "doctor": "node scripts/doctor-desktop.mjs",
     "test:mac-app": "node scripts/mac-app.test.mjs",
     "test:node-pty": "node scripts/fix-node-pty.test.mjs",
+    "test:doctor": "node scripts/doctor-desktop.test.mjs",
     "test:workbench-files": "node scripts/workbench-file-io.test.mjs"
   },
   "dependencies": {

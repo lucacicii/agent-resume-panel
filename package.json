@@ -31,12 +31,17 @@
     "test:vsix": "pnpm --filter agent-resume-panel run test:vsix",
     "test:notes": "pnpm --filter agent-resume-panel run test:notes",
     "test:core": "pnpm --filter @agent-resume/core run test",
-    "test:desktop": "pnpm --filter @agent-resume/desktop run test:mac-app && pnpm --filter @agent-resume/desktop run test:node-pty && pnpm --filter @agent-resume/desktop run test:workbench-files",
+    "test:desktop": "pnpm --filter @agent-resume/desktop run test:mac-app && pnpm --filter @agent-resume/desktop run test:node-pty && pnpm --filter @agent-resume/desktop run test:doctor && pnpm --filter @agent-resume/desktop run test:workbench-files",
     "i18n:check": "pnpm --filter agent-resume-panel run i18n:check",
     "i18n:check:translations": "pnpm --filter agent-resume-panel run i18n:check:translations",
     "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs && pnpm run merge:desktop-i18n",
     "test:locale": "pnpm --filter agent-resume-panel run test:locale",
     "merge:desktop-i18n": "node scripts/merge-desktop-i18n.mjs",
-    "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs"
+    "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs",
+    "doctor:desktop": "node apps/desktop/scripts/doctor-desktop.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "typescript": "5.9.3"
   }
 }
