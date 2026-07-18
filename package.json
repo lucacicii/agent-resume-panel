@@ -12,6 +12,7 @@
   },
   "scripts": {
     "preinstall": "node scripts/require-pnpm.mjs",
+    "reinstall": "rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install",
     "build:core": "pnpm --filter @agent-resume/core run build",
     "compile": "pnpm run build:core && pnpm --filter agent-resume-panel run compile",
     "watch": "pnpm --filter agent-resume-panel run watch",
