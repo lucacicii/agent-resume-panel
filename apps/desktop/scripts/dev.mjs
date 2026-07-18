@@ -16,7 +16,7 @@ const noWatch = cliArgs.includes("--no-watch");
 
 const coreDistEntry = path.join(repoRoot, "packages", "core", "dist", "index.js");
 const mainDistEntry = path.join(root, "dist", "main", "main.js");
-const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
+const tscBin = require.resolve("typescript/bin/tsc");
 
 const children = [];
 let electronApp = null;
@@ -76,7 +76,7 @@ process.on("SIGTERM", () => shutdown(0));
 
 function runWorkspaceScript(workspace, script) {
   return new Promise((resolve, reject) => {
-    const child = spawn("npm", ["run", script, "-w", workspace], {
+    const child = spawn("pnpm", ["--filter", workspace, "run", script], {
       cwd: repoRoot,
       stdio: "inherit",
       shell: process.platform === "win32"
@@ -104,7 +104,7 @@ async function ensureInitialBuild() {
 }
 
 function startWatchers() {
-  spawnTracked("npm", ["run", "watch", "-w", "@agent-resume/core"], { cwd: repoRoot });
+  spawnTracked("pnpm", ["--filter", "@agent-resume/core", "run", "watch"], { cwd: repoRoot });
   spawnTracked(process.execPath, [tscBin, "-p", "tsconfig.json", "-w"], { cwd: root });
   spawnTracked(process.execPath, [path.join(root, "scripts", "watch-renderer.mjs")], { cwd: root });
 }

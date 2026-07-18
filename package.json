@@ -1,35 +1,47 @@
 {
   "name": "agent-resume-panel-monorepo",
   "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22.13",
+    "pnpm": "11.13.1"
+  },
+  "volta": {
+    "node": "22.13.0",
+    "pnpm": "11.13.1"
+  },
   "scripts": {
-    "build:core": "npm run build -w @agent-resume/core",
-    "compile": "npm run build:core && npm run compile -w agent-resume-panel",
-    "watch": "npm run watch -w agent-resume-panel",
-    "package": "npm run package -w agent-resume-panel",
-    "install:local": "npm run compile && npm run package -w agent-resume-panel && node apps/extension/scripts/install-local.mjs",
-    "install:local-vscode": "npm run compile && npm run package -w agent-resume-panel && node apps/extension/scripts/install-local.mjs --editors=code --require-all",
-    "build:openvsx": "npm run build:openvsx -w agent-resume-panel",
-    "build:all": "npm run build:all -w agent-resume-panel",
-    "publish:openvsx": "npm run publish:openvsx -w agent-resume-panel",
-    "build:desktop": "npm run build -w @agent-resume/desktop",
-    "dev:desktop": "npm run dev -w @agent-resume/desktop",
-    "pack:desktop": "npm run build:core && npm run pack:mac -w @agent-resume/desktop",
+    "preinstall": "node scripts/require-pnpm.mjs",
+    "reinstall": "rm -rf node_modules apps/*/node_modules packages/*/node_modules && pnpm install",
+    "build:core": "pnpm --filter @agent-resume/core run build",
+    "compile": "pnpm run build:core && pnpm --filter agent-resume-panel run compile",
+    "watch": "pnpm --filter agent-resume-panel run watch",
+    "package": "pnpm --filter agent-resume-panel run package",
+    "install:local": "pnpm run compile && pnpm --filter agent-resume-panel run package && node apps/extension/scripts/install-local.mjs",
+    "install:local-vscode": "pnpm run compile && pnpm --filter agent-resume-panel run package && node apps/extension/scripts/install-local.mjs --editors=code --require-all",
+    "build:openvsx": "pnpm --filter agent-resume-panel run build:openvsx",
+    "build:all": "pnpm --filter agent-resume-panel run build:all",
+    "publish:openvsx": "pnpm --filter agent-resume-panel run publish:openvsx",
+    "build:desktop": "pnpm --filter @agent-resume/desktop run build",
+    "dev:desktop": "pnpm --filter @agent-resume/desktop run dev",
+    "pack:desktop": "pnpm run build:core && pnpm --filter @agent-resume/desktop run pack:mac",
     "release:desktop:mac": "node scripts/release-desktop-mac.mjs",
-    "test:menus": "npm run test:menus -w agent-resume-panel",
-    "test:manifest": "npm run test:manifest -w agent-resume-panel",
-    "test:vsix": "npm run test:vsix -w agent-resume-panel",
-    "test:notes": "npm run test:notes -w agent-resume-panel",
-    "test:core": "npm run test -w @agent-resume/core",
-    "test:desktop": "npm run test:mac-app -w @agent-resume/desktop && npm run test:node-pty -w @agent-resume/desktop && npm run test:workbench-files -w @agent-resume/desktop",
-    "i18n:check": "npm run i18n:check -w agent-resume-panel",
-    "i18n:check:translations": "npm run i18n:check:translations -w agent-resume-panel",
-    "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs && npm run merge:desktop-i18n",
-    "test:locale": "npm run test:locale -w agent-resume-panel",
+    "test:menus": "pnpm --filter agent-resume-panel run test:menus",
+    "test:manifest": "pnpm --filter agent-resume-panel run test:manifest",
+    "test:vsix": "pnpm --filter agent-resume-panel run test:vsix",
+    "test:notes": "pnpm --filter agent-resume-panel run test:notes",
+    "test:core": "pnpm --filter @agent-resume/core run test",
+    "test:desktop": "pnpm --filter @agent-resume/desktop run test:mac-app && pnpm --filter @agent-resume/desktop run test:node-pty && pnpm --filter @agent-resume/desktop run test:doctor && pnpm --filter @agent-resume/desktop run test:workbench-files",
+    "i18n:check": "pnpm --filter agent-resume-panel run i18n:check",
+    "i18n:check:translations": "pnpm --filter agent-resume-panel run i18n:check:translations",
+    "i18n:apply-patches": "node scripts/apply-i18n-patches.mjs && pnpm run merge:desktop-i18n",
+    "test:locale": "pnpm --filter agent-resume-panel run test:locale",
     "merge:desktop-i18n": "node scripts/merge-desktop-i18n.mjs",
-    "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs"
+    "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs",
+    "doctor:desktop": "node apps/desktop/scripts/doctor-desktop.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "typescript": "5.9.3"
   }
 }

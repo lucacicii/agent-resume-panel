@@ -1,6 +1,6 @@
 # AI Task Router
 
-This repository is an npm workspaces monorepo with **two independent products** — the Agent Resume Panel VS Code extension and the Agent Resume Desktop Electron app — plus shared `@agent-resume/core`. They share panel-home data contracts but have separate codebases, locales, versions, UI stacks, and release pipelines.
+This repository is a pnpm workspace monorepo with **two independent products** — the Agent Resume Panel VS Code extension and the Agent Resume Desktop Electron app — plus shared `@agent-resume/core`. It requires Node.js `>=22.13` and pnpm `11.13.1` for development. The products share panel-home data contracts but have separate codebases, locales, versions, UI stacks, and release pipelines.
 
 Read [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md) when a task might touch both products, shared core, i18n, settings, or release tooling.
 
@@ -27,12 +27,12 @@ Load these references only when relevant:
 
 Run checks for the product you changed:
 
-- **Shared / extension TypeScript** — `npm run compile` after source changes.
-- **Extension strings** — `npm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
-- **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `npm run merge:desktop-i18n`, then `npm run i18n:check`.
-- **Translation coverage** — `npm run i18n:check:translations` after locale work in either product.
-- **Extension menus** — `npm run test:menus` after menu contribution generators change.
-- **Extension contributions** — `npm run install:local` (all detected editors) or `npm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
-- **Desktop build** — `npm run build:desktop` or `npm run pack:desktop` before distribution.
+- **Shared / extension TypeScript** — `pnpm run compile` after source changes.
+- **Extension strings** — `pnpm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
+- **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `pnpm run merge:desktop-i18n`, then `pnpm run i18n:check`.
+- **Translation coverage** — `pnpm run i18n:check:translations` after locale work in either product.
+- **Extension menus** — `pnpm run test:menus` after menu contribution generators change.
+- **Extension contributions** — `pnpm run install:local` (all detected editors) or `pnpm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
+- **Desktop build** — `pnpm run build:desktop` or `pnpm run pack:desktop` before distribution.
 
 Use `/qa` and `/review` for their respective quality workflows when available.

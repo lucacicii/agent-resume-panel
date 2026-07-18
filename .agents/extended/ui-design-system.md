@@ -759,8 +759,8 @@ Run after **each** migration phase:
 
 | Check | Command / action |
 | --- | --- |
-| Build | `npm run build:desktop` |
-| macOS visual | `npm run dev:mac -w @agent-resume/desktop` |
+| Build | `pnpm run build:desktop` |
+| macOS visual | `pnpm --filter @agent-resume/desktop run dev:mac` |
 | Width 860px | No horizontal overflow; sidebars collapse or shrink |
 | Width 1120px | Default layout proportions |
 | Light appearance | System light mode or `prefers-color-scheme: light` |

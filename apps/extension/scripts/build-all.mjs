@@ -7,7 +7,7 @@ import { packageVsix } from "./vsix-output.mjs";
 const extensionRoot = join(import.meta.dirname, "..");
 const repoRoot = join(extensionRoot, "..", "..");
 
-execSync("npm run compile", { cwd: repoRoot, stdio: "inherit" });
+execSync("pnpm run compile", { cwd: repoRoot, stdio: "inherit" });
 
 const openvsxPkg = JSON.parse(readFileSync(join(extensionRoot, "package.json"), "utf8"));
 console.log("Building Open VSX version...");
@@ -25,5 +25,5 @@ console.log(`  VS Code Marketplace:  ${marketplaceOut}`);
 console.log(`  Changelog:            ${join(extensionRoot, "CHANGELOG.md")} (v${openvsxPkg.version})`);
 console.log("\nPublish to Open VSX:");
 console.log("  export OVSX_PAT=<your-token>");
-console.log(`  npx ovsx publish ${openvsxOut}`);
-console.log("  # or: npm run publish:openvsx");
+console.log(`  pnpm exec ovsx publish ${openvsxOut}`);
+console.log("  # or: pnpm run publish:openvsx");

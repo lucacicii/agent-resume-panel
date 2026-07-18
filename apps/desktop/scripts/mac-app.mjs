@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadArtifact } from "@electron/get";
+import { ensureSpawnHelpersExecutable } from "./fix-node-pty.mjs";
 
 const require = createRequire(import.meta.url);
 const PACKAGER_ATTEMPTS = 3;
@@ -12,6 +13,8 @@ const RETRY_DELAY_MS = 2000;
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
+const packagingRoot = path.join(root, ".pack-staging");
+const repoRoot = path.join(root, "..", "..");
 const stampFile = path.join(root, ".dev-app-stamp");
 const iconPath = path.join(root, "dist", "resources", "icon.icns");
 const targetArch = "universal";
@@ -26,7 +29,7 @@ export const desktopRoot = root;
 export const macTargetArch = targetArch;
 
 export function runDesktopBuild() {
-  execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
+  execFileSync("pnpm", ["run", "build"], { cwd: root, stdio: "inherit" });
 }
 
 export function findAppBundle() {
@@ -145,31 +148,142 @@ async function ensureElectronZipDir() {
   return zipDir;
 }
 
-function materializeNodeModules() {
-  const repoNm = path.join(root, "..", "..", "node_modules");
-  const desktopNm = path.join(root, "node_modules");
-  fs.mkdirSync(desktopNm, { recursive: true });
-  for (const name of fs.readdirSync(repoNm)) {
-    if (name === ".bin") continue;
-    const source = path.join(repoNm, name);
-    const destination = path.join(desktopNm, name);
+function deployDesktop() {
+  fs.rmSync(packagingRoot, { recursive: true, force: true });
+  execFileSync(
+    "pnpm",
+    ["--filter", "@agent-resume/desktop", "--prod", "deploy", "--legacy", packagingRoot],
+    {
+      cwd: repoRoot,
+      stdio: "inherit",
+      // Non-interactive deploy: allow purging staging node_modules without a TTY.
+      env: { ...process.env, CI: process.env.CI || "true" }
+    }
+  );
 
-    if (!name.startsWith("@")) {
-      if (!fs.existsSync(destination)) {
-        fs.symlinkSync(source, destination, "dir");
-      }
+  removeDesktopSelfReferences(packagingRoot);
+  // electron-packager/asar follows package symlinks and drops pnpm's isolated
+  // sibling dependency layout. Materialize a classic flat node_modules first.
+  flattenDeployedNodeModulesForAsar(packagingRoot);
+
+  const nodePtyRoot = path.join(packagingRoot, "node_modules", "node-pty");
+  const helpers = ensureSpawnHelpersExecutable(nodePtyRoot, "darwin");
+  if (helpers.length === 0) {
+    throw new Error(`No macOS node-pty spawn-helper found under ${nodePtyRoot}`);
+  }
+}
+
+export function removeDesktopSelfReferences(deployRoot) {
+  const selfReferences = [
+    path.join(deployRoot, "node_modules", "@agent-resume", "desktop"),
+    path.join(deployRoot, "node_modules", ".pnpm", "node_modules", "@agent-resume", "desktop")
+  ];
+  for (const selfReference of selfReferences) {
+    fs.rmSync(selfReference, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Parse a pnpm package-map key into a package name.
+ * Examples:
+ *   "@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)" -> "@modelcontextprotocol/sdk"
+ *   "zod@4.4.3" -> "zod"
+ *   "@agent-resume/core@file:packages/core" -> "@agent-resume/core"
+ *   "." / "packages/core" / "apps/desktop" -> null
+ */
+export function packageNameFromMapKey(key) {
+  if (!key || key === ".") {
+    return null;
+  }
+  // Workspace path keys from the monorepo lockfile (not installable package names).
+  if (key.startsWith("packages/") || key.startsWith("apps/")) {
+    return null;
+  }
+  if (key.startsWith("@")) {
+    const match = /^(@[^/]+\/[^@/]+)/.exec(key);
+    return match ? match[1] : null;
+  }
+  // Bare workspace-style paths like "scripts/foo" should not be treated as packages.
+  if (key.includes("/") && !key.includes("@")) {
+    return null;
+  }
+  const at = key.indexOf("@");
+  return at > 0 ? key.slice(0, at) : key;
+}
+
+function packageTargetPath(nodeModulesRoot, packageName) {
+  return path.join(nodeModulesRoot, ...packageName.split("/"));
+}
+
+function isPnpmVirtualStoreUrl(url) {
+  const normalized = url.replace(/\\/g, "/");
+  return normalized === "./.pnpm" || normalized.startsWith("./.pnpm/") || normalized.startsWith(".pnpm/");
+}
+
+/**
+ * Rewrite pnpm isolated deploy layout into a classic flat node_modules tree.
+ * Without this, Electron asar packaging dereferences top-level package symlinks
+ * and Node can no longer resolve transitive deps such as
+ * `@modelcontextprotocol/sdk` from `@agent-resume/core`.
+ */
+export function flattenDeployedNodeModulesForAsar(deployRoot) {
+  const nodeModulesRoot = path.join(deployRoot, "node_modules");
+  const packageMapPath = path.join(nodeModulesRoot, ".package-map.json");
+  if (!fs.existsSync(packageMapPath)) {
+    return;
+  }
+
+  const packageMap = JSON.parse(fs.readFileSync(packageMapPath, "utf8"));
+  const packages = packageMap.packages ?? packageMap;
+  /** @type {Map<string, string>} */
+  const sourcesByName = new Map();
+
+  for (const [key, meta] of Object.entries(packages)) {
+    const name = packageNameFromMapKey(key);
+    if (!name || !meta?.url || !isPnpmVirtualStoreUrl(meta.url)) continue;
+    const source = path.resolve(nodeModulesRoot, meta.url);
+    if (!fs.existsSync(source)) continue;
+    // Prefer the first real path; deploy maps usually have one version per name.
+    if (!sourcesByName.has(name)) {
+      sourcesByName.set(name, source);
+    }
+  }
+
+  for (const [name, source] of sourcesByName) {
+    const target = packageTargetPath(nodeModulesRoot, name);
+    const realSource = fs.realpathSync(source);
+    // Never copy a path onto itself or into a subdirectory of the source.
+    const resolvedTarget = path.resolve(target);
+    if (resolvedTarget === realSource || resolvedTarget.startsWith(`${realSource}${path.sep}`)) {
       continue;
     }
-
-    if (fs.existsSync(destination) && fs.lstatSync(destination).isSymbolicLink()) {
-      fs.rmSync(destination, { recursive: true, force: true });
-    }
-    fs.mkdirSync(destination, { recursive: true });
-    for (const packageName of fs.readdirSync(source)) {
-      const scopedDestination = path.join(destination, packageName);
-      if (!fs.existsSync(scopedDestination)) {
-        fs.symlinkSync(path.join(source, packageName), scopedDestination, "dir");
+    if (realSource === path.resolve(deployRoot) || realSource.startsWith(`${path.resolve(deployRoot)}${path.sep}`)) {
+      // Source inside deploy root but outside .pnpm is unexpected after the url filter;
+      // still guard against copying the deploy tree into itself.
+      if (!realSource.includes(`${path.sep}.pnpm${path.sep}`)) {
+        continue;
       }
+    }
+    if (fs.existsSync(target)) {
+      const stat = fs.lstatSync(target);
+      if (!stat.isSymbolicLink() && path.resolve(target) === realSource) {
+        continue;
+      }
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.cpSync(realSource, target, { recursive: true, dereference: true });
+  }
+
+  // Drop the virtual store so asar only ships the classic tree.
+  const pnpmStore = path.join(nodeModulesRoot, ".pnpm");
+  if (fs.existsSync(pnpmStore)) {
+    fs.rmSync(pnpmStore, { recursive: true, force: true });
+  }
+  for (const metaName of [".package-map.json", ".modules.yaml"]) {
+    const metaPath = path.join(nodeModulesRoot, metaName);
+    if (fs.existsSync(metaPath)) {
+      fs.rmSync(metaPath, { force: true });
     }
   }
 }
@@ -179,15 +293,16 @@ export async function packMacApp() {
     throw new Error("pack:mac is only supported on macOS.");
   }
   if (!fs.existsSync(iconPath)) {
-    throw new Error(`Missing app icon: ${iconPath}. Run npm run build first.`);
+    throw new Error(`Missing app icon: ${iconPath}. Run pnpm run build first.`);
   }
-  materializeNodeModules();
+  deployDesktop();
   const electronZipDir = await ensureElectronZipDir();
   console.log("Packaging macOS .app...");
   fs.rmSync(releaseRoot, { recursive: true, force: true });
   const packagerArgs = [
-    "@electron/packager",
-    ".",
+    "exec",
+    "electron-packager",
+    packagingRoot,
     "Agent Resume",
     `--platform=darwin`,
     `--arch=${targetArch}`,
@@ -199,10 +314,10 @@ export async function packMacApp() {
     "--overwrite",
     "--asar.unpackDir=node_modules/node-pty",
     "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
-    "--prune=true"
+    "--no-prune"
   ];
   await withRetry("electron-packager", PACKAGER_ATTEMPTS, () => {
-    execFileSync("npx", packagerArgs, {
+    execFileSync("pnpm", packagerArgs, {
       cwd: root,
       stdio: "inherit",
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }

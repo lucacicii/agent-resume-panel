@@ -12,7 +12,7 @@ function usage() {
   console.log(`Usage: node scripts/release-desktop-mac.mjs [options]
 
 Options:
-  --build              Run npm run pack:desktop when the DMG is missing
+  --build              Run pnpm run pack:desktop when the DMG is missing
   --notes-file <path>  Override release notes (default: extract from apps/desktop/CHANGELOG.md)
   --upload-only        Upload the DMG to an existing release only
   --dry-run            Print commands without executing them
@@ -131,10 +131,10 @@ function ensureDmg(version, build, dryRun) {
   }
   if (!build) {
     throw new Error(
-      `Missing DMG: ${dmgPath}\nRebuild with --build or run: npm run pack:desktop`
+      `Missing DMG: ${dmgPath}\nRebuild with --build or run: pnpm run pack:desktop`
     );
   }
-  run("npm", ["run", "pack:desktop"], { dryRun, cwd: root });
+  run("pnpm", ["run", "pack:desktop"], { dryRun, cwd: root });
   if (!dryRun && !fs.existsSync(dmgPath)) {
     throw new Error(`Packaging finished but DMG was not found: ${dmgPath}`);
   }

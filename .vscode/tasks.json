@@ -2,14 +2,16 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "compile",
+      "label": "pnpm: compile",
+      "type": "shell",
+      "command": "pnpm run compile",
       "group": "build",
       "problemMatcher": "$tsc"
     },
     {
-      "type": "npm",
-      "script": "install:local",
+      "label": "pnpm: install:local",
+      "type": "shell",
+      "command": "pnpm run install:local",
       "group": "build",
       "problemMatcher": []
     }

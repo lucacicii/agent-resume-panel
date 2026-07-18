@@ -36,6 +36,19 @@ Version: **0.1.3**
 - macOS 12 or later
 - Apple Silicon or Intel (universal build)
 
+### Local development (Mac Intel / Apple Silicon)
+
+```sh
+# from monorepo root
+corepack enable
+pnpm install
+pnpm run doctor:desktop   # optional: Node/pnpm/Electron/node-pty health
+pnpm run dev:desktop
+pnpm run pack:desktop     # universal .app + DMG; either Mac arch is fine
+```
+
+Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silicon machines—only clone/pull and `pnpm install`.
+
 ### Install
 
 1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest).

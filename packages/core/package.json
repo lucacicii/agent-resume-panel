@@ -24,13 +24,17 @@
   "scripts": {
     "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
     "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "pnpm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
     "typescript": "^5.9.3"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

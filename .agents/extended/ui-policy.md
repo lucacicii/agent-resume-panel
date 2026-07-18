@@ -24,4 +24,4 @@ Extension and desktop are **independent UI products**. See [product-independence
 - Reuse existing CSS classes and design tokens before adding new ones. Prefer semantic tokens (`--color-*`) over hard-coded hex values in new rules.
 - Verify desktop layout at its 860px minimum width and at the normal 1120px window width after visual changes.
 - Retain existing text language conventions in the surface being modified; do not silently convert unrelated UI copy.
-- After desktop visual changes: `npm run build:desktop`; on macOS, also run `npm run dev:mac -w @agent-resume/desktop` and complete the verification checklist in `ui-design-system.md` §8.
+- After desktop visual changes: `pnpm run build:desktop`; on macOS, also run `pnpm --filter @agent-resume/desktop run dev:mac` and complete the verification checklist in `ui-design-system.md` §8.

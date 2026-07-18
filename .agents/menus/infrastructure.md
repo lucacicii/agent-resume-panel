@@ -21,4 +21,4 @@
 - Preserve panel-home migration and effective-home resolution. Do not hardcode a second catalog or settings location.
 - Never store LLM credentials in source-controlled configuration or log them during failures.
 - Shared infrastructure must stay product-agnostic. Do not import `vscode` in core or desktop-main code paths that core owns.
-- Changing a shared contract may affect both products — verify extension (`npm run compile`) and desktop (`npm run build:desktop`) when touching `packages/core/` or catalog schema.
+- Changing a shared contract may affect both products — verify extension (`pnpm run compile`) and desktop (`pnpm run build:desktop`) when touching `packages/core/` or catalog schema.
