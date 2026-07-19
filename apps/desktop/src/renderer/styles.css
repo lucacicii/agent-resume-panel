@@ -3937,6 +3937,12 @@ code {
 }
 
 .citation-chip {
+  appearance: none;
+  border: none;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   display: block;
   font-size: 11px;
   color: color-mix(in srgb, currentColor 72%, transparent);
@@ -3954,6 +3960,11 @@ code {
 .citation-chip.is-active {
   color: currentColor;
   background: color-mix(in srgb, var(--tg-sender) 14%, transparent);
+}
+
+.citation-chip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 .chat-compose {
