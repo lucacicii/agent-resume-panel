@@ -25,6 +25,7 @@
   --color-fill-secondary: rgba(0, 0, 0, 0.06);
   --color-fill-tertiary: rgba(0, 0, 0, 0.04);
   --color-focus-ring: rgba(0, 122, 255, 0.45);
+  --editor-caret-color: #1c1c1e;
 
   /* Chat (macOS message list) */
   --chat-bg: var(--color-window-bg);
@@ -164,6 +165,7 @@
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
   --color-fill-tertiary: rgba(255, 255, 255, 0.05);
   --color-focus-ring: rgba(10, 132, 255, 0.55);
+  --editor-caret-color: #ffffff;
   --chat-bubble-user: var(--color-fill-primary);
   --chat-bubble-assistant: var(--color-control-bg);
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);
@@ -202,6 +204,7 @@
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
     --color-fill-tertiary: rgba(255, 255, 255, 0.05);
     --color-focus-ring: rgba(10, 132, 255, 0.55);
+    --editor-caret-color: #ffffff;
     --chat-bubble-user: var(--color-fill-primary);
     --chat-bubble-assistant: var(--color-control-bg);
     --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);

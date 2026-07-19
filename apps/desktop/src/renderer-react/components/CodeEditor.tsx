@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Compartment, EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorView, keymap } from "@codemirror/view";
+import { drawSelection, EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 
@@ -27,6 +27,12 @@ export interface CodeEditorHandle {
 const editable = new Compartment();
 const wrapping = new Compartment();
 const tabs = new Compartment();
+const caretTheme = EditorView.theme({
+  ".cm-cursor": {
+    borderLeft: "2px solid var(--editor-caret-color)",
+    marginLeft: "-1px"
+  }
+});
 
 export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor({
   value,
@@ -87,9 +93,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         bracketMatching(),
         markdown(),
         syntaxHighlighting(defaultHighlightStyle),
+        drawSelection(),
         wrapping.of(wordWrap ? EditorView.lineWrapping : []),
         tabs.of(EditorState.tabSize.of(tabSize)),
         editable.of(EditorView.editable.of(!readOnly)),
+        caretTheme,
         EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
         EditorView.domEventHandlers({
           blur: () => { blur.current?.(); return false; },
