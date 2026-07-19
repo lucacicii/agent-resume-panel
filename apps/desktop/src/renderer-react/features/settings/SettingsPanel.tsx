@@ -62,9 +62,16 @@ export function SettingsPanel(): React.ReactPortal | null {
       setOpen(true);
       void load().catch((error: unknown) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
     };
+    const onTabChange = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== "settings") {
+        setOpen(false);
+      }
+    };
     window.addEventListener("agent-resume:settings-open", onOpen);
+    window.addEventListener("agent-resume:tab-change", onTabChange);
     return () => {
       window.removeEventListener("agent-resume:settings-open", onOpen);
+      window.removeEventListener("agent-resume:tab-change", onTabChange);
       if (timer.current) window.clearTimeout(timer.current);
     };
   }, [load]);
