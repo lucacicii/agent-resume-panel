@@ -4234,6 +4234,181 @@ code {
   min-height: 0;
 }
 
+/* React Workbench keeps the legacy component vocabulary so both renderer
+   implementations share the same desktop visual language. */
+#react-workbench .pane-resizer {
+  appearance: none;
+  padding: 0;
+  border: 0;
+}
+
+#react-workbench .wb-side-pane {
+  display: flex;
+  place-items: initial;
+}
+
+#react-workbench .wb-terminal-pane-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* The active terminal is the only terminal pane allowed to consume the editor
+   stack. This is explicit because the shared flex rule otherwise wins over
+   the browser's default [hidden] presentation in some Chromium builds. */
+#react-workbench .wb-terminal-pane-wrap[hidden] {
+  display: none !important;
+}
+
+#react-workbench .wb-terminal-pane-wrap .wb-terminal-pane {
+  flex: 1 1 auto;
+}
+
+#react-workbench .wb-terminal-pane-wrap .wb-terminal-status {
+  flex: 0 0 auto;
+}
+
+#react-workbench .wb-git-diff-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+#react-workbench pre.wb-git-diff-host {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#react-workbench .wb-diff-content > pre.wb-git-diff-host {
+  display: none;
+}
+
+#react-workbench .react-git-diff-merge {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+#react-workbench .react-git-diff-merge .cm-mergeView {
+  height: 100%;
+}
+
+#react-workbench .wb-git-log-graph-row > .wb-git-graph-node {
+  display: none;
+}
+
+#react-workbench .react-git-graph-gutter {
+  order: -1;
+  min-width: 32px;
+}
+
+/* The legacy graph places each SVG in a fixed-height commit row. React's
+   portals share the row button, so establish the same track geometry here. */
+#react-workbench .wb-git-log-graph-row {
+  height: 52px;
+  min-height: 52px;
+}
+
+#react-workbench .wb-git-actions > button > svg {
+  display: none;
+}
+
+#react-workbench .react-git-action-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+#react-workbench .react-git-action-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#react-workbench .wb-git-pane-head > .wb-side-pane-title {
+  order: 0;
+}
+
+#react-workbench .react-git-repo-select {
+  order: 1;
+  max-width: 150px;
+}
+
+#react-workbench .wb-git-pane-head > .wb-git-actions {
+  order: 2;
+}
+
+#react-workbench .wb-git-pane-head:has(.react-branch-graph-nav) > :not(.react-branch-graph-nav) {
+  display: none;
+}
+
+#react-workbench .react-branch-graph-nav {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+
+#react-workbench .react-branch-graph-nav .wb-diff-back {
+  flex: 0 0 auto;
+}
+
+#react-workbench .react-branch-graph-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#react-workbench .wb-git-repo-root {
+  margin: 8px 10px 4px;
+  overflow-wrap: anywhere;
+}
+
+/* The React tree portal replaces the previous flat change rows while retaining
+   the shared panel container and its Git action toolbar. */
+#react-workbench .wb-git-panel > :not(.react-git-panel) {
+  display: none;
+}
+
+#react-workbench .react-git-panel {
+  display: block;
+}
+
+#react-workbench .wb-git-branch-popover {
+  position: absolute;
+  right: 18px;
+  top: 64px;
+  z-index: 40;
+  width: min(320px, calc(100vw - 36px));
+}
+
+#react-workbench .spin {
+  animation: react-workbench-spin 0.8s linear infinite;
+}
+
+@keyframes react-workbench-spin {
+  to { transform: rotate(360deg); }
+}
+
 .workbench-layout {
   display: flex;
   flex: 1;

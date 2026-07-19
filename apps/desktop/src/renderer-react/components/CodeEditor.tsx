@@ -12,9 +12,14 @@ export interface CodeEditorProps {
   ariaLabel: string;
   className?: string;
   readOnly?: boolean;
+  fontSize?: number;
+  wordWrap?: boolean;
+  tabSize?: number;
 }
 
 const editable = new Compartment();
+const wrapping = new Compartment();
+const tabs = new Compartment();
 
 export function CodeEditor({
   value,
@@ -22,7 +27,10 @@ export function CodeEditor({
   onBlur,
   ariaLabel,
   className,
-  readOnly = false
+  readOnly = false,
+  fontSize = 13,
+  wordWrap = true,
+  tabSize = 4
 }: CodeEditorProps): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -41,7 +49,8 @@ export function CodeEditor({
         bracketMatching(),
         markdown(),
         syntaxHighlighting(defaultHighlightStyle),
-        EditorView.lineWrapping,
+        wrapping.of(wordWrap ? EditorView.lineWrapping : []),
+        tabs.of(EditorState.tabSize.of(tabSize)),
         editable.of(EditorView.editable.of(!readOnly)),
         EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
         EditorView.domEventHandlers({ blur: () => { blur.current?.(); return false; } }),
@@ -72,5 +81,17 @@ export function CodeEditor({
     instance.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!readOnly)) });
   }, [readOnly]);
 
-  return <div className={className} ref={host} />;
+  useEffect(() => {
+    const instance = view.current;
+    if (!instance) return;
+    instance.dispatch({ effects: wrapping.reconfigure(wordWrap ? EditorView.lineWrapping : []) });
+  }, [wordWrap]);
+
+  useEffect(() => {
+    const instance = view.current;
+    if (!instance) return;
+    instance.dispatch({ effects: tabs.reconfigure(EditorState.tabSize.of(tabSize)) });
+  }, [tabSize]);
+
+  return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;
 }
