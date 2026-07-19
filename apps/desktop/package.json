@@ -5,7 +5,10 @@
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "node scripts/fix-node-pty.mjs && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.json && node scripts/copy-renderer.cjs && node scripts/build-renderer-vendor.mjs",
+    "build": "node scripts/fix-node-pty.mjs && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.json && pnpm run typecheck:renderer && node scripts/copy-renderer.cjs && node scripts/build-renderer-react.mjs",
+    "build:renderer": "node scripts/build-renderer-react.mjs",
+    "typecheck:renderer": "node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.renderer.json",
+    "test:renderer": "vitest run",
     "start": "electron .",
     "dev": "node scripts/dev.mjs",
     "dev:once": "node scripts/dev.mjs --fresh --no-watch",
@@ -45,17 +48,27 @@
     "@xterm/xterm": "^5.5.0",
     "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
+    "lucide-react": "^0.468.0",
     "marked": "^18.0.6",
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@electron/get": "^3.1.0",
     "@electron/packager": "^18.3.5",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.13.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "electron": "^35.7.5",
     "electronmon": "^2.0.4",
     "esbuild": "^0.28.1",
-    "typescript": "^5.9.3"
+    "jsdom": "^26.1.0",
+    "playwright": "^1.61.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   },
   "files": [
     "dist",

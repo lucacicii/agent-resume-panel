@@ -23,7 +23,7 @@
     "build:all": "pnpm --filter agent-resume-panel run build:all",
     "publish:openvsx": "pnpm --filter agent-resume-panel run publish:openvsx",
     "build:desktop": "pnpm --filter @agent-resume/desktop run build",
-    "dev:desktop": "pnpm --filter @agent-resume/desktop run dev",
+    "dev:desktop": "pnpm --filter @agent-resume/desktop run dev -- --fresh",
     "pack:desktop": "pnpm run build:core && pnpm --filter @agent-resume/desktop run pack:mac",
     "release:desktop:mac": "node scripts/release-desktop-mac.mjs",
     "test:menus": "pnpm --filter agent-resume-panel run test:menus",
