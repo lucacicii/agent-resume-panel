@@ -489,14 +489,15 @@ textarea:focus-visible,
   gap: 10px;
 }
 
-/* GTD sheet: preview fills remaining viewport height */
-#sheetGtd .sheet-body>.muted,
-#sheetGtd .sheet-body>.form-row,
-#sheetGtd .sheet-body>.status {
+/* GTD sheet: preview fills remaining viewport height. */
+.sheet-body.gtd-sheet > .gtd-sheet-toolbar,
+.sheet-body.gtd-sheet > .muted,
+.sheet-body.gtd-sheet > .gtd-empty-warnings,
+.sheet-body.gtd-sheet > .status {
   flex: 0 0 auto;
 }
 
-#sheetGtd .gtd-preview {
+.sheet-body.gtd-sheet > .gtd-preview {
   flex: 1 1 auto;
   min-height: 0;
   margin-top: 0;
@@ -2473,6 +2474,29 @@ legend {
   pointer-events: none;
 }
 
+.cal-month-btn.generating {
+  color: transparent !important;
+}
+
+.cal-month-btn.generating .cal-period-stale {
+  opacity: 0.25;
+}
+
+.cal-month-btn.generating::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.7s linear infinite;
+  pointer-events: none;
+}
+
 .cal-month-actions {
   display: flex;
   justify-content: stretch;
@@ -2967,6 +2991,22 @@ legend {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+.gtd-row-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 18px;
+  height: 18px;
+  padding: 1px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.gtd-row-toggle:hover {
+  color: var(--text);
+}
+
 .gtd-row-chevron {
   flex: 0 0 auto;
   width: 0.55em;
@@ -3030,6 +3070,8 @@ legend {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
+  border: 0;
+  cursor: default;
 }
 
 .gtd-md-overlay-panel {
