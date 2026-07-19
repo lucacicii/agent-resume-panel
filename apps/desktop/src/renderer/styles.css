@@ -6600,8 +6600,8 @@ body.is-pane-resizing * {
 .notes-icon-btn svg,
 .wb-icon-btn svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -6646,7 +6646,6 @@ body.is-pane-resizing * {
 }
 
 .notes-list-search-wrap .sidebar-collapse-toggle,
-.notes-list-search-wrap #btnNotesNew,
 .notes-list-search-wrap .notes-list-search-btn,
 .wb-session-filter-wrap .sidebar-collapse-toggle,
 .wb-session-filter-wrap .wb-session-search-btn {

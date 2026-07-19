@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Compartment, EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, keymap } from "@codemirror/view";
@@ -15,13 +15,20 @@ export interface CodeEditorProps {
   fontSize?: number;
   wordWrap?: boolean;
   tabSize?: number;
+  shouldHandlePaste?: () => boolean;
+  onPasteImage?: () => Promise<string | null>;
+}
+
+export interface CodeEditorHandle {
+  focus(): void;
+  find(query: string, direction?: "forward" | "backward"): boolean;
 }
 
 const editable = new Compartment();
 const wrapping = new Compartment();
 const tabs = new Compartment();
 
-export function CodeEditor({
+export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor({
   value,
   onChange,
   onBlur,
@@ -30,14 +37,45 @@ export function CodeEditor({
   readOnly = false,
   fontSize = 13,
   wordWrap = true,
-  tabSize = 4
-}: CodeEditorProps): React.JSX.Element {
+  tabSize = 4,
+  shouldHandlePaste,
+  onPasteImage
+}, ref): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
   const blur = useRef(onBlur);
+  const pasteImage = useRef(onPasteImage);
+  const handlesPaste = useRef(shouldHandlePaste);
   change.current = onChange;
   blur.current = onBlur;
+  pasteImage.current = onPasteImage;
+  handlesPaste.current = shouldHandlePaste;
+
+  useImperativeHandle(ref, () => ({
+    focus: () => view.current?.focus(),
+    find: (query, direction = "forward") => {
+      const instance = view.current;
+      const needle = query.trim().toLocaleLowerCase();
+      if (!instance || !needle) return false;
+      const documentText = instance.state.doc.toString();
+      const haystack = documentText.toLocaleLowerCase();
+      const selection = instance.state.selection.main;
+      const match = direction === "forward"
+        ? haystack.indexOf(needle, selection.to)
+        : haystack.lastIndexOf(needle, Math.max(0, selection.from - 1));
+      const wrapped = direction === "forward"
+        ? (match >= 0 ? match : haystack.indexOf(needle))
+        : (match >= 0 ? match : haystack.lastIndexOf(needle));
+      if (wrapped < 0) return false;
+      instance.dispatch({
+        selection: { anchor: wrapped, head: wrapped + needle.length },
+        effects: EditorView.scrollIntoView(wrapped, { y: "center" })
+      });
+      instance.focus();
+      return true;
+    }
+  }), []);
 
   useEffect(() => {
     if (!host.current) return;
@@ -53,7 +91,24 @@ export function CodeEditor({
         tabs.of(EditorState.tabSize.of(tabSize)),
         editable.of(EditorView.editable.of(!readOnly)),
         EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
-        EditorView.domEventHandlers({ blur: () => { blur.current?.(); return false; } }),
+        EditorView.domEventHandlers({
+          blur: () => { blur.current?.(); return false; },
+          paste: (event, instance) => {
+            if (!pasteImage.current || !handlesPaste.current?.()) return false;
+            event.preventDefault();
+            const selection = instance.state.selection.main;
+            void pasteImage.current().then((snippet) => {
+              if (!snippet || view.current !== instance || instance.state.facet(EditorView.editable) === false) return;
+              instance.dispatch({
+                changes: { from: selection.from, to: selection.to, insert: snippet },
+                selection: { anchor: selection.from + snippet.length },
+                effects: EditorView.scrollIntoView(selection.from, { y: "center" })
+              });
+              instance.focus();
+            });
+            return true;
+          }
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) change.current(update.state.doc.toString());
         })
@@ -94,4 +149,4 @@ export function CodeEditor({
   }, [tabSize]);
 
   return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;
-}
+});
