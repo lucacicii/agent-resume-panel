@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rendererSrc = path.join(root, "src", "renderer");
+const reactRendererSrc = path.join(root, "src", "renderer-react");
 const copyScript = path.join(root, "scripts", "copy-renderer.cjs");
+const reactBuildScript = path.join(root, "scripts", "build-renderer-react.mjs");
 
 let debounceTimer = null;
 
@@ -14,13 +16,12 @@ function runCopy() {
   execFileSync(process.execPath, [copyScript, "--renderer-only"], { cwd: root, stdio: "inherit" });
 }
 
-function scheduleCopy(filename) {
-  if (filename) {
-    const norm = filename.replace(/\\/g, "/");
-    if (norm.startsWith("vendor-entry/") || norm.includes("/vendor-entry/")) {
-      return;
-    }
-  }
+function runReactBuild() {
+  console.log("[watch-renderer] building React renderer runtime");
+  execFileSync(process.execPath, [reactBuildScript], { cwd: root, stdio: "inherit" });
+}
+
+function scheduleCopy() {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
@@ -34,9 +35,17 @@ if (!fs.existsSync(rendererSrc)) {
   console.error(`[watch-renderer] missing source directory: ${rendererSrc}`);
   process.exit(1);
 }
+if (!fs.existsSync(reactRendererSrc)) {
+  console.error(`[watch-renderer] missing React renderer directory: ${reactRendererSrc}`);
+  process.exit(1);
+}
 
-fs.watch(rendererSrc, { recursive: true }, (_event, filename) => {
-  scheduleCopy(filename);
+fs.watch(rendererSrc, { recursive: true }, () => {
+  scheduleCopy();
 });
 
-console.log(`[watch-renderer] watching ${rendererSrc}`);
+fs.watch(reactRendererSrc, { recursive: true }, () => {
+  runReactBuild();
+});
+
+console.log(`[watch-renderer] watching ${rendererSrc} and ${reactRendererSrc}`);

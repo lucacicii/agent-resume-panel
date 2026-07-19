@@ -1,0 +1,42 @@
+import { X } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
+
+interface SheetProps {
+  open: boolean;
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+  actions?: ReactNode;
+  bodyClassName?: string;
+}
+
+export function Sheet({ open, title, children, onClose, wide = false, actions, bodyClassName }: SheetProps): ReactNode {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+  return (
+    <div className="sheet" role="presentation">
+      <button type="button" className="sheet-backdrop" aria-label={`Dismiss ${title}`} onClick={onClose} />
+      <aside className={`sheet-panel${wide ? " sheet-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="sheet-head">
+          <h3>{title}</h3>
+          <div className="sheet-actions">
+            {actions}
+            <button type="button" className="icon-btn" aria-label={`Close ${title}`} title={`Close ${title}`} onClick={onClose}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div className={`sheet-body${bodyClassName ? ` ${bodyClassName}` : ""}`}>{children}</div>
+      </aside>
+    </div>
+  );
+}
