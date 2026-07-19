@@ -3,8 +3,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { WorkbenchPanel } from "./WorkbenchPanel";
 
-vi.mock("@xterm/xterm", () => ({ Terminal: class {} }));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
+vi.mock("@xterm/xterm", () => ({ Terminal: class {
+  cols = 80;
+  rows = 24;
+  loadAddon() {}
+  open() {}
+  focus() {}
+  write() {}
+  onData() { return { dispose() {} }; }
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {
+  fit() {}
+  proposeDimensions() { return { cols: 80, rows: 24 }; }
+} }));
+vi.stubGlobal("ResizeObserver", class {
+  observe() {}
+  disconnect() {}
+});
 
 afterEach(() => {
   cleanup();
@@ -23,6 +39,7 @@ describe("WorkbenchPanel", () => {
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
@@ -57,6 +74,7 @@ describe("WorkbenchPanel", () => {
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
@@ -93,6 +111,7 @@ describe("WorkbenchPanel", () => {
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
@@ -113,5 +132,41 @@ describe("WorkbenchPanel", () => {
     expect(searchInput).toHaveProperty("value", "");
     fireEvent.keyDown(searchInput, { key: "Escape" });
     await waitFor(() => expect(searchButton.getAttribute("aria-expanded")).toBe("false"));
+  });
+
+  it("closes the active terminal when the main-process Cmd+W bridge fires", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onWorkbenchCmdW: (() => void) | undefined;
+    const setWorkbenchActive = vi.fn();
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      setWorkbenchActive,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: (callback: () => void) => { onWorkbenchCmdW = callback; return () => undefined; },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await screen.findByRole("button", { name: "Close terminal" });
+    expect(setWorkbenchActive).toHaveBeenCalledWith(true);
+    act(() => onWorkbenchCmdW?.());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Close terminal" })).toBeNull());
   });
 });
