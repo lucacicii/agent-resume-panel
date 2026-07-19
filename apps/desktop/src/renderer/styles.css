@@ -4396,14 +4396,6 @@ code {
   display: block;
 }
 
-#react-workbench .wb-git-branch-popover {
-  position: absolute;
-  right: 18px;
-  top: 64px;
-  z-index: 40;
-  width: min(320px, calc(100vw - 36px));
-}
-
 #react-workbench .spin {
   animation: react-workbench-spin 0.8s linear infinite;
 }
