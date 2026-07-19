@@ -7205,12 +7205,14 @@ textarea.notes-editor-host:focus {
 .notes-context-menu {
   position: fixed;
   z-index: 1200;
-  min-width: 180px;
+  min-width: 160px;
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--panel);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+  display: flex;
+  flex-direction: column;
 }
 
 .notes-context-menu[hidden] {
@@ -7227,7 +7229,6 @@ textarea.notes-editor-host:focus {
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  width: 100%;
 }
 
 .notes-context-menu button:hover {
