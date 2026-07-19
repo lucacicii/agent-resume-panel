@@ -6342,6 +6342,12 @@ textarea.wb-editor-host {
   font-weight: 600;
 }
 
+/* Workbench projects show a title and path, so give each row more breathing room. */
+.wb-folder-row {
+  min-height: 38px;
+  padding-block: 6px;
+}
+
 .wb-folder-activity-dot {
   flex: 0 0 auto;
   width: 6px;
