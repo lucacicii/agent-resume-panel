@@ -9,7 +9,37 @@ const src = path.join(root, "src", "renderer");
 const dest = path.join(root, "dist", "renderer");
 const vendorDest = path.join(dest, "vendor");
 
+function pngIconsetToIcns(iconset, output) {
+  const entries = [
+    ["ic04", "icon_16x16.png"],
+    ["ic11", "icon_16x16@2x.png"],
+    ["ic05", "icon_32x32.png"],
+    ["ic12", "icon_32x32@2x.png"],
+    ["ic07", "icon_128x128.png"],
+    ["ic13", "icon_128x128@2x.png"],
+    ["ic08", "icon_256x256.png"],
+    ["ic14", "icon_256x256@2x.png"],
+    ["ic09", "icon_512x512.png"],
+    ["ic10", "icon_512x512@2x.png"]
+  ].map(([type, name]) => ({ type, bytes: fs.readFileSync(path.join(iconset, name)) }));
+  const totalLength = 8 + entries.reduce((total, entry) => total + 8 + entry.bytes.length, 0);
+  const chunks = [Buffer.from("icns"), Buffer.alloc(4)];
+  chunks[1].writeUInt32BE(totalLength);
+  for (const entry of entries) {
+    const header = Buffer.alloc(8);
+    header.write(entry.type, 0, 4, "ascii");
+    header.writeUInt32BE(entry.bytes.length + 8, 4);
+    chunks.push(header, entry.bytes);
+  }
+  const temporaryOutput = `${output}.tmp`;
+  fs.writeFileSync(temporaryOutput, Buffer.concat(chunks));
+  fs.renameSync(temporaryOutput, output);
+}
+
 fs.mkdirSync(dest, { recursive: true });
+for (const legacyFile of ["app.js", "i18n.js", "refreshLocalizedUi.js"]) {
+  fs.rmSync(path.join(dest, legacyFile), { force: true });
+}
 for (const name of fs.readdirSync(src)) {
   const from = path.join(src, name);
   const to = path.join(dest, name);
@@ -18,22 +48,14 @@ for (const name of fs.readdirSync(src)) {
 }
 
 if (!rendererOnly) {
+fs.rmSync(vendorDest, { recursive: true, force: true });
 fs.mkdirSync(vendorDest, { recursive: true });
-fs.copyFileSync(
-  path.join(path.dirname(require.resolve("marked")), "marked.umd.js"),
-  path.join(vendorDest, "marked.umd.js")
-);
-fs.copyFileSync(
-  path.join(path.dirname(require.resolve("dompurify")), "purify.min.js"),
-  path.join(vendorDest, "purify.min.js")
-);
 const xtermPkg = path.dirname(require.resolve("@xterm/xterm/package.json"));
-fs.copyFileSync(path.join(xtermPkg, "lib", "xterm.js"), path.join(vendorDest, "xterm.js"));
 fs.copyFileSync(path.join(xtermPkg, "css", "xterm.css"), path.join(vendorDest, "xterm.css"));
-const fitPkg = path.dirname(require.resolve("@xterm/addon-fit/package.json"));
-fs.copyFileSync(path.join(fitPkg, "lib", "addon-fit.js"), path.join(vendorDest, "xterm-addon-fit.js"));
-const webglPkg = path.dirname(require.resolve("@xterm/addon-webgl/package.json"));
-fs.copyFileSync(path.join(webglPkg, "lib", "addon-webgl.js"), path.join(vendorDest, "xterm-addon-webgl.js"));
+const hljsStyles = path.join(path.dirname(require.resolve("highlight.js/package.json")), "styles");
+for (const file of ["github.min.css", "github-dark.min.css"]) {
+  fs.copyFileSync(path.join(hljsStyles, file), path.join(vendorDest, file));
+}
 
 const iconSrc = path.join(extensionRoot, "resources", "app-icon.png");
 const iconDestDir = path.join(root, "dist", "resources");
@@ -68,11 +90,10 @@ if (process.platform === "darwin") {
   try {
     execFileSync("iconutil", ["-c", "icns", iconset, "-o", iconIcns], { stdio: "ignore" });
   } catch (error) {
-    // Some macOS iconutil versions reject otherwise valid iconsets. Only retain a non-stale icon.
-    const canReuseExistingIcon =
-      fs.existsSync(iconIcns) && fs.statSync(iconIcns).mtimeMs >= fs.statSync(iconSrc).mtimeMs;
-    if (!canReuseExistingIcon) throw error;
-    console.warn("iconutil failed; reusing the existing up-to-date icon.icns");
+    // Some macOS iconutil versions reject valid PNG iconsets produced by sips.
+    // ICNS stores those PNG layers verbatim, so package them directly instead of reusing a stale icon.
+    pngIconsetToIcns(iconset, iconIcns);
+    console.warn("iconutil failed; generated icon.icns from the PNG iconset");
   }
   fs.rmSync(iconset, { recursive: true, force: true });
 } else {

@@ -1,7 +1,3 @@
-html:not(.i18n-ready) body {
-  visibility: hidden;
-}
-
 :root {
   color-scheme: light dark;
 
@@ -29,6 +25,7 @@ html:not(.i18n-ready) body {
   --color-fill-secondary: rgba(0, 0, 0, 0.06);
   --color-fill-tertiary: rgba(0, 0, 0, 0.04);
   --color-focus-ring: rgba(0, 122, 255, 0.45);
+  --editor-caret-color: #1c1c1e;
 
   /* Chat (macOS message list) */
   --chat-bg: var(--color-window-bg);
@@ -168,6 +165,7 @@ html:not(.i18n-ready) body {
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
   --color-fill-tertiary: rgba(255, 255, 255, 0.05);
   --color-focus-ring: rgba(10, 132, 255, 0.55);
+  --editor-caret-color: #ffffff;
   --chat-bubble-user: var(--color-fill-primary);
   --chat-bubble-assistant: var(--color-control-bg);
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);
@@ -206,6 +204,7 @@ html:not(.i18n-ready) body {
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
     --color-fill-tertiary: rgba(255, 255, 255, 0.05);
     --color-focus-ring: rgba(10, 132, 255, 0.55);
+    --editor-caret-color: #ffffff;
     --chat-bubble-user: var(--color-fill-primary);
     --chat-bubble-assistant: var(--color-control-bg);
     --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px var(--color-separator);
@@ -251,6 +250,27 @@ body {
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+}
+
+.renderer-bridge-error {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  padding: 32px;
+  box-sizing: border-box;
+  color: var(--color-label-primary);
+  text-align: center;
+  background: var(--color-window-bg);
+}
+
+.renderer-bridge-error h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.renderer-bridge-error p {
+  margin: 0;
+  color: var(--color-label-secondary);
 }
 
 button:focus-visible,
@@ -472,14 +492,15 @@ textarea:focus-visible,
   gap: 10px;
 }
 
-/* GTD sheet: preview fills remaining viewport height */
-#sheetGtd .sheet-body>.muted,
-#sheetGtd .sheet-body>.form-row,
-#sheetGtd .sheet-body>.status {
+/* GTD sheet: preview fills remaining viewport height. */
+.sheet-body.gtd-sheet > .gtd-sheet-toolbar,
+.sheet-body.gtd-sheet > .muted,
+.sheet-body.gtd-sheet > .gtd-empty-warnings,
+.sheet-body.gtd-sheet > .status {
   flex: 0 0 auto;
 }
 
-#sheetGtd .gtd-preview {
+.sheet-body.gtd-sheet > .gtd-preview {
   flex: 1 1 auto;
   min-height: 0;
   margin-top: 0;
@@ -719,7 +740,14 @@ textarea:focus-visible,
   overflow: hidden;
 }
 
-#tab-settings .toolbar {
+#react-settings .react-settings-panel.panel.active {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#tab-settings .toolbar,
+#react-settings .toolbar {
   flex: 0 0 auto;
 }
 
@@ -850,7 +878,8 @@ textarea:focus-visible,
 }
 
 /* Beat later `.form { display: grid }` — grid breaks pane scroll height. */
-#tab-settings .settings-form.form {
+#tab-settings .settings-form.form,
+#react-settings .settings-form.form {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -864,7 +893,8 @@ textarea:focus-visible,
   display: none !important;
 }
 
-#tab-settings .settings-pane {
+#tab-settings .settings-pane,
+#react-settings .settings-pane {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -887,7 +917,8 @@ textarea:focus-visible,
   padding-bottom: 8px;
 }
 
-#tab-settings .settings-pane-usage {
+#tab-settings .settings-pane-usage,
+#react-settings .settings-pane-usage {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -896,7 +927,8 @@ textarea:focus-visible,
   max-width: none;
 }
 
-#tab-settings .settings-pane-usage .table-wrap.compact {
+#tab-settings .settings-pane-usage .table-wrap.compact,
+#react-settings .settings-pane-usage .table-wrap.compact {
   max-height: min(300px, 40vh);
   overflow: auto;
 }
@@ -1192,7 +1224,8 @@ textarea:focus-visible,
   display: none !important;
 }
 
-#tab-settings .settings-pane-about .settings-about-body {
+#tab-settings .settings-pane-about .settings-about-body,
+#react-settings .settings-pane-about .settings-about-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -1564,6 +1597,26 @@ main {
   flex-direction: column;
 }
 
+#react-report,
+#react-agent,
+#react-workbench,
+#react-notes,
+#react-settings {
+  display: contents;
+}
+
+#react-report .react-report-panel[hidden] {
+  display: none !important;
+}
+
+#react-agent .react-agent-panel[hidden] {
+  display: none !important;
+}
+
+#react-notes .react-notes-panel[hidden] {
+  display: none !important;
+}
+
 .panel {
   display: none;
   max-width: 100%;
@@ -1580,7 +1633,8 @@ main {
 }
 
 /* Memory: viewport-locked, no full-page scroll */
-#tab-report.panel.active {
+#tab-report.panel.active,
+#react-report .react-report-panel.panel.active {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2066,7 +2120,8 @@ legend {
   overflow: auto;
 }
 
-#tab-report .toolbar {
+#tab-report .toolbar,
+#react-report .toolbar {
   overflow: visible;
 }
 
@@ -2408,6 +2463,29 @@ legend {
 }
 
 .cal-week-btn.generating::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.7s linear infinite;
+  pointer-events: none;
+}
+
+.cal-month-btn.generating {
+  color: transparent !important;
+}
+
+.cal-month-btn.generating .cal-period-stale {
+  opacity: 0.25;
+}
+
+.cal-month-btn.generating::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -2817,11 +2895,13 @@ legend {
 }
 
 /* Bottom status rarely used (progress lives in right column) */
-#tab-report>#reportStatus:empty {
+#tab-report>#reportStatus:empty,
+#react-report .report-status:empty {
   display: none;
 }
 
-#tab-report>#reportStatus:not(:empty) {
+#tab-report>#reportStatus:not(:empty),
+#react-report .report-status:not(:empty) {
   flex: 0 0 auto;
   margin: 8px 0 0;
   font-size: 12px;
@@ -2914,6 +2994,22 @@ legend {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+.gtd-row-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 18px;
+  height: 18px;
+  padding: 1px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.gtd-row-toggle:hover {
+  color: var(--text);
+}
+
 .gtd-row-chevron {
   flex: 0 0 auto;
   width: 0.55em;
@@ -2977,6 +3073,8 @@ legend {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
+  border: 0;
+  cursor: default;
 }
 
 .gtd-md-overlay-panel {
@@ -3503,7 +3601,8 @@ code {
   flex-shrink: 0;
 }
 
-#tab-agent.panel.active {
+#tab-agent.panel.active,
+#react-agent .react-agent-panel.panel.active {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3841,6 +3940,12 @@ code {
 }
 
 .citation-chip {
+  appearance: none;
+  border: none;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   display: block;
   font-size: 11px;
   color: color-mix(in srgb, currentColor 72%, transparent);
@@ -3858,6 +3963,11 @@ code {
 .citation-chip.is-active {
   color: currentColor;
   background: color-mix(in srgb, var(--tg-sender) 14%, transparent);
+}
+
+.citation-chip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 .chat-compose {
@@ -4117,6 +4227,181 @@ code {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+}
+
+#react-workbench .react-workbench-panel:not([hidden]) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* React Workbench keeps the legacy component vocabulary so both renderer
+   implementations share the same desktop visual language. */
+#react-workbench .pane-resizer {
+  appearance: none;
+  padding: 0;
+  border: 0;
+}
+
+#react-workbench .wb-side-pane {
+  display: flex;
+  place-items: initial;
+}
+
+#react-workbench .wb-terminal-pane-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* The active terminal is the only terminal pane allowed to consume the editor
+   stack. This is explicit because the shared flex rule otherwise wins over
+   the browser's default [hidden] presentation in some Chromium builds. */
+#react-workbench .wb-terminal-pane-wrap[hidden] {
+  display: none !important;
+}
+
+#react-workbench .wb-terminal-pane-wrap .wb-terminal-pane {
+  flex: 1 1 auto;
+}
+
+#react-workbench .wb-terminal-pane-wrap .wb-terminal-status {
+  flex: 0 0 auto;
+}
+
+#react-workbench .wb-git-diff-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+#react-workbench pre.wb-git-diff-host {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#react-workbench .wb-diff-content > pre.wb-git-diff-host {
+  display: none;
+}
+
+#react-workbench .react-git-diff-merge {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+#react-workbench .react-git-diff-merge .cm-mergeView {
+  height: 100%;
+}
+
+#react-workbench .wb-git-log-graph-row > .wb-git-graph-node {
+  display: none;
+}
+
+#react-workbench .react-git-graph-gutter {
+  order: -1;
+  min-width: 32px;
+}
+
+/* The legacy graph places each SVG in a fixed-height commit row. React's
+   portals share the row button, so establish the same track geometry here. */
+#react-workbench .wb-git-log-graph-row {
+  height: 52px;
+  min-height: 52px;
+}
+
+#react-workbench .wb-git-actions > button > svg {
+  display: none;
+}
+
+#react-workbench .react-git-action-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+#react-workbench .react-git-action-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#react-workbench .wb-git-pane-head > .wb-side-pane-title {
+  order: 0;
+}
+
+#react-workbench .react-git-repo-select {
+  order: 1;
+  max-width: 150px;
+}
+
+#react-workbench .wb-git-pane-head > .wb-git-actions {
+  order: 2;
+}
+
+#react-workbench .wb-git-pane-head:has(.react-branch-graph-nav) > :not(.react-branch-graph-nav) {
+  display: none;
+}
+
+#react-workbench .react-branch-graph-nav {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+
+#react-workbench .react-branch-graph-nav .wb-diff-back {
+  flex: 0 0 auto;
+}
+
+#react-workbench .react-branch-graph-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#react-workbench .wb-git-repo-root {
+  margin: 8px 10px 4px;
+  overflow-wrap: anywhere;
+}
+
+/* The React tree portal replaces the previous flat change rows while retaining
+   the shared panel container and its Git action toolbar. */
+#react-workbench .wb-git-panel > :not(.react-git-panel) {
+  display: none;
+}
+
+#react-workbench .react-git-panel {
+  display: block;
+}
+
+#react-workbench .spin {
+  animation: react-workbench-spin 0.8s linear infinite;
+}
+
+@keyframes react-workbench-spin {
+  to { transform: rotate(360deg); }
 }
 
 .workbench-layout {
@@ -5304,6 +5589,10 @@ code {
 
 .wb-editor-pane {
   background: var(--color-window-bg);
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .wb-editor-host {
@@ -5311,6 +5600,18 @@ code {
   min-height: 0;
   overflow: hidden;
   background: var(--color-window-bg);
+}
+
+textarea.wb-editor-host {
+  width: 100%;
+  resize: none;
+  border: 0;
+  padding: 12px;
+  color: var(--color-label-primary);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
 }
 
 .wb-editor-host .cm-editor,
@@ -5751,7 +6052,9 @@ code {
   pointer-events: none;
 }
 
-#tab-notes.panel.active {
+#tab-notes.panel.active,
+#react-notes .react-notes-panel.panel.active,
+#react-notes .react-notes-panel:not([hidden]) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -6034,6 +6337,12 @@ code {
   font-weight: 600;
 }
 
+/* Workbench projects show a title and path, so give each row more breathing room. */
+.wb-folder-row {
+  min-height: 38px;
+  padding-block: 6px;
+}
+
 .wb-folder-activity-dot {
   flex: 0 0 auto;
   width: 6px;
@@ -6286,8 +6595,8 @@ body.is-pane-resizing * {
 .notes-icon-btn svg,
 .wb-icon-btn svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -6332,7 +6641,6 @@ body.is-pane-resizing * {
 }
 
 .notes-list-search-wrap .sidebar-collapse-toggle,
-.notes-list-search-wrap #btnNotesNew,
 .notes-list-search-wrap .notes-list-search-btn,
 .wb-session-filter-wrap .sidebar-collapse-toggle,
 .wb-session-filter-wrap .wb-session-search-btn {
@@ -6764,6 +7072,7 @@ body.is-pane-resizing * {
   display: block;
   width: 100%;
   height: 100%;
+  flex: 1;
   min-height: 0;
   border: none;
   border-right: 1px solid var(--border);
@@ -6771,6 +7080,20 @@ body.is-pane-resizing * {
   overflow: hidden;
   box-sizing: border-box;
   background: var(--bg);
+}
+
+textarea.notes-editor-host {
+  resize: none;
+  padding: 14px 16px;
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  line-height: 1.55;
+  outline: none;
+}
+
+textarea.notes-editor-host:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .notes-editor-host .cm-editor {
@@ -6882,12 +7205,14 @@ body.is-pane-resizing * {
 .notes-context-menu {
   position: fixed;
   z-index: 1200;
-  min-width: 180px;
+  min-width: 160px;
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--panel);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+  display: flex;
+  flex-direction: column;
 }
 
 .notes-context-menu[hidden] {
@@ -6904,7 +7229,6 @@ body.is-pane-resizing * {
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  width: 100%;
 }
 
 .notes-context-menu button:hover {

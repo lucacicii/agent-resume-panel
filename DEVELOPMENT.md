@@ -28,6 +28,7 @@ Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.m
 
 ## Secrets & local config
 
+
 Never commit:
 
 - Open VSX or VS Code Marketplace publish tokens

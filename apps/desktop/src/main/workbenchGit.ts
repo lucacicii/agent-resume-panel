@@ -72,6 +72,10 @@ function formatExecError(error: unknown): string {
   return String(error);
 }
 
+function isMissingUpstreamBranch(error: unknown): boolean {
+  return /current branch .+ has no upstream branch/i.test(formatExecError(error));
+}
+
 function resolveCwd(raw?: string): string {
   const cwd = expandHome(raw?.trim() || process.cwd());
   try {
@@ -431,7 +435,31 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
         maxBuffer: 1024 * 1024
       });
     } catch (error) {
-      throw new Error(formatExecError(error));
+      if (isMissingUpstreamBranch(error)) {
+        try {
+          const { stdout: branchOutput } = await execFileAsync(
+            "git",
+            ["-C", repoRoot, "symbolic-ref", "--quiet", "--short", "HEAD"],
+            { timeout: 30000, maxBuffer: 1024 * 1024 }
+          );
+          const branch = String(branchOutput).trim();
+          if (!branch) {
+            throw new Error("当前处于分离 HEAD 状态，无法设置远程跟踪分支");
+          }
+          await execFileAsync("git", ["-C", repoRoot, "remote", "get-url", "origin"], {
+            timeout: 30000,
+            maxBuffer: 1024 * 1024
+          });
+          await execFileAsync("git", ["-C", repoRoot, "push", "--set-upstream", "origin", branch], {
+            timeout: 120000,
+            maxBuffer: 1024 * 1024
+          });
+        } catch (fallbackError) {
+          throw new Error(formatExecError(fallbackError));
+        }
+      } else {
+        throw new Error(formatExecError(error));
+      }
     }
     return { ok: true };
   });
