@@ -2,6 +2,7 @@ import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
+import { Notifications } from "./components/Notifications";
 import { useI18n } from "./i18n";
 import { SessionsSheet } from "./features/SessionsSheet";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
@@ -61,7 +62,7 @@ function RendererRuntime(): React.JSX.Element {
     if (!ready) return;
     window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" }));
   }, [ready]);
-  return <><AppChrome /><ReportPanel /><GtdSheet /><AgentPanel /><WorkbenchPanel /><NotesPanel /><SessionsSheet /><SettingsPanel /></>;
+  return <><AppChrome /><ReportPanel /><GtdSheet /><AgentPanel /><WorkbenchPanel /><NotesPanel /><SessionsSheet /><SettingsPanel /><Notifications /></>;
 }
 
 const host = document.getElementById("react-chrome");

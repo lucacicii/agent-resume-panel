@@ -356,10 +356,10 @@ async function collectGitCommitContext(repoRoot: string): Promise<{ statusText: 
 async function suggestCommitMessage(
   repoRoot: string,
   systemLocale?: string
-): Promise<{ message: string; source: "llm" | "heuristic" }> {
+): Promise<{ message: string; source: "llm" | "heuristic"; fallbackReason?: "unconfigured" | "request-failed" }> {
   const { statusText, diffText } = await collectGitCommitContext(repoRoot);
   if (!statusText.trim()) {
-    throw new Error("没有可提交的改动");
+    throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
   }
 
   const settings = await loadSettings();
@@ -369,7 +369,7 @@ async function suggestCommitMessage(
   };
   const llm = llmConfigFromSettings(settings, systemLocale);
   if (!llm) {
-    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic" };
+    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "unconfigured" };
   }
 
   const paths = await preparePanelDatabasesFromSettings();
@@ -395,7 +395,7 @@ async function suggestCommitMessage(
       ok: false,
       error: error instanceof Error ? error.message : String(error)
     }).catch(() => undefined);
-    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic" };
+    return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "request-failed" };
   }
 }
 
@@ -410,7 +410,7 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     const message = normalizeCommitMessage(args.message);
     const { statusText } = await collectGitCommitContext(repoRoot);
     if (!statusText.trim()) {
-      throw new Error("没有可提交的改动");
+      throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
     }
     try {
       await execFileAsync("git", ["-C", repoRoot, "add", "-A"], {
