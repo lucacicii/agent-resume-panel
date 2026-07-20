@@ -7,6 +7,7 @@ import {
   ensureExtensionCatalogSchema,
   syncStateHasExtendedColumns
 } from "./catalog/db";
+import { reconcileProjectsFromSessions } from "./catalog/projects";
 import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
 import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
 import { catalogDbFromSettings } from "./settings/store";
@@ -159,6 +160,13 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
       await applyProviderStalePolicy(options.dbPath, providerResult.provider, options.stalePolicy, result.syncedAt);
     }
     await writeSyncState(options.dbPath, providerResult);
+  }
+  try {
+    await reconcileProjectsFromSessions(options.dbPath);
+  } catch (error) {
+    // Project reconcile must not fail session sync; surface via warning list.
+    const message = error instanceof Error ? error.message : String(error);
+    result.warnings.push(`Project reconcile failed. ${message}`);
   }
   return result;
 }

@@ -52,6 +52,42 @@ export type WorkbenchEditorTabSize = 2 | 4 | 8;
 export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
 export type { CommitMessageStyle } from "../git/prompts";
 
+/** Project row context-menu actions (Workbench). */
+export type WorkbenchProjectContextMenuAction =
+  | "pin"
+  | "newSession"
+  | "editor"
+  | "note"
+  | "rename"
+  | "setLocalPath"
+  | "copyPath"
+  | "reveal"
+  | "merge"
+  | "split"
+  | "remove";
+
+/** Default project context menu items (shown when setting is unset). */
+export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
+  "newSession",
+  "note",
+  "reveal",
+  "remove"
+];
+
+export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
+  "pin",
+  "newSession",
+  "editor",
+  "note",
+  "rename",
+  "setLocalPath",
+  "copyPath",
+  "reveal",
+  "merge",
+  "split",
+  "remove"
+];
+
 export interface WorkbenchEditorSettings {
   /** Whether project text files can be edited in the embedded editor. Default true. */
   editable?: boolean;
@@ -89,6 +125,11 @@ export interface WorkbenchSettings {
   gitCommitCustomInstructions?: string;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
+  /**
+   * Enabled project context-menu actions.
+   * When unset, defaults to newSession, note, reveal, remove.
+   */
+  projectContextMenu?: WorkbenchProjectContextMenuAction[];
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -194,6 +235,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     projectEditor: "auto",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
+    projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
     editor: {
       editable: true,
       fontSize: 13,

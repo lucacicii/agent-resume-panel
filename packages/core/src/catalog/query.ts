@@ -7,7 +7,7 @@ export async function listSessions(dbPath: string, limit = 500): Promise<AgentSe
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms
+      session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE hidden = 0
      ORDER BY updated_at_ms DESC
@@ -58,7 +58,7 @@ export async function listSessionsInRange(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms
+      session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE hidden = 0
        AND updated_at_ms >= ${from}
@@ -79,7 +79,7 @@ export async function getSessionById(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms
+      session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE provider = '${escapeSqlLiteral(provider)}'
        AND agent_session_id = '${escapeSqlLiteral(id)}'

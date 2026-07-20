@@ -28,8 +28,21 @@ export {
   loadProjectAliasesMap,
   getProjectAliasFromCatalog,
   setProjectAliasInCatalog,
-  upsertProjectAliasesBatch
+  setProjectAliasById,
+  upsertProjectAliasesBatch,
+  ensureProjectsCatalogSchema,
+  listProjects,
+  hideProjectInCatalog,
+  unhideAllProjectsInCatalog,
+  setProjectPinnedInCatalog,
+  setProjectLocalPath,
+  reconcileProjectsFromSessions,
+  listProjectPathVariants,
+  mergeProjectsInCatalog,
+  splitProjectPathInCatalog
 } from "./catalog/projects";
+export type { ProjectRow } from "./catalog/projects";
+export { isForeignUserPath, toPortableKey, expandPortableKey } from "./pathUtils";
 export {
   NOTES_ROOT_SEGMENT,
   notesRoot,

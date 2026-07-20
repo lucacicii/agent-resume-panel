@@ -13,6 +13,8 @@ export interface AgentSession {
   id: string;
   title: string;
   projectPath: string;
+  /** Logical project id when catalog projects reconcile has run. */
+  projectId?: string;
   updatedAt: number;
   model?: string;
   branch?: string;
@@ -40,6 +42,7 @@ export interface CatalogSessionRow {
   session_summary?: string | null;
   session_summary_language?: string | null;
   session_summary_at_ms?: number | null;
+  project_id?: string | null;
 }
 
 export function toAgentSession(row: CatalogSessionRow): AgentSession {
@@ -70,6 +73,10 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   const summary = row.session_summary?.trim();
   if (summary) {
     session.sessionSummary = summary;
+  }
+  const projectId = row.project_id?.trim();
+  if (projectId) {
+    session.projectId = projectId;
   }
 
   return session;

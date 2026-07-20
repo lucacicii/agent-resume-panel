@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   session_summary TEXT,
   session_summary_language TEXT,
   session_summary_at_ms INTEGER,
+  project_id TEXT,
   PRIMARY KEY (provider, agent_session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
@@ -32,10 +33,22 @@ CREATE TABLE IF NOT EXISTS sync_state (
   last_sync_at_ms INTEGER
 );
 CREATE TABLE IF NOT EXISTS projects (
-  project_path TEXT PRIMARY KEY,
-  alias TEXT NOT NULL,
+  project_id TEXT PRIMARY KEY,
+  portable_key TEXT NOT NULL UNIQUE,
+  alias TEXT NOT NULL DEFAULT '',
+  hidden INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  last_seen_at_ms INTEGER,
   updated_at_ms INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_local_paths (
+  project_id TEXT NOT NULL,
+  machine_id TEXT NOT NULL,
+  absolute_path TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (project_id, machine_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_local_paths_path ON project_local_paths(absolute_path);
 CREATE TABLE IF NOT EXISTS session_gtd (
   provider TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
@@ -86,11 +99,16 @@ ALTER TABLE sessions ADD COLUMN transcript_refs TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_language TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
-CREATE TABLE IF NOT EXISTS projects (
-  project_path TEXT PRIMARY KEY,
-  alias TEXT NOT NULL,
-  updated_at_ms INTEGER NOT NULL
+ALTER TABLE sessions ADD COLUMN project_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE TABLE IF NOT EXISTS project_local_paths (
+  project_id TEXT NOT NULL,
+  machine_id TEXT NOT NULL,
+  absolute_path TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (project_id, machine_id)
 );
+CREATE INDEX IF NOT EXISTS idx_project_local_paths_path ON project_local_paths(absolute_path);
 CREATE TABLE IF NOT EXISTS session_gtd (
   provider TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
@@ -139,6 +157,9 @@ export async function ensureCatalogSchema(dbPath: string): Promise<void> {
   await fs.mkdir(path.dirname(dbPath), { recursive: true });
   await runSqlite(dbPath, SCHEMA_SQL);
   await runCatalogMigrations(dbPath);
+  // First-class projects + portable_key migration (shared with Desktop / core).
+  const { ensureProjectsCatalogSchema } = await import("@agent-resume/core/extension");
+  await ensureProjectsCatalogSchema(dbPath);
 }
 
 async function runCatalogMigrations(dbPath: string): Promise<void> {

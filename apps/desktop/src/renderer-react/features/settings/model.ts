@@ -1,4 +1,44 @@
-import type { PanelSettings } from "@agent-resume/core";
+import type { PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+
+/** Keep in sync with packages/core WorkbenchProjectContextMenuAction. */
+export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
+  "pin",
+  "newSession",
+  "editor",
+  "note",
+  "rename",
+  "setLocalPath",
+  "copyPath",
+  "reveal",
+  "merge",
+  "split",
+  "remove"
+];
+
+export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
+  "newSession",
+  "note",
+  "reveal",
+  "remove"
+];
+
+const PROJECT_MENU_SET = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
+
+export function normalizeProjectContextMenu(
+  value: WorkbenchProjectContextMenuAction[] | undefined | null
+): WorkbenchProjectContextMenuAction[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU];
+  }
+  const seen = new Set<WorkbenchProjectContextMenuAction>();
+  const output: WorkbenchProjectContextMenuAction[] = [];
+  for (const entry of value) {
+    if (!PROJECT_MENU_SET.has(entry) || seen.has(entry)) continue;
+    seen.add(entry);
+    output.push(entry);
+  }
+  return output;
+}
 
 export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 
@@ -48,6 +88,8 @@ export interface WorkbenchDraft {
   gitCommitCustomInstructions: string;
   gitNestedScanMaxDepth: number;
   gitNestedScanIgnoreDirs: string;
+  /** Enabled Workbench project context-menu actions. */
+  projectContextMenu: WorkbenchProjectContextMenuAction[];
 }
 
 export interface ReportDraft {
@@ -180,7 +222,10 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitCommitMessageStyle: workbench?.gitCommitMessageStyle === "gitmoji" || workbench?.gitCommitMessageStyle === "custom" ? workbench.gitCommitMessageStyle : "conventional",
     gitCommitCustomInstructions: workbench?.gitCommitCustomInstructions || "",
     gitNestedScanMaxDepth: numberInRange(workbench?.gitNestedScanMaxDepth, 6, 1, 10),
-    gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : ""
+    gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
+    projectContextMenu: normalizeProjectContextMenu(
+      workbench?.projectContextMenu ?? DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU
+    )
   };
 }
 
@@ -204,7 +249,8 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitCommitMessageStyle: draft.gitCommitMessageStyle,
       gitCommitCustomInstructions: draft.gitCommitCustomInstructions,
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
-      gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)
+      gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
+      projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu)
     }
   };
 }
