@@ -1,11 +1,17 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ReactPortal } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { EditorState } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import { EditorView } from "@codemirror/view";
-import type { AgentProvider, AgentSession, PanelSettings } from "@agent-resume/core";
+import type {
+  AgentProvider,
+  AgentSession,
+  PanelSettings,
+  WorkbenchProjectContextMenuAction
+} from "@agent-resume/core";
+import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
   ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FolderOpen, GitBranch, History, LoaderCircle, PanelRight, Pin,
@@ -136,6 +142,15 @@ type ProjectPickDialog =
  * Session indexed under another user's home (cross-machine catalog sync).
  * Do NOT flag mere path-string differences on the same machine.
  */
+function enabledProjectMenuActions(settings: PanelSettings | null): Set<WorkbenchProjectContextMenuAction> {
+  const configured = settings?.workbench?.projectContextMenu;
+  // unset → defaults; explicit empty array → hide all
+  if (!Array.isArray(configured)) {
+    return new Set(DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU);
+  }
+  return new Set(configured);
+}
+
 function isOtherMachineSession(session: AgentSession, _localPath?: string | null): boolean {
   const raw = session.projectPath?.trim() || "";
   if (!raw || raw.startsWith("~") || raw.startsWith("$HOME")) return false;
@@ -1594,35 +1609,65 @@ export function WorkbenchPanel(): ReactPortal | null {
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}<button type="button" className="wb-git-branch-item" onClick={() => { setBranchPane(null); setBranchResult(null); }}>{t("desktop.common.close")}</button></div> : null}
     {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p><button type="button" className="wb-rename-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button></div>{commitSuggestion ? <p className={`wb-rename-status wb-git-commit-suggestion${commitSuggestion.source === "llm" ? " is-ai" : ""}`}>{commitSuggestion.source === "llm" ? t("desktop.workbench.gitCommitSuggestedLlm") : commitSuggestion.fallbackReason === "unconfigured" ? t("desktop.workbench.gitCommitSuggestedUnconfigured") : t("desktop.workbench.gitCommitSuggestedFallback")}</p> : null}<textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
     {contextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 240)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
-      {contextMenu.kind === "project" ? <>
-        <button type="button" role="menuitem" onClick={() => void runContextAction(
-          (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
-            || pinnedProjects.has(contextMenu.projectPath || "")
-            || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false)
-            ? "unpin"
-            : "pin"
-        )}>{t(
-          (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
-            || pinnedProjects.has(contextMenu.projectPath || "")
-            || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false)
-            ? "desktop.workbench.unpinProject"
-            : "desktop.workbench.pinProject"
-        )}</button>
-        <div className="context-menu-separator" role="separator" />
-        <button type="button" role="menuitem" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>
-        {contextMenu.editorLabel ? <button type="button" role="menuitem" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button> : null}
-        <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
-        <div className="context-menu-separator" role="separator" />
-        <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.workbench.renameProject")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("setLocalPath")}>{t("desktop.workbench.setLocalFolder")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("copyPath")}>{t("desktop.workbench.copyLocalPath")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("reveal")}>{t("desktop.common.revealInFinder")}</button>
-        <div className="context-menu-separator" role="separator" />
-        <button type="button" role="menuitem" onClick={() => void runContextAction("merge")}>{t("desktop.workbench.mergeIntoProject")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("split")}>{t("desktop.workbench.splitProjectPath")}</button>
-        <div className="context-menu-separator" role="separator" />
-        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeProjectFromPanel")}</button>
-      </> : <>
+      {contextMenu.kind === "project" ? (() => {
+        const enabled = enabledProjectMenuActions(settings);
+        const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
+          || pinnedProjects.has(contextMenu.projectPath || "")
+          || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false);
+        const groups: ReactNode[][] = [];
+        const group1: ReactNode[] = [];
+        if (enabled.has("pin")) {
+          group1.push(<button type="button" role="menuitem" key="pin" onClick={() => void runContextAction(isPinned ? "unpin" : "pin")}>{t(isPinned ? "desktop.workbench.unpinProject" : "desktop.workbench.pinProject")}</button>);
+        }
+        if (group1.length) groups.push(group1);
+        const group2: ReactNode[] = [];
+        if (enabled.has("newSession")) {
+          group2.push(<button type="button" role="menuitem" key="new" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>);
+        }
+        if (enabled.has("editor") && contextMenu.editorLabel) {
+          group2.push(<button type="button" role="menuitem" key="editor" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button>);
+        }
+        if (enabled.has("note")) {
+          group2.push(<button type="button" role="menuitem" key="note" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>);
+        }
+        if (group2.length) groups.push(group2);
+        const group3: ReactNode[] = [];
+        if (enabled.has("rename")) {
+          group3.push(<button type="button" role="menuitem" key="rename" onClick={() => void runContextAction("rename")}>{t("desktop.workbench.renameProject")}</button>);
+        }
+        if (enabled.has("setLocalPath")) {
+          group3.push(<button type="button" role="menuitem" key="setLocalPath" onClick={() => void runContextAction("setLocalPath")}>{t("desktop.workbench.setLocalFolder")}</button>);
+        }
+        if (enabled.has("copyPath")) {
+          group3.push(<button type="button" role="menuitem" key="copyPath" onClick={() => void runContextAction("copyPath")}>{t("desktop.workbench.copyLocalPath")}</button>);
+        }
+        if (enabled.has("reveal")) {
+          group3.push(<button type="button" role="menuitem" key="reveal" onClick={() => void runContextAction("reveal")}>{t("desktop.common.revealInFinder")}</button>);
+        }
+        if (group3.length) groups.push(group3);
+        const group4: ReactNode[] = [];
+        if (enabled.has("merge")) {
+          group4.push(<button type="button" role="menuitem" key="merge" onClick={() => void runContextAction("merge")}>{t("desktop.workbench.mergeIntoProject")}</button>);
+        }
+        if (enabled.has("split")) {
+          group4.push(<button type="button" role="menuitem" key="split" onClick={() => void runContextAction("split")}>{t("desktop.workbench.splitProjectPath")}</button>);
+        }
+        if (group4.length) groups.push(group4);
+        const group5: ReactNode[] = [];
+        if (enabled.has("remove")) {
+          group5.push(<button type="button" role="menuitem" key="remove" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeProjectFromPanel")}</button>);
+        }
+        if (group5.length) groups.push(group5);
+        if (!groups.length) {
+          return <p className="muted" style={{ margin: 0, padding: "8px 12px", fontSize: 12 }}>{t("desktop.settings.projectContextMenuEmpty")}</p>;
+        }
+        return groups.map((group, index) => (
+          <Fragment key={index}>
+            {index > 0 ? <div className="context-menu-separator" role="separator" /> : null}
+            {group}
+          </Fragment>
+        ));
+      })() : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>

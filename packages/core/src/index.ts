@@ -41,6 +41,7 @@ export type {
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
+  WorkbenchProjectContextMenuAction,
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
@@ -50,7 +51,12 @@ export type {
   AgentSessionSyncFilters,
   SessionSyncStalePolicy
 } from "./settings/types";
-export { DEFAULT_SETTINGS } from "./settings/types";
+export {
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
+  ALL_WORKBENCH_PROJECT_CONTEXT_MENU
+} from "./settings/types";
+export { normalizeWorkbenchProjectContextMenu } from "./settings/store";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
