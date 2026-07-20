@@ -4,6 +4,7 @@ import { runSqlite, runSqliteJson } from "../sqlite";
 import { REPORT_SCHEMA_SQL } from "../report/schema";
 import { DESKTOP_ONLY_SCHEMA_SQL, SYNC_STATE_DESKTOP_MIGRATION_SQL } from "./desktopSchema";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
+import { ensureProjectsCatalogSchema } from "./projects";
 
 async function tableExists(dbPath: string, tableName: string): Promise<boolean> {
   const rows = await runSqliteJson(
@@ -22,7 +23,8 @@ async function runIdempotentStatements(dbPath: string, sql: string): Promise<voi
       if (
         message.includes("duplicate column name") ||
         message.includes("already exists") ||
-        message.includes("no such table")
+        message.includes("no such table") ||
+        message.includes("no such column")
       ) {
         continue;
       }
@@ -45,6 +47,7 @@ export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void
   await ensureWalMode(dbPath);
   await runSqlite(dbPath, EXTENSION_SCHEMA_SQL);
   await runIdempotentStatements(dbPath, EXTENSION_MIGRATION_SQL);
+  await ensureProjectsCatalogSchema(dbPath);
 }
 
 /** Additive sync_state columns on the shared catalog (Desktop sync status). */

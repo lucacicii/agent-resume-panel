@@ -71,22 +71,97 @@ type TerminalPane = {
 type SideView = "files" | "git" | null;
 type ProjectFilter = "all" | "pinned" | "active";
 type SessionFilter = "all" | "active";
+type CatalogProject = {
+  projectId: string;
+  portableKey: string;
+  alias: string;
+  hidden: boolean;
+  pinned?: boolean;
+  lastSeenAtMs: number | null;
+  updatedAtMs: number;
+  localPath: string | null;
+  pathMissing: boolean;
+  sessionCount: number;
+};
+type WorkbenchProject = {
+  id: string;
+  path: string;
+  portableKey: string;
+  pathMissing: boolean;
+  sessions: AgentSession[];
+  label: string;
+  active: boolean;
+  pinned: boolean;
+  updatedAt: number;
+};
 type WorkbenchContextMenu = {
   kind: "project" | "session";
   x: number;
   y: number;
   projectPath?: string;
+  projectId?: string;
   session?: AgentSession;
   editorLabel?: string;
 };
 type WorkbenchRenameDialog = {
   kind: "project" | "session";
   projectPath?: string;
+  projectId?: string;
   session?: AgentSession;
   title: string;
   autoBusy: boolean;
   status: string;
 };
+type ProjectPickDialog =
+  | {
+      kind: "merge";
+      sourceId: string;
+      sourceLabel: string;
+      options: Array<{ id: string; label: string; path: string }>;
+      query: string;
+      busy: boolean;
+      status: string;
+    }
+  | {
+      kind: "split";
+      sourceId: string;
+      sourceLabel: string;
+      options: Array<{ absolutePath: string; portableKey: string; sessionCount: number }>;
+      query: string;
+      busy: boolean;
+      status: string;
+    };
+
+/**
+ * Session indexed under another user's home (cross-machine catalog sync).
+ * Do NOT flag mere path-string differences on the same machine.
+ */
+function isOtherMachineSession(session: AgentSession, _localPath?: string | null): boolean {
+  const raw = session.projectPath?.trim() || "";
+  if (!raw || raw.startsWith("~") || raw.startsWith("$HOME")) return false;
+  const normalized = raw.replaceAll("\\", "/");
+  // Absolute path under a different /Users/name or /home/name than common same-host patterns
+  // is treated as foreign. Tilde / relative paths are local-relative.
+  if (!normalized.startsWith("/")) return false;
+  const userMatch = normalized.match(/^\/Users\/([^/]+)(?:\/|$)/);
+  const homeMatch = normalized.match(/^\/home\/([^/]+)(?:\/|$)/);
+  if (!userMatch && !homeMatch) return false;
+  // Compare against the first path segment of localPath when available; else treat
+  // non-matching only when we can detect "Users/X" vs current selection.
+  // Without process.homedir in renderer, use: if localPath is set and its /Users/name differs.
+  const local = (_localPath || "").replaceAll("\\", "/");
+  if (local) {
+    const localUser = local.match(/^\/Users\/([^/]+)/);
+    const localHome = local.match(/^\/home\/([^/]+)/);
+    if (userMatch && localUser) return userMatch[1] !== localUser[1];
+    if (homeMatch && localHome) return homeMatch[1] !== localHome[1];
+    // local path exists but not under Users/home — still show badge for foreign Users paths
+    if (userMatch || homeMatch) return true;
+  }
+  // No local path context: only flag obvious multi-user home paths that look absolute-foreign
+  // (cannot know current username without IPC; avoid over-flagging).
+  return false;
+}
 type BranchMenuPosition = {
   right: number;
   bottom: number;
@@ -546,6 +621,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const { t } = useI18n();
   const [active, setActive] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
@@ -584,6 +660,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
+  const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const gitRefreshTimers = useRef(new Map<string, number>());
   const terminalsRef = useRef<TerminalPane[]>([]);
@@ -603,16 +680,27 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const loadSessions = useCallback(async () => {
     try {
-      const [next, nextAliases, nextSettings] = await Promise.all([
+      const listProjects = typeof desktopApi().listProjects === "function"
+        ? desktopApi().listProjects()
+        : Promise.resolve([] as CatalogProject[]);
+      const [next, nextAliases, nextSettings, nextProjects] = await Promise.all([
         desktopApi().listSessions(2_000),
         desktopApi().listProjectAliases(),
-        desktopApi().getSettings()
+        desktopApi().getSettings(),
+        listProjects
       ]);
       setSessions(next);
       setAliases(nextAliases);
       setSettings(nextSettings);
+      setCatalogProjects(nextProjects || []);
       setSelectedProject((current) => {
+        if (current && nextProjects?.some((item) => item.localPath === current || item.projectId === current || item.portableKey === current)) {
+          const match = nextProjects.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
+          return match?.localPath || match?.portableKey || current;
+        }
         if (current && next.some((item) => item.projectPath === current)) return current;
+        const firstProject = nextProjects?.find((item) => item.localPath || item.portableKey);
+        if (firstProject) return firstProject.localPath || firstProject.portableKey;
         return next.find((item) => item.projectPath)?.projectPath || null;
       });
       setStatus({ text: "" });
@@ -670,7 +758,34 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [renameDialog?.kind, renameDialog?.projectPath, renameDialog?.session?.id, renameDialog?.session?.provider]);
 
-  const projects = useMemo(() => {
+  const projects = useMemo((): WorkbenchProject[] => {
+    if (catalogProjects.length) {
+      return catalogProjects.map((project) => {
+        const group = sessions.filter((session) =>
+          (session.projectId && session.projectId === project.projectId)
+          || (!session.projectId && project.localPath && session.projectPath === project.localPath)
+        );
+        const path = project.localPath || project.portableKey;
+        return {
+          id: project.projectId,
+          path,
+          portableKey: project.portableKey,
+          pathMissing: project.pathMissing,
+          sessions: group,
+          label: project.alias || aliases[path] || aliases[project.projectId] || basename(path),
+          active: group.some((session) => openSessionKeys.has(sessionKey(session))),
+          pinned: project.pinned === true || pinnedProjects.has(path) || pinnedProjects.has(project.projectId),
+          updatedAt: group.length
+            ? Math.max(...group.map((item) => item.updatedAt))
+            : (project.lastSeenAtMs || project.updatedAtMs || 0)
+        };
+      }).filter((project) => {
+        const query = projectQuery.trim().toLowerCase();
+        return (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
+          && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
+      }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
+    }
+
     const grouped = new Map<string, AgentSession[]>();
     for (const session of sessions) {
       if (!session.projectPath) continue;
@@ -679,7 +794,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       grouped.set(session.projectPath, group);
     }
     return [...grouped.entries()].map(([path, group]) => ({
+      id: path,
       path,
+      portableKey: path,
+      pathMissing: false,
       sessions: group,
       label: aliases[path] || basename(path),
       active: group.some((session) => openSessionKeys.has(sessionKey(session))),
@@ -690,9 +808,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       return (!query || `${project.label} ${project.path}`.toLowerCase().includes(query))
         && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
     }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
-  }, [aliases, openSessionKeys, pinnedProjects, projectFilter, projectQuery, sessions]);
+  }, [aliases, catalogProjects, openSessionKeys, pinnedProjects, projectFilter, projectQuery, sessions]);
 
-  const selectedSessions = useMemo(() => sessions.filter((session) => !selectedProject || session.projectPath === selectedProject), [selectedProject, sessions]);
+  const selectedProjectMeta = useMemo(
+    () => projects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
+    [projects, selectedProject]
+  );
+
+  const selectedSessions = useMemo(() => {
+    if (!selectedProject) return sessions;
+    if (selectedProjectMeta) {
+      return sessions.filter((session) =>
+        (session.projectId && session.projectId === selectedProjectMeta.id)
+        || session.projectPath === selectedProjectMeta.path
+        || session.projectPath === selectedProject
+      );
+    }
+    return sessions.filter((session) => session.projectPath === selectedProject);
+  }, [selectedProject, selectedProjectMeta, sessions]);
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
     return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
@@ -722,13 +855,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGitShow(null);
   };
 
-  const togglePinnedProject = (path: string) => {
+  const togglePinnedProject = async (path: string, projectId?: string) => {
+    const currentlyPinned = pinnedProjects.has(path)
+      || (projectId ? pinnedProjects.has(projectId) : false)
+      || catalogProjects.some((item) => item.projectId === projectId && item.pinned);
+    const nextPinned = !currentlyPinned;
     setPinnedProjects((current) => {
       const next = new Set(current);
-      if (next.has(path)) next.delete(path); else next.add(path);
+      if (nextPinned) {
+        next.add(path);
+        if (projectId) next.add(projectId);
+      } else {
+        next.delete(path);
+        if (projectId) next.delete(projectId);
+      }
       savePinnedProjects(next);
       return next;
     });
+    if (projectId && typeof desktopApi().setProjectPinned === "function") {
+      try {
+        await desktopApi().setProjectPinned({ projectId, pinned: nextPinned });
+        setCatalogProjects((current) =>
+          current.map((item) => item.projectId === projectId ? { ...item, pinned: nextPinned } : item)
+        );
+      } catch (error) {
+        setStatus({ text: statusError(error), kind: "error" });
+      }
+    }
   };
 
   const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd, openedSessionKey?: string) => {
@@ -818,12 +971,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   }, [addTerminal, loadSessions, selectedProject, settings?.workbench?.defaultNewSessionProvider, t]);
 
-  const newSessionForProject = useCallback(async (cwd: string) => {
+  const newSessionForProject = useCallback(async (cwd: string, projectId?: string) => {
     try {
+      let resolvedCwd = cwd;
+      if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
+        const resolved = await desktopApi().resolveProjectCwd({ projectId });
+        if (resolved.source === "missing" || !resolved.cwd) {
+          setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
+          return;
+        }
+        resolvedCwd = resolved.cwd;
+      }
       const provider = (settings?.workbench?.defaultNewSessionProvider || "codex") as AgentProvider;
-      const result = await desktopApi().workbenchNewSession({ cwd, provider });
-      selectProject(cwd);
-      if (result.mode === "xterm" && result.command) addTerminal(t("desktop.workbench.newSessionTitle", basename(cwd)), result.cwd, result.command, cwd);
+      const result = await desktopApi().workbenchNewSession({ cwd: resolvedCwd, provider });
+      selectProject(resolvedCwd);
+      if (result.mode === "xterm" && result.command) addTerminal(t("desktop.workbench.newSessionTitle", basename(resolvedCwd)), result.cwd, result.command, resolvedCwd);
       await loadSessions();
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   }, [addTerminal, loadSessions, settings?.workbench?.defaultNewSessionProvider, t]);
@@ -894,9 +1056,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     finally { openingSessionKeysRef.current.delete(key); }
   };
 
-  const projectMenu = (event: React.MouseEvent, path: string) => {
+  const projectMenu = (event: React.MouseEvent, project: WorkbenchProject) => {
     event.preventDefault();
-    const menu: WorkbenchContextMenu = { kind: "project", projectPath: path, x: event.clientX, y: event.clientY };
+    const menu: WorkbenchContextMenu = {
+      kind: "project",
+      projectPath: project.path,
+      projectId: project.id,
+      x: event.clientX,
+      y: event.clientY
+    };
     setContextMenu(menu);
     void desktopApi().workbenchGetProjectEditor().then((info) => {
       if (!info.editor || (!info.available && info.selected === "auto")) return;
@@ -953,15 +1121,121 @@ export function WorkbenchPanel(): ReactPortal | null {
     setContextMenu(null);
     if (!menu) return;
     if (menu.kind === "project" && menu.projectPath) {
-      if (action === "pin") togglePinnedProject(menu.projectPath);
-      if (action === "unpin") togglePinnedProject(menu.projectPath);
-      if (action === "new") await newSessionForProject(menu.projectPath);
+      if (action === "pin" || action === "unpin") await togglePinnedProject(menu.projectPath, menu.projectId);
+      if (action === "new") await newSessionForProject(menu.projectPath, menu.projectId);
       if (action === "editor") {
-        try { await desktopApi().workbenchOpenProjectInEditor({ projectPath: menu.projectPath }); }
-        catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+        try {
+          let projectPath = menu.projectPath;
+          if (menu.projectId && typeof desktopApi().resolveProjectCwd === "function") {
+            const resolved = await desktopApi().resolveProjectCwd({ projectId: menu.projectId });
+            if (resolved.source === "missing" || !resolved.cwd) {
+              setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
+              return;
+            }
+            projectPath = resolved.cwd;
+          }
+          await desktopApi().workbenchOpenProjectInEditor({ projectPath });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
       if (action === "note") await openMountedNote({ scope: "project", projectPath: menu.projectPath });
-      if (action === "rename") setRenameDialog({ kind: "project", projectPath: menu.projectPath, title: aliases[menu.projectPath] || basename(menu.projectPath), autoBusy: false, status: "" });
+      if (action === "rename") setRenameDialog({
+        kind: "project",
+        projectPath: menu.projectPath,
+        projectId: menu.projectId,
+        title: aliases[menu.projectPath] || basename(menu.projectPath),
+        autoBusy: false,
+        status: ""
+      });
+      if (action === "setLocalPath" && menu.projectId && typeof desktopApi().pickProjectLocalPath === "function") {
+        try {
+          const result = await desktopApi().pickProjectLocalPath({
+            projectId: menu.projectId,
+            title: t("desktop.workbench.setLocalFolderTitle")
+          });
+          if (!result.ok) return;
+          selectProject(result.absolutePath);
+          setStatus({ text: t("desktop.workbench.localPathSet", result.absolutePath) });
+          await loadSessions();
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      if (action === "copyPath" && typeof desktopApi().copyProjectLocalPath === "function") {
+        try {
+          const result = await desktopApi().copyProjectLocalPath({
+            projectId: menu.projectId,
+            projectPath: menu.projectPath
+          });
+          setStatus({ text: t("desktop.workbench.pathCopied", result.path) });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      if (action === "reveal" && typeof desktopApi().revealProjectInFinder === "function") {
+        try {
+          await desktopApi().revealProjectInFinder({
+            projectId: menu.projectId,
+            projectPath: menu.projectPath
+          });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      if (action === "merge" && menu.projectId && typeof desktopApi().mergeProjects === "function") {
+        const options = projects
+          .filter((project) => project.id !== menu.projectId)
+          .map((project) => ({ id: project.id, label: project.label, path: project.path }));
+        if (!options.length) {
+          setStatus({ text: t("desktop.workbench.mergeNoTargets"), kind: "error" });
+          return;
+        }
+        setProjectPickDialog({
+          kind: "merge",
+          sourceId: menu.projectId,
+          sourceLabel: aliases[menu.projectPath] || basename(menu.projectPath),
+          options,
+          query: "",
+          busy: false,
+          status: ""
+        });
+      }
+      if (action === "split" && menu.projectId && typeof desktopApi().listProjectPathVariants === "function") {
+        try {
+          const variants = await desktopApi().listProjectPathVariants({ projectId: menu.projectId });
+          const options = variants.filter((item) => item.absolutePath);
+          if (options.length < 2) {
+            setStatus({ text: t("desktop.workbench.splitNeedVariants"), kind: "error" });
+            return;
+          }
+          setProjectPickDialog({
+            kind: "split",
+            sourceId: menu.projectId,
+            sourceLabel: aliases[menu.projectPath] || basename(menu.projectPath),
+            options,
+            query: "",
+            busy: false,
+            status: ""
+          });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      if (action === "remove") {
+        const label = aliases[menu.projectPath] || basename(menu.projectPath);
+        const sessionCount = sessions.filter((session) =>
+          (menu.projectId && session.projectId === menu.projectId) || session.projectPath === menu.projectPath
+        ).length;
+        if (!window.confirm(t("desktop.workbench.removeProjectConfirm", label, sessionCount))) return;
+        try {
+          if (typeof desktopApi().hideProject === "function") {
+            await desktopApi().hideProject({ projectId: menu.projectId, projectPath: menu.projectPath });
+          }
+          if (selectedProject === menu.projectPath || selectedProject === menu.projectId) {
+            selectProject(null);
+          }
+          setPinnedProjects((current) => {
+            const next = new Set(current);
+            next.delete(menu.projectPath!);
+            if (menu.projectId) next.delete(menu.projectId);
+            savePinnedProjects(next);
+            return next;
+          });
+          await loadSessions();
+          window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
       return;
     }
     const session = menu.session;
@@ -1271,7 +1545,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
         <div className="wb-folders">
           <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
-          {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}`} key={project.path} title={project.path} onContextMenu={(event) => projectMenu(event, project.path)} onClick={() => selectProject(project.path)}>{project.pinned ? <Pin className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+          {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <Pin className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
         </div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
@@ -1301,7 +1575,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"), sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
         <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => {
           const isOpen = openSessionKeys.has(sessionKey(session));
-          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span></span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+          const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
+          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
         }) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
@@ -1320,13 +1595,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p><button type="button" className="wb-rename-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button></div>{commitSuggestion ? <p className={`wb-rename-status wb-git-commit-suggestion${commitSuggestion.source === "llm" ? " is-ai" : ""}`}>{commitSuggestion.source === "llm" ? t("desktop.workbench.gitCommitSuggestedLlm") : commitSuggestion.fallbackReason === "unconfigured" ? t("desktop.workbench.gitCommitSuggestedUnconfigured") : t("desktop.workbench.gitCommitSuggestedFallback")}</p> : null}<textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
     {contextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 240)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? <>
-        <button type="button" role="menuitem" onClick={() => void runContextAction(pinnedProjects.has(contextMenu.projectPath || "") ? "unpin" : "pin")}>{t(pinnedProjects.has(contextMenu.projectPath || "") ? "desktop.workbench.unpinProject" : "desktop.workbench.pinProject")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction(
+          (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
+            || pinnedProjects.has(contextMenu.projectPath || "")
+            || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false)
+            ? "unpin"
+            : "pin"
+        )}>{t(
+          (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
+            || pinnedProjects.has(contextMenu.projectPath || "")
+            || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false)
+            ? "desktop.workbench.unpinProject"
+            : "desktop.workbench.pinProject"
+        )}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>
         {contextMenu.editorLabel ? <button type="button" role="menuitem" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.workbench.renameProject")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("setLocalPath")}>{t("desktop.workbench.setLocalFolder")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("copyPath")}>{t("desktop.workbench.copyLocalPath")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("reveal")}>{t("desktop.common.revealInFinder")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <button type="button" role="menuitem" onClick={() => void runContextAction("merge")}>{t("desktop.workbench.mergeIntoProject")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("split")}>{t("desktop.workbench.splitProjectPath")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeProjectFromPanel")}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
@@ -1337,6 +1632,44 @@ export function WorkbenchPanel(): ReactPortal | null {
       </>}
     </div> : null}
     {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !renameDialog.autoBusy && setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")}</p>{renameDialog.kind === "session" ? <button type="button" className="wb-rename-auto-btn" disabled={renameDialog.autoBusy} onClick={() => void autoRename()}>{renameDialog.autoBusy ? <LoaderCircle className="spin" size={14} /> : null}{t(renameDialog.autoBusy ? "desktop.workbench.autoRenaming" : "desktop.workbench.autoRename")}</button> : null}</div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} disabled={renameDialog.autoBusy} autoComplete="off" spellCheck={false} aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProjectDisplay" : "desktop.workbench.renameSessionTitle")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={renameDialog.autoBusy} onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={renameDialog.autoBusy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
+    {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "merge"
+      ? projectPickDialog.options.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
+      : projectPickDialog.options.filter((item) => `${item.absolutePath} ${item.portableKey}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
+    ).map((item) => {
+      if (projectPickDialog.kind === "merge" && "id" in item) {
+        return <button type="button" className="wb-project-pick-item" key={item.id} disabled={projectPickDialog.busy} onClick={() => {
+          void (async () => {
+            setProjectPickDialog((current) => current ? { ...current, busy: true, status: t("desktop.workbench.mergeRunning") } : current);
+            try {
+              const result = await desktopApi().mergeProjects({ sourceProjectId: projectPickDialog.sourceId, targetProjectId: item.id });
+              setProjectPickDialog(null);
+              setStatus({ text: t("desktop.workbench.mergeDone", result.mergedSessions) });
+              await loadSessions();
+              window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+            } catch (error) {
+              setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
+            }
+          })();
+        }}><span className="wb-project-pick-label">{item.label}</span><span className="wb-project-pick-path">{item.path}</span></button>;
+      }
+      if (projectPickDialog.kind === "split" && "absolutePath" in item) {
+        return <button type="button" className="wb-project-pick-item" key={item.absolutePath} disabled={projectPickDialog.busy} onClick={() => {
+          void (async () => {
+            setProjectPickDialog((current) => current ? { ...current, busy: true, status: t("desktop.workbench.splitRunning") } : current);
+            try {
+              const result = await desktopApi().splitProjectPath({ sourceProjectId: projectPickDialog.sourceId, absolutePath: item.absolutePath });
+              setProjectPickDialog(null);
+              setStatus({ text: t("desktop.workbench.splitDone", result.movedSessions) });
+              await loadSessions();
+              window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+            } catch (error) {
+              setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
+            }
+          })();
+        }}><span className="wb-project-pick-label">{item.portableKey}</span><span className="wb-project-pick-path">{item.absolutePath} · {item.sessionCount}</span></button>;
+      }
+      return null;
+    })}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={projectPickDialog.busy} onClick={() => setProjectPickDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     <GitChangesPanel visible={side === "git" && !gitLog} git={git} expanded={gitExpandedDirs} onToggle={toggleGitDirectory} onOpenDiff={(change, staged) => void openDiff(change, staged)} stagedTitle={t("desktop.workbench.sidePanelStaged")} changesTitle={t("desktop.workbench.sidePanelChanges")} noChanges={t("desktop.workbench.sidePanelNoChanges")} unavailable={selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")} />
     <GitDiffMergePanel diff={currentDiff} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />

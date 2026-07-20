@@ -702,7 +702,31 @@
     },
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
-    }
+    },
+    "desktop.workbench.removeProjectFromPanel": "Remove project from panel",
+    "desktop.workbench.removeProjectConfirm": "Remove project \"{0}\" from panel? {1} session(s) will be hidden. Native agent history, disk folder, and notes are not deleted.",
+    "desktop.workbench.pathMissingHint": "Local folder not found on this machine. Bind a local path before opening a new session or terminal.",
+    "desktop.workbench.pathMissingLabel": "Not on this machine · {0}",
+    "desktop.workbench.setLocalFolder": "Set local folder…",
+    "desktop.workbench.setLocalFolderTitle": "Select local project folder",
+    "desktop.workbench.copyLocalPath": "Copy local path",
+    "desktop.workbench.localPathSet": "Local folder set: {0}",
+    "desktop.workbench.pathCopied": "Copied path: {0}",
+    "desktop.settings.unhideAllDesc": "Sessions and projects removed from the panel are hidden in the catalog. Restore makes them visible again without re-importing from agents.",
+    "desktop.workbench.mergeIntoProject": "Merge into project…",
+    "desktop.workbench.splitProjectPath": "Split path into project…",
+    "desktop.workbench.mergeDialogTitle": "Merge “{0}” into…",
+    "desktop.workbench.splitDialogTitle": "Split path from “{0}”",
+    "desktop.workbench.mergeDialogHint": "Choose the project that should keep the combined sessions and settings.",
+    "desktop.workbench.splitDialogHint": "Choose a path variant to peel into its own project.",
+    "desktop.workbench.mergeNoTargets": "No other projects available to merge into.",
+    "desktop.workbench.splitNeedVariants": "Need at least two path variants to split this project.",
+    "desktop.workbench.mergeRunning": "Merging…",
+    "desktop.workbench.splitRunning": "Splitting…",
+    "desktop.workbench.mergeDone": "Merged {0} session(s).",
+    "desktop.workbench.splitDone": "Moved {0} session(s) into a separate project.",
+    "desktop.workbench.otherMachineBadge": "Other machine",
+    "desktop.workbench.otherMachineSessionHint": "Indexed path from another machine: {0}. Resume may fail if agent data is not on this Mac."
   },
   "zh-cn": {
     "app": {
@@ -1438,7 +1462,31 @@
     },
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
-    }
+    },
+    "desktop.workbench.removeProjectFromPanel": "从面板移除项目",
+    "desktop.workbench.removeProjectConfirm": "从面板移除项目「{0}」？将隐藏 {1} 个 session。不会删除 Agent 原生历史、磁盘文件夹和笔记。",
+    "desktop.workbench.pathMissingHint": "本机找不到该项目文件夹。请先绑定本机路径再新建 session 或终端。",
+    "desktop.workbench.pathMissingLabel": "本机未绑定 · {0}",
+    "desktop.workbench.setLocalFolder": "设置本机文件夹…",
+    "desktop.workbench.setLocalFolderTitle": "选择本机项目文件夹",
+    "desktop.workbench.copyLocalPath": "复制本机路径",
+    "desktop.workbench.localPathSet": "已设置本机文件夹：{0}",
+    "desktop.workbench.pathCopied": "已复制路径：{0}",
+    "desktop.settings.unhideAllDesc": "从面板移除的 session 与项目会在 catalog 中标记为隐藏。恢复可见不会重新从 Agent 导入。",
+    "desktop.workbench.mergeIntoProject": "合并到项目…",
+    "desktop.workbench.splitProjectPath": "拆分路径为项目…",
+    "desktop.workbench.mergeDialogTitle": "将「{0}」合并到…",
+    "desktop.workbench.splitDialogTitle": "从「{0}」拆分路径",
+    "desktop.workbench.mergeDialogHint": "选择保留合并后会话与设置的目标项目。",
+    "desktop.workbench.splitDialogHint": "选择要从本项目剥离为独立项目的路径变体。",
+    "desktop.workbench.mergeNoTargets": "没有可合并到的其他项目。",
+    "desktop.workbench.splitNeedVariants": "至少需要两种路径变体才能拆分。",
+    "desktop.workbench.mergeRunning": "正在合并…",
+    "desktop.workbench.splitRunning": "正在拆分…",
+    "desktop.workbench.mergeDone": "已合并 {0} 个 session。",
+    "desktop.workbench.splitDone": "已将 {0} 个 session 拆到独立项目。",
+    "desktop.workbench.otherMachineBadge": "其他机器",
+    "desktop.workbench.otherMachineSessionHint": "来自其他机器的索引路径：{0}。若本机没有 Agent 数据，可能无法 resume。"
   },
   "ja": {
     "app": {
@@ -2216,6 +2264,30 @@
     },
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
-    }
+    },
+    "desktop.workbench.removeProjectFromPanel": "プロジェクトをパネルから削除",
+    "desktop.workbench.removeProjectConfirm": "プロジェクト「{0}」をパネルから削除しますか？セッション {1} 件が非表示になります。Agent の履歴・ディスク上のフォルダ・ノートは削除されません。",
+    "desktop.workbench.pathMissingHint": "このマシン上にプロジェクトフォルダが見つかりません。新しい session / ターミナルを開く前にローカルパスを設定してください。",
+    "desktop.workbench.pathMissingLabel": "このマシン未設定 · {0}",
+    "desktop.workbench.setLocalFolder": "ローカルフォルダを設定…",
+    "desktop.workbench.setLocalFolderTitle": "ローカルのプロジェクトフォルダを選択",
+    "desktop.workbench.copyLocalPath": "ローカルパスをコピー",
+    "desktop.workbench.localPathSet": "ローカルフォルダを設定しました: {0}",
+    "desktop.workbench.pathCopied": "パスをコピーしました: {0}",
+    "desktop.settings.unhideAllDesc": "パネルから削除した session とプロジェクトは catalog で非表示になります。復元しても Agent からの再インポートは行いません。",
+    "desktop.workbench.mergeIntoProject": "プロジェクトに統合…",
+    "desktop.workbench.splitProjectPath": "パスをプロジェクトに分割…",
+    "desktop.workbench.mergeDialogTitle": "「{0}」を統合先…",
+    "desktop.workbench.splitDialogTitle": "「{0}」からパスを分割",
+    "desktop.workbench.mergeDialogHint": "統合後のセッションと設定を残すプロジェクトを選びます。",
+    "desktop.workbench.splitDialogHint": "別プロジェクトとして切り出すパスを選びます。",
+    "desktop.workbench.mergeNoTargets": "統合先のプロジェクトがありません。",
+    "desktop.workbench.splitNeedVariants": "分割には 2 つ以上のパス変種が必要です。",
+    "desktop.workbench.mergeRunning": "統合中…",
+    "desktop.workbench.splitRunning": "分割中…",
+    "desktop.workbench.mergeDone": "{0} 件の session を統合しました。",
+    "desktop.workbench.splitDone": "{0} 件の session を別プロジェクトへ移しました。",
+    "desktop.workbench.otherMachineBadge": "他マシン",
+    "desktop.workbench.otherMachineSessionHint": "他マシンのインデックスパス: {0}。この Mac に Agent データが無いと resume できない場合があります。"
   }
 }
