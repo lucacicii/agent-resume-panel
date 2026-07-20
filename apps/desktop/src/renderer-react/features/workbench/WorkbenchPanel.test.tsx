@@ -11,6 +11,7 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   focus() {}
   write() {}
   onData() { return { dispose() {} }; }
+  onResize() { return { dispose() {} }; }
   dispose() {}
 } }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {

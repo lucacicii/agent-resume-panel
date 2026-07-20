@@ -459,6 +459,7 @@ function TerminalView({ pane, active, onPty, onInput }: {
 
   useEffect(() => {
     if (!host.current) return;
+    const hostEl = host.current;
     const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
@@ -468,12 +469,33 @@ function TerminalView({ pane, active, onPty, onInput }: {
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.open(host.current);
+    terminal.open(hostEl);
     fit.current = fitAddon;
-    const resize = () => { try { fitAddon.fit(); } catch { /* hidden panes fit after activation */ } };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(host.current);
+
+    // FitAddon only updates xterm cols/rows. PTY must be told separately so
+    // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
+    const onTermResize = terminal.onResize(({ cols, rows }) => {
+      if (ptyId.current === null) return;
+      void desktopApi().terminalResize({ id: ptyId.current, cols, rows });
+    });
+
+    const fitHost = () => {
+      if (hostEl.clientWidth < 2 || hostEl.clientHeight < 2) return;
+      try {
+        fitAddon.fit();
+      } catch {
+        /* hidden panes fit after activation */
+      }
+    };
+
+    fitHost();
+    const observer = new ResizeObserver(fitHost);
+    observer.observe(hostEl);
+    // Window zoom / electron zoom-factor changes do not always re-fire RO alone.
+    window.addEventListener("resize", fitHost);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", fitHost);
+
     const input = terminal.onData((data) => {
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
       onInput(pane.key);
@@ -484,12 +506,17 @@ function TerminalView({ pane, active, onPty, onInput }: {
         if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
         ptyId.current = id;
         onPty(pane.key, id, terminal);
+        // Re-fit after attach in case layout settled during spawn.
+        fitHost();
         void desktopApi().terminalResize({ id, cols: terminal.cols, rows: terminal.rows });
       })
       .catch((error: unknown) => terminal.write(`\r\n${statusError(error)}\r\n`));
     return () => {
       alive = false;
       observer.disconnect();
+      window.removeEventListener("resize", fitHost);
+      viewport?.removeEventListener("resize", fitHost);
+      onTermResize.dispose();
       input.dispose();
       if (ptyId.current !== null) void desktopApi().terminalDestroy({ id: ptyId.current });
       terminal.dispose();
@@ -498,7 +525,18 @@ function TerminalView({ pane, active, onPty, onInput }: {
 
   useEffect(() => {
     if (!active) return;
-    requestAnimationFrame(() => { try { fit.current?.fit(); } catch { /* fit guard */ } });
+    // Double rAF: wait until the pane is display:flex and has real metrics.
+    let outer = 0;
+    let inner = 0;
+    outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        try { fit.current?.fit(); } catch { /* fit guard */ }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
   }, [active]);
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>

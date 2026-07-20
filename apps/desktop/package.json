@@ -5,7 +5,7 @@
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "node scripts/fix-node-pty.mjs && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.json && pnpm run typecheck:renderer && node scripts/copy-renderer.cjs && node scripts/build-renderer-react.mjs",
+    "build": "node scripts/fix-node-pty.mjs && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.json && node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.renderer.json && node scripts/copy-renderer.cjs && node scripts/build-renderer-react.mjs",
     "build:renderer": "node scripts/build-renderer-react.mjs",
     "typecheck:renderer": "node ../../scripts/run-tsc.mjs --cwd . -p tsconfig.renderer.json",
     "test:renderer": "vitest run",

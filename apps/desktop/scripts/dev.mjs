@@ -17,6 +17,14 @@ const noWatch = cliArgs.includes("--no-watch");
 const coreDistEntry = path.join(repoRoot, "packages", "core", "dist", "index.js");
 const mainDistEntry = path.join(root, "dist", "main", "main.js");
 const tscBin = require.resolve("typescript/bin/tsc");
+const corepackBin = path.join(
+  path.dirname(process.execPath),
+  process.platform === "win32" ? "corepack.cmd" : "corepack"
+);
+const pnpmLauncher = fs.existsSync(corepackBin)
+  ? { command: corepackBin, args: ["pnpm"] }
+  : { command: "pnpm", args: [] };
+const pnpmEnv = { ...process.env, PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false" };
 
 const children = [];
 let electronApp = null;
@@ -76,11 +84,16 @@ process.on("SIGTERM", () => shutdown(0));
 
 function runWorkspaceScript(workspace, script) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["--filter", workspace, "run", script], {
-      cwd: repoRoot,
-      stdio: "inherit",
-      shell: process.platform === "win32"
-    });
+    const child = spawn(
+      pnpmLauncher.command,
+      [...pnpmLauncher.args, "--filter", workspace, "run", script],
+      {
+        cwd: repoRoot,
+        stdio: "inherit",
+        env: pnpmEnv,
+        shell: process.platform === "win32"
+      }
+    );
     child.on("close", (exitCode) => {
       if (exitCode === 0) {
         resolve();
@@ -104,7 +117,11 @@ async function ensureInitialBuild() {
 }
 
 function startWatchers() {
-  spawnTracked("pnpm", ["--filter", "@agent-resume/core", "run", "watch"], { cwd: repoRoot });
+  spawnTracked(
+    pnpmLauncher.command,
+    [...pnpmLauncher.args, "--filter", "@agent-resume/core", "run", "watch"],
+    { cwd: repoRoot, env: pnpmEnv }
+  );
   spawnTracked(process.execPath, [tscBin, "-p", "tsconfig.json", "-w"], { cwd: root });
   spawnTracked(process.execPath, [path.join(root, "scripts", "watch-renderer.mjs")], { cwd: root });
 }
