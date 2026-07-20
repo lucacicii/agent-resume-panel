@@ -24,7 +24,7 @@
   "scripts": {
     "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
     "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
-    "test": "pnpm run build && node --test test/*.test.mjs"
+    "test": "node ../../scripts/pnpm.mjs run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

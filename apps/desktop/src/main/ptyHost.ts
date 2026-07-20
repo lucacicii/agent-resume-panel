@@ -24,6 +24,7 @@ interface PtySession {
 
 const ptySessions = new Map<number, PtySession>();
 let nextTerminalId = 0;
+let materializedIntegrationScript: string | null | undefined;
 
 function ensureSpawnHelperExecutable(): void {
   if (process.platform !== "darwin" && process.platform !== "linux") return;
@@ -151,6 +152,31 @@ function ensureZdotDir(integrationScript: string): string {
   return dir;
 }
 
+function materializeIntegrationScript(sourcePath: string): string | null {
+  if (materializedIntegrationScript !== undefined) return materializedIntegrationScript;
+
+  const destinationDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "agent-resume-shell-integration-")
+  );
+  try {
+    fs.chmodSync(destinationDir, 0o700);
+    const sourceDir = path.dirname(sourcePath);
+    for (const name of ["integration.sh", "zsh.sh", "bash.sh"]) {
+      const source = path.join(sourceDir, name);
+      const destination = path.join(destinationDir, name);
+      fs.writeFileSync(destination, fs.readFileSync(source), { mode: 0o600 });
+      fs.chmodSync(destination, 0o600);
+    }
+    materializedIntegrationScript = path.join(destinationDir, "integration.sh");
+    return materializedIntegrationScript;
+  } catch (error) {
+    fs.rmSync(destinationDir, { recursive: true, force: true });
+    materializedIntegrationScript = null;
+    console.warn("terminal shell integration could not be materialized:", error);
+    return null;
+  }
+}
+
 function resolveIntegrationScript(): string | null {
   if (process.platform !== "darwin" && process.platform !== "linux") return null;
   const candidates = [
@@ -159,7 +185,13 @@ function resolveIntegrationScript(): string | null {
     path.join(__dirname, "..", "..", "src", "main", "shellIntegration", "integration.sh")
   ];
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (!fs.existsSync(candidate)) continue;
+
+    // Electron can access files inside app.asar, but the spawned shell cannot.
+    if (candidate.includes(`${path.sep}app.asar${path.sep}`)) {
+      return materializeIntegrationScript(candidate);
+    }
+    return candidate;
   }
   return null;
 }

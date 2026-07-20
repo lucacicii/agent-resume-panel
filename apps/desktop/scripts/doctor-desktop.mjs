@@ -56,16 +56,14 @@ function checkPnpm() {
       ok,
       name: "pnpm",
       detail: ok ? out : `${out} — expected ${EXPECTED_PNPM}`,
-      fix: ok
-        ? undefined
-        : "From repo root: corepack enable && corepack prepare pnpm@11.13.1 --activate"
+      fix: ok ? undefined : "From repo root: ./pnpm install --frozen-lockfile"
     };
   } catch {
     return {
       ok: false,
       name: "pnpm",
       detail: "not found on PATH",
-      fix: "corepack enable && corepack prepare pnpm@11.13.1 --activate"
+      fix: "From repo root: ./pnpm install --frozen-lockfile"
     };
   }
 }

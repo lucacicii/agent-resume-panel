@@ -177,6 +177,7 @@ export interface DesktopApi {
   terminalGitSuggestCommit(args: { repoRoot: string }): Promise<{
     message: string;
     source: "llm" | "heuristic";
+    fallbackReason?: "unconfigured" | "request-failed";
   }>;
   terminalGitCommit(args: { repoRoot: string; message: string }): Promise<{ ok: boolean }>;
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;

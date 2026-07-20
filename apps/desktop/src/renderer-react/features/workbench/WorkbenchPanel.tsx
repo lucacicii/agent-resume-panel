@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { CodeEditor } from "../../components/CodeEditor";
+import { notifyDesktop } from "../../components/Notifications";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 
@@ -27,6 +29,7 @@ type GitLog = Awaited<ReturnType<DesktopApi["terminalGitLog"]>>;
 type GitShow = Awaited<ReturnType<DesktopApi["terminalGitShow"]>>;
 type GitGraphLayout = GitLog["layout"];
 type GitGraphRow = GitGraphLayout["rows"][number];
+type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"]>>;
 type GitTreeNode = {
   name: string;
   path: string;
@@ -55,6 +58,7 @@ type DiffPane = {
 type TerminalPane = {
   key: string;
   title: string;
+  sessionKey?: string;
   projectPath: string;
   cwd: string;
   command?: string;
@@ -94,6 +98,11 @@ const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
+const ALL_PROJECTS_PANE_KEY = "__all_projects__";
+
+function paneProjectKey(projectPath: string | null): string {
+  return projectPath || ALL_PROJECTS_PANE_KEY;
+}
 
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
@@ -135,16 +144,12 @@ function savePinnedProjects(projects: Set<string>): void {
   try { localStorage.setItem(PINNED_PROJECTS_KEY, JSON.stringify([...projects])); } catch { /* storage is optional */ }
 }
 
-function providerLabel(provider: string): string {
-  return provider === "agy" ? "antigravity" : provider;
-}
-
 function statusError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function activeSession(session: AgentSession): boolean {
-  return Date.now() - session.updatedAt < 15 * 60_000;
+function gitSuggestionError(error: unknown): string {
+  return statusError(error).replace(/^Error invoking remote method 'terminal:gitSuggestCommit': Error:\s*/, "");
 }
 
 function gitStatusLetter(status: string): string {
@@ -451,6 +456,7 @@ function TerminalView({ pane, active, onPty, onInput }: {
 
   useEffect(() => {
     if (!host.current) return;
+    const hostEl = host.current;
     const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
@@ -460,12 +466,33 @@ function TerminalView({ pane, active, onPty, onInput }: {
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.open(host.current);
+    terminal.open(hostEl);
     fit.current = fitAddon;
-    const resize = () => { try { fitAddon.fit(); } catch { /* hidden panes fit after activation */ } };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(host.current);
+
+    // FitAddon only updates xterm cols/rows. PTY must be told separately so
+    // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
+    const onTermResize = terminal.onResize(({ cols, rows }) => {
+      if (ptyId.current === null) return;
+      void desktopApi().terminalResize({ id: ptyId.current, cols, rows });
+    });
+
+    const fitHost = () => {
+      if (hostEl.clientWidth < 2 || hostEl.clientHeight < 2) return;
+      try {
+        fitAddon.fit();
+      } catch {
+        /* hidden panes fit after activation */
+      }
+    };
+
+    fitHost();
+    const observer = new ResizeObserver(fitHost);
+    observer.observe(hostEl);
+    // Window zoom / electron zoom-factor changes do not always re-fire RO alone.
+    window.addEventListener("resize", fitHost);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", fitHost);
+
     const input = terminal.onData((data) => {
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
       onInput(pane.key);
@@ -476,12 +503,17 @@ function TerminalView({ pane, active, onPty, onInput }: {
         if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
         ptyId.current = id;
         onPty(pane.key, id, terminal);
+        // Re-fit after attach in case layout settled during spawn.
+        fitHost();
         void desktopApi().terminalResize({ id, cols: terminal.cols, rows: terminal.rows });
       })
       .catch((error: unknown) => terminal.write(`\r\n${statusError(error)}\r\n`));
     return () => {
       alive = false;
       observer.disconnect();
+      window.removeEventListener("resize", fitHost);
+      viewport?.removeEventListener("resize", fitHost);
+      onTermResize.dispose();
       input.dispose();
       if (ptyId.current !== null) void desktopApi().terminalDestroy({ id: ptyId.current });
       terminal.dispose();
@@ -490,7 +522,18 @@ function TerminalView({ pane, active, onPty, onInput }: {
 
   useEffect(() => {
     if (!active) return;
-    requestAnimationFrame(() => { try { fit.current?.fit(); } catch { /* fit guard */ } });
+    // Double rAF: wait until the pane is display:flex and has real metrics.
+    let outer = 0;
+    let inner = 0;
+    outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        try { fit.current?.fit(); } catch { /* fit guard */ }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
   }, [active]);
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
@@ -519,7 +562,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
-  const [activePane, setActivePane] = useState("");
+  const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -528,12 +571,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
+  const [gitRefreshing, setGitRefreshing] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitBusy, setCommitBusy] = useState(false);
+  const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
+
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
@@ -541,6 +587,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalRefs = useRef(new Map<number, Terminal>());
   const gitRefreshTimers = useRef(new Map<string, number>());
   const terminalsRef = useRef<TerminalPane[]>([]);
+  const openingSessionKeysRef = useRef(new Set<string>());
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const sessionSearchInputRef = useRef<HTMLInputElement>(null);
@@ -549,6 +596,10 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  const openSessionKeys = useMemo(() => new Set(
+    terminals.flatMap((pane) => pane.sessionKey ? [pane.sessionKey] : [])
+  ), [terminals]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -631,7 +682,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       path,
       sessions: group,
       label: aliases[path] || basename(path),
-      active: group.some(activeSession),
+      active: group.some((session) => openSessionKeys.has(sessionKey(session))),
       pinned: pinnedProjects.has(path),
       updatedAt: Math.max(...group.map((item) => item.updatedAt))
     })).filter((project) => {
@@ -639,18 +690,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       return (!query || `${project.label} ${project.path}`.toLowerCase().includes(query))
         && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
     }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
-  }, [aliases, pinnedProjects, projectFilter, projectQuery, sessions]);
+  }, [aliases, openSessionKeys, pinnedProjects, projectFilter, projectQuery, sessions]);
 
   const selectedSessions = useMemo(() => sessions.filter((session) => !selectedProject || session.projectPath === selectedProject), [selectedProject, sessions]);
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
-    return matchesQuery && (sessionFilter === "all" || activeSession(session));
-  }).sort((a, b) => b.updatedAt - a.updatedAt), [selectedSessions, sessionFilter, sessionQuery]);
+    return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
+  }).sort((a, b) => b.updatedAt - a.updatedAt), [openSessionKeys, selectedSessions, sessionFilter, sessionQuery]);
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
   const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
   const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
+  const activePane = activePanes[paneProjectKey(selectedProject)] || "";
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
+
+  const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
+    const projectKey = paneProjectKey(projectPath);
+    setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
+  }, [selectedProject]);
 
   const selectProject = (project: string | null) => {
     setSelectedProject(project);
@@ -663,7 +720,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGit(null);
     setGitLog(null);
     setGitShow(null);
-    setActivePane("");
   };
 
   const togglePinnedProject = (path: string) => {
@@ -675,11 +731,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
-  const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd) => {
+  const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd, openedSessionKey?: string) => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
-    setTerminals((current) => [...current, { key, title, cwd, command, projectPath }]);
-    setActivePane(key);
-  }, [selectedProject]);
+    const pane = { key, title, cwd, command, projectPath, sessionKey: openedSessionKey };
+    terminalsRef.current = [...terminalsRef.current, pane];
+    setTerminals((current) => [...current, pane]);
+    setActivePane(key, projectPath);
+  }, [selectedProject, setActivePane]);
 
   const refreshTerminalGit = useCallback(async (key: string) => {
     const pane = terminalsRef.current.find((item) => item.key === key);
@@ -721,9 +779,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);
     if (pane?.ptyId) terminalRefs.current.delete(pane.ptyId);
+    terminalsRef.current = terminalsRef.current.filter((item) => item.key !== key);
     setTerminals((current) => current.filter((item) => item.key !== key));
-    setActivePane((current) => current === key ? currentTerminals.find((item) => item.key !== key)?.key || currentEditors[0]?.key || "" : current);
-  }, [currentEditors, currentTerminals, terminals]);
+    if (pane) {
+      const projectKey = paneProjectKey(pane.projectPath);
+      const nextPane = currentTerminals.find((item) => item.key !== key)?.key || currentEditors[0]?.key || currentDiffs[0]?.key || "";
+      setActivePanes((current) => current[projectKey] === key ? { ...current, [projectKey]: nextPane } : current);
+    }
+  }, [currentDiffs, currentEditors, currentTerminals, terminals]);
 
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
@@ -806,15 +869,29 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [active, closeActivePane]);
 
   const openSession = async (session: AgentSession) => {
-    setActiveSessionKey(sessionKey(session));
+    const key = sessionKey(session);
+    const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
+    if (existing) {
+      selectProject(existing.projectPath);
+      setActivePane(existing.key, existing.projectPath);
+      setActiveSessionKey(key);
+      return;
+    }
+    if (openingSessionKeysRef.current.has(key)) return;
+    openingSessionKeysRef.current.add(key);
+    setActiveSessionKey(key);
     try {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
       if (result.external) {
         setStatus({ text: result.command || t("desktop.workbench.externalTerminalHint"), kind: "ok" });
         return;
       }
-      addTerminal(session.title || session.id, result.cwd, result.command, session.projectPath || result.cwd);
+      const projectPath = session.projectPath || result.cwd;
+      selectProject(projectPath);
+      addTerminal(session.title || session.id, result.cwd, result.command, projectPath, key);
+      setActiveSessionKey(key);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    finally { openingSessionKeysRef.current.delete(key); }
   };
 
   const projectMenu = (event: React.MouseEvent, path: string) => {
@@ -983,6 +1060,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const refreshGit = useCallback(async () => {
     if (!selectedProject) return;
+    setGitRefreshing(true);
     try {
       const result = await desktopApi().terminalGitStatus({
         cwd: selectedProject,
@@ -999,6 +1077,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       });
       setGitExpandedDirs(expandedGitDirectories([...result.staged, ...result.unstaged]));
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    finally { setGitRefreshing(false); }
   }, [selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth]);
 
   useEffect(() => { if (active && side === "git") void refreshGit(); }, [active, refreshGit, side]);
@@ -1047,9 +1126,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!gitRoot) return;
     try {
       setCommitBusy(true);
+      setCommitSuggestion(null);
       const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot });
       setCommitMessage(result.message);
-    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      setCommitSuggestion(result);
+    } catch (error) { const message = gitSuggestionError(error); setStatus({ text: message, kind: "error" }); notifyDesktop({ text: message, kind: "error" }); }
     finally { setCommitBusy(false); }
   };
 
@@ -1060,6 +1141,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       await desktopApi().terminalGitCommit({ repoRoot: gitRoot, message: commitMessage.trim() });
       if (pushAfter) await desktopApi().terminalGitPush({ repoRoot: gitRoot });
       setCommitMessage("");
+      setCommitSuggestion(null);
       setCommitOpen(false);
       await refreshGit();
       currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
@@ -1179,9 +1261,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
           <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.workbench.filterProjects")} placeholder={t("desktop.workbench.filterProjects")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
-          <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.notes.projectFilter")}>
-            {(["all", "pinned", "active"] as ProjectFilter[]).map((filter) => <button type="button" role="tab" key={filter} className={projectFilter === filter ? "active" : ""} aria-selected={projectFilter === filter} onClick={() => setProjectFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-          </div>
+          <SegmentedControl
+            aria-label={t("desktop.notes.projectFilter")}
+            value={projectFilter}
+            options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+            onChange={setProjectFilter}
+            getLabel={(filter) => t(`desktop.common.${filter}`)}
+          />
         </div>
         <div className="wb-folders">
           <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
@@ -1204,37 +1290,50 @@ export function WorkbenchPanel(): ReactPortal | null {
               if (!sessionSearchToolbarRef.current?.contains(document.activeElement)) setSessionSearchOpen(false);
             }, 0);
           }} />
-          <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.workbench.sessionFilter")}>
-            {(["all", "active"] as SessionFilter[]).map((filter) => <button type="button" role="tab" key={filter} className={sessionFilter === filter ? "active" : ""} aria-selected={sessionFilter === filter} onClick={() => setSessionFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-          </div>
+          <SegmentedControl
+            aria-label={t("desktop.workbench.sessionFilter")}
+            value={sessionFilter}
+            options={["all", "active"] as const satisfies readonly SessionFilter[]}
+            onChange={setSessionFilter}
+            getLabel={(filter) => t(`desktop.common.${filter}`)}
+          />
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"), sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
-        <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${activeSession(session) ? " has-wb-activity" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{activeSession(session) ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span></span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview">{providerLabel(session.provider)} · {aliases[session.projectPath] || basename(session.projectPath)}</span></button>) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
+        <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => {
+          const isOpen = openSessionKeys.has(sessionKey(session));
+          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span></span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+        }) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
         <div className="wb-detail-head"><span className="wb-detail-project-label"><span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>{selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}</span><div className="wb-detail-tools"><button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><FolderOpen size={16} /></button><button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><GitBranch size={16} /></button></div></div>
         <div className="wb-detail-body">
-          <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className="wb-terminal-tab-action" aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}><TerminalSquare size={17} /></button><button type="button" className="wb-terminal-tab-action" aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}><Plus size={17} /></button></div></div><div className="wb-terminal-stack">{currentTerminals.map((pane) => <div key={pane.key} className="wb-terminal-pane-wrap" hidden={activePane !== pane.key}><TerminalView pane={pane} active={activePane === pane.key} onPty={onPty} onInput={onTerminalInput} />{activePane === pane.key ? <div className="wb-terminal-status"><span className="wb-terminal-status-path">{pane.cwd}</span>{pane.branch || (pane.gitMode === "nested" && pane.nestedRepos?.length) ? <><span className="wb-terminal-status-sep">·</span><button type="button" className="wb-terminal-status-branch" title={pane.gitMode === "nested" ? pane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ") : pane.branch || undefined} onClick={(event) => void openBranchMenu(pane, event.currentTarget)}><GitBranch size={12} />{pane.gitMode === "nested" ? t("desktop.workbench.nestedRepoCount", pane.nestedRepos?.length || 0) : pane.branch}</button></> : null}</div> : null}</div>)}{currentEditor ? <div className="wb-editor-pane"><CodeEditor className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{!currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => setCommitOpen(true)} aria-label={t("desktop.workbench.gitCommit")}><Save size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" onClick={() => void refreshGit()} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void desktopApi().terminalGitShowFileDiffSides({ repoRoot: gitRoot, hash: gitShow.hash, path: file.path }).then((result) => { if (!selectedProject) return; const key = `logdiff:${gitShow.hash}:${file.path}`; setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot: gitRoot, path: file.path, ...result }]); setActivePane(key); })}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
+          <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className="wb-terminal-tab-action" aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}><TerminalSquare size={17} /></button><button type="button" className="wb-terminal-tab-action" aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}><Plus size={17} /></button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
+            const visible = pane.projectPath === selectedProject && activePane === pane.key;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} onPty={onPty} onInput={onTerminalInput} />{visible ? <div className="wb-terminal-status"><span className="wb-terminal-status-path">{pane.cwd}</span>{pane.branch || (pane.gitMode === "nested" && pane.nestedRepos?.length) ? <><span className="wb-terminal-status-sep">·</span><button type="button" className="wb-terminal-status-branch" title={pane.gitMode === "nested" ? pane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ") : pane.branch || undefined} onClick={(event) => void openBranchMenu(pane, event.currentTarget)}><GitBranch size={12} />{pane.gitMode === "nested" ? t("desktop.workbench.nestedRepoCount", pane.nestedRepos?.length || 0) : pane.branch}</button></> : null}</div> : null}</div>;
+          })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{!currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => { setCommitSuggestion(null); setCommitOpen(true); }} aria-label={t("desktop.workbench.gitCommit")}><Save size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit()} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void desktopApi().terminalGitShowFileDiffSides({ repoRoot: gitRoot, hash: gitShow.hash, path: file.path }).then((result) => { if (!selectedProject) return; const key = `logdiff:${gitShow.hash}:${file.path}`; setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot: gitRoot, path: file.path, ...result }]); setActivePane(key); })}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>
       </main>
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}<button type="button" className="wb-git-branch-item" onClick={() => { setBranchPane(null); setBranchResult(null); }}>{t("desktop.common.close")}</button></div> : null}
-    {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p><button type="button" className="wb-rename-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button></div><textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
+    {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p><button type="button" className="wb-rename-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button></div>{commitSuggestion ? <p className={`wb-rename-status wb-git-commit-suggestion${commitSuggestion.source === "llm" ? " is-ai" : ""}`}>{commitSuggestion.source === "llm" ? t("desktop.workbench.gitCommitSuggestedLlm") : commitSuggestion.fallbackReason === "unconfigured" ? t("desktop.workbench.gitCommitSuggestedUnconfigured") : t("desktop.workbench.gitCommitSuggestedFallback")}</p> : null}<textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
     {contextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 240)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? <>
         <button type="button" role="menuitem" onClick={() => void runContextAction(pinnedProjects.has(contextMenu.projectPath || "") ? "unpin" : "pin")}>{t(pinnedProjects.has(contextMenu.projectPath || "") ? "desktop.workbench.unpinProject" : "desktop.workbench.pinProject")}</button>
+        <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>
         {contextMenu.editorLabel ? <button type="button" role="menuitem" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
+        <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.workbench.renameProject")}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>
       </>}
     </div> : null}
     {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !renameDialog.autoBusy && setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")}</p>{renameDialog.kind === "session" ? <button type="button" className="wb-rename-auto-btn" disabled={renameDialog.autoBusy} onClick={() => void autoRename()}>{renameDialog.autoBusy ? <LoaderCircle className="spin" size={14} /> : null}{t(renameDialog.autoBusy ? "desktop.workbench.autoRenaming" : "desktop.workbench.autoRename")}</button> : null}</div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} disabled={renameDialog.autoBusy} autoComplete="off" spellCheck={false} aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProjectDisplay" : "desktop.workbench.renameSessionTitle")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={renameDialog.autoBusy} onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={renameDialog.autoBusy}>{t("desktop.common.confirm")}</button></div></form></div> : null}

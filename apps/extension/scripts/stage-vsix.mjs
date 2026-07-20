@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.join(scriptDir, "..");
 const repoRoot = path.join(extensionRoot, "..", "..");
+const pnpmRunner = path.join(repoRoot, "scripts", "pnpm.mjs");
 export const stagingRoot = path.join(extensionRoot, ".pack-staging");
 
 const COPY_DIRS = ["out", "locales", "media", "resources"];
@@ -121,11 +122,11 @@ export function stageVsix({ clean = true } = {}) {
 
   writeStagingPackagingFiles(stagingRoot);
 
-  execFileSync("corepack", ["pnpm@11.13.1", "install", "--prod", "--lockfile-only"], {
+  execFileSync(process.execPath, [pnpmRunner, "install", "--prod", "--lockfile-only"], {
     cwd: stagingRoot,
     stdio: "inherit"
   });
-  execFileSync("corepack", ["pnpm@11.13.1", "install", "--prod", "--frozen-lockfile"], {
+  execFileSync(process.execPath, [pnpmRunner, "install", "--prod", "--frozen-lockfile"], {
     cwd: stagingRoot,
     stdio: "inherit"
   });

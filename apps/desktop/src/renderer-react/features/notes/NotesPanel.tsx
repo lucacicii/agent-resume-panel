@@ -1,13 +1,14 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import {
-  ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen, MoveRight,
+  ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
   PanelLeftClose, PanelLeftOpen, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
 } from "lucide-react";
 import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 
@@ -426,9 +427,13 @@ export function NotesPanel(): ReactPortal | null {
         <aside className={`sidebar-folders-pane notes-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`} style={{ width: foldersCollapsed ? undefined : foldersWidth }}>
           <div className="sidebar-project-filter-wrap">
             <label className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.notes.filterProjects")} placeholder={t("desktop.notes.filterProjects")} value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} /></label>
-            <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.notes.projectFilter")}>
-              {(["all", "pinned", "active"] as ProjectFilter[]).map((filter) => <button type="button" role="tab" aria-selected={projectFilter === filter} className={projectFilter === filter ? "active" : ""} key={filter} onClick={() => setProjectFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-            </div>
+            <SegmentedControl
+              aria-label={t("desktop.notes.projectFilter")}
+              value={projectFilter}
+              options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+              onChange={setProjectFilter}
+              getLabel={(filter) => t(`desktop.common.${filter}`)}
+            />
           </div>
           <div className="notes-folders">
             <button type="button" className={`notes-folder-row${folder.kind === "all" ? " active" : ""}`} onClick={() => selectFolder({ kind: "all" })}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.length}</span></button>
@@ -458,7 +463,12 @@ export function NotesPanel(): ReactPortal | null {
                   if (!listSearchToolbarRef.current?.contains(document.activeElement)) setListSearchOpen(false);
                 }, 0);
               }} />
-              <div className="sidebar-project-filter-segmented" role="tablist">{(["all", "pinned"] as ListFilter[]).map((filter) => <button type="button" key={filter} role="tab" aria-selected={listFilter === filter} className={listFilter === filter ? "active" : ""} onClick={() => setListFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}</div>
+              <SegmentedControl
+                value={listFilter}
+                options={["all", "pinned"] as const satisfies readonly ListFilter[]}
+                onChange={setListFilter}
+                getLabel={(filter) => t(`desktop.common.${filter}`)}
+              />
             </div>
             {target ? <div className="notes-target-popover" role="dialog"><div className="notes-target-tabs">{(["library", "project", "session"] as Owner["scope"][]).map((scope) => <button type="button" className={target.owner.scope === scope ? "active" : ""} key={scope} onClick={() => { setTarget((current) => current ? { ...current, owner: { scope } } : current); setTargetQuery(""); }}>{t(scope === "library" ? "desktop.notes.targetLibrary" : scope === "project" ? "desktop.notes.targetProject" : "desktop.notes.targetSession")}</button>)}</div><input className="notes-target-search" value={targetQuery} onChange={(event) => setTargetQuery(event.target.value)} placeholder={t("desktop.notes.filterProjects")} autoFocus />
               {target.owner.scope === "library" ? <button type="button" className="notes-target-item" onClick={() => void applyTarget({ scope: "library" })}>{t("desktop.notes.targetLibrary")}</button> : <div className="notes-target-list">{target.owner.scope === "project" ? targetProjects.map((project) => <button type="button" className="notes-target-item" key={project.path} onClick={() => void applyTarget({ scope: "project", projectPath: project.path })}>{project.label}</button>) : targetSessions.map((session) => <button type="button" className="notes-target-item" key={sessionKey(session)} onClick={() => void applyTarget({ scope: "session", provider: session.provider, sessionId: session.id, projectPath: session.projectPath })}>{session.title || session.id}</button>)}</div>}
@@ -472,12 +482,29 @@ export function NotesPanel(): ReactPortal | null {
         <main className="notes-detail">
           {selected ? <div className="notes-editor-shell"><div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><Save size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><Pencil size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><Eye size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={() => setFindOpen(true)}><Search size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><Clipboard size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><FolderOpen size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><Trash2 size={15} /></button></div></div>
             {findOpen ? <div className="notes-find-bar"><input ref={findRef} className="notes-find-input" value={findQuery} onChange={(event) => { setFindQuery(event.target.value); setFindMatch(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); find(event.shiftKey ? "backward" : "forward"); } if (event.key === "Escape") setFindOpen(false); }} /><span className={`notes-find-count${findMatch === false ? " is-empty" : ""}`}>{findMatch === null ? "" : findMatch ? "1" : "0"}</span><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("backward")}><ChevronLeft size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("forward")}><ChevronRight size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => setFindOpen(false)}><X size={15} /></button></div> : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
           <Status kind={status.kind}>{status.text}</Status>
         </main>
       </div>
-      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }}>{contextMenu.kind === "project" ? <><button type="button" onClick={() => { togglePinnedProject(contextMenu.projectPath); setContextMenu(null); }}>{t(pinnedProjects.has(contextMenu.projectPath) ? "desktop.notes.unpinProject" : "desktop.notes.pinProject")}</button><button type="button" onClick={() => { beginTarget("create", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.newNote")}</button><button type="button" onClick={() => { beginTarget("import", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.importMarkdown")}</button><button type="button" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button></> : <><button type="button" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button><button type="button" onClick={() => { beginTarget("move", contextMenu.note); setContextMenu(null); }}><MoveRight size={14} /> {t("desktop.notes.changeOwner")}</button><button type="button" onClick={() => { setRenameDialog({ kind: "note", note: contextMenu.note, title: titleFor(contextMenu.note) }); setContextMenu(null); }}>{t("desktop.common.rename")}</button><button type="button" onClick={() => { void desktopApi().notesReveal({ noteId: contextMenu.note.noteId }); setContextMenu(null); }}>{t("desktop.common.revealInFinder")}</button><button type="button" onClick={() => { void remove(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.deleteNote")}</button></>}</div> : null}
+      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }} onContextMenu={(event) => event.preventDefault()}>
+        {contextMenu.kind === "project" ? <>
+          <button type="button" role="menuitem" onClick={() => { togglePinnedProject(contextMenu.projectPath); setContextMenu(null); }}>{t(pinnedProjects.has(contextMenu.projectPath) ? "desktop.notes.unpinProject" : "desktop.notes.pinProject")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { beginTarget("create", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.newNote")}</button>
+          <button type="button" role="menuitem" onClick={() => { beginTarget("import", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.importMarkdown")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button>
+        </> : <>
+          <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { beginTarget("move", contextMenu.note); setContextMenu(null); }}><span>{t("desktop.notes.changeOwner")}</span><ChevronRight className="context-menu-chevron" size={14} aria-hidden="true" /></button>
+          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "note", note: contextMenu.note, title: titleFor(contextMenu.note) }); setContextMenu(null); }}>{t("desktop.common.rename")}</button>
+          <button type="button" role="menuitem" onClick={() => { void desktopApi().notesReveal({ noteId: contextMenu.note.noteId }); setContextMenu(null); }}>{t("desktop.common.revealInFinder")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => { void remove(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.deleteNote")}</button>
+        </>}
+      </div> : null}
       {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); void applyRenameDialog(); }}><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.notes.renameProject" : "desktop.common.rename")}</p><input className="wb-rename-input" autoFocus value={renameDialog.title} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
       {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><X size={16} /></button></div> : null}
     </section>, host
