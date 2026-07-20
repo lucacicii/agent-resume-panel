@@ -3,6 +3,7 @@ packages:
   - packages/*
 
 nodeLinker: isolated
+registry: https://registry.npmjs.org/
 
 allowBuilds:
   "@vscode/vsce-sign": true
