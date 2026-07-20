@@ -7171,10 +7171,19 @@ textarea.notes-editor-host:focus {
 
 .notes-editor-host .cm-editor {
   height: 100%;
+  border-radius: 8px;
 }
 
 .notes-editor-host .cm-scroller {
   font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.55;
+}
+
+.wb-editor-host .cm-content,
+.notes-editor-host .cm-content {
+  padding: 8px 12px;
+  min-height: 100%;
 }
 
 .markdown-body pre:has(> code.hljs) {
