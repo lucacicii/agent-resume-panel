@@ -55,7 +55,11 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByRole("button", { name: /Fix renderer/ });
+    const fixRenderer = await screen.findByRole("button", { name: /Fix renderer/ });
+    const providerTag = fixRenderer.querySelector(".wb-list-item-preview .s-provider-tag");
+    expect(providerTag?.classList.contains("s-provider-tag")).toBe(true);
+    expect(providerTag?.getAttribute("data-provider")).toBe("codex");
+    expect(providerTag?.textContent).toBe("codex");
     fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')!);
     expect(screen.queryByRole("button", { name: /Write tests/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Fix renderer/ }));
