@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.10]
+
+#### 新增
+
+- **Discord 社区**：README 文档与反馈区增加 [Discord 邀请链接](https://discord.gg/CG2esx7K7)。
+
 ### [2.6.9]
 
 #### 修复
@@ -387,6 +393,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.10]
+
+#### Added
+
+- **Discord community**: README documentation & feedback section now includes a [Discord invite link](https://discord.gg/CG2esx7K7).
 
 ### [2.6.9]
 
