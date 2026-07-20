@@ -3,7 +3,9 @@ import { ExternalLink, FileText, MessageSquareWarning, ShieldCheck } from "lucid
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
+import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -46,6 +48,26 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitNestedScanGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitNestedScanMaxDepth")} description={t("desktop.settings.gitNestedScanMaxDepthDesc")} value={draft.gitNestedScanMaxDepth} onChange={(value) => update("gitNestedScanMaxDepth", Number(value))}>{Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectRow>
       <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitNestedScanIgnoreDirs")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitNestedScanIgnoreDirsDesc")}</span><textarea rows={5} spellCheck={false} placeholder={"node_modules\ndist"} value={draft.gitNestedScanIgnoreDirs} onChange={(event) => update("gitNestedScanIgnoreDirs", event.target.value)} /></label>
+    </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.projectContextMenuGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{t("desktop.settings.projectContextMenuDesc")}</p>
+      {ALL_WORKBENCH_PROJECT_CONTEXT_MENU.map((action) => {
+        const checked = draft.projectContextMenu.includes(action);
+        return <ToggleRow
+          key={action}
+          title={t(`desktop.settings.projectMenu.${action}`)}
+          description={t(`desktop.settings.projectMenu.${action}Desc`)}
+          checked={checked}
+          onChange={(value) => {
+            const next = value
+              ? [...draft.projectContextMenu.filter((item) => item !== action), action]
+              : draft.projectContextMenu.filter((item) => item !== action);
+            // Preserve stable display order from ALL_ list
+            const ordered = ALL_WORKBENCH_PROJECT_CONTEXT_MENU.filter((item) => next.includes(item));
+            update("projectContextMenu", ordered as WorkbenchProjectContextMenuAction[]);
+          }}
+        />;
+      })}
     </div></section>
   </>;
 }

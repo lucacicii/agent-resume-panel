@@ -7,7 +7,13 @@ import {
   settingsPath
 } from "../panelHome";
 import { sanitizeAgentHomes } from "../transcript/homes";
-import { DEFAULT_SETTINGS, PanelSettings } from "./types";
+import {
+  ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
+  PanelSettings,
+  WorkbenchProjectContextMenuAction
+} from "./types";
 import {
   normalizeCommitMessageStyle,
   normalizeCustomCommitInstructions
@@ -16,6 +22,24 @@ import {
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
+const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
+
+export function normalizeWorkbenchProjectContextMenu(
+  value: WorkbenchProjectContextMenuAction[] | undefined | null
+): WorkbenchProjectContextMenuAction[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU];
+  }
+  const seen = new Set<WorkbenchProjectContextMenuAction>();
+  const output: WorkbenchProjectContextMenuAction[] = [];
+  for (const entry of value) {
+    if (!PROJECT_MENU_ACTIONS.has(entry) || seen.has(entry)) continue;
+    seen.add(entry);
+    output.push(entry);
+  }
+  // Empty explicit array is allowed (hide all); only fall back when unset/invalid.
+  return output;
+}
 
 function normalizeWorkbenchEditorSettings(
   settings: NonNullable<PanelSettings["workbench"]>["editor"]
@@ -93,6 +117,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(
         partial.workbench?.gitCommitCustomInstructions
+      ),
+      projectContextMenu: normalizeWorkbenchProjectContextMenu(
+        partial.workbench?.projectContextMenu ?? base.workbench?.projectContextMenu
       ),
       editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },

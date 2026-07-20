@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -23,7 +23,9 @@ import {
   getSessionById,
   getUsageSummary,
   hideSessionAction,
+  hideProjectAction,
   listLlmUsageEvents,
+  listProjects,
   listReportEntries,
   listReportEntriesInRange,
   listScheduleRuns,
@@ -31,10 +33,18 @@ import {
   listSessions,
   listSessionsInRange,
   unhideAllSessionsInCatalog,
+  unhideAllProjectsInCatalog,
   loadProjectAliasesMap,
   loadSessionPreview,
   loadSettings,
   setProjectAliasInCatalog,
+  setProjectLocalPath,
+  setProjectPinnedInCatalog,
+  resolveProjectCwd,
+  resolveProjectCwdForPath,
+  listProjectPathVariants,
+  mergeProjectsInCatalog,
+  splitProjectPathInCatalog,
   openAlmaThreadInApp,
   openChatGptAppSession,
   openProjectInEditor,
@@ -130,8 +140,26 @@ function systemTerminalSettings(settings: PanelSettings) {
 
 async function resolveSessionCwd(
   projectPath: string | undefined,
-  settings: PanelSettings
+  settings: PanelSettings,
+  projectId?: string
 ): Promise<string> {
+  try {
+    const paths = await loadPanelDbPaths(settings);
+    if (projectId?.trim()) {
+      const resolved = await resolveProjectCwd(paths.catalogDb, projectId.trim());
+      if (resolved.source !== "missing" && resolved.cwd) {
+        return resolved.cwd;
+      }
+    }
+    if (projectPath?.trim()) {
+      const resolved = await resolveProjectCwdForPath(paths.catalogDb, projectPath.trim());
+      if (resolved.source !== "missing" && resolved.cwd) {
+        return resolved.cwd;
+      }
+    }
+  } catch {
+    // fall through
+  }
   const raw = projectPath?.trim() || "";
   if (raw) {
     const expanded = expandHome(raw);
@@ -407,8 +435,9 @@ function registerIpc(): void {
   ipcMain.handle("sessions:unhideAll", async () => {
     const paths = await loadPanelDbPaths();
     const restored = await unhideAllSessionsInCatalog(paths.catalogDb);
+    const restoredProjects = await unhideAllProjectsInCatalog(paths.catalogDb);
     const counts = await countSessions(paths.catalogDb);
-    return { restored, counts };
+    return { restored, restoredProjects, counts };
   });
 
   ipcMain.handle("sessions:list", async (_event, limit?: number) => {
@@ -999,6 +1028,144 @@ function registerIpc(): void {
       const paths = await loadPanelDbPaths();
       await setProjectAliasInCatalog(paths.catalogDb, args.projectPath, args.alias);
       return { ok: true };
+    }
+  );
+
+  ipcMain.handle("projects:list", async (_event, opts?: { includeHidden?: boolean }) => {
+    const paths = await loadPanelDbPaths();
+    return listProjects(paths.catalogDb, opts);
+  });
+
+  ipcMain.handle(
+    "projects:hide",
+    async (_event, args: { projectId?: string; projectPath?: string }) => {
+      return hideProjectAction(args);
+    }
+  );
+
+  ipcMain.handle(
+    "projects:setLocalPath",
+    async (_event, args: { projectId: string; absolutePath: string }) => {
+      const paths = await loadPanelDbPaths();
+      await setProjectLocalPath(paths.catalogDb, args.projectId, args.absolutePath);
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle(
+    "projects:pickLocalPath",
+    async (_event, args: { projectId: string; title?: string }) => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory", "createDirectory"],
+        title: args.title || "Select local project folder"
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false as const, canceled: true as const };
+      }
+      const absolutePath = result.filePaths[0];
+      const paths = await loadPanelDbPaths();
+      await setProjectLocalPath(paths.catalogDb, args.projectId, absolutePath);
+      const resolved = await resolveProjectCwd(paths.catalogDb, args.projectId);
+      return { ok: true as const, absolutePath, resolved };
+    }
+  );
+
+  ipcMain.handle(
+    "projects:setPinned",
+    async (_event, args: { projectId: string; pinned: boolean }) => {
+      const paths = await loadPanelDbPaths();
+      await setProjectPinnedInCatalog(paths.catalogDb, args.projectId, args.pinned === true);
+      return { ok: true };
+    }
+  );
+
+  async function resolveProjectPathForDesktop(args: {
+    projectId?: string;
+    projectPath?: string;
+  }): Promise<{ cwd: string; source: string }> {
+    const paths = await loadPanelDbPaths();
+    let resolved;
+    if (args.projectId?.trim()) {
+      resolved = await resolveProjectCwd(paths.catalogDb, args.projectId.trim());
+    } else if (args.projectPath?.trim()) {
+      resolved = await resolveProjectCwdForPath(paths.catalogDb, args.projectPath.trim());
+    } else {
+      throw new Error("projectId or projectPath is required.");
+    }
+    if (resolved.source === "missing" || !resolved.cwd?.trim()) {
+      throw new Error(
+        "Local project folder was not found on this machine. Use “Set local folder…” first."
+      );
+    }
+    try {
+      const stat = await fs.stat(resolved.cwd);
+      if (!stat.isDirectory()) {
+        throw new Error("Local project path is not a directory.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("not a directory")) throw error;
+      throw new Error(
+        "Local project folder was not found on this machine. Use “Set local folder…” first."
+      );
+    }
+    const real = await fs.realpath(resolved.cwd).catch(() => path.resolve(resolved.cwd));
+    return { cwd: real, source: resolved.source };
+  }
+
+  ipcMain.handle(
+    "projects:revealInFinder",
+    async (_event, args: { projectId?: string; projectPath?: string }) => {
+      const { cwd } = await resolveProjectPathForDesktop(args);
+      // showItemInFolder selects the item in its parent; works for files and directories.
+      shell.showItemInFolder(cwd);
+      return { ok: true, path: cwd };
+    }
+  );
+
+  ipcMain.handle(
+    "projects:copyLocalPath",
+    async (_event, args: { projectId?: string; projectPath?: string }) => {
+      const { cwd } = await resolveProjectPathForDesktop(args);
+      clipboard.writeText(cwd);
+      return { ok: true, path: cwd };
+    }
+  );
+
+  ipcMain.handle(
+    "projects:resolveCwd",
+    async (_event, args: { projectId?: string; projectPath?: string }) => {
+      const paths = await loadPanelDbPaths();
+      if (args.projectId?.trim()) {
+        return resolveProjectCwd(paths.catalogDb, args.projectId.trim());
+      }
+      if (args.projectPath?.trim()) {
+        return resolveProjectCwdForPath(paths.catalogDb, args.projectPath.trim());
+      }
+      throw new Error("projectId or projectPath is required.");
+    }
+  );
+
+  ipcMain.handle(
+    "projects:listPathVariants",
+    async (_event, args: { projectId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return listProjectPathVariants(paths.catalogDb, args.projectId);
+    }
+  );
+
+  ipcMain.handle(
+    "projects:merge",
+    async (_event, args: { sourceProjectId: string; targetProjectId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return mergeProjectsInCatalog(paths.catalogDb, args.sourceProjectId, args.targetProjectId);
+    }
+  );
+
+  ipcMain.handle(
+    "projects:splitPath",
+    async (_event, args: { sourceProjectId: string; absolutePath: string }) => {
+      const paths = await loadPanelDbPaths();
+      return splitProjectPathInCatalog(paths.catalogDb, args.sourceProjectId, args.absolutePath);
     }
   );
 }

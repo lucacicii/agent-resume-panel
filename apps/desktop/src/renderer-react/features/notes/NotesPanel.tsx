@@ -18,8 +18,20 @@ type Folder = { kind: "all" } | { kind: "library" } | { kind: "project"; project
 type ProjectFilter = "all" | "pinned" | "active";
 type ListFilter = "all" | "pinned";
 type TargetState = { action: "create" | "import" | "move"; owner: Owner; note?: Note };
-type ContextMenu = { kind: "project"; projectPath: string; x: number; y: number } | { kind: "note"; note: Note; x: number; y: number };
-type RenameDialog = { kind: "project"; projectPath: string; title: string } | { kind: "note"; note: Note; title: string };
+type CatalogProject = {
+  projectId: string;
+  portableKey: string;
+  alias: string;
+  hidden: boolean;
+  pinned?: boolean;
+  lastSeenAtMs: number | null;
+  updatedAtMs: number;
+  localPath: string | null;
+  pathMissing: boolean;
+  sessionCount: number;
+};
+type ContextMenu = { kind: "project"; projectPath: string; projectId?: string; x: number; y: number } | { kind: "note"; note: Note; x: number; y: number };
+type RenameDialog = { kind: "project"; projectPath: string; projectId?: string; title: string } | { kind: "note"; note: Note; title: string };
 
 const PINNED_PROJECTS_KEY = "pinned-projects";
 const PINNED_NOTES_KEY = "pinned-notes";
@@ -122,6 +134,7 @@ export function NotesPanel(): ReactPortal | null {
   const [editingTitle, setEditingTitle] = useState(false);
   const [view, setView] = useState<"edit" | "view">("edit");
   const [folder, setFolder] = useState<Folder>({ kind: "all" });
+  const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(() => loadPinned(PINNED_PROJECTS_KEY));
   const [pinnedNotes, setPinnedNotes] = useState<Set<string>>(() => loadPinned(PINNED_NOTES_KEY));
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
@@ -154,12 +167,19 @@ export function NotesPanel(): ReactPortal | null {
 
   const load = useCallback(async () => {
     try {
-      const [nextNotes, nextSessions, nextAliases] = await Promise.all([
-        desktopApi().notesList(), desktopApi().listSessions(2_000), desktopApi().listProjectAliases()
+      const listProjects = typeof desktopApi().listProjects === "function"
+        ? desktopApi().listProjects()
+        : Promise.resolve([] as CatalogProject[]);
+      const [nextNotes, nextSessions, nextAliases, nextProjects] = await Promise.all([
+        desktopApi().notesList(),
+        desktopApi().listSessions(2_000),
+        desktopApi().listProjectAliases(),
+        listProjects
       ]);
       setNotes(nextNotes);
       setSessions(nextSessions);
       setAliases(nextAliases);
+      setCatalogProjects(nextProjects || []);
       setSelected((current) => current ? nextNotes.find((item) => item.noteId === current.noteId) || null : null);
       setStatus({ text: "" });
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
@@ -244,6 +264,46 @@ export function NotesPanel(): ReactPortal | null {
   }, [findOpen]);
 
   const projects = useMemo(() => {
+    if (catalogProjects.length) {
+      return catalogProjects.map((project) => {
+        const path = project.localPath || project.portableKey;
+        const projectNotes = notes.filter((note) =>
+          note.scope === "project"
+          && note.projectPath
+          && (note.projectPath === path
+            || note.projectPath === project.localPath
+            || note.projectPath === project.portableKey
+            || (project.localPath && note.projectPath.endsWith(project.portableKey.replace(/^~\//, ""))))
+        );
+        const projectSessions = sessions.filter((session) =>
+          (session.projectId && session.projectId === project.projectId)
+          || session.projectPath === path
+          || session.projectPath === project.localPath
+        );
+        return {
+          id: project.projectId,
+          path,
+          pathMissing: project.pathMissing,
+          portableKey: project.portableKey,
+          label: project.alias || aliases[path] || basename(path),
+          count: projectNotes.length,
+          active: projectSessions.some(activeSession),
+          pinned: project.pinned === true || pinnedProjects.has(path) || pinnedProjects.has(project.projectId),
+          updatedAt: Math.max(
+            0,
+            project.lastSeenAtMs || 0,
+            project.updatedAtMs || 0,
+            ...projectNotes.map((note) => note.updatedAtMs),
+            ...projectSessions.map((session) => session.updatedAt)
+          )
+        };
+      }).filter((project) => {
+        const query = projectQuery.trim().toLocaleLowerCase();
+        return (!query || `${project.label} ${project.path}`.toLocaleLowerCase().includes(query))
+          && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
+      }).sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt || left.label.localeCompare(right.label));
+    }
+
     const grouped = new Map<string, { notes: Note[]; sessions: AgentSession[] }>();
     for (const note of notes) {
       if (note.scope !== "project" || !note.projectPath) continue;
@@ -258,7 +318,10 @@ export function NotesPanel(): ReactPortal | null {
       grouped.set(session.projectPath, group);
     }
     return [...grouped.entries()].map(([path, group]) => ({
+      id: path,
       path,
+      pathMissing: false,
+      portableKey: path,
       label: aliases[path] || basename(path),
       count: group.notes.length,
       active: group.sessions.some(activeSession),
@@ -269,7 +332,7 @@ export function NotesPanel(): ReactPortal | null {
       return (!query || `${project.label} ${project.path}`.toLocaleLowerCase().includes(query))
         && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
     }).sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt || left.label.localeCompare(right.label));
-  }, [aliases, notes, pinnedProjects, projectFilter, projectQuery, sessions]);
+  }, [aliases, catalogProjects, notes, pinnedProjects, projectFilter, projectQuery, sessions]);
 
   const folderSessions = useMemo(() => sessions.filter((session) => {
     const hasNote = notes.some((note) => note.scope === "session" && note.provider === session.provider && note.agentSessionId === session.id);
@@ -325,12 +388,34 @@ export function NotesPanel(): ReactPortal | null {
     setListQuery("");
   };
 
-  const togglePinnedProject = (projectPath: string) => setPinnedProjects((current) => {
-    const next = new Set(current);
-    if (next.has(projectPath)) next.delete(projectPath); else next.add(projectPath);
-    savePinned(PINNED_PROJECTS_KEY, next);
-    return next;
-  });
+  const togglePinnedProject = async (projectPath: string, projectId?: string) => {
+    const currentlyPinned = pinnedProjects.has(projectPath)
+      || (projectId ? pinnedProjects.has(projectId) : false)
+      || catalogProjects.some((item) => item.projectId === projectId && item.pinned);
+    const nextPinned = !currentlyPinned;
+    setPinnedProjects((current) => {
+      const next = new Set(current);
+      if (nextPinned) {
+        next.add(projectPath);
+        if (projectId) next.add(projectId);
+      } else {
+        next.delete(projectPath);
+        if (projectId) next.delete(projectId);
+      }
+      savePinned(PINNED_PROJECTS_KEY, next);
+      return next;
+    });
+    if (projectId && typeof desktopApi().setProjectPinned === "function") {
+      try {
+        await desktopApi().setProjectPinned({ projectId, pinned: nextPinned });
+        setCatalogProjects((current) =>
+          current.map((item) => item.projectId === projectId ? { ...item, pinned: nextPinned } : item)
+        );
+      } catch (error) {
+        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      }
+    }
+  };
 
   const togglePinnedNote = (noteId: string) => setPinnedNotes((current) => {
     const next = new Set(current);
@@ -438,8 +523,8 @@ export function NotesPanel(): ReactPortal | null {
           <div className="notes-folders">
             <button type="button" className={`notes-folder-row${folder.kind === "all" ? " active" : ""}`} onClick={() => selectFolder({ kind: "all" })}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.length}</span></button>
             <button type="button" className={`notes-folder-row${folder.kind === "library" ? " active" : ""}`} onClick={() => selectFolder({ kind: "library" })}><span className="notes-folder-row-label">{t("desktop.notes.librarySection")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.scope === "library").length}</span></button>
-            <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.projectLabel")}</div>{projects.length ? projects.map((project) => <button type="button" key={project.path} title={project.path} className={`notes-folder-row${folder.kind === "project" && folder.projectPath === project.path ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}`} onClick={() => selectFolder({ kind: "project", projectPath: project.path })} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "project", projectPath: project.path, x: event.clientX, y: event.clientY }); }}>
-              {project.pinned ? <Pin className="project-pin-icon" size={12} /> : null}{project.active ? <span className="wb-folder-activity-dot" /> : null}<span className="notes-folder-row-text"><span className="notes-folder-row-label">{project.label}</span><span className="notes-folder-row-desc">{project.path}</span></span><span className="notes-folder-row-count">{project.count}</span>
+            <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.projectLabel")}</div>{projects.length ? projects.map((project) => <button type="button" key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} className={`notes-folder-row${folder.kind === "project" && folder.projectPath === project.path ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} onClick={() => selectFolder({ kind: "project", projectPath: project.path })} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "project", projectPath: project.path, projectId: project.id, x: event.clientX, y: event.clientY }); }}>
+              {project.pinned ? <Pin className="project-pin-icon" size={12} /> : null}{project.active ? <span className="wb-folder-activity-dot" /> : null}<span className="notes-folder-row-text"><span className="notes-folder-row-label">{project.label}</span><span className="notes-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="notes-folder-row-count">{project.count}</span>
             </button>) : <p className="muted notes-folders-empty">{t("desktop.notes.noMatchingProjects")}</p>}</section>
             <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.sessionsSection")}</div>{folderSessions.map((session) => <button type="button" key={sessionKey(session)} className={`notes-folder-row${folder.kind === "session" && folder.provider === session.provider && folder.sessionId === session.id ? " active" : ""}`} onClick={() => selectFolder({ kind: "session", provider: session.provider, sessionId: session.id })}><span className="notes-folder-row-text"><span className="notes-folder-row-label">{session.title || session.id}</span><span className="notes-folder-row-desc">{session.provider}</span></span></button>)}</section>
           </div>
@@ -489,12 +574,27 @@ export function NotesPanel(): ReactPortal | null {
       </div>
       {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }} onContextMenu={(event) => event.preventDefault()}>
         {contextMenu.kind === "project" ? <>
-          <button type="button" role="menuitem" onClick={() => { togglePinnedProject(contextMenu.projectPath); setContextMenu(null); }}>{t(pinnedProjects.has(contextMenu.projectPath) ? "desktop.notes.unpinProject" : "desktop.notes.pinProject")}</button>
+          <button type="button" role="menuitem" onClick={() => { void togglePinnedProject(contextMenu.projectPath, contextMenu.projectId); setContextMenu(null); }}>{t(
+            (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
+              || pinnedProjects.has(contextMenu.projectPath)
+              || (contextMenu.projectId ? pinnedProjects.has(contextMenu.projectId) : false)
+              ? "desktop.notes.unpinProject"
+              : "desktop.notes.pinProject"
+          )}</button>
           <div className="context-menu-separator" role="separator" />
           <button type="button" role="menuitem" onClick={() => { beginTarget("create", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.newNote")}</button>
           <button type="button" role="menuitem" onClick={() => { beginTarget("import", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.importMarkdown")}</button>
           <div className="context-menu-separator" role="separator" />
-          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button>
+          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, projectId: contextMenu.projectId, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button>
+          {contextMenu.projectId && typeof desktopApi().pickProjectLocalPath === "function" ? <button type="button" role="menuitem" onClick={() => { void desktopApi().pickProjectLocalPath({ projectId: contextMenu.projectId!, title: t("desktop.workbench.setLocalFolderTitle") }).then((result) => { if (result.ok) { setStatus({ text: t("desktop.workbench.localPathSet", result.absolutePath) }); void load(); } }).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })); setContextMenu(null); }}>{t("desktop.workbench.setLocalFolder")}</button> : null}
+          {typeof desktopApi().copyProjectLocalPath === "function" ? <button type="button" role="menuitem" onClick={() => { void desktopApi().copyProjectLocalPath({ projectId: contextMenu.projectId, projectPath: contextMenu.projectPath }).then((result) => setStatus({ text: t("desktop.workbench.pathCopied", result.path) })).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })); setContextMenu(null); }}>{t("desktop.workbench.copyLocalPath")}</button> : null}
+          {typeof desktopApi().revealProjectInFinder === "function" ? <button type="button" role="menuitem" onClick={() => { void desktopApi().revealProjectInFinder({ projectId: contextMenu.projectId, projectPath: contextMenu.projectPath }).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })); setContextMenu(null); }}>{t("desktop.common.revealInFinder")}</button> : null}
+          {typeof desktopApi().hideProject === "function" ? <><div className="context-menu-separator" role="separator" /><button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => {
+            const label = aliases[contextMenu.projectPath] || basename(contextMenu.projectPath);
+            if (!window.confirm(t("desktop.workbench.removeProjectConfirm", label, 0))) { setContextMenu(null); return; }
+            void desktopApi().hideProject({ projectId: contextMenu.projectId, projectPath: contextMenu.projectPath }).then(() => load()).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
+            setContextMenu(null);
+          }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
           <div className="context-menu-separator" role="separator" />
