@@ -8,6 +8,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.1]
+
+#### Added
+
+- Keep-alive Workbench terminal sessions when switching panels
+- Improved model configuration UX and global notifications
+- Context menus aligned with macOS styling
+- Sidebar segment filter slider animation with clearer dark-mode contrast
+
+#### Fixed
+
+- Git refresh button shows a loading spinner while refreshing
+- Dark mode code and Notes editors use One Dark for better contrast
+- Workbench session list agent badges match Report styling
+- Terminal PTY resizes correctly when the window is resized
+- Workbench session active-state display
+- Cmd+W closes the current Workbench panel
+
 ### [0.2.0]
 
 #### Added
@@ -106,6 +124,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.1]
+
+#### 新增
+
+- Workbench 终端会话在切换面板时保活
+- 改进模型配置体验与全局通知
+- 右键菜单对齐 macOS 样式
+- 侧栏分段筛选增加滑块动画，并优化暗色对比
+
+#### 修复
+
+- Git 刷新按钮在加载时显示转圈动画
+- 暗色模式下代码与 Notes 编辑器使用 One Dark 提升对比度
+- Workbench 会话列表 agent 标识对齐 Report 样式
+- 终端随窗口缩放动态适配 PTY 尺寸
+- 工作台会话活跃状态显示
+- Workbench 中 Cmd+W 关闭当前面板
 
 ### [0.2.0]
 
