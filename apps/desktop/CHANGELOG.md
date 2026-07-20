@@ -8,6 +8,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.2]
+
+#### Added
+
+- First-class **projects** in the shared catalog (`project_id`, portable key, per-machine local paths)
+- Cross-machine project identity: same `~/…` layout merges automatically; bind a folder on this Mac when paths differ
+- Workbench project actions: remove from panel, pin, set local folder, copy path, reveal in Finder, merge / split (advanced)
+- Configurable **project context menu** in Settings → Workbench (defaults: New Session, Mount note, Reveal in Finder, Remove from panel), with per-item tips
+- Notes sidebar projects aligned with catalog projects (shared pins / path state)
+
+#### Improved
+
+- Session sync reconciles projects after each scan; hide/unhide project cascades sessions
+- Clearer path-missing state and safer Reveal in Finder (errors when the folder is missing)
+- Cross-machine session badge when a session path is under another user home
+
+#### Fixed
+
+- Stale per-machine path rows no longer force “Not on this machine” when the real folder exists
+- Empty project alias no longer deletes the projects row (personalization is preserved)
+
 ### [0.2.1]
 
 #### Added
@@ -124,6 +145,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.2]
+
+#### 新增
+
+- Catalog 中 **一等 projects**（`project_id`、可移植键、按机器绑定本机路径）
+- 跨机项目身份：相同 `~/…` 布局自动合并；路径不同时可「设置本机文件夹」
+- Workbench 项目能力：从面板移除、置顶、设置本机路径、复制路径、Finder 显示、合并 / 拆分（高级）
+- **设置 → Workbench → 项目右键菜单** 可勾选显示项（默认：新建 Session、挂载笔记、Finder 显示、从面板移除），并附功能说明
+- Notes 侧栏项目与 catalog 对齐（共用置顶 / 路径状态）
+
+#### 改进
+
+- Session 同步后自动 reconcile 项目；隐藏 / 恢复项目会级联 session
+- 路径缺失提示更清晰；Finder 显示在目录不存在时给出明确错误
+- 外机用户 home 下的 session 显示「其他机器」标记
+
+#### 修复
+
+- 本机 local_paths 过期时，若真实目录仍存在，不再误报「本机未绑定」
+- 清空项目别名不再删除 projects 行，个性化数据得以保留
 
 ### [0.2.1]
 
