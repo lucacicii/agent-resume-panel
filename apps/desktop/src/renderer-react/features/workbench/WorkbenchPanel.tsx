@@ -57,6 +57,7 @@ type DiffPane = {
 type TerminalPane = {
   key: string;
   title: string;
+  sessionKey?: string;
   projectPath: string;
   cwd: string;
   command?: string;
@@ -152,10 +153,6 @@ function statusError(error: unknown): string {
 
 function gitSuggestionError(error: unknown): string {
   return statusError(error).replace(/^Error invoking remote method 'terminal:gitSuggestCommit': Error:\s*/, "");
-}
-
-function activeSession(session: AgentSession): boolean {
-  return Date.now() - session.updatedAt < 15 * 60_000;
 }
 
 function gitStatusLetter(status: string): string {
@@ -554,6 +551,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalRefs = useRef(new Map<number, Terminal>());
   const gitRefreshTimers = useRef(new Map<string, number>());
   const terminalsRef = useRef<TerminalPane[]>([]);
+  const openingSessionKeysRef = useRef(new Set<string>());
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const sessionSearchInputRef = useRef<HTMLInputElement>(null);
@@ -562,6 +560,10 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  const openSessionKeys = useMemo(() => new Set(
+    terminals.flatMap((pane) => pane.sessionKey ? [pane.sessionKey] : [])
+  ), [terminals]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -644,7 +646,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       path,
       sessions: group,
       label: aliases[path] || basename(path),
-      active: group.some(activeSession),
+      active: group.some((session) => openSessionKeys.has(sessionKey(session))),
       pinned: pinnedProjects.has(path),
       updatedAt: Math.max(...group.map((item) => item.updatedAt))
     })).filter((project) => {
@@ -652,13 +654,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       return (!query || `${project.label} ${project.path}`.toLowerCase().includes(query))
         && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
     }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
-  }, [aliases, pinnedProjects, projectFilter, projectQuery, sessions]);
+  }, [aliases, openSessionKeys, pinnedProjects, projectFilter, projectQuery, sessions]);
 
   const selectedSessions = useMemo(() => sessions.filter((session) => !selectedProject || session.projectPath === selectedProject), [selectedProject, sessions]);
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
-    return matchesQuery && (sessionFilter === "all" || activeSession(session));
-  }).sort((a, b) => b.updatedAt - a.updatedAt), [selectedSessions, sessionFilter, sessionQuery]);
+    return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
+  }).sort((a, b) => b.updatedAt - a.updatedAt), [openSessionKeys, selectedSessions, sessionFilter, sessionQuery]);
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
   const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
   const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
@@ -693,9 +695,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
-  const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd) => {
+  const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd, openedSessionKey?: string) => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
-    setTerminals((current) => [...current, { key, title, cwd, command, projectPath }]);
+    const pane = { key, title, cwd, command, projectPath, sessionKey: openedSessionKey };
+    terminalsRef.current = [...terminalsRef.current, pane];
+    setTerminals((current) => [...current, pane]);
     setActivePane(key, projectPath);
   }, [selectedProject, setActivePane]);
 
@@ -739,6 +743,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);
     if (pane?.ptyId) terminalRefs.current.delete(pane.ptyId);
+    terminalsRef.current = terminalsRef.current.filter((item) => item.key !== key);
     setTerminals((current) => current.filter((item) => item.key !== key));
     if (pane) {
       const projectKey = paneProjectKey(pane.projectPath);
@@ -828,15 +833,29 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [active, closeActivePane]);
 
   const openSession = async (session: AgentSession) => {
-    setActiveSessionKey(sessionKey(session));
+    const key = sessionKey(session);
+    const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
+    if (existing) {
+      selectProject(existing.projectPath);
+      setActivePane(existing.key, existing.projectPath);
+      setActiveSessionKey(key);
+      return;
+    }
+    if (openingSessionKeysRef.current.has(key)) return;
+    openingSessionKeysRef.current.add(key);
+    setActiveSessionKey(key);
     try {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
       if (result.external) {
         setStatus({ text: result.command || t("desktop.workbench.externalTerminalHint"), kind: "ok" });
         return;
       }
-      addTerminal(session.title || session.id, result.cwd, result.command, session.projectPath || result.cwd);
+      const projectPath = session.projectPath || result.cwd;
+      selectProject(projectPath);
+      addTerminal(session.title || session.id, result.cwd, result.command, projectPath, key);
+      setActiveSessionKey(key);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    finally { openingSessionKeysRef.current.delete(key); }
   };
 
   const projectMenu = (event: React.MouseEvent, path: string) => {
@@ -1234,7 +1253,10 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"), sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
-        <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${activeSession(session) ? " has-wb-activity" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{activeSession(session) ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span></span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview">{providerLabel(session.provider)} · {aliases[session.projectPath] || basename(session.projectPath)}</span></button>) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
+        <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => {
+          const isOpen = openSessionKeys.has(sessionKey(session));
+          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span></span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview">{providerLabel(session.provider)} · {aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+        }) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
