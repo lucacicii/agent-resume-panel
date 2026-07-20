@@ -63,6 +63,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 |---|------|
 | VS Code extension docs | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) |
 | Desktop app docs | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
+| Discord community | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | Report issues | [panel-doc Issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
 
 Do not paste API keys, full transcripts, or sensitive paths in issues.
@@ -127,6 +128,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 |---|------|
 | VS Code 扩展文档 | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) |
 | Desktop App 文档 | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
+| Discord 社区 | [discord.gg/CG2esx7K7](https://discord.gg/CG2esx7K7) |
 | 问题反馈 | [panel-doc Issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
 
 请勿粘贴 API Key、完整对话内容或敏感路径。
