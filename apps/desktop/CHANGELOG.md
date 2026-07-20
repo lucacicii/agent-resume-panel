@@ -8,6 +8,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.0]
+
+#### Added
+
+- React desktop renderer for Workbench, Agent, Notes, Report, Sessions, and Settings
+- React-native Workbench Git changes, branch graph, terminal, and file editor flows
+
+#### Improved
+
+- Synchronize the status-bar branch and Git graph after terminal Git operations
+- Keep notes context menus sized correctly in the React renderer
+
 ### [0.1.4]
 
 #### Added
@@ -94,6 +106,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.0]
+
+#### 新增
+
+- Desktop 渲染层迁移至 React，覆盖 Workbench、Agent、Notes、Report、Sessions 和 Settings
+- React 原生实现 Workbench Git 变更、分支图、终端和文件编辑流程
+
+#### 改进
+
+- 终端执行 Git 操作后同步状态栏分支和 Git 图
+- 修复 React 渲染层中 Notes 右键菜单宽度
 
 ### [0.1.4]
 

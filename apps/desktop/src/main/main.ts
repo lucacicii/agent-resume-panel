@@ -216,6 +216,7 @@ let mainWindow: BrowserWindow | null = null;
 let activeAskAbort: AbortController | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
+let workbenchActive = false;
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 function syncSessions(): Promise<AgentSessionSyncResult> {
@@ -275,14 +276,32 @@ function isWorkbenchCmdTInput(input: Electron.Input): boolean {
   return key === "t" || input.code === "KeyT";
 }
 
+function isWorkbenchCmdWInput(input: Electron.Input): boolean {
+  if (input.type !== "keyDown") {
+    return false;
+  }
+  if (!(input.control || input.meta) || input.alt || input.shift) {
+    return false;
+  }
+  const key = input.key?.toLowerCase();
+  return key === "w" || input.code === "KeyW";
+}
+
 function registerWorkbenchShortcuts(win: BrowserWindow): void {
   win.webContents.on("before-input-event", (event, input) => {
-    if (!isWorkbenchCmdTInput(input)) {
+    if (isWorkbenchCmdTInput(input)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) {
+        win.webContents.send("workbench:cmdT");
+      }
       return;
     }
-    event.preventDefault();
-    if (!win.isDestroyed()) {
-      win.webContents.send("workbench:cmdT");
+
+    if (workbenchActive && isWorkbenchCmdWInput(input)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) {
+        win.webContents.send("workbench:cmdW");
+      }
     }
   });
 }
@@ -318,11 +337,18 @@ function createWindow(): void {
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
+    workbenchActive = false;
     mainWindow = null;
   });
 }
 
 function registerIpc(): void {
+  ipcMain.on("workbench:setActive", (event, active: unknown) => {
+    if (event.sender === mainWindow?.webContents) {
+      workbenchActive = active === true;
+    }
+  });
+
   ipcMain.handle("panel:getHome", async () => {
     const settings = await loadSettings();
     return resolvePanelHome(settings.panelHome);

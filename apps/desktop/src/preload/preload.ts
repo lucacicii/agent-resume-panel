@@ -311,7 +311,9 @@ export interface DesktopApi {
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
+  setWorkbenchActive(active: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
+  onWorkbenchCmdW(callback: () => void): () => void;
   listReports(opts?: {
     level?: string;
     limit?: number;
@@ -632,10 +634,16 @@ const api: DesktopApi = {
     ipcRenderer.on("terminal:respawned", handler);
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
+  setWorkbenchActive: (active) => ipcRenderer.send("workbench:setActive", active),
   onWorkbenchCmdT: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdT", handler);
     return () => ipcRenderer.removeListener("workbench:cmdT", handler);
+  },
+  onWorkbenchCmdW: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdW", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdW", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),

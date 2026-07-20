@@ -718,12 +718,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     void refreshTerminalGit(key);
   }, [refreshTerminalGit]);
 
-  const closeTerminal = (key: string) => {
+  const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);
     if (pane?.ptyId) terminalRefs.current.delete(pane.ptyId);
     setTerminals((current) => current.filter((item) => item.key !== key));
     setActivePane((current) => current === key ? currentTerminals.find((item) => item.key !== key)?.key || currentEditors[0]?.key || "" : current);
-  };
+  }, [currentEditors, currentTerminals, terminals]);
+
+  const closeActivePane = useCallback(() => {
+    if (!activePane) return;
+    if (activePane.startsWith("terminal:")) {
+      closeTerminal(activePane);
+    } else if (activePane.startsWith("editor:")) {
+      setEditors((current) => current.filter((item) => item.key !== activePane));
+    } else {
+      setDiffs((current) => current.filter((item) => item.key !== activePane));
+    }
+  }, [activePane, closeTerminal]);
 
   const openBlankTerminal = useCallback(async () => {
     try {
@@ -774,18 +785,25 @@ export function WorkbenchPanel(): ReactPortal | null {
   }), [active, newSession, openBlankTerminal, settings?.workbench?.cmdTAction]);
 
   useEffect(() => {
+    if (typeof window.agentResume.setWorkbenchActive !== "function") return;
+    window.agentResume.setWorkbenchActive(active && Boolean(activePane));
+    return () => window.agentResume.setWorkbenchActive(false);
+  }, [active, activePane]);
+
+  useEffect(() => desktopApi().onWorkbenchCmdW(() => {
+    if (active) closeActivePane();
+  }), [active, closeActivePane]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!active || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "w") return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (!activePane) return;
       event.preventDefault();
-      if (activePane.startsWith("terminal:")) closeTerminal(activePane);
-      else if (activePane.startsWith("editor:")) setEditors((current) => current.filter((item) => item.key !== activePane));
-      else setDiffs((current) => current.filter((item) => item.key !== activePane));
+      closeActivePane();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [active, activePane, currentEditors, currentTerminals, terminals]);
+  }, [active, closeActivePane]);
 
   const openSession = async (session: AgentSession) => {
     setActiveSessionKey(sessionKey(session));
