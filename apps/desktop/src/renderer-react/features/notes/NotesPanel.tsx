@@ -8,6 +8,7 @@ import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 
@@ -426,9 +427,13 @@ export function NotesPanel(): ReactPortal | null {
         <aside className={`sidebar-folders-pane notes-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`} style={{ width: foldersCollapsed ? undefined : foldersWidth }}>
           <div className="sidebar-project-filter-wrap">
             <label className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.notes.filterProjects")} placeholder={t("desktop.notes.filterProjects")} value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} /></label>
-            <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.notes.projectFilter")}>
-              {(["all", "pinned", "active"] as ProjectFilter[]).map((filter) => <button type="button" role="tab" aria-selected={projectFilter === filter} className={projectFilter === filter ? "active" : ""} key={filter} onClick={() => setProjectFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-            </div>
+            <SegmentedControl
+              aria-label={t("desktop.notes.projectFilter")}
+              value={projectFilter}
+              options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+              onChange={setProjectFilter}
+              getLabel={(filter) => t(`desktop.common.${filter}`)}
+            />
           </div>
           <div className="notes-folders">
             <button type="button" className={`notes-folder-row${folder.kind === "all" ? " active" : ""}`} onClick={() => selectFolder({ kind: "all" })}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.length}</span></button>
@@ -458,7 +463,12 @@ export function NotesPanel(): ReactPortal | null {
                   if (!listSearchToolbarRef.current?.contains(document.activeElement)) setListSearchOpen(false);
                 }, 0);
               }} />
-              <div className="sidebar-project-filter-segmented" role="tablist">{(["all", "pinned"] as ListFilter[]).map((filter) => <button type="button" key={filter} role="tab" aria-selected={listFilter === filter} className={listFilter === filter ? "active" : ""} onClick={() => setListFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}</div>
+              <SegmentedControl
+                value={listFilter}
+                options={["all", "pinned"] as const satisfies readonly ListFilter[]}
+                onChange={setListFilter}
+                getLabel={(filter) => t(`desktop.common.${filter}`)}
+              />
             </div>
             {target ? <div className="notes-target-popover" role="dialog"><div className="notes-target-tabs">{(["library", "project", "session"] as Owner["scope"][]).map((scope) => <button type="button" className={target.owner.scope === scope ? "active" : ""} key={scope} onClick={() => { setTarget((current) => current ? { ...current, owner: { scope } } : current); setTargetQuery(""); }}>{t(scope === "library" ? "desktop.notes.targetLibrary" : scope === "project" ? "desktop.notes.targetProject" : "desktop.notes.targetSession")}</button>)}</div><input className="notes-target-search" value={targetQuery} onChange={(event) => setTargetQuery(event.target.value)} placeholder={t("desktop.notes.filterProjects")} autoFocus />
               {target.owner.scope === "library" ? <button type="button" className="notes-target-item" onClick={() => void applyTarget({ scope: "library" })}>{t("desktop.notes.targetLibrary")}</button> : <div className="notes-target-list">{target.owner.scope === "project" ? targetProjects.map((project) => <button type="button" className="notes-target-item" key={project.path} onClick={() => void applyTarget({ scope: "project", projectPath: project.path })}>{project.label}</button>) : targetSessions.map((session) => <button type="button" className="notes-target-item" key={sessionKey(session)} onClick={() => void applyTarget({ scope: "session", provider: session.provider, sessionId: session.id, projectPath: session.projectPath })}>{session.title || session.id}</button>)}</div>}

@@ -6273,13 +6273,31 @@ textarea.wb-editor-host {
   will-change: transform;
 }
 
+[data-theme="dark"] .sidebar-project-filter-segmented {
+  /* Darker track so the elevated thumb reads clearly */
+  background: color-mix(in srgb, var(--color-secondary-bg) 55%, #000);
+  border-color: color-mix(in srgb, var(--color-separator) 80%, transparent);
+}
+
 [data-theme="dark"] .sidebar-project-filter-thumb {
-  background: color-mix(in srgb, var(--text) 9%, var(--panel));
+  /* Lighter raised pill vs track (macOS-style segment selection) */
+  background: color-mix(in srgb, var(--text) 22%, var(--panel));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 0 0 0.5px rgba(255, 255, 255, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sidebar-project-filter-segmented {
+    background: color-mix(in srgb, var(--color-secondary-bg) 55%, #000);
+    border-color: color-mix(in srgb, var(--color-separator) 80%, transparent);
+  }
+
   :root:not([data-theme="light"]) .sidebar-project-filter-thumb {
-    background: color-mix(in srgb, var(--text) 9%, var(--panel));
+    background: color-mix(in srgb, var(--text) 22%, var(--panel));
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 0 0 0.5px rgba(255, 255, 255, 0.14);
   }
 }
 

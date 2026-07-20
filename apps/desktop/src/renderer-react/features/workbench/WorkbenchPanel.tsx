@@ -14,6 +14,7 @@ import {
 import { desktopApi } from "../../bridge";
 import { CodeEditor } from "../../components/CodeEditor";
 import { notifyDesktop } from "../../components/Notifications";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 
@@ -1260,9 +1261,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
           <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.workbench.filterProjects")} placeholder={t("desktop.workbench.filterProjects")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
-          <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.notes.projectFilter")}>
-            {(["all", "pinned", "active"] as ProjectFilter[]).map((filter) => <button type="button" role="tab" key={filter} className={projectFilter === filter ? "active" : ""} aria-selected={projectFilter === filter} onClick={() => setProjectFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-          </div>
+          <SegmentedControl
+            aria-label={t("desktop.notes.projectFilter")}
+            value={projectFilter}
+            options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+            onChange={setProjectFilter}
+            getLabel={(filter) => t(`desktop.common.${filter}`)}
+          />
         </div>
         <div className="wb-folders">
           <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
@@ -1285,9 +1290,13 @@ export function WorkbenchPanel(): ReactPortal | null {
               if (!sessionSearchToolbarRef.current?.contains(document.activeElement)) setSessionSearchOpen(false);
             }, 0);
           }} />
-          <div className="sidebar-project-filter-segmented" role="tablist" aria-label={t("desktop.workbench.sessionFilter")}>
-            {(["all", "active"] as SessionFilter[]).map((filter) => <button type="button" role="tab" key={filter} className={sessionFilter === filter ? "active" : ""} aria-selected={sessionFilter === filter} onClick={() => setSessionFilter(filter)}>{t(`desktop.common.${filter}`)}</button>)}
-          </div>
+          <SegmentedControl
+            aria-label={t("desktop.workbench.sessionFilter")}
+            value={sessionFilter}
+            options={["all", "active"] as const satisfies readonly SessionFilter[]}
+            onChange={setSessionFilter}
+            getLabel={(filter) => t(`desktop.common.${filter}`)}
+          />
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"), sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
         <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => {
