@@ -451,6 +451,8 @@ Migrate `.notes-target-tabs` to use the thumb pattern if it does not already. Do
 | Item hover | `--color-fill-secondary` |
 | Item radius | `--radius-md` |
 
+**Context menus** (Workbench projects/sessions, Notes projects/notes, Ask bubble): `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu` share the same elevated surface tokens as `.ops-menu` (`--color-elevated-bg`, `--shadow-popover`, `--radius-xl`, item hover via `--color-fill-secondary`). Fixed at the cursor. Group actions with hairline `.context-menu-separator` (`role="separator"`). Destructive last items use `.context-menu-item-danger` (`--color-destructive`). Submenu-like rows (e.g. change owner) may show a trailing `.context-menu-chevron`.
+
 ### 4.6 Sheet (Right Panel)
 
 **Classes:** `.sheet`, `.sheet-backdrop`, `.sheet-panel`, `.sheet-wide`, `.sheet-head`, `.sheet-body`

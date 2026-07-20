@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import {
-  ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen, MoveRight,
+  ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
   PanelLeftClose, PanelLeftOpen, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
 } from "lucide-react";
 import type { AgentSession } from "@agent-resume/core";
@@ -487,7 +487,24 @@ export function NotesPanel(): ReactPortal | null {
           <Status kind={status.kind}>{status.text}</Status>
         </main>
       </div>
-      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }}>{contextMenu.kind === "project" ? <><button type="button" onClick={() => { togglePinnedProject(contextMenu.projectPath); setContextMenu(null); }}>{t(pinnedProjects.has(contextMenu.projectPath) ? "desktop.notes.unpinProject" : "desktop.notes.pinProject")}</button><button type="button" onClick={() => { beginTarget("create", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.newNote")}</button><button type="button" onClick={() => { beginTarget("import", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.importMarkdown")}</button><button type="button" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button></> : <><button type="button" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button><button type="button" onClick={() => { beginTarget("move", contextMenu.note); setContextMenu(null); }}><MoveRight size={14} /> {t("desktop.notes.changeOwner")}</button><button type="button" onClick={() => { setRenameDialog({ kind: "note", note: contextMenu.note, title: titleFor(contextMenu.note) }); setContextMenu(null); }}>{t("desktop.common.rename")}</button><button type="button" onClick={() => { void desktopApi().notesReveal({ noteId: contextMenu.note.noteId }); setContextMenu(null); }}>{t("desktop.common.revealInFinder")}</button><button type="button" onClick={() => { void remove(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.deleteNote")}</button></>}</div> : null}
+      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }} onContextMenu={(event) => event.preventDefault()}>
+        {contextMenu.kind === "project" ? <>
+          <button type="button" role="menuitem" onClick={() => { togglePinnedProject(contextMenu.projectPath); setContextMenu(null); }}>{t(pinnedProjects.has(contextMenu.projectPath) ? "desktop.notes.unpinProject" : "desktop.notes.pinProject")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { beginTarget("create", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.newNote")}</button>
+          <button type="button" role="menuitem" onClick={() => { beginTarget("import", undefined, { scope: "project", projectPath: contextMenu.projectPath }); setContextMenu(null); }}>{t("desktop.common.importMarkdown")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "project", projectPath: contextMenu.projectPath, title: aliases[contextMenu.projectPath] || basename(contextMenu.projectPath) }); setContextMenu(null); }}>{t("desktop.notes.renameProject")}</button>
+        </> : <>
+          <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" onClick={() => { beginTarget("move", contextMenu.note); setContextMenu(null); }}><span>{t("desktop.notes.changeOwner")}</span><ChevronRight className="context-menu-chevron" size={14} aria-hidden="true" /></button>
+          <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "note", note: contextMenu.note, title: titleFor(contextMenu.note) }); setContextMenu(null); }}>{t("desktop.common.rename")}</button>
+          <button type="button" role="menuitem" onClick={() => { void desktopApi().notesReveal({ noteId: contextMenu.note.noteId }); setContextMenu(null); }}>{t("desktop.common.revealInFinder")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => { void remove(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.deleteNote")}</button>
+        </>}
+      </div> : null}
       {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); void applyRenameDialog(); }}><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.notes.renameProject" : "desktop.common.rename")}</p><input className="wb-rename-input" autoFocus value={renameDialog.title} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
       {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><X size={16} /></button></div> : null}
     </section>, host

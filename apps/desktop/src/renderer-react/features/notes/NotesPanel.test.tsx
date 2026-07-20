@@ -116,12 +116,12 @@ describe("NotesPanel", () => {
     const project = await screen.findByTitle("/work/panel");
     expect(project.textContent).toContain("Panel");
     fireEvent.contextMenu(project);
-    fireEvent.click(await screen.findByRole("button", { name: "Pin project" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin project" }));
     expect(JSON.parse(localStorage.getItem("pinned-projects") || "[]")).toEqual(["/work/panel"]);
     fireEvent.click(project);
     const note = await screen.findByRole("button", { name: /Project note/ });
     fireEvent.contextMenu(note);
-    fireEvent.click(await screen.findByRole("button", { name: "Pin note" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin note" }));
     expect(JSON.parse(localStorage.getItem("pinned-notes") || "[]")).toEqual(["note-2"]);
   });
 });

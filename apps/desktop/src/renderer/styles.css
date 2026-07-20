@@ -5862,37 +5862,83 @@ textarea.wb-editor-host {
   display: none;
 }
 
-.wb-context-menu {
+/* macOS-style context menus (Workbench / Notes / Ask) — aligns with .ops-menu tokens */
+.wb-context-menu,
+.notes-context-menu,
+.chat-context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 160px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 4px;
+  min-width: 180px;
+  max-width: min(280px, calc(100vw - 16px));
+  background: var(--color-elevated-bg);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-popover);
+  padding: 6px;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.wb-context-menu[hidden] {
+.wb-context-menu[hidden],
+.notes-context-menu[hidden],
+.chat-context-menu[hidden] {
   display: none !important;
 }
 
-.wb-context-menu button {
+.wb-context-menu button,
+.notes-context-menu button,
+.chat-context-menu button {
   appearance: none;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--color-label-primary);
   text-align: left;
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-body);
+  line-height: 1.3;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
 }
 
-.wb-context-menu button:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+.wb-context-menu button:hover,
+.notes-context-menu button:hover:not(:disabled),
+.chat-context-menu button:hover:not(:disabled) {
+  background: var(--color-fill-secondary);
+}
+
+.chat-context-menu button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--color-separator);
+  border: 0;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.context-menu-item-danger {
+  color: var(--color-destructive) !important;
+}
+
+.context-menu-item-danger:hover {
+  background: color-mix(in srgb, var(--color-destructive) 12%, transparent) !important;
+}
+
+.context-menu-chevron {
+  opacity: 0.45;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .wb-note-created-overlay {
@@ -7302,75 +7348,7 @@ textarea.notes-editor-host:focus {
 
 
 
-.notes-context-menu {
-  position: fixed;
-  z-index: 1200;
-  min-width: 160px;
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
-  display: flex;
-  flex-direction: column;
-}
-
-.notes-context-menu[hidden] {
-  display: none !important;
-}
-
-.notes-context-menu button {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.notes-context-menu button:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-}
-
-.chat-context-menu {
-  position: fixed;
-  z-index: 1200;
-  min-width: 140px;
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
-}
-
-.chat-context-menu[hidden] {
-  display: none !important;
-}
-
-.chat-context-menu button {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  width: 100%;
-}
-
-.chat-context-menu button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-}
-
-.chat-context-menu button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+/* notes/chat context menus: shared rules with .wb-context-menu above */
 
 /* Ask layout & Collapsible Sidebar */
 .agent-layout {
