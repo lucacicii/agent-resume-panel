@@ -204,7 +204,7 @@ export function SettingsPanel({
               {pane === "usage" || pane === "about" ? body : <div className="settings-pane-body">{body}</div>}
             </div>
           </div>
-          {pane === "usage" || pane === "about" ? (
+          {pane === "about" ? (
             <div className="settings-header-actions react-settings-status">
               <Status kind={status.kind}>{status.text}</Status>
             </div>

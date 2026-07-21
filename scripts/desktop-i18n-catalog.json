@@ -689,7 +689,8 @@
       "desktop.usage.noData": "No data",
       "desktop.usage.noScheduleRuns": "No scheduled runs",
       "desktop.usage.noLlmEvents": "No call details yet (appears after digests / Ask)",
-      "desktop.usage.summaryStatus": "Last {0} days · {1} calls"
+      "desktop.usage.summaryStatus": "Last {0} days · {1} calls",
+      "desktop.usage.detailTabs": "Usage detail tables"
     },
     "backfill": {
       "desktop.backfill.scanning": "Scanning catalog…",
@@ -1474,7 +1475,8 @@
       "desktop.usage.noData": "暂无数据",
       "desktop.usage.noScheduleRuns": "暂无定时执行记录",
       "desktop.usage.noLlmEvents": "暂无调用明细（生成 digests / Ask 后会出现）",
-      "desktop.usage.summaryStatus": "近 {0} 天 · {1} 次调用"
+      "desktop.usage.summaryStatus": "近 {0} 天 · {1} 次调用",
+      "desktop.usage.detailTabs": "用量明细"
     },
     "backfill": {
       "desktop.backfill.scanning": "正在扫描 catalog…",
@@ -2304,7 +2306,8 @@
       "desktop.usage.noData": "データなし",
       "desktop.usage.noScheduleRuns": "スケジュール実行記録なし",
       "desktop.usage.noLlmEvents": "呼び出し詳細はまだありません（digest / Ask 生成後に表示されます）",
-      "desktop.usage.summaryStatus": "過去 {0} 日 · {1} 回の呼び出し"
+      "desktop.usage.summaryStatus": "過去 {0} 日 · {1} 回の呼び出し",
+      "desktop.usage.detailTabs": "利用詳細"
     },
     "backfill": {
       "desktop.backfill.scanning": "catalog をスキャン中…",

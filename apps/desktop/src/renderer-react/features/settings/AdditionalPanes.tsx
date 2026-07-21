@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ExternalLink, FileText, MessageSquareWarning, ShieldCheck } from "lucide-react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
@@ -120,20 +121,225 @@ export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: Stora
   </>;
 }
 
-function formatNumber(value: number | null | undefined): string { return value == null || !Number.isFinite(value) ? "-" : value.toLocaleString(); }
-function formatTime(value: number): string { return new Date(value).toLocaleString(); }
+function formatNumber(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "-" : value.toLocaleString();
+}
+
+function formatTime(value: number): string {
+  return new Date(value).toLocaleString();
+}
+
+type UsageDetailTab = "byDay" | "schedule" | "llm";
+
+const USAGE_DETAIL_TABS = ["byDay", "schedule", "llm"] as const satisfies readonly UsageDetailTab[];
 
 export function UsagePane({ t }: { t: Translate }) {
   const [days, setDays] = useState(30);
-  const [data, setData] = useState<{ summary: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageSummary"]>>; events: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListEvents"]>>; runs: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>> } | null>(null);
+  const [tab, setTab] = useState<UsageDetailTab>("byDay");
+  const [data, setData] = useState<{
+    summary: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageSummary"]>>;
+    events: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListEvents"]>>;
+    runs: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>;
+  } | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
-  const load = useCallback(async () => { setStatus({ text: t("desktop.usage.loading") }); try { const [summary, events, runs] = await Promise.all([desktopApi().usageSummary({ days }), desktopApi().usageListEvents({ days, limit: 80 }), desktopApi().usageListScheduleRuns({ days, limit: 80 })]); setData({ summary, events, runs }); setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" }); } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); } }, [days, t]);
-  useEffect(() => { void load(); }, [load]);
+
+  const load = useCallback(async () => {
+    setStatus({ text: t("desktop.usage.loading") });
+    try {
+      const [summary, events, runs] = await Promise.all([
+        desktopApi().usageSummary({ days }),
+        desktopApi().usageListEvents({ days, limit: 80 }),
+        desktopApi().usageListScheduleRuns({ days, limit: 80 }),
+      ]);
+      setData({ summary, events, runs });
+      setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [days, t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   const summary = data?.summary;
-  return <div className="settings-pane-body"><div className="settings-usage-toolbar"><label className="settings-inline-label"><span>{t("desktop.usage.scope")}</span><select value={days} onChange={(event) => setDays(Number(event.target.value))}><option value="7">{t("desktop.usage.last7")}</option><option value="30">{t("desktop.usage.last30")}</option><option value="90">{t("desktop.usage.last90")}</option></select></label><button type="button" className="ghost-btn" onClick={() => void load()}>{t("desktop.common.refresh")}</button></div><div className="usage-cards"><div className="usage-card"><div className="label">{t("desktop.usage.totalTokens")}</div><div className="value">{formatNumber(summary?.totalTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.promptCompletion")}</div><div className="value usage-value-small">{formatNumber(summary?.promptTokens)} / {formatNumber(summary?.completionTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.chatEmbed")}</div><div className="value usage-value-small">{formatNumber(summary?.chatTokens)} / {formatNumber(summary?.embeddingTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.events")}</div><div className="value">{formatNumber(summary?.eventCount)}</div></div><div className="usage-card usage-card-wide"><div className="label">{t("desktop.usage.bySource")}</div><div className="value usage-value-small">{summary?.bySource.slice(0, 4).map((item) => `${item.source}:${item.totalTokens}`).join(" · ") || "-"}</div></div></div><UsageTable title={t("desktop.usage.byDay")} headings={[t("desktop.usage.colDate"), t("desktop.usage.colTokens"), t("desktop.usage.colCalls"), t("desktop.usage.colScheduleRuns")]} rows={summary?.byDay.map((item) => [item.day, formatNumber(item.totalTokens), formatNumber(item.events), formatNumber(item.scheduleRuns)]) || []} empty={t("desktop.usage.noData")} /><UsageTable title={t("desktop.usage.scheduleLog")} headings={[t("desktop.usage.colTime"), t("desktop.usage.colLevel"), t("desktop.usage.colPeriod"), t("desktop.usage.colStatus"), t("desktop.usage.colTokens"), t("desktop.usage.colError")]} rows={data?.runs.map((item) => [formatTime(item.startedAtMs), item.level, item.periodKey, item.status, formatNumber(item.totalTokens), item.error || ""]) || []} empty={t("desktop.usage.noScheduleRuns")} /><UsageTable title={t("desktop.usage.llmDetails")} headings={[t("desktop.usage.colTime"), t("desktop.usage.colKind"), t("desktop.usage.colSource"), t("desktop.usage.colModel"), t("desktop.usage.colTokens"), t("desktop.usage.colMs")]} rows={data?.events.map((item) => [formatTime(item.createdAtMs), item.kind, `${item.source}${item.jobKey ? ` · ${item.jobKey}` : ""}`, item.model || "", formatNumber(item.totalTokens), formatNumber(item.durationMs)]) || []} empty={t("desktop.usage.noLlmEvents")} /><Status kind={status.kind}>{status.text}</Status></div>;
+
+  const detail = useMemo(() => {
+    if (tab === "byDay") {
+      return {
+        headings: [
+          t("desktop.usage.colDate"),
+          t("desktop.usage.colTokens"),
+          t("desktop.usage.colCalls"),
+          t("desktop.usage.colScheduleRuns"),
+        ],
+        rows:
+          summary?.byDay.map((item) => [
+            item.day,
+            formatNumber(item.totalTokens),
+            formatNumber(item.events),
+            formatNumber(item.scheduleRuns),
+          ]) || [],
+        empty: t("desktop.usage.noData"),
+      };
+    }
+    if (tab === "schedule") {
+      return {
+        headings: [
+          t("desktop.usage.colTime"),
+          t("desktop.usage.colLevel"),
+          t("desktop.usage.colPeriod"),
+          t("desktop.usage.colStatus"),
+          t("desktop.usage.colTokens"),
+          t("desktop.usage.colError"),
+        ],
+        rows:
+          data?.runs.map((item) => [
+            formatTime(item.startedAtMs),
+            item.level,
+            item.periodKey,
+            item.status,
+            formatNumber(item.totalTokens),
+            item.error || "",
+          ]) || [],
+        empty: t("desktop.usage.noScheduleRuns"),
+      };
+    }
+    return {
+      headings: [
+        t("desktop.usage.colTime"),
+        t("desktop.usage.colKind"),
+        t("desktop.usage.colSource"),
+        t("desktop.usage.colModel"),
+        t("desktop.usage.colTokens"),
+        t("desktop.usage.colMs"),
+      ],
+      rows:
+        data?.events.map((item) => [
+          formatTime(item.createdAtMs),
+          item.kind,
+          `${item.source}${item.jobKey ? ` · ${item.jobKey}` : ""}`,
+          item.model || "",
+          formatNumber(item.totalTokens),
+          formatNumber(item.durationMs),
+        ]) || [],
+      empty: t("desktop.usage.noLlmEvents"),
+    };
+  }, [data?.events, data?.runs, summary?.byDay, t, tab]);
+
+  const tabLabel = (value: UsageDetailTab): string => {
+    if (value === "byDay") return t("desktop.usage.byDay");
+    if (value === "schedule") return t("desktop.usage.scheduleLog");
+    return t("desktop.usage.llmDetails");
+  };
+
+  return (
+    <div className="settings-pane-body settings-usage-body">
+      <div className="settings-usage-toolbar">
+        <div className="settings-usage-toolbar-left">
+          <label className="settings-inline-label">
+            <span>{t("desktop.usage.scope")}</span>
+            <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+              <option value="7">{t("desktop.usage.last7")}</option>
+              <option value="30">{t("desktop.usage.last30")}</option>
+              <option value="90">{t("desktop.usage.last90")}</option>
+            </select>
+          </label>
+          <button type="button" className="ghost-btn" onClick={() => void load()}>
+            {t("desktop.common.refresh")}
+          </button>
+        </div>
+        {status.text ? <Status kind={status.kind}>{status.text}</Status> : null}
+      </div>
+
+      <div className="usage-kpis" role="group" aria-label={t("desktop.usage.totalTokens")}>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.totalTokens")}</div>
+          <div className="value">{formatNumber(summary?.totalTokens)}</div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.promptCompletion")}</div>
+          <div className="value usage-value-pair">
+            <span>{formatNumber(summary?.promptTokens)}</span>
+            <span className="usage-value-sep">/</span>
+            <span>{formatNumber(summary?.completionTokens)}</span>
+          </div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.chatEmbed")}</div>
+          <div className="value usage-value-pair">
+            <span>{formatNumber(summary?.chatTokens)}</span>
+            <span className="usage-value-sep">/</span>
+            <span>{formatNumber(summary?.embeddingTokens)}</span>
+          </div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.events")}</div>
+          <div className="value">{formatNumber(summary?.eventCount)}</div>
+        </div>
+      </div>
+
+      <section className="usage-sources" aria-label={t("desktop.usage.bySource")}>
+        <div className="usage-sources-label">{t("desktop.usage.bySource")}</div>
+        <div className="usage-sources-list">
+          {summary?.bySource.length
+            ? summary.bySource.map((item) => (
+                <div className="usage-source-chip" key={item.source} title={`${item.source}: ${formatNumber(item.totalTokens)} · ${formatNumber(item.events)}`}>
+                  <span className="usage-source-name">{item.source}</span>
+                  <span className="usage-source-tokens">{formatNumber(item.totalTokens)}</span>
+                </div>
+              ))
+            : <span className="muted">{t("desktop.usage.noData")}</span>}
+        </div>
+      </section>
+
+      <div className="usage-detail">
+        <SegmentedControl
+          value={tab}
+          options={USAGE_DETAIL_TABS}
+          onChange={setTab}
+          getLabel={tabLabel}
+          aria-label={t("desktop.usage.detailTabs")}
+          className="usage-detail-tabs sidebar-project-filter-segmented"
+        />
+        <UsageTable headings={detail.headings} rows={detail.rows} empty={detail.empty} />
+      </div>
+    </div>
+  );
 }
 
-function UsageTable({ title, headings, rows, empty }: { title: string; headings: string[]; rows: string[][]; empty: string }) { return <><h3 className="section-h">{title}</h3><div className="table-wrap compact"><table><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index}>{row.map((value, cell) => <td key={cell}>{value}</td>)}</tr>) : <tr><td colSpan={headings.length} className="muted">{empty}</td></tr>}</tbody></table></div></>; }
+function UsageTable({ headings, rows, empty }: { headings: string[]; rows: string[][]; empty: string }) {
+  return (
+    <div className="table-wrap compact usage-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {headings.map((heading) => (
+              <th key={heading}>{heading}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((row, index) => (
+              <tr key={index}>
+                {row.map((value, cell) => (
+                  <td key={cell}>{value}</td>
+                ))}
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={headings.length} className="muted">
+                {empty}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function AboutPane({ t }: { t: Translate }) {
   const [version, setVersion] = useState("");
