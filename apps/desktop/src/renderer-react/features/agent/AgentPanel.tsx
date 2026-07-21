@@ -560,7 +560,8 @@ export function AgentPanel(): ReactPortal | null {
       citation.title ||
       citation.noteId ||
       citation.reportId ||
-      (citation.session ? `${citation.session.provider} · ${citation.session.id}` : undefined);
+      (citation.session ? `${citation.session.provider} · ${citation.session.id}` : "") ||
+      "Citation";
     const immediate = citation.contentPreview
       ? { title: immediateTitle, content: citation.contentPreview }
       : isSession(citation) && citation.session

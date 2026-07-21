@@ -763,7 +763,18 @@
     "desktop.settings.projectMenu.revealDesc": "Show the project folder in Finder.",
     "desktop.settings.projectMenu.mergeDesc": "Merge this project into another: sessions and local paths move to the target; this project entry is removed.",
     "desktop.settings.projectMenu.splitDesc": "Peel one path variant out into its own project (undo a mistaken merge). Needs at least two path variants.",
-    "desktop.settings.projectMenu.removeDesc": "Hide this project and its sessions from the panel. Does not delete agent history, disk folders, or notes."
+    "desktop.settings.projectMenu.removeDesc": "Hide this project and its sessions from the panel. Does not delete agent history, disk folders, or notes.",
+    "desktop.settings.summaryAuto": "Session summaries",
+    "desktop.settings.summaryAutoEnabled": "Auto-generate session summaries",
+    "desktop.settings.summaryAutoEnabledDesc": "After sync, create summaries for sessions without one. Re-summarize when a session is updated after a quiet delay. Uses the tool LLM and may incur cost.",
+    "desktop.settings.summaryStaleDelay": "Re-summarize delay (minutes)",
+    "desktop.settings.summaryStaleDelayHint": "Wait this long after a session’s last update before refreshing an existing summary. Default 30.",
+    "desktop.settings.summaryMissingDelay": "First summary delay (minutes)",
+    "desktop.settings.summaryMissingDelayHint": "Wait this long after a session’s last update before creating the first summary. 0 means as soon as possible after sync.",
+    "desktop.settings.summaryAutoMaxPerTick": "Max per batch",
+    "desktop.settings.summaryAutoMaxPerTickHint": "How many sessions to summarize in one background pass. Default 5.",
+    "desktop.settings.summaryAutoConcurrency": "Parallelism",
+    "desktop.settings.summaryAutoConcurrencyHint": "Concurrent LLM summarize calls (1–3). Default 1."
   },
   "zh-cn": {
     "app": {
@@ -1353,6 +1364,17 @@
       "desktop.settings.stalePolicyDesc": "清除会删除本次同步未刷新的 catalog 行。关闭则保留全部。",
       "desktop.settings.staleOff": "关闭",
       "desktop.settings.stalePurge": "清除",
+      "desktop.settings.summaryAuto": "会话摘要",
+      "desktop.settings.summaryAutoEnabled": "自动生成会话摘要",
+      "desktop.settings.summaryAutoEnabledDesc": "同步后为没有摘要的 session 自动生成；session 更新后静默一段时间再重新摘要。会调用工具 LLM，可能产生费用。",
+      "desktop.settings.summaryStaleDelay": "更新后重摘要延迟（分钟）",
+      "desktop.settings.summaryStaleDelayHint": "从 session 最后更新起等待多久再刷新已有摘要。默认 30。",
+      "desktop.settings.summaryMissingDelay": "首次摘要延迟（分钟）",
+      "desktop.settings.summaryMissingDelayHint": "从 session 最后更新起等待多久再生成首个摘要。0 表示同步后尽快。",
+      "desktop.settings.summaryAutoMaxPerTick": "每批最多条数",
+      "desktop.settings.summaryAutoMaxPerTickHint": "一次后台扫描最多摘要多少个 session。默认 5。",
+      "desktop.settings.summaryAutoConcurrency": "并行数",
+      "desktop.settings.summaryAutoConcurrencyHint": "同时进行的 LLM 摘要调用数（1–3）。默认 1。",
       "desktop.settings.visibilityFilter": "可见性过滤",
       "desktop.settings.visibilityFootnote": "控制各 Provider 的归档、子 Agent 等特殊 session 是否出现在列表中。",
       "desktop.settings.showArchivedCodex": "显示 Codex 归档",
@@ -1560,7 +1582,18 @@
     "desktop.settings.projectMenu.removeDesc": "从面板隐藏该项目及其 session。不删除 Agent 历史、磁盘目录和笔记。",
     "menu": {
       "desktop.menu.settings": "设置…"
-    }
+    },
+    "desktop.settings.summaryAuto": "会话摘要",
+    "desktop.settings.summaryAutoEnabled": "自动生成会话摘要",
+    "desktop.settings.summaryAutoEnabledDesc": "同步后为没有摘要的 session 自动生成；session 更新后静默一段时间再重新摘要。会调用工具 LLM，可能产生费用。",
+    "desktop.settings.summaryStaleDelay": "更新后重摘要延迟（分钟）",
+    "desktop.settings.summaryStaleDelayHint": "从 session 最后更新起等待多久再刷新已有摘要。默认 30。",
+    "desktop.settings.summaryMissingDelay": "首次摘要延迟（分钟）",
+    "desktop.settings.summaryMissingDelayHint": "从 session 最后更新起等待多久再生成首个摘要。0 表示同步后尽快。",
+    "desktop.settings.summaryAutoMaxPerTick": "每批最多条数",
+    "desktop.settings.summaryAutoMaxPerTickHint": "一次后台扫描最多摘要多少个 session。默认 5。",
+    "desktop.settings.summaryAutoConcurrency": "并行数",
+    "desktop.settings.summaryAutoConcurrencyHint": "同时进行的 LLM 摘要调用数（1–3）。默认 1。"
   },
   "ja": {
     "app": {
@@ -2399,6 +2432,17 @@
     "desktop.settings.projectMenu.removeDesc": "パネルからこのプロジェクトと session を非表示にします。Agent 履歴・ディスク・ノートは削除しません。",
     "menu": {
       "desktop.menu.settings": "設定…"
-    }
+    },
+    "desktop.settings.summaryAuto": "セッション要約",
+    "desktop.settings.summaryAutoEnabled": "セッション要約を自動生成",
+    "desktop.settings.summaryAutoEnabledDesc": "同期後、要約のないセッションを自動生成し、更新後は待機してから再要約します。ツール LLM を使うため費用が発生する場合があります。",
+    "desktop.settings.summaryStaleDelay": "再要約までの待機（分）",
+    "desktop.settings.summaryStaleDelayHint": "セッション最終更新から、既存要約を更新するまでの待機時間。既定 30。",
+    "desktop.settings.summaryMissingDelay": "初回要約までの待機（分）",
+    "desktop.settings.summaryMissingDelayHint": "最終更新から初回要約までの待機。0 は同期後できるだけ早く。",
+    "desktop.settings.summaryAutoMaxPerTick": "1 回あたりの上限",
+    "desktop.settings.summaryAutoMaxPerTickHint": "バックグラウンド 1 回で要約するセッション数の上限。既定 5。",
+    "desktop.settings.summaryAutoConcurrency": "並列数",
+    "desktop.settings.summaryAutoConcurrencyHint": "同時 LLM 要約数（1–3）。既定 1。"
   }
 }

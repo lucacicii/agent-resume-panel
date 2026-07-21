@@ -16,6 +16,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - Hybrid session search: keyword match on title/path/summary, plus **summary-vector** semantic search when embeddings are configured
 - Session summary embeddings written best-effort after Summarize / ensure-summaries (stored in `desktop.db`)
 - **Session citations** in Agent replies: chip section like reports/notes, hover preview, open in Sessions sheet
+- **Auto session summaries**: after sync, generate missing summaries; re-summarize after a configurable quiet delay when a session updates (Settings → Sessions)
+
 
 ### [0.2.3]
 
@@ -185,6 +187,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - 混合检索：标题 / 路径 / 摘要关键词 + 配置 embeddings 时的 **摘要向量** 语义搜索
 - Summarize / ensure-summaries 后 best-effort 写入 session 摘要向量（`desktop.db`）
 - **会话引用**：Agent 回答中像报告/笔记一样显示 session chip，支持悬停预览与打开 Sessions
+- **自动会话摘要**：同步后为无摘要 session 生成；更新后经可配置静默延迟再重摘要（Settings → 会话）
 
 ### [0.2.3]
 

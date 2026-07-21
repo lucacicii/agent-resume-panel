@@ -251,5 +251,49 @@ function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; 
 function SessionsPane({ draft, setDraft, scheduleSave, t }: { draft: SessionsDraft; setDraft: (value: SessionsDraft) => void; scheduleSave: (draft: SessionsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const update = <K extends keyof SessionsDraft>(key: K, value: SessionsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
   const toggles = [["showArchivedCodex", "desktop.settings.showArchivedCodex"], ["showSubagentCodex", "desktop.settings.showSubagentCodex"], ["showArchivedOpenCode", "desktop.settings.showArchivedOpenCode"], ["showSubagentGrok", "desktop.settings.showSubagentGrok"]] as const;
-  return <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.sync")}</h3><div className="settings-group-body"><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.syncMax")}</span><input type="number" min="1" max="50000" value={draft.maxItems} onChange={(event) => update("maxItems", Number(event.target.value))} /></label><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.stalePolicy")}</span><span className="settings-row-desc">{t("desktop.settings.stalePolicyDesc")}</span></span><select className="settings-row-control" value={draft.stalePolicy} onChange={(event) => update("stalePolicy", event.target.value === "purge" ? "purge" : "off")}><option value="off">{t("desktop.settings.staleOff")}</option><option value="purge">{t("desktop.settings.stalePurge")}</option></select></label>{toggles.map(([key, label]) => <label className="settings-row" key={key}><span className="settings-row-label"><span className="settings-row-title">{t(label)}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft[key]} onChange={(event) => update(key, event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>)}</div></section>;
+  return <>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.sync")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.syncMax")}</span><input type="number" min="1" max="50000" value={draft.maxItems} onChange={(event) => update("maxItems", Number(event.target.value))} /></label>
+        <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.stalePolicy")}</span><span className="settings-row-desc">{t("desktop.settings.stalePolicyDesc")}</span></span><select className="settings-row-control" value={draft.stalePolicy} onChange={(event) => update("stalePolicy", event.target.value === "purge" ? "purge" : "off")}><option value="off">{t("desktop.settings.staleOff")}</option><option value="purge">{t("desktop.settings.stalePurge")}</option></select></label>
+        {toggles.map(([key, label]) => <label className="settings-row" key={key}><span className="settings-row-label"><span className="settings-row-title">{t(label)}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft[key]} onChange={(event) => update(key, event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>)}
+      </div>
+    </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.summaryAuto")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.summaryAutoEnabled")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.summaryAutoEnabledDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.summaryAutoEnabled} onChange={(event) => update("summaryAutoEnabled", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.summaryStaleDelay")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.summaryStaleDelayHint")}</span>
+          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryStaleDelayMinutes} onChange={(event) => update("summaryStaleDelayMinutes", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.summaryMissingDelay")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.summaryMissingDelayHint")}</span>
+          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryMissingDelayMinutes} onChange={(event) => update("summaryMissingDelayMinutes", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.summaryAutoMaxPerTick")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.summaryAutoMaxPerTickHint")}</span>
+          <input type="number" min="1" max="50" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoMaxPerTick} onChange={(event) => update("summaryAutoMaxPerTick", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.summaryAutoConcurrency")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.summaryAutoConcurrencyHint")}</span>
+          <input type="number" min="1" max="3" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoConcurrency} onChange={(event) => update("summaryAutoConcurrency", Number(event.target.value))} />
+        </label>
+      </div>
+    </section>
+  </>;
 }

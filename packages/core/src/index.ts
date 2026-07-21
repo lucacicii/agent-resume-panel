@@ -35,6 +35,7 @@ export type {
   ChatLlmSettings,
   EmbeddingSettings,
   ReportSettings,
+  SessionSummaryAutoSettings,
   DesktopSettings,
   DesktopTheme,
   WorkbenchSettings,
@@ -476,6 +477,27 @@ export type {
   EnsureSummariesOptions,
   EnsureSummariesResult
 } from "./session/ensureSummaries";
+export {
+  resolveSessionSummaryAutoSettings,
+  listSessionsNeedingSummary,
+  selectAutoSummaryCandidates,
+  isEligibleForAutoSummary,
+  isMissingSummary,
+  isStaleSummary,
+  runAutoSessionSummaries,
+  clampInt,
+  DEFAULT_STALE_DELAY_MINUTES,
+  DEFAULT_MISSING_DELAY_MINUTES,
+  DEFAULT_AUTO_SUMMARY_CONCURRENCY,
+  DEFAULT_AUTO_SUMMARY_MAX_PER_TICK
+} from "./session/autoSummary";
+export type {
+  AutoSummaryCandidate,
+  AutoSummaryReason,
+  ResolvedSessionSummaryAutoSettings,
+  RunAutoSessionSummariesOptions,
+  RunAutoSessionSummariesResult
+} from "./session/autoSummary";
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
 

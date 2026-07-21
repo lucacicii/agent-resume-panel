@@ -29,6 +29,25 @@ describe("settings model", () => {
     expect(patch.sessionSync?.maxItems).toBe(50_000);
   });
 
+  it("persists session summary auto settings with clamps", () => {
+    const draft = sessionsDraftFromSettings(settings);
+    expect(draft.summaryAutoEnabled).toBe(true);
+    expect(draft.summaryStaleDelayMinutes).toBe(30);
+    const patch = sessionsPatch(settings, {
+      ...draft,
+      summaryAutoEnabled: false,
+      summaryStaleDelayMinutes: 9999,
+      summaryMissingDelayMinutes: -1,
+      summaryAutoConcurrency: 9,
+      summaryAutoMaxPerTick: 0
+    });
+    expect(patch.sessionSummaryAuto?.enabled).toBe(false);
+    expect(patch.sessionSummaryAuto?.staleDelayMinutes).toBe(1440);
+    expect(patch.sessionSummaryAuto?.missingDelayMinutes).toBe(0);
+    expect(patch.sessionSummaryAuto?.concurrency).toBe(3);
+    expect(patch.sessionSummaryAuto?.maxPerTick).toBe(1);
+  });
+
   it("normalizes workbench editor values and persists nested scan inputs", () => {
     const invalidSettings = { ...settings, workbench: { editor: { fontSize: 99, tabSize: 3, autoSaveDelayMs: 50 } } } as unknown as PanelSettings;
     const draft = workbenchDraftFromSettings(invalidSettings);

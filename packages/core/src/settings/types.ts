@@ -175,6 +175,23 @@ export interface ReportSettings {
   scheduleMonthlyHour?: number;
 }
 
+/**
+ * Desktop-only: auto-generate / refresh session_summary after sync.
+ * Delays are relative to each session's last updated_at_ms (quiet period).
+ */
+export interface SessionSummaryAutoSettings {
+  /** Master switch. Default true (still no-ops without tool LLM). */
+  enabled?: boolean;
+  /** Minutes after last update before re-summarizing a session that already has a summary. Default 30. */
+  staleDelayMinutes?: number;
+  /** Minutes after last update before first summary when missing. Default 0. */
+  missingDelayMinutes?: number;
+  /** Parallel LLM calls per tick. Default 1. */
+  concurrency?: number;
+  /** Max sessions to summarize per scan. Default 5. */
+  maxPerTick?: number;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -186,6 +203,8 @@ export interface PanelSettings {
   chatLlm?: ChatLlmSettings;
   embedding: EmbeddingSettings;
   report?: ReportSettings;
+  /** Auto session_summary generation (Desktop main process). */
+  sessionSummaryAuto?: SessionSummaryAutoSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
@@ -215,6 +234,13 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     scheduleDailyHour: 22,
     scheduleWeeklyHour: 9,
     scheduleMonthlyHour: 9
+  },
+  sessionSummaryAuto: {
+    enabled: true,
+    staleDelayMinutes: 30,
+    missingDelayMinutes: 0,
+    concurrency: 1,
+    maxPerTick: 5
   },
   sessionSync: {
     maxItems: 10_000,

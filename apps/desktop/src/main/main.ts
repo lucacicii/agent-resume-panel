@@ -102,6 +102,11 @@ import {
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import { scheduleNotesIndex, startNotesIndexer, stopNotesIndexer } from "./noteIndexer";
+import {
+  scheduleSessionSummaryAuto,
+  startSessionSummaryAuto,
+  stopSessionSummaryAuto
+} from "./sessionSummaryAuto";
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -297,6 +302,7 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("sessions:synced", result);
   }
+  scheduleSessionSummaryAuto(2_000);
   return result;
 }
 
@@ -572,6 +578,7 @@ function registerIpc(): void {
         ? await syncAndNotify()
         : undefined;
       scheduleNotesIndex();
+      scheduleSessionSummaryAuto(options?.section === "sessions" ? 0 : 2_000);
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,
@@ -1361,6 +1368,7 @@ app.whenReady().then(async () => {
   createWindow();
   await installApplicationMenu();
   startDesktopNotesIndexer();
+  startSessionSummaryAuto();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1368,6 +1376,7 @@ app.whenReady().then(async () => {
       closeSettingsWindowIfOpen();
       createWindow();
       startDesktopNotesIndexer();
+      startSessionSummaryAuto();
       // Closing the last window on macOS used to stop the scheduler; restore it with the window.
       void refreshMemorySchedulerFromSettings();
       return;
@@ -1384,6 +1393,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   stopMemoryScheduler();
   stopNotesIndexer();
+  stopSessionSummaryAuto();
   tryDestroyPtyOnQuit();
 });
 
@@ -1393,6 +1403,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     stopMemoryScheduler();
     stopNotesIndexer();
+    stopSessionSummaryAuto();
     tryDestroyPtyOnQuit();
     app.quit();
   } else {

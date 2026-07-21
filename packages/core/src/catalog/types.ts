@@ -21,6 +21,8 @@ export interface AgentSession {
   archived?: boolean;
   messageCount?: number;
   sessionSummary?: string;
+  /** Catalog session_summary_at_ms when known. */
+  sessionSummaryAtMs?: number;
 }
 
 export interface CatalogSessionRow {
@@ -72,6 +74,9 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   const summary = row.session_summary?.trim();
   if (summary) {
     session.sessionSummary = summary;
+  }
+  if (row.session_summary_at_ms != null && Number.isFinite(row.session_summary_at_ms)) {
+    session.sessionSummaryAtMs = Number(row.session_summary_at_ms);
   }
   const projectId = row.project_id?.trim();
   if (projectId) {

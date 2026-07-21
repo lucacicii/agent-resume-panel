@@ -20,6 +20,12 @@ export interface EnsureSummariesOptions {
   settings: PanelSettings;
   /** Re-run summarize even when session_summary already exists. Default false. */
   force?: boolean;
+  /**
+   * When true, re-summarize if a summary exists but session.updatedAt is newer than
+   * sessionSummaryAtMs (or summary_at is missing). Ignored when force=true.
+   * Default false (digest path keeps existing summaries).
+   */
+  refreshIfStale?: boolean;
   /** Parallel LLM calls. Default 2. */
   concurrency?: number;
   /** Optional panel home hint for agent homes resolution. */
@@ -64,6 +70,7 @@ export async function ensureSummariesForSessions(
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 2, 6));
   const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
   const force = options.force === true;
+  const refreshIfStale = options.refreshIfStale === true;
   const prefix = options.jobKeyPrefix || "summarize";
   const level = options.progressLevel || "daily";
   const periodLabel = options.progressPeriodLabel || "";
@@ -88,6 +95,24 @@ export async function ensureSummariesForSessions(
     });
   }
 
+  function shouldSkipExistingSummary(session: AgentSession): boolean {
+    if (force) {
+      return false;
+    }
+    if (!session.sessionSummary?.trim()) {
+      return false;
+    }
+    if (!refreshIfStale) {
+      return true;
+    }
+    const summaryAt = session.sessionSummaryAtMs;
+    if (summaryAt == null || !Number.isFinite(summaryAt)) {
+      return false;
+    }
+    // Session quieter or unchanged since last summary — skip.
+    return session.updatedAt <= summaryAt;
+  }
+
   let cursor = 0;
   async function worker(): Promise<void> {
     while (cursor < out.length) {
@@ -96,7 +121,7 @@ export async function ensureSummariesForSessions(
       const key = `${session.provider}:${session.id}`;
       const ref = sessionProgressRef(session);
 
-      if (!force && session.sessionSummary?.trim()) {
+      if (shouldSkipExistingSummary(session)) {
         skipped += 1;
         processed += 1;
         onProgress?.({
@@ -132,7 +157,11 @@ export async function ensureSummariesForSessions(
           jobKey: `${prefix}:${key}`,
           settings: options.settings
         });
-        out[index] = { ...session, sessionSummary: summary };
+        out[index] = {
+          ...session,
+          sessionSummary: summary,
+          sessionSummaryAtMs: Date.now()
+        };
         summarized += 1;
         processed += 1;
         onProgress?.({

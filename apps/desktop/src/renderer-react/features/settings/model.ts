@@ -67,6 +67,14 @@ export interface SessionsDraft {
   showSubagentCodex: boolean;
   showArchivedOpenCode: boolean;
   showSubagentGrok: boolean;
+  /** Auto-generate session_summary after sync / quiet period. */
+  summaryAutoEnabled: boolean;
+  /** Minutes after last session update before re-summarizing (stale). Default 30. */
+  summaryStaleDelayMinutes: number;
+  /** Minutes after last update before first summary when missing. Default 0. */
+  summaryMissingDelayMinutes: number;
+  summaryAutoConcurrency: number;
+  summaryAutoMaxPerTick: number;
 }
 
 export interface WorkbenchDraft {
@@ -142,15 +150,29 @@ export function modelsDraftFromSettings(settings: PanelSettings): ModelsDraft {
   };
 }
 
+function clampDraftInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
 export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraft {
   const source = settings.sessionSync;
+  const auto = settings.sessionSummaryAuto;
   return {
     maxItems: Math.max(1, Math.min(50_000, Number(source?.maxItems) || 10_000)),
     stalePolicy: source?.stalePolicy === "purge" ? "purge" : "off",
     showArchivedCodex: Boolean(source?.showArchivedCodex),
     showSubagentCodex: Boolean(source?.showSubagentCodex),
     showArchivedOpenCode: Boolean(source?.showArchivedOpenCode),
-    showSubagentGrok: Boolean(source?.showSubagentGrok)
+    showSubagentGrok: Boolean(source?.showSubagentGrok),
+    summaryAutoEnabled: auto?.enabled !== false,
+    summaryStaleDelayMinutes: clampDraftInt(auto?.staleDelayMinutes, 30, 0, 1440),
+    summaryMissingDelayMinutes: clampDraftInt(auto?.missingDelayMinutes, 0, 0, 1440),
+    summaryAutoConcurrency: clampDraftInt(auto?.concurrency, 1, 1, 3),
+    summaryAutoMaxPerTick: clampDraftInt(auto?.maxPerTick, 5, 1, 50)
   };
 }
 
@@ -184,10 +206,22 @@ export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partia
 
 export function sessionsPatch(settings: PanelSettings, draft: SessionsDraft): Partial<PanelSettings> {
   return {
+    sessionSummaryAuto: {
+      ...settings.sessionSummaryAuto,
+      enabled: draft.summaryAutoEnabled,
+      staleDelayMinutes: clampDraftInt(draft.summaryStaleDelayMinutes, 30, 0, 1440),
+      missingDelayMinutes: clampDraftInt(draft.summaryMissingDelayMinutes, 0, 0, 1440),
+      concurrency: clampDraftInt(draft.summaryAutoConcurrency, 1, 1, 3),
+      maxPerTick: clampDraftInt(draft.summaryAutoMaxPerTick, 5, 1, 50)
+    },
     sessionSync: {
       ...settings.sessionSync,
-      ...draft,
-      maxItems: Math.max(1, Math.min(50_000, Number(draft.maxItems) || 10_000))
+      maxItems: Math.max(1, Math.min(50_000, Number(draft.maxItems) || 10_000)),
+      stalePolicy: draft.stalePolicy,
+      showArchivedCodex: draft.showArchivedCodex,
+      showSubagentCodex: draft.showSubagentCodex,
+      showArchivedOpenCode: draft.showArchivedOpenCode,
+      showSubagentGrok: draft.showSubagentGrok
     }
   };
 }
