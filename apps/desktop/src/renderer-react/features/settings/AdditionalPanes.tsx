@@ -73,11 +73,66 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
   </>;
 }
 
-export function ReportPane({ draft, setDraft, scheduleSave, t }: { draft: ReportDraft; setDraft: (value: ReportDraft) => void; scheduleSave: (value: ReportDraft) => void; t: Translate }) {
+type ScheduleRunRow = Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>[number];
+
+function scheduleLevelLabel(level: string, t: Translate): string {
+  if (level === "weekly") return t("desktop.report.digestWeekly");
+  if (level === "monthly") return t("desktop.report.digestMonthly");
+  if (level === "daily") return t("desktop.report.digestDaily");
+  return level;
+}
+
+function formatScheduleRunSummary(run: ScheduleRunRow, t: Translate): { text: string; kind?: StatusKind } {
+  const level = scheduleLevelLabel(run.level, t);
+  const when = formatTime(run.startedAtMs);
+  if (run.status === "running") {
+    return { text: t("desktop.settings.scheduleLastRunRunning", level, run.periodKey, when) };
+  }
+  if (run.status === "ok") {
+    return { text: t("desktop.settings.scheduleLastRunOk", level, run.periodKey, when), kind: "ok" };
+  }
+  const err = (run.error || "").trim() || t("desktop.common.unknownError");
+  return { text: t("desktop.settings.scheduleLastRunError", level, run.periodKey, when, err), kind: "error" };
+}
+
+export function ReportPane({
+  draft,
+  setDraft,
+  scheduleSave,
+  t,
+  onOpenScheduleLog
+}: {
+  draft: ReportDraft;
+  setDraft: (value: ReportDraft) => void;
+  scheduleSave: (value: ReportDraft) => void;
+  t: Translate;
+  onOpenScheduleLog?: () => void;
+}) {
   const [maxDays, setMaxDays] = useState(400);
   const [skipExisting, setSkipExisting] = useState(true);
   const [skipEmbedding, setSkipEmbedding] = useState(true);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [lastRun, setLastRun] = useState<ScheduleRunRow | null>(null);
+  const [lastRunLoaded, setLastRunLoaded] = useState(false);
+  const [lastRunError, setLastRunError] = useState("");
+
+  const loadLastRun = useCallback(async () => {
+    try {
+      const runs = await desktopApi().usageListScheduleRuns({ days: 90, limit: 1 });
+      setLastRun(runs[0] ?? null);
+      setLastRunError("");
+    } catch (error) {
+      setLastRun(null);
+      setLastRunError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLastRunLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLastRun();
+  }, [loadLastRun, draft.enabled]);
+
   const update = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) => {
     if (key === "enabled" && value && !draft.enabled && !window.confirm(t("desktop.settings.memoryEnableConfirm"))) return;
     const next = { ...draft, [key]: value };
@@ -103,9 +158,77 @@ export function ReportPane({ draft, setDraft, scheduleSave, t }: { draft: Report
       setStatus({ text: `${t("desktop.backfill.stats", "daily", result.daily.ok.length, result.daily.skipped.length, failures ? `/fail ${failures}` : "", result.daily.planned.length)} · ${t("desktop.backfill.stats", "weekly", result.weekly.ok.length, result.weekly.skipped.length, "", result.weekly.planned.length)}`, kind: failures ? "error" : "ok" });
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
+
+  const lastRunSummary = lastRun ? formatScheduleRunSummary(lastRun, t) : null;
+
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.scheduledDigests")}</h3><div className="settings-group-body"><ToggleRow title={t("desktop.settings.enableSchedule")} description={t("desktop.settings.enableScheduleDesc")} checked={draft.enabled} onChange={(value) => update("enabled", value)} />{draft.enabled ? <div className="settings-schedule-fields"><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.dailyHour")}</span><input type="number" min="0" max="23" value={draft.dailyHour} onChange={(event) => update("dailyHour", Number(event.target.value))} /></label><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.weeklyHour")}</span><input type="number" min="0" max="23" value={draft.weeklyHour} onChange={(event) => update("weeklyHour", Number(event.target.value))} /></label><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.monthlyHour")}</span><input type="number" min="0" max="23" value={draft.monthlyHour} onChange={(event) => update("monthlyHour", Number(event.target.value))} /></label></div> : null}</div></section>
-    <section className="settings-group settings-group-action"><h3 className="settings-group-title">{t("desktop.settings.backfillTitle")}</h3><div className="settings-group-body"><p className="settings-callout">{t("desktop.settings.backfillCallout")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.backfillMaxDays")}</span><input type="number" min="1" max="2000" value={maxDays} onChange={(event) => setMaxDays(Math.max(1, Math.min(2000, Number(event.target.value) || 400)))} /></label><ToggleRow title={t("desktop.settings.backfillSkipExisting")} checked={skipExisting} onChange={setSkipExisting} /><ToggleRow title={t("desktop.settings.backfillSkipEmbedding")} checked={skipEmbedding} onChange={setSkipEmbedding} /><div className="settings-action-row"><button type="button" className="tool-btn" onClick={() => void preview()}>{t("desktop.settings.backfillPreview")}</button><button type="button" className="tool-btn" onClick={() => void run()}>{t("desktop.settings.backfillRun")}</button></div><Status kind={status.kind}>{status.text}</Status></div></section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.scheduledDigests")}</h3>
+      <div className="settings-group-body">
+        <ToggleRow
+          title={t("desktop.settings.enableSchedule")}
+          description={t("desktop.settings.enableScheduleDesc")}
+          checked={draft.enabled}
+          onChange={(value) => update("enabled", value)}
+        />
+        <p className="settings-footnote">{t("desktop.settings.scheduleRuntimeNote")}</p>
+        {draft.enabled ? (
+          <div className="settings-schedule-fields">
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.dailyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.dailyHour} onChange={(event) => update("dailyHour", Number(event.target.value))} />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.weeklyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.weeklyHour} onChange={(event) => update("weeklyHour", Number(event.target.value))} />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.monthlyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.monthlyHour} onChange={(event) => update("monthlyHour", Number(event.target.value))} />
+            </label>
+          </div>
+        ) : null}
+        <div className="settings-schedule-status" aria-live="polite">
+          <div className="settings-schedule-status-label">{t("desktop.settings.scheduleLastRunTitle")}</div>
+          {!lastRunLoaded ? (
+            <Status>{t("desktop.common.loading")}</Status>
+          ) : lastRunError ? (
+            <Status kind="error">{lastRunError}</Status>
+          ) : lastRunSummary ? (
+            <Status kind={lastRunSummary.kind}>{lastRunSummary.text}</Status>
+          ) : (
+            <Status>{t("desktop.settings.scheduleLastRunNone")}</Status>
+          )}
+          <div className="settings-action-row">
+            <button type="button" className="tool-btn" onClick={() => void loadLastRun()}>
+              {t("desktop.settings.scheduleRefreshStatus")}
+            </button>
+            {onOpenScheduleLog ? (
+              <button type="button" className="tool-btn" onClick={onOpenScheduleLog}>
+                {t("desktop.settings.scheduleViewLog")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+    <section className="settings-group settings-group-action">
+      <h3 className="settings-group-title">{t("desktop.settings.backfillTitle")}</h3>
+      <div className="settings-group-body">
+        <p className="settings-callout">{t("desktop.settings.backfillCallout")}</p>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.backfillMaxDays")}</span>
+          <input type="number" min="1" max="2000" value={maxDays} onChange={(event) => setMaxDays(Math.max(1, Math.min(2000, Number(event.target.value) || 400)))} />
+        </label>
+        <ToggleRow title={t("desktop.settings.backfillSkipExisting")} checked={skipExisting} onChange={setSkipExisting} />
+        <ToggleRow title={t("desktop.settings.backfillSkipEmbedding")} checked={skipEmbedding} onChange={setSkipEmbedding} />
+        <div className="settings-action-row">
+          <button type="button" className="tool-btn" onClick={() => void preview()}>{t("desktop.settings.backfillPreview")}</button>
+          <button type="button" className="tool-btn" onClick={() => void run()}>{t("desktop.settings.backfillRun")}</button>
+        </div>
+        <Status kind={status.kind}>{status.text}</Status>
+      </div>
+    </section>
   </>;
 }
 
@@ -129,19 +252,25 @@ function formatTime(value: number): string {
   return new Date(value).toLocaleString();
 }
 
-type UsageDetailTab = "byDay" | "schedule" | "llm";
+export type UsageDetailTab = "byDay" | "schedule" | "llm";
 
 const USAGE_DETAIL_TABS = ["byDay", "schedule", "llm"] as const satisfies readonly UsageDetailTab[];
 
-export function UsagePane({ t }: { t: Translate }) {
+export function UsagePane({ t, initialDetailTab }: { t: Translate; initialDetailTab?: UsageDetailTab }) {
   const [days, setDays] = useState(30);
-  const [tab, setTab] = useState<UsageDetailTab>("byDay");
+  const [tab, setTab] = useState<UsageDetailTab>(initialDetailTab ?? "byDay");
   const [data, setData] = useState<{
     summary: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageSummary"]>>;
     events: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListEvents"]>>;
     runs: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>;
   } | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+
+  useEffect(() => {
+    if (initialDetailTab) {
+      setTab(initialDetailTab);
+    }
+  }, [initialDetailTab]);
 
   const load = useCallback(async () => {
     setStatus({ text: t("desktop.usage.loading") });

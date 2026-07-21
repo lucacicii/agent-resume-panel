@@ -4,7 +4,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
-import { AboutPane, ReportPane, StoragePane, UsagePane, WorkbenchPane } from "./AdditionalPanes";
+import { AboutPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import {
   generalDraftFromSettings, generalPatch, modelsDraftFromSettings, modelsPatch, reportDraftFromSettings, reportPatch,
   sessionsDraftFromSettings, sessionsPatch, storageDraftFromSettings, storagePatch, workbenchDraftFromSettings, workbenchPatch,
@@ -52,6 +52,7 @@ export function SettingsPanel({
   const [report, setReport] = useState<ReportDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
   const timer = useRef<number | null>(null);
 
   const hydrate = useCallback((next: PanelSettings) => {
@@ -162,9 +163,20 @@ export function SettingsPanel({
     : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} scheduleSave={(draft) => scheduleSave("models", draft)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} scheduleSave={(draft) => scheduleSave("sessions", draft)} t={t} />
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} scheduleSave={(draft) => scheduleSave("workbench", draft)} t={t} />
-    : pane === "report" ? <ReportPane draft={report} setDraft={(value) => setReport(value)} scheduleSave={(draft) => scheduleSave("report", draft)} t={t} />
+    : pane === "report" ? (
+      <ReportPane
+        draft={report}
+        setDraft={(value) => setReport(value)}
+        scheduleSave={(draft) => scheduleSave("report", draft)}
+        t={t}
+        onOpenScheduleLog={() => {
+          setUsageDetailTab("schedule");
+          setPane("usage");
+        }}
+      />
+    )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
-    : pane === "usage" ? <UsagePane t={t} /> : <AboutPane t={t} />;
+    : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} /> : <AboutPane t={t} />;
 
   return createPortal(
     <section className="panel active react-settings-panel">
@@ -179,7 +191,12 @@ export function SettingsPanel({
               type="button"
               className={`settings-nav-item${pane === item.id ? " active" : ""}`}
               key={item.id}
-              onClick={() => setPane(item.id)}
+              onClick={() => {
+                if (item.id !== "usage") {
+                  setUsageDetailTab(undefined);
+                }
+                setPane(item.id);
+              }}
             >
               {t(item.key)}
             </button>

@@ -1360,6 +1360,8 @@ app.whenReady().then(async () => {
       closeSettingsWindowIfOpen();
       createWindow();
       startDesktopNotesIndexer();
+      // Closing the last window on macOS used to stop the scheduler; restore it with the window.
+      void refreshMemorySchedulerFromSettings();
       return;
     }
     if (mainWindow.isMinimized()) {
@@ -1367,14 +1369,25 @@ app.whenReady().then(async () => {
     }
     mainWindow.show();
     mainWindow.focus();
+    void refreshMemorySchedulerFromSettings();
   });
 });
 
-app.on("window-all-closed", () => {
+app.on("before-quit", () => {
   stopMemoryScheduler();
   stopNotesIndexer();
   tryDestroyPtyOnQuit();
+});
+
+app.on("window-all-closed", () => {
+  // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
+  // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
   if (process.platform !== "darwin") {
+    stopMemoryScheduler();
+    stopNotesIndexer();
+    tryDestroyPtyOnQuit();
     app.quit();
+  } else {
+    tryDestroyPtyOnQuit();
   }
 });
