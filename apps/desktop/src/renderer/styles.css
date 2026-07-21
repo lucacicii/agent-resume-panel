@@ -6131,6 +6131,46 @@ textarea.wb-editor-host {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
 }
 
+.wb-note-created-panel .wb-rename-head .wb-git-commit-repo-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 160px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.wb-note-created-panel .wb-rename-head .wb-git-commit-repo-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 160px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-note-created-panel:has(.wb-git-commit-auto-btn) {
+  width: min(440px, 100%);
+}
+
+.wb-note-created-panel .wb-note-created-actions:has(.wb-git-commit-auto-btn) {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-note-created-panel .wb-note-created-actions .wb-git-commit-auto-btn {
+  margin-right: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.wb-note-created-panel .wb-note-created-actions:has(.wb-git-commit-auto-btn) .wb-note-created-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 7px 10px;
+}
+
 .wb-note-created-title {
   margin: 0;
   font-size: 15px;
