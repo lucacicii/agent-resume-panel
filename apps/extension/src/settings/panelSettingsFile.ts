@@ -37,7 +37,6 @@ export interface PanelSettingsFile {
     claudeHome?: string;
     antigravityHome?: string;
     grokHome?: string;
-    almaDataDir?: string;
     opencodeHome?: string;
     piHome?: string;
   };
@@ -234,7 +233,6 @@ export async function upsertPanelLlmFields(input: {
     claudeHome: config.get<string>("claudeHome", "~/.claude"),
     antigravityHome: config.get<string>("antigravityHome", "~/.gemini"),
     grokHome: config.get<string>("grokHome", "~/.grok"),
-    almaDataDir: config.get<string>("almaDataDir", "~/Library/Application Support/alma"),
     opencodeHome: config.get<string>("opencodeHome", "~/.local/share/opencode"),
     piHome: config.get<string>("piHome", "~/.pi/agent"),
     ...current.agentHomes

@@ -1,5 +1,4 @@
 import { AgentProvider, AgentSession } from "../catalog/types";
-import { buildAlmaActivateCommand } from "./alma";
 
 export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "codex") {
@@ -10,9 +9,6 @@ export function buildResumeCommand(session: AgentSession): string {
   }
   if (session.provider === "grok") {
     return `grok --cwd ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "alma") {
-    return buildAlmaActivateCommand(session.id, session.title);
   }
   if (session.provider === "opencode") {
     return `opencode --session ${shellQuote(session.id)}`;
@@ -33,9 +29,6 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "grok") {
     return `grok --cwd ${shellQuote(projectPath)}`;
-  }
-  if (provider === "alma") {
-    return "# Alma new threads require a workspace id; use the Alma app to start a thread.";
   }
   if (provider === "opencode") {
     return `opencode ${shellQuote(projectPath)}`;

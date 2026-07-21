@@ -11,7 +11,6 @@ export function homesFromLoadOptions(options: HistoryLoadOptions): RenameHomes {
     claudeHome: options.claudeHome,
     antigravityHome: options.antigravityHome,
     grokHome: options.grokHome,
-    almaDataDir: options.almaDataDir,
     opencodeHome: options.opencodeHome,
     piHome: options.piHome
   };
@@ -35,8 +34,6 @@ export function resolveTranscriptRefs(
       return resolveAgy(session, indexes);
     case "opencode":
       return resolveOpenCode(session, homes);
-    case "alma":
-      return resolveAlma(session, homes);
     case "chat":
       return resolveAcp(session, homes);
     default:
@@ -99,15 +96,6 @@ function resolveOpenCode(session: AgentSession, homes: RenameHomes): TranscriptR
     kind: "sqlite",
     dbPath: path.join(homes.opencodeHome, "opencode.db"),
     dialect: "opencode",
-    sessionId: session.id
-  };
-}
-
-function resolveAlma(session: AgentSession, homes: RenameHomes): TranscriptRefs {
-  return {
-    kind: "sqlite",
-    dbPath: path.join(homes.almaDataDir, "chat_threads.db"),
-    dialect: "alma",
     sessionId: session.id
   };
 }

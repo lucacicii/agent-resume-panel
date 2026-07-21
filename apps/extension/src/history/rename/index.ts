@@ -1,6 +1,5 @@
 import { AgentSession } from "../types";
 import { renameAgySession } from "./agy";
-import { renameAlmaSession } from "./alma";
 import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
@@ -14,7 +13,6 @@ export interface RenameHomes {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
 }
@@ -42,8 +40,6 @@ export async function renameSession(
       return renameAgySession(homes.antigravityHome, session, title);
     case "grok":
       return renameGrokSession(homes.grokHome, session, title);
-    case "alma":
-      return renameAlmaSession(homes.almaDataDir, session, title);
     case "opencode":
       return renameOpenCodeSession(homes.opencodeHome, session, title);
     case "pi":

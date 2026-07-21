@@ -717,7 +717,6 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "claude" ||
         value.provider === "agy" ||
         value.provider === "grok" ||
-        value.provider === "alma" ||
         value.provider === "opencode" ||
         value.provider === "pi" ||
         value.provider === "chat") &&

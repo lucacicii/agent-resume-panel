@@ -93,7 +93,7 @@
   --agent-claude: #d97757;
   --agent-agy: #4992ea;
   --agent-grok: #b8b8b8;
-  --agent-alma: #7c6fe8;
+
   --agent-opencode: #656363;
   --agent-pi: #e07a3a;
   --agent-chat: var(--accent);
@@ -573,9 +573,6 @@ textarea:focus-visible,
   background: color-mix(in srgb, var(--agent-grok) 35%, #4a4a4a);
 }
 
-.s-provider-tag[data-provider="alma"] {
-  background: var(--agent-alma);
-}
 
 .s-provider-tag[data-provider="opencode"] {
   background: var(--agent-opencode);

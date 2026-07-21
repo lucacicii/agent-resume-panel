@@ -45,7 +45,7 @@ import {
   listProjectPathVariants,
   mergeProjectsInCatalog,
   splitProjectPathInCatalog,
-  openAlmaThreadInApp,
+
   openChatGptAppSession,
   openProjectInEditor,
   openProjectInSystemTerminal,
@@ -751,11 +751,6 @@ function registerIpc(): void {
       const mode = resolveWorkbenchTerminalMode(settings);
       const command = buildResumeCommand(session);
       const cwd = await resolveSessionCwd(session.projectPath, settings);
-
-      if (session.provider === "alma") {
-        await openAlmaThreadInApp(session);
-        return { mode, external: true, alma: true, command, cwd };
-      }
 
       if (mode === "external-system") {
         await openSessionInSystemTerminal(

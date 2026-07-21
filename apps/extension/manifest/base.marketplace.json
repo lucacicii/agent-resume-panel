@@ -2,8 +2,8 @@
   "name": "agent-resume-panel-v2",
   "displayName": "Agent Resume Panel V2",
   "publisher": "thunder-luc",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.6.11",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, and Pi sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "version": "2.6.12",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -36,7 +36,6 @@
     "grok",
     "opencode",
     "pi",
-    "alma",
     "antigravity",
     "session",
     "resume",
@@ -77,7 +76,6 @@
     "onCommand:agentResume.newGrokSession",
     "onCommand:agentResume.newOpenCodeSession",
     "onCommand:agentResume.newPiSession",
-    "onCommand:agentResume.newAlmaSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -141,11 +139,6 @@
           "type": "string",
           "default": "~/.grok",
           "description": "Grok Build home directory containing sessions."
-        },
-        "agentResume.almaDataDir": {
-          "type": "string",
-          "default": "~/Library/Application Support/alma",
-          "description": "Alma data directory containing chat_threads.db. On macOS this is usually ~/Library/Application Support/alma."
         },
         "agentResume.opencodeHome": {
           "type": "string",
@@ -371,21 +364,6 @@
           "default": false,
           "description": "Show Grok Build subagent sessions (session_kind: subagent) in the panel. Ephemeral subagent shells with no title and at most one message are always hidden."
         },
-        "agentResume.hideCronAlma": {
-          "type": "boolean",
-          "default": true,
-          "description": "Hide Alma cron threads (titles starting with ⏰ Cron:)."
-        },
-        "agentResume.hideChannelAlma": {
-          "type": "boolean",
-          "default": true,
-          "description": "Hide Alma channel threads (WeChat, Telegram, Discord, Slack)."
-        },
-        "agentResume.showIncognitoAlma": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show Alma incognito threads in the panel."
-        },
         "agentResume.editorNewSessionProvider": {
           "type": "string",
           "enum": [
@@ -480,7 +458,6 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
-              "newAlmaSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -507,7 +484,6 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
-              "newAlmaSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -524,7 +500,6 @@
             "newGrokSession",
             "newOpenCodeSession",
             "newPiSession",
-            "newAlmaSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -982,11 +957,6 @@
       {
         "command": "agentResume.newPiSession",
         "title": "New Pi Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newAlmaSession",
-        "title": "New Alma Thread",
         "category": "Agent Resume"
       },
       {

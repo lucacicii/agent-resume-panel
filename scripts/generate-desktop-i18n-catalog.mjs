@@ -503,9 +503,6 @@ const flat = {
   "desktop.settings.showSubagentCodex": { en: "Show Codex sub-agents", "zh-cn": "显示 Codex 子 Agent" },
   "desktop.settings.showArchivedOpenCode": { en: "Show archived OpenCode", "zh-cn": "显示 OpenCode 归档" },
   "desktop.settings.showSubagentGrok": { en: "Show Grok sub-agents", "zh-cn": "显示 Grok 子 Agent" },
-  "desktop.settings.hideCronAlma": { en: "Hide Alma cron", "zh-cn": "隐藏 Alma cron" },
-  "desktop.settings.hideChannelAlma": { en: "Hide Alma channel", "zh-cn": "隐藏 Alma channel" },
-  "desktop.settings.showIncognitoAlma": { en: "Show Alma incognito", "zh-cn": "显示 Alma incognito" },
   "desktop.settings.newSessionGroup": { en: "New Session", "zh-cn": "新建 Session" },
   "desktop.settings.defaultAgent": { en: "Default agent", "zh-cn": "默认 Agent" },
   "desktop.settings.defaultAgentDesc": {
@@ -578,7 +575,6 @@ const flat = {
   "desktop.settings.claudeHome": { en: "Claude home", "zh-cn": "Claude home" },
   "desktop.settings.antigravityHome": { en: "Antigravity home", "zh-cn": "Antigravity home" },
   "desktop.settings.grokHome": { en: "Grok home", "zh-cn": "Grok home" },
-  "desktop.settings.almaDataDir": { en: "Alma data directory", "zh-cn": "Alma data directory" },
   "desktop.settings.opencodeHome": { en: "OpenCode home", "zh-cn": "OpenCode home" },
   "desktop.settings.piHome": { en: "Pi home", "zh-cn": "Pi home" },
   "desktop.settings.saving": { en: "Saving…", "zh-cn": "保存中…" },

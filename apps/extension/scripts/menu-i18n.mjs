@@ -54,7 +54,6 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.newGrokSession", key: "menu.project.newGrokSession" },
   { base: "agentResume.newOpenCodeSession", key: "menu.project.newOpenCodeSession" },
   { base: "agentResume.newPiSession", key: "menu.project.newPiSession" },
-  { base: "agentResume.newAlmaSession", key: "menu.project.newAlmaSession" },
   { base: "agentResume.newCodexAppSession", key: "menu.project.newCodexAppSession" }
 ];
 

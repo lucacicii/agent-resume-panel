@@ -12,7 +12,7 @@
 
 | 能力 | 现状 |
 |------|------|
-| 多 CLI 会话统一浏览 | Codex / Claude / AGY / Grok / OpenCode / Pi / Alma |
+| 多 CLI 会话统一浏览 | Codex / Claude / AGY / Grok / OpenCode / Pi |
 | 索引库 | `~/.agent-resume-panel/catalog.db`（sessions、GTD、notes 索引、summary 等） |
 | 对话全文 | 仍在各 Agent **原生存储**（如 `~/.codex`、`~/.claude`） |
 | 单次摘要 | LLM Assist → `session_summary`（按需、单 session） |
@@ -49,7 +49,7 @@
 └─────────────────────────────────────────────────────────┘
          │ resume / handoff / spawn
          ▼
-   Codex · Claude · Grok · OpenCode · Pi · Alma · …
+   Codex · Claude · Grok · OpenCode · Pi · …
 ```
 
 ### 2.2 是否需要「自己的 Agent」？

@@ -8,6 +8,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.3]
+
+#### Changed
+
+- **Removed Alma provider support**: Alma sessions are no longer synced or resumed; Alma data-directory and filter settings are gone. Existing Alma catalog rows are hidden on the next sync.
+- Prefer **Agent Resume Panel extension ≥ 2.6.12** when sharing the same `panelHome`.
+
 ### [0.2.2]
 
 #### Added
@@ -145,6 +152,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.3]
+
+#### 变更
+
+- **移除 Alma Provider 支持**：不再同步 / 恢复 Alma 会话；设置中的 Alma 目录与过滤项已删除。已有 catalog 中的 Alma 会话会在下次同步时自动隐藏。
+- 请与 **Agent Resume Panel 扩展 ≥ 2.6.12** 共用同一 `panelHome`。
 
 ### [0.2.2]
 

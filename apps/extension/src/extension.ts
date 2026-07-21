@@ -17,14 +17,12 @@ import {
 import { AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
 import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
-import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { t } from "./i18n";
 import { menuCommand } from "./i18n/menuCommands";
 import { registerLocalizedUiRefreshTargets, refreshAllLocalizedUi } from "./i18n/refresh";
 import { applyUiLocaleContext } from "./i18n/uiLocaleContext";
 import { truncateText } from "./util/dialogText";
-import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
@@ -239,7 +237,6 @@ export function activate(context: vscode.ExtensionContext): void {
       openNewSession(tree, node, "opencode", context)
     ),
     ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
-    ...menuCommand("agentResume.newAlmaSession", (node?: unknown) => openNewAlmaSessionFromTree(tree, node)),
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
@@ -533,17 +530,13 @@ function buildHistoryLoadOptions(
     claudeHome: expandHome(config.get<string>("claudeHome", "~/.claude")),
     antigravityHome: expandHome(config.get<string>("antigravityHome", "~/.gemini")),
     grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
-    almaDataDir: expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir())),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
     maxItems: config.get<number>("maxItems", 10_000),
     showArchivedCodex: config.get<boolean>("showArchivedCodex", false),
     showArchivedOpenCode: config.get<boolean>("showArchivedOpenCode", false),
     showSubagentCodex: config.get<boolean>("showSubagentCodex", false),
-    showSubagentGrok: config.get<boolean>("showSubagentGrok", false),
-    hideCronAlma: config.get<boolean>("hideCronAlma", true),
-    hideChannelAlma: config.get<boolean>("hideChannelAlma", true),
-    showIncognitoAlma: config.get<boolean>("showIncognitoAlma", false)
+    showSubagentGrok: config.get<boolean>("showSubagentGrok", false)
   };
 }
 
@@ -960,18 +953,6 @@ function openNewSession(
   openNewSessionTerminal(provider, projectPath, context);
 }
 
-async function openNewAlmaSessionFromTree(tree: SessionTreeProvider, node: unknown): Promise<void> {
-  const projectPath = tree.getProjectFromNode(node);
-  if (!projectPath) {
-    return;
-  }
-
-  const almaDataDir = expandHome(
-    vscode.workspace.getConfiguration("agentResume").get<string>("almaDataDir", defaultAlmaDataDir())
-  );
-  await openNewAlmaSession(projectPath, almaDataDir);
-}
-
 function openNewCodexAppSession(tree: SessionTreeProvider, node: unknown): void {
   const projectPath = tree.getProjectFromNode(node);
   if (!projectPath) {
@@ -1115,7 +1096,6 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "claude" ||
         value.provider === "agy" ||
         value.provider === "grok" ||
-        value.provider === "alma" ||
         value.provider === "opencode" ||
         value.provider === "pi" ||
         value.provider === "chat") &&

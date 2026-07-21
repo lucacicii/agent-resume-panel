@@ -18,7 +18,7 @@ const SUPPORTED_PROVIDERS = new Set<AgentProvider>([
   "claude",
   "agy",
   "grok",
-  "alma",
+
   "opencode",
   "pi",
   "chat"

@@ -105,13 +105,13 @@ function resolveHandoffSource(
 
   if (deps.sessionTree) {
     const session = deps.sessionTree.getSessionFromNode(nodeOrSource);
-    if (session && session.provider !== "chat" && session.provider !== "alma") {
+    if (session && session.provider !== "chat") {
       return { kind: "cli", session };
     }
   }
 
   if (deps.sessionTree && isAgentSession(nodeOrSource)) {
-    if (nodeOrSource.provider === "chat" || nodeOrSource.provider === "alma") {
+    if (nodeOrSource.provider === "chat") {
       return undefined;
     }
     return { kind: "cli", session: nodeOrSource };

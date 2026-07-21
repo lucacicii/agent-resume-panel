@@ -527,9 +527,6 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "grok") {
     return "grok";
   }
-  if (provider === "alma") {
-    return "alma";
-  }
   if (provider === "opencode") {
     return "opencode";
   }
@@ -551,9 +548,6 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "grok") {
     return "rocket";
-  }
-  if (provider === "alma") {
-    return "sparkle";
   }
   if (provider === "opencode") {
     return "terminal";

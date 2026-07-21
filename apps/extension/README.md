@@ -2,7 +2,7 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Alma** CLI sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist.
+Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi** CLI sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist.
 
 There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal — it shares the same local data as this extension.
 
@@ -11,7 +11,7 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 | **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **Docs** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-Extension version: **2.6.11** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+Extension version: **2.6.12** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`** (shared by extension and Desktop).  
@@ -31,7 +31,7 @@ Extension version: **2.6.11** · Desktop: see [releases](https://github.com/thun
 | **Best for** | Resume while coding; **ACP Chat** beside the editor; quick GTD / Notes in the IDE | Step back from the editor: **calendar digests**, natural-language recall, dedicated **Workbench** |
 | **Core views** | Sessions · ACP Chats · GTD · Notes | **Report** · **Agent** · **Workbench** · Notes (+ Sessions reference) |
 | **Desktop-only** | — | Daily / weekly / monthly AI digests; **Agent** Q&A over reports; embedded xterm **Workbench** with multi-tab sessions |
-| **Extension-only** | ACP Chat panel; Claude / Codex IDE panel resume; Ghostty / Alma targets | — |
+| **Extension-only** | ACP Chat panel; Claude / Codex IDE panel resume; Ghostty targets | — |
 
 **Shared (no duplicate setup):** `catalog.db` session index, GTD tags, Markdown notes, LLM settings (`settings.json`). CLI transcripts still live in each agent’s native storage (Codex, Claude, etc.). Desktop keeps its own extras under `panelHome/.desktop/`.
 
@@ -49,7 +49,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 | **Notes** | Multiple Markdown notes per session or project |
 | **Search / Manager** | Filter, bulk browse, Export backup |
 | **LLM Assist** | Summarize, Auto Rename, Handoff Brief (optional API) |
-| **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App, Alma |
+| **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App |
 
 ### Quick start
 
@@ -72,7 +72,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 
 ## 简体中文
 
-在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Alma** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。
+在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。
 
 另有独立 **macOS 桌面端**：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端，与本扩展共用同一份本机数据。
 
@@ -81,7 +81,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [下载 DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **文档** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-扩展版本：**2.6.11** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+扩展版本：**2.6.12** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**（扩展与 Desktop 共用）。可选 LLM Assist 需自行配置 API。
@@ -96,7 +96,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **适合场景** | 写代码时顺手恢复会话；编辑器旁 **ACP Chat**；在 IDE 里打 GTD / 记笔记 | 离开编辑器做回顾：**日历日报**、自然语言回忆、专用 **Workbench** 工作台 |
 | **主要视图** | Sessions · ACP Chats · GTD · Notes | **Report** · **Agent** · **Workbench** · Notes（+ Sessions 参考列表） |
 | **仅 Desktop** | — | 日 / 周 / 月 AI 回顾报告；对报告做 **Agent** 问答；内嵌 xterm **Workbench** 多标签恢复 |
-| **仅扩展** | ACP Chat 面板；Claude / Codex 插件面板恢复；Ghostty / Alma 等恢复目标 | — |
+| **仅扩展** | ACP Chat 面板；Claude / Codex 插件面板恢复；Ghostty 等恢复目标 | — |
 
 **共用（无需重复配置）：** `catalog.db` 会话索引、GTD 标记、Markdown 笔记、LLM 设置（`settings.json`）。CLI 对话正文仍在各 Agent 本机原生存储。Desktop 私有数据在 `panelHome/.desktop/`。
 
@@ -114,7 +114,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **Notes** | 多条 Markdown 笔记，支持图片附件 |
 | **搜索 / Manager** | 筛选、批量浏览、Export 备份 |
 | **LLM Assist** | 摘要、自动重命名、Handoff Brief |
-| **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App、Alma |
+| **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App |
 
 ### 快速开始
 

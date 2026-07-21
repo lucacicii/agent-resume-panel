@@ -67,9 +67,6 @@ export interface SessionsDraft {
   showSubagentCodex: boolean;
   showArchivedOpenCode: boolean;
   showSubagentGrok: boolean;
-  hideCronAlma: boolean;
-  hideChannelAlma: boolean;
-  showIncognitoAlma: boolean;
 }
 
 export interface WorkbenchDraft {
@@ -105,7 +102,6 @@ export interface StorageDraft {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
 }
@@ -154,10 +150,7 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
     showArchivedCodex: Boolean(source?.showArchivedCodex),
     showSubagentCodex: Boolean(source?.showSubagentCodex),
     showArchivedOpenCode: Boolean(source?.showArchivedOpenCode),
-    showSubagentGrok: Boolean(source?.showSubagentGrok),
-    hideCronAlma: source?.hideCronAlma !== false,
-    hideChannelAlma: source?.hideChannelAlma !== false,
-    showIncognitoAlma: Boolean(source?.showIncognitoAlma)
+    showSubagentGrok: Boolean(source?.showSubagentGrok)
   };
 }
 
@@ -285,7 +278,6 @@ const AGENT_HOME_DEFAULTS = {
   claudeHome: "~/.claude",
   antigravityHome: "~/.gemini",
   grokHome: "~/.grok",
-  almaDataDir: "~/Library/Application Support/alma",
   opencodeHome: "~/.local/share/opencode",
   piHome: "~/.pi/agent"
 } as const;

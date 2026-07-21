@@ -28,7 +28,6 @@ export interface AgentSessionSyncOptions {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
   configuredAgentHomes?: AgentHomesSettings;
@@ -38,9 +37,6 @@ export interface AgentSessionSyncOptions {
   showArchivedOpenCode: boolean;
   showSubagentCodex: boolean;
   showSubagentGrok: boolean;
-  hideCronAlma: boolean;
-  hideChannelAlma: boolean;
-  showIncognitoAlma: boolean;
 }
 
 export interface AgentSessionProviderSyncResult {
@@ -71,7 +67,7 @@ interface ProviderLoadResult {
   failed?: boolean;
 }
 
-const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "alma", "opencode", "pi"];
+const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi"];
 const textCache = new Map<string, { mtimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
 const syncTasks = new Map<string, Promise<AgentSessionSyncResult>>();
@@ -93,9 +89,6 @@ export function sessionSyncOptionsFromSettings(
     showArchivedOpenCode: sync.showArchivedOpenCode === true,
     showSubagentCodex: sync.showSubagentCodex === true,
     showSubagentGrok: sync.showSubagentGrok === true,
-    hideCronAlma: sync.hideCronAlma !== false,
-    hideChannelAlma: sync.hideChannelAlma !== false,
-    showIncognitoAlma: sync.showIncognitoAlma === true,
     catalogSchema: "desktop",
     ...overrides
   };
@@ -161,6 +154,8 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     }
     await writeSyncState(options.dbPath, providerResult);
   }
+  // Alma support removed: keep any leftover catalog rows but hide them from the panel.
+  await hideRetiredAlmaSessions(options.dbPath);
   try {
     await reconcileProjectsFromSessions(options.dbPath);
   } catch (error) {
@@ -187,7 +182,6 @@ async function loadProvider(provider: SyncableAgentProvider, options: AgentSessi
     case "claude": return { provider, sessions: await loadClaude(options.claudeHome, options.maxItems) };
     case "agy": return { provider, sessions: await loadAgy(options.antigravityHome, options.maxItems) };
     case "grok": return { provider, sessions: await loadGrok(options.grokHome, options.maxItems, options.showSubagentGrok) };
-    case "alma": return loadAlma(options);
     case "opencode": return loadOpenCode(options);
     case "pi": return { provider, sessions: await loadPi(options.piHome, options.maxItems) };
   }
@@ -287,14 +281,6 @@ async function loadGrok(home: string, maxItems: number, showSubagents: boolean):
   return out.sort(byUpdated).slice(0, maxItems);
 }
 
-async function loadAlma(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
-  const dbPath = path.join(options.almaDataDir, "chat_threads.db");
-  if (!await fileExists(dbPath)) return { provider: "alma", sessions: [], warning: `Alma database not found at ${dbPath}.`, failed: true };
-  const rows = await runSqliteJson<any>(dbPath, `SELECT ct.id,ct.title,ct.updated_at,ct.model,ct.is_incognito,w.path workspace_path,w.name workspace_name,(SELECT count(*) FROM chat_messages cm WHERE cm.thread_id=ct.id) message_count FROM chat_threads ct LEFT JOIN workspaces w ON ct.workspace_id=w.id ${options.showIncognitoAlma ? "" : "WHERE ct.is_incognito=0"} ORDER BY ct.updated_at DESC LIMIT ${options.maxItems * 3}`);
-  const sessions = rows.filter((row) => row.id && !hideAlma(row.title || "", options)).slice(0, options.maxItems).map((row) => session("alma", row.id, clean(row.title) || row.id, row.workspace_path || options.almaDataDir, Date.parse(row.updated_at || "") || 0, { model: row.model || undefined, source: row.workspace_name || undefined, messageCount: Number(row.message_count) || undefined, transcriptKind: "sqlite", transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "alma", sessionId: row.id }) }));
-  return { provider: "alma", sessions };
-}
-
 async function loadOpenCode(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
   const dbPath = path.join(options.opencodeHome, "opencode.db");
   if (!await fileExists(dbPath)) return { provider: "opencode", sessions: [], warning: `OpenCode database not found at ${dbPath}.`, failed: true };
@@ -330,10 +316,19 @@ async function readCachedJsonLinesSafe<T>(file: string): Promise<T[]> { try { re
 async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<string[]> { const cached = listCache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.value; const value = await load(); listCache.set(key, { expiresAt: Date.now() + 10_000, value }); return value; }
 function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
-function hideAlma(title: string, options: AgentSessionSyncOptions): boolean { const value = title.trim(); return (options.hideCronAlma && value.startsWith("⏰ Cron:")) || (options.hideChannelAlma && ["WeChat:", "Telegram:", "Discord:", "Slack:"].some((prefix) => value.startsWith(prefix))); }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
-function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "alma": return options.almaDataDir; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
-function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "alma": return "almaDataDir"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
+function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
+function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
+/** Hide leftover Alma catalog rows after provider support was removed. */
+async function hideRetiredAlmaSessions(dbPath: string): Promise<void> {
+  try {
+    await runSqliteTransaction(dbPath, [
+      `UPDATE sessions SET hidden = 1 WHERE provider = 'alma' AND hidden = 0`
+    ]);
+  } catch {
+    // Catalog may predate sessions table or lack provider column in tests — ignore.
+  }
+}
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
   const key = agentHomeSettingKey(provider) as AgentHomeKey;
   return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);

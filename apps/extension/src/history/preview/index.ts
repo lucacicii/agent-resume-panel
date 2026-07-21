@@ -1,7 +1,6 @@
 import { AgentSession } from "../types";
 import { RenameHomes } from "../rename";
 import { previewAgySession } from "./agy";
-import { previewAlmaSession } from "./alma";
 import { previewClaudeSession } from "./claude";
 import { previewCodexSession } from "./codex";
 import { previewGrokSession } from "./grok";
@@ -24,8 +23,6 @@ export async function loadSessionPreview(
       return previewAgySession(session, homes);
     case "grok":
       return previewGrokSession(session, homes);
-    case "alma":
-      return previewAlmaSession(session, homes);
     case "opencode":
       return previewOpenCodeSession(session, homes);
     case "pi":

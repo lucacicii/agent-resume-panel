@@ -3,7 +3,6 @@ export type AgentProvider =
   | "claude"
   | "agy"
   | "grok"
-  | "alma"
   | "opencode"
   | "pi"
   | "chat";

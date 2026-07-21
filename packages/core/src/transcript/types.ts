@@ -19,7 +19,6 @@ export interface PreviewHomes {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
 }

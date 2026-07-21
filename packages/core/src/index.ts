@@ -230,7 +230,6 @@ export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./trans
 export {
   resolvePreviewHomes,
   DEFAULT_AGENT_HOMES,
-  defaultAlmaDataDir,
   defaultAgentHomeValue,
   agentHomeDiffersFromDefault,
   sanitizeAgentHomes
@@ -443,7 +442,6 @@ export {
   resolveProjectEditor
 } from "./terminal/projectEditor";
 export type { ProjectEditor, ProjectEditorId } from "./terminal/projectEditor";
-export { buildAlmaActivateCommand, openAlmaThreadInApp } from "./terminal/alma";
 export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";
 export {

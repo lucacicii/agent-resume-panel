@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.12]
+
+#### 变更
+
+- **移除 Alma Provider 支持**：不再同步 / 预览 / 恢复 Alma 会话；设置中的 Alma 目录与过滤项已删除。已有 catalog 中的 Alma 会话会在下次同步时自动隐藏。
+- 请与 **Agent Resume Desktop ≥ 0.2.3** 共用同一 `panelHome`（共享 core 已去掉 Alma 同步）。
+
 ### [2.6.11]
 
 #### 修复
@@ -406,6 +413,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.12]
+
+#### Changed
+
+- **Removed Alma provider support**: Alma sessions are no longer synced, previewed, or resumed; Alma-related settings are gone. Existing Alma rows in the catalog are hidden on the next sync.
+- Prefer **Agent Resume Desktop ≥ 0.2.3** when sharing the same `panelHome` (shared core no longer syncs Alma).
 
 ### [2.6.11]
 

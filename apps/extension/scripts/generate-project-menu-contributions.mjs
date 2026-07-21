@@ -14,7 +14,6 @@ const ACTIONS = [
   "newGrokSession",
   "newOpenCodeSession",
   "newPiSession",
-  "newAlmaSession",
   "newCodexAppSession",
   "openProjectNote",
   "deleteProjectNote"
@@ -41,7 +40,6 @@ const COMMANDS = {
   newGrokSession: [{ command: "agentResume.newGrokSession" }],
   newOpenCodeSession: [{ command: "agentResume.newOpenCodeSession" }],
   newPiSession: [{ command: "agentResume.newPiSession" }],
-  newAlmaSession: [{ command: "agentResume.newAlmaSession" }],
   newCodexAppSession: [{ command: "agentResume.newCodexAppSession" }],
   openProjectNote: [{ command: "agentResume.openProjectNote" }],
   deleteProjectNote: [{ command: "agentResume.deleteProjectNote" }]

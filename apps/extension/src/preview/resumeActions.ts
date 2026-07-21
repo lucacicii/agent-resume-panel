@@ -23,11 +23,6 @@ export async function resumeSession(
   }
 
   if (target === "ghostty") {
-    if (session.provider === "alma") {
-      vscode.window.showWarningMessage(t("warning.ghosttyNotForAlma"));
-      return;
-    }
-
     await openInGhostty(session);
     return;
   }
@@ -66,10 +61,6 @@ export async function resumeSession(
 }
 
 export async function pickResumeTarget(session: AgentSession): Promise<ResumeTarget | undefined> {
-  if (session.provider === "alma") {
-    return undefined;
-  }
-
   const options: ResumeTargetOption[] = [
     {
       label: t("quickpick.resumeWithVscodeLabel"),

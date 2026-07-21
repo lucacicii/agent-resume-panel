@@ -32,7 +32,6 @@ test("fresh install with default agent homes does not warn about missing directo
       claudeHome: "~/.claude",
       antigravityHome: "~/.gemini",
       grokHome: "~/.grok",
-      almaDataDir: "~/Library/Application Support/alma",
       opencodeHome: "~/.local/share/opencode",
       piHome: "~/.pi/agent"
     }
@@ -57,14 +56,13 @@ test("explicit missing agent home still warns", async () => {
   assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
 });
 
-test("syncs seven providers, preserves local enhancements, and isolates provider failures", async () => {
+test("syncs six providers, preserves local enhancements, and isolates provider failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-sync-"));
   const homes = {
     codexHome: path.join(root, "codex"),
     claudeHome: path.join(root, "claude"),
     antigravityHome: path.join(root, "agy"),
     grokHome: path.join(root, "grok"),
-    almaDataDir: path.join(root, "alma"),
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi")
   };
@@ -84,8 +82,6 @@ test("syncs seven providers, preserves local enhancements, and isolates provider
   await writeFile(path.join(grokDir, "summary.json"), JSON.stringify({ info: { id: "grok-1", cwd: "/tmp/grok" }, generated_title: "Grok title", updated_at: "2026-01-01T00:00:04Z", num_chat_messages: 2 }));
   await jsonl(path.join(grokDir, "chat_history.jsonl"), [{ role: "user", content: "hello" }]);
 
-  const almaDb = path.join(homes.almaDataDir, "chat_threads.db");
-  sqlite(almaDb, "CREATE TABLE workspaces(id TEXT,path TEXT,name TEXT); CREATE TABLE chat_threads(id TEXT,title TEXT,updated_at TEXT,model TEXT,is_incognito INTEGER,workspace_id TEXT); CREATE TABLE chat_messages(thread_id TEXT); INSERT INTO workspaces VALUES('w','/tmp/alma','Alma'); INSERT INTO chat_threads VALUES('alma-1','Alma title','2026-01-01T00:00:05Z','alma-model',0,'w'); INSERT INTO chat_messages VALUES('alma-1');");
   const opencodeDb = path.join(homes.opencodeHome, "opencode.db");
   sqlite(opencodeDb, "CREATE TABLE session(id TEXT,directory TEXT,title TEXT,time_updated INTEGER,time_archived INTEGER,model TEXT); INSERT INTO session VALUES('opencode-1','/tmp/opencode','OpenCode title',6000,NULL,NULL);");
   await jsonl(path.join(homes.piHome, "sessions", "pi-1.jsonl"), [
@@ -104,8 +100,8 @@ test("syncs seven providers, preserves local enhancements, and isolates provider
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
-  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 7);
-  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "alma", "opencode", "pi"]));
+  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 6);
+  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi"]));
 
   sqlite(options.dbPath, "UPDATE sessions SET user_title='Pinned title',session_summary='Keep summary',session_summary_language='English' WHERE provider='codex' AND agent_session_id='codex-1'; INSERT INTO session_gtd(provider,agent_session_id,status,updated_at_ms) VALUES('codex','codex-1','doing',1);");
   sqlite(codexDb, "UPDATE threads SET title='Codex native updated' WHERE id='codex-1';");

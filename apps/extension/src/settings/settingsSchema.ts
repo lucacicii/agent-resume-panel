@@ -161,13 +161,6 @@ export function getSettingSections(): SettingSection[] {
           default: "~/.grok"
         },
         {
-          key: "almaDataDir",
-          label: t("settings.fieldAlmaDataDirLabel"),
-          description: t("settings.fieldAlmaDataDirDescription"),
-          type: "string",
-          default: "~/Library/Application Support/alma"
-        },
-        {
           key: "opencodeHome",
           label: t("settings.fieldOpencodeHomeLabel"),
           description: t("settings.fieldOpencodeHomeDescription"),
@@ -212,27 +205,6 @@ export function getSettingSections(): SettingSection[] {
           key: "showSubagentGrok",
           label: t("settings.fieldShowSubagentGrokLabel"),
           description: t("settings.fieldShowSubagentGrokDescription"),
-          type: "boolean",
-          default: false
-        },
-        {
-          key: "hideCronAlma",
-          label: t("settings.fieldHideCronAlmaLabel"),
-          description: t("settings.fieldHideCronAlmaDescription"),
-          type: "boolean",
-          default: true
-        },
-        {
-          key: "hideChannelAlma",
-          label: t("settings.fieldHideChannelAlmaLabel"),
-          description: t("settings.fieldHideChannelAlmaDescription"),
-          type: "boolean",
-          default: true
-        },
-        {
-          key: "showIncognitoAlma",
-          label: t("settings.fieldShowIncognitoAlmaLabel"),
-          description: t("settings.fieldShowIncognitoAlmaDescription"),
           type: "boolean",
           default: false
         }

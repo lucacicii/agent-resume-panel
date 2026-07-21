@@ -126,7 +126,7 @@ Use macOS-aligned semantic names. Values approximate system colors in CSS (Elect
 | `--ok` | `--color-success` | Success states |
 | `--agent-chat` | `--color-accent` | Chat chrome accent only |
 
-Keep `--agent-codex`, `--agent-claude`, `--agent-agy`, `--agent-grok`, `--agent-alma`, `--agent-opencode`, `--agent-pi` unchanged — they identify providers, not system chrome.
+Keep `--agent-codex`, `--agent-claude`, `--agent-agy`, `--agent-grok`, `--agent-opencode`, `--agent-pi` unchanged — they identify providers, not system chrome.
 
 #### Chat token migration (`--tg-*` → `--chat-*`)
 

@@ -239,7 +239,7 @@ async function handlePreviewMessage(
       type: "previewResult",
       provider,
       id,
-      showResumeWith: session.provider !== "alma",
+      showResumeWith: true,
       showHandoff: canHandoffSession(session),
       llmConfigured,
       cachedSummary,

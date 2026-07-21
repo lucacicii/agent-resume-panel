@@ -23,9 +23,8 @@ describe("settings model", () => {
     expect(patch.embedding?.baseUrl).toBeUndefined();
   });
 
-  it("clamps the session sync limit and retains the safe Alma defaults", () => {
+  it("clamps the session sync limit", () => {
     const draft = sessionsDraftFromSettings(settings);
-    expect(draft.hideCronAlma).toBe(true);
     const patch = sessionsPatch(settings, { ...draft, maxItems: 999_999 });
     expect(patch.sessionSync?.maxItems).toBe(50_000);
   });

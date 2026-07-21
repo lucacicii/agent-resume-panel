@@ -140,7 +140,6 @@ export interface AgentHomesSettings {
   claudeHome?: string;
   antigravityHome?: string;
   grokHome?: string;
-  almaDataDir?: string;
   opencodeHome?: string;
   piHome?: string;
 }
@@ -152,9 +151,6 @@ export interface AgentSessionSyncFilters {
   showArchivedOpenCode?: boolean;
   showSubagentCodex?: boolean;
   showSubagentGrok?: boolean;
-  hideCronAlma?: boolean;
-  hideChannelAlma?: boolean;
-  showIncognitoAlma?: boolean;
 }
 
 export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
@@ -226,10 +222,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     showArchivedCodex: false,
     showArchivedOpenCode: false,
     showSubagentCodex: false,
-    showSubagentGrok: false,
-    hideCronAlma: true,
-    hideChannelAlma: true,
-    showIncognitoAlma: false
+    showSubagentGrok: false
   },
   workbench: {
     projectEditor: "auto",
