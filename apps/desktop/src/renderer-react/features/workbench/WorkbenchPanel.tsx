@@ -709,12 +709,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       setSettings(nextSettings);
       setCatalogProjects(nextProjects || []);
       setSelectedProject((current) => {
-        if (current && nextProjects?.some((item) => item.localPath === current || item.projectId === current || item.portableKey === current)) {
-          const match = nextProjects.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
-          return match?.localPath || match?.portableKey || current;
+        const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
+        if (current) {
+          const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
+          if (match) return match.localPath || match.portableKey || current;
+          if (next.some((item) => item.projectPath === current)) return current;
         }
-        if (current && next.some((item) => item.projectPath === current)) return current;
-        const firstProject = nextProjects?.find((item) => item.localPath || item.portableKey);
+        const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
         if (firstProject) return firstProject.localPath || firstProject.portableKey;
         return next.find((item) => item.projectPath)?.projectPath || null;
       });
@@ -775,13 +776,15 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const projects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
-      return catalogProjects.map((project) => {
+      return catalogProjects.flatMap((project) => {
         const group = sessions.filter((session) =>
           (session.projectId && session.projectId === project.projectId)
           || (!session.projectId && project.localPath && session.projectPath === project.localPath)
         );
+        // Hide catalog rows with no session data (catalog count and joined list both empty).
+        if ((project.sessionCount || 0) === 0 && group.length === 0) return [];
         const path = project.localPath || project.portableKey;
-        return {
+        return [{
           id: project.projectId,
           path,
           portableKey: project.portableKey,
@@ -793,7 +796,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           updatedAt: group.length
             ? Math.max(...group.map((item) => item.updatedAt))
             : (project.lastSeenAtMs || project.updatedAtMs || 0)
-        };
+        }];
       }).filter((project) => {
         const query = projectQuery.trim().toLowerCase();
         return (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))

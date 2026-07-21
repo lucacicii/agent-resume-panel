@@ -7,6 +7,7 @@ import {
   ensureExtensionCatalogSchema,
   syncStateHasExtendedColumns
 } from "./catalog/db";
+import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
 import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
 import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
@@ -154,8 +155,8 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     }
     await writeSyncState(options.dbPath, providerResult);
   }
-  // Alma support removed: keep any leftover catalog rows but hide them from the panel.
-  await hideRetiredAlmaSessions(options.dbPath);
+  // Alma support removed: hard-delete leftover Alma catalog rows and Alma-only projects.
+  await purgeRetiredAlmaCatalog(options.dbPath);
   try {
     await reconcileProjectsFromSessions(options.dbPath);
   } catch (error) {
@@ -319,16 +320,6 @@ async function grokCwd(summaryFile: string): Promise<string> { const group = pat
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
 function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
 function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
-/** Hide leftover Alma catalog rows after provider support was removed. */
-async function hideRetiredAlmaSessions(dbPath: string): Promise<void> {
-  try {
-    await runSqliteTransaction(dbPath, [
-      `UPDATE sessions SET hidden = 1 WHERE provider = 'alma' AND hidden = 0`
-    ]);
-  } catch {
-    // Catalog may predate sessions table or lack provider column in tests — ignore.
-  }
-}
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
   const key = agentHomeSettingKey(provider) as AgentHomeKey;
   return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);

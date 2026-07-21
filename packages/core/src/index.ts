@@ -106,7 +106,8 @@ export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
   hideSessionsInCatalog,
-  unhideAllSessionsInCatalog
+  unhideAllSessionsInCatalog,
+  purgeRetiredAlmaCatalog
 } from "./catalog/mutations";
 export {
   loadProjectAliasesMap,

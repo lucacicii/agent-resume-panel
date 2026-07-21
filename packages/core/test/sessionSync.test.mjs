@@ -125,3 +125,50 @@ test("syncs six providers, preserves local enhancements, and isolates provider f
   assert.equal(failed.providers.find((item) => item.provider === "opencode")?.status, "error");
   assert.ok((await listSessions(options.dbPath, 100)).some((item) => item.id === "opencode-1"), "failed provider keeps old catalog rows");
 });
+
+test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", async () => {
+  const { purgeRetiredAlmaCatalog, listSessions } = await import("../dist/index.js");
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-alma-purge-"));
+  const dbPath = path.join(root, "catalog.db");
+  // Minimal schema used by purge + list
+  sqlite(
+    dbPath,
+    `CREATE TABLE sessions(
+      provider TEXT NOT NULL, agent_session_id TEXT NOT NULL, title TEXT NOT NULL, project_path TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, message_count INTEGER, model TEXT, branch TEXT,
+      source TEXT, acp_provider TEXT, user_title TEXT, hidden INTEGER NOT NULL DEFAULT 0, last_synced_at_ms INTEGER,
+      transcript_kind TEXT, transcript_refs TEXT, session_summary TEXT, session_summary_language TEXT, session_summary_at_ms INTEGER,
+      project_id TEXT, PRIMARY KEY (provider, agent_session_id)
+    );
+    CREATE TABLE projects(project_id TEXT PRIMARY KEY, portable_key TEXT NOT NULL UNIQUE, alias TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0, last_seen_at_ms INTEGER, updated_at_ms INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE project_local_paths(project_id TEXT NOT NULL, machine_id TEXT NOT NULL, absolute_path TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(project_id, machine_id));
+    CREATE TABLE session_gtd(provider TEXT NOT NULL, agent_session_id TEXT NOT NULL, status TEXT, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(provider, agent_session_id));
+    CREATE TABLE sync_state(provider TEXT PRIMARY KEY, last_sync_at_ms INTEGER);
+    INSERT INTO projects VALUES('proj-alma-only','~/Library/Application Support/alma/workspaces/temp-x','',0,1,1,0);
+    INSERT INTO projects VALUES('proj-mixed','~/wb/mixed','',0,1,1,0);
+    INSERT INTO project_local_paths VALUES('proj-alma-only','m1','/tmp/alma-only',1);
+    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only');
+    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed');
+    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed');
+    INSERT INTO session_gtd VALUES('alma','a1','doing',1);
+    INSERT INTO sync_state VALUES('alma',1);`
+  );
+
+  const result = await purgeRetiredAlmaCatalog(dbPath);
+  assert.equal(result.deletedSessions, 2);
+  assert.equal(result.deletedProjects, 1);
+
+  const almaLeft = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM sessions WHERE provider='alma';");
+  assert.equal(Number(almaLeft[0].c), 0);
+  const almaProject = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM projects WHERE project_id='proj-alma-only';");
+  assert.equal(Number(almaProject[0].c), 0);
+  const mixed = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM projects WHERE project_id='proj-mixed';");
+  assert.equal(Number(mixed[0].c), 1);
+  const codex = await listSessions(dbPath, 10);
+  assert.equal(codex.length, 1);
+  assert.equal(codex[0].provider, "codex");
+  const gtd = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM session_gtd WHERE provider='alma';");
+  assert.equal(Number(gtd[0].c), 0);
+  const sync = await runSqliteJson(dbPath, "SELECT COUNT(*) AS c FROM sync_state WHERE provider='alma';");
+  assert.equal(Number(sync[0].c), 0);
+});
