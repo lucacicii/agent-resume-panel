@@ -9,7 +9,7 @@ const thread: AgentThread = { id: "thread-1", title: "Renderer work", createdAtM
 afterEach(() => { cleanup(); document.getElementById("react-agent")?.remove(); localStorage.removeItem("activeAgentThreadId"); localStorage.removeItem("askSidebarCollapsed"); localStorage.removeItem("sidebar-folders-width"); });
 
 const messages = {
-  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationHover": "Hover to preview", "desktop.agent.citationRef": "Citation", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load chat failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
+  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationHover": "Hover to preview", "desktop.agent.citationRef": "Citation", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load chat failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.edit": "Edit", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
 };
 
 describe("AgentPanel", () => {
@@ -18,11 +18,21 @@ describe("AgentPanel", () => {
     let stream: ((event: { phase: "chunk"; delta: string }) => void) | undefined;
     let resolveAsk: ((value: { answer: string; citations: []; fallback: boolean; digests: [] }) => void) | undefined;
     const askAgent = vi.fn(() => new Promise<{ answer: string; citations: []; fallback: boolean; digests: [] }>((resolve) => { resolveAsk = resolve; }));
+    const listAgentChat = vi.fn()
+      .mockResolvedValueOnce({ messages: [{ id: "m-1", role: "assistant", content: "Saved answer", createdAtMs: 1, sortOrder: 1 }], hasMore: false })
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "m-1", role: "assistant", content: "Saved answer", createdAtMs: 1, sortOrder: 1 },
+          { id: "u-2", role: "user", content: "Summarize this", createdAtMs: 2, sortOrder: 2 },
+          { id: "a-2", role: "assistant", content: "Completed response", createdAtMs: 3, sortOrder: 3 }
+        ],
+        hasMore: false
+      });
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages }),
       onLocaleChanged: () => () => undefined,
       listAgentThreads: async () => [thread],
-      listAgentChat: async () => ({ messages: [{ id: "m-1", role: "assistant", content: "Saved answer", createdAtMs: 1, sortOrder: 1 }], hasMore: false }),
+      listAgentChat,
       listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
       askAgent,
       onAskStream: (callback: (event: AgentStreamEvent) => void) => { stream = callback as typeof stream; return () => undefined; },
@@ -83,5 +93,116 @@ describe("AgentPanel", () => {
     fireEvent.mouseEnter(citation);
     await screen.findByText("Preview body");
     expect(getReportEntry).toHaveBeenCalledWith("daily:2026-07-19");
+  });
+
+  it("resends a user message after truncating later turns", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const truncateAgentChat = vi.fn(async () => ({ ok: true }));
+    const askAgent = vi.fn(async () => ({ answer: "Regenerated", citations: [], fallback: false, digests: [] }));
+    const listAgentChat = vi.fn()
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "u-1", role: "user", content: "First question", createdAtMs: 1, sortOrder: 1 },
+          { id: "a-1", role: "assistant", content: "First answer", createdAtMs: 2, sortOrder: 2 },
+          { id: "u-2", role: "user", content: "Second question", createdAtMs: 3, sortOrder: 3 },
+          { id: "a-2", role: "assistant", content: "Second answer", createdAtMs: 4, sortOrder: 4 }
+        ],
+        hasMore: false
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "u-1", role: "user", content: "First question", createdAtMs: 1, sortOrder: 1 },
+          { id: "a-1", role: "assistant", content: "First answer", createdAtMs: 2, sortOrder: 2 },
+          { id: "u-2b", role: "user", content: "Second question", createdAtMs: 5, sortOrder: 5 },
+          { id: "a-2b", role: "assistant", content: "Regenerated", createdAtMs: 6, sortOrder: 6 }
+        ],
+        hasMore: false
+      });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages }),
+      onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread],
+      listAgentChat,
+      listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      truncateAgentChat,
+      askAgent,
+      onAskStream: () => () => undefined,
+      renameAgentThread: async () => ({ ok: true }),
+      createAgentThread: async () => thread,
+      deleteAgentThread: async () => ({ ok: true }),
+      cancelAskAgent: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+    await screen.findByText("Second question");
+    fireEvent.contextMenu(screen.getByText("Second question"));
+    const menu = document.querySelector(".chat-context-menu");
+    expect(menu).toBeTruthy();
+    expect(menu?.textContent).toContain("Copy");
+    expect(menu?.textContent).toContain("Edit");
+    expect(menu?.textContent).toContain("Resend");
+    fireEvent.click(Array.from(menu!.querySelectorAll("button")).find((button) => button.textContent === "Resend")!);
+    await waitFor(() => expect(truncateAgentChat).toHaveBeenCalledWith({ threadId: "thread-1", fromSortOrder: 3 }));
+    await waitFor(() => expect(askAgent).toHaveBeenCalledWith(expect.objectContaining({
+      query: "Second question",
+      threadId: "thread-1",
+      history: [
+        { role: "user", content: "First question" },
+        { role: "assistant", content: "First answer" }
+      ]
+    })));
+    await screen.findByText("Regenerated");
+    expect(screen.queryByText("Second answer")).toBeNull();
+  });
+
+  it("edits a user message then truncates and resends", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const truncateAgentChat = vi.fn(async () => ({ ok: true }));
+    const askAgent = vi.fn(async () => ({ answer: "Edited reply", citations: [], fallback: false, digests: [] }));
+    const listAgentChat = vi.fn()
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "u-1", role: "user", content: "Original question", createdAtMs: 1, sortOrder: 1 },
+          { id: "a-1", role: "assistant", content: "Original answer", createdAtMs: 2, sortOrder: 2 }
+        ],
+        hasMore: false
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "u-2", role: "user", content: "Edited question", createdAtMs: 3, sortOrder: 3 },
+          { id: "a-2", role: "assistant", content: "Edited reply", createdAtMs: 4, sortOrder: 4 }
+        ],
+        hasMore: false
+      });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages }),
+      onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread],
+      listAgentChat,
+      listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      truncateAgentChat,
+      askAgent,
+      onAskStream: () => () => undefined,
+      renameAgentThread: async () => ({ ok: true }),
+      createAgentThread: async () => thread,
+      deleteAgentThread: async () => ({ ok: true }),
+      cancelAskAgent: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+    await screen.findByText("Original question");
+    fireEvent.contextMenu(screen.getByText("Original question"));
+    const menu = document.querySelector(".chat-context-menu");
+    fireEvent.click(Array.from(menu!.querySelectorAll("button")).find((button) => button.textContent === "Edit")!);
+    const editor = screen.getByLabelText("Edit") as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "Edited question" } });
+    const editActions = document.querySelector(".chat-bubble-edit-actions");
+    fireEvent.click(Array.from(editActions!.querySelectorAll("button")).find((button) => button.textContent === "Send")!);
+    await waitFor(() => expect(truncateAgentChat).toHaveBeenCalledWith({ threadId: "thread-1", fromSortOrder: 1 }));
+    await waitFor(() => expect(askAgent).toHaveBeenCalledWith(expect.objectContaining({
+      query: "Edited question",
+      history: []
+    })));
+    await screen.findByText("Edited reply");
   });
 });

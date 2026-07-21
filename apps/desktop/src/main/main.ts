@@ -5,6 +5,7 @@ import * as path from "node:path";
 import {
   runAgentChat,
   clearAgentMessages,
+  deleteAgentMessagesFromSortOrder,
   listOlderAgentMessages,
   listAgentNoteAudit,
   listRecentAgentMessages,
@@ -980,6 +981,18 @@ function registerIpc(): void {
     await clearAgentMessages(paths.desktopDb, args?.threadId);
     return { ok: true };
   });
+
+  ipcMain.handle(
+    "agent:truncateAgentChat",
+    async (_event, args: { threadId: string; fromSortOrder: number }) => {
+      const paths = await loadPanelDbPaths();
+      await deleteAgentMessagesFromSortOrder(paths.desktopDb, {
+        threadId: args.threadId,
+        fromSortOrder: args.fromSortOrder
+      });
+      return { ok: true };
+    }
+  );
 
   ipcMain.handle("agent:listThreads", async () => {
     const paths = await loadPanelDbPaths();

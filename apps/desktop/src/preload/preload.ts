@@ -367,6 +367,7 @@ export interface DesktopApi {
     hasMore: boolean;
   }>;
   clearAgentChat(args?: { threadId?: string }): Promise<{ ok: boolean }>;
+  truncateAgentChat(args: { threadId: string; fromSortOrder: number }): Promise<{ ok: boolean }>;
   listAgentThreads(): Promise<AgentThread[]>;
   createAgentThread(args: { title: string }): Promise<AgentThread>;
   renameAgentThread(args: { id: string; title: string }): Promise<{ ok: boolean }>;
@@ -743,6 +744,7 @@ const api: DesktopApi = {
   listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),
   listOlderAgentChat: (args) => ipcRenderer.invoke("agent:listOlderAgentChat", args),
   clearAgentChat: (args) => ipcRenderer.invoke("agent:clearAgentChat", args),
+  truncateAgentChat: (args) => ipcRenderer.invoke("agent:truncateAgentChat", args),
   listAgentThreads: () => ipcRenderer.invoke("agent:listThreads"),
   createAgentThread: (args) => ipcRenderer.invoke("agent:createThread", args),
   renameAgentThread: (args) => ipcRenderer.invoke("agent:renameThread", args),

@@ -27,10 +27,14 @@ interface IndexProgress extends ProgressEvent {
 }
 
 interface ChatContext {
+  turnId: string;
+  sortOrder: number;
   content: string;
   left: number;
   top: number;
 }
+
+const LOCAL_SORT_ORDER_FLOOR = Number.MAX_SAFE_INTEGER - 1000;
 
 interface CitationPreview {
   citation: AgentCitation;
@@ -166,6 +170,8 @@ export function AgentPanel(): ReactPortal | null {
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null);
   const [context, setContext] = useState<ChatContext | null>(null);
+  const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [preview, setPreview] = useState<CitationPreview | null>(null);
   const streamOff = useRef<(() => void) | null>(null);
   const cancelled = useRef(false);
@@ -307,6 +313,8 @@ export function AgentPanel(): ReactPortal | null {
     localStorage.setItem("activeAgentThreadId", id);
     setTurns([]);
     setHasMore(false);
+    setEditingTurnId(null);
+    setEditDraft("");
     await loadMessages(id);
   };
   const createThread = async () => {
@@ -381,18 +389,47 @@ export function AgentPanel(): ReactPortal | null {
       setSending(false);
     }
   };
-  const send = async (queryOverride?: string) => {
+  const cancelEdit = () => {
+    setEditingTurnId(null);
+    setEditDraft("");
+  };
+
+  const send = async (queryOverride?: string, options?: { fromTurnId?: string }) => {
     const query = (queryOverride ?? input).trim();
     if (!query || !threadId || sending) return;
+
+    let prefix = turns.filter((turn) => !turn.streaming);
+    if (options?.fromTurnId) {
+      const index = turns.findIndex((turn) => turn.id === options.fromTurnId);
+      if (index < 0) {
+        setStatus({ text: t("desktop.agent.loadChatFailedPrefix", options.fromTurnId), kind: "error" });
+        return;
+      }
+      const target = turns[index]!;
+      prefix = turns.slice(0, index).filter((turn) => !turn.streaming);
+      const sortOrder = Number(target.sortOrder || 0);
+      const canTruncateDb = Number.isFinite(sortOrder) && sortOrder > 0 && sortOrder < LOCAL_SORT_ORDER_FLOOR;
+      if (canTruncateDb) {
+        try {
+          await desktopApi().truncateAgentChat({ threadId, fromSortOrder: sortOrder });
+        } catch (error) {
+          setStatus({ text: errorMessage(error), kind: "error" });
+          return;
+        }
+      }
+      setTurns(prefix);
+      cancelEdit();
+    }
+
+    const history = prefix.map((turn) => ({ role: turn.role, content: turn.content }));
     const pendingId = `pending-${Date.now()}`;
-    const history = turns.filter((turn) => !turn.streaming).map((turn) => ({ role: turn.role, content: turn.content }));
     cancelled.current = false;
     sendingRef.current = true;
     setInput("");
     setSending(true);
     setStatus({ text: t("desktop.agent.searchingReports") });
-    setTurns((current) => [
-      ...current,
+    setTurns([
+      ...prefix,
       { id: `local-${Date.now()}`, role: "user", content: query, sortOrder: Number.MAX_SAFE_INTEGER - 1 },
       { id: pendingId, role: "assistant", content: "", citations: [], sortOrder: Number.MAX_SAFE_INTEGER, streaming: true }
     ]);
@@ -422,14 +459,20 @@ export function AgentPanel(): ReactPortal | null {
     });
     try {
       const result = await desktopApi().askAgent({ query, history, threadId, enableTools: tools });
-      setTurns((current) => current.map((turn) => turn.id === pendingId ? {
-        id: pendingId,
-        role: "assistant",
-        content: result.answer,
-        citations: result.citations,
-        fallback: result.fallback,
-        sortOrder: Number.MAX_SAFE_INTEGER
-      } : turn));
+      try {
+        const log = await desktopApi().listAgentChat({ threadId, limit: PAGE_SIZE });
+        setTurns(log.messages.map((message) => ({ ...message })));
+        setHasMore(log.hasMore);
+      } catch {
+        setTurns((current) => current.map((turn) => turn.id === pendingId ? {
+          id: pendingId,
+          role: "assistant",
+          content: result.answer,
+          citations: result.citations,
+          fallback: result.fallback,
+          sortOrder: Number.MAX_SAFE_INTEGER
+        } : turn));
+      }
       setStatus(result.persistWarning
         ? { text: result.persistWarning, kind: "error" }
         : {
@@ -547,10 +590,16 @@ export function AgentPanel(): ReactPortal | null {
             </div>
           </div>
           <div className="ask-chat-shell">
-            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} expanded={expanded} setExpanded={setExpanded} t={t} onScroll={onLogScroll} onCitation={openCitation} onCitationPreview={showPreview} onCitationPreviewLeave={hidePreviewSoon} onUserContext={(event, content) => {
+            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} expanded={expanded} setExpanded={setExpanded} t={t} onScroll={onLogScroll} onCitation={openCitation} onCitationPreview={showPreview} onCitationPreviewLeave={hidePreviewSoon} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
-              setContext({ content, left: Math.min(event.clientX, window.innerWidth - 160), top: Math.min(event.clientY, window.innerHeight - 100) });
+              setContext({
+                turnId: turn.id,
+                sortOrder: turn.sortOrder || 0,
+                content: turn.content,
+                left: Math.min(event.clientX, window.innerWidth - 160),
+                top: Math.min(event.clientY, window.innerHeight - 120)
+              });
             }} onCopy={(content) => void copyText(content).then(() => setStatus({ text: t("desktop.agent.copiedAnswer"), kind: "ok" }))} />
             <div className="chat-compose">
               <div className="chat-compose-field"><textarea rows={1} value={input} disabled={sending} placeholder={t("desktop.agent.inputPlaceholder")} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} /></div>
@@ -563,7 +612,11 @@ export function AgentPanel(): ReactPortal | null {
           </div>
         </main>
       </div>
-      {context ? <div className="chat-context-menu" style={{ left: context.left, top: context.top }} onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => void copyText(context.content).then(() => { setStatus({ text: t("desktop.agent.copied"), kind: "ok" }); setContext(null); })}>{t("desktop.common.copy")}</button><button type="button" disabled={sending} onClick={() => { setContext(null); void send(context.content); }}>{t("desktop.common.resend")}</button></div> : null}
+      {context ? <div className="chat-context-menu" style={{ left: context.left, top: context.top }} onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+        <button type="button" onClick={() => void copyText(context.content).then(() => { setStatus({ text: t("desktop.agent.copied"), kind: "ok" }); setContext(null); })}>{t("desktop.common.copy")}</button>
+        <button type="button" disabled={sending} onClick={() => { setEditingTurnId(context.turnId); setEditDraft(context.content); setContext(null); }}>{t("desktop.common.edit")}</button>
+        <button type="button" disabled={sending} onClick={() => { const turnId = context.turnId; const content = context.content; setContext(null); void send(content, { fromTurnId: turnId }); }}>{t("desktop.common.resend")}</button>
+      </div> : null}
       {preview ? <CitationPopover preview={preview} t={t} onKeep={keepPreview} onLeave={hidePreviewSoon} onOpen={() => openCitation(preview.citation)} /> : null}
     </section>,
     host
@@ -581,9 +634,15 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   onCitation: (citation: AgentCitation) => void;
   onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
   onCitationPreviewLeave: () => void;
-  onUserContext: (event: React.MouseEvent, content: string) => void;
+  editingTurnId: string | null;
+  editDraft: string;
+  sending: boolean;
+  onEditDraftChange: (value: string) => void;
+  onCancelEdit: () => void;
+  onConfirmEdit: () => void;
+  onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
-}>(({ turns, hasMore, loadingOlder, expanded, setExpanded, t, onScroll, onCitation, onCitationPreview, onCitationPreviewLeave, onUserContext, onCopy }, ref) => {
+}>(({ turns, hasMore, loadingOlder, expanded, setExpanded, t, onScroll, onCitation, onCitationPreview, onCitationPreviewLeave, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const heights = useRef(new Map<string, number>());
@@ -618,7 +677,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
     forceLayout((value) => value + 1);
   }, []);
   if (!turns.length) return <div ref={setLogRef} className="chat-log" onScroll={onScroll}><div className="chat-empty-state"><p className="chat-empty-title">{t("desktop.agent.emptyChat")}</p><p className="chat-empty-hint">{t("desktop.agent.emptyHint")}</p></div></div>;
-  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} expanded={expanded} setExpanded={setExpanded} t={t} onCitation={onCitation} onCitationPreview={onCitationPreview} onCitationPreviewLeave={onCitationPreviewLeave} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
+  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} expanded={expanded} setExpanded={setExpanded} t={t} onCitation={onCitation} onCitationPreview={onCitationPreview} onCitationPreviewLeave={onCitationPreviewLeave} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
 });
 
 function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id: string, height: number) => void; children: ReactNode }) {
@@ -638,7 +697,7 @@ function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id:
   return <div ref={ref}>{children}</div>;
 }
 
-function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPreview, onCitationPreviewLeave, onUserContext, onCopy }: {
+function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPreview, onCitationPreviewLeave, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
   turn: Turn;
   expanded: Set<string>;
   setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -646,7 +705,13 @@ function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPrevie
   onCitation: (citation: AgentCitation) => void;
   onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
   onCitationPreviewLeave: () => void;
-  onUserContext: (event: React.MouseEvent, content: string) => void;
+  editing: boolean;
+  editDraft: string;
+  sending: boolean;
+  onEditDraftChange: (value: string) => void;
+  onCancelEdit: () => void;
+  onConfirmEdit: () => void;
+  onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
 }) {
   const reports = turn.citations?.filter((citation) => !isNote(citation)) || [];
@@ -657,7 +722,21 @@ function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPrevie
     const open = expanded.has(id);
     return list.length ? <section className={`citation-section${open ? "" : " collapsed"}`}><button type="button" className="citation-section-head" aria-expanded={open} onClick={() => setExpanded((current) => { const next = new Set(current); if (open) next.delete(id); else next.add(id); return next; })}><ChevronDown size={14} /><span>{label} ({list.length})</span></button>{open ? <div className="citation-section-body">{list.map((citation, index) => <button type="button" className="citation-chip" key={`${citation.index}-${index}`} title={t("desktop.agent.citationHover")} onMouseEnter={(event) => void onCitationPreview(citation, event.currentTarget)} onFocus={(event) => void onCitationPreview(citation, event.currentTarget)} onMouseLeave={onCitationPreviewLeave} onBlur={onCitationPreviewLeave} onClick={() => onCitation(citation)}>{citationLabel(citation, t)}</button>)}</div> : null}</section> : null;
   };
-  if (turn.role === "user") return <div className="chat-message chat-message-out"><div className="chat-bubble user" onContextMenu={(event) => onUserContext(event, turn.content)}>{turn.content}</div></div>;
+  if (turn.role === "user") {
+    if (editing) {
+      return <div className="chat-message chat-message-out"><div className="chat-bubble user chat-bubble-edit" onPointerDown={(event) => event.stopPropagation()}>
+        <textarea className="chat-bubble-edit-input" value={editDraft} disabled={sending} rows={Math.min(8, Math.max(2, editDraft.split("\n").length))} autoFocus aria-label={t("desktop.common.edit")} onChange={(event) => onEditDraftChange(event.target.value)} onKeyDown={(event) => {
+          if (event.key === "Escape") { event.preventDefault(); onCancelEdit(); return; }
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); onConfirmEdit(); }
+        }} />
+        <div className="chat-bubble-edit-actions">
+          <button type="button" className="ghost-btn" disabled={sending} onClick={onCancelEdit}>{t("desktop.common.cancel")}</button>
+          <button type="button" className="ghost-btn" disabled={sending || !editDraft.trim()} onClick={onConfirmEdit}>{t("desktop.common.send")}</button>
+        </div>
+      </div></div>;
+    }
+    return <div className="chat-message chat-message-out"><div className="chat-bubble user" onContextMenu={(event) => onUserContext(event, turn)}>{turn.content}</div></div>;
+  }
   return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
 }
 

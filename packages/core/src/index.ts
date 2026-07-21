@@ -256,6 +256,7 @@ export { runAgentChat } from "./agent/agentChat";
 export {
   appendAgentTurn,
   clearAgentMessages,
+  deleteAgentMessagesFromSortOrder,
   listAgentMessages,
   listAgentMessagesForHistory,
   listOlderAgentMessages,

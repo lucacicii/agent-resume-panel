@@ -288,3 +288,23 @@ export async function clearAgentMessages(dbPath: string, threadId?: string): Pro
     await runSqlite(dbPath, "DELETE FROM agent_messages;");
   }
 }
+
+/** Delete a message and all later messages in the thread (by sort_order, inclusive). */
+export async function deleteAgentMessagesFromSortOrder(
+  dbPath: string,
+  options: { threadId: string; fromSortOrder: number }
+): Promise<void> {
+  await ensureDesktopDbSchema(dbPath);
+  const threadId = options.threadId?.trim();
+  if (!threadId) {
+    throw new Error("threadId is required.");
+  }
+  const fromSortOrder = Math.max(0, Math.floor(options.fromSortOrder));
+  const now = Date.now();
+  await runSqliteTransaction(dbPath, [
+    `DELETE FROM agent_messages
+     WHERE thread_id = '${escapeSqlLiteral(threadId)}'
+       AND sort_order >= ${fromSortOrder};`,
+    `UPDATE agent_threads SET updated_at_ms = ${now} WHERE id = '${escapeSqlLiteral(threadId)}';`
+  ]);
+}
