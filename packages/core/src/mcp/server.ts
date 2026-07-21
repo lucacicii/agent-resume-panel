@@ -26,12 +26,24 @@ import {
   reportReadSchema,
   reportSearchSchema
 } from "./reportTools";
+import {
+  handleSessionList,
+  handleSessionRead,
+  handleSessionReadTranscript,
+  handleSessionSearch,
+  sessionListSchema,
+  sessionReadSchema,
+  sessionReadTranscriptSchema,
+  sessionSearchSchema
+} from "./sessionTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.1.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
+  /** Catalog DB path for session tools. Falls back to notesStore when omitted. */
+  catalogDb?: string;
 }
 
 export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
@@ -161,6 +173,88 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     }
   );
 
+  const catalogDb = ctx.catalogDb?.trim() || "";
+  const sessionCtx = {
+    catalogDb,
+    desktopDb: ctx.dbPath,
+    panelHome: ctx.panelHome
+  };
+
+  server.registerTool(
+    "session_search",
+    {
+      description:
+        "Search CLI agent sessions in the local catalog. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over summaries. Use for finding past coding sessions by topic, project, provider, time, or GTD. Read-only.",
+      inputSchema: sessionSearchSchema
+    },
+    async (args: {
+      query: string;
+      provider?: string;
+      projectPath?: string;
+      gtdStatus?: string;
+      fromMs?: number;
+      toMs?: number;
+      limit?: number;
+    }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionSearch(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_list",
+    {
+      description:
+        "List recent catalog sessions with optional filters (provider, project path, GTD, time range). Prefer session_search when the user gives a topic query. Read-only.",
+      inputSchema: sessionListSchema
+    },
+    async (args: {
+      provider?: string;
+      projectPath?: string;
+      gtdStatus?: string;
+      fromMs?: number;
+      toMs?: number;
+      limit?: number;
+    }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionList(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_read",
+    {
+      description:
+        "Read catalog metadata and session_summary for one session (provider + sessionId). Prefer this before session_read_transcript. Read-only.",
+      inputSchema: sessionReadSchema
+    },
+    async (args: { provider: string; sessionId: string; maxSummaryLength?: number }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionRead(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_read_transcript",
+    {
+      description:
+        "Load a short recent transcript excerpt from the native CLI store for one session. Content is sent to the chat model — use only when summary is insufficient. Defaults to 2500 chars (max 8000). Not available for ACP chat provider. Read-only.",
+      inputSchema: sessionReadTranscriptSchema
+    },
+    async (args: { provider: string; sessionId: string; maxChars?: number }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionReadTranscript(args, sessionCtx);
+    }
+  );
+
   return server;
 }
 
@@ -170,7 +264,7 @@ export async function createNoteToolContext(panelHomeOverride?: string): Promise
   const paths = await preparePanelDatabasesFromSettings(panelHomeOverride);
   const notesStore = new NotesStore(paths.catalogDb, panelHome);
   await notesStore.initialize();
-  return { notesStore, dbPath: paths.desktopDb, panelHome };
+  return { notesStore, dbPath: paths.desktopDb, panelHome, catalogDb: paths.catalogDb };
 }
 
 export async function runStdioServer(panelHomeOverride?: string): Promise<void> {

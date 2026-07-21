@@ -9,9 +9,11 @@ import {
   createNoteMcpServer,
   desktopDbPath,
   ensureDesktopDbSchema,
+  ensureExtensionCatalogSchema,
   insertReportEntry,
   localDayRange,
-  NotesStore
+  NotesStore,
+  runSqlite
 } from "../dist/index.js";
 
 async function setupTestContext() {
@@ -26,8 +28,30 @@ async function setupTestContext() {
     desktopDb,
     dbPath: desktopDb,
     store,
-    ctx: { notesStore: store, dbPath: desktopDb, panelHome }
+    ctx: { notesStore: store, dbPath: desktopDb, panelHome, catalogDb }
   };
+}
+
+async function seedSession(catalogDb, {
+  provider = "codex",
+  id,
+  title,
+  projectPath = "/tmp/demo",
+  summary = null,
+  hidden = 0,
+  updatedAtMs = Date.now()
+}) {
+  await ensureExtensionCatalogSchema(catalogDb);
+  const summarySql = summary == null ? "NULL" : `'${String(summary).replaceAll("'", "''")}'`;
+  await runSqlite(
+    catalogDb,
+    `INSERT INTO sessions (
+       provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden, session_summary
+     ) VALUES (
+       '${provider}', '${id}', '${String(title).replaceAll("'", "''")}',
+       '${String(projectPath).replaceAll("'", "''")}', ${updatedAtMs}, 0, ${hidden}, ${summarySql}
+     );`
+  );
 }
 
 async function seedDailyReportEntry(desktopDb, panelHome, { label, title, content }) {
@@ -55,7 +79,7 @@ async function connectClient(server) {
   return client;
 }
 
-test("MCP server exposes all note and report tools", async () => {
+test("MCP server exposes all note, report, and session tools", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -72,8 +96,68 @@ test("MCP server exposes all note and report tools", async () => {
       "note_write",
       "report_list",
       "report_read",
-      "report_search"
+      "report_search",
+      "session_list",
+      "session_read",
+      "session_read_transcript",
+      "session_search"
     ]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("session_search finds catalog sessions by title and session_read returns summary", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  await seedSession(catalogDb, {
+    id: "sess-auth-1",
+    title: "Auth OAuth refactor",
+    summary: "Implemented OAuth login flow and token refresh."
+  });
+  await seedSession(catalogDb, {
+    id: "sess-other",
+    title: "Unrelated UI polish",
+    summary: "Button spacing only."
+  });
+  await seedSession(catalogDb, {
+    id: "sess-hidden",
+    title: "Auth secret",
+    summary: "hidden auth work",
+    hidden: 1
+  });
+
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const searchResult = await client.callTool({
+      name: "session_search",
+      arguments: { query: "OAuth" }
+    });
+    assert.notEqual(searchResult.isError, true);
+    assert.ok(searchResult.content[0].text.includes("sess-auth-1"));
+    assert.ok(searchResult.content[0].text.includes("Auth OAuth refactor"));
+    assert.ok(!searchResult.content[0].text.includes("sess-hidden"));
+
+    const listResult = await client.callTool({
+      name: "session_list",
+      arguments: { provider: "codex", limit: 10 }
+    });
+    assert.ok(listResult.content[0].text.includes("sess-auth-1"));
+
+    const readResult = await client.callTool({
+      name: "session_read",
+      arguments: { provider: "codex", sessionId: "sess-auth-1" }
+    });
+    assert.ok(readResult.content[0].text.includes("OAuth login flow"));
+    assert.ok(readResult.content[0].text.includes("sess-auth-1"));
+
+    const chatTranscript = await client.callTool({
+      name: "session_read_transcript",
+      arguments: { provider: "chat", sessionId: "any" }
+    });
+    assert.ok(chatTranscript.content[0].text.toLowerCase().includes("unavailable"));
   } finally {
     await client.close();
     await server.close();

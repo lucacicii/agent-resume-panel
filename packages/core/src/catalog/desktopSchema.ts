@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS schedule_run_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_started ON schedule_run_logs(started_at_ms DESC);
 
+CREATE TABLE IF NOT EXISTS session_embeddings (
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  title TEXT,
+  summary_preview TEXT,
+  embedding_json TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  embedding_key TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_embeddings_updated ON session_embeddings(updated_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_session_embeddings_key ON session_embeddings(embedding_key);
+
 CREATE TABLE IF NOT EXISTS agent_threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

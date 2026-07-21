@@ -30,5 +30,16 @@ export {
   handleNoteAppend,
   handleNoteDelete
 } from "./tools";
+export {
+  sessionSearchSchema,
+  sessionListSchema,
+  sessionReadSchema,
+  sessionReadTranscriptSchema,
+  handleSessionSearch,
+  handleSessionList,
+  handleSessionRead,
+  handleSessionReadTranscript
+} from "./sessionTools";
+export type { SessionToolContext } from "./sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./client";
 export type { McpToolInfo, McpToolCallResult } from "./client";

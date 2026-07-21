@@ -12,6 +12,7 @@ import { loadSessionPreview } from "../transcript/load";
 import { PreviewHomes } from "../transcript/types";
 import { recordLlmUsage } from "../usage/store";
 import { summarizeSessionMessages } from "./assist";
+import { upsertSessionEmbedding } from "./embedStore";
 
 export interface EnsureSummariesOptions {
   dbPath: string;
@@ -128,7 +129,8 @@ export async function ensureSummariesForSessions(
           llm,
           homes,
           language,
-          jobKey: `${prefix}:${key}`
+          jobKey: `${prefix}:${key}`,
+          settings: options.settings
         });
         out[index] = { ...session, sessionSummary: summary };
         summarized += 1;
@@ -175,6 +177,7 @@ async function summarizeOneSession(input: {
   homes: PreviewHomes;
   language: string;
   jobKey: string;
+  settings: PanelSettings;
 }): Promise<string> {
   const preview = await loadSessionPreview(input.session, input.homes);
   if (!preview.messages?.length) {
@@ -199,6 +202,15 @@ async function summarizeOneSession(input: {
       input.language,
       result.summary
     );
+    void upsertSessionEmbedding({
+      desktopDb: input.desktopDb,
+      settings: input.settings,
+      provider: input.session.provider,
+      sessionId: input.session.id,
+      title: input.session.title,
+      summary: result.summary,
+      jobKey: `session_embed:${input.jobKey}`
+    }).catch(() => undefined);
     return result.summary;
   } catch (error) {
     await recordLlmUsage(input.desktopDb, {

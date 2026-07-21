@@ -59,6 +59,7 @@ test("desktop schema creates report and agent tables in panelHome/.desktop/deskt
     assert.ok(desktopNames.includes("report_entries"));
     assert.ok(desktopNames.includes("agent_threads"));
     assert.ok(desktopNames.includes("note_vector_index"));
+    assert.ok(desktopNames.includes("session_embeddings"));
     assert.ok(desktopDb.includes(`${path.sep}.desktop${path.sep}desktop.db`));
 
     const indexes = await runSqliteJson(desktopDb, "PRAGMA index_list(agent_messages);");

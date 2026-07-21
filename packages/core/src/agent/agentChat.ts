@@ -16,10 +16,11 @@ import {
 import { appendAgentTurn, listAgentMessagesForHistory } from "./agentStore";
 import { retrieveAgentContext } from "./retrieve";
 import { runToolLoop } from "./toolLoop";
-import type { TouchedNote } from "./toolLoop";
+import type { TouchedNote, TouchedSession } from "./toolLoop";
 import { NoteMcpClient } from "../mcp/client";
 import { createNoteMcpServer } from "../mcp/server";
 import { NotesStore } from "../notes/store";
+import type { AgentProvider } from "../catalog/types";
 import type { AgentCitation, AgentChatOptions, AgentChatResult } from "./types";
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -219,10 +220,16 @@ async function runAskWithTools(
   let answer: string;
   let toolCallsExecuted = 0;
   let touchedNotes: TouchedNote[] = [];
+  let touchedSessions: TouchedSession[] = [];
 
   try {
     const notesStore = new NotesStore(ctx.retrieved.catalogDb, panelHome);
-    const server = createNoteMcpServer({ notesStore, dbPath: ctx.retrieved.desktopDb, panelHome });
+    const server = createNoteMcpServer({
+      notesStore,
+      dbPath: ctx.retrieved.desktopDb,
+      panelHome,
+      catalogDb: ctx.retrieved.catalogDb
+    });
     await mcpClient.connectInMemory(server);
 
     options.onStream?.({ phase: "generating" });
@@ -248,17 +255,22 @@ async function runAskWithTools(
     answer = toolResult.content;
     toolCallsExecuted = toolResult.toolCallsExecuted;
     touchedNotes = toolResult.touchedNotes;
+    touchedSessions = toolResult.touchedSessions;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[ask:tools] tool loop failed:", msg);
     throw error;
- } finally {
-   await mcpClient.stop().catch(() => {});
- }
+  } finally {
+    await mcpClient.stop().catch(() => {});
+  }
 
   const baseCitations = ctx.retrieved.citations;
-  const toolCitations = touchedNotesToCitations(touchedNotes, baseCitations.length);
-  const allCitations = [...baseCitations, ...toolCitations];
+  const noteCitations = touchedNotesToCitations(touchedNotes, baseCitations.length);
+  const sessionCitations = touchedSessionsToCitations(
+    touchedSessions,
+    baseCitations.length + noteCitations.length
+  );
+  const allCitations = [...baseCitations, ...noteCitations, ...sessionCitations];
 
   return buildAskResult(options, ctx.desktopDb, ctx.retrieved, answer, allCitations, toolCallsExecuted);
 }
@@ -274,10 +286,29 @@ function touchedNotesToCitations(
     title: note.title || note.noteId,
     scope: note.scope,
     relMdPath: note.relMdPath,
-    projectPath: note.projectPath,
     level: "note",
     contentPreview: note.contentPreview,
     operation: note.operation
+  }));
+}
+
+function touchedSessionsToCitations(
+  touched: TouchedSession[],
+  startIndex: number
+): AgentCitation[] {
+  return touched.map((session, i) => ({
+    source: "session" as const,
+    index: startIndex + i + 1,
+    title: session.title || session.sessionId,
+    level: "session",
+    contentPreview: session.contentPreview,
+    score: session.score,
+    operation: session.operation === "list" ? "search" : session.operation,
+    session: {
+      provider: session.provider as AgentProvider,
+      id: session.sessionId,
+      projectPath: session.projectPath || ""
+    }
   }));
 }
 

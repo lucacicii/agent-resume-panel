@@ -103,6 +103,18 @@ export {
 export { listSessions, listSessionsInRange, getSessionById, countSessions } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
 export {
+  searchCatalogSessions,
+  mergeSessionSearchHits,
+  clampSessionSearchLimit,
+  clampSessionListLimit,
+  sanitizeLikeFragment
+} from "./catalog/search";
+export type {
+  SessionSearchFilters,
+  SessionSearchHit,
+  SessionSearchMatch
+} from "./catalog/search";
+export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
   hideSessionsInCatalog,
@@ -476,9 +488,40 @@ export {
   MCP_SERVER_VERSION
 } from "./mcp/server";
 export type { NoteToolContext } from "./mcp/tools";
+export type { AgentMcpContext } from "./mcp/server";
+export {
+  handleSessionSearch,
+  handleSessionList,
+  handleSessionRead,
+  handleSessionReadTranscript
+} from "./mcp/sessionTools";
+export type { SessionToolContext } from "./mcp/sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
 export { runToolLoop } from "./agent/toolLoop";
-export type { ToolLoopOptions, ToolLoopResult, TouchedNote, NoteOperation } from "./agent/toolLoop";
+export type {
+  ToolLoopOptions,
+  ToolLoopResult,
+  TouchedNote,
+  TouchedSession,
+  NoteOperation,
+  SessionOperation
+} from "./agent/toolLoop";
+export { extractTouchedSessions } from "./agent/toolLoop";
 export { resolveMcpServerCommand } from "./agent/mcpConfig";
 export type { McpServerCommand } from "./agent/mcpConfig";
+export {
+  upsertSessionEmbedding,
+  backfillSessionEmbeddings,
+  listSessionEmbeddingRows,
+  buildSessionEmbedText,
+  sessionEmbeddingKey
+} from "./session/embedStore";
+export type {
+  UpsertSessionEmbeddingOptions,
+  UpsertSessionEmbeddingResult,
+  BackfillSessionEmbeddingsOptions,
+  BackfillSessionEmbeddingsResult
+} from "./session/embedStore";
+export { searchSessionsByEmbedding } from "./session/searchByEmbedding";
+export type { SearchSessionsByEmbeddingOptions } from "./session/searchByEmbedding";

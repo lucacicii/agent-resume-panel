@@ -73,6 +73,10 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
     "Memory tools (report_search, report_read, report_list) are read-only. They supplement the Report Sources already in the prompt — they do not replace them.",
     "When Report Sources already cite a reportId, call report_read to expand the full digest instead of report_search.",
     "Use report_list to enumerate digests in a period (e.g. recent weekly reports). Use report_search only when sources are insufficient or the user requests a new search.",
+    "Session tools (session_search, session_list, session_read, session_read_transcript) are read-only and target individual CLI sessions in the catalog.",
+    "Use session_search for topic/project/provider queries over past coding sessions; use session_list for recent sessions with filters and no free-text topic.",
+    "When you know provider + sessionId, call session_read for metadata and session_summary. Call session_read_transcript only when the summary is insufficient and the user needs dialogue detail — excerpts are private and sent to the chat model.",
+    "Report Sources are cross-session digests; session tools are single-session. Do not invent sessions, providers, or session ids not returned by tools.",
     "Do not generate daily/weekly/monthly digests or change GTD via tools; direct the user to the Report panel for those actions.",
     "After executing a tool, summarize what was done in a concise sentence.",
     "Do not pretend to have performed an action if the tool call failed — report the error honestly."

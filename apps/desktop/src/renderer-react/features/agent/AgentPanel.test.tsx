@@ -9,7 +9,7 @@ const thread: AgentThread = { id: "thread-1", title: "Renderer work", createdAtM
 afterEach(() => { cleanup(); document.getElementById("react-agent")?.remove(); localStorage.removeItem("activeAgentThreadId"); localStorage.removeItem("askSidebarCollapsed"); localStorage.removeItem("sidebar-folders-width"); });
 
 const messages = {
-  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationHover": "Hover to preview", "desktop.agent.citationRef": "Citation", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load chat failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.edit": "Edit", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
+  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.citationSessions": "Sessions", "desktop.agent.sessionLevel": "Session", "desktop.agent.openInSessions": "Open in Sessions", "desktop.agent.cannotResolveSession": "Cannot resolve session", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationHover": "Hover to preview", "desktop.agent.citationRef": "Citation", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load chat failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.edit": "Edit", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
 };
 
 describe("AgentPanel", () => {
@@ -93,6 +93,52 @@ describe("AgentPanel", () => {
     fireEvent.mouseEnter(citation);
     await screen.findByText("Preview body");
     expect(getReportEntry).toHaveBeenCalledWith("daily:2026-07-19");
+  });
+
+  it("shows session citations separately and opens Sessions sheet", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const opened: unknown[] = [];
+    const onPreview = (event: Event) => opened.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:sessions-preview", onPreview);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages }), onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread],
+      listAgentChat: async () => ({
+        messages: [{
+          id: "m-1",
+          role: "assistant",
+          content: "Found a session",
+          createdAtMs: 1,
+          sortOrder: 1,
+          citations: [{
+            source: "session",
+            index: 1,
+            level: "session",
+            title: "Auth OAuth",
+            contentPreview: "Implemented OAuth login",
+            operation: "search",
+            session: { provider: "codex", id: "sess-1", projectPath: "/tmp/app" }
+          }]
+        }],
+        hasMore: false
+      }),
+      listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }),
+      askAgent: async () => ({ answer: "", citations: [], fallback: false, digests: [] }), cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined, clearAgentChat: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+    try {
+      render(<I18nProvider><AgentPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+      await screen.findByText("Found a session");
+      fireEvent.click(screen.getByRole("button", { name: "Sessions (1)" }));
+      const chip = screen.getByRole("button", { name: /\[S1\].*Auth OAuth/ });
+      fireEvent.mouseEnter(chip);
+      await screen.findByText(/Implemented OAuth login/);
+      fireEvent.click(chip);
+      expect(opened[0]).toMatchObject({ provider: "codex", id: "sess-1", projectPath: "/tmp/app" });
+    } finally {
+      window.removeEventListener("agent-resume:sessions-preview", onPreview);
+    }
   });
 
   it("resends a user message after truncating later turns", async () => {

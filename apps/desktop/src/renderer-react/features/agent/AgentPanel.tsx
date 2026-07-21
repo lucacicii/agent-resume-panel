@@ -43,7 +43,7 @@ interface CitationPreview {
   error?: string;
 }
 
-type CitationGroup = "report" | "note";
+type CitationGroup = "report" | "note" | "session";
 
 const PAGE_SIZE = 40;
 const SIDEBAR_WIDTH_KEY = "sidebar-folders-width";
@@ -55,6 +55,10 @@ const NOTE_ACTIONS = new Set(["create", "write", "append"]);
 
 function isNote(citation: AgentCitation): boolean {
   return citation.source === "note" || citation.level === "note";
+}
+
+function isSession(citation: AgentCitation): boolean {
+  return citation.source === "session" || citation.level === "session";
 }
 
 function periodFromCitation(citation: AgentCitation): { type: "day" | "week" | "month"; key: string } | null {
@@ -122,14 +126,27 @@ function citationLabel(citation: AgentCitation, t: Translate): string {
     append: t("desktop.agent.toolAppend"),
     delete: t("desktop.agent.toolDelete")
   };
-  const source = isNote(citation) ? t("desktop.agent.noteLevel") : citation.level || "daily";
+  const source = isNote(citation)
+    ? t("desktop.agent.noteLevel")
+    : isSession(citation)
+      ? t("desktop.agent.sessionLevel")
+      : citation.level || "daily";
   const operation = citation.operation ? operations[citation.operation] : "";
-  const subject = citation.title || citation.noteId || citation.reportId || t("desktop.agent.citationRef");
+  const subject =
+    citation.title ||
+    citation.noteId ||
+    citation.reportId ||
+    (citation.session ? `${citation.session.provider}/${citation.session.id.slice(0, 10)}` : "") ||
+    t("desktop.agent.citationRef");
   const heading = isNote(citation) && citation.heading ? ` · ${citation.heading}` : "";
   const score = citation.score == null ? "" : ` · ${Number(citation.score).toFixed(3)}`;
-  const session = citation.session ? ` · ${citation.session.provider}/${citation.session.id.slice(0, 10)}...` : "";
-  const index = isNote(citation) ? `N${citation.index}` : citation.index;
-  return `[${index}] ${operation ? `${operation} · ` : ""}${source} · ${subject}${heading}${score}${session}`;
+  // Report digests may link a related session; session citations already show provider/id in subject.
+  const linkedSession =
+    !isSession(citation) && citation.session
+      ? ` · ${citation.session.provider}/${citation.session.id.slice(0, 10)}...`
+      : "";
+  const index = isNote(citation) ? `N${citation.index}` : isSession(citation) ? `S${citation.index}` : citation.index;
+  return `[${index}] ${operation ? `${operation} · ` : ""}${source} · ${subject}${heading}${score}${linkedSession}`;
 }
 
 function progressFromEvent(event: ProgressEvent): IndexProgress {
@@ -506,6 +523,27 @@ export function AgentPanel(): ReactPortal | null {
       setPreview(null);
       return;
     }
+    if (isSession(citation)) {
+      const session = citation.session;
+      if (!session?.provider || !session.id) {
+        setStatus({ text: t("desktop.agent.cannotResolveSession"), kind: "error" });
+        setPreview(null);
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("agent-resume:sessions-preview", {
+          detail: {
+            provider: session.provider,
+            id: session.id,
+            title: citation.title || session.id,
+            projectPath: session.projectPath || "",
+            updatedAt: citation.periodStartMs || Date.now()
+          }
+        })
+      );
+      setPreview(null);
+      return;
+    }
     const period = periodFromCitation(citation);
     if (!period) {
       setStatus({ text: t("desktop.agent.cannotResolveReport"), kind: "error" });
@@ -518,9 +556,26 @@ export function AgentPanel(): ReactPortal | null {
   const showPreview = async (citation: AgentCitation, anchor: HTMLElement) => {
     if (previewHideTimer.current !== null) window.clearTimeout(previewHideTimer.current);
     const anchorRect = anchor.getBoundingClientRect();
-    const immediate = citation.contentPreview ? { title: citation.title, content: citation.contentPreview } : undefined;
+    const immediateTitle =
+      citation.title ||
+      citation.noteId ||
+      citation.reportId ||
+      (citation.session ? `${citation.session.provider} · ${citation.session.id}` : undefined);
+    const immediate = citation.contentPreview
+      ? { title: immediateTitle, content: citation.contentPreview }
+      : isSession(citation) && citation.session
+        ? {
+            title: immediateTitle,
+            content: [
+              `**${citation.session.provider}** \`${citation.session.id}\``,
+              citation.session.projectPath ? citation.session.projectPath : ""
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          }
+        : undefined;
     setPreview({ citation, anchor: anchorRect, entry: immediate });
-    if (immediate || isNote(citation) || !citation.reportId) return;
+    if (immediate || isNote(citation) || isSession(citation) || !citation.reportId) return;
     try {
       const entry = await desktopApi().getReportEntry(citation.reportId);
       setPreview((current) => current?.citation === citation ? { ...current, entry: entry || null } : current);
@@ -714,8 +769,9 @@ function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPrevie
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
 }) {
-  const reports = turn.citations?.filter((citation) => !isNote(citation)) || [];
+  const reports = turn.citations?.filter((citation) => !isNote(citation) && !isSession(citation)) || [];
   const notes = turn.citations?.filter(isNote) || [];
+  const sessions = turn.citations?.filter(isSession) || [];
   const actions = (turn.citations || []).filter((citation) => isNote(citation) && citation.operation && NOTE_ACTIONS.has(citation.operation));
   const group = (kind: CitationGroup, list: AgentCitation[], label: string) => {
     const id = `${turn.id}:${kind}`;
@@ -737,7 +793,7 @@ function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPrevie
     }
     return <div className="chat-message chat-message-out"><div className="chat-bubble user" onContextMenu={(event) => onUserContext(event, turn)}>{turn.content}</div></div>;
   }
-  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
+  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}{group("session", sessions, t("desktop.agent.citationSessions"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
 }
 
 function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Translate }) {
@@ -749,10 +805,24 @@ function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Transl
 function CitationPopover({ preview, t, onKeep, onLeave, onOpen }: { preview: CitationPreview; t: Translate; onKeep: () => void; onLeave: () => void; onOpen: () => void }) {
   const left = Math.max(8, Math.min(preview.anchor.right + 8, window.innerWidth - 348));
   const top = Math.max(8, Math.min(preview.anchor.top, window.innerHeight - 240));
-  const title = preview.entry?.title || preview.citation.title || preview.citation.noteId || preview.citation.reportId || t("desktop.agent.citationRef");
+  const sessionId = preview.citation.session
+    ? `${preview.citation.session.provider}:${preview.citation.session.id}`
+    : "";
+  const title =
+    preview.entry?.title ||
+    preview.citation.title ||
+    preview.citation.noteId ||
+    preview.citation.reportId ||
+    sessionId ||
+    t("desktop.agent.citationRef");
   const content = preview.entry?.content;
-  const openLabel = isNote(preview.citation) ? t("desktop.agent.openInNotes") : t("desktop.agent.openInReport");
-  return <div className="citation-popover" data-placement="right" style={{ left, top } as CSSProperties} onMouseEnter={onKeep} onMouseLeave={onLeave}><div className="citation-popover-content"><div className="citation-preview-head">{title}</div><div className="citation-preview-body">{preview.error ? <p className="muted">{t("desktop.agent.previewLoadFailed", preview.error)}</p> : content ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content.slice(0, 900)) }} /> : <p className="muted">{t("desktop.agent.citationNoPreview", preview.citation.noteId || preview.citation.reportId ? ` (${preview.citation.noteId || preview.citation.reportId})` : "")}</p>}</div><button type="button" className="citation-preview-open ghost-btn" onClick={onOpen}>{openLabel}</button></div></div>;
+  const openLabel = isNote(preview.citation)
+    ? t("desktop.agent.openInNotes")
+    : isSession(preview.citation)
+      ? t("desktop.agent.openInSessions")
+      : t("desktop.agent.openInReport");
+  const missingId = preview.citation.noteId || preview.citation.reportId || sessionId;
+  return <div className="citation-popover" data-placement="right" style={{ left, top } as CSSProperties} onMouseEnter={onKeep} onMouseLeave={onLeave}><div className="citation-popover-content"><div className="citation-preview-head">{title}</div><div className="citation-preview-body">{preview.error ? <p className="muted">{t("desktop.agent.previewLoadFailed", preview.error)}</p> : content ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content.slice(0, 900)) }} /> : <p className="muted">{t("desktop.agent.citationNoPreview", missingId ? ` (${missingId})` : "")}</p>}</div><button type="button" className="citation-preview-open ghost-btn" onClick={onOpen}>{openLabel}</button></div></div>;
 }
 
 function Audit({ items, loading, t, onRefresh }: { items: AgentNoteAuditEvent[]; loading: boolean; t: Translate; onRefresh: () => void }) {

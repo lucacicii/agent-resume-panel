@@ -11,6 +11,7 @@ import { loadSessionPreview } from "../transcript/load";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { recordLlmUsage } from "../usage/store";
 import { suggestSessionTitleFromMessages, summarizeSessionMessages } from "./assist";
+import { upsertSessionEmbedding } from "./embedStore";
 import { renameSessionNative } from "./rename";
 
 export interface SessionActionOptions {
@@ -65,7 +66,7 @@ async function loadSessionContext(opts: SessionActionOptions) {
 export async function summarizeSessionAction(
   opts: SessionActionOptions
 ): Promise<SummarizeSessionResult> {
-  const { catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts);
+  const { settings, catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts);
   const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 
   try {
@@ -80,6 +81,15 @@ export async function summarizeSessionAction(
       ok: true
     });
     await setSessionSummaryInCatalog(catalogDb, session.provider, session.id, language, result.summary);
+    void upsertSessionEmbedding({
+      desktopDb,
+      settings,
+      provider: session.provider,
+      sessionId: session.id,
+      title: session.title,
+      summary: result.summary,
+      jobKey: `session_embed:summarize:${session.provider}:${session.id}`
+    }).catch(() => undefined);
     return {
       summary: result.summary,
       language,

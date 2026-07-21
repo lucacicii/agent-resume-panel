@@ -10,6 +10,7 @@ import {
 const DEFAULT_MAX_ITERATIONS = 5;
 
 export type NoteOperation = "search" | "read" | "create" | "write" | "append" | "delete";
+export type SessionOperation = "search" | "list" | "read";
 
 export interface TouchedNote {
   noteId: string;
@@ -19,6 +20,16 @@ export interface TouchedNote {
   projectPath?: string;
   contentPreview?: string;
   operation: NoteOperation;
+}
+
+export interface TouchedSession {
+  provider: string;
+  sessionId: string;
+  title?: string;
+  projectPath?: string;
+  contentPreview?: string;
+  score?: number;
+  operation: SessionOperation;
 }
 
 export interface ToolLoopOptions {
@@ -45,6 +56,7 @@ export interface ToolLoopResult {
   iterations: number;
   toolCallsExecuted: number;
   touchedNotes: TouchedNote[];
+  touchedSessions: TouchedSession[];
 }
 
 function extractToolResultText(result: McpToolCallResult): string {
@@ -64,6 +76,13 @@ const NOTE_TOOL_OPERATIONS: Record<string, NoteOperation> = {
   note_write: "write",
   note_append: "append",
   note_delete: "delete"
+};
+
+const SESSION_TOOL_OPERATIONS: Record<string, SessionOperation> = {
+  session_search: "search",
+  session_list: "list",
+  session_read: "read",
+  session_read_transcript: "read"
 };
 
 /**
@@ -101,6 +120,105 @@ function extractTouchedNotes(toolName: string, text: string): TouchedNote[] {
   }
 
   return notes;
+}
+
+function sessionKey(provider: string, sessionId: string): string {
+  return `${provider}:${sessionId}`;
+}
+
+/**
+ * Extract session hits from session_* tool results (JSON arrays/objects).
+ * session_read_transcript may only have a text header; callers can pass args.
+ */
+export function extractTouchedSessions(
+  toolName: string,
+  text: string,
+  args?: Record<string, unknown>
+): TouchedSession[] {
+  const operation = SESSION_TOOL_OPERATIONS[toolName];
+  if (!operation) {
+    return [];
+  }
+
+  const sessions: TouchedSession[] = [];
+  const seen = new Set<string>();
+
+  function push(partial: {
+    provider?: string;
+    sessionId?: string;
+    title?: string;
+    projectPath?: string;
+    contentPreview?: string;
+    score?: number;
+  }): void {
+    const provider = partial.provider?.trim();
+    const sessionId = partial.sessionId?.trim();
+    if (!provider || !sessionId) {
+      return;
+    }
+    const key = sessionKey(provider, sessionId);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    sessions.push({
+      provider,
+      sessionId,
+      title: partial.title,
+      projectPath: partial.projectPath,
+      contentPreview: partial.contentPreview,
+      score: partial.score,
+      operation
+    });
+  }
+
+  const candidates = extractJsonObjects(text);
+  for (const obj of candidates) {
+    const arrays = Array.isArray(obj) ? obj : [obj];
+    for (const item of arrays) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const row = item as Record<string, unknown>;
+      const provider = typeof row.provider === "string" ? row.provider : undefined;
+      const sessionId =
+        typeof row.sessionId === "string"
+          ? row.sessionId
+          : typeof row.agentSessionId === "string"
+            ? row.agentSessionId
+            : undefined;
+      const summary =
+        typeof row.sessionSummary === "string"
+          ? row.sessionSummary
+          : typeof row.summaryPreview === "string"
+            ? row.summaryPreview
+            : typeof row.contentPreview === "string"
+              ? row.contentPreview
+              : undefined;
+      push({
+        provider,
+        sessionId,
+        title: typeof row.title === "string" ? row.title : undefined,
+        projectPath: typeof row.projectPath === "string" ? row.projectPath : undefined,
+        contentPreview: summary,
+        score: typeof row.score === "number" ? row.score : undefined
+      });
+    }
+  }
+
+  if (!sessions.length && (toolName === "session_read" || toolName === "session_read_transcript")) {
+    const provider = typeof args?.provider === "string" ? args.provider : undefined;
+    const sessionId = typeof args?.sessionId === "string" ? args.sessionId : undefined;
+    let contentPreview: string | undefined;
+    if (toolName === "session_read_transcript" && text.trim()) {
+      // Strip the header line when present.
+      const body = text.replace(/^Transcript excerpt for[^\n]*\n\n?/i, "").trim();
+      contentPreview = body.slice(0, 600) || undefined;
+    }
+    push({ provider, sessionId, contentPreview });
+  }
+
+  return sessions;
 }
 
 /**
@@ -193,11 +311,47 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   let toolCallsExecuted = 0;
   let lastContent = "";
   const touchedMap = new Map<string, TouchedNote>();
+  const touchedSessionMap = new Map<string, TouchedSession>();
 
   function mergeTouched(notes: TouchedNote[]): void {
     for (const note of notes) {
       touchedMap.set(note.noteId, note);
     }
+  }
+
+  function mergeTouchedSessions(sessions: TouchedSession[]): void {
+    for (const session of sessions) {
+      const key = sessionKey(session.provider, session.sessionId);
+      const existing = touchedSessionMap.get(key);
+      if (!existing) {
+        touchedSessionMap.set(key, session);
+        continue;
+      }
+      const preferIncoming =
+        (session.operation === "read" && existing.operation !== "read") ||
+        (!existing.contentPreview && Boolean(session.contentPreview)) ||
+        (!existing.title && Boolean(session.title));
+      if (preferIncoming) {
+        touchedSessionMap.set(key, {
+          ...existing,
+          ...session,
+          title: session.title || existing.title,
+          projectPath: session.projectPath || existing.projectPath,
+          contentPreview: session.contentPreview || existing.contentPreview,
+          score: session.score ?? existing.score
+        });
+      }
+    }
+  }
+
+  function finish(content: string): ToolLoopResult {
+    return {
+      content,
+      iterations,
+      toolCallsExecuted,
+      touchedNotes: Array.from(touchedMap.values()),
+      touchedSessions: Array.from(touchedSessionMap.values())
+    };
   }
 
   while (iterations < maxIterations) {
@@ -221,14 +375,9 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
 
     if (!result.toolCalls || result.toolCalls.length === 0 || result.finishReason === "stop") {
       if (!lastContent) {
-        return {
-          content: pt("desktop.agent.toolsNoResponse"),
-          iterations,
-          toolCallsExecuted,
-          touchedNotes: Array.from(touchedMap.values())
-        };
+        return finish(pt("desktop.agent.toolsNoResponse"));
       }
-      return { content: result.content, iterations, toolCallsExecuted, touchedNotes: Array.from(touchedMap.values()) };
+      return finish(result.content);
     }
 
     messages.push({
@@ -260,6 +409,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
           toolError = toolResultText;
         } else {
           mergeTouched(extractTouchedNotes(toolName, toolResultText));
+          mergeTouchedSessions(extractTouchedSessions(toolName, toolResultText, parsedArgs));
         }
         options.onToolResult?.(toolName, rawResult, toolError);
       } catch (error) {
@@ -279,10 +429,5 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     }
   }
 
-  return {
-    content: lastContent || pt("desktop.agent.toolsMaxIterations"),
-    iterations,
-    toolCallsExecuted,
-    touchedNotes: Array.from(touchedMap.values())
-  };
+  return finish(lastContent || pt("desktop.agent.toolsMaxIterations"));
 }

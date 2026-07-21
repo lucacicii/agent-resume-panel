@@ -10,6 +10,7 @@ export type LlmUsageSource =
   | "backfill"
   | "summarize"
   | "rename"
+  | "session_embed"
   | "other";
 
 export interface TokenUsage {
