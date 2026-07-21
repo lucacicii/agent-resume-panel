@@ -24,8 +24,18 @@ export interface DesktopApi {
   getSettings(): Promise<PanelSettings>;
   saveSettings(
     settings: PanelSettings,
-    options?: { triggerSync?: boolean }
+    options?: { triggerSync?: boolean; section?: string }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  openSettingsWindow(options?: { pane?: string }): Promise<void>;
+  closeSettingsWindow(): Promise<{ ok: boolean }>;
+  onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
+  onSettingsChanged(
+    callback: (payload: {
+      settings: PanelSettings;
+      section?: string;
+      sync?: AgentSessionSyncResult;
+    }) => void
+  ): () => void;
   syncSessions(): Promise<AgentSessionSyncResult>;
   onSessionsSynced(callback: (result: AgentSessionSyncResult) => void): () => void;
   onSessionsSyncFailed(callback: (message: string) => void): () => void;
@@ -613,6 +623,21 @@ const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
+  openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
+  closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
+  onSettingsNavigate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
+    ipcRenderer.on("settings:navigate", handler);
+    return () => ipcRenderer.removeListener("settings:navigate", handler);
+  },
+  onSettingsChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { settings: PanelSettings; section?: string; sync?: AgentSessionSyncResult }
+    ) => callback(payload);
+    ipcRenderer.on("settings:changed", handler);
+    return () => ipcRenderer.removeListener("settings:changed", handler);
+  },
   syncSessions: () => ipcRenderer.invoke("sessions:sync"),
   countSessions: () => ipcRenderer.invoke("sessions:count"),
   unhideAllSessions: () => ipcRenderer.invoke("sessions:unhideAll"),

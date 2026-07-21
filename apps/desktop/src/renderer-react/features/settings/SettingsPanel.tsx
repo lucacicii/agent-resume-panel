@@ -14,6 +14,12 @@ import {
 type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "usage" | "about";
 type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
 
+export type SettingsPanelProps = {
+  /** Production path is always "window" (auxiliary BrowserWindow). */
+  variant?: "window" | "embedded";
+  initialPane?: string;
+};
+
 const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "general", key: "desktop.settings.paneGeneral", desc: "desktop.settings.paneGeneralDesc" },
   { id: "models", key: "desktop.settings.paneModels", desc: "desktop.settings.paneModelsDesc" },
@@ -29,11 +35,15 @@ function asPane(value: unknown): Pane {
   return panes.some((pane) => pane.id === value) ? value as Pane : "general";
 }
 
-export function SettingsPanel(): React.ReactPortal | null {
+export function SettingsPanel({
+  variant = "window",
+  initialPane
+}: SettingsPanelProps): React.ReactPortal | null {
   const { t } = useI18n();
   const host = document.getElementById("react-settings");
-  const [open, setOpen] = useState(false);
-  const [pane, setPane] = useState<Pane>("general");
+  const isWindow = variant === "window";
+  const [open, setOpen] = useState(isWindow);
+  const [pane, setPane] = useState<Pane>(() => asPane(initialPane));
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [general, setGeneral] = useState<GeneralDraft | null>(null);
   const [models, setModels] = useState<ModelsDraft | null>(null);
@@ -57,10 +67,28 @@ export function SettingsPanel(): React.ReactPortal | null {
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
 
   useEffect(() => {
+    if (isWindow) {
+      void load().catch((error: unknown) =>
+        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+      );
+      const stopNavigate =
+        typeof desktopApi().onSettingsNavigate === "function"
+          ? desktopApi().onSettingsNavigate((payload) => {
+              setPane(asPane(payload?.pane));
+            })
+          : () => undefined;
+      return () => {
+        stopNavigate();
+        if (timer.current) window.clearTimeout(timer.current);
+      };
+    }
+
     const onOpen = (event: Event) => {
       setPane(asPane(event instanceof CustomEvent ? event.detail : "general"));
       setOpen(true);
-      void load().catch((error: unknown) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
+      void load().catch((error: unknown) =>
+        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+      );
     };
     const onTabChange = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== "settings") {
@@ -74,19 +102,35 @@ export function SettingsPanel(): React.ReactPortal | null {
       window.removeEventListener("agent-resume:tab-change", onTabChange);
       if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [load]);
+  }, [isWindow, load]);
 
   const save = useCallback(async (next: PanelSettings, section: Exclude<Pane, "usage" | "about">) => {
     setStatus({ text: t("desktop.settings.saving") });
     try {
-      const result = await desktopApi().saveSettings(next, { triggerSync: section === "sessions" || section === "storage" });
+      const result = await desktopApi().saveSettings(next, {
+        triggerSync: section === "sessions" || section === "storage",
+        section
+      });
       hydrate(result.settings);
-      window.dispatchEvent(new CustomEvent("agent-resume:settings-saved", { detail: { settings: result.settings, section, sync: result.sync } }));
-      setStatus({ text: t("desktop.settings.saved", result.schedulerEnabled ? t("desktop.settings.schedulerOn") : t("desktop.settings.schedulerOff")), kind: "ok" });
+      // Window mode: main window receives settings via IPC broadcast only (K17)
+      if (!isWindow) {
+        window.dispatchEvent(
+          new CustomEvent("agent-resume:settings-saved", {
+            detail: { settings: result.settings, section, sync: result.sync }
+          })
+        );
+      }
+      setStatus({
+        text: t(
+          "desktop.settings.saved",
+          result.schedulerEnabled ? t("desktop.settings.schedulerOn") : t("desktop.settings.schedulerOff")
+        ),
+        kind: "ok"
+      });
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     }
-  }, [hydrate, t]);
+  }, [hydrate, isWindow, t]);
 
   const scheduleSave = (section: Exclude<Pane, "usage" | "about">, draft: Draft) => {
     if (!settings) return;
@@ -104,7 +148,16 @@ export function SettingsPanel(): React.ReactPortal | null {
 
   if (!host || !open || !settings || !general || !models || !sessions || !workbench || !report || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
-  const close = () => { setOpen(false); window.dispatchEvent(new Event("agent-resume:settings-closed")); };
+  const close = () => {
+    if (isWindow) {
+      if (typeof desktopApi().closeSettingsWindow === "function") {
+        void desktopApi().closeSettingsWindow();
+      }
+      return;
+    }
+    setOpen(false);
+    window.dispatchEvent(new Event("agent-resume:settings-closed"));
+  };
   const body = pane === "general" ? <GeneralPane draft={general} setDraft={(value) => setGeneral(value)} scheduleSave={(draft) => scheduleSave("general", draft)} t={t} />
     : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} scheduleSave={(draft) => scheduleSave("models", draft)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} scheduleSave={(draft) => scheduleSave("sessions", draft)} t={t} />
@@ -113,7 +166,54 @@ export function SettingsPanel(): React.ReactPortal | null {
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
     : pane === "usage" ? <UsagePane t={t} /> : <AboutPane t={t} />;
 
-  return createPortal(<section className="panel active react-settings-panel"><div className="toolbar"><h2 className="quiet-title">{t("desktop.settings.title")}</h2><button type="button" className="ghost-btn" onClick={close}>{t("desktop.settings.done")}</button></div><div className="settings-layout"><aside className="settings-nav" aria-label={t("desktop.settings.navLabel")}>{panes.map((item) => <button type="button" className={`settings-nav-item${pane === item.id ? " active" : ""}`} key={item.id} onClick={() => setPane(item.id)}>{t(item.key)}</button>)}</aside><div className="settings-main"><header className="settings-content-header"><div className="settings-content-header-text"><h2 className="settings-pane-title">{t(current.key)}</h2><p className="settings-pane-desc">{t(current.desc)}</p></div>{pane !== "usage" && pane !== "about" ? <div className="settings-header-actions"><Status kind={status.kind}>{status.text}</Status></div> : null}</header><div className="form settings-form"><div className={`settings-pane${pane === "usage" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}>{pane === "usage" || pane === "about" ? body : <div className="settings-pane-body">{body}</div>}</div></div>{pane === "usage" || pane === "about" ? <div className="settings-header-actions react-settings-status"><Status kind={status.kind}>{status.text}</Status></div> : null}</div></div></section>, host);
+  return createPortal(
+    <section className="panel active react-settings-panel">
+      <div className="toolbar">
+        <h2 className="quiet-title">{t("desktop.settings.title")}</h2>
+        <button type="button" className="ghost-btn" onClick={close}>{t("desktop.settings.done")}</button>
+      </div>
+      <div className="settings-layout">
+        <aside className="settings-nav" aria-label={t("desktop.settings.navLabel")}>
+          {panes.map((item) => (
+            <button
+              type="button"
+              className={`settings-nav-item${pane === item.id ? " active" : ""}`}
+              key={item.id}
+              onClick={() => setPane(item.id)}
+            >
+              {t(item.key)}
+            </button>
+          ))}
+        </aside>
+        <div className="settings-main">
+          <header className="settings-content-header">
+            <div className="settings-content-header-text">
+              <h2 className="settings-pane-title">{t(current.key)}</h2>
+              <p className="settings-pane-desc">{t(current.desc)}</p>
+            </div>
+            {pane !== "usage" && pane !== "about" ? (
+              <div className="settings-header-actions">
+                <Status kind={status.kind}>{status.text}</Status>
+              </div>
+            ) : null}
+          </header>
+          <div className="form settings-form">
+            <div
+              className={`settings-pane${pane === "usage" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
+            >
+              {pane === "usage" || pane === "about" ? body : <div className="settings-pane-body">{body}</div>}
+            </div>
+          </div>
+          {pane === "usage" || pane === "about" ? (
+            <div className="settings-header-actions react-settings-status">
+              <Status kind={status.kind}>{status.text}</Status>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>,
+    host
+  );
 }
 
 function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; scheduleSave: (draft: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {

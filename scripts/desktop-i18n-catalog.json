@@ -53,6 +53,9 @@
       "desktop.top.settings": "Settings",
       "desktop.top.settingsTitle": "Settings"
     },
+    "menu": {
+      "desktop.menu.settings": "Settings…"
+    },
     "report": {
       "desktop.report.prevMonth": "Previous month",
       "desktop.report.nextMonth": "Next month",
@@ -1536,7 +1539,10 @@
     "desktop.settings.projectMenu.revealDesc": "在 Finder 中显示项目文件夹。",
     "desktop.settings.projectMenu.mergeDesc": "合并到另一个项目：会话与本机路径并入目标，本项目条目删除。",
     "desktop.settings.projectMenu.splitDesc": "把某条路径变体拆成独立项目（用于撤销误合并）。至少需要两种路径变体。",
-    "desktop.settings.projectMenu.removeDesc": "从面板隐藏该项目及其 session。不删除 Agent 历史、磁盘目录和笔记。"
+    "desktop.settings.projectMenu.removeDesc": "从面板隐藏该项目及其 session。不删除 Agent 历史、磁盘目录和笔记。",
+    "menu": {
+      "desktop.menu.settings": "设置…"
+    }
   },
   "ja": {
     "app": {
@@ -2363,6 +2369,9 @@
     "desktop.settings.projectMenu.revealDesc": "Finder でプロジェクトフォルダを表示します。",
     "desktop.settings.projectMenu.mergeDesc": "別プロジェクトに統合します。セッションとローカルパスは先へ移り、このプロジェクト行は削除されます。",
     "desktop.settings.projectMenu.splitDesc": "あるパス変種を別プロジェクトとして切り離します（誤った統合の取り消し用）。パス変種が 2 つ以上必要です。",
-    "desktop.settings.projectMenu.removeDesc": "パネルからこのプロジェクトと session を非表示にします。Agent 履歴・ディスク・ノートは削除しません。"
+    "desktop.settings.projectMenu.removeDesc": "パネルからこのプロジェクトと session を非表示にします。Agent 履歴・ディスク・ノートは削除しません。",
+    "menu": {
+      "desktop.menu.settings": "設定…"
+    }
   }
 }

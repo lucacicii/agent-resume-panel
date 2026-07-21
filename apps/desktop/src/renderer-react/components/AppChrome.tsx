@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes";
-type ActiveView = PrimaryTab | "settings";
 
 interface UpdateState {
   available: boolean;
@@ -23,32 +22,27 @@ function eventDetail<T>(event: Event): T | undefined {
 
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
-  const [activeTab, setActiveTab] = useState<ActiveView>("report");
+  const [activeTab, setActiveTab] = useState<PrimaryTab>("report");
   const [update, setUpdate] = useState<UpdateState>({ available: false, version: "" });
 
   useEffect(() => {
     const onTabChange = (event: Event) => {
-      const next = eventDetail<ActiveView>(event);
-      if (next && (next === "settings" || tabs.some((tab) => tab.id === next))) setActiveTab(next);
+      const next = eventDetail<string>(event);
+      if (next && tabs.some((tab) => tab.id === next)) setActiveTab(next as PrimaryTab);
     };
     const onUpdateChange = (event: Event) => {
       const next = eventDetail<UpdateState>(event);
       if (next) setUpdate(next);
     };
     const onTabRequest = (event: Event) => {
-      const next = eventDetail<ActiveView>(event);
-      if (!next || (next !== "settings" && !tabs.some((tab) => tab.id === next))) return;
-      setActiveTab(next);
+      const next = eventDetail<string>(event);
+      if (!next || !tabs.some((tab) => tab.id === next)) return;
+      setActiveTab(next as PrimaryTab);
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
-    };
-    const onSettingsClosed = () => {
-      setActiveTab("report");
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" }));
     };
     window.addEventListener("agent-resume:tab-change", onTabChange);
     window.addEventListener("agent-resume:update-change", onUpdateChange);
     window.addEventListener("agent-resume:tab-request", onTabRequest);
-    window.addEventListener("agent-resume:settings-closed", onSettingsClosed);
     if (typeof window.agentResume.checkForUpdate === "function") {
       void window.agentResume.checkForUpdate({ force: false }).then((result) => {
         if (result.ok && result.updateAvailable) setUpdate({ available: true, version: result.latestVersion });
@@ -58,7 +52,6 @@ export function AppChrome(): React.JSX.Element {
       window.removeEventListener("agent-resume:tab-change", onTabChange);
       window.removeEventListener("agent-resume:update-change", onUpdateChange);
       window.removeEventListener("agent-resume:tab-request", onTabRequest);
-      window.removeEventListener("agent-resume:settings-closed", onSettingsClosed);
     };
   }, []);
 
@@ -68,9 +61,9 @@ export function AppChrome(): React.JSX.Element {
   };
 
   const openSettings = (pane: "general" | "about" = "general") => {
-    setActiveTab("settings");
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "settings" }));
-    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
+    if (typeof window.agentResume.openSettingsWindow === "function") {
+      void window.agentResume.openSettingsWindow({ pane });
+    }
   };
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);

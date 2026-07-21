@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -81,7 +81,7 @@ import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { buildI18nBundle, initI18nService } from "./i18nService";
+import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
   invalidateNotesStore,
@@ -241,11 +241,45 @@ function applyAppIcon(): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let activeAskAbort: AbortController | null = null;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
 const SESSION_SYNC_INTERVAL_MS = 60_000;
+
+const SETTINGS_PANES = [
+  "general",
+  "models",
+  "sessions",
+  "workbench",
+  "report",
+  "storage",
+  "usage",
+  "about"
+] as const;
+type SettingsPaneId = (typeof SETTINGS_PANES)[number];
+
+function normalizeSettingsPane(value: unknown): SettingsPaneId {
+  return typeof value === "string" && (SETTINGS_PANES as readonly string[]).includes(value)
+    ? (value as SettingsPaneId)
+    : "general";
+}
+
+function broadcastToRenderers(channel: string, ...args: unknown[]): void {
+  for (const win of [mainWindow, settingsWindow]) {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  }
+}
+
+function closeSettingsWindowIfOpen(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close();
+  }
+  settingsWindow = null;
+}
 
 function syncSessions(): Promise<AgentSessionSyncResult> {
   if (sessionSyncInFlight) return sessionSyncInFlight;
@@ -334,6 +368,18 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
   });
 }
 
+/** Settings window: ⌘W / Ctrl+W closes the preferences window only. */
+function registerSettingsShortcuts(win: BrowserWindow): void {
+  win.webContents.on("before-input-event", (event, input) => {
+    if (isWorkbenchCmdWInput(input)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) {
+        win.close();
+      }
+    }
+  });
+}
+
 function createWindow(): void {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
@@ -366,8 +412,115 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     workbenchActive = false;
+    // Invariant: settings never outlives main
+    closeSettingsWindowIfOpen();
     mainWindow = null;
   });
+}
+
+function createSettingsWindow(options: { pane: SettingsPaneId }): void {
+  const icon = loadAppIcon();
+  const win = new BrowserWindow({
+    width: 720,
+    height: 560,
+    minWidth: 640,
+    minHeight: 480,
+    title: "Settings",
+    show: false,
+    ...(icon ? { icon } : {}),
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, "..", "preload", "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  if (process.platform !== "darwin") {
+    win.setMenuBarVisibility(false);
+  }
+
+  settingsWindow = win;
+  registerSettingsShortcuts(win);
+  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
+    query: { mode: "settings", pane: options.pane }
+  });
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
+  });
+  win.on("closed", () => {
+    if (settingsWindow === win) {
+      settingsWindow = null;
+    }
+  });
+}
+
+function openSettingsWindow(options?: { pane?: unknown }): void {
+  const pane = normalizeSettingsPane(options?.pane);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) {
+      settingsWindow.restore();
+    }
+    settingsWindow.show();
+    settingsWindow.focus();
+    // K14: do not restore/focus mainWindow
+    settingsWindow.webContents.send("settings:navigate", { pane });
+    return;
+  }
+  createSettingsWindow({ pane });
+}
+
+/** Application menu: Settings… with ⌘,/Ctrl+, (macOS app menu / File on other platforms). */
+async function installApplicationMenu(): Promise<void> {
+  const settings = await loadSettings();
+  const settingsLabel = desktopT(settings, "desktop.menu.settings");
+  const isMac = process.platform === "darwin";
+
+  const settingsItem: Electron.MenuItemConstructorOptions = {
+    label: settingsLabel,
+    accelerator: "CommandOrControl+,",
+    click: () => openSettingsWindow({ pane: "general" })
+  };
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { type: "separator" as const },
+              settingsItem,
+              { type: "separator" as const },
+              { role: "services" as const },
+              { type: "separator" as const },
+              { role: "hide" as const },
+              { role: "hideOthers" as const },
+              { role: "unhide" as const },
+              { type: "separator" as const },
+              { role: "quit" as const }
+            ]
+          }
+        ]
+      : [
+          {
+            label: "File",
+            submenu: [settingsItem, { type: "separator" as const }, { role: "quit" as const }]
+          }
+        ]),
+    { role: "editMenu" },
+    { role: "windowMenu" }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function registerIpc(): void {
@@ -414,16 +567,31 @@ function registerIpc(): void {
       const schedulerEnabled = await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
       const bundle = buildI18nBundle(saved);
-      if (bundle.locale !== prevLocale && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("i18n:localeChanged", bundle);
-      }
       const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
         ? await syncAndNotify()
         : undefined;
       scheduleNotesIndex();
+      broadcastToRenderers("settings:changed", {
+        settings: saved,
+        section: options?.section,
+        sync
+      });
+      if (bundle.locale !== prevLocale) {
+        broadcastToRenderers("i18n:localeChanged", bundle);
+        void installApplicationMenu();
+      }
       return { file, settings: saved, schedulerEnabled, sync };
     }
   );
+
+  safeHandle("settings:openWindow", async (_event, options?: { pane?: unknown }) => {
+    openSettingsWindow(options);
+  });
+
+  safeHandle("settings:closeWindow", async () => {
+    closeSettingsWindowIfOpen();
+    return { ok: true as const };
+  });
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
 
@@ -1183,13 +1351,22 @@ app.whenReady().then(async () => {
     console.error("Failed to prepare panel databases on startup:", error);
   }
   createWindow();
+  await installApplicationMenu();
   startDesktopNotesIndexer();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      // Invariant fallback: settings must not outlive main
+      closeSettingsWindowIfOpen();
       createWindow();
       startDesktopNotesIndexer();
+      return;
     }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
   });
 });
 

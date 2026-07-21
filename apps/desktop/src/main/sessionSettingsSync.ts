@@ -2,6 +2,8 @@ import type { PanelSettings } from "@agent-resume/core";
 
 export interface SaveSettingsOptions {
   triggerSync?: boolean;
+  /** UI section id; required for Workbench (and future) filtered refresh after multi-window split */
+  section?: string;
 }
 
 function normalizeAgentHomes(settings: PanelSettings) {

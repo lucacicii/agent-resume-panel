@@ -11,6 +11,7 @@ import { AgentPanel } from "./features/agent/AgentPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
+import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 
 function applyTheme(theme: "system" | "light" | "dark" | undefined): void {
   const root = document.documentElement;
@@ -30,7 +31,24 @@ function applyTheme(theme: "system" | "light" | "dark" | undefined): void {
   if (dark) dark.disabled = effective !== "dark";
 }
 
-function RuntimeBootstrap(): null {
+export function getDesktopWindowMode(): "main" | "settings" {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "settings" ? "settings" : "main";
+  } catch {
+    return "main";
+  }
+}
+
+export function getInitialSettingsPane(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("pane") || "general";
+  } catch {
+    return "general";
+  }
+}
+
+function MainRuntimeBootstrap(): null {
   useEffect(() => {
     let active = true;
     const onThemeChange = (event: Event) => applyTheme((event as CustomEvent<"system" | "light" | "dark">).detail);
@@ -39,30 +57,86 @@ function RuntimeBootstrap(): null {
       if (active) applyTheme(settings.desktop?.theme);
     }).catch(() => undefined);
     void window.agentResume.syncSessions().catch(() => undefined);
+    const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
+      ? window.agentResume.onSettingsChanged((detail) => {
+          for (const ev of settingsChangedToCustomEvents(detail)) {
+            window.dispatchEvent(new CustomEvent(ev.name, { detail: ev.detail }));
+          }
+        })
+      : () => undefined;
     return () => {
       active = false;
       window.removeEventListener("agent-resume:theme-change", onThemeChange);
+      stopSettings();
     };
   }, []);
   return null;
 }
 
-function DesktopRuntime(): React.JSX.Element {
+function SettingsRuntimeBootstrap(): null {
+  useEffect(() => {
+    let active = true;
+    void window.agentResume.getSettings().then((settings) => {
+      if (active) applyTheme(settings.desktop?.theme);
+    }).catch(() => undefined);
+    // Theme only — do not full-hydrate Settings drafts from broadcast (K17)
+    const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
+      ? window.agentResume.onSettingsChanged((detail) => {
+          applyTheme(detail.settings?.desktop?.theme);
+        })
+      : () => undefined;
+    return () => {
+      active = false;
+      stopSettings();
+    };
+  }, []);
+  return null;
+}
+
+function MainDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
-      <RuntimeBootstrap />
-      <RendererRuntime />
+      <MainRuntimeBootstrap />
+      <MainRendererRuntime />
     </I18nProvider>
   );
 }
 
-function RendererRuntime(): React.JSX.Element {
+function MainRendererRuntime(): React.JSX.Element {
   const { ready } = useI18n();
   useEffect(() => {
     if (!ready) return;
     window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" }));
   }, [ready]);
-  return <><AppChrome /><ReportPanel /><GtdSheet /><AgentPanel /><WorkbenchPanel /><NotesPanel /><SessionsSheet /><SettingsPanel /><Notifications /></>;
+  return (
+    <>
+      <AppChrome />
+      <ReportPanel />
+      <GtdSheet />
+      <AgentPanel />
+      <WorkbenchPanel />
+      <NotesPanel />
+      <SessionsSheet />
+      <Notifications />
+    </>
+  );
+}
+
+function SettingsDesktopRuntime(): React.JSX.Element {
+  const initialPane = getInitialSettingsPane();
+  return (
+    <I18nProvider>
+      <SettingsRuntimeBootstrap />
+      <SettingsPanel variant="window" initialPane={initialPane} />
+    </I18nProvider>
+  );
+}
+
+// Mode flag before first paint — drives settings-window CSS
+const windowMode = getDesktopWindowMode();
+document.documentElement.dataset.windowMode = windowMode;
+if (windowMode === "settings") {
+  document.title = "Settings";
 }
 
 const host = document.getElementById("react-chrome");
@@ -77,7 +151,7 @@ if (host) {
   } else {
     createRoot(host).render(
       <StrictMode>
-        <DesktopRuntime />
+        {windowMode === "settings" ? <SettingsDesktopRuntime /> : <MainDesktopRuntime />}
       </StrictMode>
     );
   }
