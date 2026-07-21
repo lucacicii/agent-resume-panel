@@ -5736,10 +5736,37 @@ code {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  position: relative;
 }
 
 .wb-terminal-pane.active {
   display: flex;
+}
+
+.wb-terminal-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  background: #1e1e1e;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.wb-terminal-loading-stack {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+
+.wb-terminal-loading .spin {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .wb-editor-pane {

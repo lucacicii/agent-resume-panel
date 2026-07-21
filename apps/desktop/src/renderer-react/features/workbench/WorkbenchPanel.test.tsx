@@ -95,7 +95,8 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const project = await screen.findByTitle("/work/app");
     fireEvent.contextMenu(project);
-    await screen.findByRole("menuitem", { name: "Pin project" });
+    // Default project context menu includes newSession (pin is optional / settings-driven).
+    await screen.findByRole("menuitem", { name: "New Session" });
     fireEvent.click(screen.getByRole("menuitem", { name: "New Session" }));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "codex" }));
 
@@ -380,5 +381,88 @@ describe("WorkbenchPanel", () => {
     act(() => onWorkbenchCmdW?.());
     await waitFor(() => expect(screen.queryByRole("button", { name: "Close terminal" })).toBeNull());
     expect(terminalDestroy).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  it("shows loading until the new terminal PTY is ready", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let resolveSpawn: (result: { id: number }) => void = () => undefined;
+    const terminalSpawn = vi.fn(() => new Promise<{ id: number }>((resolve) => { resolveSpawn = resolve; }));
+    let resolveNewSession: (result: { mode: "xterm"; command: string; cwd: string }) => void = () => undefined;
+    const workbenchNewSession = vi.fn(() => new Promise<{ mode: "xterm"; command: string; cwd: string }>((resolve) => {
+      resolveNewSession = resolve;
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession,
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeTruthy());
+    expect(screen.getByRole("status").textContent).toContain("Loading");
+    await act(async () => resolveSpawn({ id: 11 }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    expect(terminalSpawn).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeTruthy());
+    await act(async () => resolveNewSession({ mode: "xterm", command: "codex", cwd: "/work/app" }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(2));
+    expect(document.querySelector(".wb-terminal-loading")).toBeTruthy();
+    await act(async () => resolveSpawn({ id: 12 }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+  });
+
+  it("does not leave loading visible for external-system new sessions", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
   });
 });
