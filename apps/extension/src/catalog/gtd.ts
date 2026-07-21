@@ -95,7 +95,7 @@ export async function querySessionsByGtdStatus(
     dbPath,
     `SELECT s.provider, s.agent_session_id, s.title, s.project_path, s.updated_at_ms, s.archived,
       s.message_count, s.model, s.branch, s.source, s.acp_provider, s.user_title, s.hidden, s.last_synced_at_ms,
-      s.session_summary, s.session_summary_language, s.session_summary_at_ms
+      s.session_summary, s.session_summary_language, s.session_summary_at_ms, s.project_id
      FROM sessions s
      INNER JOIN session_gtd g
        ON g.provider = s.provider AND g.agent_session_id = s.agent_session_id

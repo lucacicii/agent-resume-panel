@@ -7,6 +7,8 @@ export interface AgentSession {
   id: string;
   title: string;
   projectPath: string;
+  /** Logical catalog project id when projects schema v2 is available. */
+  projectId?: string;
   updatedAt: number;
   model?: string;
   branch?: string;

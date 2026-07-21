@@ -29,7 +29,7 @@ export async function querySessionById(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms
+      session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE provider = '${escapeProvider(provider)}' AND agent_session_id = '${escapeId(id)}' AND hidden = 0
      LIMIT 1;`
@@ -72,7 +72,7 @@ async function queryVisibleSessions(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms
+      session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE hidden = 0
      ORDER BY updated_at_ms DESC

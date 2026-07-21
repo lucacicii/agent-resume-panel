@@ -59,9 +59,9 @@ export function getSettingSections(): SettingSection[] {
           label: t("settings.fieldMaxItemsLabel"),
           description: t("settings.fieldMaxItemsDescription"),
           type: "number",
-          default: 500,
+          default: 10000,
           minimum: 20,
-          maximum: 5000
+          maximum: 50000
         },
         {
           key: "editorNewSessionProvider",
