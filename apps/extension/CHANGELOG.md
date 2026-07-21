@@ -8,6 +8,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.11]
+
+#### 修复
+
+- **共享 catalog projects schema**：与 Desktop 0.2.2 对齐，读取 `project_id` / `portable_key` 模型；启动时自动迁移旧 `projects(project_path)` 表并 reconcile session 归属。
+- **项目树分组**：按逻辑项目（`projectId` / portable key）合并节点，避免同一仓库因绝对路径差异拆成多项。
+- **项目别名与收藏**：别名按 portable key 解析；收藏夹按逻辑项目去重匹配。
+
+#### 变更
+
+- **Max Sessions 默认改为 10000**（上限 50000），侧栏 Projects 聚合可覆盖更多历史 session。
+- 使用含本版本的扩展时，请与 **Agent Resume Desktop ≥ 0.2.2** 共用同一 `panelHome`。旧扩展无法读取已迁移的 projects 表（会报 `no such column: project_path`），请升级并 **Reload Window**。
+
 ### [2.6.10]
 
 #### 新增
@@ -393,6 +406,19 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.11]
+
+#### Fixed
+
+- **Shared catalog projects schema**: Aligned with Desktop 0.2.2 (`project_id` / `portable_key`); migrates legacy `projects(project_path)` on startup and reconciles session ownership.
+- **Project tree grouping**: Groups by logical project (`projectId` / portable key) so one repo is not split by absolute path variants.
+- **Aliases and favorites**: Resolve aliases via portable key; favorites match by logical project.
+
+#### Changed
+
+- **Max Sessions default is now 10000** (max 50000) so the Projects tree can aggregate more history.
+- When sharing `panelHome` with **Agent Resume Desktop ≥ 0.2.2**, install this extension build and **Reload Window**. Older extensions cannot read the migrated projects table (`no such column: project_path`).
 
 ### [2.6.10]
 

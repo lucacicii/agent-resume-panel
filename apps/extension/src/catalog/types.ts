@@ -33,6 +33,7 @@ export interface CatalogSessionRow {
   session_summary?: string | null;
   session_summary_language?: string | null;
   session_summary_at_ms?: number | null;
+  project_id?: string | null;
 }
 
 export type SessionSummaryPolicy = "match" | "any";
@@ -76,6 +77,10 @@ export function toAgentSession(
       (outputLanguage && summaryLanguagesMatch(row.session_summary_language, outputLanguage)))
   ) {
     session.sessionSummary = summary;
+  }
+  const projectId = row.project_id?.trim();
+  if (projectId) {
+    session.projectId = projectId;
   }
 
   return session;

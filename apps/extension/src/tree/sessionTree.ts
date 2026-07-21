@@ -3,7 +3,12 @@ import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 import { t } from "../i18n";
 import { GtdStatus } from "../catalog/gtd";
-import { formatProjectLabel } from "../projects/projectAliases";
+import { isFavoriteProject } from "../favorites/projectFavorites";
+import {
+  formatProjectLabel,
+  pickProjectDisplayPath,
+  projectGroupKey
+} from "../projects/projectAliases";
 import { relativeTime } from "../util/relativeTime";
 import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } from "./projectSessionSort";
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
@@ -424,53 +429,85 @@ export interface ProjectGroup {
 }
 
 export function buildProjectList(sessions: AgentSession[], favoriteProjects: string[] = []): ProjectGroup[] {
-  const favoriteSet = new Set(favoriteProjects.map((projectPath) => path.resolve(projectPath)));
-  const byPath = groupSessionsByPath(sessions);
+  const byGroup = groupSessionsByProject(sessions);
 
-  return [...byPath.entries()]
-    .map(([projectPath, projectSessions]) => ({
-      projectPath,
-      sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
-      favorited: favoriteSet.has(projectPath)
-    }))
+  return [...byGroup.values()]
+    .map((projectSessions) => {
+      const projectPath = pickProjectDisplayPath(projectSessions);
+      return {
+        projectPath,
+        sessions: projectSessions.sort((a, b) => b.updatedAt - a.updatedAt),
+        favorited: isFavoriteAmong(favoriteProjects, projectPath, projectSessions)
+      };
+    })
     .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
 }
 
-function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession[]> {
-  const byPath = new Map<string, AgentSession[]>();
-  for (const session of sessions) {
-    const projectPath = path.resolve(session.projectPath || process.env.HOME || "");
-    const bucket = byPath.get(projectPath) ?? [];
-    bucket.push(session);
-    byPath.set(projectPath, bucket);
+function isFavoriteAmong(
+  favoriteProjects: string[],
+  projectPath: string,
+  sessions: AgentSession[]
+): boolean {
+  if (isFavoriteProject(favoriteProjects, projectPath)) {
+    return true;
   }
-  return byPath;
+  return sessions.some((session) => isFavoriteProject(favoriteProjects, session.projectPath));
+}
+
+/** Group by logical project (projectId / portable_key), not raw absolute path only. */
+export function groupSessionsByProject(sessions: AgentSession[]): Map<string, AgentSession[]> {
+  const byGroup = new Map<string, AgentSession[]>();
+  for (const session of sessions) {
+    const key = projectGroupKey(session);
+    const bucket = byGroup.get(key) ?? [];
+    bucket.push(session);
+    byGroup.set(key, bucket);
+  }
+  return byGroup;
+}
+
+/** @deprecated use groupSessionsByProject */
+function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession[]> {
+  return groupSessionsByProject(sessions);
 }
 
 function buildFavoriteProjectNodes(favoritePaths: string[], sessions: AgentSession[]): ProjectNode[] {
-  const byPath = groupSessionsByPath(sessions);
-  return favoritePaths.map((favoritePath) => {
-    const projectPath = path.resolve(favoritePath);
-    return {
-    kind: "project" as const,
-    projectPath,
-    sessions: byPath.get(projectPath) ?? [],
-    favorited: true
-  };
-  });
+  const withSessions = buildProjectList(sessions, favoritePaths).filter((group) => group.favorited);
+  const emptyFavorites = favoritePaths
+    .filter(
+      (favoritePath) =>
+        !withSessions.some(
+          (group) =>
+            isFavoriteProject([favoritePath], group.projectPath) ||
+            group.sessions.some((session) => isFavoriteProject([favoritePath], session.projectPath))
+        )
+    )
+    .map((favoritePath) => ({
+      kind: "project" as const,
+      projectPath: path.resolve(favoritePath),
+      sessions: [] as AgentSession[],
+      favorited: true
+    }));
+  return [
+    ...withSessions.map((group) => ({
+      kind: "project" as const,
+      projectPath: group.projectPath,
+      sessions: group.sessions,
+      favorited: true
+    })),
+    ...emptyFavorites
+  ];
 }
 
-function groupByProject(sessions: AgentSession[], excludePaths = new Set<string>()): ProjectNode[] {
-  const byPath = groupSessionsByPath(sessions);
-
-  return [...byPath.entries()]
-    .filter(([projectPath]) => !excludePaths.has(projectPath))
-    .map(([projectPath, projectSessions]) => ({
+function groupByProject(sessions: AgentSession[], excludeFavoritePaths = new Set<string>()): ProjectNode[] {
+  const favorites = [...excludeFavoritePaths];
+  return buildProjectList(sessions, favorites)
+    .filter((group) => !group.favorited)
+    .map((group) => ({
       kind: "project" as const,
-      projectPath,
-      sessions: projectSessions
-    }))
-    .sort((a, b) => latest(b.sessions) - latest(a.sessions) || a.projectPath.localeCompare(b.projectPath));
+      projectPath: group.projectPath,
+      sessions: group.sessions
+    }));
 }
 
 function latest(sessions: AgentSession[]): number {

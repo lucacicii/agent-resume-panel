@@ -491,6 +491,7 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
     const result = await syncCatalog(loadOptions, catalog);
     const llmConfig = extensionContext ? await getLlmConfig(extensionContext) : undefined;
     const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
+    await projectAliasStore?.reload();
     await sessionGtdStore?.reload();
     await notesStore?.reload();
     tree.setData(sessions, result.warnings);
@@ -535,7 +536,7 @@ function buildHistoryLoadOptions(
     almaDataDir: expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir())),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
-    maxItems: config.get<number>("maxItems", 500),
+    maxItems: config.get<number>("maxItems", 10_000),
     showArchivedCodex: config.get<boolean>("showArchivedCodex", false),
     showArchivedOpenCode: config.get<boolean>("showArchivedOpenCode", false),
     showSubagentCodex: config.get<boolean>("showSubagentCodex", false),
