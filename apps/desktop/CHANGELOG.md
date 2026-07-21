@@ -10,11 +10,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [0.2.3]
 
+#### Added
+
+- **Settings auxiliary window**: Preferences open in a singleton secondary window (macOS style); the main window stays on the current tab (Workbench terminal context is preserved)
+- App menu **Settings…** with **⌘,** ; reopening focuses the existing Settings window and can jump to a target pane
+- Cross-window settings / locale broadcast after save so theme, language, and Workbench options refresh in the main window
+
+#### Improved
+
+- **Usage** pane layout for the compact Settings window: fixed KPI row, source chips, and tabbed detail tables for metrics and call logs
+
 #### Changed
 
-- **Removed Alma provider support**: Alma sessions are no longer synced or resumed; Alma data-directory and filter settings are gone.
-- **Purge Alma catalog rows on sync**: hard-deletes Alma sessions / satellite rows and Alma-only projects; mixed projects are kept.
-- Prefer **Agent Resume Panel extension ≥ 2.6.12** when sharing the same `panelHome`.
+- **Removed Alma provider support**: Alma sessions are no longer synced or resumed; Alma data-directory and filter settings are gone
+- **Purge Alma catalog rows on sync**: hard-deletes Alma sessions / satellite rows and Alma-only projects; mixed projects are kept
+- Prefer **Agent Resume Panel extension ≥ 2.6.12** when sharing the same `panelHome`
+
+#### Fixed
+
+- Workbench project list hides catalog rows with no sessions (e.g. empty Alma app-data shells)
 
 ### [0.2.2]
 
@@ -156,11 +170,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [0.2.3]
 
+#### 新增
+
+- **设置辅助窗口**：偏好设置在独立单例窗口中打开（macOS Preferences 风格）；主窗口保持当前 Tab（Workbench 终端上下文不丢）
+- 应用菜单 **设置…** 与 **⌘,** ；再次打开会聚焦已有窗口，并可跳到目标分区
+- 保存后跨窗口广播设置 / 语言，主题、语言与 Workbench 选项会同步刷新主窗口
+
+#### 改进
+
+- **用量** 分区适配紧凑设置窗：固定 KPI 行、来源 chips、分 Tab 的明细表（指标与调用日志）
+
 #### 变更
 
-- **移除 Alma Provider 支持**：不再同步 / 恢复 Alma 会话；设置中的 Alma 目录与过滤项已删除。
-- **清理 catalog 中的 Alma 数据**：同步时硬删除 Alma 会话与仅含 Alma 的 projects；混合项目保留。
-- 请与 **Agent Resume Panel 扩展 ≥ 2.6.12** 共用同一 `panelHome`。
+- **移除 Alma Provider 支持**：不再同步 / 恢复 Alma 会话；设置中的 Alma 目录与过滤项已删除
+- **清理 catalog 中的 Alma 数据**：同步时硬删除 Alma 会话与仅含 Alma 的 projects；混合项目保留
+- 请与 **Agent Resume Panel 扩展 ≥ 2.6.12** 共用同一 `panelHome`
+
+#### 修复
+
+- Workbench 项目列表隐藏无会话的 catalog 行（例如空的 Alma 应用数据壳）
 
 ### [0.2.2]
 
