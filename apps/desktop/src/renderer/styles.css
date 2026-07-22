@@ -6895,8 +6895,8 @@ textarea.wb-editor-host {
 
 .sidebar-collapse-toggle svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -7223,8 +7223,8 @@ body.is-pane-resizing * {
 .notes-icon-btn svg,
 .wb-icon-btn svg {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
   fill: none;
   stroke: currentColor;
@@ -7235,8 +7235,8 @@ body.is-pane-resizing * {
 
 .notes-icon-btn .list-refresh-icon,
 .wb-icon-btn .list-refresh-icon {
-  width: 12px;
-  height: 12px;
+  width: 17px;
+  height: 17px;
 }
 
 .notes-icon-btn:hover,
@@ -7951,7 +7951,8 @@ textarea.notes-editor-host:focus {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 10px;
+  min-height: 38px;
+  padding: 6px 10px;
   border-radius: 6px;
   background: transparent;
   border: none;

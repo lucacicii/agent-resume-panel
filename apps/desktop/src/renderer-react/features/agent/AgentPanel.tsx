@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
-import { Activity, Bot, Check, ChevronDown, Copy, FileText, Folder, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Quote, Send, Square, Trash2, Wrench } from "lucide-react";
+import { Activity, Bot, Check, ChevronDown, Copy, FileText, Folder, LoaderCircle, MessageSquarePlus, PanelRight, Quote, Send, Square, Trash2, Wrench } from "lucide-react";
 import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -644,8 +644,8 @@ export function AgentPanel(): ReactPortal | null {
       <div className="agent-layout">
         <aside className={`sidebar-folders-pane agent-sidebar-pane${sidebarCollapsed ? " is-collapsed" : ""}`}>
           <div className="sidebar-folders-header">
-            <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><MessageSquarePlus size={18} /></button>
-            <button type="button" className="sidebar-collapse-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
+            <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><MessageSquarePlus size={17} /></button>
+            <button type="button" className="sidebar-collapse-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}><PanelRight size={17} /></button>
           </div>
           <div className="agent-sidebar-list">{threads.map((thread) => <div className={`ask-thread-row${thread.id === threadId ? " active" : ""}`} key={thread.id}>
             <button type="button" className="ask-thread-row-select" onClick={() => void selectThread(thread.id)}><span className="ask-thread-row-label" title={thread.title}>{thread.title}</span></button>

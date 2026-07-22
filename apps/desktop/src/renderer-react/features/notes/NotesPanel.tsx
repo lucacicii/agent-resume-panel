@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import {
   ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
-  PanelLeftClose, PanelLeftOpen, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
+  PanelRight, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
 } from "lucide-react";
 import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
@@ -534,7 +534,7 @@ export function NotesPanel(): ReactPortal | null {
           <div className="notes-list-toolbar-wrap">
             <div ref={listSearchToolbarRef} className={`notes-list-search-wrap${listSearchOpen ? " is-search-open" : ""}`}>
               <button type="button" id="btnNotesToggleFolders" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} title={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} aria-expanded={!foldersCollapsed} onClick={toggleFolders}>
-                {foldersCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+                <PanelRight size={17} />
               </button>
               <button ref={listSearchButtonRef} type="button" className={`notes-icon-btn notes-list-search-btn${listQuery && !listSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={listSearchOpen} aria-controls="notes-list-search" onClick={openListSearch}><Search size={15} /></button>
               <input ref={listSearchRef} id="notes-list-search" type="search" className="notes-search notes-list-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={listQuery} hidden={!listSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => setListQuery(event.target.value)} onKeyDown={(event) => {
