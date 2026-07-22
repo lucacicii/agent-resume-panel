@@ -576,6 +576,7 @@ async function installApplicationMenu(): Promise<void> {
           }
         ]),
     { role: "editMenu" },
+    { role: "viewMenu" },
     { role: "windowMenu" }
   ];
 
