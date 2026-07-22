@@ -22,6 +22,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Summary embedding auto-index** (Settings → Sessions): backfills `session_embeddings` for sessions that already have summaries (independent of live Summarize)
 - **session_set_gtd** / **session_resume** Agent tools; session citation popover **Resume** opens Workbench resume path
 
+### [0.2.4]
+
+#### Added
+
+- **GTD Done status**: mark a Workbench session as Done from its context menu; completed sessions appear in a collapsed **Completed** group and share the status with the VS Code extension
+
+#### Improved
+
+- **Workbench GTD menu**: status choices use colored rounded tags; Reference and Done have distinct colors
+
 
 ### [0.2.3]
 
@@ -196,6 +206,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **对话向量独立索引**（Settings → 会话）：不依赖 session 摘要；同步 + 静默期 + 分批限流
 - **摘要向量自动补齐**（Settings → 会话）：对已有 summary 的 session 后台写入 `session_embeddings`（不依赖当场 Summarize）
 - Agent 工具 **session_set_gtd** / **session_resume**；会话引用气泡 **Resume** 走 Workbench 恢复路径
+
+### [0.2.4]
+
+#### 新增
+
+- **GTD Done 状态**：在 Workbench 会话右键菜单中标记完成；完成会话收纳到默认折叠的 **已完成** 分组，并与 VS Code 扩展共用状态
+
+#### 改进
+
+- **Workbench GTD 菜单**：状态选项改为带状态色的圆角标签；Reference 与 Done 使用不同颜色
 
 ### [0.2.3]
 

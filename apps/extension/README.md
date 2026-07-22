@@ -11,7 +11,7 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 | **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **Docs** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-Extension version: **2.6.12** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+Extension version: **2.6.13** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`** (shared by extension and Desktop).  
@@ -81,7 +81,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [下载 DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **文档** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-扩展版本：**2.6.12** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+扩展版本：**2.6.13** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**（扩展与 Desktop 共用）。可选 LLM Assist 需自行配置 API。

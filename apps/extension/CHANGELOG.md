@@ -8,6 +8,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.6.13]
+
+#### 新增
+
+- **GTD Done 状态**：Sessions / GTD 右键菜单可标记完成；GTD 树新增默认折叠的完成分组。
+- **搜索与管理筛选**：Search Sessions 与 Session Manager 可按 Done 筛选，并显示完成标签。
+
+#### 变更
+
+- Done 为人工完成归档；清除状态仍表示未分流，报告 AI 与 MCP 写入不会自动设置 Done。
+
 ### [2.6.12]
 
 #### 变更
@@ -414,6 +425,17 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.6.13]
+
+#### Added
+
+- **GTD Done status**: mark sessions complete from the Sessions / GTD context menu; the GTD tree adds a collapsed Done group.
+- **Search and Manager filters**: filter by Done and display its completion tag.
+
+#### Changed
+
+- Done is a human completion archive; Clear still means untriaged, and report AI or MCP writes never set Done automatically.
 
 ### [2.6.12]
 
