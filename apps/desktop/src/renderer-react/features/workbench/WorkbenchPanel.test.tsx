@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { WorkbenchPanel } from "./WorkbenchPanel";
 
+const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
+
+vi.mock("../../components/Notifications", () => notificationMocks);
+
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80;
   rows = 24;
@@ -25,6 +29,7 @@ vi.stubGlobal("ResizeObserver", class {
 
 afterEach(() => {
   cleanup();
+  notificationMocks.notifyDesktop.mockClear();
   document.getElementById("react-workbench")?.remove();
 });
 
@@ -464,5 +469,57 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("reports manual Git actions and keeps automatic refreshes silent", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalGitStatus = vi.fn(async () => ({ isRepo: true, root: "/work/app", staged: [], unstaged: [], nestedRepos: [] }));
+    const terminalGitPush = vi.fn(async () => ({ ok: true }));
+    const terminalGitPull = vi.fn(async () => { throw new Error("no upstream"); });
+    const terminalGitCommit = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.gitPush": "Push", "desktop.workbench.gitPull": "Pull", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitStatusRefreshed": "Git status refreshed.", "desktop.workbench.gitPushSucceeded": "Push completed.", "desktop.workbench.gitPullFailed": "Pull failed: {0}", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitPush,
+      terminalGitPull,
+      terminalGitCommit
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(terminalGitStatus).toHaveBeenCalledTimes(1));
+    expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
+
+    const gitActions = document.querySelector(".wb-git-actions")!;
+    fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')!);
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Git status refreshed.", kind: "ok" }));
+
+    fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Push"]')!);
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
+
+    fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Pull"]')!);
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Pull failed: no upstream", kind: "error" }));
+
+    fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Commit"]')!);
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit changes" }), { target: { value: "feat: add toasts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit & Push" }));
+    await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", message: "feat: add toasts" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
+    expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" });
   });
 });
