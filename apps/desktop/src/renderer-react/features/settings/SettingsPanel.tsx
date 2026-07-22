@@ -6,9 +6,25 @@ import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AboutPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import {
-  generalDraftFromSettings, generalPatch, modelsDraftFromSettings, modelsPatch, reportDraftFromSettings, reportPatch,
-  sessionsDraftFromSettings, sessionsPatch, storageDraftFromSettings, storagePatch, workbenchDraftFromSettings, workbenchPatch,
-  type GeneralDraft, type ModelsDraft, type ReportDraft, type SessionsDraft, type StorageDraft, type WorkbenchDraft
+  embeddingSearchIdentityChanged,
+  generalDraftFromSettings,
+  generalPatch,
+  modelsDraftFromSettings,
+  modelsPatch,
+  reportDraftFromSettings,
+  reportPatch,
+  sessionsDraftFromSettings,
+  sessionsPatch,
+  storageDraftFromSettings,
+  storagePatch,
+  workbenchDraftFromSettings,
+  workbenchPatch,
+  type GeneralDraft,
+  type ModelsDraft,
+  type ReportDraft,
+  type SessionsDraft,
+  type StorageDraft,
+  type WorkbenchDraft
 } from "./model";
 
 type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "usage" | "about";
@@ -137,6 +153,17 @@ export function SettingsPanel({
     if (!settings) return;
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
+      if (section === "models") {
+        const modelsDraft = draft as ModelsDraft;
+        if (embeddingSearchIdentityChanged(settings, modelsDraft)) {
+          // Strong confirm: switching embedding space orphans old vectors until re-index.
+          if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
+            setModels(modelsDraftFromSettings(settings));
+            setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
+            return;
+          }
+        }
+      }
       const patch = section === "general" ? generalPatch(settings, draft as GeneralDraft)
         : section === "models" ? modelsPatch(settings, draft as ModelsDraft)
         : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
@@ -292,6 +319,66 @@ function SessionsPane({ draft, setDraft, scheduleSave, t }: { draft: SessionsDra
           <span className="settings-field-label">{t("desktop.settings.summaryAutoConcurrency")}</span>
           <span className="settings-field-hint">{t("desktop.settings.summaryAutoConcurrencyHint")}</span>
           <input type="number" min="1" max="3" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoConcurrency} onChange={(event) => update("summaryAutoConcurrency", Number(event.target.value))} />
+        </label>
+      </div>
+    </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.embeddingIndex")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.embeddingIndexEnabled")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.embeddingIndexEnabledDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.embeddingIndexEnabled} onChange={(event) => update("embeddingIndexEnabled", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.embeddingQuietDelay")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.embeddingQuietDelayHint")}</span>
+          <input type="number" min="0" max="1440" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingQuietDelayMinutes} onChange={(event) => update("embeddingQuietDelayMinutes", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.embeddingIndexMaxPerTick")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.embeddingIndexMaxPerTickHint")}</span>
+          <input type="number" min="1" max="50" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexMaxPerTick} onChange={(event) => update("embeddingIndexMaxPerTick", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.embeddingIndexConcurrency")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.embeddingIndexConcurrencyHint")}</span>
+          <input type="number" min="1" max="4" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexConcurrency} onChange={(event) => update("embeddingIndexConcurrency", Number(event.target.value))} />
+        </label>
+      </div>
+    </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.transcriptIndex")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.transcriptIndexEnabled")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.transcriptIndexEnabledDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.transcriptIndexEnabled} onChange={(event) => update("transcriptIndexEnabled", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.transcriptQuietDelay")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.transcriptQuietDelayHint")}</span>
+          <input type="number" min="0" max="1440" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptQuietDelayMinutes} onChange={(event) => update("transcriptQuietDelayMinutes", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.transcriptIndexMaxPerTick")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.transcriptIndexMaxPerTickHint")}</span>
+          <input type="number" min="1" max="20" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexMaxPerTick} onChange={(event) => update("transcriptIndexMaxPerTick", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.transcriptIndexConcurrency")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.transcriptIndexConcurrencyHint")}</span>
+          <input type="number" min="1" max="3" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexConcurrency} onChange={(event) => update("transcriptIndexConcurrency", Number(event.target.value))} />
         </label>
       </div>
     </section>

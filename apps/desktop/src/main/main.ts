@@ -107,6 +107,16 @@ import {
   startSessionSummaryAuto,
   stopSessionSummaryAuto
 } from "./sessionSummaryAuto";
+import {
+  scheduleSessionTranscriptIndexAuto,
+  startSessionTranscriptIndexAuto,
+  stopSessionTranscriptIndexAuto
+} from "./sessionTranscriptIndexAuto";
+import {
+  scheduleSessionEmbeddingIndexAuto,
+  startSessionEmbeddingIndexAuto,
+  stopSessionEmbeddingIndexAuto
+} from "./sessionEmbeddingIndexAuto";
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -303,7 +313,43 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
     mainWindow.webContents.send("sessions:synced", result);
   }
   scheduleSessionSummaryAuto(2_000);
+  scheduleSessionTranscriptIndexAuto(3_000);
+  scheduleSessionEmbeddingIndexAuto(4_000);
   return result;
+}
+
+/** Shared resume entry for Workbench IPC and Agent session_resume tool. */
+async function resumeCatalogSession(
+  provider: AgentProvider,
+  id: string
+): Promise<{
+  mode: string;
+  command: string;
+  cwd: string;
+  external?: boolean;
+  session?: Awaited<ReturnType<typeof getSessionById>>;
+}> {
+  const settings = await loadSettings();
+  const paths = await loadPanelDbPaths(settings);
+  const session = await getSessionById(paths.catalogDb, provider, id);
+  if (!session) {
+    throw new Error(`Session not found: ${provider} ${id}`);
+  }
+  const mode = resolveWorkbenchTerminalMode(settings);
+  const command = buildResumeCommand(session);
+  const cwd = await resolveSessionCwd(session.projectPath, settings);
+
+  if (mode === "external-system") {
+    await openSessionInSystemTerminal(
+      { ...session, projectPath: cwd },
+      systemTerminalSettings(settings),
+      {
+        writeText: (text) => Promise.resolve(clipboard.writeText(text))
+      }
+    );
+    return { mode, external: true, command, cwd, session };
+  }
+  return { mode, command, cwd, session };
 }
 
 function stopSessionSyncTimer(): void {
@@ -579,6 +625,8 @@ function registerIpc(): void {
         : undefined;
       scheduleNotesIndex();
       scheduleSessionSummaryAuto(options?.section === "sessions" ? 0 : 2_000);
+      scheduleSessionTranscriptIndexAuto(options?.section === "sessions" ? 500 : 3_000);
+      scheduleSessionEmbeddingIndexAuto(options?.section === "sessions" ? 800 : 4_000);
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,
@@ -750,27 +798,7 @@ function registerIpc(): void {
   safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
-      const settings = await loadSettings();
-      const paths = await loadPanelDbPaths(settings);
-      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
-      if (!session) {
-        throw new Error(`Session not found: ${args.provider} ${args.id}`);
-      }
-      const mode = resolveWorkbenchTerminalMode(settings);
-      const command = buildResumeCommand(session);
-      const cwd = await resolveSessionCwd(session.projectPath, settings);
-
-      if (mode === "external-system") {
-        await openSessionInSystemTerminal(
-          { ...session, projectPath: cwd },
-          systemTerminalSettings(settings),
-          {
-            writeText: (text) => Promise.resolve(clipboard.writeText(text))
-          }
-        );
-        return { mode, external: true, command, cwd };
-      }
-      return { mode, command, cwd, session };
+      return resumeCatalogSession(args.provider, args.id);
     }
   );
 
@@ -945,6 +973,36 @@ function registerIpc(): void {
           enableTools: args.enableTools ?? true,
           systemLocale: app.getLocale(),
           signal,
+          onResumeSession: async ({ provider, sessionId }) => {
+            try {
+              const result = await resumeCatalogSession(provider, sessionId);
+              // xterm mode only returns command/cwd — Workbench must open the terminal.
+              if (!result.external && result.command) {
+                const payload = {
+                  provider,
+                  id: sessionId,
+                  command: result.command,
+                  cwd: result.cwd,
+                  title: result.session?.title || sessionId,
+                  projectPath: result.session?.projectPath || result.cwd,
+                  mode: result.mode
+                };
+                broadcastToRenderers("workbench:resumeFromAgent", payload);
+              }
+              return {
+                ok: true,
+                command: result.command,
+                cwd: result.cwd,
+                mode: result.mode,
+                external: result.external === true
+              };
+            } catch (error) {
+              return {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error)
+              };
+            }
+          },
           onStream: async (streamEvent) => {
             event.sender.send("agent:askStream", streamEvent);
             if (streamEvent.phase === "chunk") {
@@ -1369,6 +1427,8 @@ app.whenReady().then(async () => {
   await installApplicationMenu();
   startDesktopNotesIndexer();
   startSessionSummaryAuto();
+  startSessionTranscriptIndexAuto();
+  startSessionEmbeddingIndexAuto();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1377,6 +1437,8 @@ app.whenReady().then(async () => {
       createWindow();
       startDesktopNotesIndexer();
       startSessionSummaryAuto();
+      startSessionTranscriptIndexAuto();
+      startSessionEmbeddingIndexAuto();
       // Closing the last window on macOS used to stop the scheduler; restore it with the window.
       void refreshMemorySchedulerFromSettings();
       return;
@@ -1394,6 +1456,8 @@ app.on("before-quit", () => {
   stopMemoryScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();
+  stopSessionTranscriptIndexAuto();
+  stopSessionEmbeddingIndexAuto();
   tryDestroyPtyOnQuit();
 });
 
@@ -1404,6 +1468,8 @@ app.on("window-all-closed", () => {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();
+    stopSessionTranscriptIndexAuto();
+    stopSessionEmbeddingIndexAuto();
     tryDestroyPtyOnQuit();
     app.quit();
   } else {

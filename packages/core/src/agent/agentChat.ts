@@ -11,6 +11,7 @@ import {
   buildMetaAgentSystemPromptWithTools,
   buildMetaAgentUserPrompt,
   formatNoteSourceBlock,
+  formatSessionSourceBlock,
   formatSourceBlock
 } from "./prompts";
 import { appendAgentTurn, listAgentMessagesForHistory } from "./agentStore";
@@ -103,6 +104,21 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     ? `Exact note search matched ${retrieved.noteMatchTotal} notes; ${retrieved.notes.length} note sources are included in this prompt. Do not claim the included list is complete when these numbers differ.`
     : undefined;
 
+  const sessionsBlock = retrieved.sessions
+    .map((session, i) =>
+      formatSessionSourceBlock({
+        index: i + 1,
+        title: session.title || session.sessionId,
+        provider: session.provider,
+        sessionId: session.sessionId,
+        projectPath: session.projectPath,
+        content: session.summaryPreview || session.title || session.sessionId,
+        score: session.score,
+        match: session.match
+      })
+    )
+    .join("\n\n");
+
   const historyBlock = history.length
     ? history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")
     : undefined;
@@ -115,6 +131,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
       sourcesBlock,
       notesBlock,
       notesSummary,
+      sessionsBlock,
       historyBlock,
       desktopDb,
       retrieved
@@ -126,6 +143,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     sourcesBlock,
     notesBlock,
     notesSummary,
+    sessionsBlock,
     historyBlock,
     desktopDb,
     retrieved
@@ -137,6 +155,7 @@ interface AskContext {
   sourcesBlock: string;
   notesBlock: string;
   notesSummary?: string;
+  sessionsBlock?: string;
   historyBlock?: string;
   desktopDb: string;
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>;
@@ -157,6 +176,7 @@ async function runAskWithoutTools(
         sourcesBlock: ctx.sourcesBlock,
         notesBlock: ctx.notesBlock,
         notesSummary: ctx.notesSummary,
+        sessionsBlock: ctx.sessionsBlock,
         historyBlock: ctx.historyBlock
       })
     }
@@ -211,6 +231,7 @@ async function runAskWithTools(
         sourcesBlock: ctx.sourcesBlock,
         notesBlock: ctx.notesBlock,
         notesSummary: ctx.notesSummary,
+        sessionsBlock: ctx.sessionsBlock,
         historyBlock: ctx.historyBlock
       })
     }
@@ -228,7 +249,10 @@ async function runAskWithTools(
       notesStore,
       dbPath: ctx.retrieved.desktopDb,
       panelHome,
-      catalogDb: ctx.retrieved.catalogDb
+      catalogDb: ctx.retrieved.catalogDb,
+      resumeSession: options.onResumeSession
+        ? async (args) => options.onResumeSession!(args)
+        : undefined
     });
     await mcpClient.connectInMemory(server);
 
@@ -265,14 +289,22 @@ async function runAskWithTools(
   }
 
   const baseCitations = ctx.retrieved.citations;
-  const noteCitations = touchedNotesToCitations(touchedNotes, baseCitations.length);
-  const sessionCitations = touchedSessionsToCitations(
-    touchedSessions,
-    baseCitations.length + noteCitations.length
-  );
-  const allCitations = [...baseCitations, ...noteCitations, ...sessionCitations];
+  const noteStartIndex = baseCitations.filter(
+    (c) => c.source === "note" || c.level === "note"
+  ).length;
+  const noteCitations = touchedNotesToCitations(touchedNotes, noteStartIndex);
+  const withNotes = [...baseCitations, ...noteCitations];
+  const allCitations = mergeTouchedSessionCitations(withNotes, touchedSessions);
 
   return buildAskResult(options, ctx.desktopDb, ctx.retrieved, answer, allCitations, toolCallsExecuted);
+}
+
+function isSessionCitation(citation: AgentCitation): boolean {
+  return citation.source === "session" || citation.level === "session";
+}
+
+function sessionCitationKey(provider: string, sessionId: string): string {
+  return `${provider}:${sessionId}`;
 }
 
 function touchedNotesToCitations(
@@ -292,24 +324,76 @@ function touchedNotesToCitations(
   }));
 }
 
-function touchedSessionsToCitations(
-  touched: TouchedSession[],
-  startIndex: number
+/**
+ * Merge tool-touched sessions into citations: upgrade existing retrieved sessions,
+ * append new ones with S* indices continuing after retrieved session count.
+ */
+function mergeTouchedSessionCitations(
+  baseCitations: AgentCitation[],
+  touched: TouchedSession[]
 ): AgentCitation[] {
-  return touched.map((session, i) => ({
-    source: "session" as const,
-    index: startIndex + i + 1,
-    title: session.title || session.sessionId,
-    level: "session",
-    contentPreview: session.contentPreview,
-    score: session.score,
-    operation: session.operation === "list" ? "search" : session.operation,
-    session: {
-      provider: session.provider as AgentProvider,
-      id: session.sessionId,
-      projectPath: session.projectPath || ""
+  if (!touched.length) {
+    return baseCitations;
+  }
+
+  const result = baseCitations.map((c) => ({ ...c }));
+  const indexByKey = new Map<string, number>();
+  let maxSessionIndex = 0;
+
+  for (let i = 0; i < result.length; i++) {
+    const citation = result[i];
+    if (!isSessionCitation(citation) || !citation.session) {
+      continue;
     }
-  }));
+    indexByKey.set(
+      sessionCitationKey(citation.session.provider, citation.session.id),
+      i
+    );
+    maxSessionIndex = Math.max(maxSessionIndex, citation.index);
+  }
+
+  for (const session of touched) {
+    const key = sessionCitationKey(session.provider, session.sessionId);
+    const operation =
+      session.operation === "list" ? ("search" as const) : session.operation;
+    const existingIdx = indexByKey.get(key);
+
+    if (existingIdx != null) {
+      const existing = result[existingIdx];
+      result[existingIdx] = {
+        ...existing,
+        title: session.title || existing.title,
+        contentPreview: session.contentPreview || existing.contentPreview,
+        score: session.score ?? existing.score,
+        operation: operation || existing.operation,
+        session: {
+          provider: session.provider as AgentProvider,
+          id: session.sessionId,
+          projectPath: session.projectPath || existing.session?.projectPath || ""
+        }
+      };
+      continue;
+    }
+
+    maxSessionIndex += 1;
+    indexByKey.set(key, result.length);
+    result.push({
+      source: "session",
+      index: maxSessionIndex,
+      title: session.title || session.sessionId,
+      level: "session",
+      contentPreview: session.contentPreview,
+      score: session.score,
+      operation,
+      session: {
+        provider: session.provider as AgentProvider,
+        id: session.sessionId,
+        projectPath: session.projectPath || ""
+      }
+    });
+  }
+
+  return result;
 }
 
 async function buildAskResult(

@@ -1098,6 +1098,56 @@ export function WorkbenchPanel(): ReactPortal | null {
     finally { openingSessionKeysRef.current.delete(key); }
   };
 
+  /** Complete xterm resume from Agent citation/tool (command already resolved by main). */
+  const openResumeFromAgent = useCallback((detail: {
+    provider: string;
+    id: string;
+    command: string;
+    cwd: string;
+    title?: string;
+    projectPath?: string;
+  }) => {
+    const key = `${detail.provider}:${detail.id}`;
+    const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
+    if (existing) {
+      selectProject(existing.projectPath);
+      setActivePane(existing.key, existing.projectPath);
+      setActiveSessionKey(key);
+      return;
+    }
+    const projectPath = detail.projectPath || detail.cwd;
+    selectProject(projectPath);
+    addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key);
+    setActiveSessionKey(key);
+  }, [addTerminal, selectProject, setActivePane]);
+
+  useEffect(() => {
+    const onWindowResume = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        provider: string;
+        id: string;
+        command: string;
+        cwd: string;
+        title?: string;
+        projectPath?: string;
+      }>).detail;
+      if (!detail?.command || !detail?.cwd) return;
+      openResumeFromAgent(detail);
+    };
+    window.addEventListener("agent-resume:workbench-resume", onWindowResume);
+    const stopIpc =
+      typeof desktopApi().onWorkbenchResumeFromAgent === "function"
+        ? desktopApi().onWorkbenchResumeFromAgent((payload) => {
+            window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+            openResumeFromAgent(payload);
+          })
+        : () => undefined;
+    return () => {
+      window.removeEventListener("agent-resume:workbench-resume", onWindowResume);
+      stopIpc();
+    };
+  }, [openResumeFromAgent]);
+
   const projectMenu = (event: React.MouseEvent, project: WorkbenchProject) => {
     event.preventDefault();
     const menu: WorkbenchContextMenu = {

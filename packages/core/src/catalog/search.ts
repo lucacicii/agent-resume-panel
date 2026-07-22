@@ -2,7 +2,7 @@ import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
 import { GtdStatus, isGtdStatus } from "../gtd/types";
 import { AgentProvider, CatalogSessionRow, toAgentSession } from "./types";
 
-export type SessionSearchMatch = "keyword" | "semantic" | "both";
+export type SessionSearchMatch = "keyword" | "semantic" | "transcript" | "both";
 
 export interface SessionSearchFilters {
   /** Keyword match against title, user_title, project_path, session_summary. Empty = list-only. */
@@ -198,24 +198,36 @@ export function mergeSessionSearchHits(
   for (const hit of semanticHits) {
     const key = `${hit.provider}:${hit.sessionId}`;
     const existing = map.get(key);
+    const semanticMatch: SessionSearchMatch =
+      hit.match === "transcript" ? "transcript" : hit.match === "both" ? "both" : "semantic";
     if (existing) {
+      const bothSides =
+        existing.match === "keyword" ||
+        existing.match === "both" ||
+        semanticMatch === "both" ||
+        (existing.match === "semantic" && semanticMatch === "transcript") ||
+        (existing.match === "transcript" && semanticMatch === "semantic");
       map.set(key, {
         ...existing,
         ...hit,
         title: existing.title || hit.title,
         summaryPreview: existing.summaryPreview || hit.summaryPreview,
         gtdStatus: existing.gtdStatus ?? hit.gtdStatus,
-        match: "both",
-        score: hit.score ?? existing.score
+        match: bothSides || existing.match === "keyword" ? "both" : semanticMatch,
+        score:
+          hit.score != null && existing.score != null
+            ? Math.max(hit.score, existing.score)
+            : (hit.score ?? existing.score)
       });
     } else {
-      map.set(key, { ...hit, match: "semantic" });
+      map.set(key, { ...hit, match: semanticMatch });
     }
   }
 
   const merged = Array.from(map.values());
   merged.sort((a, b) => {
-    const rank = (m?: SessionSearchMatch) => (m === "both" ? 0 : m === "semantic" ? 1 : 2);
+    const rank = (m?: SessionSearchMatch) =>
+      m === "both" ? 0 : m === "semantic" || m === "transcript" ? 1 : 2;
     const ra = rank(a.match);
     const rb = rank(b.match);
     if (ra !== rb) {

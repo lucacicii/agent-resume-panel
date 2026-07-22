@@ -673,7 +673,51 @@ export function AgentPanel(): ReactPortal | null {
         <button type="button" disabled={sending} onClick={() => { setEditingTurnId(context.turnId); setEditDraft(context.content); setContext(null); }}>{t("desktop.common.edit")}</button>
         <button type="button" disabled={sending} onClick={() => { const turnId = context.turnId; const content = context.content; setContext(null); void send(content, { fromTurnId: turnId }); }}>{t("desktop.common.resend")}</button>
       </div> : null}
-      {preview ? <CitationPopover preview={preview} t={t} onKeep={keepPreview} onLeave={hidePreviewSoon} onOpen={() => openCitation(preview.citation)} /> : null}
+      {preview ? (
+        <CitationPopover
+          preview={preview}
+          t={t}
+          onKeep={keepPreview}
+          onLeave={hidePreviewSoon}
+          onOpen={() => openCitation(preview.citation)}
+          onResume={
+            isSession(preview.citation) && preview.citation.session
+              ? async () => {
+                  const session = preview.citation.session!;
+                  try {
+                    const result = await desktopApi().workbenchOpenSession({
+                      provider: session.provider,
+                      id: session.id
+                    });
+                    if (!result.external && result.command) {
+                      // xterm: mirror Workbench openSession — switch tab + open embedded terminal.
+                      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+                      window.dispatchEvent(
+                        new CustomEvent("agent-resume:workbench-resume", {
+                          detail: {
+                            provider: session.provider,
+                            id: session.id,
+                            command: result.command,
+                            cwd: result.cwd,
+                            title: preview.citation.title || session.id,
+                            projectPath: session.projectPath || result.cwd
+                          }
+                        })
+                      );
+                    }
+                    setStatus({
+                      text: t("desktop.agent.resumeStarted", session.provider, session.id),
+                      kind: "ok"
+                    });
+                    setPreview(null);
+                  } catch (error) {
+                    setStatus({ text: errorMessage(error), kind: "error" });
+                  }
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </section>,
     host
   );
@@ -803,7 +847,21 @@ function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Transl
   return <div className={`agent-index-progress${progress.phase === "scanning" ? " is-scanning" : ""}${progress.phase === "error" ? " is-error" : ""}`}><div className="agent-index-progress-head"><span id="agentIndexProgressText">{progress.noteTitle ? `${progress.message || t("desktop.agent.indexingNotes")} · ${progress.noteTitle}` : progress.message || t("desktop.agent.indexingNotes")}</span><span id="agentIndexProgressCount">{progress.total ? `${Math.min(displayCurrent, progress.total)}/${progress.total}` : ""}</span></div><div className="agent-index-progress-track"><div className="agent-index-progress-bar" style={{ width: `${Math.max(0, Math.min(100, progressRatio(progress) * 100))}%` }} /></div></div>;
 }
 
-function CitationPopover({ preview, t, onKeep, onLeave, onOpen }: { preview: CitationPreview; t: Translate; onKeep: () => void; onLeave: () => void; onOpen: () => void }) {
+function CitationPopover({
+  preview,
+  t,
+  onKeep,
+  onLeave,
+  onOpen,
+  onResume
+}: {
+  preview: CitationPreview;
+  t: Translate;
+  onKeep: () => void;
+  onLeave: () => void;
+  onOpen: () => void;
+  onResume?: () => void | Promise<void>;
+}) {
   const left = Math.max(8, Math.min(preview.anchor.right + 8, window.innerWidth - 348));
   const top = Math.max(8, Math.min(preview.anchor.top, window.innerHeight - 240));
   const sessionId = preview.citation.session
@@ -823,7 +881,40 @@ function CitationPopover({ preview, t, onKeep, onLeave, onOpen }: { preview: Cit
       ? t("desktop.agent.openInSessions")
       : t("desktop.agent.openInReport");
   const missingId = preview.citation.noteId || preview.citation.reportId || sessionId;
-  return <div className="citation-popover" data-placement="right" style={{ left, top } as CSSProperties} onMouseEnter={onKeep} onMouseLeave={onLeave}><div className="citation-popover-content"><div className="citation-preview-head">{title}</div><div className="citation-preview-body">{preview.error ? <p className="muted">{t("desktop.agent.previewLoadFailed", preview.error)}</p> : content ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content.slice(0, 900)) }} /> : <p className="muted">{t("desktop.agent.citationNoPreview", missingId ? ` (${missingId})` : "")}</p>}</div><button type="button" className="citation-preview-open ghost-btn" onClick={onOpen}>{openLabel}</button></div></div>;
+  return (
+    <div
+      className="citation-popover"
+      data-placement="right"
+      style={{ left, top } as CSSProperties}
+      onMouseEnter={onKeep}
+      onMouseLeave={onLeave}
+    >
+      <div className="citation-popover-content">
+        <div className="citation-preview-head">{title}</div>
+        <div className="citation-preview-body">
+          {preview.error ? (
+            <p className="muted">{t("desktop.agent.previewLoadFailed", preview.error)}</p>
+          ) : content ? (
+            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content.slice(0, 900)) }} />
+          ) : (
+            <p className="muted">
+              {t("desktop.agent.citationNoPreview", missingId ? ` (${missingId})` : "")}
+            </p>
+          )}
+        </div>
+        <div className="citation-preview-actions">
+          <button type="button" className="citation-preview-open ghost-btn" onClick={onOpen}>
+            {openLabel}
+          </button>
+          {onResume ? (
+            <button type="button" className="citation-preview-open ghost-btn" onClick={() => void onResume()}>
+              {t("desktop.agent.resumeSession")}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Audit({ items, loading, t, onRefresh }: { items: AgentNoteAuditEvent[]; loading: boolean; t: Translate; onRefresh: () => void }) {

@@ -30,11 +30,15 @@ import {
   handleSessionList,
   handleSessionRead,
   handleSessionReadTranscript,
+  handleSessionResume,
   handleSessionSearch,
+  handleSessionSetGtd,
   sessionListSchema,
   sessionReadSchema,
   sessionReadTranscriptSchema,
-  sessionSearchSchema
+  sessionResumeSchema,
+  sessionSearchSchema,
+  sessionSetGtdSchema
 } from "./sessionTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
@@ -44,6 +48,18 @@ export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
   /** Catalog DB path for session tools. Falls back to notesStore when omitted. */
   catalogDb?: string;
+  /** Desktop injects resume launcher for session_resume tool. */
+  resumeSession?: (args: {
+    provider: import("../catalog/types").AgentProvider;
+    sessionId: string;
+  }) => Promise<{
+    ok: boolean;
+    command?: string;
+    cwd?: string;
+    mode?: string;
+    external?: boolean;
+    error?: string;
+  }>;
 }
 
 export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
@@ -177,14 +193,15 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const sessionCtx = {
     catalogDb,
     desktopDb: ctx.dbPath,
-    panelHome: ctx.panelHome
+    panelHome: ctx.panelHome,
+    resumeSession: ctx.resumeSession
   };
 
   server.registerTool(
     "session_search",
     {
       description:
-        "Search CLI agent sessions in the local catalog. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over summaries. Use for finding past coding sessions by topic, project, provider, time, or GTD. Read-only.",
+        "Search CLI agent sessions in the local catalog. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over summaries and transcript chunks. Use for finding past coding sessions by topic, dialogue detail, project, provider, time, or GTD.",
       inputSchema: sessionSearchSchema
     },
     async (args: {
@@ -252,6 +269,36 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         throw new Error("catalogDb is not configured for session tools.");
       }
       return handleSessionReadTranscript(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_set_gtd",
+    {
+      description:
+        "Set the GTD status for a catalog session (inbox, next, waiting, someday, reference). Persists to the shared catalog and records an AI audit row when possible. Use when the user asks to mark, triage, or change GTD on a session.",
+      inputSchema: sessionSetGtdSchema
+    },
+    async (args: { provider: string; sessionId: string; status: string; reason?: string }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionSetGtd(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_resume",
+    {
+      description:
+        "Resume a catalog CLI session via the Desktop resume path (terminal / workbench). Use when the user asks to continue or reopen a past coding session. Requires provider + sessionId from session_search/list/read.",
+      inputSchema: sessionResumeSchema
+    },
+    async (args: { provider: string; sessionId: string }) => {
+      if (!sessionCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for session tools.");
+      }
+      return handleSessionResume(args, sessionCtx);
     }
   );
 

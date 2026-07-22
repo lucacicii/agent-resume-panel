@@ -36,6 +36,8 @@ export type {
   EmbeddingSettings,
   ReportSettings,
   SessionSummaryAutoSettings,
+  SessionTranscriptIndexSettings,
+  SessionEmbeddingIndexSettings,
   DesktopSettings,
   DesktopTheme,
   WorkbenchSettings,
@@ -265,6 +267,14 @@ export type {
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
+export {
+  buildMetaAgentSystemPrompt,
+  buildMetaAgentSystemPromptWithTools,
+  buildMetaAgentUserPrompt,
+  formatNoteSourceBlock,
+  formatSessionSourceBlock,
+  formatSourceBlock
+} from "./agent/prompts";
 export { runAgentChat } from "./agent/agentChat";
 export {
   appendAgentTurn,
@@ -498,6 +508,36 @@ export type {
   RunAutoSessionSummariesOptions,
   RunAutoSessionSummariesResult
 } from "./session/autoSummary";
+export {
+  resolveSessionTranscriptIndexSettings,
+  selectTranscriptIndexCandidates,
+  listTranscriptIndexMeta,
+  runAutoTranscriptIndex,
+  DEFAULT_TX_QUIET_DELAY_MINUTES,
+  DEFAULT_TX_INDEX_CONCURRENCY,
+  DEFAULT_TX_INDEX_MAX_PER_TICK
+} from "./session/autoTranscriptIndex";
+export type {
+  ResolvedSessionTranscriptIndexSettings,
+  RunAutoTranscriptIndexOptions,
+  RunAutoTranscriptIndexResult,
+  TranscriptIndexMetaRow
+} from "./session/autoTranscriptIndex";
+export {
+  resolveSessionEmbeddingIndexSettings,
+  selectSessionEmbeddingCandidates,
+  listSessionsNeedingEmbedding,
+  runAutoSessionEmbeddings,
+  DEFAULT_EMB_INDEX_QUIET_DELAY_MINUTES,
+  DEFAULT_EMB_INDEX_CONCURRENCY,
+  DEFAULT_EMB_INDEX_MAX_PER_TICK
+} from "./session/autoEmbeddingIndex";
+export type {
+  ResolvedSessionEmbeddingIndexSettings,
+  SessionEmbeddingCandidate,
+  RunAutoSessionEmbeddingsOptions,
+  RunAutoSessionEmbeddingsResult
+} from "./session/autoEmbeddingIndex";
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
 
@@ -515,7 +555,9 @@ export {
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,
-  handleSessionReadTranscript
+  handleSessionReadTranscript,
+  handleSessionSetGtd,
+  handleSessionResume
 } from "./mcp/sessionTools";
 export type { SessionToolContext } from "./mcp/sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
@@ -547,3 +589,20 @@ export type {
 } from "./session/embedStore";
 export { searchSessionsByEmbedding } from "./session/searchByEmbedding";
 export type { SearchSessionsByEmbeddingOptions } from "./session/searchByEmbedding";
+export {
+  chunkTranscriptText,
+  rankSessionsByTranscriptChunks,
+  searchSessionsByTranscriptEmbedding,
+  indexSessionTranscript,
+  listTranscriptChunkRows,
+  deleteSessionTranscriptIndex,
+  transcriptSourceHash
+} from "./session/transcriptIndex";
+export type {
+  TranscriptChunkInput,
+  RankableTranscriptChunk,
+  RankedTranscriptSession,
+  IndexSessionTranscriptOptions,
+  IndexSessionTranscriptResult,
+  SearchSessionsByTranscriptOptions
+} from "./session/transcriptIndex";

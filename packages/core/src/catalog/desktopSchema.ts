@@ -93,6 +93,35 @@ CREATE TABLE IF NOT EXISTS session_embeddings (
 CREATE INDEX IF NOT EXISTS idx_session_embeddings_updated ON session_embeddings(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_session_embeddings_key ON session_embeddings(embedding_key);
 
+CREATE TABLE IF NOT EXISTS session_transcript_chunks (
+  chunk_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  embedding_json TEXT NOT NULL,
+  embedding_key TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_tx_chunks_session
+  ON session_transcript_chunks(provider, agent_session_id);
+CREATE INDEX IF NOT EXISTS idx_session_tx_chunks_key
+  ON session_transcript_chunks(embedding_key);
+CREATE INDEX IF NOT EXISTS idx_session_tx_chunks_updated
+  ON session_transcript_chunks(updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS session_transcript_index (
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  embedding_key TEXT NOT NULL,
+  chunk_count INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+
 CREATE TABLE IF NOT EXISTS agent_threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

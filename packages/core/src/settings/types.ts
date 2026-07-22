@@ -192,6 +192,39 @@ export interface SessionSummaryAutoSettings {
   maxPerTick?: number;
 }
 
+/**
+ * Desktop-only: background transcript-chunk embeddings (independent of session_summary).
+ * Quiet delay is relative to each session's updated_at_ms.
+ */
+export interface SessionTranscriptIndexSettings {
+  /** Master switch. Default true (no-ops without embedding config). */
+  enabled?: boolean;
+  /** Minutes after last session update before (re)indexing transcript. Default 15. */
+  quietDelayMinutes?: number;
+  /** Parallel sessions per tick. Default 1. */
+  concurrency?: number;
+  /** Max sessions to index per scan. Default 3. */
+  maxPerTick?: number;
+}
+
+/**
+ * Desktop-only: background session_embeddings for rows that already have session_summary.
+ * Does not generate summaries — only embeds title+summary text.
+ */
+export interface SessionEmbeddingIndexSettings {
+  /** Master switch. Default true (no-ops without embedding config). */
+  enabled?: boolean;
+  /**
+   * Minutes after session_summary_at_ms (fallback updated_at) before (re)embedding.
+   * Default 0 so existing summaries backfill immediately.
+   */
+  quietDelayMinutes?: number;
+  /** Parallel embed jobs per tick. Default 2. */
+  concurrency?: number;
+  /** Max sessions to embed per scan. Default 5. */
+  maxPerTick?: number;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -205,6 +238,10 @@ export interface PanelSettings {
   report?: ReportSettings;
   /** Auto session_summary generation (Desktop main process). */
   sessionSummaryAuto?: SessionSummaryAutoSettings;
+  /** Auto session_embeddings for sessions that already have summaries. */
+  sessionEmbeddingIndex?: SessionEmbeddingIndexSettings;
+  /** Auto transcript-chunk index (Desktop main; independent of summaries). */
+  sessionTranscriptIndex?: SessionTranscriptIndexSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
@@ -241,6 +278,18 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     missingDelayMinutes: 0,
     concurrency: 1,
     maxPerTick: 5
+  },
+  sessionEmbeddingIndex: {
+    enabled: true,
+    quietDelayMinutes: 0,
+    concurrency: 2,
+    maxPerTick: 5
+  },
+  sessionTranscriptIndex: {
+    enabled: true,
+    quietDelayMinutes: 15,
+    concurrency: 1,
+    maxPerTick: 3
   },
   sessionSync: {
     maxItems: 10_000,

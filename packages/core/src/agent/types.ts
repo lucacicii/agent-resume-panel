@@ -62,6 +62,20 @@ export interface AgentChatOptions {
   mcpServerArgs?: string[];
   /** OS / VS Code display locale when output language is auto. */
   systemLocale?: string;
+  /**
+   * Desktop injects resume launcher so session_resume tool can open Workbench/terminal.
+   */
+  onResumeSession?: (args: {
+    provider: AgentProvider;
+    sessionId: string;
+  }) => Promise<{
+    ok: boolean;
+    command?: string;
+    cwd?: string;
+    mode?: string;
+    external?: boolean;
+    error?: string;
+  }>;
 }
 
 export interface AgentChatResult {

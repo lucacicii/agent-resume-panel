@@ -3750,8 +3750,17 @@ code {
   padding: 10px;
 }
 
-.citation-preview-open {
+.citation-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.citation-preview-open {
+  margin-top: 0;
   align-self: flex-start;
   flex-shrink: 0;
 }

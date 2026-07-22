@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { PanelSettings } from "@agent-resume/core";
-import { generalDraftFromSettings, modelsDraftFromSettings, modelsPatch, normalizeOutputLanguage, reportDraftFromSettings, reportPatch, sessionsDraftFromSettings, sessionsPatch, storageDraftFromSettings, storagePatch, workbenchDraftFromSettings, workbenchPatch } from "./model";
+import {
+  embeddingSearchIdentityChanged,
+  generalDraftFromSettings,
+  modelsDraftFromSettings,
+  modelsPatch,
+  normalizeOutputLanguage,
+  reportDraftFromSettings,
+  reportPatch,
+  sessionsDraftFromSettings,
+  sessionsPatch,
+  storageDraftFromSettings,
+  storagePatch,
+  workbenchDraftFromSettings,
+  workbenchPatch
+} from "./model";
 
 const settings: PanelSettings = {
   uiLanguage: "en",
@@ -21,6 +35,14 @@ describe("settings model", () => {
     const patch = modelsPatch(settings, { ...modelsDraftFromSettings(settings), chatModel: "", embBaseUrl: " " });
     expect(patch.chatLlm?.model).toBeUndefined();
     expect(patch.embedding?.baseUrl).toBeUndefined();
+  });
+
+  it("detects embedding identity changes for model or base URL", () => {
+    const draft = modelsDraftFromSettings(settings);
+    expect(embeddingSearchIdentityChanged(settings, draft)).toBe(false);
+    expect(embeddingSearchIdentityChanged(settings, { ...draft, embModel: "other-model" })).toBe(true);
+    expect(embeddingSearchIdentityChanged(settings, { ...draft, embBaseUrl: "https://other.example/v1" })).toBe(true);
+    expect(embeddingSearchIdentityChanged(settings, { ...draft, embApiKey: "new-key" })).toBe(false);
   });
 
   it("clamps the session sync limit", () => {
@@ -46,6 +68,41 @@ describe("settings model", () => {
     expect(patch.sessionSummaryAuto?.missingDelayMinutes).toBe(0);
     expect(patch.sessionSummaryAuto?.concurrency).toBe(3);
     expect(patch.sessionSummaryAuto?.maxPerTick).toBe(1);
+  });
+
+  it("persists transcript index settings independent of summary", () => {
+    const draft = sessionsDraftFromSettings(settings);
+    expect(draft.transcriptIndexEnabled).toBe(true);
+    expect(draft.transcriptQuietDelayMinutes).toBe(15);
+    const patch = sessionsPatch(settings, {
+      ...draft,
+      transcriptIndexEnabled: false,
+      transcriptQuietDelayMinutes: 9999,
+      transcriptIndexMaxPerTick: 0,
+      transcriptIndexConcurrency: 8
+    });
+    expect(patch.sessionTranscriptIndex?.enabled).toBe(false);
+    expect(patch.sessionTranscriptIndex?.quietDelayMinutes).toBe(1440);
+    expect(patch.sessionTranscriptIndex?.maxPerTick).toBe(1);
+    expect(patch.sessionTranscriptIndex?.concurrency).toBe(3);
+  });
+
+  it("persists summary embedding index settings", () => {
+    const draft = sessionsDraftFromSettings(settings);
+    expect(draft.embeddingIndexEnabled).toBe(true);
+    expect(draft.embeddingQuietDelayMinutes).toBe(0);
+    expect(draft.embeddingIndexMaxPerTick).toBe(5);
+    const patch = sessionsPatch(settings, {
+      ...draft,
+      embeddingIndexEnabled: false,
+      embeddingQuietDelayMinutes: 12,
+      embeddingIndexMaxPerTick: 99,
+      embeddingIndexConcurrency: 9
+    });
+    expect(patch.sessionEmbeddingIndex?.enabled).toBe(false);
+    expect(patch.sessionEmbeddingIndex?.quietDelayMinutes).toBe(12);
+    expect(patch.sessionEmbeddingIndex?.maxPerTick).toBe(50);
+    expect(patch.sessionEmbeddingIndex?.concurrency).toBe(4);
   });
 
   it("normalizes workbench editor values and persists nested scan inputs", () => {

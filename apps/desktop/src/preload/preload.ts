@@ -120,6 +120,18 @@ export interface DesktopApi {
     external?: boolean;
     session?: AgentSession;
   }>;
+  /** Agent tool/citation resume when terminal mode is xterm — open Workbench terminal. */
+  onWorkbenchResumeFromAgent(
+    callback: (payload: {
+      provider: string;
+      id: string;
+      command: string;
+      cwd: string;
+      title?: string;
+      projectPath?: string;
+      mode?: string;
+    }) => void
+  ): () => void;
   workbenchOpenCodexApp(args: {
     provider: string;
     id: string;
@@ -664,6 +676,26 @@ const api: DesktopApi = {
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
   workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
+  onWorkbenchResumeFromAgent: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: {
+        provider: string;
+        id: string;
+        command: string;
+        cwd: string;
+        title?: string;
+        projectPath?: string;
+        mode?: string;
+      }
+    ) => {
+      callback(payload);
+    };
+    ipcRenderer.on("workbench:resumeFromAgent", handler);
+    return () => {
+      ipcRenderer.removeListener("workbench:resumeFromAgent", handler);
+    };
+  },
   workbenchOpenCodexApp: (args) => ipcRenderer.invoke("workbench:openCodexApp", args),
   workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),

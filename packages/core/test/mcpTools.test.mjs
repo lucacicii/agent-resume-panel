@@ -100,7 +100,9 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "session_list",
       "session_read",
       "session_read_transcript",
-      "session_search"
+      "session_resume",
+      "session_search",
+      "session_set_gtd"
     ]);
   } finally {
     await client.close();
@@ -158,6 +160,58 @@ test("session_search finds catalog sessions by title and session_read returns su
       arguments: { provider: "chat", sessionId: "any" }
     });
     assert.ok(chatTranscript.content[0].text.toLowerCase().includes("unavailable"));
+
+    const gtdOk = await client.callTool({
+      name: "session_set_gtd",
+      arguments: { provider: "codex", sessionId: "sess-auth-1", status: "next", reason: "test" }
+    });
+    assert.notEqual(gtdOk.isError, true);
+    assert.ok(gtdOk.content[0].text.includes("GTD updated"));
+    assert.ok(gtdOk.content[0].text.includes("\"status\": \"next\""));
+
+    const gtdMissing = await client.callTool({
+      name: "session_set_gtd",
+      arguments: { provider: "codex", sessionId: "does-not-exist", status: "inbox" }
+    });
+    assert.ok(
+      gtdMissing.isError === true || gtdMissing.content[0].text.includes("No visible session")
+    );
+
+    const resumeMissing = await client.callTool({
+      name: "session_resume",
+      arguments: { provider: "codex", sessionId: "nope" }
+    });
+    assert.ok(resumeMissing.content[0].text.includes("No visible session"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("session_resume invokes injected launcher with provider and id", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  await seedSession(catalogDb, {
+    id: "resume-me",
+    title: "Resume target",
+    summary: "work"
+  });
+  const launched = [];
+  const server = createNoteMcpServer({
+    ...ctx,
+    resumeSession: async ({ provider, sessionId }) => {
+      launched.push({ provider, sessionId });
+      return { ok: true, command: `codex resume ${sessionId}`, cwd: "/tmp/demo", mode: "external-system", external: true };
+    }
+  });
+  const client = await connectClient(server);
+  try {
+    const result = await client.callTool({
+      name: "session_resume",
+      arguments: { provider: "codex", sessionId: "resume-me" }
+    });
+    assert.notEqual(result.isError, true);
+    assert.ok(result.content[0].text.includes("Resume launched"));
+    assert.deepEqual(launched, [{ provider: "codex", sessionId: "resume-me" }]);
   } finally {
     await client.close();
     await server.close();

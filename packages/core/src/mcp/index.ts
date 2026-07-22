@@ -35,10 +35,14 @@ export {
   sessionListSchema,
   sessionReadSchema,
   sessionReadTranscriptSchema,
+  sessionSetGtdSchema,
+  sessionResumeSchema,
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,
-  handleSessionReadTranscript
+  handleSessionReadTranscript,
+  handleSessionSetGtd,
+  handleSessionResume
 } from "./sessionTools";
 export type { SessionToolContext } from "./sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./client";

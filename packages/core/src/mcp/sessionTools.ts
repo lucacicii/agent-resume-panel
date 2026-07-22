@@ -9,18 +9,41 @@ import {
 } from "../catalog/search";
 import { getSessionById } from "../catalog/query";
 import type { AgentProvider } from "../catalog/types";
-import { getSessionGtdStatus } from "../gtd/store";
 import { GTD_STATUSES } from "../gtd/types";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { loadSettings } from "../settings/store";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { loadSessionSnippet } from "../transcript/load";
 import { searchSessionsByEmbedding } from "../session/searchByEmbedding";
+import { searchSessionsByTranscriptEmbedding } from "../session/transcriptIndex";
+import {
+  getSessionGtdStatus as getGtd,
+  setSessionGtdStatus,
+  setSessionGtdStatusWithAudit
+} from "../gtd/store";
+import { isGtdStatus, type GtdStatus } from "../gtd/types";
+import { buildResumeCommand } from "../terminal/commands";
+import { randomUUID } from "node:crypto";
 
 export interface SessionToolContext {
   catalogDb: string;
   desktopDb: string;
   panelHome: string;
+  /**
+   * Desktop injects this so session_resume opens the real Workbench/Sessions resume path.
+   * When omitted, the tool still returns the resume command for the model to surface.
+   */
+  resumeSession?: (args: {
+    provider: AgentProvider;
+    sessionId: string;
+  }) => Promise<{
+    ok: boolean;
+    command?: string;
+    cwd?: string;
+    mode?: string;
+    external?: boolean;
+    error?: string;
+  }>;
 }
 
 export const SESSION_SEARCH_DEFAULT_LIMIT = 20;
@@ -57,7 +80,7 @@ export const sessionSearchSchema = {
     .string()
     .min(1)
     .describe(
-      "Search query. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over session summaries."
+      "Search query. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over session summaries and transcript chunks."
     ),
   ...filterFields,
   limit: z
@@ -66,6 +89,23 @@ export const sessionSearchSchema = {
     .min(1)
     .optional()
     .describe(`Maximum results. Defaults to ${SESSION_SEARCH_DEFAULT_LIMIT}, capped at 50.`)
+};
+
+export const sessionSetGtdSchema = {
+  provider: providerEnum.describe("Agent provider of the session."),
+  sessionId: z.string().min(1).describe("Native agent session id."),
+  status: z
+    .enum(GTD_STATUSES as unknown as [string, ...string[]])
+    .describe("GTD status: inbox, next, waiting, someday, or reference."),
+  reason: z
+    .string()
+    .optional()
+    .describe("Short reason for the status change (stored in AI audit).")
+};
+
+export const sessionResumeSchema = {
+  provider: providerEnum.describe("Agent provider of the session."),
+  sessionId: z.string().min(1).describe("Native agent session id to resume.")
 };
 
 export const sessionListSchema = {
@@ -201,23 +241,42 @@ export async function handleSessionSearch(
 
   const keywordHits = await searchCatalogSessions(ctx.catalogDb, filters);
 
-  let semanticHits: SessionSearchHit[] = [];
+  let summaryHits: SessionSearchHit[] = [];
+  let transcriptHits: SessionSearchHit[] = [];
   try {
     const settings = await loadSettings(ctx.panelHome);
     if (embeddingConfigFromSettings(settings)) {
-      semanticHits = await searchSessionsByEmbedding({
-        catalogDb: ctx.catalogDb,
-        desktopDb: ctx.desktopDb,
-        settings,
-        query,
-        filters: { ...filters, limit: limit * 2 },
-        limit: limit * 2
-      });
+      try {
+        summaryHits = await searchSessionsByEmbedding({
+          catalogDb: ctx.catalogDb,
+          desktopDb: ctx.desktopDb,
+          settings,
+          query,
+          filters: { ...filters, limit: limit * 2 },
+          limit: limit * 2
+        });
+      } catch {
+        summaryHits = [];
+      }
+      try {
+        transcriptHits = await searchSessionsByTranscriptEmbedding({
+          catalogDb: ctx.catalogDb,
+          desktopDb: ctx.desktopDb,
+          settings,
+          query,
+          filters: { ...filters, limit: limit * 2 },
+          limit: limit * 2
+        });
+      } catch {
+        transcriptHits = [];
+      }
     }
   } catch {
-    semanticHits = [];
+    summaryHits = [];
+    transcriptHits = [];
   }
 
+  const semanticHits = mergeSessionSearchHits(summaryHits, transcriptHits, limit * 2);
   const merged = mergeSessionSearchHits(keywordHits, semanticHits, limit);
   if (!merged.length) {
     return {
@@ -290,7 +349,7 @@ export async function handleSessionRead(
     };
   }
 
-  const gtdStatus = await getSessionGtdStatus(ctx.catalogDb, provider, sessionId);
+  const gtdStatus = await getGtd(ctx.catalogDb, provider, sessionId);
   const maxSummary = clampSummaryLength(args.maxSummaryLength);
   const payload: Record<string, unknown> = {
     provider: session.provider,
@@ -392,4 +451,166 @@ export async function handleSessionReadTranscript(
       ]
     };
   }
+}
+
+export async function handleSessionSetGtd(
+  args: { provider: string; sessionId: string; status: string; reason?: string },
+  ctx: SessionToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  const provider = args.provider?.trim() as AgentProvider;
+  const sessionId = args.sessionId?.trim();
+  const statusRaw = args.status?.trim();
+  if (!provider || !sessionId || !statusRaw) {
+    throw new Error("provider, sessionId, and status are required.");
+  }
+  if (!isGtdStatus(statusRaw)) {
+    throw new Error(
+      `Invalid GTD status "${statusRaw}". Use one of: ${GTD_STATUSES.join(", ")}.`
+    );
+  }
+  const status = statusRaw as GtdStatus;
+
+  const session = await getSessionById(ctx.catalogDb, provider, sessionId);
+  if (!session) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `No visible session found for ${provider}:${sessionId}. GTD was not changed.`
+        }
+      ]
+    };
+  }
+
+  const previousStatus = (await getGtd(ctx.catalogDb, provider, sessionId)) ?? null;
+  const reason = args.reason?.trim() || "Set via Agent session_set_gtd tool";
+  const auditId = randomUUID();
+
+  try {
+    await setSessionGtdStatusWithAudit(ctx.catalogDb, ctx.desktopDb, {
+      provider,
+      sessionId,
+      status,
+      previousStatus,
+      reason,
+      sourceReportIds: [],
+      auditId
+    });
+  } catch {
+    // Audit table may be missing in some contexts; still persist GTD.
+    await setSessionGtdStatus(ctx.catalogDb, provider, sessionId, status);
+  }
+
+  const payload = {
+    ok: true,
+    provider,
+    sessionId,
+    title: session.title,
+    previousStatus,
+    status,
+    reason,
+    auditId
+  };
+  return {
+    content: [
+      {
+        type: "text",
+        text: `GTD updated for ${provider}:${sessionId}:\n${JSON.stringify(payload, null, 2)}`
+      }
+    ]
+  };
+}
+
+export async function handleSessionResume(
+  args: { provider: string; sessionId: string },
+  ctx: SessionToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+  const provider = args.provider?.trim() as AgentProvider;
+  const sessionId = args.sessionId?.trim();
+  if (!provider || !sessionId) {
+    throw new Error("provider and sessionId are required.");
+  }
+
+  const session = await getSessionById(ctx.catalogDb, provider, sessionId);
+  if (!session) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `No visible session found for ${provider}:${sessionId}. Resume was not started.`
+        }
+      ]
+    };
+  }
+
+  const command = buildResumeCommand(session);
+
+  if (ctx.resumeSession) {
+    try {
+      const result = await ctx.resumeSession({ provider, sessionId });
+      if (!result.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Resume failed for ${provider}:${sessionId}: ${result.error || "unknown error"}\nCommand: ${command}`
+            }
+          ]
+        };
+      }
+      const payload = {
+        ok: true,
+        provider,
+        sessionId,
+        title: session.title,
+        command: result.command || command,
+        cwd: result.cwd || session.projectPath,
+        mode: result.mode,
+        external: result.external === true
+      };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Resume launched for ${provider}:${sessionId}:\n${JSON.stringify(payload, null, 2)}`
+          }
+        ]
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `Resume failed for ${provider}:${sessionId}: ${message}\nCommand: ${command}`
+          }
+        ]
+      };
+    }
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Resume command for ${provider}:${sessionId} (launcher not injected; run in terminal):\n${JSON.stringify(
+          {
+            ok: true,
+            provider,
+            sessionId,
+            title: session.title,
+            command,
+            projectPath: session.projectPath,
+            launched: false
+          },
+          null,
+          2
+        )}`
+      }
+    ]
+  };
 }

@@ -12,6 +12,7 @@ import { resolvePreviewHomes } from "../transcript/homes";
 import { recordLlmUsage } from "../usage/store";
 import { suggestSessionTitleFromMessages, summarizeSessionMessages } from "./assist";
 import { upsertSessionEmbedding } from "./embedStore";
+import { indexSessionTranscript } from "./transcriptIndex";
 import { renameSessionNative } from "./rename";
 
 export interface SessionActionOptions {
@@ -89,6 +90,12 @@ export async function summarizeSessionAction(
       title: session.title,
       summary: result.summary,
       jobKey: `session_embed:summarize:${session.provider}:${session.id}`
+    }).catch(() => undefined);
+    void indexSessionTranscript({
+      desktopDb,
+      settings,
+      session: { ...session, sessionSummary: result.summary },
+      jobKey: `session_tx_embed:summarize:${session.provider}:${session.id}`
     }).catch(() => undefined);
     return {
       summary: result.summary,

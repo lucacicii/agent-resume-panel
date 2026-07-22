@@ -75,6 +75,16 @@ export interface SessionsDraft {
   summaryMissingDelayMinutes: number;
   summaryAutoConcurrency: number;
   summaryAutoMaxPerTick: number;
+  /** Transcript-chunk index independent of session_summary. */
+  transcriptIndexEnabled: boolean;
+  transcriptQuietDelayMinutes: number;
+  transcriptIndexConcurrency: number;
+  transcriptIndexMaxPerTick: number;
+  /** Embed title+summary for sessions that already have summaries. */
+  embeddingIndexEnabled: boolean;
+  embeddingQuietDelayMinutes: number;
+  embeddingIndexConcurrency: number;
+  embeddingIndexMaxPerTick: number;
 }
 
 export interface WorkbenchDraft {
@@ -161,6 +171,8 @@ function clampDraftInt(value: unknown, fallback: number, min: number, max: numbe
 export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraft {
   const source = settings.sessionSync;
   const auto = settings.sessionSummaryAuto;
+  const tx = settings.sessionTranscriptIndex;
+  const embIdx = settings.sessionEmbeddingIndex;
   return {
     maxItems: Math.max(1, Math.min(50_000, Number(source?.maxItems) || 10_000)),
     stalePolicy: source?.stalePolicy === "purge" ? "purge" : "off",
@@ -172,7 +184,15 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
     summaryStaleDelayMinutes: clampDraftInt(auto?.staleDelayMinutes, 30, 0, 1440),
     summaryMissingDelayMinutes: clampDraftInt(auto?.missingDelayMinutes, 0, 0, 1440),
     summaryAutoConcurrency: clampDraftInt(auto?.concurrency, 1, 1, 3),
-    summaryAutoMaxPerTick: clampDraftInt(auto?.maxPerTick, 5, 1, 50)
+    summaryAutoMaxPerTick: clampDraftInt(auto?.maxPerTick, 5, 1, 50),
+    transcriptIndexEnabled: tx?.enabled !== false,
+    transcriptQuietDelayMinutes: clampDraftInt(tx?.quietDelayMinutes, 15, 0, 1440),
+    transcriptIndexConcurrency: clampDraftInt(tx?.concurrency, 1, 1, 3),
+    transcriptIndexMaxPerTick: clampDraftInt(tx?.maxPerTick, 3, 1, 20),
+    embeddingIndexEnabled: embIdx?.enabled !== false,
+    embeddingQuietDelayMinutes: clampDraftInt(embIdx?.quietDelayMinutes, 0, 0, 1440),
+    embeddingIndexConcurrency: clampDraftInt(embIdx?.concurrency, 2, 1, 4),
+    embeddingIndexMaxPerTick: clampDraftInt(embIdx?.maxPerTick, 5, 1, 50)
   };
 }
 
@@ -204,6 +224,40 @@ export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partia
   };
 }
 
+/** Effective identity used for vector search (matches embedding_key inputs, without apiKey). */
+export function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
+  baseUrl: string;
+  model: string;
+} {
+  const emb = settings.embedding;
+  const llm = settings.llm;
+  return {
+    baseUrl: (emb?.baseUrl || llm?.baseUrl || "").trim(),
+    model: (emb?.model || "").trim() || "text-embedding-3-small"
+  };
+}
+
+export function embeddingSearchIdentityFromDraft(
+  settings: PanelSettings,
+  draft: ModelsDraft
+): { baseUrl: string; model: string } {
+  return {
+    // Empty emb base falls back to tool LLM base, same as runtime embeddingConfigFromSettings.
+    baseUrl: (draft.embBaseUrl.trim() || draft.llmBaseUrl.trim() || settings.llm?.baseUrl || "").trim(),
+    model: draft.embModel.trim() || "text-embedding-3-small"
+  };
+}
+
+/** True when changing models draft would switch the embedding space used for search/index. */
+export function embeddingSearchIdentityChanged(
+  settings: PanelSettings,
+  draft: ModelsDraft
+): boolean {
+  const before = embeddingSearchIdentityFromSettings(settings);
+  const after = embeddingSearchIdentityFromDraft(settings, draft);
+  return before.baseUrl !== after.baseUrl || before.model !== after.model;
+}
+
 export function sessionsPatch(settings: PanelSettings, draft: SessionsDraft): Partial<PanelSettings> {
   return {
     sessionSummaryAuto: {
@@ -213,6 +267,20 @@ export function sessionsPatch(settings: PanelSettings, draft: SessionsDraft): Pa
       missingDelayMinutes: clampDraftInt(draft.summaryMissingDelayMinutes, 0, 0, 1440),
       concurrency: clampDraftInt(draft.summaryAutoConcurrency, 1, 1, 3),
       maxPerTick: clampDraftInt(draft.summaryAutoMaxPerTick, 5, 1, 50)
+    },
+    sessionTranscriptIndex: {
+      ...settings.sessionTranscriptIndex,
+      enabled: draft.transcriptIndexEnabled,
+      quietDelayMinutes: clampDraftInt(draft.transcriptQuietDelayMinutes, 15, 0, 1440),
+      concurrency: clampDraftInt(draft.transcriptIndexConcurrency, 1, 1, 3),
+      maxPerTick: clampDraftInt(draft.transcriptIndexMaxPerTick, 3, 1, 20)
+    },
+    sessionEmbeddingIndex: {
+      ...settings.sessionEmbeddingIndex,
+      enabled: draft.embeddingIndexEnabled,
+      quietDelayMinutes: clampDraftInt(draft.embeddingQuietDelayMinutes, 0, 0, 1440),
+      concurrency: clampDraftInt(draft.embeddingIndexConcurrency, 2, 1, 4),
+      maxPerTick: clampDraftInt(draft.embeddingIndexMaxPerTick, 5, 1, 50)
     },
     sessionSync: {
       ...settings.sessionSync,

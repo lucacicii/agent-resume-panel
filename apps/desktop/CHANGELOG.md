@@ -17,6 +17,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - Session summary embeddings written best-effort after Summarize / ensure-summaries (stored in `desktop.db`)
 - **Session citations** in Agent replies: chip section like reports/notes, hover preview, open in Sessions sheet
 - **Auto session summaries**: after sync, generate missing summaries; re-summarize after a configurable quiet delay when a session updates (Settings → Sessions)
+- **Transcript-chunk semantic search** for Agent session tools (when embeddings are configured); index updates after summarize
+- **Independent transcript indexing** (Settings → Sessions): no longer requires session summary; sync + quiet delay + batch limits
+- **Summary embedding auto-index** (Settings → Sessions): backfills `session_embeddings` for sessions that already have summaries (independent of live Summarize)
+- **session_set_gtd** / **session_resume** Agent tools; session citation popover **Resume** opens Workbench resume path
 
 
 ### [0.2.3]
@@ -188,6 +192,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - Summarize / ensure-summaries 后 best-effort 写入 session 摘要向量（`desktop.db`）
 - **会话引用**：Agent 回答中像报告/笔记一样显示 session chip，支持悬停预览与打开 Sessions
 - **自动会话摘要**：同步后为无摘要 session 生成；更新后经可配置静默延迟再重摘要（Settings → 会话）
+- **Transcript 分块语义检索**（配置 embeddings 时）；摘要后仍可加速更新索引
+- **对话向量独立索引**（Settings → 会话）：不依赖 session 摘要；同步 + 静默期 + 分批限流
+- **摘要向量自动补齐**（Settings → 会话）：对已有 summary 的 session 后台写入 `session_embeddings`（不依赖当场 Summarize）
+- Agent 工具 **session_set_gtd** / **session_resume**；会话引用气泡 **Resume** 走 Workbench 恢复路径
 
 ### [0.2.3]
 

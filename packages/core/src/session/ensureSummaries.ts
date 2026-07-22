@@ -13,6 +13,7 @@ import { PreviewHomes } from "../transcript/types";
 import { recordLlmUsage } from "../usage/store";
 import { summarizeSessionMessages } from "./assist";
 import { upsertSessionEmbedding } from "./embedStore";
+import { indexSessionTranscript } from "./transcriptIndex";
 
 export interface EnsureSummariesOptions {
   dbPath: string;
@@ -239,6 +240,12 @@ async function summarizeOneSession(input: {
       title: input.session.title,
       summary: result.summary,
       jobKey: `session_embed:${input.jobKey}`
+    }).catch(() => undefined);
+    void indexSessionTranscript({
+      desktopDb: input.desktopDb,
+      settings: input.settings,
+      session: { ...input.session, sessionSummary: result.summary },
+      jobKey: `session_tx_embed:${input.jobKey}`
     }).catch(() => undefined);
     return result.summary;
   } catch (error) {

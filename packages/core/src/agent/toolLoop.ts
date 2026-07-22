@@ -82,7 +82,9 @@ const SESSION_TOOL_OPERATIONS: Record<string, SessionOperation> = {
   session_search: "search",
   session_list: "list",
   session_read: "read",
-  session_read_transcript: "read"
+  session_read_transcript: "read",
+  session_set_gtd: "read",
+  session_resume: "read"
 };
 
 /**
