@@ -3688,83 +3688,6 @@ code {
   font-size: 12px;
 }
 
-.citation-popover {
-  position: fixed;
-  z-index: 1200;
-  width: min(340px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 24px));
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 12px;
-  box-shadow: 0 12px 32px color-mix(in srgb, #000 28%, transparent);
-  pointer-events: auto;
-}
-
-.citation-popover[data-placement="right"]::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -12px;
-  width: 12px;
-  height: 100%;
-}
-
-.citation-popover[data-placement="left"]::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -12px;
-  width: 12px;
-  height: 100%;
-}
-
-.citation-popover-content {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  max-height: inherit;
-}
-
-.citation-preview-head {
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-
-.citation-preview-body {
-  font-size: 12px;
-  line-height: 1.45;
-  flex: 1;
-  min-height: 0;
-  max-height: 320px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  padding: 10px;
-}
-
-.citation-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  align-self: flex-start;
-  flex-shrink: 0;
-}
-
-.citation-preview-open {
-  margin-top: 0;
-  align-self: flex-start;
-  flex-shrink: 0;
-}
-
 #tab-agent.panel.active,
 #react-agent .react-agent-panel.panel.active {
   display: flex;
@@ -4012,6 +3935,41 @@ code {
   animation: chat-stream-blink 1s step-end infinite;
 }
 
+.chat-activity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-callout);
+  line-height: var(--line-height-body);
+}
+
+.chat-activity-status svg {
+  flex: 0 0 auto;
+  animation: chat-activity-spin 1s linear infinite;
+}
+
+.chat-activity-status.is-ok {
+  color: var(--color-success);
+}
+
+.chat-activity-status.is-error {
+  color: var(--color-destructive);
+}
+
+@keyframes chat-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-activity-status svg {
+    animation: none;
+  }
+}
+
 @keyframes chat-stream-blink {
   50% {
     opacity: 0;
@@ -4030,6 +3988,12 @@ code {
   font-size: 11px;
   line-height: 1;
   color: color-mix(in srgb, currentColor 52%, transparent);
+}
+
+.chat-footer-completion {
+  font-size: var(--font-size-caption);
+  line-height: 1;
+  color: var(--color-success);
 }
 
 .chat-copy-btn {
@@ -4058,6 +4022,18 @@ code {
   cursor: pointer;
   flex-wrap: wrap;
   text-align: left;
+}
+
+.chat-message-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 6px;
+}
+
+.chat-message-tools .chat-tool-trace-button {
+  margin-top: 0;
 }
 
 .chat-tool-trace-button:hover {
@@ -4184,21 +4160,6 @@ code {
   overflow-wrap: anywhere;
 }
 
-.tool-trace-approval {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.tool-trace-approval p {
-  width: 100%;
-  margin: 0;
-  color: var(--color-label-primary);
-  font-size: var(--font-size-callout);
-}
-
 .tool-trace-error {
   margin: var(--space-2) 0 0;
   color: var(--color-destructive);
@@ -4209,140 +4170,160 @@ code {
   text-decoration: underline;
 }
 
-.citation-list {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.note-action-bubbles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.note-action-bubble {
-  appearance: none;
-  border: 1px solid color-mix(in srgb, var(--tg-sender) 45%, transparent);
-  background: color-mix(in srgb, var(--tg-sender) 12%, transparent);
-  color: currentColor;
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 12px;
-  line-height: 1.3;
-  cursor: pointer;
-  max-width: 100%;
-  text-align: left;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.note-action-bubble:hover {
-  background: color-mix(in srgb, var(--tg-sender) 22%, transparent);
-  border-color: color-mix(in srgb, var(--tg-sender) 65%, transparent);
-}
-
-.citation-sections {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.citation-section {
-  border-radius: 8px;
-  background: color-mix(in srgb, currentColor 4%, transparent);
-}
-
-.citation-section-head {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: color-mix(in srgb, currentColor 78%, transparent);
-  width: 100%;
+.agent-tool-approval-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-  border-radius: 8px;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 10px;
+  border-top: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--chat-compose-bg));
 }
 
-.citation-section-head:hover {
-  color: currentColor;
-  background: color-mix(in srgb, currentColor 6%, transparent);
+.agent-tool-approval-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.citation-section-chevron {
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
-  opacity: 0.7;
+.agent-tool-approval-copy strong {
+  overflow: hidden;
+  color: var(--color-label-primary);
+  font-size: var(--font-size-callout);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-tool-approval-copy span {
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.agent-tool-approval-actions,
+.citation-sheet-actions {
+  display: flex;
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
-.citation-section.collapsed .citation-section-chevron {
-  transform: rotate(0deg);
+.citation-sheet {
+  overflow: auto;
 }
 
-.citation-section:not(.collapsed) .citation-section-chevron {
-  transform: rotate(90deg);
+.citation-sheet-description {
+  margin: 0 0 var(--space-3);
 }
 
-.citation-section-body {
+.citation-sheet-groups {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 8px 8px;
+  gap: var(--space-3);
 }
 
-.citation-section.collapsed .citation-section-body {
-  display: none;
+.citation-sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.citation-section-body .citation-chip {
+.citation-sheet-group h4,
+.citation-sheet-item-body h5 {
   margin: 0;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
 }
 
-.citation-chip {
-  appearance: none;
-  border: none;
+.citation-sheet-item {
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.citation-sheet-item-head {
+  display: flex;
   width: 100%;
-  font: inherit;
-  text-align: left;
+  align-items: flex-start;
+  gap: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 6px 4px;
+  background: transparent;
+  color: var(--color-label-primary);
   cursor: pointer;
-  display: block;
-  font-size: 11px;
-  color: color-mix(in srgb, currentColor 72%, transparent);
-  border-left: 2px solid var(--tg-sender);
-  border-radius: 0 8px 8px 0;
-  padding: 5px 8px;
+  font: inherit;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-body);
   text-align: left;
-  width: 100%;
-  cursor: default;
-  background: color-mix(in srgb, currentColor 6%, transparent);
-  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.citation-chip:hover,
-.citation-chip.is-active {
-  color: currentColor;
-  background: color-mix(in srgb, var(--tg-sender) 14%, transparent);
+.citation-sheet-item-head:hover {
+  background: var(--color-fill-tertiary);
 }
 
-.citation-chip:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
+.citation-sheet-item-head svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.citation-sheet-item.is-expanded .citation-sheet-item-head svg {
+  transform: rotate(180deg);
+}
+
+.citation-sheet-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 4px var(--space-3) 24px;
+}
+
+.citation-sheet-item-body h5 {
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+}
+
+.citation-sheet-fields {
+  display: grid;
+  grid-template-columns: minmax(84px, 0.38fr) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-caption);
+}
+
+.citation-sheet-fields div {
+  display: contents;
+}
+
+.citation-sheet-fields dt {
+  color: var(--color-label-secondary);
+}
+
+.citation-sheet-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-label-primary);
+}
+
+.citation-sheet-content {
+  border-top: 1px solid var(--color-separator);
+  padding-top: var(--space-2);
+}
+
+.citation-sheet-content h5 {
+  margin-bottom: var(--space-2);
+}
+
+@media (max-width: 860px) {
+  .agent-tool-approval-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agent-tool-approval-actions {
+    align-self: flex-end;
+  }
 }
 
 .chat-compose {

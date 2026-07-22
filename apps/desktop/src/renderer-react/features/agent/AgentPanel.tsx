@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent, type ReactNode, type ReactPortal, type SetStateAction } from "react";
-import { Activity, Bot, Check, ChevronDown, Copy, FileText, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Send, Square, Trash2, Wrench } from "lucide-react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
+import { Activity, Bot, Check, ChevronDown, Copy, FileText, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Quote, Send, Square, Trash2, Wrench } from "lucide-react";
 import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -11,6 +11,9 @@ import { useI18n } from "../../i18n";
 interface Turn extends Pick<AgentChatMessage, "role" | "content" | "citations" | "fallback" | "sortOrder" | "toolTrace"> {
   id: string;
   streaming?: boolean;
+  activityText?: string;
+  activityKind?: StatusKind;
+  completionText?: string;
 }
 
 interface ProgressEvent {
@@ -37,23 +40,12 @@ interface ChatContext {
 
 const LOCAL_SORT_ORDER_FLOOR = Number.MAX_SAFE_INTEGER - 1000;
 
-interface CitationPreview {
-  citation: AgentCitation;
-  anchor: DOMRect;
-  entry?: Pick<ReportEntry, "title" | "content"> | null;
-  error?: string;
-}
-
-type CitationGroup = "report" | "note" | "session";
-
 const PAGE_SIZE = 40;
 const SIDEBAR_WIDTH_KEY = "sidebar-folders-width";
 const SIDEBAR_COLLAPSED_KEY = "askSidebarCollapsed";
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 220;
-const NOTE_ACTIONS = new Set(["create", "write", "append"]);
-
 function isNote(citation: AgentCitation): boolean {
   return citation.source === "note" || citation.level === "note";
 }
@@ -178,7 +170,6 @@ export function AgentPanel(): ReactPortal | null {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingThread, setEditingThread] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [auditOpen, setAuditOpen] = useState(false);
@@ -190,18 +181,24 @@ export function AgentPanel(): ReactPortal | null {
   const [context, setContext] = useState<ChatContext | null>(null);
   const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [preview, setPreview] = useState<CitationPreview | null>(null);
   const [traceDrawerTurnId, setTraceDrawerTurnId] = useState<string | null>(null);
+  const [citationDrawerTurnId, setCitationDrawerTurnId] = useState<string | null>(null);
   const streamOff = useRef<(() => void) | null>(null);
   const cancelled = useRef(false);
   const sendingRef = useRef(false);
   const indexHideTimer = useRef<number | null>(null);
-  const previewHideTimer = useRef<number | null>(null);
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const prependScroll = useRef<{ height: number; top: number } | null>(null);
   const stickToBottom = useRef(true);
   const activeThread = useMemo(() => threads.find((thread) => thread.id === threadId), [threadId, threads]);
+  const pendingApproval = useMemo(() => {
+    for (let index = turns.length - 1; index >= 0; index -= 1) {
+      const step = (turns[index].toolTrace || []).find((item) => item.kind === "tool" && item.status === "awaiting_approval");
+      if (step) return step;
+    }
+    return null;
+  }, [turns]);
 
   const clearIndexHideTimer = () => {
     if (indexHideTimer.current !== null) window.clearTimeout(indexHideTimer.current);
@@ -293,16 +290,14 @@ export function AgentPanel(): ReactPortal | null {
     if (typeof api.onNotesIndexProgress !== "function") return;
     const off = api.onNotesIndexProgress((event) => {
       applyIndexProgress(event);
-      if (!sendingRef.current) {
-        setStatus({ text: event.message || t("desktop.agent.indexingNotes"), kind: event.phase === "error" ? "error" : event.phase === "complete" ? "ok" : undefined });
-      }
+      if (!sendingRef.current && event.phase === "complete") setStatus({ text: "" });
+      else if (!sendingRef.current && event.phase === "error") setStatus({ text: event.message || t("desktop.agent.indexingNotes"), kind: "error" });
     });
     return off;
   }, [applyIndexProgress, t]);
   useEffect(() => () => {
     streamOff.current?.();
     clearIndexHideTimer();
-    if (previewHideTimer.current !== null) window.clearTimeout(previewHideTimer.current);
   }, []);
   useEffect(() => {
     const pending = prependScroll.current;
@@ -387,7 +382,6 @@ export function AgentPanel(): ReactPortal | null {
       await desktopApi().clearAgentChat({ threadId });
       setTurns([]);
       setHasMore(false);
-      setExpanded(new Set());
       setStatus({ text: "" });
     } catch (error) {
       setStatus({ text: errorMessage(error), kind: "error" });
@@ -446,11 +440,11 @@ export function AgentPanel(): ReactPortal | null {
     sendingRef.current = true;
     setInput("");
     setSending(true);
-    setStatus({ text: t("desktop.agent.searchingReports") });
+    setStatus({ text: "" });
     setTurns([
       ...prefix,
       { id: `local-${Date.now()}`, role: "user", content: query, sortOrder: Number.MAX_SAFE_INTEGER - 1 },
-      { id: pendingId, role: "assistant", content: "", citations: [], toolTrace: [], sortOrder: Number.MAX_SAFE_INTEGER, streaming: true }
+      { id: pendingId, role: "assistant", content: "", citations: [], toolTrace: [], sortOrder: Number.MAX_SAFE_INTEGER, streaming: true, activityText: t("desktop.agent.searchingReports") }
     ]);
     if (activeThread?.title === t("desktop.agent.newThread")) {
       const title = query.slice(0, 30);
@@ -458,26 +452,27 @@ export function AgentPanel(): ReactPortal | null {
       void desktopApi().renameAgentThread({ id: threadId, title });
     }
     streamOff.current = desktopApi().onAskStream((event: AgentStreamEvent) => {
+      const updateActivity = (activityText: string, activityKind?: StatusKind) => {
+        setTurns((current) => current.map((turn) => turn.id === pendingId ? { ...turn, activityText, activityKind } : turn));
+      };
       if (event.phase === "chunk" && event.delta) {
-        setTurns((current) => current.map((turn) => turn.id === pendingId ? { ...turn, content: turn.content + event.delta } : turn));
+        setTurns((current) => current.map((turn) => turn.id === pendingId ? { ...turn, content: turn.content + event.delta, activityText: undefined, activityKind: undefined } : turn));
       } else if (event.phase === "retrieving") {
-        setStatus({ text: t("desktop.agent.searchingReports") });
+        updateActivity(event.message || t("desktop.agent.searchingReports"));
       } else if (event.phase === "indexing_notes") {
-        applyIndexProgress(event);
-        setStatus({ text: event.message || t("desktop.agent.indexingNotes") });
+        updateActivity(event.message || t("desktop.agent.indexingNotes"));
       } else if (event.phase === "generating") {
         hideIndexProgress();
-        setStatus({ text: event.message || t("desktop.agent.statusGenerating") });
+        updateActivity(event.message || t("desktop.agent.requestingLlm"));
       } else if (event.phase === "execution" && event.execution) {
         setTurns((current) => current.map((turn) => turn.id === pendingId ? {
           ...turn,
           toolTrace: upsertExecutionStep(turn.toolTrace || [], event.execution!)
         } : turn));
       } else if (event.phase === "tool_calling") {
-        setStatus({ text: t("desktop.agent.callingTool", event.toolName || "...") });
+        updateActivity(t("desktop.agent.callingTool", event.toolName || "..."));
       } else if (event.phase === "tool_approval_required") {
-        setStatus({ text: t("desktop.agent.toolApprovalNeeded", event.toolName || "...") });
-        setTraceDrawerTurnId(pendingId);
+        updateActivity(t("desktop.agent.toolApprovalNeeded", event.toolName || "..."));
         if (event.toolCallId) {
           setTurns((current) => current.map((turn) => turn.id === pendingId ? {
             ...turn,
@@ -486,10 +481,10 @@ export function AgentPanel(): ReactPortal | null {
         }
       } else if (event.phase === "tool_executing") {
         const completedStatus = event.toolStatus || "succeeded";
-        setStatus({
-          text: `${event.toolName || "..."} · ${traceStatusLabel(completedStatus, t)}`,
-          kind: completedStatus === "failed" || completedStatus === "rejected" ? "error" : "ok"
-        });
+        updateActivity(
+          `${event.toolName || "..."} · ${traceStatusLabel(completedStatus, t)}`,
+          completedStatus === "failed" || completedStatus === "rejected" ? "error" : completedStatus === "succeeded" ? "ok" : undefined
+        );
         if (event.toolCallId) {
           setTurns((current) => current.map((turn) => turn.id === pendingId ? {
             ...turn,
@@ -503,14 +498,18 @@ export function AgentPanel(): ReactPortal | null {
           } : turn));
         }
       } else if (event.message) {
-        setStatus({ text: event.message });
+        updateActivity(event.message);
       }
     });
     try {
       const result = await desktopApi().askAgent({ query, history, threadId, enableTools: tools });
+      const completionText = result.fallback
+        ? t("desktop.agent.completeFallback", result.citations.length)
+        : t("desktop.agent.completeDone", result.citations.length, result.toolCallsExecuted ? t("desktop.agent.completeToolCalls", result.toolCallsExecuted) : "");
       try {
         const log = await desktopApi().listAgentChat({ threadId, limit: PAGE_SIZE });
-        setTurns(log.messages.map((message) => ({ ...message })));
+        const latestAssistantIndex = log.messages.map((message) => message.role).lastIndexOf("assistant");
+        setTurns(log.messages.map((message, index) => ({ ...message, completionText: index === latestAssistantIndex && !result.persistWarning ? completionText : undefined })));
         setHasMore(log.hasMore);
       } catch {
         setTurns((current) => current.map((turn) => turn.id === pendingId ? {
@@ -520,17 +519,13 @@ export function AgentPanel(): ReactPortal | null {
           citations: result.citations,
           fallback: result.fallback,
           toolTrace: result.toolTrace,
-          sortOrder: Number.MAX_SAFE_INTEGER
+          sortOrder: Number.MAX_SAFE_INTEGER,
+          completionText: result.persistWarning ? undefined : completionText
         } : turn));
       }
       setStatus(result.persistWarning
         ? { text: result.persistWarning, kind: "error" }
-        : {
-            text: result.fallback
-              ? t("desktop.agent.completeFallback", result.citations.length)
-              : t("desktop.agent.completeDone", result.citations.length, result.toolCallsExecuted ? t("desktop.agent.completeToolCalls", result.toolCallsExecuted) : ""),
-            kind: "ok"
-          });
+        : { text: "" });
       if (auditOpen) void loadAudit();
     } catch (error) {
       setTurns((current) => current.filter((turn) => turn.id !== pendingId));
@@ -553,14 +548,12 @@ export function AgentPanel(): ReactPortal | null {
       } else {
         setStatus({ text: t("desktop.agent.cannotResolveNote"), kind: "error" });
       }
-      setPreview(null);
       return;
     }
     if (isSession(citation)) {
       const session = citation.session;
       if (!session?.provider || !session.id) {
         setStatus({ text: t("desktop.agent.cannotResolveSession"), kind: "error" });
-        setPreview(null);
         return;
       }
       window.dispatchEvent(
@@ -574,7 +567,6 @@ export function AgentPanel(): ReactPortal | null {
           }
         })
       );
-      setPreview(null);
       return;
     }
     const period = periodFromCitation(citation);
@@ -584,52 +576,49 @@ export function AgentPanel(): ReactPortal | null {
     }
     window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
-    setPreview(null);
   };
-  const showPreview = async (citation: AgentCitation, anchor: HTMLElement) => {
-    if (previewHideTimer.current !== null) window.clearTimeout(previewHideTimer.current);
-    const anchorRect = anchor.getBoundingClientRect();
-    const immediateTitle =
-      citation.title ||
-      citation.noteId ||
-      citation.reportId ||
-      (citation.session ? `${citation.session.provider} · ${citation.session.id}` : "") ||
-      "Citation";
-    const immediate = citation.contentPreview
-      ? { title: immediateTitle, content: citation.contentPreview }
-      : isSession(citation) && citation.session
-        ? {
-            title: immediateTitle,
-            content: [
-              `**${citation.session.provider}** \`${citation.session.id}\``,
-              citation.session.projectPath ? citation.session.projectPath : ""
-            ]
-              .filter(Boolean)
-              .join("\n\n")
-          }
-        : undefined;
-    setPreview({ citation, anchor: anchorRect, entry: immediate });
-    if (immediate || isNote(citation) || isSession(citation) || !citation.reportId) return;
+  const resumeCitationSession = async (citation: AgentCitation) => {
+    const session = citation.session;
+    if (!session?.provider || !session.id) {
+      setStatus({ text: t("desktop.agent.cannotResolveSession"), kind: "error" });
+      return;
+    }
     try {
-      const entry = await desktopApi().getReportEntry(citation.reportId);
-      setPreview((current) => current?.citation === citation ? { ...current, entry: entry || null } : current);
+      const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
+      if (!result.external && result.command) {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
+          detail: {
+            provider: session.provider,
+            id: session.id,
+            command: result.command,
+            cwd: result.cwd,
+            title: citation.title || session.id,
+            projectPath: session.projectPath || result.cwd
+          }
+        }));
+      }
+      setStatus({ text: t("desktop.agent.resumeStarted", session.provider, session.id), kind: "ok" });
     } catch (error) {
-      setPreview((current) => current?.citation === citation ? { ...current, error: errorMessage(error) } : current);
+      setStatus({ text: errorMessage(error), kind: "error" });
     }
   };
-  const hidePreviewSoon = () => {
-    if (previewHideTimer.current !== null) window.clearTimeout(previewHideTimer.current);
-    previewHideTimer.current = window.setTimeout(() => setPreview(null), 450);
-  };
-  const keepPreview = () => {
-    if (previewHideTimer.current !== null) window.clearTimeout(previewHideTimer.current);
+  const respondToolApproval = (toolCallId: string, approved: boolean) => {
+    setTurns((current) => current.map((turn) => ({
+      ...turn,
+      toolTrace: (turn.toolTrace || []).map((step) => step.id === toolCallId
+        ? { ...step, status: approved ? "running" : "rejected" }
+        : step)
+    })));
+    void desktopApi().respondToolApproval({ toolCallId, approved }).catch((error) => {
+      setStatus({ text: errorMessage(error), kind: "error" });
+    });
   };
   const onLogScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const log = event.currentTarget;
     stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
     if (log && log.scrollTop < 72 && hasMore && !loadingOlder && threadId) void loadMessages(threadId, true);
     setContext(null);
-    hidePreviewSoon();
   };
   const resizeSidebar = (width: number) => setSidebarWidth(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width))));
   const beginResize = (event: PointerEvent<HTMLDivElement>) => {
@@ -679,7 +668,7 @@ export function AgentPanel(): ReactPortal | null {
             </div>
           </div>
           <div className="ask-chat-shell">
-            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} expanded={expanded} setExpanded={setExpanded} t={t} onOpenTrace={setTraceDrawerTurnId} onScroll={onLogScroll} onCitation={openCitation} onCitationPreview={showPreview} onCitationPreviewLeave={hidePreviewSoon} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
+            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
               setContext({
@@ -690,6 +679,7 @@ export function AgentPanel(): ReactPortal | null {
                 top: Math.min(event.clientY, window.innerHeight - 120)
               });
             }} onCopy={(content) => void copyText(content).then(() => setStatus({ text: t("desktop.agent.copiedAnswer"), kind: "ok" }))} />
+            {pendingApproval ? <ToolApprovalBar step={pendingApproval} t={t} onRespond={(approved) => respondToolApproval(pendingApproval.id, approved)} /> : null}
             <div className="chat-compose">
               <div className="chat-compose-field"><textarea rows={1} value={input} disabled={sending} placeholder={t("desktop.agent.inputPlaceholder")} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} /></div>
               <button type="button" className={`chat-tools-toggle${tools ? " active" : ""}`} title={tools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={tools} disabled={sending} onClick={() => { setTools((value) => !value); setStatus({ text: tools ? t("desktop.agent.toolsOffStatus") : t("desktop.agent.toolsOnStatus"), kind: "ok" }); }}><Wrench size={18} /></button>
@@ -706,63 +696,12 @@ export function AgentPanel(): ReactPortal | null {
         <button type="button" disabled={sending} onClick={() => { setEditingTurnId(context.turnId); setEditDraft(context.content); setContext(null); }}>{t("desktop.common.edit")}</button>
         <button type="button" disabled={sending} onClick={() => { const turnId = context.turnId; const content = context.content; setContext(null); void send(content, { fromTurnId: turnId }); }}>{t("desktop.common.resend")}</button>
       </div> : null}
-      {preview ? (
-        <CitationPopover
-          preview={preview}
-          t={t}
-          onKeep={keepPreview}
-          onLeave={hidePreviewSoon}
-          onOpen={() => openCitation(preview.citation)}
-          onResume={
-            isSession(preview.citation) && preview.citation.session
-              ? async () => {
-                  const session = preview.citation.session!;
-                  try {
-                    const result = await desktopApi().workbenchOpenSession({
-                      provider: session.provider,
-                      id: session.id
-                    });
-                    if (!result.external && result.command) {
-                      // xterm: mirror Workbench openSession — switch tab + open embedded terminal.
-                      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-                      window.dispatchEvent(
-                        new CustomEvent("agent-resume:workbench-resume", {
-                          detail: {
-                            provider: session.provider,
-                            id: session.id,
-                            command: result.command,
-                            cwd: result.cwd,
-                            title: preview.citation.title || session.id,
-                            projectPath: session.projectPath || result.cwd
-                          }
-                        })
-                      );
-                    }
-                    setStatus({
-                      text: t("desktop.agent.resumeStarted", session.provider, session.id),
-                      kind: "ok"
-                    });
-                    setPreview(null);
-                  } catch (error) {
-                    setStatus({ text: errorMessage(error), kind: "error" });
-                  }
-                }
-              : undefined
-          }
-        />
-      ) : null}
       <ToolTraceSheet
         turn={turns.find((turn) => turn.id === traceDrawerTurnId) || null}
         t={t}
         onClose={() => setTraceDrawerTurnId(null)}
-        onRespondApproval={(toolCallId, approved) => {
-          void desktopApi().respondToolApproval({ toolCallId, approved });
-          setTurns((current) => current.map((turn) => turn.id === traceDrawerTurnId ? {
-            ...turn,
-            toolTrace: (turn.toolTrace || []).map((step) => step.id === toolCallId ? { ...step, status: approved ? "running" : "rejected" } : step)
-          } : turn));
-        }}
       />
+      <CitationSheet turn={turns.find((turn) => turn.id === citationDrawerTurnId) || null} t={t} onClose={() => setCitationDrawerTurnId(null)} onOpenCitation={openCitation} onResumeSession={resumeCitationSession} />
     </section>,
     host
   );
@@ -772,14 +711,10 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   turns: Turn[];
   hasMore: boolean;
   loadingOlder: boolean;
-  expanded: Set<string>;
-  setExpanded: Dispatch<SetStateAction<Set<string>>>;
   t: Translate;
   onOpenTrace: (turnId: string) => void;
+  onOpenCitations: (turnId: string) => void;
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
-  onCitation: (citation: AgentCitation) => void;
-  onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
-  onCitationPreviewLeave: () => void;
   editingTurnId: string | null;
   editDraft: string;
   sending: boolean;
@@ -788,7 +723,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   onConfirmEdit: () => void;
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
-}>(({ turns, hasMore, loadingOlder, expanded, setExpanded, t, onOpenTrace, onScroll, onCitation, onCitationPreview, onCitationPreviewLeave, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
+}>(({ turns, hasMore, loadingOlder, t, onOpenTrace, onOpenCitations, onScroll, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const heights = useRef(new Map<string, number>());
@@ -823,7 +758,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
     forceLayout((value) => value + 1);
   }, []);
   if (!turns.length) return <div ref={setLogRef} className="chat-log" onScroll={onScroll}><div className="chat-empty-state"><p className="chat-empty-title">{t("desktop.agent.emptyChat")}</p><p className="chat-empty-hint">{t("desktop.agent.emptyHint")}</p></div></div>;
-  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} expanded={expanded} setExpanded={setExpanded} t={t} onOpenTrace={onOpenTrace} onCitation={onCitation} onCitationPreview={onCitationPreview} onCitationPreviewLeave={onCitationPreviewLeave} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
+  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} t={t} onOpenTrace={onOpenTrace} onOpenCitations={onOpenCitations} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
 });
 
 function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id: string, height: number) => void; children: ReactNode }) {
@@ -843,15 +778,11 @@ function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id:
   return <div ref={ref}>{children}</div>;
 }
 
-function TurnView({ turn, expanded, setExpanded, t, onOpenTrace, onCitation, onCitationPreview, onCitationPreviewLeave, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
+function TurnView({ turn, t, onOpenTrace, onOpenCitations, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
   turn: Turn;
-  expanded: Set<string>;
-  setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>;
   t: Translate;
   onOpenTrace: (turnId: string) => void;
-  onCitation: (citation: AgentCitation) => void;
-  onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
-  onCitationPreviewLeave: () => void;
+  onOpenCitations: (turnId: string) => void;
   editing: boolean;
   editDraft: string;
   sending: boolean;
@@ -861,15 +792,6 @@ function TurnView({ turn, expanded, setExpanded, t, onOpenTrace, onCitation, onC
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
 }) {
-  const reports = turn.citations?.filter((citation) => !isNote(citation) && !isSession(citation)) || [];
-  const notes = turn.citations?.filter(isNote) || [];
-  const sessions = turn.citations?.filter(isSession) || [];
-  const actions = (turn.citations || []).filter((citation) => isNote(citation) && citation.operation && NOTE_ACTIONS.has(citation.operation));
-  const group = (kind: CitationGroup, list: AgentCitation[], label: string) => {
-    const id = `${turn.id}:${kind}`;
-    const open = expanded.has(id);
-    return list.length ? <section className={`citation-section${open ? "" : " collapsed"}`}><button type="button" className="citation-section-head" aria-expanded={open} onClick={() => setExpanded((current) => { const next = new Set(current); if (open) next.delete(id); else next.add(id); return next; })}><ChevronDown size={14} /><span>{label} ({list.length})</span></button>{open ? <div className="citation-section-body">{list.map((citation, index) => <button type="button" className="citation-chip" key={`${citation.index}-${index}`} title={t("desktop.agent.citationHover")} onMouseEnter={(event) => void onCitationPreview(citation, event.currentTarget)} onFocus={(event) => void onCitationPreview(citation, event.currentTarget)} onMouseLeave={onCitationPreviewLeave} onBlur={onCitationPreviewLeave} onClick={() => onCitation(citation)}>{citationLabel(citation, t)}</button>)}</div> : null}</section> : null;
-  };
   if (turn.role === "user") {
     if (editing) {
       return <div className="chat-message chat-message-out"><div className="chat-bubble user chat-bubble-edit" onPointerDown={(event) => event.stopPropagation()}>
@@ -887,7 +809,8 @@ function TurnView({ turn, expanded, setExpanded, t, onOpenTrace, onCitation, onC
   }
   const summary = executionSummary(traceForTurn(turn));
   const summaryParts = (["retrieval", "tool", "llm", "skill"] as const).filter((kind) => summary[kind] > 0);
-  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div><button type="button" className={`chat-tool-trace-button${summaryParts.length ? "" : " is-empty"}`} onClick={() => onOpenTrace(turn.id)}><Activity size={14} /><span>{t("desktop.agent.executionTraceSummary")}</span>{summaryParts.map((kind) => <span className="chat-execution-count" key={kind}>{t(`desktop.agent.executionSummary.${kind}`, summary[kind])}</span>)}</button>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}{group("session", sessions, t("desktop.agent.citationSessions"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
+  const citationCount = turn.citations?.length || 0;
+  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming && turn.activityText ? <div className={`chat-activity-status${turn.activityKind ? ` is-${turn.activityKind}` : ""}`}><LoaderCircle size={14} /><span>{turn.activityText}</span></div> : turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div><div className="chat-message-tools"><button type="button" className={`chat-tool-trace-button${summaryParts.length ? "" : " is-empty"}`} onClick={() => onOpenTrace(turn.id)}><Activity size={14} /><span>{t("desktop.agent.executionTraceSummary")}</span>{summaryParts.map((kind) => <span className="chat-execution-count" key={kind}>{t(`desktop.agent.executionSummary.${kind}`, summary[kind])}</span>)}</button>{citationCount ? <button type="button" className="chat-tool-trace-button chat-citations-button" onClick={() => onOpenCitations(turn.id)}><Quote size={14} /><span>{t("desktop.agent.citationRef")}</span><span className="chat-execution-count">{citationCount}</span></button> : null}</div><div className="chat-footer">{turn.completionText ? <span className="chat-footer-completion">{turn.completionText}</span> : null}{!turn.activityText ? <span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span> : null}{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
 }
 
 function upsertExecutionStep(trace: AgentExecutionStep[], step: AgentExecutionStep): AgentExecutionStep[] {
@@ -967,30 +890,38 @@ function traceForTurn(turn: Turn): AgentExecutionStep[] {
   ];
 }
 
-function ToolTraceSheet({ turn, t, onClose, onRespondApproval }: {
+function ToolTraceSheet({ turn, t, onClose }: {
   turn: Turn | null;
   t: Translate;
   onClose: () => void;
-  onRespondApproval: (toolCallId: string, approved: boolean) => void;
 }) {
   const trace = turn ? traceForTurn(turn) : [];
-  const waiting = trace.some((step) => step.kind === "tool" && step.status === "awaiting_approval");
   const summary = executionSummary(trace);
   const groups = (["retrieval", "llm", "tool", "skill"] as const).map((kind) => ({ kind, steps: trace.filter((step) => step.kind === kind) })).filter((group) => group.steps.length);
   const timed = trace.filter((step) => step.startedAtMs > 0);
   const duration = timed.length ? Math.max(...timed.map((step) => step.completedAtMs || Date.now())) - Math.min(...timed.map((step) => step.startedAtMs)) : null;
-  return <Sheet open={Boolean(turn)} title={t("desktop.agent.executionTraceTitle")} onClose={onClose} dismissible={!waiting} bodyClassName="tool-trace-sheet">
+  return <Sheet open={Boolean(turn)} title={t("desktop.agent.executionTraceTitle")} onClose={onClose} bodyClassName="tool-trace-sheet">
     <p className="muted tool-trace-description">{t("desktop.agent.executionTraceDescription")}</p>
     <div className="execution-trace-overview"><span>{t("desktop.agent.executionSummary.retrieval", summary.retrieval)}</span><span>{t("desktop.agent.executionSummary.tool", summary.tool)}</span><span>{t("desktop.agent.executionSummary.llm", summary.llm)}</span>{summary.skill ? <span>{t("desktop.agent.executionSummary.skill", summary.skill)}</span> : null}{duration !== null ? <span>{t("desktop.agent.toolTraceDuration", duration)}</span> : null}</div>
     <div className="tool-trace-list">
       {groups.length ? groups.map((group) => <section className="execution-trace-group" key={group.kind}><h4>{t(`desktop.agent.executionGroup.${group.kind}`)}</h4>{group.steps.map((step) => {
         const stepDuration = step.completedAtMs ? Math.max(0, step.completedAtMs - step.startedAtMs) : null;
-        const awaiting = step.kind === "tool" && step.status === "awaiting_approval";
         const meta = [executionSourceLabel(step.source, t), step.capability ? t(`desktop.agent.executionCapability.${step.capability}`) : "", step.impact ? traceImpactLabel(step.impact, t) : "", traceStatusLabel(step.status, t)].filter(Boolean).join(" · ");
-        return <article className={`tool-trace-step execution-trace-step is-${step.kind} is-${step.status}${step.parentId ? " has-parent" : ""}`} key={step.id}><div className="tool-trace-step-head"><div><strong>{executionStepTitle(step, t)}</strong><span>{meta}</span></div>{stepDuration !== null ? <small>{t("desktop.agent.toolTraceDuration", stepDuration)}</small> : null}</div>{awaiting ? <div className="tool-trace-approval"><p>{t("desktop.agent.toolApprovalPrompt")}</p><button type="button" className="tool-btn" onClick={() => onRespondApproval(step.id, false)}>{t("desktop.agent.toolApprovalDeny")}</button><button type="button" className="tool-btn primary" onClick={() => onRespondApproval(step.id, true)}>{t("desktop.agent.toolApprovalAllow")}</button></div> : null}{step.args && Object.keys(step.args).length ? <details><summary>{t("desktop.agent.toolTraceInput")}</summary><pre>{traceValue(step.args)}</pre></details> : null}{step.result !== undefined ? <details><summary>{t("desktop.agent.toolTraceOutput")}</summary><pre>{step.result}</pre></details> : null}{step.error ? <p className="tool-trace-error">{step.error}</p> : null}</article>;
+        return <article className={`tool-trace-step execution-trace-step is-${step.kind} is-${step.status}${step.parentId ? " has-parent" : ""}`} key={step.id}><div className="tool-trace-step-head"><div><strong>{executionStepTitle(step, t)}</strong><span>{meta}</span></div>{stepDuration !== null ? <small>{t("desktop.agent.toolTraceDuration", stepDuration)}</small> : null}</div>{step.args && Object.keys(step.args).length ? <details><summary>{t("desktop.agent.toolTraceInput")}</summary><pre>{traceValue(step.args)}</pre></details> : null}{step.result !== undefined ? <details><summary>{t("desktop.agent.toolTraceOutput")}</summary><pre>{step.result}</pre></details> : null}{step.error ? <p className="tool-trace-error">{step.error}</p> : null}</article>;
       })}</section>) : <p className="muted tool-trace-empty">{t("desktop.agent.toolTraceEmpty")}</p>}
     </div>
   </Sheet>;
+}
+
+function ToolApprovalBar({ step, t, onRespond }: { step: AgentExecutionStep; t: Translate; onRespond: (approved: boolean) => void }) {
+  const meta = [
+    step.capability ? t(`desktop.agent.executionCapability.${step.capability}`) : "",
+    step.impact ? traceImpactLabel(step.impact, t) : ""
+  ].filter(Boolean).join(" · ");
+  return <section className="agent-tool-approval-bar" aria-label={t("desktop.agent.toolApprovalNeeded", executionStepTitle(step, t))}>
+    <div className="agent-tool-approval-copy"><strong>{executionStepTitle(step, t)}</strong><span>{[meta, t("desktop.agent.toolApprovalPrompt")].filter(Boolean).join(" · ")}</span></div>
+    <div className="agent-tool-approval-actions"><button type="button" className="tool-btn" onClick={() => onRespond(false)}>{t("desktop.agent.toolApprovalDeny")}</button><button type="button" className="tool-btn primary" onClick={() => onRespond(true)}>{t("desktop.agent.toolApprovalAllow")}</button></div>
+  </section>;
 }
 
 function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Translate }) {
@@ -999,74 +930,86 @@ function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Transl
   return <div className={`agent-index-progress${progress.phase === "scanning" ? " is-scanning" : ""}${progress.phase === "error" ? " is-error" : ""}`}><div className="agent-index-progress-head"><span id="agentIndexProgressText">{progress.noteTitle ? `${progress.message || t("desktop.agent.indexingNotes")} · ${progress.noteTitle}` : progress.message || t("desktop.agent.indexingNotes")}</span><span id="agentIndexProgressCount">{progress.total ? `${Math.min(displayCurrent, progress.total)}/${progress.total}` : ""}</span></div><div className="agent-index-progress-track"><div className="agent-index-progress-bar" style={{ width: `${Math.max(0, Math.min(100, progressRatio(progress) * 100))}%` }} /></div></div>;
 }
 
-function CitationPopover({
-  preview,
-  t,
-  onKeep,
-  onLeave,
-  onOpen,
-  onResume
-}: {
-  preview: CitationPreview;
+function citationKey(citation: AgentCitation, index: number): string {
+  return [citation.source || citation.level, citation.index, citation.reportId || citation.noteId || citation.session?.id || citation.title, index].join(":");
+}
+
+function citationTitle(citation: AgentCitation, t: Translate): string {
+  return citation.title || citation.noteId || citation.reportId || citation.session?.id || t("desktop.agent.citationRef");
+}
+
+function CitationSheet({ turn, t, onClose, onOpenCitation, onResumeSession }: {
+  turn: Turn | null;
   t: Translate;
-  onKeep: () => void;
-  onLeave: () => void;
-  onOpen: () => void;
-  onResume?: () => void | Promise<void>;
+  onClose: () => void;
+  onOpenCitation: (citation: AgentCitation) => void;
+  onResumeSession: (citation: AgentCitation) => void | Promise<void>;
 }) {
-  const left = Math.max(8, Math.min(preview.anchor.right + 8, window.innerWidth - 348));
-  const top = Math.max(8, Math.min(preview.anchor.top, window.innerHeight - 240));
-  const sessionId = preview.citation.session
-    ? `${preview.citation.session.provider}:${preview.citation.session.id}`
-    : "";
-  const title =
-    preview.entry?.title ||
-    preview.citation.title ||
-    preview.citation.noteId ||
-    preview.citation.reportId ||
-    sessionId ||
-    t("desktop.agent.citationRef");
-  const content = preview.entry?.content;
-  const openLabel = isNote(preview.citation)
+  const citations = turn?.citations || [];
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [reportEntry, setReportEntry] = useState<Pick<ReportEntry, "title" | "content"> | null>(null);
+  const [reportError, setReportError] = useState("");
+  const selected = selectedKey === null ? null : citations.map((citation, index) => ({ citation, key: citationKey(citation, index) })).find((item) => item.key === selectedKey) || null;
+
+  useEffect(() => {
+    setSelectedKey(null);
+    setReportEntry(null);
+    setReportError("");
+  }, [turn?.id]);
+
+  useEffect(() => {
+    if (!selected?.citation.reportId || isNote(selected.citation) || isSession(selected.citation)) {
+      setReportEntry(null);
+      setReportError("");
+      return;
+    }
+    let active = true;
+    setReportEntry(null);
+    setReportError("");
+    void desktopApi().getReportEntry(selected.citation.reportId).then((entry) => {
+      if (active) setReportEntry(entry);
+    }).catch((error) => {
+      if (active) setReportError(errorMessage(error));
+    });
+    return () => { active = false; };
+  }, [selected?.citation.reportId, selected?.key]);
+
+  const citationItems = citations.map((citation, index) => ({ citation, key: citationKey(citation, index) }));
+  const groups: Array<{ id: string; title: string; citations: Array<{ citation: AgentCitation; key: string }> }> = [
+    { id: "report", title: t("desktop.agent.citationReports"), citations: citationItems.filter(({ citation }) => !isNote(citation) && !isSession(citation)) },
+    { id: "note", title: t("desktop.agent.citationNotes"), citations: citationItems.filter(({ citation }) => isNote(citation)) },
+    { id: "session", title: t("desktop.agent.citationSessions"), citations: citationItems.filter(({ citation }) => isSession(citation)) }
+  ].filter((group) => group.citations.length);
+  const sourceTitle = selected ? (isNote(selected.citation) ? t("desktop.agent.citationNotes") : isSession(selected.citation) ? t("desktop.agent.citationSessions") : t("desktop.agent.citationReports")) : "";
+  const openLabel = selected && (isNote(selected.citation)
     ? t("desktop.agent.openInNotes")
-    : isSession(preview.citation)
+    : isSession(selected.citation)
       ? t("desktop.agent.openInSessions")
-      : t("desktop.agent.openInReport");
-  const missingId = preview.citation.noteId || preview.citation.reportId || sessionId;
-  return (
-    <div
-      className="citation-popover"
-      data-placement="right"
-      style={{ left, top } as CSSProperties}
-      onMouseEnter={onKeep}
-      onMouseLeave={onLeave}
-    >
-      <div className="citation-popover-content">
-        <div className="citation-preview-head">{title}</div>
-        <div className="citation-preview-body">
-          {preview.error ? (
-            <p className="muted">{t("desktop.agent.previewLoadFailed", preview.error)}</p>
-          ) : content ? (
-            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content.slice(0, 900)) }} />
-          ) : (
-            <p className="muted">
-              {t("desktop.agent.citationNoPreview", missingId ? ` (${missingId})` : "")}
-            </p>
-          )}
-        </div>
-        <div className="citation-preview-actions">
-          <button type="button" className="citation-preview-open ghost-btn" onClick={onOpen}>
-            {openLabel}
-          </button>
-          {onResume ? (
-            <button type="button" className="citation-preview-open ghost-btn" onClick={() => void onResume()}>
-              {t("desktop.agent.resumeSession")}
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
+      : t("desktop.agent.openInReport"));
+  const details = selected ? [
+    [t("desktop.agent.citationField.source"), sourceTitle],
+    [t("desktop.agent.citationField.level"), selected.citation.level],
+    [t("desktop.agent.citationField.operation"), selected.citation.operation || ""],
+    [t("desktop.agent.citationField.score"), selected.citation.score == null ? "" : String(selected.citation.score)],
+    [t("desktop.agent.citationField.reportId"), selected.citation.reportId || ""],
+    [t("desktop.agent.citationField.noteId"), selected.citation.noteId || ""],
+    [t("desktop.agent.citationField.path"), selected.citation.relMdPath || ""],
+    [t("desktop.agent.citationField.scope"), selected.citation.scope || ""],
+    [t("desktop.agent.citationField.heading"), selected.citation.heading || ""],
+    [t("desktop.agent.citationField.period"), selected.citation.periodStartMs ? new Date(selected.citation.periodStartMs).toLocaleString() : ""],
+    [t("desktop.agent.citationField.session"), selected.citation.session ? `${selected.citation.session.provider}:${selected.citation.session.id}${selected.citation.session.projectPath ? ` · ${selected.citation.session.projectPath}` : ""}` : ""]
+  ].filter(([, value]) => value) : [];
+  const content = reportEntry?.content || selected?.citation.contentPreview || (selected?.citation.session
+    ? `**${selected.citation.session.provider}** \`${selected.citation.session.id}\`${selected.citation.session.projectPath ? `\n\n${selected.citation.session.projectPath}` : ""}`
+    : "");
+
+  return <Sheet open={Boolean(turn)} title={t("desktop.agent.citationsTitle")} onClose={onClose} bodyClassName="citation-sheet">
+    <p className="muted citation-sheet-description">{t("desktop.agent.citationsDescription")}</p>
+    {groups.length ? <div className="citation-sheet-groups">{groups.map((group) => <section className="citation-sheet-group" key={group.id}><h4>{group.title} ({group.citations.length})</h4>{group.citations.map(({ citation, key }) => {
+      const expanded = selected?.key === key;
+      return <article className={`citation-sheet-item${expanded ? " is-expanded" : ""}`} key={key}><button type="button" className="citation-sheet-item-head" aria-expanded={expanded} onClick={() => setSelectedKey(expanded ? null : key)}><ChevronDown size={15} /><span>{citationLabel(citation, t)}</span></button>{expanded ? <div className="citation-sheet-item-body"><h5>{citationTitle(citation, t)}</h5><dl className="citation-sheet-fields">{details.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{reportError ? <p className="tool-trace-error">{t("desktop.agent.previewLoadFailed", reportError)}</p> : null}{content ? <section className="citation-sheet-content"><h5>{t("desktop.agent.citationContent")}</h5><div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} /></section> : <p className="muted">{t("desktop.agent.citationNoPreview", "")}</p>}<div className="citation-sheet-actions"><button type="button" className="ghost-btn" onClick={() => onOpenCitation(citation)}>{openLabel}</button>{isSession(citation) && citation.session ? <button type="button" className="ghost-btn" onClick={() => void onResumeSession(citation)}>{t("desktop.agent.resumeSession")}</button> : null}</div></div> : null}</article>;
+    })}</section>)}</div> : <p className="muted tool-trace-empty">{t("desktop.agent.citationsEmpty")}</p>}
+  </Sheet>;
 }
 
 function Audit({ items, loading, t, onRefresh }: { items: AgentNoteAuditEvent[]; loading: boolean; t: Translate; onRefresh: () => void }) {
