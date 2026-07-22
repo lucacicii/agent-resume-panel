@@ -4328,59 +4328,125 @@ code {
 
 .chat-compose {
   display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-2) 10px 10px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--chat-compose-bg);
   border-top: 1px solid var(--color-separator);
+}
+
+.chat-compose-frame {
+  display: flex;
+  width: 100%;
+  min-height: 108px;
+  flex-direction: column;
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--chat-compose-field) 84%, var(--chat-compose-bg));
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.chat-compose-frame:focus-within {
+  border-color: var(--color-focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus-ring) 45%, transparent);
 }
 
 .chat-compose-field {
   flex: 1;
   min-width: 0;
-  background: var(--chat-compose-field);
-  border-radius: var(--radius-xl);
-  padding: 2px 12px;
+  padding: var(--space-3) var(--space-3) 0;
 }
 
 .chat-compose textarea {
   display: block;
   width: 100%;
-  min-height: 38px;
+  min-height: 52px;
   max-height: 140px;
   border: none;
   background: transparent;
-  color: var(--text);
-  border-radius: 18px;
-  padding: 8px 0;
-  font-size: 14px;
+  color: var(--color-label-primary);
+  padding: 0;
+  font-size: var(--font-size-body);
   font-family: inherit;
   resize: none;
-  line-height: 1.35;
+  line-height: var(--line-height-relaxed);
 }
 
 .chat-compose textarea:focus {
   outline: none;
 }
 
+.chat-compose textarea::placeholder {
+  color: var(--color-label-secondary);
+}
+
 .chat-compose textarea:disabled {
   opacity: 0.55;
 }
 
+.chat-compose-toolbar {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2) var(--space-3);
+}
+
+.chat-compose-context {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 48%;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  line-height: 1;
+}
+
+.chat-compose-context svg {
+  flex: 0 0 auto;
+}
+
+.chat-compose-context span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-compose-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-separator);
+}
+
+.chat-compose-toolbar-spacer {
+  flex: 1;
+}
+
 .chat-send-btn {
   appearance: none;
+  position: relative;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: none;
   border-radius: 50%;
+  padding: 0;
   background: var(--chat-send);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 0;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.chat-send-btn svg {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .chat-send-btn:hover:not(:disabled) {
@@ -4388,7 +4454,9 @@ code {
 }
 
 .chat-send-btn:disabled {
-  opacity: 0.45;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-tertiary);
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -7974,12 +8042,12 @@ textarea.notes-editor-host:focus {
 .chat-tools-toggle {
   appearance: none;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--color-separator);
+  width: 28px;
+  height: 28px;
+  border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--muted);
+  color: var(--color-label-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7994,13 +8062,12 @@ textarea.notes-editor-host:focus {
 
 .chat-tools-toggle:hover {
   background: var(--color-fill-tertiary);
-  color: var(--text);
+  color: var(--color-label-primary);
 }
 
 .chat-tools-toggle.active {
-  color: var(--accent);
-  background: var(--color-fill-primary);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--color-separator));
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-fill-primary) 80%, transparent);
 }
 
 .app-startup-mask {

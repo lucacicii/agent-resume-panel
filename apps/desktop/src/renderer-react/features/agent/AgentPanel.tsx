@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
-import { Activity, Bot, Check, ChevronDown, Copy, FileText, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Quote, Send, Square, Trash2, Wrench } from "lucide-react";
+import { Activity, Bot, Check, ChevronDown, Copy, FileText, Folder, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Quote, Send, Square, Trash2, Wrench } from "lucide-react";
 import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -681,9 +681,16 @@ export function AgentPanel(): ReactPortal | null {
             }} onCopy={(content) => void copyText(content).then(() => setStatus({ text: t("desktop.agent.copiedAnswer"), kind: "ok" }))} />
             {pendingApproval ? <ToolApprovalBar step={pendingApproval} t={t} onRespond={(approved) => respondToolApproval(pendingApproval.id, approved)} /> : null}
             <div className="chat-compose">
-              <div className="chat-compose-field"><textarea rows={1} value={input} disabled={sending} placeholder={t("desktop.agent.inputPlaceholder")} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} /></div>
-              <button type="button" className={`chat-tools-toggle${tools ? " active" : ""}`} title={tools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={tools} disabled={sending} onClick={() => { setTools((value) => !value); setStatus({ text: tools ? t("desktop.agent.toolsOffStatus") : t("desktop.agent.toolsOnStatus"), kind: "ok" }); }}><Wrench size={18} /></button>
-              {sending ? <button type="button" className="chat-send-btn" aria-label={t("desktop.common.cancel")} onClick={() => void cancel()}><Square size={17} /></button> : <button type="button" className="chat-send-btn" aria-label={t("desktop.common.send")} disabled={!input.trim()} onClick={() => void send()}><Send size={20} /></button>}
+              <div className="chat-compose-frame">
+                <div className="chat-compose-field"><textarea rows={1} value={input} disabled={sending} placeholder={t("desktop.agent.inputPlaceholder")} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} /></div>
+                <div className="chat-compose-toolbar">
+                  <span className="chat-compose-context" title={activeThread?.title || t("desktop.tabs.agent")}><Folder size={16} /><span>{activeThread?.title || t("desktop.tabs.agent")}</span></span>
+                  <span className="chat-compose-toolbar-divider" aria-hidden="true" />
+                  <button type="button" className={`chat-tools-toggle${tools ? " active" : ""}`} title={tools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={tools} disabled={sending} onClick={() => { setTools((value) => !value); setStatus({ text: tools ? t("desktop.agent.toolsOffStatus") : t("desktop.agent.toolsOnStatus"), kind: "ok" }); }}><Wrench size={16} /></button>
+                  <span className="chat-compose-toolbar-spacer" />
+                  {sending ? <button type="button" className="chat-send-btn" aria-label={t("desktop.common.cancel")} onClick={() => void cancel()}><Square size={15} /></button> : <button type="button" className="chat-send-btn" aria-label={t("desktop.common.send")} disabled={!input.trim()} onClick={() => void send()}><Send size={18} /></button>}
+                </div>
+              </div>
             </div>
             {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}
             {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}

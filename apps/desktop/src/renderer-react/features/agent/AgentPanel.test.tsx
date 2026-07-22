@@ -78,6 +78,11 @@ describe("AgentPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
     await screen.findByText("Saved answer");
     const input = screen.getByPlaceholderText("Type a message");
+    expect(document.querySelector(".chat-compose-frame")).toBeTruthy();
+    expect(document.querySelector(".chat-compose-toolbar")).toBeTruthy();
+    expect(document.querySelector(".chat-compose-context")?.getAttribute("title")).toBe("Renderer work");
+    expect(screen.getByRole("button", { name: "Tools toggle" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
     fireEvent.change(input, { target: { value: "Summarize this" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await act(async () => stream?.({ phase: "generating", message: "Requesting LLM" }));
