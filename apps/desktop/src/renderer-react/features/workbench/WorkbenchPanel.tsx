@@ -8,6 +8,7 @@ import { EditorView } from "@codemirror/view";
 import type {
   AgentProvider,
   AgentSession,
+  GtdStatus,
   PanelSettings,
   WorkbenchProjectContextMenuAction
 } from "@agent-resume/core";
@@ -77,6 +78,8 @@ type TerminalPane = {
 type SideView = "files" | "git" | null;
 type ProjectFilter = "all" | "pinned" | "active";
 type SessionFilter = "all" | "active";
+type WorkbenchSidebarView = "projects" | "gtd";
+const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 type CatalogProject = {
   projectId: string;
   portableKey: string;
@@ -183,12 +186,20 @@ type BranchMenuPosition = {
 };
 
 const PROJECT_KEY = "workbench-selected-project";
+const SIDEBAR_VIEW_KEY = "workbench-sidebar-view";
 const PINNED_PROJECTS_KEY = "pinned-projects";
 const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
+
+function effectiveGtdStatus(
+  statuses: Record<string, GtdStatus>,
+  session: AgentSession
+): GtdStatus {
+  return statuses[sessionKey(session)] || "inbox";
+}
 
 function paneProjectKey(projectPath: string | null): string {
   return projectPath || ALL_PROJECTS_PANE_KEY;
@@ -652,7 +663,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [gtdStatuses, setGtdStatuses] = useState<Record<string, GtdStatus>>({});
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
+  const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(
+    () => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "projects"
+  );
+  const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus>("inbox");
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
@@ -723,16 +739,21 @@ export function WorkbenchPanel(): ReactPortal | null {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
-      const [next, nextAliases, nextSettings, nextProjects] = await Promise.all([
+      const listGtdStatuses = typeof desktopApi().listSessionGtdStatuses === "function"
+        ? desktopApi().listSessionGtdStatuses()
+        : Promise.resolve({} as Record<string, GtdStatus>);
+      const [next, nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
         desktopApi().listSessions(2_000),
         desktopApi().listProjectAliases(),
         desktopApi().getSettings(),
-        listProjects
+        listProjects,
+        listGtdStatuses
       ]);
       setSessions(next);
       setAliases(nextAliases);
       setSettings(nextSettings);
       setCatalogProjects(nextProjects || []);
+      setGtdStatuses(nextGtdStatuses || {});
       setSelectedProject((current) => {
         const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
         if (current) {
@@ -859,6 +880,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
 
   const selectedSessions = useMemo(() => {
+    if (sidebarView === "gtd") {
+      const query = projectQuery.trim().toLowerCase();
+      return sessions.filter((session) => {
+        const matchesQuery = !query || `${session.title} ${session.projectPath} ${session.provider}`.toLowerCase().includes(query);
+        return matchesQuery && effectiveGtdStatus(gtdStatuses, session) === selectedGtdStatus;
+      });
+    }
     if (!selectedProject) return sessions;
     if (selectedProjectMeta) {
       return sessions.filter((session) =>
@@ -868,7 +896,22 @@ export function WorkbenchPanel(): ReactPortal | null {
       );
     }
     return sessions.filter((session) => session.projectPath === selectedProject);
-  }, [selectedProject, selectedProjectMeta, sessions]);
+  }, [gtdStatuses, projectQuery, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
+  const gtdStatusCounts = useMemo(() => {
+    const query = projectQuery.trim().toLowerCase();
+    const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
+    for (const session of sessions) {
+      const matchesQuery = !query || `${session.title} ${session.projectPath} ${session.provider}`.toLowerCase().includes(query);
+      if (matchesQuery) {
+        const status = effectiveGtdStatus(gtdStatuses, session);
+        counts.set(status, (counts.get(status) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [gtdStatuses, projectQuery, sessions]);
+  const selectedSessionScope = sidebarView === "gtd"
+    ? t(`desktop.workbench.gtdStatus.${selectedGtdStatus}`)
+    : selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions");
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
     return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
@@ -896,6 +939,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGit(null);
     setGitLog(null);
     setGitShow(null);
+  };
+
+  const selectSidebarView = (view: WorkbenchSidebarView) => {
+    setSidebarView(view);
+    try { localStorage.setItem(SIDEBAR_VIEW_KEY, view); } catch { /* persistence is optional */ }
   };
 
   const togglePinnedProject = async (path: string, projectId?: string) => {
@@ -1342,6 +1390,31 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     const session = menu.session;
     if (!session) return;
+    if (action.startsWith("gtd:")) {
+      const status = action === "gtd:clear"
+        ? null
+        : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
+          ? action.slice(4) as GtdStatus
+          : null;
+      if (action !== "gtd:clear" && !status) return;
+      try {
+        await desktopApi().setSessionGtdStatus({ provider: session.provider, id: session.id, status });
+        setGtdStatuses((current) => {
+          const next = { ...current };
+          const key = sessionKey(session);
+          if (status) next[key] = status;
+          else delete next[key];
+          return next;
+        });
+        setStatus({ text: "" });
+        window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+      } catch (error) {
+        const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+        setStatus({ text: message, kind: "error" });
+        notifyDesktop({ text: message, kind: "error" });
+      }
+      return;
+    }
     if (action === "note") await openMountedNote({ scope: "session", projectPath: session.projectPath, provider: session.provider, sessionId: session.id });
     if (action === "codex") {
       try { await desktopApi().workbenchOpenCodexApp({ provider: session.provider, id: session.id }); }
@@ -1670,18 +1743,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
-          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.workbench.filterProjects")} placeholder={t("desktop.workbench.filterProjects")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
-          <SegmentedControl
-            aria-label={t("desktop.notes.projectFilter")}
-            value={projectFilter}
-            options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
-            onChange={setProjectFilter}
-            getLabel={(filter) => t(`desktop.common.${filter}`)}
-          />
+          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
+          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
+          {sidebarView === "projects" ? <SegmentedControl
+              aria-label={t("desktop.notes.projectFilter")}
+              value={projectFilter}
+              options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+              onChange={setProjectFilter}
+              getLabel={(filter) => t(`desktop.common.${filter}`)}
+            /> : null}
         </div>
         <div className="wb-folders">
-          <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
-          {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <Pin className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+          {sidebarView === "projects" ? <>
+            <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
+            {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <Pin className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}</div>}
         </div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
@@ -1708,11 +1784,12 @@ export function WorkbenchPanel(): ReactPortal | null {
             getLabel={(filter) => t(`desktop.common.${filter}`)}
           />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"), sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length) : `${visibleSessions.length} / ${selectedSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
         <div className="wb-list">{visibleSessions.length ? visibleSessions.map((session) => {
           const isOpen = openSessionKeys.has(sessionKey(session));
           const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
-          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+          const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
+          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
         }) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
@@ -1793,6 +1870,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
+        {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" aria-checked={contextMenu.session ? effectiveGtdStatus(gtdStatuses, contextMenu.session) === gtdStatus : false} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+        {contextMenu.session && gtdStatuses[sessionKey(contextMenu.session)] ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>
       </>}

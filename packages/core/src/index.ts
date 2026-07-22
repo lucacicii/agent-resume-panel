@@ -309,6 +309,7 @@ export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
 export {
   getSessionGtdStatus,
   setSessionGtdStatus,
+  clearSessionGtdStatus,
   loadSessionGtdMap,
   sessionGtdKey
 } from "./gtd/store";

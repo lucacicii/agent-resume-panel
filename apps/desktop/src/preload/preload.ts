@@ -17,7 +17,8 @@ import type {
   RunMonthlyDigestResult,
   RunWeeklyDigestResult,
   AgentSessionSyncResult,
-  GtdEvidence
+  GtdEvidence,
+  GtdStatus
 } from "@agent-resume/core";
 
 export interface DesktopApi {
@@ -46,6 +47,12 @@ export interface DesktopApi {
     counts: { total: number; visible: number; hidden: number };
   }>;
   listSessions(limit?: number): Promise<AgentSession[]>;
+  listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
+  setSessionGtdStatus(args: {
+    provider: string;
+    id: string;
+    status: GtdStatus | null;
+  }): Promise<{ ok: boolean }>;
   listSessionsInRange(args: {
     fromMs: number;
     toMs: number;
@@ -668,6 +675,8 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
   listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
+  listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
+  setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),

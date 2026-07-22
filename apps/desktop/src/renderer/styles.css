@@ -586,6 +586,34 @@ textarea:focus-visible,
   background: var(--agent-chat);
 }
 
+.wb-gtd-status-badge {
+  --gtd-status-color: var(--color-label-secondary);
+  display: inline-flex;
+  align-items: center;
+  max-width: 84px;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: color-mix(in srgb, var(--gtd-status-color) 78%, var(--color-label-primary));
+  background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-gtd-status-badge.is-inbox,
+.wb-gtd-status-dot.is-inbox { --gtd-status-color: #64748b; }
+.wb-gtd-status-badge.is-next,
+.wb-gtd-status-dot.is-next { --gtd-status-color: var(--color-accent); }
+.wb-gtd-status-badge.is-waiting,
+.wb-gtd-status-dot.is-waiting { --gtd-status-color: var(--color-warning); }
+.wb-gtd-status-badge.is-someday,
+.wb-gtd-status-dot.is-someday { --gtd-status-color: #af52de; }
+.wb-gtd-status-badge.is-reference,
+.wb-gtd-status-dot.is-reference { --gtd-status-color: var(--color-success); }
+
 .session-row .s-title {
   font-weight: 600;
   font-size: 13px;
@@ -6408,6 +6436,13 @@ textarea.wb-editor-host {
   background: var(--color-fill-secondary);
 }
 
+.wb-context-menu-label {
+  padding: 4px 10px 2px;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
 .chat-context-menu button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -6923,6 +6958,10 @@ textarea.wb-editor-host {
   font-weight: 600;
 }
 
+.wb-sidebar-view-segmented {
+  --segment-count: 2;
+}
+
 .sidebar-collapse-toggle {
   appearance: none;
   border: none;
@@ -7026,6 +7065,20 @@ textarea.wb-editor-host {
 
 .wb-folder-row.has-wb-activity:not(.active) .wb-folder-activity-dot {
   opacity: 0.85;
+}
+
+.wb-gtd-folder-row {
+  min-height: 30px;
+  padding-block: 5px;
+}
+
+.wb-gtd-status-dot {
+  --gtd-status-color: var(--color-label-secondary);
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gtd-status-color);
 }
 
 .project-pin-icon {

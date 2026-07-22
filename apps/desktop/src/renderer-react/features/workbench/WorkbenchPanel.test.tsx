@@ -31,6 +31,7 @@ afterEach(() => {
   cleanup();
   notificationMocks.notifyDesktop.mockClear();
   document.getElementById("react-workbench")?.remove();
+  localStorage.removeItem("workbench-sidebar-view");
 });
 
 describe("WorkbenchPanel", () => {
@@ -521,5 +522,47 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", message: "feat: add toasts" }));
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
     expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" });
+  });
+
+  it("shows GTD status, filters the GTD view, and updates it from the session menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.removeFromPanel": "Remove", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}", "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessionGtdStatuses: async () => ({ "codex:next-session": "next" }),
+      setSessionGtdStatus,
+      listSessions: async () => [
+        { provider: "codex", id: "next-session", title: "Ship GTD view", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "claude", id: "inbox-session", title: "Triage feedback", projectPath: "/work/docs", updatedAt: 1 }
+      ],
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const nextSession = await screen.findByRole("button", { name: /Ship GTD view/ });
+    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+
+    fireEvent.contextMenu(nextSession);
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Waiting" }));
+    await waitFor(() => expect(setSessionGtdStatus).toHaveBeenCalledWith({ provider: "codex", id: "next-session", status: "waiting" }));
+    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Waiting");
+
+    fireEvent.click(screen.getByRole("tab", { name: "GTD view" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Waiting/ }));
+    expect(screen.getByRole("button", { name: /Ship GTD view/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Triage feedback/ })).toBeNull();
   });
 });

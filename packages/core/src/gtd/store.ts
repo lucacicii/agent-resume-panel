@@ -65,6 +65,19 @@ export async function setSessionGtdStatus(
   );
 }
 
+export async function clearSessionGtdStatus(
+  dbPath: string,
+  provider: string,
+  sessionId: string
+): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `DELETE FROM session_gtd
+     WHERE provider = '${escapeSqlLiteral(provider)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionId)}';`
+  );
+}
+
 /** GTD write on catalog.db plus AI audit row on desktop.db. */
 export async function setSessionGtdStatusWithAudit(
   catalogDb: string,

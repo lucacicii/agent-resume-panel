@@ -62,6 +62,9 @@ import {
   needsWeeklyDigestRefresh,
   needsMonthlyDigestRefresh,
   applyReportGtdSync,
+  clearSessionGtdStatus,
+  isGtdStatus,
+  loadSessionGtdMap,
   previewReportGtdSync,
   runMonthlyDigest,
   runWeeklyDigest,
@@ -69,10 +72,12 @@ import {
   searchReportsByEmbedding,
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
+  setSessionGtdStatus,
   summarizeSessionAction,
   type AgentProvider,
   type AgentNoteAuditStatus,
   type DigestProgressEvent,
+  type GtdStatus,
   type PanelSettings,
   type WorkbenchProjectEditor,
   type AgentSessionSyncResult
@@ -675,6 +680,29 @@ function registerIpc(): void {
     const paths = await loadPanelDbPaths();
     return listSessions(paths.catalogDb, limit ?? 500);
   });
+
+  ipcMain.handle("gtd:listSessionStatuses", async () => {
+    const paths = await loadPanelDbPaths();
+    return loadSessionGtdMap(paths.catalogDb);
+  });
+
+  ipcMain.handle(
+    "gtd:setSessionStatus",
+    async (_event, args: { provider: string; id: string; status: GtdStatus | null }) => {
+      const provider = String(args?.provider || "").trim();
+      const id = String(args?.id || "").trim();
+      if (!provider || !id) throw new Error("Session provider and id are required");
+      const paths = await loadPanelDbPaths();
+      if (args?.status == null) {
+        await clearSessionGtdStatus(paths.catalogDb, provider, id);
+      } else if (isGtdStatus(args.status)) {
+        await setSessionGtdStatus(paths.catalogDb, provider, id, args.status);
+      } else {
+        throw new Error("Invalid GTD status");
+      }
+      return { ok: true as const };
+    }
+  );
 
   ipcMain.handle(
     "sessions:listInRange",
