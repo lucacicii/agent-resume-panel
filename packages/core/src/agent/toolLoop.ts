@@ -1,6 +1,7 @@
 import { chatCompletionWithTools } from "../llm/chat";
 import type { ChatMessage, LlmRuntimeConfig } from "../llm/types";
 import type { UiText } from "../i18n/uiText";
+import type { AgentExecutionStep, AgentToolImpact } from "./types";
 import {
   convertMcpToolsToOpenAiFormat,
   type McpToolCallResult,
@@ -39,9 +40,11 @@ export interface ToolLoopOptions {
   maxTokens?: number;
   maxIterations?: number;
   signal?: AbortSignal;
-  onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
-  onToolResult?: (toolName: string, result: McpToolCallResult, error?: string) => void;
-  onProgress?: (message: string) => void;
+  onToolCall?: (call: { id: string; toolName: string; impact: AgentToolImpact; args: Record<string, unknown> }) => void | Promise<void>;
+  onToolResult?: (call: { id: string; toolName: string; impact: AgentToolImpact; result: string; error?: string; status: "succeeded" | "failed" | "rejected"; durationMs: number }) => void | Promise<void>;
+  onExecution?: (step: AgentExecutionStep) => void | Promise<void>;
+  onProgress?: (message: string, iteration?: number) => void | Promise<void>;
+  requestToolApproval?: (call: { id: string; toolName: string; impact: AgentToolImpact; args: Record<string, unknown> }) => Promise<boolean>;
   uiText?: UiText;
 }
 
@@ -57,6 +60,38 @@ export interface ToolLoopResult {
   toolCallsExecuted: number;
   touchedNotes: TouchedNote[];
   touchedSessions: TouchedSession[];
+  toolTrace: AgentExecutionStep[];
+}
+
+function toolImpact(toolName: string): AgentToolImpact {
+  if (toolName === "note_delete") return "delete";
+  if (["note_create", "note_write", "note_append", "session_set_gtd"].includes(toolName)) return "write";
+  if (toolName === "session_resume") return "launch";
+  return "read";
+}
+
+const TRACE_SECRET_KEY = /(?:api[_-]?key|authorization|password|secret|token)/i;
+const MAX_TRACE_TEXT_CHARS = 16 * 1024;
+
+function truncateTraceText(value: string): string {
+  return value.length > MAX_TRACE_TEXT_CHARS
+    ? `${value.slice(0, MAX_TRACE_TEXT_CHARS)}\n[truncated]`
+    : value;
+}
+
+function redactTraceValue(value: unknown): unknown {
+  if (typeof value === "string") return truncateTraceText(value);
+  if (Array.isArray(value)) return value.map(redactTraceValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, TRACE_SECRET_KEY.test(key) ? "[redacted]" : redactTraceValue(item)]));
+  }
+  return value;
+}
+
+function redactTraceText(value: string): string {
+  return truncateTraceText(value
+    .replace(/((?:api[_-]?key|authorization|password|secret|token)\s*[=:]\s*["']?)([^\s,"'}]+)/gi, "$1[redacted]")
+    .replace(/("(?:api[_-]?key|authorization|password|secret|token)"\s*:\s*")[^"]*(")/gi, "$1[redacted]$2"));
 }
 
 function extractToolResultText(result: McpToolCallResult): string {
@@ -312,6 +347,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   let iterations = 0;
   let toolCallsExecuted = 0;
   let lastContent = "";
+  const toolTrace: AgentExecutionStep[] = [];
   const touchedMap = new Map<string, TouchedNote>();
   const touchedSessionMap = new Map<string, TouchedSession>();
 
@@ -352,17 +388,31 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       iterations,
       toolCallsExecuted,
       touchedNotes: Array.from(touchedMap.values()),
-      touchedSessions: Array.from(touchedSessionMap.values())
+      touchedSessions: Array.from(touchedSessionMap.values()),
+      toolTrace
     };
   }
 
   while (iterations < maxIterations) {
     throwIfAborted(options.signal);
     iterations++;
-    options.onProgress?.(
+    const llmStartedAtMs = Date.now();
+    const llmStep: AgentExecutionStep = {
+      id: `llm-${iterations}`,
+      kind: "llm",
+      status: "running",
+      startedAtMs: llmStartedAtMs,
+      title: "LLM request",
+      source: { kind: "llm", name: options.llm.model },
+      iteration: iterations
+    };
+    toolTrace.push(llmStep);
+    await options.onExecution?.({ ...llmStep });
+    await options.onProgress?.(
       iterations === 1
         ? pt("desktop.agent.requestingLlm")
-        : pt("desktop.agent.requestingLlmRound", iterations)
+        : pt("desktop.agent.requestingLlmRound", iterations),
+      iterations
     );
 
     const result = await chatCompletionWithTools(
@@ -372,6 +422,9 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       maxTokens,
       options.signal
     );
+    llmStep.status = "succeeded";
+    llmStep.completedAtMs = Date.now();
+    await options.onExecution?.({ ...llmStep });
 
     lastContent = result.content;
 
@@ -391,6 +444,8 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     for (const toolCall of result.toolCalls) {
       throwIfAborted(options.signal);
       const toolName = toolCall.function.name;
+      const id = toolCall.id || `tool-${iterations}-${toolCallsExecuted + 1}`;
+      const impact = toolImpact(toolName);
       let parsedArgs: Record<string, unknown> = {};
       try {
         parsedArgs = toolCall.function.arguments
@@ -400,10 +455,44 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
         parsedArgs = {};
       }
 
-      options.onToolCall?.(toolName, parsedArgs);
+      const traceArgs = redactTraceValue(parsedArgs) as Record<string, unknown>;
+      const step: AgentExecutionStep = {
+        id,
+        kind: "tool",
+        status: "pending",
+        startedAtMs: Date.now(),
+        title: toolName,
+        capability: "mcp",
+        source: { kind: "mcp", name: "Built-in MCP" },
+        toolName,
+        impact,
+        args: traceArgs
+      };
+      toolTrace.push(step);
+      await options.onExecution?.({ ...step });
+      await options.onToolCall?.({ id, toolName, impact, args: traceArgs });
+
+      if (options.requestToolApproval && impact !== "read") {
+        step.status = "awaiting_approval";
+        await options.onExecution?.({ ...step });
+        const approved = await options.requestToolApproval({ id, toolName, impact, args: traceArgs });
+        throwIfAborted(options.signal);
+        if (!approved) {
+          const denied = "Tool execution was denied by the user.";
+          step.status = "rejected";
+          step.result = denied;
+          step.completedAtMs = Date.now();
+          await options.onExecution?.({ ...step });
+          await options.onToolResult?.({ id, toolName, impact, result: denied, status: "rejected", durationMs: step.completedAtMs - step.startedAtMs });
+          messages.push({ role: "tool", content: denied, tool_call_id: toolCall.id, name: toolName });
+          continue;
+        }
+      }
 
       let toolResultText: string;
       let toolError: string | undefined;
+      step.status = "running";
+      await options.onExecution?.({ ...step });
       try {
         const rawResult = await options.mcpClient.callTool(toolName, parsedArgs);
         toolResultText = extractToolResultText(rawResult);
@@ -413,12 +502,20 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
           mergeTouched(extractTouchedNotes(toolName, toolResultText));
           mergeTouchedSessions(extractTouchedSessions(toolName, toolResultText, parsedArgs));
         }
-        options.onToolResult?.(toolName, rawResult, toolError);
+        step.status = toolError ? "failed" : "succeeded";
       } catch (error) {
         toolError = error instanceof Error ? error.message : String(error);
         toolResultText = `Error: ${toolError}`;
-        options.onToolResult?.(toolName, { content: [{ type: "text", text: toolResultText }], isError: true }, toolError);
+        step.status = "failed";
       }
+
+      const traceResult = redactTraceText(toolResultText);
+      step.result = traceResult;
+      const traceError = toolError ? redactTraceText(toolError) : undefined;
+      step.error = traceError;
+      step.completedAtMs = Date.now();
+      await options.onExecution?.({ ...step });
+      await options.onToolResult?.({ id, toolName, impact, result: traceResult, error: traceError, status: step.status === "succeeded" ? "succeeded" : "failed", durationMs: step.completedAtMs - step.startedAtMs });
 
       toolCallsExecuted++;
 

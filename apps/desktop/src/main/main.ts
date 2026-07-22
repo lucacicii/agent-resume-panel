@@ -259,6 +259,12 @@ function applyAppIcon(): void {
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let activeAskAbort: AbortController | null = null;
+const activeAskApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>();
+
+function rejectActiveAskApprovals(): void {
+  for (const pending of activeAskApprovals.values()) pending.resolve(false);
+  activeAskApprovals.clear();
+}
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
@@ -963,8 +969,10 @@ function registerIpc(): void {
       }
     ) => {
       activeAskAbort?.abort();
+      rejectActiveAskApprovals();
       activeAskAbort = new AbortController();
       const signal = activeAskAbort.signal;
+      const settings = await loadSettings();
       try {
         return await runAgentChat({
           query: args.query,
@@ -973,6 +981,40 @@ function registerIpc(): void {
           enableTools: args.enableTools ?? true,
           systemLocale: app.getLocale(),
           signal,
+          requestToolApproval: async (call) => {
+            const alwaysAllow = settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true ||
+              settings.desktop?.alwaysAllowAgentWriteOperations === true;
+            if (alwaysAllow && call.impact !== "delete" && call.impact !== "destructive" && call.impact !== "unknown") {
+              return true;
+            }
+            return new Promise<boolean>((resolve) => {
+                const rejectOnAbort = () => {
+                  activeAskApprovals.delete(call.id);
+                  resolve(false);
+                };
+                if (signal.aborted) {
+                  rejectOnAbort();
+                  return;
+                }
+                activeAskApprovals.set(call.id, {
+                  senderId: event.sender.id,
+                  resolve: (approved) => {
+                    signal.removeEventListener("abort", rejectOnAbort);
+                    activeAskApprovals.delete(call.id);
+                    resolve(approved);
+                  }
+                });
+                signal.addEventListener("abort", rejectOnAbort, { once: true });
+                event.sender.send("agent:askStream", {
+                  phase: "tool_approval_required",
+                  toolCallId: call.id,
+                  toolName: call.toolName,
+                  toolImpact: call.impact,
+                  toolArgs: call.args,
+                  toolStatus: "awaiting_approval"
+                });
+              });
+          },
           onResumeSession: async ({ provider, sessionId }) => {
             try {
               const result = await resumeCatalogSession(provider, sessionId);
@@ -1011,6 +1053,7 @@ function registerIpc(): void {
           }
         });
       } finally {
+        rejectActiveAskApprovals();
         if (activeAskAbort?.signal === signal) {
           activeAskAbort = null;
         }
@@ -1020,7 +1063,16 @@ function registerIpc(): void {
 
   ipcMain.handle("agent:cancelAsk", async () => {
     activeAskAbort?.abort();
+    rejectActiveAskApprovals();
     activeAskAbort = null;
+    return { ok: true };
+  });
+
+  ipcMain.handle("agent:respondToolApproval", async (event, args: { toolCallId?: string; approved?: boolean }) => {
+    const toolCallId = args?.toolCallId?.trim();
+    const pending = toolCallId ? activeAskApprovals.get(toolCallId) : undefined;
+    if (!pending || pending.senderId !== event.sender.id) return { ok: false };
+    pending.resolve(args.approved === true);
     return { ok: true };
   });
 

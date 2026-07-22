@@ -62,6 +62,18 @@ function normalizeWorkbenchEditorSettings(
 }
 
 function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSettings> {
+  if (
+    partial.desktop?.alwaysAllowAgentNonDestructiveOperations === undefined &&
+    partial.desktop?.alwaysAllowAgentWriteOperations !== undefined
+  ) {
+    partial = {
+      ...partial,
+      desktop: {
+        ...partial.desktop,
+        alwaysAllowAgentNonDestructiveOperations: partial.desktop.alwaysAllowAgentWriteOperations
+      }
+    };
+  }
   if (partial.memory && !partial.report) {
     const { memory, ...rest } = partial;
     return { ...rest, report: memory };

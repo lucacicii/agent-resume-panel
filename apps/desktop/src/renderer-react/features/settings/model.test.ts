@@ -3,6 +3,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import {
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
+  generalPatch,
   modelsDraftFromSettings,
   modelsPatch,
   normalizeOutputLanguage,
@@ -31,10 +32,25 @@ describe("settings model", () => {
   it("uses tool LLM values as chat fallbacks and preserves optional blanks on save", () => {
     expect(modelsDraftFromSettings(settings).chatModel).toBe("tool");
     expect(generalDraftFromSettings(settings).desktopTheme).toBe("system");
+    expect(generalDraftFromSettings(settings).alwaysAllowAgentNonDestructiveOperations).toBe(false);
 
     const patch = modelsPatch(settings, { ...modelsDraftFromSettings(settings), chatModel: "", embBaseUrl: " " });
     expect(patch.chatLlm?.model).toBeUndefined();
     expect(patch.embedding?.baseUrl).toBeUndefined();
+  });
+
+  it("keeps non-delete Agent approval enabled by default and persists an explicit opt-in", () => {
+    const draft = generalDraftFromSettings(settings);
+    const patch = generalPatch(settings, { ...draft, alwaysAllowAgentNonDestructiveOperations: true });
+    expect(patch.desktop?.alwaysAllowAgentNonDestructiveOperations).toBe(true);
+    expect(patch.desktop?.alwaysAllowAgentWriteOperations).toBe(false);
+  });
+
+  it("maps the legacy Agent approval setting to the non-delete policy", () => {
+    expect(generalDraftFromSettings({
+      ...settings,
+      desktop: { ...settings.desktop, alwaysAllowAgentWriteOperations: true }
+    }).alwaysAllowAgentNonDestructiveOperations).toBe(true);
   });
 
   it("detects embedding identity changes for model or base URL", () => {

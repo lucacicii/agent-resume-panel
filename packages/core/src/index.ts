@@ -262,8 +262,15 @@ export type {
   AgentCitation,
   AgentChatOptions,
   AgentChatResult,
+  AgentExecutionCapability,
+  AgentExecutionKind,
+  AgentExecutionSourceKind,
+  AgentExecutionStep,
   AgentStreamEvent,
-  AgentStreamPhase
+  AgentStreamPhase,
+  AgentToolImpact,
+  AgentToolTraceStatus,
+  AgentToolTraceStep
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";

@@ -22,7 +22,7 @@ import { NoteMcpClient } from "../mcp/client";
 import { createNoteMcpServer } from "../mcp/server";
 import { NotesStore } from "../notes/store";
 import type { AgentProvider } from "../catalog/types";
-import type { AgentCitation, AgentChatOptions, AgentChatResult } from "./types";
+import type { AgentCitation, AgentChatOptions, AgentChatResult, AgentExecutionStep } from "./types";
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -72,6 +72,10 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
       })
   });
   throwIfAborted(options.signal);
+  const retrievalTrace = createRetrievalTrace(query, retrieved);
+  for (const step of retrievalTrace) {
+    await options.onStream?.({ phase: "execution", execution: step });
+  }
 
   const sourcesBlock = retrieved.digests
     .map((d, i) =>
@@ -134,7 +138,8 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
       sessionsBlock,
       historyBlock,
       desktopDb,
-      retrieved
+      retrieved,
+      executionTrace: retrievalTrace
     });
   }
 
@@ -146,7 +151,8 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     sessionsBlock,
     historyBlock,
     desktopDb,
-    retrieved
+    retrieved,
+    executionTrace: retrievalTrace
   });
 }
 
@@ -159,6 +165,7 @@ interface AskContext {
   historyBlock?: string;
   desktopDb: string;
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>;
+  executionTrace: AgentExecutionStep[];
 }
 
 async function runAskWithoutTools(
@@ -183,19 +190,39 @@ async function runAskWithoutTools(
   ];
 
   options.onStream?.({ phase: "generating" });
-
-  const result = await chatCompletionStream(
-    llm,
-    messages,
-    2000,
-    {
-      onChunk: async (delta) => {
-        options.onStream?.({ phase: "chunk", delta });
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-    },
-    options.signal
-  );
+  const llmStep: AgentExecutionStep = {
+    id: "llm-1",
+    kind: "llm",
+    status: "running",
+    startedAtMs: Date.now(),
+    title: "LLM request",
+    source: { kind: "llm", name: llm.model },
+    iteration: 1
+  };
+  await options.onStream?.({ phase: "execution", execution: llmStep });
+  let result: Awaited<ReturnType<typeof chatCompletionStream>>;
+  try {
+    result = await chatCompletionStream(
+      llm,
+      messages,
+      2000,
+      {
+        onChunk: async (delta) => {
+          options.onStream?.({ phase: "chunk", delta });
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      },
+      options.signal
+    );
+    llmStep.status = "succeeded";
+  } catch (error) {
+    llmStep.status = "failed";
+    llmStep.error = error instanceof Error ? error.message.slice(0, 16 * 1024) : String(error).slice(0, 16 * 1024);
+    throw error;
+  } finally {
+    llmStep.completedAtMs = Date.now();
+    await options.onStream?.({ phase: "execution", execution: { ...llmStep } });
+  }
   try {
     await recordLlmUsage(ctx.desktopDb, {
       kind: "chat",
@@ -209,7 +236,7 @@ async function runAskWithoutTools(
     // non-fatal
   }
 
-  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, result.content, ctx.retrieved.citations);
+  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, result.content, ctx.retrieved.citations, undefined, [...ctx.executionTrace, llmStep]);
 }
 
 async function runAskWithTools(
@@ -242,6 +269,7 @@ async function runAskWithTools(
   let toolCallsExecuted = 0;
   let touchedNotes: TouchedNote[] = [];
   let touchedSessions: TouchedSession[] = [];
+  let toolTrace: import("./types").AgentToolTraceStep[] = [];
 
   try {
     const notesStore = new NotesStore(ctx.retrieved.catalogDb, panelHome);
@@ -265,14 +293,18 @@ async function runAskWithTools(
       maxTokens: 2000,
       signal: options.signal,
       uiText: pt,
-      onProgress: (message) => {
-        options.onStream?.({ phase: "generating", message });
+      onProgress: (message, iteration) => {
+        options.onStream?.({ phase: "generating", message, iteration });
       },
-      onToolCall: (toolName) => {
-        options.onStream?.({ phase: "tool_calling", toolName });
+      onExecution: (step) => {
+        options.onStream?.({ phase: "execution", execution: step });
       },
-      onToolResult: (toolName) => {
-        options.onStream?.({ phase: "tool_executing", toolName });
+      requestToolApproval: options.requestToolApproval,
+      onToolCall: ({ id, toolName, impact, args }) => {
+        options.onStream?.({ phase: "tool_calling", toolCallId: id, toolName, toolImpact: impact, toolArgs: args, toolStatus: "pending" });
+      },
+      onToolResult: ({ id, toolName, impact, result, error, status }) => {
+        options.onStream?.({ phase: "tool_executing", toolCallId: id, toolName, toolImpact: impact, toolResult: result, toolError: error, toolStatus: status });
       }
     });
 
@@ -280,6 +312,7 @@ async function runAskWithTools(
     toolCallsExecuted = toolResult.toolCallsExecuted;
     touchedNotes = toolResult.touchedNotes;
     touchedSessions = toolResult.touchedSessions;
+    toolTrace = toolResult.toolTrace;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[ask:tools] tool loop failed:", msg);
@@ -296,7 +329,7 @@ async function runAskWithTools(
   const withNotes = [...baseCitations, ...noteCitations];
   const allCitations = mergeTouchedSessionCitations(withNotes, touchedSessions);
 
-  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, answer, allCitations, toolCallsExecuted);
+  return buildAskResult(options, ctx.desktopDb, ctx.retrieved, answer, allCitations, toolCallsExecuted, [...ctx.executionTrace, ...toolTrace]);
 }
 
 function isSessionCitation(citation: AgentCitation): boolean {
@@ -402,14 +435,17 @@ async function buildAskResult(
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>,
   answerContent: string,
   citations: AgentCitation[],
-  toolCallsExecuted?: number
+  toolCallsExecuted?: number,
+  toolTrace?: AgentExecutionStep[]
 ): Promise<AgentChatResult> {
+  const fullToolTrace = toolTrace || [];
   const answer: AgentChatResult = {
     answer: answerContent,
     citations,
     fallback: retrieved.fallback,
     digests: retrieved.digests.map((d) => d.entry),
-    toolCallsExecuted
+    toolCallsExecuted,
+    toolTrace: fullToolTrace
   };
 
   try {
@@ -418,7 +454,8 @@ async function buildAskResult(
       assistantContent: answerContent,
       citations,
       fallback: retrieved.fallback,
-      threadId: options.threadId
+      threadId: options.threadId,
+      toolTrace: fullToolTrace
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -429,4 +466,60 @@ async function buildAskResult(
 
   options.onStream?.({ phase: "done" });
   return answer;
+}
+
+function createRetrievalTrace(
+  query: string,
+  retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>
+): AgentExecutionStep[] {
+  const completedAtMs = Date.now();
+  const makeStep = (
+    id: string,
+    toolName: string,
+    count: number,
+    sources: string[]
+  ): AgentExecutionStep => ({
+    id,
+    kind: "retrieval",
+    status: "succeeded",
+    startedAtMs: completedAtMs,
+    completedAtMs,
+    title: toolName,
+    source: { kind: "system", name: "Ask context" },
+    toolName,
+    args: { query: sanitizeTraceText(query) },
+    result: truncateTraceResult({ count, sources })
+  });
+
+  return [
+    ...(retrieved.executedSearches.reports ? [makeStep(
+      "retrieval-reports",
+      "report_context_search",
+      retrieved.digests.length,
+      retrieved.digests.map((item) => item.entry.id)
+    )] : []),
+    ...(retrieved.executedSearches.notes ? [makeStep(
+      "retrieval-notes",
+      "note_context_search",
+      retrieved.notes.length,
+      retrieved.notes.map((item) => item.relMdPath || item.noteId)
+    )] : []),
+    ...(retrieved.executedSearches.sessions ? [makeStep(
+      "retrieval-sessions",
+      "session_context_search",
+      retrieved.sessions.length,
+      retrieved.sessions.map((item) => `${item.provider}:${item.sessionId}`)
+    )] : [])
+  ];
+}
+
+function truncateTraceResult(value: unknown): string {
+  return sanitizeTraceText(JSON.stringify(value, null, 2));
+}
+
+function sanitizeTraceText(value: string): string {
+  const redacted = value
+    .replace(/((?:api[_-]?key|authorization|password|secret|token)\s*[=:]\s*["']?)([^\s,"'}]+)/gi, "$1[redacted]")
+    .replace(/("(?:api[_-]?key|authorization|password|secret|token)"\s*:\s*")[^"]*(")/gi, "$1[redacted]$2");
+  return redacted.length > 16 * 1024 ? `${redacted.slice(0, 16 * 1024)}\n[truncated]` : redacted;
 }

@@ -44,6 +44,12 @@ export interface RetrieveAgentContextResult {
   citations: AgentCitation[];
   fallback: boolean;
   noteMatchTotal?: number;
+  /** Which context searches ran for this request. */
+  executedSearches: {
+    reports: boolean;
+    notes: boolean;
+    sessions: boolean;
+  };
   catalogDb: string;
   desktopDb: string;
 }
@@ -348,5 +354,15 @@ export async function retrieveAgentContext(options: {
     entry: { ...d.entry, content: truncate(d.entry.content, CONTENT_CHARS) }
   }));
 
-  return { digests, notes, sessions, citations, fallback, noteMatchTotal, catalogDb, desktopDb };
+  return {
+    digests,
+    notes,
+    sessions,
+    citations,
+    fallback,
+    noteMatchTotal,
+    executedSearches: { reports: !notesOnly, notes: true, sessions: !notesOnly },
+    catalogDb,
+    desktopDb
+  };
 }

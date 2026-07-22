@@ -5,6 +5,10 @@ ALTER TABLE sync_state ADD COLUMN session_count INTEGER;
 ALTER TABLE sync_state ADD COLUMN warning TEXT;
 `;
 
+export const DESKTOP_AGENT_TRACE_MIGRATION_SQL = `
+ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -135,6 +139,7 @@ CREATE TABLE IF NOT EXISTS agent_messages (
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   citations_json TEXT,
+  tool_trace_json TEXT,
   fallback INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL,
   created_at_ms INTEGER NOT NULL,

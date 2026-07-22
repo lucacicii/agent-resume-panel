@@ -42,6 +42,10 @@ export interface DesktopSettings {
   windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
+  /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
+  alwaysAllowAgentWriteOperations?: boolean;
+  /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
+  alwaysAllowAgentNonDestructiveOperations?: boolean;
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
@@ -313,6 +317,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     }
   },
   desktop: {
-    theme: "system"
+    theme: "system",
+    alwaysAllowAgentWriteOperations: false,
+    alwaysAllowAgentNonDestructiveOperations: false
   }
 };

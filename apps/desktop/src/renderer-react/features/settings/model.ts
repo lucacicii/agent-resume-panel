@@ -45,6 +45,7 @@ export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
+  alwaysAllowAgentNonDestructiveOperations: boolean;
 }
 
 export interface ModelsDraft {
@@ -138,7 +139,8 @@ export function normalizeOutputLanguage(value: string | undefined): UiLanguageVa
 export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft {
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
-    desktopTheme: settings.desktop?.theme || "system"
+    desktopTheme: settings.desktop?.theme || "system",
+    alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true
   };
 }
 
@@ -197,7 +199,15 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
 }
 
 export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Partial<PanelSettings> {
-  return { uiLanguage: draft.uiLanguage, desktop: { ...settings.desktop, theme: draft.desktopTheme } };
+  return {
+    uiLanguage: draft.uiLanguage,
+    desktop: {
+      ...settings.desktop,
+      theme: draft.desktopTheme,
+      alwaysAllowAgentWriteOperations: false,
+      alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
+    }
+  };
 }
 
 export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partial<PanelSettings> {

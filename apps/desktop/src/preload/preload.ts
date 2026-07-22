@@ -366,6 +366,7 @@ export interface DesktopApi {
     enableTools?: boolean;
   }): Promise<AgentChatResult>;
   cancelAskAgent(): Promise<{ ok: boolean }>;
+  respondToolApproval(args: { toolCallId: string; approved: boolean }): Promise<{ ok: boolean }>;
   listAgentChat(args?: { limit?: number; threadId?: string }): Promise<{
     messages: AgentChatMessage[];
     hasMore: boolean;
@@ -773,6 +774,7 @@ const api: DesktopApi = {
   searchReports: (args) => ipcRenderer.invoke("report:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
+  respondToolApproval: (args) => ipcRenderer.invoke("agent:respondToolApproval", args),
   listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),
   listOlderAgentChat: (args) => ipcRenderer.invoke("agent:listOlderAgentChat", args),
   clearAgentChat: (args) => ipcRenderer.invoke("agent:clearAgentChat", args),

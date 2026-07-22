@@ -1,13 +1,14 @@
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type PointerEvent, type ReactNode, type ReactPortal, type SetStateAction } from "react";
-import { Bot, Check, ChevronDown, Copy, FileText, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Send, Square, Trash2, Wrench } from "lucide-react";
-import type { AgentChatMessage, AgentCitation, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
+import { Activity, Bot, Check, ChevronDown, Copy, FileText, LoaderCircle, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Send, Square, Trash2, Wrench } from "lucide-react";
+import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { renderMarkdown } from "../../components/Markdown";
+import { Sheet } from "../../components/Sheet";
 import { useI18n } from "../../i18n";
 
-interface Turn extends Pick<AgentChatMessage, "role" | "content" | "citations" | "fallback" | "sortOrder"> {
+interface Turn extends Pick<AgentChatMessage, "role" | "content" | "citations" | "fallback" | "sortOrder" | "toolTrace"> {
   id: string;
   streaming?: boolean;
 }
@@ -190,6 +191,7 @@ export function AgentPanel(): ReactPortal | null {
   const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [preview, setPreview] = useState<CitationPreview | null>(null);
+  const [traceDrawerTurnId, setTraceDrawerTurnId] = useState<string | null>(null);
   const streamOff = useRef<(() => void) | null>(null);
   const cancelled = useRef(false);
   const sendingRef = useRef(false);
@@ -448,7 +450,7 @@ export function AgentPanel(): ReactPortal | null {
     setTurns([
       ...prefix,
       { id: `local-${Date.now()}`, role: "user", content: query, sortOrder: Number.MAX_SAFE_INTEGER - 1 },
-      { id: pendingId, role: "assistant", content: "", citations: [], sortOrder: Number.MAX_SAFE_INTEGER, streaming: true }
+      { id: pendingId, role: "assistant", content: "", citations: [], toolTrace: [], sortOrder: Number.MAX_SAFE_INTEGER, streaming: true }
     ]);
     if (activeThread?.title === t("desktop.agent.newThread")) {
       const title = query.slice(0, 30);
@@ -466,10 +468,40 @@ export function AgentPanel(): ReactPortal | null {
       } else if (event.phase === "generating") {
         hideIndexProgress();
         setStatus({ text: event.message || t("desktop.agent.statusGenerating") });
+      } else if (event.phase === "execution" && event.execution) {
+        setTurns((current) => current.map((turn) => turn.id === pendingId ? {
+          ...turn,
+          toolTrace: upsertExecutionStep(turn.toolTrace || [], event.execution!)
+        } : turn));
       } else if (event.phase === "tool_calling") {
         setStatus({ text: t("desktop.agent.callingTool", event.toolName || "...") });
+      } else if (event.phase === "tool_approval_required") {
+        setStatus({ text: t("desktop.agent.toolApprovalNeeded", event.toolName || "...") });
+        setTraceDrawerTurnId(pendingId);
+        if (event.toolCallId) {
+          setTurns((current) => current.map((turn) => turn.id === pendingId ? {
+            ...turn,
+            toolTrace: (turn.toolTrace || []).map((step) => step.id === event.toolCallId ? { ...step, status: "awaiting_approval" } : step)
+          } : turn));
+        }
       } else if (event.phase === "tool_executing") {
-        setStatus({ text: t("desktop.agent.executingTool", event.toolName || "...") });
+        const completedStatus = event.toolStatus || "succeeded";
+        setStatus({
+          text: `${event.toolName || "..."} · ${traceStatusLabel(completedStatus, t)}`,
+          kind: completedStatus === "failed" || completedStatus === "rejected" ? "error" : "ok"
+        });
+        if (event.toolCallId) {
+          setTurns((current) => current.map((turn) => turn.id === pendingId ? {
+            ...turn,
+            toolTrace: (turn.toolTrace || []).map((step) => step.id === event.toolCallId ? {
+              ...step,
+              status: event.toolStatus || "succeeded",
+              result: event.toolResult,
+              error: event.toolError,
+              completedAtMs: Date.now()
+            } : step)
+          } : turn));
+        }
       } else if (event.message) {
         setStatus({ text: event.message });
       }
@@ -487,6 +519,7 @@ export function AgentPanel(): ReactPortal | null {
           content: result.answer,
           citations: result.citations,
           fallback: result.fallback,
+          toolTrace: result.toolTrace,
           sortOrder: Number.MAX_SAFE_INTEGER
         } : turn));
       }
@@ -646,7 +679,7 @@ export function AgentPanel(): ReactPortal | null {
             </div>
           </div>
           <div className="ask-chat-shell">
-            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} expanded={expanded} setExpanded={setExpanded} t={t} onScroll={onLogScroll} onCitation={openCitation} onCitationPreview={showPreview} onCitationPreviewLeave={hidePreviewSoon} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
+            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} expanded={expanded} setExpanded={setExpanded} t={t} onOpenTrace={setTraceDrawerTurnId} onScroll={onLogScroll} onCitation={openCitation} onCitationPreview={showPreview} onCitationPreviewLeave={hidePreviewSoon} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
               setContext({
@@ -718,6 +751,18 @@ export function AgentPanel(): ReactPortal | null {
           }
         />
       ) : null}
+      <ToolTraceSheet
+        turn={turns.find((turn) => turn.id === traceDrawerTurnId) || null}
+        t={t}
+        onClose={() => setTraceDrawerTurnId(null)}
+        onRespondApproval={(toolCallId, approved) => {
+          void desktopApi().respondToolApproval({ toolCallId, approved });
+          setTurns((current) => current.map((turn) => turn.id === traceDrawerTurnId ? {
+            ...turn,
+            toolTrace: (turn.toolTrace || []).map((step) => step.id === toolCallId ? { ...step, status: approved ? "running" : "rejected" } : step)
+          } : turn));
+        }}
+      />
     </section>,
     host
   );
@@ -730,6 +775,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   expanded: Set<string>;
   setExpanded: Dispatch<SetStateAction<Set<string>>>;
   t: Translate;
+  onOpenTrace: (turnId: string) => void;
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   onCitation: (citation: AgentCitation) => void;
   onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
@@ -742,7 +788,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   onConfirmEdit: () => void;
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
-}>(({ turns, hasMore, loadingOlder, expanded, setExpanded, t, onScroll, onCitation, onCitationPreview, onCitationPreviewLeave, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
+}>(({ turns, hasMore, loadingOlder, expanded, setExpanded, t, onOpenTrace, onScroll, onCitation, onCitationPreview, onCitationPreviewLeave, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const heights = useRef(new Map<string, number>());
@@ -777,7 +823,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
     forceLayout((value) => value + 1);
   }, []);
   if (!turns.length) return <div ref={setLogRef} className="chat-log" onScroll={onScroll}><div className="chat-empty-state"><p className="chat-empty-title">{t("desktop.agent.emptyChat")}</p><p className="chat-empty-hint">{t("desktop.agent.emptyHint")}</p></div></div>;
-  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} expanded={expanded} setExpanded={setExpanded} t={t} onCitation={onCitation} onCitationPreview={onCitationPreview} onCitationPreviewLeave={onCitationPreviewLeave} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
+  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} expanded={expanded} setExpanded={setExpanded} t={t} onOpenTrace={onOpenTrace} onCitation={onCitation} onCitationPreview={onCitationPreview} onCitationPreviewLeave={onCitationPreviewLeave} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
 });
 
 function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id: string, height: number) => void; children: ReactNode }) {
@@ -797,11 +843,12 @@ function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id:
   return <div ref={ref}>{children}</div>;
 }
 
-function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPreview, onCitationPreviewLeave, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
+function TurnView({ turn, expanded, setExpanded, t, onOpenTrace, onCitation, onCitationPreview, onCitationPreviewLeave, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
   turn: Turn;
   expanded: Set<string>;
   setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>;
   t: Translate;
+  onOpenTrace: (turnId: string) => void;
   onCitation: (citation: AgentCitation) => void;
   onCitationPreview: (citation: AgentCitation, anchor: HTMLElement) => void;
   onCitationPreviewLeave: () => void;
@@ -838,7 +885,112 @@ function TurnView({ turn, expanded, setExpanded, t, onCitation, onCitationPrevie
     }
     return <div className="chat-message chat-message-out"><div className="chat-bubble user" onContextMenu={(event) => onUserContext(event, turn)}>{turn.content}</div></div>;
   }
-  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}{group("session", sessions, t("desktop.agent.citationSessions"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
+  const summary = executionSummary(traceForTurn(turn));
+  const summaryParts = (["retrieval", "tool", "llm", "skill"] as const).filter((kind) => summary[kind] > 0);
+  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div><button type="button" className={`chat-tool-trace-button${summaryParts.length ? "" : " is-empty"}`} onClick={() => onOpenTrace(turn.id)}><Activity size={14} /><span>{t("desktop.agent.executionTraceSummary")}</span>{summaryParts.map((kind) => <span className="chat-execution-count" key={kind}>{t(`desktop.agent.executionSummary.${kind}`, summary[kind])}</span>)}</button>{!turn.streaming && actions.length ? <div className="note-action-bubbles">{actions.map((citation, index) => <button type="button" className="note-action-bubble" key={`${citation.noteId}-${index}`} title={t("desktop.agent.openInNotesTitle", citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote"))} onClick={() => onCitation(citation)}>{citation.operation} · {citation.title || citation.noteId || t("desktop.agent.citationUnnamedNote")}</button>)}</div> : null}{group("report", reports, t("desktop.agent.citationReports"))}{group("note", notes, t("desktop.agent.citationNotes"))}{group("session", sessions, t("desktop.agent.citationSessions"))}<div className="chat-footer"><span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span>{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
+}
+
+function upsertExecutionStep(trace: AgentExecutionStep[], step: AgentExecutionStep): AgentExecutionStep[] {
+  const index = trace.findIndex((entry) => entry.id === step.id);
+  if (index < 0) return [...trace, step];
+  const next = [...trace];
+  next[index] = { ...next[index], ...step };
+  return next;
+}
+
+function traceStatusLabel(status: AgentExecutionStep["status"], t: Translate): string {
+  return t(`desktop.agent.toolTraceStatus.${status}`);
+}
+
+function traceImpactLabel(impact: NonNullable<AgentExecutionStep["impact"]>, t: Translate): string {
+  return t(`desktop.agent.toolTraceImpact.${impact}`);
+}
+
+function traceValue(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function executionSummary(trace: AgentExecutionStep[]): Record<AgentExecutionStep["kind"], number> {
+  return trace.reduce<Record<AgentExecutionStep["kind"], number>>((summary, step) => {
+    summary[step.kind] += 1;
+    return summary;
+  }, { retrieval: 0, llm: 0, tool: 0, skill: 0 });
+}
+
+function executionStepTitle(step: AgentExecutionStep, t: Translate): string {
+  if (step.kind === "llm") return t("desktop.agent.toolTraceLlmRound", step.iteration || 1);
+  if (step.toolName === "report_context_search") return t("desktop.agent.executionStep.reportRetrieval");
+  if (step.toolName === "note_context_search") return t("desktop.agent.executionStep.noteRetrieval");
+  if (step.toolName === "session_context_search") return t("desktop.agent.executionStep.sessionRetrieval");
+  if (step.title) return step.title;
+  return step.toolName || t(`desktop.agent.executionGroup.${step.kind}`);
+}
+
+function executionSourceLabel(source: AgentExecutionStep["source"], t: Translate): string {
+  if (!source) return "";
+  if (source.kind === "system") return t("desktop.agent.executionSource.context");
+  if (source.kind === "mcp" && !source.external) return t("desktop.agent.executionSource.builtInMcp");
+  return source.name;
+}
+
+function traceForTurn(turn: Turn): AgentExecutionStep[] {
+  const trace = (turn.toolTrace || []).map((step) => step.kind === "tool" && step.toolName?.endsWith("_context_search")
+    ? { ...step, kind: "retrieval" as const, title: undefined, impact: undefined, source: { kind: "system" as const, name: "Ask context" } }
+    : step);
+  if (trace.some((step) => step.kind === "retrieval")) return trace;
+
+  const citations = turn.citations || [];
+  if (!citations.length) return trace;
+  const makeStep = (toolName: string, sources: string[]): AgentExecutionStep => ({
+    id: `legacy-${turn.id}-${toolName}`,
+    kind: "retrieval",
+    status: "succeeded",
+    startedAtMs: 0,
+    completedAtMs: 0,
+    source: { kind: "system", name: "Ask context" },
+    toolName,
+    args: {},
+    result: JSON.stringify({ count: sources.length, sources }, null, 2)
+  });
+  const reports = citations.filter((citation) => !isNote(citation) && !isSession(citation));
+  const notes = citations.filter(isNote);
+  const sessions = citations.filter(isSession);
+  return [
+    ...(reports.length ? [makeStep("report_context_search", reports.map((citation) => citation.reportId || citation.title))] : []),
+    ...(notes.length ? [makeStep("note_context_search", notes.map((citation) => citation.relMdPath || citation.noteId || citation.title))] : []),
+    ...(sessions.length ? [makeStep("session_context_search", sessions.map((citation) => citation.session ? `${citation.session.provider}:${citation.session.id}` : citation.title))] : []),
+    ...trace
+  ];
+}
+
+function ToolTraceSheet({ turn, t, onClose, onRespondApproval }: {
+  turn: Turn | null;
+  t: Translate;
+  onClose: () => void;
+  onRespondApproval: (toolCallId: string, approved: boolean) => void;
+}) {
+  const trace = turn ? traceForTurn(turn) : [];
+  const waiting = trace.some((step) => step.kind === "tool" && step.status === "awaiting_approval");
+  const summary = executionSummary(trace);
+  const groups = (["retrieval", "llm", "tool", "skill"] as const).map((kind) => ({ kind, steps: trace.filter((step) => step.kind === kind) })).filter((group) => group.steps.length);
+  const timed = trace.filter((step) => step.startedAtMs > 0);
+  const duration = timed.length ? Math.max(...timed.map((step) => step.completedAtMs || Date.now())) - Math.min(...timed.map((step) => step.startedAtMs)) : null;
+  return <Sheet open={Boolean(turn)} title={t("desktop.agent.executionTraceTitle")} onClose={onClose} dismissible={!waiting} bodyClassName="tool-trace-sheet">
+    <p className="muted tool-trace-description">{t("desktop.agent.executionTraceDescription")}</p>
+    <div className="execution-trace-overview"><span>{t("desktop.agent.executionSummary.retrieval", summary.retrieval)}</span><span>{t("desktop.agent.executionSummary.tool", summary.tool)}</span><span>{t("desktop.agent.executionSummary.llm", summary.llm)}</span>{summary.skill ? <span>{t("desktop.agent.executionSummary.skill", summary.skill)}</span> : null}{duration !== null ? <span>{t("desktop.agent.toolTraceDuration", duration)}</span> : null}</div>
+    <div className="tool-trace-list">
+      {groups.length ? groups.map((group) => <section className="execution-trace-group" key={group.kind}><h4>{t(`desktop.agent.executionGroup.${group.kind}`)}</h4>{group.steps.map((step) => {
+        const stepDuration = step.completedAtMs ? Math.max(0, step.completedAtMs - step.startedAtMs) : null;
+        const awaiting = step.kind === "tool" && step.status === "awaiting_approval";
+        const meta = [executionSourceLabel(step.source, t), step.capability ? t(`desktop.agent.executionCapability.${step.capability}`) : "", step.impact ? traceImpactLabel(step.impact, t) : "", traceStatusLabel(step.status, t)].filter(Boolean).join(" · ");
+        return <article className={`tool-trace-step execution-trace-step is-${step.kind} is-${step.status}${step.parentId ? " has-parent" : ""}`} key={step.id}><div className="tool-trace-step-head"><div><strong>{executionStepTitle(step, t)}</strong><span>{meta}</span></div>{stepDuration !== null ? <small>{t("desktop.agent.toolTraceDuration", stepDuration)}</small> : null}</div>{awaiting ? <div className="tool-trace-approval"><p>{t("desktop.agent.toolApprovalPrompt")}</p><button type="button" className="tool-btn" onClick={() => onRespondApproval(step.id, false)}>{t("desktop.agent.toolApprovalDeny")}</button><button type="button" className="tool-btn primary" onClick={() => onRespondApproval(step.id, true)}>{t("desktop.agent.toolApprovalAllow")}</button></div> : null}{step.args && Object.keys(step.args).length ? <details><summary>{t("desktop.agent.toolTraceInput")}</summary><pre>{traceValue(step.args)}</pre></details> : null}{step.result !== undefined ? <details><summary>{t("desktop.agent.toolTraceOutput")}</summary><pre>{step.result}</pre></details> : null}{step.error ? <p className="tool-trace-error">{step.error}</p> : null}</article>;
+      })}</section>) : <p className="muted tool-trace-empty">{t("desktop.agent.toolTraceEmpty")}</p>}
+    </div>
+  </Sheet>;
 }
 
 function IndexProgressView({ progress, t }: { progress: IndexProgress; t: Translate }) {
