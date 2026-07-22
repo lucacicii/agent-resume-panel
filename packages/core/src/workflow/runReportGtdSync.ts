@@ -3,7 +3,7 @@ import { getSessionById } from "../catalog/query";
 import { AgentProvider } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { getSessionGtdStatus, setSessionGtdStatusWithAudit } from "../gtd/store";
-import { GtdApplyItem, GtdProposal, GtdStatus, isGtdStatus } from "../gtd/types";
+import { GtdApplyItem, GtdEvidence, GtdProposal, GtdStatus, isGtdStatus } from "../gtd/types";
 import { runDailyDigest } from "../report/daily";
 import { localDayRange } from "../report/period";
 import { getReportJobStatus, upsertReportJob } from "../report/store";
@@ -30,6 +30,7 @@ export interface GtdPreviewItem {
   reason: string;
   tasks: string[];
   sourceReportIds: string[];
+  evidence?: GtdEvidence;
   /** Markdown that would be written (not yet on disk). */
   todolistPreview: string;
 }
@@ -141,6 +142,7 @@ export async function previewReportGtdSync(
       reason: p.reason,
       tasks: p.tasks,
       sourceReportIds: p.sourceReportIds,
+      evidence: p.evidence,
       todolistPreview
     });
   }

@@ -27,7 +27,7 @@ export interface RunDailyDigestOptions {
   date?: string;
   /** Skip embedding even if configured. */
   skipEmbedding?: boolean;
-  /** @deprecated Daily generation always reuses existing session summaries. */
+  /** @deprecated Session summaries refresh automatically when stale. */
   forceResummarize?: boolean;
   /** Progress for Desktop UI. */
   onProgress?: DigestProgressCallback;
@@ -232,16 +232,21 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       sessions,
       settings,
       panelHome,
-      // Daily digests never regenerate an existing session summary. The option
-      // remains accepted for API compatibility with older callers.
+      // A strict digest must not infer current work from a stale session summary.
       force: false,
+      refreshIfStale: true,
       jobKeyPrefix: `summarize:${jobKey}`,
       onProgress,
       systemLocale: options.systemLocale,
       progressLevel: "daily",
       progressPeriodLabel: dateLabel
     });
-    sessions = ensure.sessions;
+    const failedSummaryKeys = new Set(ensure.failed.map((failure) => failure.key));
+    sessions = ensure.sessions.map((session) =>
+      failedSummaryKeys.has(`${session.provider}:${session.id}`)
+        ? { ...session, sessionSummary: undefined, sessionSummaryAtMs: undefined }
+        : session
+    );
 
     const lines: string[] = [];
     let summaryReadyCount = 0;

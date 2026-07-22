@@ -23,7 +23,17 @@ function toDraft(proposal: Proposal): DraftProposal {
 }
 
 function cloneItems(items: DraftProposal[]): DraftProposal[] {
-  return items.map((item) => ({ ...item, tasks: [...item.tasks], sourceReportIds: [...item.sourceReportIds] }));
+  return items.map((item) => ({
+    ...item,
+    tasks: [...item.tasks],
+    sourceReportIds: [...item.sourceReportIds],
+    evidence: item.evidence
+      ? {
+          unresolved: { ...item.evidence.unresolved },
+          nextAction: { ...item.evidence.nextAction }
+        }
+      : undefined
+  }));
 }
 
 function periodKey(scope: Scope): string {
@@ -88,7 +98,7 @@ export function GtdSheet(): React.JSX.Element | null {
       const nextItems = result.proposals.map(toDraft);
       const nextStatus = {
         text: t("desktop.report.gtdPreviewStatus", nextItems.length, nextScope.level, periodKey(nextScope), t("desktop.report.gtdNotSaved")),
-        kind: nextItems.length ? "ok" as const : "error" as const
+        kind: "ok" as const
       };
       cache.current.set(nextScope.reportId, { items: cloneItems(nextItems), warnings: [...result.warnings], status: nextStatus, allApplied: false });
       if (request !== previewRequest.current) return;
@@ -183,7 +193,7 @@ export function GtdSheet(): React.JSX.Element | null {
       <button type="button" className="tool-btn" onClick={() => void preview(scope, true)}><RefreshCw size={15} /> {t("desktop.report.gtdReanalyze")}</button>
     </div>
     {warnings.length ? <ul className="gtd-empty-warnings">{warnings.map((warning, index) => <li key={`${warning}:${index}`}>{warning}</li>)}</ul> : null}
-    {!items.length ? <div className="muted gtd-empty"><p>{allApplied ? t("desktop.report.gtdAllApplied") : t("desktop.report.gtdNoProposals")}</p>{!allApplied ? <><p>{t("desktop.report.gtdNoSessionsReason")}</p><p>{t("desktop.report.gtdWarnDefault")}</p></> : null}</div> : <div className="gtd-preview">
+    {!items.length ? <div className="muted gtd-empty"><p>{allApplied ? t("desktop.report.gtdAllApplied") : t("desktop.report.gtdNoProposals")}</p></div> : <div className="gtd-preview">
       {items.map((item, index) => <GtdItem key={`${item.provider}:${item.sessionId}`} item={item} applying={applying === `${item.provider}:${item.sessionId}`} t={t} onChange={(patch) => update(index, patch)} onApply={() => void apply(index)} onOpenMarkdown={() => { setEditorIndex(index); setEditorValue(item.todolistMarkdown); }} />)}
     </div>}
     <Status kind={status.kind}>{status.text}</Status>
@@ -217,6 +227,7 @@ function GtdItem({ item, applying, t, onChange, onApply, onOpenMarkdown }: {
       <label>{t("desktop.report.gtdStatusLabel")}<select value={item.gtd} onChange={(event) => onChange({ gtd: event.target.value })}>{statuses.map((status) => <option value={status} key={status}>@{status}</option>)}</select></label>
       <label>{t("desktop.report.gtdReasonLabel")}<textarea rows={2} value={item.reason} onChange={(event) => onChange({ reason: event.target.value })} /></label>
       <label>{t("desktop.report.gtdTasksLabel")}<textarea rows={3} value={item.tasks.join("\n")} onChange={(event) => onChange({ tasks: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) })} /></label>
+      {item.evidence ? <div className="gtd-evidence"><strong>{t("desktop.report.gtdEvidenceLabel")}</strong><p><span>{t("desktop.report.gtdUnresolvedEvidence")}</span>{item.evidence.unresolved.quote}</p><p><span>{t("desktop.report.gtdNextActionEvidence")}</span>{item.evidence.nextAction.quote}</p></div> : null}
       <label>{t("desktop.report.gtdTodoLabel")}<textarea className="gtd-md md" rows={8} title={t("desktop.report.gtdFocusEditor")} value={item.todolistMarkdown} onFocus={onOpenMarkdown} onChange={(event) => onChange({ todolistMarkdown: event.target.value })} /></label>
     </div> : null}
   </article>;

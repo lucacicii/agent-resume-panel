@@ -5,6 +5,16 @@ export function isGtdStatus(value: string): value is GtdStatus {
   return (GTD_STATUSES as readonly string[]).includes(value);
 }
 
+export interface GtdEvidenceQuote {
+  source: string;
+  quote: string;
+}
+
+export interface GtdEvidence {
+  unresolved: GtdEvidenceQuote;
+  nextAction: GtdEvidenceQuote;
+}
+
 export interface GtdProposal {
   provider: string;
   sessionId: string;
@@ -12,6 +22,8 @@ export interface GtdProposal {
   reason: string;
   tasks: string[];
   sourceReportIds: string[];
+  /** Required for AI-generated next actions; quotes must be traceable to analysis input. */
+  evidence?: GtdEvidence;
 }
 
 export interface GtdApplyItem {

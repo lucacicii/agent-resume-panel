@@ -304,7 +304,7 @@ export {
 } from "./agent/noteAudit";
 export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudit";
 
-export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
+export type { GtdStatus, GtdEvidence, GtdEvidenceQuote, GtdProposal, GtdApplyItem } from "./gtd/types";
 export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
 export {
   getSessionGtdStatus,

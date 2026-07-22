@@ -16,7 +16,8 @@ import type {
   RunDailyDigestResult,
   RunMonthlyDigestResult,
   RunWeeklyDigestResult,
-  AgentSessionSyncResult
+  AgentSessionSyncResult,
+  GtdEvidence
 } from "@agent-resume/core";
 
 export interface DesktopApi {
@@ -408,6 +409,7 @@ export interface DesktopApi {
       reason: string;
       tasks: string[];
       sourceReportIds: string[];
+      evidence?: GtdEvidence;
       todolistPreview: string;
     }>;
     skipped: string[];

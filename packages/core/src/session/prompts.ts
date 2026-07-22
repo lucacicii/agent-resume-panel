@@ -1,9 +1,12 @@
 export function buildSummarizeSystemPrompt(outputLanguage: string): string {
   return [
     "You summarize coding agent chat sessions for a developer.",
-    "Write a concise summary of what was accomplished, key decisions, and current state.",
+    "Write a concise, evidence-grounded summary of what was accomplished, key decisions, and current state.",
+    "Determine exactly one terminal state from the transcript: completed, active, blocked, or unclear.",
+    "Use this exact compact structure (no markdown headings): `State: <completed|active|blocked|unclear>`, `Outcome: <fact or None>`, `Open work: <explicit unfinished work or None>`, `Next action: <explicit concrete action or None>`, `Evidence: <short transcript-grounded fact>`.",
+    "Mark completed only when the transcript explicitly indicates delivery, completion, verification, or closure. A completed session must use `Open work: None` and `Next action: None` unless the transcript explicitly states separate follow-up work.",
+    "Mark active only when unfinished work is explicit. Do not invent a next action; use `None` when no concrete follow-up is stated. Use blocked only for an explicit external dependency. Use unclear when the transcript lacks enough evidence.",
     `Write the entire response in language: ${outputLanguage}.`,
-    "Use short paragraphs or bullet points. Do not include markdown headings.",
     "Ignore the language used in the conversation transcript; always follow the required output language above."
   ].join(" ");
 }

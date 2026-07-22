@@ -7,15 +7,127 @@ import { llmConfigFromSettings } from "../llm/fromSettings";
 import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
 import { ReportEntry } from "../report/schema";
 import { PanelSettings } from "../settings/types";
-import { GtdProposal, isGtdStatus } from "../gtd/types";
+import { GtdEvidence, GtdProposal, isGtdStatus } from "../gtd/types";
 import { getSessionGtdStatus } from "../gtd/store";
 import { recordLlmUsage } from "../usage/store";
+import { ensureSummariesForSessions } from "../session/ensureSummaries";
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) {
     return text;
   }
   return `${text.slice(0, max)}\n[...truncated...]`;
+}
+
+export interface ReportGtdCandidate {
+  provider: string;
+  sessionId: string;
+  gtd: string;
+  reason?: string;
+  tasks?: string[];
+  sourceReportIds?: string[];
+  evidence?: Partial<GtdEvidence>;
+}
+
+export interface ReportGtdEvidenceSource {
+  id: string;
+  text: string;
+}
+
+function evidenceText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function isTraceableQuote(
+  quote: string | undefined,
+  source: string | undefined,
+  sources: ReadonlyMap<string, string>
+): boolean {
+  const normalized = evidenceText(quote || "");
+  if (normalized.length < 3 || normalized.length > 320 || !source) {
+    return false;
+  }
+  return evidenceText(sources.get(source) || "").includes(normalized);
+}
+
+/**
+ * Treat model output as untrusted. A next action needs two independently traceable
+ * excerpts so a completed or ambiguous session cannot become next by default.
+ */
+export function filterReportGtdProposals(input: {
+  candidates: ReportGtdCandidate[];
+  sessionKeys: ReadonlySet<string>;
+  reportIds: ReadonlySet<string>;
+  evidenceSources: ReportGtdEvidenceSource[];
+}): { proposals: GtdProposal[]; warnings: string[] } {
+  const evidenceSources = new Map(input.evidenceSources.map((source) => [source.id, source.text]));
+  const seen = new Set<string>();
+  const warnings: string[] = [];
+  const proposals: GtdProposal[] = [];
+
+  for (const item of input.candidates) {
+    const key = `${item.provider}:${item.sessionId}`;
+    if (!isGtdStatus(item.gtd)) {
+      warnings.push(`skip invalid gtd: ${key} → ${item.gtd}`);
+      continue;
+    }
+    if (!input.sessionKeys.has(key)) {
+      warnings.push(`skip unavailable session: ${key}`);
+      continue;
+    }
+    if (seen.has(key)) {
+      warnings.push(`skip duplicate proposal: ${key}`);
+      continue;
+    }
+
+    const sourceReportIds = (item.sourceReportIds || []).filter((id) => input.reportIds.has(id));
+    if (!sourceReportIds.length) {
+      warnings.push(`skip proposal without current report source: ${key}`);
+      continue;
+    }
+
+    const tasks = (item.tasks || []).map(String).map((task) => task.trim()).filter(Boolean).slice(0, 20);
+    if (item.gtd === "next") {
+      const evidence = item.evidence as GtdEvidence | undefined;
+      const hasUnresolved = isTraceableQuote(
+        evidence?.unresolved?.quote,
+        evidence?.unresolved?.source,
+        evidenceSources
+      );
+      const hasNextAction = isTraceableQuote(
+        evidence?.nextAction?.quote,
+        evidence?.nextAction?.source,
+        evidenceSources
+      );
+      if (!tasks.length || !hasUnresolved || !hasNextAction) {
+        warnings.push(`skip unverified next action: ${key}`);
+        continue;
+      }
+      proposals.push({
+        provider: item.provider,
+        sessionId: item.sessionId,
+        gtd: item.gtd,
+        reason: item.reason?.trim() || "AI triage from memory",
+        tasks,
+        sourceReportIds,
+        evidence
+      });
+      seen.add(key);
+      continue;
+    }
+
+    proposals.push({
+      provider: item.provider,
+      sessionId: item.sessionId,
+      gtd: item.gtd,
+      reason: item.reason?.trim() || "AI triage from memory",
+      tasks,
+      sourceReportIds
+    });
+    seen.add(key);
+  }
+
+  return { proposals, warnings };
 }
 
 export async function analyzeReportForGtd(input: {
@@ -71,20 +183,11 @@ export async function analyzeReportForGtd(input: {
     summary?: string;
     gtd?: string;
   };
-  const sessionKeys = new Map<string, SessionRow>();
+  const sessionsByKey = new Map<string, AgentSession>();
 
   async function addSession(session: AgentSession): Promise<void> {
     const key = `${session.provider}:${session.id}`;
-    if (sessionKeys.has(key)) return;
-    const gtd = await getSessionGtdStatus(input.catalogDb, session.provider, session.id);
-    sessionKeys.set(key, {
-      provider: session.provider,
-      sessionId: session.id,
-      title: session.title,
-      projectPath: session.projectPath,
-      summary: session.sessionSummary,
-      gtd: gtd || undefined
-    });
+    if (!sessionsByKey.has(key)) sessionsByKey.set(key, session);
   }
 
   // 1) Sessions linked via report_links
@@ -119,25 +222,68 @@ export async function analyzeReportForGtd(input: {
     }
   }
 
-  if (!sessionKeys.size) {
+  if (!sessionsByKey.size) {
     scopedWarnings.push(pt("desktop.report.gtdNoLinkedSessions"));
   } else if (linkCount === 0) {
-    scopedWarnings.push(pt("desktop.report.gtdFallbackSessions", sessionKeys.size));
+    scopedWarnings.push(pt("desktop.report.gtdFallbackSessions", sessionsByKey.size));
+  }
+
+  const initialSessions = [...sessionsByKey.values()];
+  const needsFreshSummary = new Set(
+    initialSessions
+      .filter(
+        (session) =>
+          !session.sessionSummary?.trim() ||
+          session.sessionSummaryAtMs == null ||
+          session.updatedAt > session.sessionSummaryAtMs
+      )
+      .map((session) => `${session.provider}:${session.id}`)
+  );
+  const ensured = await ensureSummariesForSessions({
+    dbPath: input.catalogDb,
+    sessions: initialSessions,
+    settings: input.settings,
+    refreshIfStale: true,
+    concurrency: 2,
+    systemLocale: input.systemLocale,
+    jobKeyPrefix: "summarize:gtd"
+  });
+  const unavailableSessions = new Set(
+    ensured.failed
+      .map((failure) => failure.key)
+      .filter((key) => needsFreshSummary.has(key))
+  );
+  if (unavailableSessions.size) {
+    scopedWarnings.push(`GTD skipped ${unavailableSessions.size} session(s) whose current summary could not be refreshed.`);
+  }
+
+  const sessionList: SessionRow[] = [];
+  for (const session of ensured.sessions) {
+    const key = `${session.provider}:${session.id}`;
+    if (unavailableSessions.has(key)) continue;
+    const gtd = await getSessionGtdStatus(input.catalogDb, session.provider, session.id);
+    sessionList.push({
+      provider: session.provider,
+      sessionId: session.id,
+      title: session.title,
+      projectPath: session.projectPath,
+      summary: session.sessionSummary,
+      gtd: gtd || undefined
+    });
   }
 
   const digestBlock = digests
     .map(
       (d, i) =>
-        `### Digest ${i + 1}: ${d.level} · ${d.title || d.id}\nID: ${d.id}\n${truncate(d.content, 2500)}`
+        `### Report report:${d.id} (${i + 1}): ${d.level} · ${d.title || d.id}\nID: ${d.id}\n${truncate(d.content, 2500)}`
     )
     .join("\n\n");
 
-  const sessionList = [...sessionKeys.values()];
   const sessionBlock =
     sessionList
-      .map(
-        (s) =>
-          `- ${s.provider} | ${s.sessionId} | GTD=${s.gtd || "none"} | ${s.title} @ ${s.projectPath}${
+        .map(
+          (s) =>
+          `### Session session:${s.provider}:${s.sessionId}\n- GTD=${s.gtd || "none"} | ${s.title} @ ${s.projectPath}${
             s.summary ? `\n  summary: ${truncate(s.summary, 400)}` : ""
           }`
       )
@@ -149,15 +295,17 @@ export async function analyzeReportForGtd(input: {
   const system = [
     "You triage coding-agent sessions into GTD for a developer.",
     "Statuses allowed: inbox, next, waiting, someday, reference.",
-    "Prefer next for actionable unfinished work; waiting for blocked; someday for low priority; reference for docs/knowledge; inbox only if unclear.",
+    "Default to no proposal. Completed work without separate explicit follow-up MUST NOT appear in items.",
+    "Use next only when two distinct facts are explicit: unresolved work and a concrete next action. Never infer either from a prior GTD label, a title, or a generic aspiration.",
+    "Use waiting only for an explicit external dependency; someday only for explicitly deferred work; reference only for durable knowledge. Omit unclear or completed sessions.",
     scoped
       ? "Analyze ONLY the provided digest(s) (daily/weekly/monthly all valid). Ground every proposal in that content."
       : "Prioritize insights from WEEKLY and MONTHLY digests; use daily digests as supporting detail.",
     `sourceReportIds should include these digest ids when relevant: ${digestIdsHint || "(from digests)"}.`,
     "You MUST only use provider+sessionId pairs from the Linked sessions list below.",
-    "When the Linked sessions list is non-empty, produce at least one proposal per unfinished/active session when the digest mentions related work; use reference for pure knowledge sessions.",
+    "Existing GTD labels are reference-only and are never evidence for a proposal.",
     "Return ONLY one JSON object. No markdown fences, no commentary before or after.",
-    'Schema: {"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceReportIds":["daily:..."]}]}',
+    'For gtd=next, evidence is required and each quote must be an exact short quote from a named source below. Schema: {"items":[{"provider":"codex","sessionId":"...","gtd":"next","reason":"...","tasks":["..."],"sourceReportIds":["daily:..."],"evidence":{"unresolved":{"source":"report:daily:...","quote":"..."},"nextAction":{"source":"session:codex:...","quote":"..."}}}]}',
     "If Linked sessions is empty, return {\"items\":[]}.",
     `Write reason and tasks in language: ${language}.`
   ].join(" ");
@@ -172,7 +320,7 @@ export async function analyzeReportForGtd(input: {
     sessionBlock,
     "",
     sessionList.length
-      ? `There are ${sessionList.length} session(s). Propose GTD + short tasks for those that still need work.`
+      ? `There are ${sessionList.length} session(s). Return only high-confidence GTD proposals; an empty items array is correct when no concrete action remains.`
       : "No sessions linked — return {\"items\":[]}.",
     "Reply with JSON only."
   ].join("\n");
@@ -200,14 +348,7 @@ export async function analyzeReportForGtd(input: {
   const raw = chatResult.content;
 
   const warnings: string[] = [...scopedWarnings];
-  let parsed: Array<{
-    provider: string;
-    sessionId: string;
-    gtd: string;
-    reason?: string;
-    tasks?: string[];
-    sourceReportIds?: string[];
-  }> = [];
+  let parsed: ReportGtdCandidate[] = [];
   try {
     parsed = parseProposalsJson(raw);
   } catch (error) {
@@ -216,45 +357,23 @@ export async function analyzeReportForGtd(input: {
     return { proposals: [], warnings, raw };
   }
 
-  const proposals: GtdProposal[] = [];
-
-  for (const item of parsed) {
-    if (!isGtdStatus(item.gtd)) {
-      warnings.push(`skip invalid gtd: ${item.provider}/${item.sessionId} → ${item.gtd}`);
-      continue;
-    }
-    const session = await getSessionById(
-      input.catalogDb,
-      item.provider as AgentProvider,
-      item.sessionId
-    );
-    if (!session) {
-      warnings.push(`skip unknown session: ${item.provider}/${item.sessionId}`);
-      continue;
-    }
-    proposals.push({
-      provider: session.provider,
-      sessionId: session.id,
-      gtd: item.gtd,
-      reason: item.reason || "AI triage from memory",
-      tasks: Array.isArray(item.tasks) ? item.tasks.map(String).filter(Boolean).slice(0, 20) : [],
-      sourceReportIds: Array.isArray(item.sourceReportIds)
-        ? item.sourceReportIds.map(String)
-        : []
-    });
-  }
-
-  return { proposals, warnings, raw };
+  const filtered = filterReportGtdProposals({
+    candidates: parsed,
+    sessionKeys: new Set(sessionList.map((session) => `${session.provider}:${session.sessionId}`)),
+    reportIds: new Set(digests.map((digest) => digest.id)),
+    evidenceSources: [
+      ...digests.map((digest) => ({ id: `report:${digest.id}`, text: truncate(digest.content, 2500) })),
+      ...sessionList.map((session) => ({
+        id: `session:${session.provider}:${session.sessionId}`,
+        text: truncate(session.summary || "", 400)
+      }))
+    ]
+  });
+  warnings.push(...filtered.warnings);
+  return { proposals: filtered.proposals, warnings, raw };
 }
 
-type ParsedProposal = {
-  provider: string;
-  sessionId: string;
-  gtd: string;
-  reason?: string;
-  tasks?: string[];
-  sourceReportIds?: string[];
-};
+type ParsedProposal = ReportGtdCandidate;
 
 function parseProposalsJson(raw: string): ParsedProposal[] {
   const candidates = collectJsonCandidates(raw);
@@ -391,7 +510,20 @@ function mapProposalItems(items: unknown[]): ParsedProposal[] {
         ? x.sourceReportIds.map(String)
         : Array.isArray(x.source_report_ids)
           ? (x.source_report_ids as unknown[]).map(String)
-          : undefined
+          : undefined,
+      evidence: toEvidence(x.evidence)
     }))
     .filter((x) => x.provider && x.sessionId);
+}
+
+function toEvidence(value: unknown): Partial<GtdEvidence> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const quote = (key: "unresolved" | "nextAction"): { source: string; quote: string } | undefined => {
+    const item = source[key];
+    if (!item || typeof item !== "object") return undefined;
+    const entry = item as Record<string, unknown>;
+    return { source: String(entry.source || ""), quote: String(entry.quote || "") };
+  };
+  return { unresolved: quote("unresolved"), nextAction: quote("nextAction") };
 }
