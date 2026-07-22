@@ -37,13 +37,17 @@ describe("AgentPanel", () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages }), onLocaleChanged: () => () => undefined,
       listAgentThreads: async () => [thread], listAgentChat: async () => ({ messages: [{ id: "a-1", role: "assistant", content: "Done", createdAtMs: 1, sortOrder: 1 }], hasMore: false }), listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
-      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }), askAgent: async () => ({ answer: "", citations: [], fallback: false, digests: [] }), cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined, clearAgentChat: async () => ({ ok: true })
+      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }), askAgent: async () => ({ answer: "", citations: [], fallback: false, digests: [] }), cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined, clearAgentChat: async () => ({ ok: true }), listAgentNoteAudit: async () => []
     } as unknown as typeof window.agentResume;
     render(<I18nProvider><AgentPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
     fireEvent.click(await screen.findByRole("button", { name: "Execution flow" }));
     expect(screen.getByRole("dialog", { name: "Execution flow" })).toBeTruthy();
     expect(screen.getByText("No tool calls were needed for this answer.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Trace" }));
+    const auditEmpty = await screen.findByText("No trace");
+    expect(auditEmpty.closest(".agent-chat-notices")).toBeTruthy();
+    expect(document.querySelector(".chat-compose")?.nextElementSibling).toBeNull();
   });
 
   it("loads a thread and sends a streamed Agent request", async () => {
@@ -157,10 +161,12 @@ describe("AgentPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
     await screen.findByText("Saved answer");
     await act(async () => indexProgress?.({ phase: "indexing", message: "Indexing notes", current: 1, total: 2 }));
-    expect(screen.getByText("1/2")).toBeTruthy();
+    expect(screen.getByText("1/2").closest(".agent-chat-notices")).toBeTruthy();
+    expect(document.querySelector(".agent-chat-notices")?.nextElementSibling?.classList.contains("chat-log")).toBe(true);
     await act(async () => indexProgress?.({ phase: "complete", message: "Note index is up to date", current: 2, total: 2 }));
     expect(screen.getAllByText("Note index is up to date")).toHaveLength(1);
-    expect(document.querySelector(".ask-chat-shell > .status")).toBeNull();
+    expect(screen.getByText("Note index is up to date").closest(".agent-chat-notices")).toBeTruthy();
+    expect(document.querySelector(".chat-compose")?.nextElementSibling).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Citation 1" }));
     expect(screen.getByRole("dialog", { name: "Citations" })).toBeTruthy();
     const citation = screen.getByRole("button", { name: /\[1\] daily · Daily/ });

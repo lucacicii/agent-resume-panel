@@ -291,10 +291,10 @@ export function AgentPanel(): ReactPortal | null {
     const off = api.onNotesIndexProgress((event) => {
       applyIndexProgress(event);
       if (!sendingRef.current && event.phase === "complete") setStatus({ text: "" });
-      else if (!sendingRef.current && event.phase === "error") setStatus({ text: event.message || t("desktop.agent.indexingNotes"), kind: "error" });
+      else if (!sendingRef.current && event.phase === "error") setStatus({ text: "" });
     });
     return off;
-  }, [applyIndexProgress, t]);
+  }, [applyIndexProgress]);
   useEffect(() => () => {
     streamOff.current?.();
     clearIndexHideTimer();
@@ -668,6 +668,11 @@ export function AgentPanel(): ReactPortal | null {
             </div>
           </div>
           <div className="ask-chat-shell">
+            {indexProgress || status.text || auditOpen ? <div className="agent-chat-notices">
+              {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}
+              <Status kind={status.kind}>{status.text}</Status>
+              {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}
+            </div> : null}
             <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
@@ -692,9 +697,6 @@ export function AgentPanel(): ReactPortal | null {
                 </div>
               </div>
             </div>
-            {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}
-            {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}
-            <Status kind={status.kind}>{status.text}</Status>
           </div>
         </main>
       </div>

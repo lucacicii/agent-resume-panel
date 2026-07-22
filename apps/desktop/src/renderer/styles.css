@@ -3717,6 +3717,28 @@ code {
   background: var(--chat-bg);
 }
 
+.agent-chat-notices {
+  flex: 0 0 auto;
+  overflow: auto;
+  max-height: min(34vh, 260px);
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--chat-compose-bg);
+}
+
+.agent-chat-notices > .status {
+  margin: 0;
+  padding: 7px 12px;
+  font-size: var(--font-size-caption);
+}
+
+.agent-chat-notices > .agent-index-progress {
+  background: transparent;
+}
+
+.agent-chat-notices > .agent-audit-panel {
+  max-height: none;
+}
+
 .chat-log {
   flex: 1;
   min-height: 0;
