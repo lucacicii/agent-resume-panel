@@ -83,6 +83,24 @@ test("filterReportGtdProposals rejects unverified and stale-source next actions"
   assert.ok(result.warnings.every((warning) => warning.includes("skip")));
 });
 
+test("filterReportGtdProposals rejects human-only done status", () => {
+  const result = filterReportGtdProposals({
+    candidates: [{
+      provider: "codex",
+      sessionId: "session-1",
+      gtd: "done",
+      reason: "Work is complete.",
+      sourceReportIds: ["daily:2026-07-22"]
+    }],
+    sessionKeys,
+    reportIds,
+    evidenceSources
+  });
+
+  assert.equal(result.proposals.length, 0);
+  assert.ok(result.warnings.includes("skip invalid gtd: codex:session-1 → done"));
+});
+
 test("filterReportGtdProposals keeps only one proposal per session", () => {
   const candidate = {
     provider: "codex",

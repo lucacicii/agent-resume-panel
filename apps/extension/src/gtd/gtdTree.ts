@@ -125,6 +125,8 @@ function gtdStatusIcon(status: GtdStatus): string {
       return "calendar";
     case "reference":
       return "book";
+    case "done":
+      return "pass-filled";
     default:
       return "tag";
   }

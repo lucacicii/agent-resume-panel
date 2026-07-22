@@ -573,7 +573,9 @@
       "desktop.workbench.gitShowLoaded": "Loaded commit details.",
       "desktop.workbench.gitCommitSuggestedLlm": "AI generated a commit message. Review it before committing.",
       "desktop.workbench.gitCommitSuggestedUnconfigured": "Tool LLM is not configured, so a rule-based suggestion was inserted.",
-      "desktop.workbench.gitCommitSuggestedFallback": "The AI request failed, so a rule-based suggestion was inserted."
+      "desktop.workbench.gitCommitSuggestedFallback": "The AI request failed, so a rule-based suggestion was inserted.",
+      "desktop.workbench.gtdStatus.done": "Done",
+      "desktop.workbench.gtdCompleted": "Completed"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1486,7 +1488,9 @@
       "desktop.workbench.gitPull": "拉取",
       "desktop.workbench.gitPullFailed": "拉取失败：{0}",
       "desktop.workbench.gitPush": "推送",
-      "desktop.workbench.gitPushFailed": "推送失败：{0}"
+      "desktop.workbench.gitPushFailed": "推送失败：{0}",
+      "desktop.workbench.gtdStatus.done": "完成",
+      "desktop.workbench.gtdCompleted": "已完成"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2444,7 +2448,9 @@
       "desktop.workbench.sidePanelNoNestedRepos": "サブディレクトリに Git リポジトリが見つかりません（スキャン深度 {0}）。",
       "desktop.workbench.sidePanelNoRoot": "プロジェクトを選択してからファイルと Git 変更を閲覧してください。",
       "desktop.workbench.sidePanelRevealFailed": "Finder で表示できませんでした: {0}",
-      "desktop.workbench.sidePanelStaged": "ステージ済み"
+      "desktop.workbench.sidePanelStaged": "ステージ済み",
+      "desktop.workbench.gtdStatus.done": "完了",
+      "desktop.workbench.gtdCompleted": "完了"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

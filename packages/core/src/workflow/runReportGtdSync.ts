@@ -3,7 +3,14 @@ import { getSessionById } from "../catalog/query";
 import { AgentProvider } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { getSessionGtdStatus, setSessionGtdStatusWithAudit } from "../gtd/store";
-import { GtdApplyItem, GtdEvidence, GtdProposal, GtdStatus, isGtdStatus } from "../gtd/types";
+import {
+  ActiveGtdStatus,
+  GtdApplyItem,
+  GtdEvidence,
+  GtdProposal,
+  GtdStatus,
+  isActiveGtdStatus
+} from "../gtd/types";
 import { runDailyDigest } from "../report/daily";
 import { localDayRange } from "../report/period";
 import { getReportJobStatus, upsertReportJob } from "../report/store";
@@ -26,7 +33,7 @@ export interface GtdPreviewItem {
   title: string;
   projectPath: string;
   previousGtd: GtdStatus | null;
-  proposedGtd: GtdStatus;
+  proposedGtd: ActiveGtdStatus;
   reason: string;
   tasks: string[];
   sourceReportIds: string[];
@@ -48,7 +55,7 @@ export interface ApplyReportGtdSyncOptions {
   items: Array<{
     provider: string;
     sessionId: string;
-    gtd: GtdStatus | string;
+    gtd: ActiveGtdStatus | string;
     reason: string;
     tasks: string[];
     sourceReportIds: string[];
@@ -176,11 +183,11 @@ export async function applyReportGtdSync(
     for (const raw of options.items || []) {
       const key = `${raw.provider}:${raw.sessionId}`;
       try {
-        if (!isGtdStatus(String(raw.gtd))) {
+        if (!isActiveGtdStatus(String(raw.gtd))) {
           failed.push({ key, error: `invalid gtd: ${raw.gtd}` });
           continue;
         }
-        const gtd = raw.gtd as GtdStatus;
+        const gtd = raw.gtd as ActiveGtdStatus;
         const session = await getSessionById(paths.catalogDb, raw.provider as AgentProvider, raw.sessionId);
         if (!session) {
           failed.push({ key, error: "session not found" });

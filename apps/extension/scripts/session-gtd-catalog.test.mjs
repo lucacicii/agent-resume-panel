@@ -38,10 +38,10 @@ try {
   const map = await loadSessionGtdMap(dbPath);
   assert.equal(map["codex:sess-1"], "next");
 
-  await setSessionGtdStatus(dbPath, { provider: "codex", id: "sess-1" }, "waiting");
-  assert.equal(await getSessionGtdStatus(dbPath, "codex", "sess-1"), "waiting");
+  await setSessionGtdStatus(dbPath, { provider: "codex", id: "sess-1" }, "done");
+  assert.equal(await getSessionGtdStatus(dbPath, "codex", "sess-1"), "done");
 
-  const sessions = await querySessionsByGtdStatus(dbPath, "waiting");
+  const sessions = await querySessionsByGtdStatus(dbPath, "done");
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].id, "sess-1");
 

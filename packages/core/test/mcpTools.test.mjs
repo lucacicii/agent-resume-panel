@@ -169,6 +169,12 @@ test("session_search finds catalog sessions by title and session_read returns su
     assert.ok(gtdOk.content[0].text.includes("GTD updated"));
     assert.ok(gtdOk.content[0].text.includes("\"status\": \"next\""));
 
+    const gtdDone = await client.callTool({
+      name: "session_set_gtd",
+      arguments: { provider: "codex", sessionId: "sess-auth-1", status: "done" }
+    });
+    assert.equal(gtdDone.isError, true);
+
     const gtdMissing = await client.callTool({
       name: "session_set_gtd",
       arguments: { provider: "codex", sessionId: "does-not-exist", status: "inbox" }

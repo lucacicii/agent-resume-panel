@@ -17,15 +17,18 @@ test("session GTD status map supports set and clear", async () => {
     await ensureExtensionCatalogSchema(catalogDb);
     await setSessionGtdStatus(catalogDb, "codex", "session-1", "next");
     await setSessionGtdStatus(catalogDb, "claude", "session-2", "waiting");
+    await setSessionGtdStatus(catalogDb, "codex", "session-3", "done");
 
     assert.deepEqual(await loadSessionGtdMap(catalogDb), {
       "codex:session-1": "next",
-      "claude:session-2": "waiting"
+      "claude:session-2": "waiting",
+      "codex:session-3": "done"
     });
 
     await clearSessionGtdStatus(catalogDb, "codex", "session-1");
     assert.deepEqual(await loadSessionGtdMap(catalogDb), {
-      "claude:session-2": "waiting"
+      "claude:session-2": "waiting",
+      "codex:session-3": "done"
     });
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });

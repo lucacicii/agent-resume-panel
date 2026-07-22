@@ -1,6 +1,7 @@
 import { ensureCatalogSchema } from "../catalog/db";
 import {
   clearSessionGtdStatus,
+  GTD_STATUSES,
   GtdStatus,
   loadSessionGtdMap,
   sessionGtdKey,
@@ -38,7 +39,7 @@ export class SessionGtdStore {
 
   countByStatus(sessions: AgentSession[]): Record<GtdStatus, number> {
     const counts = Object.fromEntries(
-      (["inbox", "next", "waiting", "someday", "reference"] as const).map((status) => [status, 0])
+      GTD_STATUSES.map((status) => [status, 0])
     ) as Record<GtdStatus, number>;
 
     for (const session of sessions) {

@@ -88,6 +88,8 @@ export {
 export { NotesStore } from "./notes/store";
 export type { ImportNotesResult } from "./notes/store";
 export { reconcileNotesIndex, migrateLegacyNotesToDisk } from "./notes/reconcile";
+export { GTD_ACTIVE_STATUSES, GTD_STATUSES, isActiveGtdStatus, isGtdStatus } from "./gtd/types";
+export type { ActiveGtdStatus, GtdStatus } from "./gtd/types";
 export {
   parseNoteDocument,
   buildNoteDocument,

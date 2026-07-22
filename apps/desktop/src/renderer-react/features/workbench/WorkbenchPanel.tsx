@@ -79,7 +79,8 @@ type SideView = "files" | "git" | null;
 type ProjectFilter = "all" | "pinned" | "active";
 type SessionFilter = "all" | "active";
 type WorkbenchSidebarView = "projects" | "gtd";
-const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
+const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
+const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 type CatalogProject = {
   projectId: string;
   portableKey: string;
@@ -669,6 +670,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     () => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "projects"
   );
   const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus>("inbox");
+  const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
@@ -1738,6 +1740,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
   };
 
+  const contextMenuWidth = contextMenu?.kind === "session" ? 180 : 240;
+  const contextMenuLeft = contextMenu
+    ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
+    : 8;
+
   if (!host) return null;
   return createPortal(<section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
@@ -1757,7 +1764,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           {sidebarView === "projects" ? <>
             <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length}</span></button>
             {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <Pin className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
-          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}</div>}
+          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ChevronRight className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
         </div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
@@ -1806,7 +1813,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}<button type="button" className="wb-git-branch-item" onClick={() => { setBranchPane(null); setBranchResult(null); }}>{t("desktop.common.close")}</button></div> : null}
     {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p>{gitRepositories.length > 1 ? <select className="react-git-repo-select wb-git-repo-select wb-git-commit-repo-select" value={gitRoot} disabled={commitBusy} aria-label={t("desktop.workbench.gitRepoSelect")} onChange={(event) => { setGitRoot(event.target.value); setCommitSuggestion(null); }}>{gitRepositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}</select> : gitRoot ? <span className="muted wb-git-commit-repo-path" title={gitRoot}>{gitRepositories[0]?.label || basename(gitRoot)}</span> : null}</div>{commitSuggestion ? <p className={`wb-rename-status wb-git-commit-suggestion${commitSuggestion.source === "llm" ? " is-ai" : ""}`}>{commitSuggestion.source === "llm" ? t("desktop.workbench.gitCommitSuggestedLlm") : commitSuggestion.fallbackReason === "unconfigured" ? t("desktop.workbench.gitCommitSuggestedUnconfigured") : t("desktop.workbench.gitCommitSuggestedFallback")}</p> : null}<textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-rename-auto-btn wb-git-commit-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
-    {contextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 240)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
         const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -1872,7 +1879,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
-        {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" aria-checked={contextMenu.session ? effectiveGtdStatus(gtdStatuses, contextMenu.session) === gtdStatus : false} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+        <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
+          {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={contextMenu.session ? effectiveGtdStatus(gtdStatuses, contextMenu.session) === gtdStatus : false} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+        </div>
         {contextMenu.session && gtdStatuses[sessionKey(contextMenu.session)] ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>

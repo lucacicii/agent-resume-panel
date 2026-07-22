@@ -9,7 +9,7 @@ import {
 } from "../catalog/search";
 import { getSessionById } from "../catalog/query";
 import type { AgentProvider } from "../catalog/types";
-import { GTD_STATUSES } from "../gtd/types";
+import { GTD_ACTIVE_STATUSES, GTD_STATUSES } from "../gtd/types";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { loadSettings } from "../settings/store";
 import { resolvePreviewHomes } from "../transcript/homes";
@@ -21,7 +21,7 @@ import {
   setSessionGtdStatus,
   setSessionGtdStatusWithAudit
 } from "../gtd/store";
-import { isGtdStatus, type GtdStatus } from "../gtd/types";
+import { isActiveGtdStatus, type GtdStatus } from "../gtd/types";
 import { buildResumeCommand } from "../terminal/commands";
 import { randomUUID } from "node:crypto";
 
@@ -63,7 +63,7 @@ const filterFields = {
   gtdStatus: z
     .enum(GTD_STATUSES as unknown as [string, ...string[]])
     .optional()
-    .describe("Filter by GTD status (inbox, next, waiting, someday, reference)."),
+    .describe("Filter by GTD status (inbox, next, waiting, someday, reference, done)."),
   fromMs: z
     .number()
     .optional()
@@ -95,8 +95,8 @@ export const sessionSetGtdSchema = {
   provider: providerEnum.describe("Agent provider of the session."),
   sessionId: z.string().min(1).describe("Native agent session id."),
   status: z
-    .enum(GTD_STATUSES as unknown as [string, ...string[]])
-    .describe("GTD status: inbox, next, waiting, someday, or reference."),
+    .enum(GTD_ACTIVE_STATUSES as unknown as [string, ...string[]])
+    .describe("GTD status: inbox, next, waiting, someday, or reference. Done is set manually from a session menu."),
   reason: z
     .string()
     .optional()
@@ -463,9 +463,9 @@ export async function handleSessionSetGtd(
   if (!provider || !sessionId || !statusRaw) {
     throw new Error("provider, sessionId, and status are required.");
   }
-  if (!isGtdStatus(statusRaw)) {
+  if (!isActiveGtdStatus(statusRaw)) {
     throw new Error(
-      `Invalid GTD status "${statusRaw}". Use one of: ${GTD_STATUSES.join(", ")}.`
+      `Invalid automated GTD status "${statusRaw}". Use one of: ${GTD_ACTIVE_STATUSES.join(", ")}.`
     );
   }
   const status = statusRaw as GtdStatus;

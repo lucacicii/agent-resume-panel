@@ -7,7 +7,7 @@ import { llmConfigFromSettings } from "../llm/fromSettings";
 import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
 import { ReportEntry } from "../report/schema";
 import { PanelSettings } from "../settings/types";
-import { GtdEvidence, GtdProposal, isGtdStatus } from "../gtd/types";
+import { GtdEvidence, GtdProposal, isActiveGtdStatus } from "../gtd/types";
 import { getSessionGtdStatus } from "../gtd/store";
 import { recordLlmUsage } from "../usage/store";
 import { ensureSummariesForSessions } from "../session/ensureSummaries";
@@ -67,7 +67,7 @@ export function filterReportGtdProposals(input: {
 
   for (const item of input.candidates) {
     const key = `${item.provider}:${item.sessionId}`;
-    if (!isGtdStatus(item.gtd)) {
+    if (!isActiveGtdStatus(item.gtd)) {
       warnings.push(`skip invalid gtd: ${key} → ${item.gtd}`);
       continue;
     }
@@ -294,7 +294,7 @@ export async function analyzeReportForGtd(input: {
   const digestIdsHint = digests.map((d) => d.id).join(", ");
   const system = [
     "You triage coding-agent sessions into GTD for a developer.",
-    "Statuses allowed: inbox, next, waiting, someday, reference.",
+    "Statuses allowed: inbox, next, waiting, someday, reference. Done is a human-only completion state and must never appear in items.",
     "Default to no proposal. Completed work without separate explicit follow-up MUST NOT appear in items.",
     "Use next only when two distinct facts are explicit: unresolved work and a concrete next action. Never infer either from a prior GTD label, a title, or a generic aspiration.",
     "Use waiting only for an explicit external dependency; someday only for explicitly deferred work; reference only for durable knowledge. Omit unclear or completed sessions.",

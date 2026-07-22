@@ -604,15 +604,23 @@ textarea:focus-visible,
 }
 
 .wb-gtd-status-badge.is-inbox,
-.wb-gtd-status-dot.is-inbox { --gtd-status-color: #64748b; }
+.wb-gtd-status-dot.is-inbox,
+.wb-gtd-context-tag.is-inbox { --gtd-status-color: #64748b; }
 .wb-gtd-status-badge.is-next,
-.wb-gtd-status-dot.is-next { --gtd-status-color: var(--color-accent); }
+.wb-gtd-status-dot.is-next,
+.wb-gtd-context-tag.is-next { --gtd-status-color: var(--color-accent); }
 .wb-gtd-status-badge.is-waiting,
-.wb-gtd-status-dot.is-waiting { --gtd-status-color: var(--color-warning); }
+.wb-gtd-status-dot.is-waiting,
+.wb-gtd-context-tag.is-waiting { --gtd-status-color: var(--color-warning); }
 .wb-gtd-status-badge.is-someday,
-.wb-gtd-status-dot.is-someday { --gtd-status-color: #af52de; }
+.wb-gtd-status-dot.is-someday,
+.wb-gtd-context-tag.is-someday { --gtd-status-color: #af52de; }
 .wb-gtd-status-badge.is-reference,
-.wb-gtd-status-dot.is-reference { --gtd-status-color: var(--color-success); }
+.wb-gtd-status-dot.is-reference,
+.wb-gtd-context-tag.is-reference { --gtd-status-color: #0d9488; }
+.wb-gtd-status-badge.is-done,
+.wb-gtd-status-dot.is-done,
+.wb-gtd-context-tag.is-done { --gtd-status-color: var(--color-success); }
 
 .session-row .s-title {
   font-weight: 600;
@@ -6409,6 +6417,13 @@ textarea.wb-editor-host {
   display: none !important;
 }
 
+.wb-context-menu.wb-session-context-menu {
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+  box-sizing: border-box;
+}
+
 .wb-context-menu button,
 .notes-context-menu button,
 .chat-context-menu button {
@@ -6441,6 +6456,37 @@ textarea.wb-editor-host {
   color: var(--color-label-secondary);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
+}
+
+.wb-gtd-context-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 10px 6px;
+}
+
+.wb-gtd-context-tag {
+  --gtd-status-color: var(--color-label-secondary);
+}
+
+.wb-context-menu .wb-gtd-context-tag {
+  width: auto;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
+  color: color-mix(in srgb, var(--gtd-status-color) 78%, var(--color-label-primary));
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+}
+
+.wb-context-menu .wb-gtd-context-tag:hover {
+  background: color-mix(in srgb, var(--gtd-status-color) 20%, transparent);
+}
+
+.wb-context-menu .wb-gtd-context-tag[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--gtd-status-color) 72%, var(--color-separator-opaque));
 }
 
 .chat-context-menu button:disabled {
@@ -7070,6 +7116,25 @@ textarea.wb-editor-host {
 .wb-gtd-folder-row {
   min-height: 30px;
   padding-block: 5px;
+}
+
+.wb-gtd-completed-group {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-separator);
+  padding-top: 4px;
+}
+
+.wb-gtd-completed-toggle svg {
+  flex: 0 0 auto;
+  transition: transform 120ms ease;
+}
+
+.wb-gtd-completed-toggle svg.is-expanded {
+  transform: rotate(90deg);
+}
+
+.wb-gtd-completed-child {
+  padding-left: 28px;
 }
 
 .wb-gtd-status-dot {
