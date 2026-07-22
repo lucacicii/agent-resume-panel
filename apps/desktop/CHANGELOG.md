@@ -10,27 +10,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
-#### Added
-
-- **Agent session tools**: Meta-Agent can search/list/read local CLI sessions (`session_search`, `session_list`, `session_read`, `session_read_transcript`)
-- Hybrid session search: keyword match on title/path/summary, plus **summary-vector** semantic search when embeddings are configured
-- Session summary embeddings written best-effort after Summarize / ensure-summaries (stored in `desktop.db`)
-- **Session citations** in Agent replies: chip section like reports/notes, hover preview, open in Sessions sheet
-- **Auto session summaries**: after sync, generate missing summaries; re-summarize after a configurable quiet delay when a session updates (Settings → Sessions)
-- **Transcript-chunk semantic search** for Agent session tools (when embeddings are configured); index updates after summarize
-- **Independent transcript indexing** (Settings → Sessions): no longer requires session summary; sync + quiet delay + batch limits
-- **Summary embedding auto-index** (Settings → Sessions): backfills `session_embeddings` for sessions that already have summaries (independent of live Summarize)
-- **session_set_gtd** / **session_resume** Agent tools; session citation popover **Resume** opens Workbench resume path
-
 ### [0.2.4]
 
 #### Added
 
+- **Agent session tools**: Meta-Agent can search, list, and read local CLI sessions with `session_search`, `session_list`, `session_read`, and `session_read_transcript`
+- **Hybrid session recall**: keyword matching across titles, paths, and summaries, plus summary-vector semantic search when embeddings are configured
+- **Session citations and resume**: Agent replies can cite reports, notes, and sessions; inspect a preview, open the source in Desktop, or use **Resume** to continue a cited session in Workbench
+- **Automatic session summaries**: create missing summaries after sync and refresh updated sessions after a configurable quiet delay in **Settings → Sessions**
+- **Semantic session indexing**: transcript-chunk search, independent transcript indexing, and background summary-embedding backfill with configurable scheduling and batch limits
+- **Agent session actions**: `session_set_gtd` and `session_resume` tools, with local-session context available to the Agent
+- **Conversation recovery**: edit and resend a user turn, or truncate a thread and continue from an earlier point
 - **GTD Done status**: mark a Workbench session as Done from its context menu; completed sessions appear in a collapsed **Completed** group and share the status with the VS Code extension
 
 #### Improved
 
+- **Agent execution flow and approvals**: inspect retrieval, model, and tool steps with inputs, outputs, timing, source, and risk; write, launch, command, and network actions request approval by default, while destructive or unknown-risk actions always do
+- **Agent safety and auditability**: tool execution records are retained locally with redacted, size-limited payloads; note operations are visible in the audit view
+- **Agent interaction**: clearer context display, citations, execution status, and input layout during streamed answers
 - **Workbench GTD menu**: status choices use colored rounded tags; Reference and Done have distinct colors
+- **GTD analysis**: stricter status interpretation improves how completed and actionable sessions are reflected in Report and GTD workflows
+- **Workbench feedback**: Git actions now report completion and failure through in-app toast notifications
 
 
 ### [0.2.3]
@@ -195,27 +195,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
-#### 新增
-
-- **Agent session 工具**：Meta-Agent 可搜索 / 列出 / 读取本地 CLI 会话（`session_search`、`session_list`、`session_read`、`session_read_transcript`）
-- 混合检索：标题 / 路径 / 摘要关键词 + 配置 embeddings 时的 **摘要向量** 语义搜索
-- Summarize / ensure-summaries 后 best-effort 写入 session 摘要向量（`desktop.db`）
-- **会话引用**：Agent 回答中像报告/笔记一样显示 session chip，支持悬停预览与打开 Sessions
-- **自动会话摘要**：同步后为无摘要 session 生成；更新后经可配置静默延迟再重摘要（Settings → 会话）
-- **Transcript 分块语义检索**（配置 embeddings 时）；摘要后仍可加速更新索引
-- **对话向量独立索引**（Settings → 会话）：不依赖 session 摘要；同步 + 静默期 + 分批限流
-- **摘要向量自动补齐**（Settings → 会话）：对已有 summary 的 session 后台写入 `session_embeddings`（不依赖当场 Summarize）
-- Agent 工具 **session_set_gtd** / **session_resume**；会话引用气泡 **Resume** 走 Workbench 恢复路径
-
 ### [0.2.4]
 
 #### 新增
 
+- **Agent session 工具**：Meta-Agent 可通过 `session_search`、`session_list`、`session_read` 与 `session_read_transcript` 搜索、列出和读取本地 CLI 会话
+- **混合会话回忆**：按标题、路径与摘要做关键词匹配；配置 embeddings 后还支持摘要向量语义搜索
+- **会话引用与恢复**：Agent 回答可引用报告、笔记与会话；可查看预览、在 Desktop 中打开来源，或使用 **Resume** 在 Workbench 中继续引用的会话
+- **自动会话摘要**：同步后为缺失摘要的会话生成摘要；会话更新后可在 **Settings → 会话** 设置静默延迟再刷新
+- **会话语义索引**：支持 Transcript 分块检索、独立 Transcript 索引，以及带可配置调度与批量限制的摘要向量后台补齐
+- **Agent 会话操作**：提供 `session_set_gtd` 与 `session_resume` 工具，并向 Agent 提供本机会话上下文
+- **对话恢复**：可编辑并重发用户消息，或截断线程后从较早位置继续
 - **GTD Done 状态**：在 Workbench 会话右键菜单中标记完成；完成会话收纳到默认折叠的 **已完成** 分组，并与 VS Code 扩展共用状态
 
 #### 改进
 
+- **Agent 执行流程与授权**：可查看检索、模型与工具步骤的输入、输出、耗时、来源和风险；写入、启动、命令与网络操作默认需要授权，破坏性或未知风险操作始终需要授权
+- **Agent 安全与审计**：工具执行记录保存在本机，内容会做常见密钥脱敏和长度限制；笔记操作可在审计视图中查看
+- **Agent 交互**：流式回答期间的上下文、引用、执行状态和输入栏布局更清晰
 - **Workbench GTD 菜单**：状态选项改为带状态色的圆角标签；Reference 与 Done 使用不同颜色
+- **GTD 分析**：更严格地识别状态，使 Report 与 GTD 工作流更准确地区分完成与可行动会话
+- **Workbench 反馈**：Git 操作完成或失败时会显示应用内 Toast 通知
 
 ### [0.2.3]
 
