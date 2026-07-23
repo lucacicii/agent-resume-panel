@@ -6,7 +6,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    include: ["src/renderer-react/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}"],
     clearMocks: true
   }
 });

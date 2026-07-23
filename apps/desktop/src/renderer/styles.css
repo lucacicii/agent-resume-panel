@@ -1208,6 +1208,20 @@ textarea:focus-visible,
   gap: 8px;
 }
 
+.settings-mcp-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.settings-mcp-actions .tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .settings-toggle {
   position: relative;
   display: inline-flex;

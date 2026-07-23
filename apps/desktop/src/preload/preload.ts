@@ -20,10 +20,19 @@ import type {
   GtdEvidence,
   GtdStatus
 } from "@agent-resume/core";
+import type { McpClientInfo } from "../main/mcpRegistration";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
+  listMcpClients(): Promise<McpClientInfo[]>;
+  getMcpManualConfig(): Promise<string>;
+  registerMcpClient(args: { clientId: McpClientInfo["id"]; replace?: boolean }): Promise<{ ok: boolean }>;
+  removeMcpClient(args: { clientId: McpClientInfo["id"] }): Promise<{ ok: boolean }>;
+  registerAllMcpClients(args?: { replace?: boolean }): Promise<{
+    registered: string[];
+    failed: Array<{ clientId: string; error: string }>;
+  }>;
   saveSettings(
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
@@ -659,6 +668,11 @@ export interface DesktopApi {
 const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
+  listMcpClients: () => ipcRenderer.invoke("mcp:listClients"),
+  getMcpManualConfig: () => ipcRenderer.invoke("mcp:manualConfig"),
+  registerMcpClient: (args) => ipcRenderer.invoke("mcp:register", args),
+  removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
+  registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),

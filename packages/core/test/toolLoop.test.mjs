@@ -112,7 +112,9 @@ test("runToolLoop executes tool calls and returns final answer", async () => {
 
     assert.equal(result.content, "笔记已创建成功！");
     assert.equal(result.toolCallsExecuted, 1);
-    assert.deepEqual(toolCallsSeen, ["note_create"]);
+    assert.equal(toolCallsSeen.length, 1);
+    assert.equal(toolCallsSeen[0].toolName, "note_create");
+    assert.equal(toolCallsSeen[0].impact, "write");
     assert.equal(result.touchedNotes.length, 1);
     assert.equal(result.touchedNotes[0].operation, "create");
     assert.ok(result.touchedNotes[0].noteId);

@@ -95,6 +95,7 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_gtd_delete",
       "note_gtd_list",
       "note_gtd_update",
+      "note_list",
       "note_read",
       "note_search",
       "note_write",
@@ -108,6 +109,36 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "session_search",
       "session_set_gtd"
     ]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note_list pages every note without requiring a search query", async () => {
+  const { ctx } = await setupTestContext();
+  await ctx.notesStore.createLibraryNote("# First\n\nOld note");
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  await ctx.notesStore.createLibraryNote("# Second\n\nNew note");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const first = await client.callTool({ name: "note_list", arguments: { limit: 1 } });
+    assert.notEqual(first.isError, true);
+    const firstPage = JSON.parse(first.content[0].text);
+    assert.equal(firstPage.total, 2);
+    assert.equal(firstPage.items.length, 1);
+    assert.equal(firstPage.nextCursor, 1);
+
+    const second = await client.callTool({
+      name: "note_list",
+      arguments: { limit: 1, cursor: firstPage.nextCursor }
+    });
+    const secondPage = JSON.parse(second.content[0].text);
+    assert.equal(secondPage.items.length, 1);
+    assert.equal(secondPage.nextCursor, undefined);
+    assert.notEqual(firstPage.items[0].noteId, secondPage.items[0].noteId);
   } finally {
     await client.close();
     await server.close();

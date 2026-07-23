@@ -83,6 +83,15 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import {
+  createExternalMcpLaunchConfig,
+  listMcpClients,
+  manualMcpConfig,
+  registerMcpClient,
+  removeMcpClient,
+  type McpClientId
+} from "./mcpRegistration";
+import { parseMcpRunnerArgs, runDesktopMcpService } from "./mcpRunner";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
@@ -609,6 +618,54 @@ function registerIpc(): void {
 
   ipcMain.handle("settings:get", async () => {
     return loadSettings();
+  });
+
+  const externalMcpLaunch = async () => {
+    const settings = await loadSettings();
+    return createExternalMcpLaunchConfig({
+      executablePath: process.execPath,
+      baseArgs: app.isPackaged ? [] : [app.getAppPath()],
+      panelHome: resolvePanelHome(settings.panelHome)
+    });
+  };
+
+  safeHandle("mcp:listClients", async () => listMcpClients());
+
+  safeHandle("mcp:manualConfig", async () => manualMcpConfig(await externalMcpLaunch()));
+
+  safeHandle(
+    "mcp:register",
+    async (_event, args: { clientId?: unknown; replace?: unknown }) => {
+      const clientId = String(args?.clientId || "") as McpClientId;
+      await registerMcpClient(clientId, await externalMcpLaunch(), args?.replace === true);
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle("mcp:remove", async (_event, args: { clientId?: unknown }) => {
+    const clientId = String(args?.clientId || "") as McpClientId;
+    await removeMcpClient(clientId);
+    return { ok: true as const };
+  });
+
+  safeHandle("mcp:registerAll", async (_event, args?: { replace?: unknown }) => {
+    const launch = await externalMcpLaunch();
+    const clients = await listMcpClients();
+    const registered: string[] = [];
+    const failed: Array<{ clientId: string; error: string }> = [];
+    for (const client of clients) {
+      if (!client.detected || client.mode !== "automatic") continue;
+      try {
+        await registerMcpClient(client.id, launch, args?.replace === true);
+        registered.push(client.id);
+      } catch (error) {
+        failed.push({
+          clientId: client.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    return { registered, failed };
   });
 
   ipcMain.handle("i18n:getBundle", async () => {
@@ -1504,68 +1561,77 @@ function registerIpc(): void {
   );
 }
 
-app.whenReady().then(async () => {
-  initI18nService(path.join(app.getAppPath()));
-  applyAppIcon();
-  registerIpc();
-  registerWorkbenchFsIpc();
-  registerWorkbenchGitIpc(() => app.getLocale());
-  tryRegisterPtyIpc();
-  try {
-    await loadPanelDbPaths();
-  } catch (error) {
-    console.error("Failed to prepare panel databases on startup:", error);
-  }
-  createWindow();
-  await installApplicationMenu();
-  startDesktopNotesIndexer();
-  startSessionSummaryAuto();
-  startSessionTranscriptIndexAuto();
-  startSessionEmbeddingIndexAuto();
-  await refreshMemorySchedulerFromSettings();
-  app.on("activate", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      // Invariant fallback: settings must not outlive main
-      closeSettingsWindowIfOpen();
-      createWindow();
-      startDesktopNotesIndexer();
-      startSessionSummaryAuto();
-      startSessionTranscriptIndexAuto();
-      startSessionEmbeddingIndexAuto();
-      // Closing the last window on macOS used to stop the scheduler; restore it with the window.
-      void refreshMemorySchedulerFromSettings();
-      return;
-    }
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-    mainWindow.show();
-    mainWindow.focus();
-    void refreshMemorySchedulerFromSettings();
+const mcpInvocation = parseMcpRunnerArgs(process.argv);
+
+if (mcpInvocation) {
+  void runDesktopMcpService(mcpInvocation).catch((error) => {
+    console.error("Desktop MCP service failed:", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
   });
-});
+} else {
+  app.whenReady().then(async () => {
+    initI18nService(path.join(app.getAppPath()));
+    applyAppIcon();
+    registerIpc();
+    registerWorkbenchFsIpc();
+    registerWorkbenchGitIpc(() => app.getLocale());
+    tryRegisterPtyIpc();
+    try {
+      await loadPanelDbPaths();
+    } catch (error) {
+      console.error("Failed to prepare panel databases on startup:", error);
+    }
+    createWindow();
+    await installApplicationMenu();
+    startDesktopNotesIndexer();
+    startSessionSummaryAuto();
+    startSessionTranscriptIndexAuto();
+    startSessionEmbeddingIndexAuto();
+    await refreshMemorySchedulerFromSettings();
+    app.on("activate", () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        // Invariant fallback: settings must not outlive main
+        closeSettingsWindowIfOpen();
+        createWindow();
+        startDesktopNotesIndexer();
+        startSessionSummaryAuto();
+        startSessionTranscriptIndexAuto();
+        startSessionEmbeddingIndexAuto();
+        // Closing the last window on macOS used to stop the scheduler; restore it with the window.
+        void refreshMemorySchedulerFromSettings();
+        return;
+      }
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+      void refreshMemorySchedulerFromSettings();
+    });
+  });
 
-app.on("before-quit", () => {
-  stopMemoryScheduler();
-  stopNotesIndexer();
-  stopSessionSummaryAuto();
-  stopSessionTranscriptIndexAuto();
-  stopSessionEmbeddingIndexAuto();
-  tryDestroyPtyOnQuit();
-});
-
-app.on("window-all-closed", () => {
-  // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
-  // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
-  if (process.platform !== "darwin") {
+  app.on("before-quit", () => {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();
     stopSessionTranscriptIndexAuto();
     stopSessionEmbeddingIndexAuto();
     tryDestroyPtyOnQuit();
-    app.quit();
-  } else {
-    tryDestroyPtyOnQuit();
-  }
-});
+  });
+
+  app.on("window-all-closed", () => {
+    // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
+    // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
+    if (process.platform !== "darwin") {
+      stopMemoryScheduler();
+      stopNotesIndexer();
+      stopSessionSummaryAuto();
+      stopSessionTranscriptIndexAuto();
+      stopSessionEmbeddingIndexAuto();
+      tryDestroyPtyOnQuit();
+      app.quit();
+    } else {
+      tryDestroyPtyOnQuit();
+    }
+  });
+}

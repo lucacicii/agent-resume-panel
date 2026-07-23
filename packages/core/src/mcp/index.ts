@@ -18,12 +18,14 @@ export {
 export type { ReportToolContext } from "./reportTools";
 export {
   noteSearchSchema,
+  noteListSchema,
   noteCreateSchema,
   noteReadSchema,
   noteWriteSchema,
   noteAppendSchema,
   noteDeleteSchema,
   handleNoteSearch,
+  handleNoteList,
   handleNoteCreate,
   handleNoteRead,
   handleNoteWrite,

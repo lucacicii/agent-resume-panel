@@ -7,12 +7,14 @@ import {
   handleNoteAppend,
   handleNoteCreate,
   handleNoteDelete,
+  handleNoteList,
   handleNoteRead,
   handleNoteSearch,
   handleNoteWrite,
   noteAppendSchema,
   noteCreateSchema,
   noteDeleteSchema,
+  noteListSchema,
   noteReadSchema,
   noteSearchSchema,
   noteWriteSchema,
@@ -52,7 +54,7 @@ import {
 } from "./sessionTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
-export const MCP_SERVER_VERSION = "0.1.0";
+export const MCP_SERVER_VERSION = "0.2.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -75,6 +77,18 @@ export interface AgentMcpContext extends NoteToolContext {
 export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION }
+  );
+
+  server.registerTool(
+    "note_list",
+    {
+      description:
+        "List all indexed notes with optional scope filtering and pagination. Use this instead of note_search when the user asks to enumerate every note.",
+      inputSchema: noteListSchema
+    },
+    async (args: { scope?: string; limit?: number; cursor?: number }) => {
+      return handleNoteList(args, ctx);
+    }
   );
 
   server.registerTool(

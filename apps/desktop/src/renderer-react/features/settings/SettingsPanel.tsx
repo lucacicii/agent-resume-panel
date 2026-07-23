@@ -5,6 +5,7 @@ import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AboutPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { McpPane } from "./McpPane";
 import {
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
@@ -27,8 +28,9 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "usage" | "about";
+type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "mcp" | "usage" | "about";
 type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
+type EditablePane = Exclude<Pane, "usage" | "about" | "mcp">;
 
 export type SettingsPanelProps = {
   /** Production path is always "window" (auxiliary BrowserWindow). */
@@ -43,6 +45,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
   { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
+  { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
   { id: "usage", key: "desktop.settings.paneUsage", desc: "desktop.settings.paneUsageDesc" },
   { id: "about", key: "desktop.settings.paneAbout", desc: "desktop.settings.paneAboutDesc" }
 ];
@@ -121,7 +124,7 @@ export function SettingsPanel({
     };
   }, [isWindow, load]);
 
-  const save = useCallback(async (next: PanelSettings, section: Exclude<Pane, "usage" | "about">) => {
+  const save = useCallback(async (next: PanelSettings, section: EditablePane) => {
     setStatus({ text: t("desktop.settings.saving") });
     try {
       const result = await desktopApi().saveSettings(next, {
@@ -149,7 +152,7 @@ export function SettingsPanel({
     }
   }, [hydrate, isWindow, t]);
 
-  const scheduleSave = (section: Exclude<Pane, "usage" | "about">, draft: Draft) => {
+  const scheduleSave = (section: EditablePane, draft: Draft) => {
     if (!settings) return;
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
@@ -203,6 +206,7 @@ export function SettingsPanel({
       />
     )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
+    : pane === "mcp" ? <McpPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} /> : <AboutPane t={t} />;
 
   return createPortal(

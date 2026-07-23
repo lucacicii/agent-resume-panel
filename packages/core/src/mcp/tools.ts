@@ -12,6 +12,8 @@ export interface NoteToolContext {
 
 export const NOTE_SEARCH_DEFAULT_LIMIT = 50;
 export const NOTE_SEARCH_MAX_LIMIT = 200;
+export const NOTE_LIST_DEFAULT_LIMIT = 100;
+export const NOTE_LIST_MAX_LIMIT = 200;
 
 export function clampNoteSearchLimit(limit?: number): number {
   const raw = Number(limit);
@@ -101,6 +103,26 @@ export const noteSearchSchema = {
     .describe(`Maximum notes to return. Defaults to ${NOTE_SEARCH_DEFAULT_LIMIT}, capped at ${NOTE_SEARCH_MAX_LIMIT}.`)
 };
 
+export const noteListSchema = {
+  scope: z
+    .enum(["library", "project", "session", "all"])
+    .optional()
+    .describe("Optional note scope filter. Defaults to 'all'."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(NOTE_LIST_MAX_LIMIT)
+    .optional()
+    .describe(`Maximum notes per page. Defaults to ${NOTE_LIST_DEFAULT_LIMIT}.`),
+  cursor: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Zero-based offset returned as nextCursor from a previous note_list call.")
+};
+
 export const noteCreateSchema = {
   scope: z.enum(["library", "project", "session"]).describe("Where to create the note."),
   title: z.string().min(1).max(200).describe("Note title — used as the first heading."),
@@ -181,6 +203,28 @@ export async function handleNoteSearch(
     const text = formatSearchResults(query, summary, totalMatches);
     return { content: [{ type: "text", text }] };
   }
+}
+
+export async function handleNoteList(
+  args: { scope?: string; limit?: number; cursor?: number },
+  ctx: NoteToolContext
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  await ctx.notesStore.reload();
+  const scope = args.scope || "all";
+  const limit = Math.min(Math.max(args.limit || NOTE_LIST_DEFAULT_LIMIT, 1), NOTE_LIST_MAX_LIMIT);
+  const cursor = Math.max(args.cursor || 0, 0);
+  const notes = ctx.notesStore
+    .getAllNotes()
+    .filter((note) => scope === "all" || note.scope === scope)
+    .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.noteId.localeCompare(right.noteId));
+  const items = notes.slice(cursor, cursor + limit).map(summarizeNote);
+  const nextCursor = cursor + items.length < notes.length ? cursor + items.length : undefined;
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({ total: notes.length, cursor, nextCursor, items }, null, 2)
+    }]
+  };
 }
 
 export async function handleNoteCreate(

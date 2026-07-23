@@ -63,6 +63,7 @@ function renderWindowSettings(initialPane = "general") {
     options
   }));
   const navigateHandlers: Array<(payload: { pane: string }) => void> = [];
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
