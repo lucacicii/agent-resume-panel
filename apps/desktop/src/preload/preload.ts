@@ -21,10 +21,18 @@ import type {
   GtdStatus
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
+import type { BackupPreview, BackupResult } from "../main/backupService";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
+  backupExport(args: { includeCredentials: boolean; password?: string }): Promise<BackupResult>;
+  backupSelectImport(): Promise<BackupPreview | null>;
+  backupImport(args: {
+    importToken: string;
+    includeCredentials: boolean;
+    password?: string;
+  }): Promise<BackupResult>;
   listMcpClients(): Promise<McpClientInfo[]>;
   getMcpManualConfig(): Promise<string>;
   registerMcpClient(args: { clientId: McpClientInfo["id"]; replace?: boolean }): Promise<{ ok: boolean }>;
@@ -668,6 +676,9 @@ export interface DesktopApi {
 const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
+  backupExport: (args) => ipcRenderer.invoke("backup:export", args),
+  backupSelectImport: () => ipcRenderer.invoke("backup:selectImport"),
+  backupImport: (args) => ipcRenderer.invoke("backup:import", args),
   listMcpClients: () => ipcRenderer.invoke("mcp:listClients"),
   getMcpManualConfig: () => ipcRenderer.invoke("mcp:manualConfig"),
   registerMcpClient: (args) => ipcRenderer.invoke("mcp:register", args),

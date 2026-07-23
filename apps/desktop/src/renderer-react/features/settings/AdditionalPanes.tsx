@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ExternalLink, FileText, MessageSquareWarning, ShieldCheck } from "lucide-react";
+import { Download, ExternalLink, FileText, MessageSquareWarning, ShieldCheck, Upload } from "lucide-react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -230,6 +230,71 @@ export function ReportPane({
       </div>
     </section>
   </>;
+}
+
+export function BackupPane({ t }: { t: Translate }) {
+  const [includeCredentials, setIncludeCredentials] = useState(false);
+  const [exportPassword, setExportPassword] = useState("");
+  const [exportPasswordConfirm, setExportPasswordConfirm] = useState("");
+  const [pendingImport, setPendingImport] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupSelectImport"]>>>(null);
+  const [importCredentials, setImportCredentials] = useState(false);
+  const [importPassword, setImportPassword] = useState("");
+  const [backupStatus, setBackupStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [backupBusy, setBackupBusy] = useState(false);
+  const exportData = async () => {
+    if (includeCredentials && (!exportPassword || exportPassword !== exportPasswordConfirm)) {
+      setBackupStatus({ text: t("desktop.backup.passwordMismatch"), kind: "error" });
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      const result = await desktopApi().backupExport({ includeCredentials, password: includeCredentials ? exportPassword : undefined });
+      setBackupStatus(result.canceled ? { text: t("desktop.backup.exportCanceled") } : { text: t("desktop.backup.exported", result.fileCount || 0), kind: "ok" });
+      setExportPassword("");
+      setExportPasswordConfirm("");
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const selectImport = async () => {
+    setBackupBusy(true);
+    try {
+      const preview = await desktopApi().backupSelectImport();
+      setPendingImport(preview);
+      setImportCredentials(false);
+      setImportPassword("");
+      if (!preview) setBackupStatus({ text: t("desktop.backup.importCanceled") });
+      else setBackupStatus({ text: t("desktop.backup.ready", preview.fileCount), kind: "ok" });
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const mergeImport = async () => {
+    if (!pendingImport) return;
+    if (importCredentials && !importPassword) {
+      setBackupStatus({ text: t("desktop.backup.passwordRequired"), kind: "error" });
+      return;
+    }
+    if (!window.confirm(t("desktop.backup.importConfirm", pendingImport.fileCount))) return;
+    setBackupBusy(true);
+    try {
+      const result = await desktopApi().backupImport({ importToken: pendingImport.importToken, includeCredentials: importCredentials, password: importCredentials ? importPassword : undefined });
+      setPendingImport(null);
+      setImportPassword("");
+      setBackupStatus({ text: t("desktop.backup.imported", result.fileCount || 0), kind: "ok" });
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  return (
+    <section className="settings-group settings-group-action"><h3 className="settings-group-title">{t("desktop.backup.title")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.backup.description")}</p><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.includeCredentials")}</span><span className="settings-row-desc">{t("desktop.backup.includeCredentialsDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={includeCredentials} disabled={backupBusy} onChange={(event) => setIncludeCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>{includeCredentials ? <><label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="new-password" value={exportPassword} disabled={backupBusy} onChange={(event) => setExportPassword(event.target.value)} /></label><label className="settings-field"><span className="settings-field-label">{t("desktop.backup.passwordConfirm")}</span><input type="password" autoComplete="new-password" value={exportPasswordConfirm} disabled={backupBusy} onChange={(event) => setExportPasswordConfirm(event.target.value)} /></label></> : null}<div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void exportData()}><Download size={16} aria-hidden="true" />{t("desktop.backup.export")}</button><button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void selectImport()}><Upload size={16} aria-hidden="true" />{t("desktop.backup.import")}</button></div>{pendingImport ? <div className="settings-group-body"><p className="settings-footnote">{t("desktop.backup.summary", pendingImport.fileCount, Math.ceil(pendingImport.totalBytes / 1024 / 1024))}</p>{pendingImport.credentialsEncrypted ? <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.importCredentials")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={importCredentials} disabled={backupBusy} onChange={(event) => setImportCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label> : null}{pendingImport.credentialsEncrypted && importCredentials ? <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="current-password" value={importPassword} disabled={backupBusy} onChange={(event) => setImportPassword(event.target.value)} /></label> : null}<button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void mergeImport()}>{t("desktop.backup.merge")}</button></div> : null}<Status kind={backupStatus.kind}>{backupStatus.text}</Status></div></section>
+  );
 }
 
 export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; scheduleSave: (value: StorageDraft) => void; t: Translate }) {

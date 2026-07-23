@@ -113,6 +113,12 @@ importers:
       react-dom:
         specifier: ^19.2.7
         version: 19.2.7(react@19.2.7)
+      yauzl:
+        specifier: ^3.4.0
+        version: 3.4.0
+      yazl:
+        specifier: ^2.5.1
+        version: 2.5.1
     devDependencies:
       '@electron/get':
         specifier: ^3.1.0

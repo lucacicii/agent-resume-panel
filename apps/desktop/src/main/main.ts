@@ -132,6 +132,11 @@ import {
   startSessionEmbeddingIndexAuto,
   stopSessionEmbeddingIndexAuto
 } from "./sessionEmbeddingIndexAuto";
+import {
+  exportBackup,
+  importBackup,
+  selectBackupForImport
+} from "./backupService";
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -681,6 +686,71 @@ function registerIpc(): void {
   });
 
   safeHandle("app:getVersion", async () => ({ version: getAppVersion() }));
+
+  safeHandle(
+    "backup:export",
+    async (_event, args?: { includeCredentials?: unknown; password?: unknown }) => {
+      const settings = await loadSettings();
+      const includeCredentials = args?.includeCredentials === true;
+      const password = typeof args?.password === "string" ? args.password : undefined;
+      const selected = await dialog.showSaveDialog({
+        defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+        filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
+      });
+      if (selected.canceled || !selected.filePath) return { canceled: true };
+      return exportBackup(settings, selected.filePath, getAppVersion(), { includeCredentials, password });
+    }
+  );
+
+  safeHandle("backup:selectImport", async () => {
+    const selected = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
+    });
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    return selectBackupForImport(selected.filePaths[0]);
+  });
+
+  safeHandle(
+    "backup:import",
+    async (_event, args?: { importToken?: unknown; includeCredentials?: unknown; password?: unknown }) => {
+      const importToken = typeof args?.importToken === "string" ? args.importToken : "";
+      if (!importToken) throw new Error("A selected backup is required.");
+      stopMemoryScheduler();
+      stopNotesIndexer();
+      stopSessionSummaryAuto();
+      stopSessionTranscriptIndexAuto();
+      stopSessionEmbeddingIndexAuto();
+      try {
+        const result = await importBackup(await loadSettings(), importToken, getAppVersion(), {
+          includeCredentials: args?.includeCredentials === true,
+          password: typeof args?.password === "string" ? args.password : undefined,
+          recoveryDir: path.join(app.getPath("userData"), "import-recovery")
+        });
+        invalidateNotesStore();
+        const saved = await loadSettings();
+        const bundle = buildI18nBundle(saved);
+        await refreshMemorySchedulerFromSettings();
+        startNotesIndexer((progress) => broadcastToRenderers("notes:indexProgress", progress));
+        startSessionSummaryAuto();
+        startSessionTranscriptIndexAuto();
+        startSessionEmbeddingIndexAuto();
+        broadcastToRenderers("settings:changed", { settings: saved, section: "storage" });
+        broadcastToRenderers("i18n:localeChanged", bundle);
+        broadcastToRenderers("backup:imported", result);
+        void installApplicationMenu();
+        return result;
+      } catch (error) {
+        const saved = await loadSettings();
+        await refreshMemorySchedulerFromSettings();
+        startNotesIndexer((progress) => broadcastToRenderers("notes:indexProgress", progress));
+        startSessionSummaryAuto();
+        startSessionTranscriptIndexAuto();
+        startSessionEmbeddingIndexAuto();
+        throw error;
+      }
+    }
+  );
 
   safeHandle("update:check", async (_event, options?: { force?: boolean }) => {
     return checkForDesktopUpdate(options);

@@ -4,7 +4,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
-import { AboutPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { AboutPane, BackupPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { McpPane } from "./McpPane";
 import {
   embeddingSearchIdentityChanged,
@@ -28,9 +28,9 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "mcp" | "usage" | "about";
+type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "mcp" | "usage" | "backup" | "about";
 type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
-type EditablePane = Exclude<Pane, "usage" | "about" | "mcp">;
+type EditablePane = Exclude<Pane, "usage" | "backup" | "about" | "mcp">;
 
 export type SettingsPanelProps = {
   /** Production path is always "window" (auxiliary BrowserWindow). */
@@ -47,6 +47,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
   { id: "usage", key: "desktop.settings.paneUsage", desc: "desktop.settings.paneUsageDesc" },
+  { id: "backup", key: "desktop.settings.paneBackup", desc: "desktop.settings.paneBackupDesc" },
   { id: "about", key: "desktop.settings.paneAbout", desc: "desktop.settings.paneAboutDesc" }
 ];
 
@@ -207,7 +208,8 @@ export function SettingsPanel({
     )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
-    : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} /> : <AboutPane t={t} />;
+    : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
+    : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
     <section className="panel active react-settings-panel">
