@@ -10,6 +10,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+### [0.2.5]
+
+#### Added
+
+- **External Agent MCP**: register one local `Agent Resume MCP` service from **Settings → MCP** for Codex, Claude Code, Gemini CLI, Antigravity, and OpenCode; Cursor, Pi, and Grok Build can use copied configuration
+- **MCP Notes access**: external agents can list all indexed notes with pagination, search and edit Notes, manage note GTD tasks, read Reports, and work with Sessions
+- **Cursor session integration**: Desktop can index, preview, and resume local Cursor agent sessions
+- **Notes GTD slash command**: type `/` in the Markdown editor to insert a status-tagged GTD shortcut; arrow keys choose a command and Enter inserts it
+- **Ask source links**: report, note, and session citations in Agent replies open their corresponding Desktop preview
+
+#### Improved
+
+- **Workbench file explorer**: refreshed the file-tree icon
+
+#### Fixed
+
+- **Workbench branch selector**: closes correctly when an external interaction dismisses the popover
+
 ### [0.2.4]
 
 #### Added
@@ -194,6 +212,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ## 简体中文
 
 ### [Unreleased]
+
+### [0.2.5]
+
+#### 新增
+
+- **外部 Agent MCP**：可在 **设置 → MCP** 中为 Codex、Claude Code、Gemini CLI、Antigravity 与 OpenCode 注册统一的本机 `Agent Resume MCP` 服务；Cursor、Pi、Grok Build 可复制配置后手动接入
+- **MCP Notes 访问**：外部 Agent 可分页列出全部已索引笔记、搜索和编辑 Notes、管理笔记 GTD、读取 Reports，以及查询和操作 Sessions
+- **Cursor 会话集成**：Desktop 可索引、预览和恢复本机 Cursor Agent 会话
+- **Notes GTD 斜杠命令**：在 Markdown 编辑器输入 `/` 可插入带状态标签的 GTD 快捷项；可用方向键选择、回车插入
+- **Ask 来源链接**：Agent 回复中的报告、笔记和会话引用可直接打开对应的 Desktop 预览
+
+#### 改进
+
+- **Workbench 文件资源管理器**：更新文件树图标
+
+#### 修复
+
+- **Workbench 分支选择器**：外部交互关闭弹层时可正确收起
 
 ### [0.2.4]
 

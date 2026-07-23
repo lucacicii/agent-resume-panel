@@ -29,6 +29,12 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 | **Notes** | Markdown note editor (shared with the extension) |
 | **Sessions** | Reference list and read-only preview |
 
+### External agent MCP
+
+**Agent Resume MCP** is one local stdio service that lets a trusted local agent work with the same Notes, Reports, Sessions, and GTD data as Desktop. Open **Settings → MCP** to register detected Codex, Claude Code, Gemini CLI, Antigravity, or OpenCode installations. Cursor, Pi, and Grok Build use the copyable configuration from that page.
+
+The service exposes 20 tools: 11 for Notes and note GTD, 3 for Reports, and 6 for Sessions. Registered agents can create, update, and permanently delete local data, so only register clients you trust. The service does not open a network port. See the [MCP user guide](https://github.com/thunder-luc/agent-resume-desktop-doc/blob/main/mcp.md) for the tool reference and registration details.
+
 ### Requirements
 
 - macOS 12 or later
@@ -59,6 +65,12 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 | **Workbench** | 内嵌终端、多标签恢复与 Git 工具 |
 | **Notes** | Markdown 笔记编辑（与扩展共用） |
 | **Sessions** | 会话参考列表与只读预览 |
+
+### 外部 Agent MCP
+
+**Agent Resume MCP** 是一个本机 stdio 聚合服务，让受信任的本机 Agent 使用与 Desktop 相同的 Notes、Reports、Sessions 与 GTD 数据。在 **设置 → MCP** 中可注册已检测到的 Codex、Claude Code、Gemini CLI、Antigravity 与 OpenCode；Cursor、Pi、Grok Build 可从该页面复制配置后手动添加。
+
+服务当前提供 20 个工具：Notes 与笔记 GTD 11 个、Reports 3 个、Sessions 6 个。注册后的 Agent 可创建、修改和永久删除本机数据，请仅注册可信客户端。服务不会开放网络端口。工具说明与注册细节见 [MCP 使用文档](https://github.com/thunder-luc/agent-resume-desktop-doc/blob/main/mcp.md)。
 
 ### 系统要求
 
