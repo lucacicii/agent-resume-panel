@@ -142,6 +142,57 @@ function citationLabel(citation: AgentCitation, t: Translate): string {
   return `[${index}] ${operation ? `${operation} · ` : ""}${source} · ${subject}${heading}${score}${linkedSession}`;
 }
 
+function citationMarker(citation: AgentCitation): string {
+  return `${isNote(citation) ? "N" : isSession(citation) ? "S" : ""}${citation.index}`;
+}
+
+function citationForMarker(citations: AgentCitation[], marker: string): AgentCitation | undefined {
+  return citations.find((citation) => citationMarker(citation) === marker);
+}
+
+const CITATION_MARKER = /\[(?:(N|S)(\d+)|(\d+))\]/g;
+
+function renderAssistantMarkdown(content: string, citations: AgentCitation[]): string {
+  if (!citations.length || typeof document === "undefined") return renderMarkdown(content);
+
+  const template = document.createElement("template");
+  template.innerHTML = renderMarkdown(content);
+  const walker = document.createTreeWalker(template.content, 4);
+  const textNodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    const parent = current.parentElement;
+    if (parent && !parent.closest("a, code, pre")) textNodes.push(current as Text);
+    current = walker.nextNode();
+  }
+
+  for (const textNode of textNodes) {
+    const value = textNode.data;
+    const matches = [...value.matchAll(CITATION_MARKER)].filter((match) => citationForMarker(citations, `${match[1] || ""}${match[2] || match[3]}`));
+    if (!matches.length) continue;
+
+    const replacement = document.createDocumentFragment();
+    let offset = 0;
+    for (const match of matches) {
+      const marker = `${match[1] || ""}${match[2] || match[3]}`;
+      const start = match.index || 0;
+      replacement.append(value.slice(offset, start));
+      const link = document.createElement("a");
+      link.className = "agent-citation-link";
+      link.href = `#citation-${marker}`;
+      link.dataset.agentCitation = marker;
+      link.title = citationForMarker(citations, marker)?.title || `[${marker}]`;
+      link.textContent = match[0];
+      replacement.append(link);
+      offset = start + match[0].length;
+    }
+    replacement.append(value.slice(offset));
+    textNode.replaceWith(replacement);
+  }
+
+  return template.innerHTML;
+}
+
 function progressFromEvent(event: ProgressEvent): IndexProgress {
   return { ...event, visible: true };
 }
@@ -673,7 +724,7 @@ export function AgentPanel(): ReactPortal | null {
               <Status kind={status.kind}>{status.text}</Status>
               {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}
             </div> : null}
-            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
+            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onOpenCitation={openCitation} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
               setContext({
@@ -723,6 +774,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   t: Translate;
   onOpenTrace: (turnId: string) => void;
   onOpenCitations: (turnId: string) => void;
+  onOpenCitation: (citation: AgentCitation) => void;
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   editingTurnId: string | null;
   editDraft: string;
@@ -732,7 +784,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   onConfirmEdit: () => void;
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
-}>(({ turns, hasMore, loadingOlder, t, onOpenTrace, onOpenCitations, onScroll, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
+}>(({ turns, hasMore, loadingOlder, t, onOpenTrace, onOpenCitations, onOpenCitation, onScroll, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const heights = useRef(new Map<string, number>());
@@ -767,7 +819,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
     forceLayout((value) => value + 1);
   }, []);
   if (!turns.length) return <div ref={setLogRef} className="chat-log" onScroll={onScroll}><div className="chat-empty-state"><p className="chat-empty-title">{t("desktop.agent.emptyChat")}</p><p className="chat-empty-hint">{t("desktop.agent.emptyHint")}</p></div></div>;
-  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} t={t} onOpenTrace={onOpenTrace} onOpenCitations={onOpenCitations} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
+  return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} t={t} onOpenTrace={onOpenTrace} onOpenCitations={onOpenCitations} onOpenCitation={onOpenCitation} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
 });
 
 function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id: string, height: number) => void; children: ReactNode }) {
@@ -787,11 +839,12 @@ function MeasuredTurn({ turn, onHeight, children }: { turn: Turn; onHeight: (id:
   return <div ref={ref}>{children}</div>;
 }
 
-function TurnView({ turn, t, onOpenTrace, onOpenCitations, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
+function TurnView({ turn, t, onOpenTrace, onOpenCitations, onOpenCitation, editing, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }: {
   turn: Turn;
   t: Translate;
   onOpenTrace: (turnId: string) => void;
   onOpenCitations: (turnId: string) => void;
+  onOpenCitation: (citation: AgentCitation) => void;
   editing: boolean;
   editDraft: string;
   sending: boolean;
@@ -819,7 +872,15 @@ function TurnView({ turn, t, onOpenTrace, onOpenCitations, editing, editDraft, s
   const summary = executionSummary(traceForTurn(turn));
   const summaryParts = (["retrieval", "tool", "llm", "skill"] as const).filter((kind) => summary[kind] > 0);
   const citationCount = turn.citations?.length || 0;
-  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderMarkdown(turn.content) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming && turn.activityText ? <div className={`chat-activity-status${turn.activityKind ? ` is-${turn.activityKind}` : ""}`}><LoaderCircle size={14} /><span>{turn.activityText}</span></div> : turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div><div className="chat-message-tools"><button type="button" className={`chat-tool-trace-button${summaryParts.length ? "" : " is-empty"}`} onClick={() => onOpenTrace(turn.id)}><Activity size={14} /><span>{t("desktop.agent.executionTraceSummary")}</span>{summaryParts.map((kind) => <span className="chat-execution-count" key={kind}>{t(`desktop.agent.executionSummary.${kind}`, summary[kind])}</span>)}</button>{citationCount ? <button type="button" className="chat-tool-trace-button chat-citations-button" onClick={() => onOpenCitations(turn.id)}><Quote size={14} /><span>{t("desktop.agent.citationRef")}</span><span className="chat-execution-count">{citationCount}</span></button> : null}</div><div className="chat-footer">{turn.completionText ? <span className="chat-footer-completion">{turn.completionText}</span> : null}{!turn.activityText ? <span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span> : null}{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
+  const openInlineCitation = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[data-agent-citation]") : null;
+    if (!target || !event.currentTarget.contains(target)) return;
+    const citation = citationForMarker(turn.citations || [], target.dataset.agentCitation || "");
+    if (!citation) return;
+    event.preventDefault();
+    onOpenCitation(citation);
+  };
+  return <div className="chat-message chat-message-in"><div className={`chat-bubble assistant${turn.streaming ? " streaming" : ""}`}><div className="chat-sender"><Bot size={14} /> Memory Agent</div><div className="chat-body"><div className={`chat-body-text${turn.streaming ? "" : " markdown-body"}`} onClick={openInlineCitation} {...(turn.streaming ? {} : { dangerouslySetInnerHTML: { __html: renderAssistantMarkdown(turn.content, turn.citations || []) } })}>{turn.streaming ? turn.content : null}</div>{turn.streaming && turn.activityText ? <div className={`chat-activity-status${turn.activityKind ? ` is-${turn.activityKind}` : ""}`}><LoaderCircle size={14} /><span>{turn.activityText}</span></div> : turn.streaming ? <LoaderCircle className="chat-stream-cursor" size={14} /> : null}</div><div className="chat-message-tools"><button type="button" className={`chat-tool-trace-button${summaryParts.length ? "" : " is-empty"}`} onClick={() => onOpenTrace(turn.id)}><Activity size={14} /><span>{t("desktop.agent.executionTraceSummary")}</span>{summaryParts.map((kind) => <span className="chat-execution-count" key={kind}>{t(`desktop.agent.executionSummary.${kind}`, summary[kind])}</span>)}</button>{citationCount ? <button type="button" className="chat-tool-trace-button chat-citations-button" onClick={() => onOpenCitations(turn.id)}><Quote size={14} /><span>{t("desktop.agent.citationRef")}</span><span className="chat-execution-count">{citationCount}</span></button> : null}</div><div className="chat-footer">{turn.completionText ? <span className="chat-footer-completion">{turn.completionText}</span> : null}{!turn.activityText ? <span className="chat-footer-meta">{turn.streaming ? t("desktop.agent.typing") : turn.fallback ? t("desktop.agent.recentSummary") : t("desktop.agent.reportRetrieval")}</span> : null}{!turn.streaming && turn.content ? <button type="button" className="chat-copy-btn" onClick={() => onCopy(turn.content)}><Copy size={14} />{t("desktop.common.copy")}</button> : null}</div></div></div>;
 }
 
 function upsertExecutionStep(trace: AgentExecutionStep[], step: AgentExecutionStep): AgentExecutionStep[] {

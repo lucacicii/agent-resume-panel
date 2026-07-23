@@ -3995,6 +3995,23 @@ code {
   color: var(--tg-sender);
 }
 
+.chat-bubble .markdown-body .agent-citation-link {
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+}
+
+.chat-bubble .markdown-body .agent-citation-link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.chat-bubble .markdown-body .agent-citation-link:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 .chat-bubble .markdown-body blockquote {
   color: color-mix(in srgb, currentColor 72%, transparent);
   border-left-color: color-mix(in srgb, var(--tg-sender) 65%, transparent);

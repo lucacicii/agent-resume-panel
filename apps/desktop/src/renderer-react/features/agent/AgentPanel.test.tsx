@@ -177,6 +177,68 @@ describe("AgentPanel", () => {
     expect(screen.getByText("Report retrieval")).toBeTruthy();
   });
 
+  it("opens inline report, note, and session citations from the answer", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const tabRequests: string[] = [];
+    const reportFocus: unknown[] = [];
+    const openedNotes: string[] = [];
+    const sessionPreviews: unknown[] = [];
+    const onTabRequest = (event: Event) => tabRequests.push((event as CustomEvent<string>).detail);
+    const onReportFocus = (event: Event) => reportFocus.push((event as CustomEvent).detail);
+    const onOpenNote = (event: Event) => openedNotes.push((event as CustomEvent<string>).detail);
+    const onSessionPreview = (event: Event) => sessionPreviews.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:tab-request", onTabRequest);
+    window.addEventListener("agent-resume:report-focus", onReportFocus);
+    window.addEventListener("agent-resume:open-note", onOpenNote);
+    window.addEventListener("agent-resume:sessions-preview", onSessionPreview);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages }), onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread],
+      listAgentChat: async () => ({
+        messages: [{
+          id: "m-inline",
+          role: "assistant",
+          content: "Report [1], note [N1], session [S1], and missing [N9]. `Code [N1]`\n\n```text\n[S1]\n```",
+          createdAtMs: 1,
+          sortOrder: 1,
+          citations: [
+            { index: 1, reportId: "daily:2026-07-19", level: "daily", title: "Daily" },
+            { source: "note", index: 1, noteId: "note-1", level: "note", title: "Plan" },
+            { source: "session", index: 1, level: "session", title: "Auth", session: { provider: "codex", id: "session-1", projectPath: "/tmp/app" } }
+          ]
+        }],
+        hasMore: false
+      }),
+      listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }), askAgent: async () => ({ answer: "", citations: [], fallback: false, digests: [] }), cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined, clearAgentChat: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+    try {
+      render(<I18nProvider><AgentPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+      await screen.findByRole("link", { name: "[1]" });
+      expect(document.querySelectorAll(".agent-citation-link")).toHaveLength(3);
+      expect(screen.queryByRole("link", { name: "[N9]" })).toBeNull();
+      expect(document.querySelector("code")?.textContent).toBe("Code [N1]");
+      expect(document.querySelector("pre")?.textContent).toContain("[S1]");
+
+      fireEvent.click(screen.getByRole("link", { name: "[1]" }));
+      expect(tabRequests).toContain("report");
+      expect(reportFocus[0]).toEqual({ type: "day", key: "2026-07-19" });
+
+      fireEvent.click(screen.getByRole("link", { name: "[N1]" }));
+      expect(tabRequests).toContain("notes");
+      expect(openedNotes).toEqual(["note-1"]);
+
+      fireEvent.click(screen.getByRole("link", { name: "[S1]" }));
+      expect(sessionPreviews[0]).toMatchObject({ provider: "codex", id: "session-1", projectPath: "/tmp/app" });
+    } finally {
+      window.removeEventListener("agent-resume:tab-request", onTabRequest);
+      window.removeEventListener("agent-resume:report-focus", onReportFocus);
+      window.removeEventListener("agent-resume:open-note", onOpenNote);
+      window.removeEventListener("agent-resume:sessions-preview", onSessionPreview);
+    }
+  });
+
   it("shows session citations separately and opens Sessions sheet", async () => {
     const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
     const opened: unknown[] = [];
