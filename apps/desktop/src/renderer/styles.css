@@ -605,22 +605,28 @@ textarea:focus-visible,
 
 .wb-gtd-status-badge.is-inbox,
 .wb-gtd-status-dot.is-inbox,
-.wb-gtd-context-tag.is-inbox { --gtd-status-color: #64748b; }
+.wb-gtd-context-tag.is-inbox,
+.gtd-status-tag.is-inbox { --gtd-status-color: #64748b; }
 .wb-gtd-status-badge.is-next,
 .wb-gtd-status-dot.is-next,
-.wb-gtd-context-tag.is-next { --gtd-status-color: var(--color-accent); }
+.wb-gtd-context-tag.is-next,
+.gtd-status-tag.is-next { --gtd-status-color: var(--color-accent); }
 .wb-gtd-status-badge.is-waiting,
 .wb-gtd-status-dot.is-waiting,
-.wb-gtd-context-tag.is-waiting { --gtd-status-color: var(--color-warning); }
+.wb-gtd-context-tag.is-waiting,
+.gtd-status-tag.is-waiting { --gtd-status-color: var(--color-warning); }
 .wb-gtd-status-badge.is-someday,
 .wb-gtd-status-dot.is-someday,
-.wb-gtd-context-tag.is-someday { --gtd-status-color: #af52de; }
+.wb-gtd-context-tag.is-someday,
+.gtd-status-tag.is-someday { --gtd-status-color: #af52de; }
 .wb-gtd-status-badge.is-reference,
 .wb-gtd-status-dot.is-reference,
-.wb-gtd-context-tag.is-reference { --gtd-status-color: #0d9488; }
+.wb-gtd-context-tag.is-reference,
+.gtd-status-tag.is-reference { --gtd-status-color: #0d9488; }
 .wb-gtd-status-badge.is-done,
 .wb-gtd-status-dot.is-done,
-.wb-gtd-context-tag.is-done { --gtd-status-color: var(--color-success); }
+.wb-gtd-context-tag.is-done,
+.gtd-status-tag.is-done { --gtd-status-color: var(--color-success); }
 
 .session-row .s-title {
   font-weight: 600;
@@ -6489,6 +6495,22 @@ textarea.wb-editor-host {
   border-color: color-mix(in srgb, var(--gtd-status-color) 72%, var(--color-separator-opaque));
 }
 
+.gtd-status-tag {
+  --gtd-status-color: var(--color-label-secondary);
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
+  color: color-mix(in srgb, var(--gtd-status-color) 78%, var(--color-label-primary));
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .chat-context-menu button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -6917,6 +6939,111 @@ textarea.wb-editor-host {
   background: var(--color-secondary-bg);
   isolation: isolate;
   container-type: inline-size;
+}
+
+.notes-gtd-folders {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 6px 8px;
+  overflow: auto;
+}
+
+.notes-gtd-list-toolbar {
+  padding: 8px 10px 4px;
+}
+
+.notes-gtd-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary-bg);
+  color: var(--color-label-secondary);
+}
+
+.notes-gtd-search-wrap .notes-search {
+  min-width: 0;
+  padding-inline: 0;
+  background: transparent;
+}
+
+.notes-gtd-list-item.is-completed .notes-list-item-title,
+.notes-gtd-list-item.is-completed .notes-list-item-preview {
+  color: var(--color-label-secondary);
+  text-decoration: line-through;
+}
+
+.code-editor-slash-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 220px;
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: var(--radius-lg);
+  background: var(--color-elevated-bg);
+  color: var(--color-label-primary);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+}
+
+.code-editor-slash-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-callout);
+  text-align: left;
+  cursor: pointer;
+}
+
+.code-editor-slash-command:hover,
+.code-editor-slash-command.is-active,
+.code-editor-slash-command:focus-visible {
+  background: var(--color-fill-primary);
+  color: var(--color-label-primary);
+}
+
+.code-editor-slash-command .gtd-status-tag {
+  margin-left: auto;
+  pointer-events: none;
+}
+
+.code-editor-slash-command-detail {
+  color: var(--color-label-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-caption);
+}
+
+.note-gtd-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-control-bg);
+}
+
+.note-gtd-card-body {
+  min-width: 0;
+}
+
+.note-gtd-card-body > :first-child {
+  margin-top: 0;
+}
+
+.note-gtd-card-body > :last-child {
+  margin-bottom: 0;
 }
 
 .sidebar-project-filter-thumb {

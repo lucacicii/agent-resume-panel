@@ -19,6 +19,16 @@ import {
   type NoteToolContext
 } from "./tools";
 import {
+  handleNoteGtdCreate,
+  handleNoteGtdDelete,
+  handleNoteGtdList,
+  handleNoteGtdUpdate,
+  noteGtdCreateSchema,
+  noteGtdDeleteSchema,
+  noteGtdListSchema,
+  noteGtdUpdateSchema
+} from "./gtdTools";
+import {
   handleReportList,
   handleReportRead,
   handleReportSearch,
@@ -144,6 +154,42 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     async (args: { noteId: string }) => {
       return handleNoteDelete(args, ctx);
     }
+  );
+
+  server.registerTool(
+    "note_gtd_list",
+    {
+      description: "List GTD tasks stored in Markdown notes. Tasks are :::gtd blocks with inbox, next, waiting, someday, reference, or done status. Read-only.",
+      inputSchema: noteGtdListSchema
+    },
+    async (args: { query?: string; status?: string; noteId?: string; limit?: number }) => handleNoteGtdList(args, ctx)
+  );
+
+  server.registerTool(
+    "note_gtd_create",
+    {
+      description: "Append one :::gtd task block to an existing note. Provide task text; status defaults to next.",
+      inputSchema: noteGtdCreateSchema
+    },
+    async (args: { noteId: string; text: string; status?: import("../gtd/types").GtdStatus }) => handleNoteGtdCreate(args, ctx)
+  );
+
+  server.registerTool(
+    "note_gtd_update",
+    {
+      description: "Update one GTD task in an existing note. Identify it by its current :::gtd block text. If list results show repeated text, pass the occurrence selected by the user.",
+      inputSchema: noteGtdUpdateSchema
+    },
+    async (args: { noteId: string; taskText: string; occurrence?: number; text?: string; status?: import("../gtd/types").GtdStatus }) => handleNoteGtdUpdate(args, ctx)
+  );
+
+  server.registerTool(
+    "note_gtd_delete",
+    {
+      description: "Delete one GTD task from an existing note. Identify it by :::gtd block text. If repeated, ask the user to choose an occurrence before deleting.",
+      inputSchema: noteGtdDeleteSchema
+    },
+    async (args: { noteId: string; taskText: string; occurrence?: number }) => handleNoteGtdDelete(args, ctx)
   );
 
   const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };

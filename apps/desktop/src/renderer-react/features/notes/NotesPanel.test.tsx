@@ -35,6 +35,11 @@ const messages = {
   "desktop.notes.deleteConfirm": "Delete {0}?",
   "desktop.notes.findInNote": "Find in note",
   "desktop.notes.copyPath": "Copy path",
+  "desktop.notes.sidebarView": "Notes sidebar view",
+  "desktop.notes.searchGtd": "Search GTD tasks",
+  "desktop.notes.gtdListMeta": "{0} GTD tasks",
+  "desktop.notes.noGtdTasks": "No GTD tasks found",
+  "desktop.notes.slashGtdTask": "GTD task",
   "desktop.notes.pinProject": "Pin project",
   "desktop.notes.unpinProject": "Unpin project",
   "desktop.notes.pinNote": "Pin note",
@@ -57,7 +62,15 @@ const messages = {
   "desktop.common.rename": "Rename",
   "desktop.workbench.resizeProjects": "Resize projects",
   "desktop.workbench.resizeSessions": "Resize sessions",
-  "desktop.tabs.notes": "Notes"
+  "desktop.tabs.notes": "Notes",
+  "desktop.workbench.gtdView": "GTD",
+  "desktop.workbench.gtdCompleted": "Completed",
+  "desktop.workbench.gtdStatus.inbox": "Inbox",
+  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.waiting": "Waiting",
+  "desktop.workbench.gtdStatus.someday": "Someday",
+  "desktop.workbench.gtdStatus.reference": "Reference",
+  "desktop.workbench.gtdStatus.done": "Done"
 };
 
 afterEach(() => {
@@ -73,6 +86,7 @@ function installBridge() {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
     notesList: async () => [libraryNote, projectNote],
+    notesListGtd: async () => [{ text: "Ship GTD", status: "next", line: 3, occurrence: 1, noteId: "note-1", noteTitle: "Renderer plan", scope: "library", relMdPath: "notes/library/renderer.md", updatedAtMs: 2 }],
     listSessions: async () => [{ provider: "codex", id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }],
     listProjectAliases: async () => ({ "/work/panel": "Panel" }),
     setProjectAlias: async () => ({ ok: true }),
@@ -123,5 +137,17 @@ describe("NotesPanel", () => {
     fireEvent.contextMenu(note);
     fireEvent.click(await screen.findByRole("menuitem", { name: "Pin note" }));
     expect(JSON.parse(localStorage.getItem("pinned-notes") || "[]")).toEqual(["note-2"]);
+  });
+
+  it("searches GTD tasks and opens their source note", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    fireEvent.click(await screen.findByRole("tab", { name: "GTD" }));
+    expect(await screen.findByText("Ship GTD")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search GTD tasks" }), { target: { value: "Ship" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ship GTD/ }));
+    expect(await screen.findByText("Renderer plan")).toBeTruthy();
   });
 });

@@ -91,6 +91,10 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_append",
       "note_create",
       "note_delete",
+      "note_gtd_create",
+      "note_gtd_delete",
+      "note_gtd_list",
+      "note_gtd_update",
       "note_read",
       "note_search",
       "note_write",
@@ -104,6 +108,45 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "session_search",
       "session_set_gtd"
     ]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("MCP GTD tools manage :::gtd blocks without rewriting unrelated content", async () => {
+  const { ctx } = await setupTestContext();
+  const record = await ctx.notesStore.createLibraryNote("# Plan\n\nKeep this paragraph.\n");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const created = await client.callTool({
+      name: "note_gtd_create",
+      arguments: { noteId: record.noteId, text: "Ship Notes GTD" }
+    });
+    assert.notEqual(created.isError, true);
+    assert.ok(created.content[0].text.includes('"status": "next"'));
+
+    const listed = await client.callTool({ name: "note_gtd_list", arguments: { query: "Ship Notes" } });
+    assert.ok(listed.content[0].text.includes("Ship Notes GTD"));
+
+    const updated = await client.callTool({
+      name: "note_gtd_update",
+      arguments: { noteId: record.noteId, taskText: "Ship Notes GTD", status: "done" }
+    });
+    assert.notEqual(updated.isError, true);
+
+    const content = await ctx.notesStore.readNoteContent(record.noteId);
+    assert.ok(content.includes("Keep this paragraph."));
+    assert.ok(content.includes(":::gtd done\nShip Notes GTD\n:::"));
+
+    const deleted = await client.callTool({
+      name: "note_gtd_delete",
+      arguments: { noteId: record.noteId, taskText: "Ship Notes GTD" }
+    });
+    assert.notEqual(deleted.isError, true);
+    assert.ok(!(await ctx.notesStore.readNoteContent(record.noteId)).includes("Ship Notes GTD"));
   } finally {
     await client.close();
     await server.close();

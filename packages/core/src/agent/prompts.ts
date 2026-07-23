@@ -91,6 +91,7 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
     "When the user asks to create, find, or manage notes, use the available tools to perform the action directly.",
     "For note creation, ask the user for any missing required information (title, scope) before calling note_create.",
     "For note search, call note_search with the user's keywords (e.g. project or folder name). Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
+    "For GTD tasks inside notes, use note_gtd_list, note_gtd_create, note_gtd_update, or note_gtd_delete instead of overwriting full notes. A GTD task is a :::gtd status block; use status done to complete a task. If repeated task text requires an occurrence, ask the user to choose before a write or delete.",
     "Memory tools (report_search, report_read, report_list) are read-only. They supplement the Report Sources already in the prompt — they do not replace them.",
     "When Report Sources already cite a reportId, call report_read to expand the full digest instead of report_search.",
     "Use report_list to enumerate digests in a period (e.g. recent weekly reports). Use report_search only when sources are insufficient or the user requests a new search.",

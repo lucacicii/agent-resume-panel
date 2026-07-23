@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
   PanelRight, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
 } from "lucide-react";
-import type { AgentSession } from "@agent-resume/core";
+import type { AgentSession, GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
@@ -13,10 +13,12 @@ import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
+type GtdTask = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListGtd"]>>[number];
 type Owner = { scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string };
 type Folder = { kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string };
 type ProjectFilter = "all" | "pinned" | "active";
 type ListFilter = "all" | "pinned";
+type NotesSidebarView = "notes" | "gtd";
 type TargetState = { action: "create" | "import" | "move"; owner: Owner; note?: Note };
 type CatalogProject = {
   projectId: string;
@@ -38,6 +40,8 @@ const PINNED_NOTES_KEY = "pinned-notes";
 const FOLDERS_COLLAPSED_KEY = "notes-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "notes-list-pane-width";
+const SIDEBAR_VIEW_KEY = "notes-sidebar-view";
+const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
@@ -126,6 +130,7 @@ export function NotesPanel(): ReactPortal | null {
   const { t } = useI18n();
   const [active, setActive] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [gtdTasks, setGtdTasks] = useState<GtdTask[]>([]);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Note | null>(null);
@@ -140,6 +145,10 @@ export function NotesPanel(): ReactPortal | null {
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("all");
+  const [sidebarView, setSidebarView] = useState<NotesSidebarView>(() => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "notes");
+  const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus | "all">("all");
+  const [gtdQuery, setGtdQuery] = useState("");
+  const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
   const [listQuery, setListQuery] = useState("");
   const [listSearchOpen, setListSearchOpen] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageString(FOLDERS_COLLAPSED_KEY) === "true");
@@ -164,19 +173,33 @@ export function NotesPanel(): ReactPortal | null {
   const findRef = useRef<HTMLInputElement>(null);
   contentRef.current = content;
   selectedRef.current = selected;
+  const gtdSlashCommands = useMemo(() => GTD_STATUSES.map((gtdStatus) => {
+    const opener = ":::gtd " + gtdStatus;
+    return {
+      label: t("desktop.notes.slashGtdTask"),
+      tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
+      insert: opener + "\n\n:::",
+      cursorOffset: opener.length + 1
+    };
+  }), [t]);
 
   const load = useCallback(async () => {
     try {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
-      const [nextNotes, nextSessions, nextAliases, nextProjects] = await Promise.all([
+      const listGtd = typeof desktopApi().notesListGtd === "function"
+        ? desktopApi().notesListGtd()
+        : Promise.resolve([] as GtdTask[]);
+      const [nextNotes, nextSessions, nextAliases, nextProjects, nextGtdTasks] = await Promise.all([
         desktopApi().notesList(),
         desktopApi().listSessions(2_000),
         desktopApi().listProjectAliases(),
-        listProjects
+        listProjects,
+        listGtd
       ]);
       setNotes(nextNotes);
+      setGtdTasks(nextGtdTasks || []);
       setSessions(nextSessions);
       setAliases(nextAliases);
       setCatalogProjects(nextProjects || []);
@@ -193,6 +216,9 @@ export function NotesPanel(): ReactPortal | null {
       setNotes((current) => current.map((item) => item.noteId === note.noteId
         ? { ...item, ...updated, contentPreview: contentRef.current.slice(0, 300) }
         : item));
+      if (typeof desktopApi().notesListGtd === "function") {
+        setGtdTasks(await desktopApi().notesListGtd());
+      }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   }, []);
 
@@ -348,6 +374,21 @@ export function NotesPanel(): ReactPortal | null {
     return inFolder && matchesQuery && (listFilter === "all" || pinnedNotes.has(note.noteId) || selected?.noteId === note.noteId);
   }).sort((left, right) => Number(pinnedNotes.has(right.noteId)) - Number(pinnedNotes.has(left.noteId)) || right.updatedAtMs - left.updatedAtMs), [folder, listFilter, listQuery, notes, pinnedNotes, selected?.noteId]);
 
+  const gtdStatusCounts = useMemo(() => {
+    const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
+    for (const task of gtdTasks) counts.set(task.status, (counts.get(task.status) || 0) + 1);
+    return counts;
+  }, [gtdTasks]);
+
+  const visibleGtdTasks = useMemo(() => {
+    const query = gtdQuery.trim().toLocaleLowerCase();
+    return gtdTasks.filter((task) => {
+      const matchesStatus = selectedGtdStatus === "all" || task.status === selectedGtdStatus;
+      const searchable = `${task.text} ${task.noteTitle} ${task.relMdPath} ${task.projectPath || ""} ${task.status}`.toLocaleLowerCase();
+      return matchesStatus && (!query || searchable.includes(query));
+    });
+  }, [gtdQuery, gtdTasks, selectedGtdStatus]);
+
   const targetProjects = useMemo(() => projects.filter((project) => `${project.label} ${project.path}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [projects, targetQuery]);
   const targetSessions = useMemo(() => folderSessions.filter((session) => `${session.title} ${session.id} ${session.provider}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [folderSessions, targetQuery]);
 
@@ -386,6 +427,20 @@ export function NotesPanel(): ReactPortal | null {
   const selectFolder = (next: Folder) => {
     if (!sameFolder(folder, next)) setFolder(next);
     setListQuery("");
+  };
+
+  const selectSidebarView = (next: NotesSidebarView) => {
+    setSidebarView(next);
+    try { localStorage.setItem(SIDEBAR_VIEW_KEY, next); } catch { /* persistence is optional */ }
+  };
+
+  const openGtdTask = (task: GtdTask) => {
+    const note = notes.find((item) => item.noteId === task.noteId);
+    if (!note) return;
+    selectSidebarView("notes");
+    void open(note).then(() => {
+      window.requestAnimationFrame(() => editorRef.current?.find(task.text));
+    });
   };
 
   const togglePinnedProject = async (projectPath: string, projectId?: string) => {
@@ -511,6 +566,15 @@ export function NotesPanel(): ReactPortal | null {
       <div className="notes-layout">
         <aside className={`sidebar-folders-pane notes-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`} style={{ width: foldersCollapsed ? undefined : foldersWidth }}>
           <div className="sidebar-project-filter-wrap">
+          <SegmentedControl
+            aria-label={t("desktop.notes.sidebarView")}
+            value={sidebarView}
+            options={["notes", "gtd"] as const satisfies readonly NotesSidebarView[]}
+            onChange={selectSidebarView}
+            getLabel={(item) => t(item === "notes" ? "desktop.tabs.notes" : "desktop.workbench.gtdView")}
+            className="sidebar-project-filter-segmented wb-sidebar-view-segmented"
+          />
+          {sidebarView === "notes" ? <>
             <label className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.notes.filterProjects")} placeholder={t("desktop.notes.filterProjects")} value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} /></label>
             <SegmentedControl
               aria-label={t("desktop.notes.projectFilter")}
@@ -519,7 +583,9 @@ export function NotesPanel(): ReactPortal | null {
               onChange={setProjectFilter}
               getLabel={(filter) => t(`desktop.common.${filter}`)}
             />
+          </> : null}
           </div>
+          {sidebarView === "notes" ? <>
           <div className="notes-folders">
             <button type="button" className={`notes-folder-row${folder.kind === "all" ? " active" : ""}`} onClick={() => selectFolder({ kind: "all" })}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.length}</span></button>
             <button type="button" className={`notes-folder-row${folder.kind === "library" ? " active" : ""}`} onClick={() => selectFolder({ kind: "library" })}><span className="notes-folder-row-label">{t("desktop.notes.librarySection")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.scope === "library").length}</span></button>
@@ -528,9 +594,15 @@ export function NotesPanel(): ReactPortal | null {
             </button>) : <p className="muted notes-folders-empty">{t("desktop.notes.noMatchingProjects")}</p>}</section>
             <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.sessionsSection")}</div>{folderSessions.map((session) => <button type="button" key={sessionKey(session)} className={`notes-folder-row${folder.kind === "session" && folder.provider === session.provider && folder.sessionId === session.id ? " active" : ""}`} onClick={() => selectFolder({ kind: "session", provider: session.provider, sessionId: session.id })}><span className="notes-folder-row-text"><span className="notes-folder-row-label">{session.title || session.id}</span><span className="notes-folder-row-desc">{session.provider}</span></span></button>)}</section>
           </div>
+          </> : <div className="notes-gtd-folders">
+            <button type="button" className={`notes-folder-row${selectedGtdStatus === "all" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("all")}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{gtdTasks.length}</span></button>
+            {GTD_STATUSES.filter((status) => status !== "done").map((gtdStatus) => <button type="button" className={`notes-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="notes-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="notes-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}
+            <div className="wb-gtd-completed-group"><button type="button" className="notes-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ChevronRight className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`notes-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div>
+          </div>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
         <aside className="notes-list-pane" style={{ width: listWidth }}>
+          {sidebarView === "notes" ? <>
           <div className="notes-list-toolbar-wrap">
             <div ref={listSearchToolbarRef} className={`notes-list-search-wrap${listSearchOpen ? " is-search-open" : ""}`}>
               <button type="button" id="btnNotesToggleFolders" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} title={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} aria-expanded={!foldersCollapsed} onClick={toggleFolders}>
@@ -562,12 +634,17 @@ export function NotesPanel(): ReactPortal | null {
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><FilePlus2 size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><Upload size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><RefreshCw size={12} /></button></div>
           <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${selected?.noteId === note.noteId ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note)} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "note", note, x: event.clientX, y: event.clientY }); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <Pin className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span></span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          </> : <>
+            <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><Search size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtd")} placeholder={t("desktop.notes.searchGtd")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
+            <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdListMeta", visibleGtdTasks.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><RefreshCw size={12} /></button></div>
+            <div className="notes-list notes-gtd-list">{visibleGtdTasks.length ? visibleGtdTasks.map((task) => <button type="button" key={`${task.noteId}:${task.line}`} className={`notes-list-item notes-gtd-list-item is-${task.status}${task.status === "done" ? " is-completed" : ""}`} onClick={() => openGtdTask(task)}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap"><span className={`wb-gtd-status-dot is-${task.status}`} aria-hidden="true" /><span className="notes-list-item-title">{task.text}</span></span></span><span className="notes-list-item-preview">{task.noteTitle} · {task.relMdPath}</span></button>) : <p className="muted notes-list-empty">{t("desktop.notes.noGtdTasks")}</p>}</div>
+          </>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
         <main className="notes-detail">
           {selected ? <div className="notes-editor-shell"><div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><Save size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><Pencil size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><Eye size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={() => setFindOpen(true)}><Search size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><Clipboard size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><FolderOpen size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><Trash2 size={15} /></button></div></div>
             {findOpen ? <div className="notes-find-bar"><input ref={findRef} className="notes-find-input" value={findQuery} onChange={(event) => { setFindQuery(event.target.value); setFindMatch(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); find(event.shiftKey ? "backward" : "forward"); } if (event.key === "Escape") setFindOpen(false); }} /><span className={`notes-find-count${findMatch === false ? " is-empty" : ""}`}>{findMatch === null ? "" : findMatch ? "1" : "0"}</span><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("backward")}><ChevronLeft size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("forward")}><ChevronRight size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => setFindOpen(false)}><X size={15} /></button></div> : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={gtdSlashCommands} /> : <div className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
           <Status kind={status.kind}>{status.text}</Status>
         </main>

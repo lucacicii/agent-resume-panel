@@ -64,8 +64,8 @@ export interface ToolLoopResult {
 }
 
 function toolImpact(toolName: string): AgentToolImpact {
-  if (toolName === "note_delete") return "delete";
-  if (["note_create", "note_write", "note_append", "session_set_gtd"].includes(toolName)) return "write";
+  if (["note_delete", "note_gtd_delete"].includes(toolName)) return "delete";
+  if (["note_create", "note_write", "note_append", "note_gtd_create", "note_gtd_update", "session_set_gtd"].includes(toolName)) return "write";
   if (toolName === "session_resume") return "launch";
   return "read";
 }
@@ -110,7 +110,11 @@ const NOTE_TOOL_OPERATIONS: Record<string, NoteOperation> = {
   note_create: "create",
   note_write: "write",
   note_append: "append",
-  note_delete: "delete"
+  note_delete: "delete",
+  note_gtd_list: "search",
+  note_gtd_create: "append",
+  note_gtd_update: "write",
+  note_gtd_delete: "delete"
 };
 
 const SESSION_TOOL_OPERATIONS: Record<string, SessionOperation> = {

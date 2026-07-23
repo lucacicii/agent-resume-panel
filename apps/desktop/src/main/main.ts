@@ -97,6 +97,7 @@ import {
   notesImport,
   notesPasteImage,
   notesList,
+  notesListGtd,
   notesMove,
   notesOpenFolder,
   settingsOpenPanelHome,
@@ -1292,6 +1293,11 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("notes:list", async () => notesList());
+  ipcMain.handle("notes:listGtd", async (_event, args?: { query?: unknown; status?: unknown }) => {
+    const query = typeof args?.query === "string" ? args.query : undefined;
+    const status = typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined;
+    return notesListGtd({ query, status });
+  });
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
   ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) => {
     const result = await notesWrite(args.noteId, args.content);

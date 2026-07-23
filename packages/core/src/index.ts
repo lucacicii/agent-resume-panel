@@ -60,6 +60,13 @@ export {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU
 } from "./settings/types";
 export { normalizeWorkbenchProjectContextMenu } from "./settings/store";
+export {
+  parseNoteGtdTasks,
+  appendNoteGtdTask,
+  updateNoteGtdTask,
+  deleteNoteGtdTask
+} from "./notes/gtd";
+export type { NoteGtdTask } from "./notes/gtd";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,

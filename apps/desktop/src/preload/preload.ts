@@ -538,6 +538,20 @@ export interface DesktopApi {
       fsMtimeMs?: number;
     }>
   >;
+  notesListGtd(args?: { query?: string; status?: GtdStatus }): Promise<
+    Array<{
+      text: string;
+      status: GtdStatus;
+      line: number;
+      occurrence: number;
+      noteId: string;
+      noteTitle: string;
+      scope: string;
+      relMdPath: string;
+      projectPath?: string;
+      updatedAtMs: number;
+    }>
+  >;
   notesRead(args: { noteId: string }): Promise<{
     record: {
       noteId: string;
@@ -821,6 +835,7 @@ const api: DesktopApi = {
   usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
   usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args),
   notesList: () => ipcRenderer.invoke("notes:list"),
+  notesListGtd: (args) => ipcRenderer.invoke("notes:listGtd", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),

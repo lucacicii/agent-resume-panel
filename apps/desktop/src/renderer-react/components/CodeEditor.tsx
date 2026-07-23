@@ -35,6 +35,19 @@ export interface CodeEditorProps {
   language?: string;
   shouldHandlePaste?: () => boolean;
   onPasteImage?: () => Promise<string | null>;
+  slashCommands?: readonly SlashCommand[];
+}
+
+export interface SlashCommand {
+  label: string;
+  detail?: string;
+  tag?: {
+    label: string;
+    toneClassName?: string;
+  };
+  insert: string;
+  /** Cursor position in the inserted text. Defaults to the end. */
+  cursorOffset?: number;
 }
 
 export interface CodeEditorHandle {
@@ -182,7 +195,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   filePath,
   language: languageId,
   shouldHandlePaste,
-  onPasteImage
+  onPasteImage,
+  slashCommands
 }, ref): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -190,10 +204,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   const blur = useRef(onBlur);
   const pasteImage = useRef(onPasteImage);
   const handlesPaste = useRef(shouldHandlePaste);
+  const commands = useRef<readonly SlashCommand[]>(slashCommands || []);
   change.current = onChange;
   blur.current = onBlur;
   pasteImage.current = onPasteImage;
   handlesPaste.current = shouldHandlePaste;
+  commands.current = slashCommands || [];
 
   useImperativeHandle(ref, () => ({
     focus: () => view.current?.focus(),
@@ -222,11 +238,140 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
 
   useEffect(() => {
     if (!host.current) return;
+    let slashMenu: HTMLDivElement | null = null;
+    let slashRange: { from: number; to: number; needsNewline: boolean } | null = null;
+    let slashActiveIndex = 0;
+
+    const hideSlashMenu = () => {
+      slashMenu?.remove();
+      slashMenu = null;
+      slashRange = null;
+      slashActiveIndex = 0;
+    };
+
+    const applySlashCommand = (instance: EditorView, command: SlashCommand) => {
+      if (!slashRange) return;
+      const prefix = slashRange.needsNewline ? "\n" : "";
+      const insert = `${prefix}${command.insert}`;
+      const cursor = slashRange.from + prefix.length + Math.min(command.cursorOffset ?? command.insert.length, command.insert.length);
+      instance.dispatch({
+        changes: { from: slashRange.from, to: slashRange.to, insert },
+        selection: { anchor: cursor }
+      });
+      instance.focus();
+      hideSlashMenu();
+    };
+
+    const renderSlashMenu = (instance: EditorView, available: readonly SlashCommand[]) => {
+      if (!slashMenu) return;
+      slashActiveIndex = Math.max(0, Math.min(slashActiveIndex, available.length - 1));
+      slashMenu.replaceChildren(...available.map((command, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = "code-editor-slash-command-" + index;
+        button.className = "code-editor-slash-command" + (index === slashActiveIndex ? " is-active" : "");
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", String(index === slashActiveIndex));
+        const label = document.createElement("span");
+        label.textContent = command.label;
+        button.append(label);
+        if (command.tag) {
+          const tag = document.createElement("span");
+          tag.className = "gtd-status-tag" + (command.tag.toneClassName ? " " + command.tag.toneClassName : "");
+          tag.textContent = command.tag.label;
+          button.append(tag);
+        } else if (command.detail) {
+          const detail = document.createElement("span");
+          detail.className = "code-editor-slash-command-detail";
+          detail.textContent = command.detail;
+          button.append(detail);
+        }
+        button.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          applySlashCommand(instance, command);
+        });
+        return button;
+      }));
+      slashMenu.setAttribute("aria-activedescendant", "code-editor-slash-command-" + slashActiveIndex);
+    };
+
+    const handleSlashMenuKey = (instance: EditorView, key: string): boolean => {
+      if (!slashMenu) return false;
+      if (key === "Escape") {
+        hideSlashMenu();
+        return true;
+      }
+      const available = commands.current;
+      if (!available.length) return false;
+      if (key === "ArrowDown" || key === "ArrowUp") {
+        const delta = key === "ArrowDown" ? 1 : -1;
+        slashActiveIndex = (slashActiveIndex + delta + available.length) % available.length;
+        renderSlashMenu(instance, available);
+        return true;
+      }
+      if (key === "Enter") {
+        const command = available[slashActiveIndex];
+        if (!command) return false;
+        applySlashCommand(instance, command);
+        return true;
+      }
+      return false;
+    };
+
+    const updateSlashMenu = (instance: EditorView) => {
+      const available = commands.current;
+      const selection = instance.state.selection.main;
+      if (!available.length || selection.from !== selection.to) {
+        hideSlashMenu();
+        return;
+      }
+      const line = instance.state.doc.lineAt(selection.head);
+      const beforeCursor = instance.state.sliceDoc(line.from, selection.head);
+      const match = beforeCursor.match(/\/\w*$/);
+      if (!match) {
+        hideSlashMenu();
+        return;
+      }
+      const slashOffset = match.index ?? 0;
+      slashRange = {
+        from: line.from + slashOffset,
+        to: selection.head,
+        needsNewline: !/^\s*$/.test(beforeCursor.slice(0, slashOffset))
+      };
+      let coords: { left: number; bottom: number } | null = null;
+      try {
+        coords = instance.coordsAtPos(selection.head);
+      } catch {
+        // Measurement can be unavailable before a renderer has laid out the editor.
+      }
+      const hostRect = host.current?.getBoundingClientRect();
+      if (!slashMenu) {
+        slashMenu = document.createElement("div");
+        slashMenu.className = "code-editor-slash-menu";
+        slashMenu.setAttribute("role", "listbox");
+        document.body.append(slashMenu);
+        slashActiveIndex = 0;
+      }
+      renderSlashMenu(instance, available);
+      const left = coords?.left ?? hostRect?.left ?? 0;
+      const top = coords?.bottom ?? hostRect?.top ?? 0;
+      slashMenu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - 240))}px`;
+      slashMenu.style.top = `${top + 4}px`;
+    };
+
     const state = EditorState.create({
       doc: value,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          { key: "ArrowDown", run: (instance) => handleSlashMenuKey(instance, "ArrowDown") },
+          { key: "ArrowUp", run: (instance) => handleSlashMenuKey(instance, "ArrowUp") },
+          { key: "Enter", run: (instance) => handleSlashMenuKey(instance, "Enter") },
+          { key: "Escape", run: (instance) => handleSlashMenuKey(instance, "Escape") },
+          ...defaultKeymap,
+          ...historyKeymap,
+          indentWithTab
+        ]),
         bracketMatching(),
         language.of(languageExtension(filePath, languageId)),
         theme.of(themeExtensions(isDarkAppearance())),
@@ -236,7 +381,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         editable.of(EditorView.editable.of(!readOnly)),
         EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
         EditorView.domEventHandlers({
-          blur: () => { blur.current?.(); return false; },
+          blur: () => { hideSlashMenu(); blur.current?.(); return false; },
           paste: (event, instance) => {
             if (!pasteImage.current || !handlesPaste.current?.()) return false;
             event.preventDefault();
@@ -255,6 +400,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) change.current(update.state.doc.toString());
+          if (update.docChanged || update.selectionSet || update.viewportChanged) updateSlashMenu(update.view);
         })
       ]
     });
@@ -278,6 +424,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       window.removeEventListener("agent-resume:theme-change", onThemeChange);
       media.removeEventListener("change", onMedia);
       observer.disconnect();
+      hideSlashMenu();
       instance.destroy();
       if (view.current === instance) view.current = null;
     };
