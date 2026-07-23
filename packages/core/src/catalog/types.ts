@@ -5,6 +5,8 @@ export type AgentProvider =
   | "grok"
   | "opencode"
   | "pi"
+  | "cursor"
+  | "cursor-ide"
   | "chat";
 
 export interface AgentSession {

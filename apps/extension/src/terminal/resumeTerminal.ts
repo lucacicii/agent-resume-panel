@@ -16,6 +16,10 @@ const resumeTerminals = new Map<string, vscode.Terminal>();
 let closeTerminalListener: vscode.Disposable | undefined;
 
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
+  if (session.provider === "cursor-ide") {
+    vscode.window.showInformationMessage("Cursor IDE chat resume is unavailable; open this project in Cursor to continue.");
+    return;
+  }
   if (session.provider === "claude" && shouldResumeClaudeInPanel()) {
     void openClaudeCodePanelResumeFlow(session, context);
     return;
@@ -136,6 +140,12 @@ function providerLabel(provider: AgentSession["provider"]): string {
   }
   if (provider === "pi") {
     return t("terminal.providerLabelPi");
+  }
+  if (provider === "cursor") {
+    return "Cursor CLI";
+  }
+  if (provider === "cursor-ide") {
+    return "Cursor IDE";
   }
   return t("terminal.providerLabelClaude");
 }

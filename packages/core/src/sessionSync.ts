@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { AgentSession, AgentProvider } from "./catalog/types";
 import {
   ensureCatalogSyncStateDesktop,
@@ -9,12 +10,13 @@ import {
 } from "./catalog/db";
 import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
-import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
+import { escapeSqlLiteral, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "./sqlite";
 import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
 import { catalogDbFromSettings } from "./settings/store";
 import { agentHomeDiffersFromDefault, AgentHomeKey, resolvePreviewHomes } from "./transcript/homes";
 import { candidateAgyRoots } from "./transcript/agyRoots";
 import { listJsonlFiles, findFilesByName } from "./transcript/fs";
+import { findCursorTranscriptFile, listCursorChatMetas } from "./transcript/cursor";
 
 export type SyncableAgentProvider = Exclude<AgentProvider, "chat">;
 
@@ -31,6 +33,8 @@ export interface AgentSessionSyncOptions {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
   configuredAgentHomes?: AgentHomesSettings;
   maxItems: number;
   stalePolicy: SessionSyncStalePolicy;
@@ -38,6 +42,8 @@ export interface AgentSessionSyncOptions {
   showArchivedOpenCode: boolean;
   showSubagentCodex: boolean;
   showSubagentGrok: boolean;
+  showArchivedCursorIde: boolean;
+  showSubagentCursorIde: boolean;
 }
 
 export interface AgentSessionProviderSyncResult {
@@ -68,7 +74,7 @@ interface ProviderLoadResult {
   failed?: boolean;
 }
 
-const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi"];
+const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor", "cursor-ide"];
 const textCache = new Map<string, { mtimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
 const syncTasks = new Map<string, Promise<AgentSessionSyncResult>>();
@@ -90,6 +96,8 @@ export function sessionSyncOptionsFromSettings(
     showArchivedOpenCode: sync.showArchivedOpenCode === true,
     showSubagentCodex: sync.showSubagentCodex === true,
     showSubagentGrok: sync.showSubagentGrok === true,
+    showArchivedCursorIde: sync.showArchivedCursorIde === true,
+    showSubagentCursorIde: sync.showSubagentCursorIde === true,
     catalogSchema: "desktop",
     ...overrides
   };
@@ -185,6 +193,8 @@ async function loadProvider(provider: SyncableAgentProvider, options: AgentSessi
     case "grok": return { provider, sessions: await loadGrok(options.grokHome, options.maxItems, options.showSubagentGrok) };
     case "opencode": return loadOpenCode(options);
     case "pi": return { provider, sessions: await loadPi(options.piHome, options.maxItems) };
+    case "cursor": return { provider, sessions: await loadCursor(options.cursorHome, options.maxItems) };
+    case "cursor-ide": return { provider, sessions: await loadCursorIde(options) };
   }
 }
 
@@ -210,7 +220,9 @@ function normalizeStalePolicy(value: SessionSyncStalePolicy | "hide" | undefined
 }
 
 async function applyProviderStalePolicy(dbPath: string, provider: SyncableAgentProvider, policy: SessionSyncStalePolicy, syncTime: number): Promise<void> {
-  if (policy !== "purge") {
+  // Cursor's local stores are intentionally version-gated and may omit history
+  // while the app is running. Never let a partial read purge prior catalog rows.
+  if (policy !== "purge" || provider === "cursor" || provider === "cursor-ide") {
     return;
   }
   const where = `provider=${sql(provider)} AND (last_synced_at_ms IS NULL OR last_synced_at_ms < ${syncTime})`;
@@ -289,6 +301,80 @@ async function loadOpenCode(options: AgentSessionSyncOptions): Promise<ProviderL
   return { provider: "opencode", sessions: rows.filter((row) => row.id).map((row) => session("opencode", row.id, clean(row.title) || row.id, row.directory || os.homedir(), Number(row.time_updated || 0), { archived: row.time_archived != null, model: parseOpenCodeModel(row.model), source: "sqlite", transcriptKind: "sqlite", transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "opencode", sessionId: row.id }) })) };
 }
 
+async function loadCursor(home: string, maxItems: number): Promise<LoadedSession[]> {
+  const chats = await listCursorChatMetas(home, maxItems);
+  return Promise.all(chats.map(async (chat) => {
+    const transcript = await findCursorTranscriptFile(home, chat.id);
+    return session("cursor", chat.id, clean(chat.title) || chat.id, chat.cwd || os.homedir(), chat.updatedAt, {
+      source: "cursor-cli-meta-v1",
+      archived: false,
+      transcriptKind: transcript ? "jsonl" : "unavailable",
+      transcriptRefs: JSON.stringify(transcript
+        ? { kind: "jsonl", paths: [transcript] }
+        : { kind: "unavailable", reason: "Cursor CLI transcript not found" })
+    });
+  }));
+}
+
+interface CursorIdeHeaderRow {
+  id?: string;
+  workspaceId?: string;
+  createdAt?: number;
+  lastUpdatedAt?: number;
+  recency?: number;
+  archived?: number;
+  subagent?: number;
+  title?: string;
+  subtitle?: string;
+}
+
+async function loadCursorIde(options: AgentSessionSyncOptions): Promise<LoadedSession[]> {
+  const dbPath = path.join(options.cursorIdeUserDataHome, "globalStorage", "state.vscdb");
+  const columns = await runSqliteReadOnlyJson<{ name?: string }>(dbPath, "PRAGMA table_info(composerHeaders);");
+  const expected = new Set(["composerId", "workspaceId", "createdAt", "lastUpdatedAt", "recency", "isArchived", "isSubagent", "value"]);
+  if (!expected.size || ![...expected].every((name) => columns.some((column) => column.name === name))) {
+    throw new Error("Cursor IDE composerHeaders schema is unsupported.");
+  }
+  const clauses = [
+    "composerId <> 'empty-state-draft'",
+    !options.showArchivedCursorIde ? "coalesce(isArchived,0)=0" : "",
+    !options.showSubagentCursorIde ? "coalesce(isSubagent,0)=0" : ""
+  ].filter(Boolean);
+  const rows = await runSqliteReadOnlyJson<CursorIdeHeaderRow>(dbPath, `SELECT
+      composerId AS id, workspaceId, createdAt, lastUpdatedAt, recency,
+      isArchived AS archived, isSubagent AS subagent,
+      json_extract(value, '$.name') AS title,
+      json_extract(value, '$.subtitle') AS subtitle
+    FROM composerHeaders
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY coalesce(lastUpdatedAt,recency,createdAt) DESC
+    LIMIT ${options.maxItems}`);
+  return Promise.all(rows.filter((row) => row.id).map(async (row) => {
+    const workspacePath = await cursorIdeWorkspacePath(options.cursorIdeUserDataHome, row.workspaceId);
+    const updatedAt = Number(row.lastUpdatedAt || row.recency || row.createdAt || 0);
+    return session("cursor-ide", row.id!, clean(row.title) || clean(row.subtitle) || row.id!, workspacePath || os.homedir(), updatedAt, {
+      archived: !!row.archived,
+      source: workspacePath ? "cursor-ide-header" : "cursor-ide-header-only",
+      transcriptKind: "unavailable",
+      transcriptRefs: JSON.stringify({ kind: "unavailable", reason: "Cursor IDE stores conversation bodies outside its supported local header index." })
+    });
+  }));
+}
+
+async function cursorIdeWorkspacePath(userDataHome: string, workspaceId?: string): Promise<string | undefined> {
+  if (!workspaceId || path.basename(workspaceId) !== workspaceId || workspaceId === "empty-window") {
+    return undefined;
+  }
+  const workspaceFile = path.join(userDataHome, "workspaceStorage", workspaceId, "workspace.json");
+  try {
+    const raw = JSON.parse(await fs.readFile(workspaceFile, "utf8")) as { folder?: unknown; workspace?: unknown };
+    const uri = typeof raw.folder === "string" ? raw.folder : typeof raw.workspace === "string" ? raw.workspace : undefined;
+    return uri?.startsWith("file:") ? fileURLToPath(uri) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadPi(home: string, maxItems: number): Promise<LoadedSession[]> {
   const files = await cachedFiles(`pi:${home}`, () => listJsonlFiles(path.join(home, "sessions"))); const out: LoadedSession[] = [];
   for (const file of files) { const rows = await readCachedJsonLines<any>(file); const header = rows[0]; if (header?.type !== "session" || !header.id) continue; let title = "", firstUser = "", count = 0, updated = Date.parse(header.timestamp || "") || 0; for (const row of rows.slice(1)) { updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (row.type === "session_info" && row.name) title = row.name; if (row.type === "message" && row.message?.role === "user") { count++; firstUser ||= contentText(row.message.content); } } out.push(session("pi", header.id, clean(title) || clean(firstUser) || header.id, header.cwd || os.homedir(), updated || await mtime(file), { messageCount: count || undefined, source: "jsonl", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) })); }
@@ -301,7 +387,12 @@ function contentText(value: unknown): string { if (typeof value === "string") re
 function clean(value?: string): string { return (value || "").replace(/\s+/g, " ").trim().slice(0, 180); }
 function first(...values: Array<string | undefined | null>): string { return values.find((value) => value?.trim())?.trim() || "Untitled"; }
 function byUpdated(a: AgentSession, b: AgentSession): number { return b.updatedAt - a.updatedAt; }
-function label(provider: SyncableAgentProvider): string { return provider === "agy" ? "Antigravity" : provider[0].toUpperCase() + provider.slice(1); }
+function label(provider: SyncableAgentProvider): string {
+  if (provider === "agy") return "Antigravity";
+  if (provider === "cursor") return "Cursor CLI";
+  if (provider === "cursor-ide") return "Cursor IDE";
+  return provider[0].toUpperCase() + provider.slice(1);
+}
 function formatError(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, Math.floor(value))); }
 function sql(value: string): string { return `'${escapeSqlLiteral(value)}'`; }
@@ -318,9 +409,12 @@ async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<
 function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
-function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
-function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
+function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }
+function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "cursor": return "cursorHome"; } }
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
+  if (provider === "cursor-ide") {
+    return Boolean(options.configuredAgentHomes?.cursorIdeUserDataHome?.trim());
+  }
   const key = agentHomeSettingKey(provider) as AgentHomeKey;
   return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);
 }

@@ -347,8 +347,14 @@ async function resumeCatalogSession(
     throw new Error(`Session not found: ${provider} ${id}`);
   }
   const mode = resolveWorkbenchTerminalMode(settings);
-  const command = buildResumeCommand(session);
   const cwd = await resolveSessionCwd(session.projectPath, settings);
+
+  if (session.provider === "cursor-ide") {
+    await openProjectInEditor(cwd, "cursor", app.getLocale());
+    return { mode, external: true, command: "", cwd, session };
+  }
+
+  const command = buildResumeCommand(session);
 
   if (mode === "external-system") {
     await openSessionInSystemTerminal(

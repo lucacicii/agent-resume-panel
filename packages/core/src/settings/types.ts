@@ -146,6 +146,10 @@ export interface AgentHomesSettings {
   grokHome?: string;
   opencodeHome?: string;
   piHome?: string;
+  /** Cursor CLI data root, containing chats/ and projects/. */
+  cursorHome?: string;
+  /** Cursor IDE User data directory. Empty uses the platform default. */
+  cursorIdeUserDataHome?: string;
 }
 
 export type SessionSyncStalePolicy = "off" | "purge";
@@ -155,6 +159,8 @@ export interface AgentSessionSyncFilters {
   showArchivedOpenCode?: boolean;
   showSubagentCodex?: boolean;
   showSubagentGrok?: boolean;
+  showArchivedCursorIde?: boolean;
+  showSubagentCursorIde?: boolean;
 }
 
 export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
@@ -301,7 +307,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     showArchivedCodex: false,
     showArchivedOpenCode: false,
     showSubagentCodex: false,
-    showSubagentGrok: false
+    showSubagentGrok: false,
+    showArchivedCursorIde: false,
+    showSubagentCursorIde: false
   },
   workbench: {
     projectEditor: "auto",

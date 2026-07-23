@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatManager, refreshAcpChatPanels } from "./acp/acpChatManager";
 import { AcpChatTreeProvider } from "./acp/acpChatTree";
@@ -105,7 +107,17 @@ import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
-type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
+type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "cursor">;
+
+function defaultCursorIdeUserDataHome(): string {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", "Cursor", "User");
+  }
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Cursor", "User");
+  }
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Cursor", "User");
+}
 
 let extensionContext: vscode.ExtensionContext | undefined;
 let projectAliasStore: ProjectAliasStore | undefined;
@@ -118,7 +130,7 @@ let notesTreeView: vscode.TreeView<import("./notes/notesTree").NotesTreeNode> | 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
-  const tree = new SessionTreeProvider();
+  const tree = new SessionTreeProvider(vscode.Uri.joinPath(context.extensionUri, "resources", "cursor.svg"));
   const acpTree = new AcpChatTreeProvider();
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
@@ -524,6 +536,7 @@ async function refreshAcpChats(acpTree: AcpChatTreeProvider, showToast: boolean)
 function buildHistoryLoadOptions(
   config: vscode.WorkspaceConfiguration
 ): HistoryLoadOptions {
+  const configuredCursorIdeUserDataHome = config.get<string>("cursorIdeUserDataHome", "").trim();
   return {
     panelHome: panelHomeFromConfig(),
     codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
@@ -532,11 +545,17 @@ function buildHistoryLoadOptions(
     grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
+    cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
+    cursorIdeUserDataHome: configuredCursorIdeUserDataHome
+      ? expandHome(configuredCursorIdeUserDataHome)
+      : defaultCursorIdeUserDataHome(),
     maxItems: config.get<number>("maxItems", 10_000),
     showArchivedCodex: config.get<boolean>("showArchivedCodex", false),
     showArchivedOpenCode: config.get<boolean>("showArchivedOpenCode", false),
     showSubagentCodex: config.get<boolean>("showSubagentCodex", false),
-    showSubagentGrok: config.get<boolean>("showSubagentGrok", false)
+    showSubagentGrok: config.get<boolean>("showSubagentGrok", false),
+    showArchivedCursorIde: config.get<boolean>("showArchivedCursorIde", false),
+    showSubagentCursorIde: config.get<boolean>("showSubagentCursorIde", false)
   };
 }
 
@@ -805,6 +824,11 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         provider: "pi" as const
       },
       {
+        label: "Cursor CLI",
+        description: "Start a Cursor agent session in the selected workspace",
+        provider: "cursor" as const
+      },
+      {
         label: t("quickpick.newSessionCodexAppLabel"),
         description: t("quickpick.newSessionCodexAppDescription"),
         provider: "codexApp" as const
@@ -1006,11 +1030,7 @@ function applyProjectAndGtdResolvers(
   tree.setGtdRawStatusResolver((session) => sessionGtdStore?.get(session));
   tree.setHasSessionNoteResolver((session) => notesStore?.hasSessionNote(session) ?? false);
   tree.setHasProjectNoteResolver((projectPath) => notesStore?.hasProjectNote(projectPath) ?? false);
-  gtdTreeProvider.setSessionTreeOptions({
-    projectDisplayName: (projectPath) => tree.getProjectDisplayName(projectPath),
-    gtdStatusResolver: gtdResolver,
-    hasSessionNoteResolver: (session) => notesStore?.hasSessionNote(session) ?? false
-  });
+  gtdTreeProvider.setSessionTreeOptions(tree.getSessionTreeItemOptions());
 }
 
 function refreshNotesUi(tree: SessionTreeProvider, reload = false): void {
@@ -1098,6 +1118,8 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "grok" ||
         value.provider === "opencode" ||
         value.provider === "pi" ||
+        value.provider === "cursor" ||
+        value.provider === "cursor-ide" ||
         value.provider === "chat") &&
       "id" in value
   );

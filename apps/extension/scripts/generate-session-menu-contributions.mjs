@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const SESSION_VIEW_WHEN =
-  "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|chat)/";
+  "(view == agentResume.sessions || view == agentResume.gtd) && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|cursor|chat)/";
 
 const ACTIONS = [
   "copyResumeCommand",

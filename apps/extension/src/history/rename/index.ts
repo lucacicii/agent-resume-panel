@@ -15,6 +15,8 @@ export interface RenameHomes {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
 }
 
 function cleanTitle(input: string): string {
@@ -44,6 +46,10 @@ export async function renameSession(
       return renameOpenCodeSession(homes.opencodeHome, session, title);
     case "pi":
       return renamePiSession(homes.piHome, session, title);
+    case "cursor":
+    case "cursor-ide":
+      // Cursor's local session records are catalog-only for title changes.
+      return;
     case "chat":
       return renameAcpSession(homes.panelHome, session, title);
     default:

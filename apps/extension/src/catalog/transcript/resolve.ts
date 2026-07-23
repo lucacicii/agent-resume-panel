@@ -12,7 +12,9 @@ export function homesFromLoadOptions(options: HistoryLoadOptions): RenameHomes {
     antigravityHome: options.antigravityHome,
     grokHome: options.grokHome,
     opencodeHome: options.opencodeHome,
-    piHome: options.piHome
+    piHome: options.piHome,
+    cursorHome: options.cursorHome,
+    cursorIdeUserDataHome: options.cursorIdeUserDataHome
   };
 }
 
@@ -34,6 +36,10 @@ export function resolveTranscriptRefs(
       return resolveAgy(session, indexes);
     case "opencode":
       return resolveOpenCode(session, homes);
+    case "cursor":
+      return { kind: "unavailable", reason: "Cursor CLI transcript refs are synchronized by Core." };
+    case "cursor-ide":
+      return { kind: "unavailable", reason: "Cursor IDE composer headers do not expose conversation bodies." };
     case "chat":
       return resolveAcp(session, homes);
     default:

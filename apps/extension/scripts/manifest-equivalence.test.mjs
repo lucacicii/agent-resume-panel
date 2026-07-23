@@ -11,17 +11,17 @@ const extensionRoot = path.join(scriptDir, "..");
 
 const BASELINES = {
   openvsx: {
-    commands: 496,
-    menuEntries: 28873,
+    commands: 486,
+    menuEntries: 20042,
     submenus: 13,
-    activationEvents: 45,
+    activationEvents: 44,
     views: 4
   },
   marketplace: {
-    commands: 164,
-    menuEntries: 28873,
+    commands: 161,
+    menuEntries: 20042,
     submenus: 13,
-    activationEvents: 37,
+    activationEvents: 36,
     views: 3
   }
 };

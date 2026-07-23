@@ -8,6 +8,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.7.0]
+
+#### 新增
+
+- **Cursor CLI**：同步 `~/.cursor` 中的会话、读取本地 transcript 预览，并通过 `cursor-agent --workspace <cwd> --resume <sessionId>` 在集成终端恢复；支持新建会话与右键复制恢复命令。
+- **Cursor IDE**：索引本机 Composer 会话头信息与关联项目；点击会在 Cursor 中打开该项目。Cursor 未提供可用的会话命令恢复接口，因此不显示恢复命令菜单。
+- **Cursor 标识**：Cursor CLI / IDE 会话在 Sessions 与 GTD 树使用 Cursor 图标。
+
 ### [2.6.13]
 
 #### 新增
@@ -425,6 +433,14 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.7.0]
+
+#### Added
+
+- **Cursor CLI**: syncs sessions from `~/.cursor`, reads local transcript previews, and resumes in the integrated terminal with `cursor-agent --workspace <cwd> --resume <sessionId>`; new sessions and copied resume commands are supported.
+- **Cursor IDE**: indexes local Composer session headers and their associated projects; clicking one opens that project in Cursor. Cursor does not expose a usable command-line chat-resume interface, so resume-command menus are unavailable.
+- **Cursor identity**: Cursor CLI / IDE sessions use the Cursor icon in the Sessions and GTD trees.
 
 ### [2.6.13]
 

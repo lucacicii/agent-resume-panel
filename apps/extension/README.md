@@ -2,7 +2,7 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi** CLI sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist.
+Browse, search, and resume **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Cursor CLI** sessions from a VS Code / VSCodium sidebar — with **ACP Chat**, **GTD** tagging, **multi-note Markdown** files, and Summarize / Rename / Handoff assist. **Cursor IDE** composer sessions are indexed as metadata and open their recorded project in Cursor.
 
 There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal — it shares the same local data as this extension.
 
@@ -11,7 +11,7 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 | **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **Docs** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-Extension version: **2.6.13** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+Extension version: **2.7.0** · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`** (shared by extension and Desktop).  
@@ -50,6 +50,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 | **Search / Manager** | Filter, bulk browse, Export backup |
 | **LLM Assist** | Summarize, Auto Rename, Handoff Brief (optional API) |
 | **Resume targets** | Terminal, Claude/Codex panels, Ghostty, Codex App |
+| **Cursor** | Cursor CLI sync, preview, terminal resume, and copied `cursor-agent` command; Cursor IDE composer headers open the recorded project (command resume is not available) |
 
 ### Quick start
 
@@ -72,7 +73,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 
 ## 简体中文
 
-在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。
+在 VS Code / VSCodium 侧边栏中统一浏览、搜索、恢复 **Codex / Claude Code / Antigravity / Grok Build / OpenCode / Pi / Cursor CLI** 历史会话；支持 **ACP Chat**、**GTD**、**多条 Markdown 笔记**，以及摘要 / 重命名 / Handoff。**Cursor IDE** Composer 会话仅索引元数据，点击后在 Cursor 中打开其记录的项目。
 
 另有独立 **macOS 桌面端**：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端，与本扩展共用同一份本机数据。
 
@@ -81,7 +82,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [下载 DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
 | **文档** | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
 
-扩展版本：**2.6.13** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
+扩展版本：**2.7.0** · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases)
 
 > **无云端 · 纯本机存储**  
 > 数据默认保存在 **`~/.agent-resume-panel`**（扩展与 Desktop 共用）。可选 LLM Assist 需自行配置 API。
@@ -115,6 +116,7 @@ Do not paste API keys, full transcripts, or sensitive paths in issues.
 | **搜索 / Manager** | 筛选、批量浏览、Export 备份 |
 | **LLM Assist** | 摘要、自动重命名、Handoff Brief |
 | **恢复目标** | 终端、Claude/Codex 面板、Ghostty、Codex App |
+| **Cursor** | Cursor CLI 支持同步、预览、终端恢复与复制 `cursor-agent` 命令；Cursor IDE Composer 仅打开记录的项目，不支持命令恢复 |
 
 ### 快速开始
 

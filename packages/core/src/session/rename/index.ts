@@ -29,6 +29,10 @@ export async function renameSessionNative(
       return renameCodexSession(homes.codexHome, session, title);
     case "claude":
       return renameClaudeSession(homes.claudeHome, session, title);
+    case "cursor":
+    case "cursor-ide":
+      // Cursor title changes remain local to the catalog.
+      return;
     case "agy":
       return renameAgySession(homes.antigravityHome, session, title);
     case "grok":

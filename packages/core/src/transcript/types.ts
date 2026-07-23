@@ -21,6 +21,8 @@ export interface PreviewHomes {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
 }
 
 export const MAX_PREVIEW_MESSAGES = 100;

@@ -27,7 +27,7 @@ export {
   preparePanelDatabases,
   preparePanelDatabasesFromSettings
 } from "./dbPaths";
-export { escapeSqlLiteral, runSqlite, runSqliteJson } from "./sqlite";
+export { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "./sqlite";
 
 export type {
   PanelSettings,

@@ -69,14 +69,15 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldEditorNewSessionProviderDescription"),
           type: "enum",
           default: "codex",
-          enum: ["codex", "claude", "agy", "grok", "opencode", "pi"],
+          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"],
           enumLabels: {
             codex: t("settings.enum.editorNewSessionProviderCodex"),
             claude: t("settings.enum.editorNewSessionProviderClaude"),
             agy: t("settings.enum.editorNewSessionProviderAgy"),
             grok: t("settings.enum.editorNewSessionProviderGrok"),
             opencode: t("settings.enum.editorNewSessionProviderOpencode"),
-            pi: t("settings.enum.editorNewSessionProviderPi")
+            pi: t("settings.enum.editorNewSessionProviderPi"),
+            cursor: "Cursor CLI"
           }
         }
       ]
@@ -173,6 +174,20 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldPiHomeDescription"),
           type: "string",
           default: "~/.pi/agent"
+        },
+        {
+          key: "cursorHome",
+          label: "Cursor CLI home",
+          description: "Cursor CLI data directory containing chats and agent transcripts.",
+          type: "string",
+          default: "~/.cursor"
+        },
+        {
+          key: "cursorIdeUserDataHome",
+          label: "Cursor IDE user data home",
+          description: "Cursor IDE User directory containing composer headers. IDE chat bodies are not imported.",
+          type: "string",
+          default: ""
         }
       ]
     },
@@ -205,6 +220,20 @@ export function getSettingSections(): SettingSection[] {
           key: "showSubagentGrok",
           label: t("settings.fieldShowSubagentGrokLabel"),
           description: t("settings.fieldShowSubagentGrokDescription"),
+          type: "boolean",
+          default: false
+        },
+        {
+          key: "showArchivedCursorIde",
+          label: "Show archived Cursor IDE chats",
+          description: "Show archived Cursor IDE composer headers.",
+          type: "boolean",
+          default: false
+        },
+        {
+          key: "showSubagentCursorIde",
+          label: "Show Cursor IDE subagent chats",
+          description: "Show Cursor IDE subagent composer headers.",
           type: "boolean",
           default: false
         }

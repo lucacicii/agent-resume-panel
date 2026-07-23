@@ -16,6 +16,12 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "pi") {
     return `pi --session ${shellQuote(session.id)}`;
   }
+  if (session.provider === "cursor") {
+    return `cursor-agent --workspace ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
+  }
+  if (session.provider === "cursor-ide") {
+    throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");
+  }
 
   return `claude --resume ${shellQuote(session.id)}`;
 }
@@ -35,6 +41,12 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "pi") {
     return "pi";
+  }
+  if (provider === "cursor") {
+    return `cursor-agent --workspace ${shellQuote(projectPath)}`;
+  }
+  if (provider === "cursor-ide" || provider === "chat") {
+    throw new Error(`New terminal sessions are not supported for ${provider}.`);
   }
 
   return "claude";

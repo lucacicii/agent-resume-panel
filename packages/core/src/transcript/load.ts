@@ -2,6 +2,7 @@ import { AgentSession } from "../catalog/types";
 import { previewAgySession } from "./agy";
 import { previewClaudeSession } from "./claude";
 import { previewCodexSession } from "./codex";
+import { previewCursorSession } from "./cursor";
 import { previewGrokSession } from "./grok";
 import { previewOpenCodeSession } from "./opencode";
 import { previewPiSession } from "./pi";
@@ -24,6 +25,8 @@ export async function loadSessionPreview(
       return previewOpenCodeSession(session, homes);
     case "pi":
       return previewPiSession(session, homes);
+    case "cursor":
+      return previewCursorSession(session, homes);
     default:
       throw new Error(`Preview is not supported for provider ${session.provider}.`);
   }

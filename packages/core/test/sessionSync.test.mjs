@@ -56,7 +56,7 @@ test("explicit missing agent home still warns", async () => {
   assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
 });
 
-test("syncs six providers, preserves local enhancements, and isolates provider failures", async () => {
+test("syncs eight providers, preserves local enhancements, and isolates provider failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-sync-"));
   const homes = {
     codexHome: path.join(root, "codex"),
@@ -64,7 +64,9 @@ test("syncs six providers, preserves local enhancements, and isolates provider f
     antigravityHome: path.join(root, "agy"),
     grokHome: path.join(root, "grok"),
     opencodeHome: path.join(root, "opencode"),
-    piHome: path.join(root, "pi")
+    piHome: path.join(root, "pi"),
+    cursorHome: path.join(root, "cursor"),
+    cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
   };
   await Promise.all(Object.values(homes).map((dir) => mkdir(dir, { recursive: true })));
 
@@ -88,6 +90,21 @@ test("syncs six providers, preserves local enhancements, and isolates provider f
     { type: "session", id: "pi-1", cwd: "/tmp/pi", timestamp: "2026-01-01T00:00:07Z" },
     { type: "message", timestamp: "2026-01-01T00:00:08Z", message: { role: "user", content: "Pi title" } }
   ]);
+  await mkdir(path.join(homes.cursorHome, "chats", "workspace-a", "cursor-1"), { recursive: true });
+  await writeFile(
+    path.join(homes.cursorHome, "chats", "workspace-a", "cursor-1", "meta.json"),
+    JSON.stringify({ schemaVersion: 1, title: "Cursor CLI title", cwd: "/tmp/cursor", createdAtMs: 7000, updatedAtMs: 8000, hasConversation: true })
+  );
+  await jsonl(path.join(homes.cursorHome, "projects", "project-a", "agent-transcripts", "cursor-1", "cursor-1.jsonl"), [
+    { role: "user", message: { content: [{ type: "text", text: "Cursor prompt" }] } },
+    { role: "assistant", message: { content: [{ type: "text", text: "Cursor answer" }] } }
+  ]);
+  const cursorIdeDb = path.join(homes.cursorIdeUserDataHome, "globalStorage", "state.vscdb");
+  await mkdir(path.dirname(cursorIdeDb), { recursive: true });
+  sqlite(cursorIdeDb, `CREATE TABLE composerHeaders(composerId TEXT,workspaceId TEXT,createdAt INTEGER,lastUpdatedAt INTEGER,isArchived INTEGER,isSubagent INTEGER,recency INTEGER,checkpointAt INTEGER,value TEXT);
+    INSERT INTO composerHeaders VALUES('cursor-ide-1','workspace-a',9000,10000,0,0,10000,NULL,'{"name":"Cursor IDE title","subtitle":"Cursor IDE subtitle"}');`);
+  await mkdir(path.join(homes.cursorIdeUserDataHome, "workspaceStorage", "workspace-a"), { recursive: true });
+  await writeFile(path.join(homes.cursorIdeUserDataHome, "workspaceStorage", "workspace-a", "workspace.json"), JSON.stringify({ folder: "file:///tmp/cursor-ide" }));
 
   const settings = {
     panelHome: path.join(root, "panel"),
@@ -100,8 +117,15 @@ test("syncs six providers, preserves local enhancements, and isolates provider f
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
-  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 6);
-  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi"]));
+  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 8);
+  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "cursor", "cursor-ide"]));
+  const cursor = first.sessions.find((item) => item.provider === "cursor");
+  assert.equal(cursor?.title, "Cursor CLI title");
+  assert.equal(cursor?.projectPath, "/tmp/cursor");
+  const cursorIde = first.sessions.find((item) => item.provider === "cursor-ide");
+  assert.equal(cursorIde?.title, "Cursor IDE title");
+  assert.equal(cursorIde?.projectPath, "/tmp/cursor-ide");
+  assert.equal(cursorIde?.source, "cursor-ide-header");
 
   sqlite(options.dbPath, "UPDATE sessions SET user_title='Pinned title',session_summary='Keep summary',session_summary_language='English' WHERE provider='codex' AND agent_session_id='codex-1'; INSERT INTO session_gtd(provider,agent_session_id,status,updated_at_ms) VALUES('codex','codex-1','doing',1);");
   sqlite(codexDb, "UPDATE threads SET title='Codex native updated' WHERE id='codex-1';");

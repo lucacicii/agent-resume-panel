@@ -1,6 +1,6 @@
 import { AcpAgentProvider } from "../acp/types";
 
-export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "chat";
+export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "cursor" | "cursor-ide" | "chat";
 
 export interface AgentSession {
   provider: AgentProvider;
@@ -27,11 +27,15 @@ export interface HistoryLoadOptions {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
   maxItems: number;
   showArchivedCodex: boolean;
   showArchivedOpenCode: boolean;
   showSubagentCodex: boolean;
   showSubagentGrok: boolean;
+  showArchivedCursorIde: boolean;
+  showSubagentCursorIde: boolean;
 }
 
 export interface HistoryLoadResult {

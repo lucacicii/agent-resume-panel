@@ -39,6 +39,8 @@ export interface PanelSettingsFile {
     grokHome?: string;
     opencodeHome?: string;
     piHome?: string;
+    cursorHome?: string;
+    cursorIdeUserDataHome?: string;
   };
   desktop?: Record<string, unknown>;
 }
@@ -235,6 +237,8 @@ export async function upsertPanelLlmFields(input: {
     grokHome: config.get<string>("grokHome", "~/.grok"),
     opencodeHome: config.get<string>("opencodeHome", "~/.local/share/opencode"),
     piHome: config.get<string>("piHome", "~/.pi/agent"),
+    cursorHome: config.get<string>("cursorHome", "~/.cursor"),
+    cursorIdeUserDataHome: config.get<string>("cursorIdeUserDataHome", ""),
     ...current.agentHomes
   });
 

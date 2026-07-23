@@ -90,7 +90,7 @@ export interface SessionsDraft {
 
 export interface WorkbenchDraft {
   scratchDir: string;
-  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi";
+  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "cursor";
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
@@ -123,6 +123,8 @@ export interface StorageDraft {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
 }
 
 const UI_LANGUAGES = new Set<UiLanguageValue>(["auto", "en", "zh-cn", "ja"]);
@@ -314,7 +316,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
   const provider = workbench?.defaultNewSessionProvider;
   return {
     scratchDir: workbench?.scratchDir || "",
-    defaultProvider: provider === "claude" || provider === "grok" || provider === "agy" || provider === "opencode" || provider === "pi" ? provider : "codex",
+    defaultProvider: provider === "claude" || provider === "grok" || provider === "agy" || provider === "opencode" || provider === "pi" || provider === "cursor" ? provider : "codex",
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
@@ -391,7 +393,9 @@ const AGENT_HOME_DEFAULTS = {
   antigravityHome: "~/.gemini",
   grokHome: "~/.grok",
   opencodeHome: "~/.local/share/opencode",
-  piHome: "~/.pi/agent"
+  piHome: "~/.pi/agent",
+  cursorHome: "~/.cursor",
+  cursorIdeUserDataHome: ""
 } as const;
 
 export function storageDraftFromSettings(settings: PanelSettings): StorageDraft {
@@ -406,8 +410,11 @@ export function storagePatch(settings: PanelSettings, draft: StorageDraft): Part
     const value = draft[key as keyof typeof AGENT_HOME_DEFAULTS].trim();
     return value && value !== fallback ? [[key, value]] : [];
   }));
+  const cursorIdeUserDataHome = draft.cursorIdeUserDataHome.trim();
   return {
     panelHome: draft.panelHome.trim() || undefined,
-    agentHomes: Object.keys(agentHomes).length ? agentHomes : undefined
+    agentHomes: Object.keys(agentHomes).length || cursorIdeUserDataHome
+      ? { ...agentHomes, ...(cursorIdeUserDataHome ? { cursorIdeUserDataHome } : {}) }
+      : undefined
   };
 }

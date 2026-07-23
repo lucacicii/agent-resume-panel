@@ -24,9 +24,12 @@ function isBusyError(error: unknown): boolean {
 function runSqlite3Once(
   dbPath: string,
   sql: string,
-  options?: { json?: boolean; maxBuffer?: number }
+  options?: { json?: boolean; maxBuffer?: number; readonly?: boolean }
 ): Promise<string> {
   const args: string[] = [];
+  if (options?.readonly) {
+    args.push("-readonly");
+  }
   if (options?.json) {
     args.push("-json");
   }
@@ -68,7 +71,7 @@ function runSqlite3Once(
 async function execSqlite3(
   dbPath: string,
   sql: string,
-  options?: { json?: boolean; maxBuffer?: number }
+  options?: { json?: boolean; maxBuffer?: number; readonly?: boolean }
 ): Promise<string> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= SQLITE_MAX_ATTEMPTS; attempt++) {
@@ -93,6 +96,16 @@ export async function runSqlite(dbPath: string, sql: string): Promise<void> {
 
 export async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
   const stdout = await execSqlite3(dbPath, sql, { json: true, maxBuffer: 20 * 1024 * 1024 });
+  return JSON.parse(stdout || "[]") as T[];
+}
+
+/** Read external SQLite databases without allowing SQLite to create or update files. */
+export async function runSqliteReadOnlyJson<T>(dbPath: string, sql: string): Promise<T[]> {
+  const stdout = await execSqlite3(dbPath, sql, {
+    json: true,
+    maxBuffer: 20 * 1024 * 1024,
+    readonly: true
+  });
   return JSON.parse(stdout || "[]") as T[];
 }
 
