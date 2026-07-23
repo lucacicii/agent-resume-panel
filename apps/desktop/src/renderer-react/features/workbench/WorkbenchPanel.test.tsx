@@ -577,4 +577,46 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByRole("button", { name: /Ship GTD view/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Triage feedback/ })).toBeNull();
   });
+
+  it("dismisses the branch popover on outside click and Escape", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.loading": "Loading", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.gitBranchesLoaded": "Branches loaded"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "direct", isRepo: true, branch: "main", repoRoot: "/work/app", nestedRepos: [] }),
+      terminalGitBranches: async () => ({ mode: "direct", current: "main", branches: ["main", "feature"], repoRoot: "/work/app" }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await screen.findByRole("button", { name: "main" });
+
+    const branchButton = screen.getByRole("button", { name: "main" });
+    fireEvent.click(branchButton);
+    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
+
+    fireEvent.click(branchButton);
+    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
+  });
 });

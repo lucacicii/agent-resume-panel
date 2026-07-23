@@ -810,6 +810,28 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [contextMenu]);
 
   useEffect(() => {
+    if (!branchPane) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-branch-popover")) {
+        setBranchPane(null);
+        setBranchResult(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setBranchPane(null);
+        setBranchResult(null);
+      }
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [branchPane]);
+
+  useEffect(() => {
     if (!renameDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !renameDialog.autoBusy) setRenameDialog(null);
