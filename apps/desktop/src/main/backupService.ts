@@ -112,7 +112,8 @@ const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   session_transcript_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
   session_transcript_index: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  agent_threads: { keys: ["id"], timestamp: "updated_at_ms" }
+  agent_threads: { keys: ["id"], timestamp: "updated_at_ms" },
+  session_execution_notes: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" }
 };
 const DESKTOP_APPEND_TABLES: Record<string, string[]> = {
   report_entries: ["id"],

@@ -4,7 +4,9 @@ import * as path from "node:path";
 import {
   effectivePanelHome,
   expandHome,
+  assertExecutionNoteWritable,
   loadSettings,
+  isManagedExecutionNote,
   noteAssetsDirName,
   NotesStore,
   notesRoot,
@@ -22,6 +24,8 @@ import { loadPanelDbPaths } from "./panelDatabases";
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
 
+export type DesktopNoteRecord = NoteRecord & { systemManaged: boolean };
+
 async function getNotesStore(): Promise<NotesStore> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
@@ -36,10 +40,15 @@ async function getNotesStore(): Promise<NotesStore> {
   return notesStore;
 }
 
-export async function notesList(): Promise<NoteRecord[]> {
+export async function notesList(): Promise<DesktopNoteRecord[]> {
   const store = await getNotesStore();
   await store.reload();
-  return store.getAllNotes();
+  const settings = await loadSettings();
+  const paths = await loadPanelDbPaths(settings);
+  return Promise.all(store.getAllNotes().map(async (record) => ({
+    ...record,
+    systemManaged: await isManagedExecutionNote(paths.desktopDb, record.noteId)
+  })));
 }
 
 export interface DesktopNoteGtdTask extends NoteGtdTask {
@@ -88,17 +97,26 @@ export async function notesListGtd(args?: {
     || left.line - right.line);
 }
 
-export async function notesRead(noteId: string): Promise<{ record: NoteRecord; content: string }> {
+export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
   const store = await getNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
   }
   const content = await store.readNoteContent(noteId);
-  return { record, content };
+  const settings = await loadSettings();
+  const paths = await loadPanelDbPaths(settings);
+  return { record: { ...record, systemManaged: await isManagedExecutionNote(paths.desktopDb, noteId) }, content };
+}
+
+async function assertManualNoteWritable(noteId: string): Promise<void> {
+  const settings = await loadSettings();
+  const paths = await loadPanelDbPaths(settings);
+  await assertExecutionNoteWritable(paths.desktopDb, noteId);
 }
 
 export async function notesWrite(noteId: string, content: string): Promise<NoteRecord> {
+  await assertManualNoteWritable(noteId);
   const store = await getNotesStore();
   return store.writeNoteContent(noteId, content);
 }
@@ -130,17 +148,20 @@ export async function notesCreate(args: {
 }
 
 export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteRecord> {
+  await assertManualNoteWritable(noteId);
   const store = await getNotesStore();
   return store.moveNote(noteId, owner);
 }
 
 export async function notesDelete(noteId: string): Promise<{ ok: boolean }> {
+  await assertManualNoteWritable(noteId);
   const store = await getNotesStore();
   await store.deleteNote(noteId);
   return { ok: true };
 }
 
 export async function notesRename(noteId: string, filename: string): Promise<NoteRecord> {
+  await assertManualNoteWritable(noteId);
   const store = await getNotesStore();
   return store.renameNote(noteId, filename);
 }
@@ -159,6 +180,7 @@ export async function notesImport(owner: NoteOwner): Promise<ImportNotesResult> 
 }
 
 export async function notesPasteImage(noteId: string): Promise<{ snippet: string } | null> {
+  await assertManualNoteWritable(noteId);
   const image = clipboard.readImage();
   if (image.isEmpty()) {
     return null;

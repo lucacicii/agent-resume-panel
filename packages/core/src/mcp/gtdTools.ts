@@ -8,7 +8,7 @@ import {
   type NoteGtdTask
 } from "../notes/gtd";
 import { isGtdStatus, type GtdStatus } from "../gtd/types";
-import type { NoteToolContext } from "./tools";
+import { assertNoteWritable, type NoteToolContext } from "./tools";
 
 const statusSchema = z.enum(["inbox", "next", "waiting", "someday", "reference", "done"]);
 
@@ -100,6 +100,7 @@ export async function handleNoteGtdCreate(
   ctx: NoteToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const record = await loadRecord(ctx, args.noteId);
+  await assertNoteWritable(ctx, args.noteId);
   const content = await ctx.notesStore.readNoteContent(record.noteId);
   const next = appendNoteGtdTask(content, args);
   await ctx.notesStore.writeNoteContent(record.noteId, next);
@@ -112,6 +113,7 @@ export async function handleNoteGtdUpdate(
   ctx: NoteToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const record = await loadRecord(ctx, args.noteId);
+  await assertNoteWritable(ctx, args.noteId);
   const content = await ctx.notesStore.readNoteContent(record.noteId);
   const next = updateNoteGtdTask(content, args);
   await ctx.notesStore.writeNoteContent(record.noteId, next);
@@ -125,6 +127,7 @@ export async function handleNoteGtdDelete(
   ctx: NoteToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const record = await loadRecord(ctx, args.noteId);
+  await assertNoteWritable(ctx, args.noteId);
   const content = await ctx.notesStore.readNoteContent(record.noteId);
   const task = parseNoteGtdTasks(content).find((item) => item.text === args.taskText && (args.occurrence == null || item.occurrence === args.occurrence));
   const next = deleteNoteGtdTask(content, args);

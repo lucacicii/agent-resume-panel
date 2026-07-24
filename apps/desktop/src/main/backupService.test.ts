@@ -32,7 +32,7 @@ describe("backupService", () => {
     const targetPaths = await preparePanelDatabases(targetSettings);
 
     await runSqlite(sourcePaths.catalogDb, `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms) VALUES ('codex', 'session-1', 'Imported', '/source', 200); INSERT INTO sync_state (provider, last_sync_at_ms) VALUES ('codex', 200);`);
-    await runSqlite(sourcePaths.desktopDb, `INSERT INTO session_embeddings (provider, agent_session_id, title, summary_preview, embedding_json, content_hash, embedding_key, updated_at_ms) VALUES ('codex', 'session-1', 'Imported', 'summary', '[0.1,0.2]', 'hash-new', 'model-a', 200);`);
+    await runSqlite(sourcePaths.desktopDb, `INSERT INTO session_embeddings (provider, agent_session_id, title, summary_preview, embedding_json, content_hash, embedding_key, updated_at_ms) VALUES ('codex', 'session-1', 'Imported', 'summary', '[0.1,0.2]', 'hash-new', 'model-a', 200); INSERT INTO session_execution_notes (provider, agent_session_id, note_id, desktop_tracking, last_observed_updated_at_ms, last_activity_log_at_ms, last_state, last_state_at_ms, created_at_ms, updated_at_ms) VALUES ('codex', 'session-1', 'execution-note', 1, 200, 200, 'active', 200, 200, 200);`);
     await runSqlite(targetPaths.catalogDb, `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms) VALUES ('codex', 'session-1', 'Local', '/target', 100); INSERT INTO sync_state (provider, last_sync_at_ms) VALUES ('codex', 999);`);
 
     const archive = path.join(sourceHome, "backup.zip");
@@ -46,9 +46,11 @@ describe("backupService", () => {
     const sessions = await runSqliteJson<{ title: string; updated_at_ms: number }>(targetPaths.catalogDb, "SELECT title, updated_at_ms FROM sessions WHERE provider = 'codex' AND agent_session_id = 'session-1';");
     const vectors = await runSqliteJson<{ embedding_key: string; content_hash: string }>(targetPaths.desktopDb, "SELECT embedding_key, content_hash FROM session_embeddings WHERE provider = 'codex' AND agent_session_id = 'session-1';");
     const sync = await runSqliteJson<{ last_sync_at_ms: number }>(targetPaths.catalogDb, "SELECT last_sync_at_ms FROM sync_state WHERE provider = 'codex';");
+    const executionNotes = await runSqliteJson<{ note_id: string; last_state: string }>(targetPaths.desktopDb, "SELECT note_id, last_state FROM session_execution_notes WHERE provider = 'codex' AND agent_session_id = 'session-1';");
 
     expect(sessions).toEqual([{ title: "Imported", updated_at_ms: 200 }]);
     expect(vectors).toEqual([{ embedding_key: "model-a", content_hash: "hash-new" }]);
     expect(sync).toEqual([{ last_sync_at_ms: 999 }]);
+    expect(executionNotes).toEqual([{ note_id: "execution-note", last_state: "active" }]);
   }, 30_000);
 });

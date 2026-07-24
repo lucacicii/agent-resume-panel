@@ -4,10 +4,16 @@ import type { NoteRecord } from "../notes/catalogNotes";
 import type { AgentProvider } from "../catalog/types";
 import { planNoteSearchDeterministically } from "../notes/queryPlan";
 import { searchNotesByEmbedding } from "../notes/search";
+import { assertExecutionNoteWritable } from "../session/executionNotes";
 
 export interface NoteToolContext {
   notesStore: NotesStore;
   dbPath: string;
+}
+
+/** Shared guard for all user-directed note mutation paths. */
+export async function assertNoteWritable(ctx: NoteToolContext, noteId: string): Promise<void> {
+  await assertExecutionNoteWritable(ctx.dbPath, noteId);
 }
 
 export const NOTE_SEARCH_DEFAULT_LIMIT = 50;
@@ -295,6 +301,7 @@ export async function handleNoteWrite(
   if (!before) {
     throw new Error(`Note not found: ${args.noteId}`);
   }
+  await assertNoteWritable(ctx, args.noteId);
   const record = await store.writeNoteContent(args.noteId, args.content);
   const text = `Note overwritten successfully.\n${JSON.stringify(summarizeNote(record), null, 2)}`;
   return { content: [{ type: "text", text }] };
@@ -309,6 +316,7 @@ export async function handleNoteAppend(
   if (!before) {
     throw new Error(`Note not found: ${args.noteId}`);
   }
+  await assertNoteWritable(ctx, args.noteId);
   const existing = await store.readNoteContent(args.noteId);
   const newContent = `${existing}\n\n${args.content}`;
   const record = await store.writeNoteContent(args.noteId, newContent);
@@ -325,6 +333,7 @@ export async function handleNoteDelete(
   if (!before) {
     throw new Error(`Note not found: ${args.noteId}`);
   }
+  await assertNoteWritable(ctx, args.noteId);
   const summary = summarizeNote(before);
   await store.deleteNote(args.noteId);
   const text = `Note deleted.\n${JSON.stringify(summary, null, 2)}`;

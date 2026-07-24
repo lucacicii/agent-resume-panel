@@ -137,6 +137,7 @@ import {
   importBackup,
   selectBackupForImport
 } from "./backupService";
+import { invalidateSessionExecutionNotesStore, trackOpenedSessionExecution, trackSyncedSessionExecutions } from "./sessionExecutionNotes";
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -335,6 +336,9 @@ function syncSessions(): Promise<AgentSessionSyncResult> {
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
+  void trackSyncedSessionExecutions(result.sessions).catch((error) => {
+    console.error("[session-execution-notes]", error);
+  });
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("sessions:synced", result);
   }
@@ -366,6 +370,7 @@ async function resumeCatalogSession(
 
   if (session.provider === "cursor-ide") {
     await openProjectInEditor(cwd, "cursor", app.getLocale());
+    void trackOpenedSessionExecution(session).catch((error) => console.error("[session-execution-notes]", error));
     return { mode, external: true, command: "", cwd, session };
   }
 
@@ -379,8 +384,10 @@ async function resumeCatalogSession(
         writeText: (text) => Promise.resolve(clipboard.writeText(text))
       }
     );
+    void trackOpenedSessionExecution(session).catch((error) => console.error("[session-execution-notes]", error));
     return { mode, external: true, command, cwd, session };
   }
+  void trackOpenedSessionExecution(session).catch((error) => console.error("[session-execution-notes]", error));
   return { mode, command, cwd, session };
 }
 
@@ -763,6 +770,7 @@ function registerIpc(): void {
       const prevLocale = buildI18nBundle(previous).locale;
       const file = await saveSettings(settings);
       invalidateNotesStore();
+      invalidateSessionExecutionNotesStore();
       const schedulerEnabled = await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
       const bundle = buildI18nBundle(saved);

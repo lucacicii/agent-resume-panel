@@ -553,6 +553,7 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      systemManaged: boolean;
     }>
   >;
   notesListGtd(args?: { query?: string; status?: GtdStatus }): Promise<
@@ -584,6 +585,7 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      systemManaged: boolean;
     };
     content: string;
   }>;
