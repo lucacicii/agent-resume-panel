@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { Readable } from "node:stream";
 import {
   effectivePanelHome,
+  cleanupRemovedSessionExecutionNotes,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
   NotesStore,
@@ -112,8 +113,7 @@ const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   session_transcript_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
   session_transcript_index: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  agent_threads: { keys: ["id"], timestamp: "updated_at_ms" },
-  session_execution_notes: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" }
+  agent_threads: { keys: ["id"], timestamp: "updated_at_ms" }
 };
 const DESKTOP_APPEND_TABLES: Record<string, string[]> = {
   report_entries: ["id"],
@@ -536,6 +536,11 @@ export async function importBackup(settings: PanelSettings, importToken: string,
       await mergeDatabase(paths.catalogDb, path.join(payload, "catalog.db"), CATALOG_UPDATED_TABLES, CATALOG_APPEND_TABLES);
       await mergeDatabase(paths.desktopDb, path.join(payload, ".desktop", "desktop.db"), DESKTOP_UPDATED_TABLES, DESKTOP_APPEND_TABLES);
       await mergeTree(path.join(payload, "notes"), path.join(home, "notes"), pending.manifest, `${PAYLOAD_ROOT}/notes`);
+      await cleanupRemovedSessionExecutionNotes({
+        ...paths,
+        panelHome: home,
+        sourceDesktopDbs: [path.join(payload, ".desktop", "desktop.db")]
+      });
       await mergeTree(path.join(payload, ".desktop", "scratch"), path.join(home, ".desktop", "scratch"), pending.manifest, `${PAYLOAD_ROOT}/.desktop/scratch`);
       await mergeAcp(path.join(payload, "acp"), path.join(home, "acp"), pending.manifest);
       await maybeApplySettings(home, pending.root, pending.manifest, options.includeCredentials, options.password);

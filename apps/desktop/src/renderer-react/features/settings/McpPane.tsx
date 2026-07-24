@@ -1,21 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Copy, RefreshCw } from "lucide-react";
 import type { McpClientInfo } from "../../../main/mcpRegistration";
-import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
-export function McpPane({
-  t,
-  settings,
-  onSaveSettings
-}: {
-  t: Translate;
-  settings: PanelSettings;
-  onSaveSettings: (settings: PanelSettings) => Promise<void>;
-}) {
+export function McpPane({ t }: { t: Translate }) {
   const [clients, setClients] = useState<McpClientInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -92,18 +83,6 @@ export function McpPane({
     }
   };
 
-  const updateExecutionTracking = async (enabled: boolean) => {
-    setBusy("execution-tracking");
-    try {
-      await onSaveSettings({
-        ...settings,
-        desktop: { ...settings.desktop, autoSessionExecutionNotes: enabled }
-      });
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return <>
     <section className="settings-group">
       <h3 className="settings-group-title">{t("desktop.settings.mcpServiceTitle")}</h3>
@@ -115,21 +94,6 @@ export function McpPane({
           <button type="button" className="tool-btn" aria-label={t("desktop.settings.mcpRefresh")} disabled={busy !== null} onClick={() => void refresh()}><RefreshCw size={15} /></button>
         </div>
         <Status kind={status.kind}>{status.text}</Status>
-      </div>
-    </section>
-    <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.mcpExecutionTitle")}</h3>
-      <div className="settings-group-body">
-        <label className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">{t("desktop.settings.mcpExecutionTracking")}</span>
-            <span className="settings-row-desc">{t("desktop.settings.mcpExecutionTrackingDesc")}</span>
-          </span>
-          <span className="settings-toggle">
-            <input type="checkbox" role="switch" checked={settings.desktop?.autoSessionExecutionNotes === true} disabled={busy !== null} onChange={(event) => void updateExecutionTracking(event.target.checked)} />
-            <span className="settings-toggle-track" aria-hidden="true" />
-          </span>
-        </label>
       </div>
     </section>
     <section className="settings-group">

@@ -169,22 +169,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(crea
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
 
-CREATE TABLE IF NOT EXISTS session_execution_notes (
-  provider TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  note_id TEXT NOT NULL UNIQUE,
-  desktop_tracking INTEGER NOT NULL DEFAULT 0,
-  last_observed_updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  last_activity_log_at_ms INTEGER NOT NULL DEFAULT 0,
-  last_state TEXT,
-  last_state_at_ms INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (provider, agent_session_id)
-);
-CREATE INDEX IF NOT EXISTS idx_session_execution_notes_tracking
-  ON session_execution_notes(desktop_tracking, last_observed_updated_at_ms);
-
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

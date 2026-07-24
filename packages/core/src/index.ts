@@ -103,21 +103,8 @@ export {
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
-export {
-  SESSION_EXECUTION_STATUSES,
-  appendSessionExecutionCheckpoint,
-  assertExecutionNoteWritable,
-  isManagedExecutionNote,
-  recordTrackedExecutionActivity,
-  recordTrackedExecutionIdle,
-  startDesktopExecutionTracking
-} from "./session/executionNotes";
-export type {
-  ExecutionCheckpointInput,
-  SessionExecutionNoteContext,
-  SessionExecutionNoteRecord,
-  SessionExecutionStatus
-} from "./session/executionNotes";
+export { cleanupRemovedSessionExecutionNotes } from "./catalog/legacyCleanup";
+export type { RemovedExecutionNotesCleanupOptions } from "./catalog/legacyCleanup";
 export {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,

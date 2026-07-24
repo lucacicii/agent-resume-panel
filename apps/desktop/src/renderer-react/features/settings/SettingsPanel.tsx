@@ -30,7 +30,7 @@ import {
 
 type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "mcp" | "usage" | "backup" | "about";
 type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
-type EditablePane = Exclude<Pane, "usage" | "backup" | "about">;
+type EditablePane = Exclude<Pane, "mcp" | "usage" | "backup" | "about">;
 
 export type SettingsPanelProps = {
   /** Production path is always "window" (auxiliary BrowserWindow). */
@@ -207,7 +207,7 @@ export function SettingsPanel({
       />
     )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
-    : pane === "mcp" ? <McpPane t={t} settings={settings} onSaveSettings={(next) => save(next, "mcp")} />
+    : pane === "mcp" ? <McpPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 

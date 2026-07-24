@@ -46,8 +46,6 @@ export interface DesktopSettings {
   alwaysAllowAgentWriteOperations?: boolean;
   /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
   alwaysAllowAgentNonDestructiveOperations?: boolean;
-  /** Create protected execution timelines for sessions opened from Desktop. Default false. */
-  autoSessionExecutionNotes?: boolean;
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";

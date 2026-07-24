@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { effectivePanelHome, loadSettings } from "../settings/store";
 import { NotesStore } from "../notes/store";
@@ -53,24 +52,9 @@ import {
   sessionSearchSchema,
   sessionSetGtdSchema
 } from "./sessionTools";
-import {
-  SESSION_EXECUTION_STATUSES,
-  appendSessionExecutionCheckpoint,
-  type SessionExecutionStatus
-} from "../session/executionNotes";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.2.0";
-
-const sessionExecutionCheckpointSchema = {
-  provider: z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "cursor", "chat"])
-    .describe("Agent provider of the catalog session."),
-  sessionId: z.string().min(1).describe("Native agent session id."),
-  status: z.enum(SESSION_EXECUTION_STATUSES)
-    .describe("Execution checkpoint: started, active, idle, blocked, or completed. This does not change GTD status."),
-  description: z.string().max(2000).optional()
-    .describe("Optional short, non-sensitive status detail. Do not include transcripts, tokens, or credentials.")
-};
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -94,7 +78,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. Use session_note_checkpoint for execution status. It appends only to a protected system timeline and does not change GTD. Do not overwrite, delete, or change a user note unless the user explicitly asks."
+      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. Do not overwrite, delete, or change a user note unless the user explicitly asks."
     }
   );
 
@@ -275,28 +259,6 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     panelHome: ctx.panelHome,
     resumeSession: ctx.resumeSession
   };
-
-  server.registerTool(
-    "session_note_checkpoint",
-    {
-      description:
-        "Append a status checkpoint to the protected execution timeline for one known catalog session. Use when work starts, becomes active, is blocked, becomes idle, or completes. Resolve provider and sessionId with session_search or session_list when needed. This does not change GTD status.",
-      inputSchema: sessionExecutionCheckpointSchema
-    },
-    async (args: { provider: import("../catalog/types").AgentProvider; sessionId: string; status: SessionExecutionStatus; description?: string }) => {
-      if (!catalogDb) throw new Error("catalogDb is not configured for session tools.");
-      const record = await appendSessionExecutionCheckpoint(
-        { notesStore: ctx.notesStore, desktopDb: ctx.dbPath, catalogDb },
-        { ...args, source: "mcp" }
-      );
-      return {
-        content: [{
-          type: "text" as const,
-          text: `Execution checkpoint recorded.\n${JSON.stringify(record, null, 2)}`
-        }]
-      };
-    }
-  );
 
   server.registerTool(
     "session_search",

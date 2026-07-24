@@ -62,6 +62,10 @@ function normalizeWorkbenchEditorSettings(
 }
 
 function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSettings> {
+  if (partial.desktop && "autoSessionExecutionNotes" in partial.desktop) {
+    const { autoSessionExecutionNotes: _removed, ...desktop } = partial.desktop as typeof partial.desktop & { autoSessionExecutionNotes?: boolean };
+    partial = { ...partial, desktop };
+  }
   if (
     partial.desktop?.alwaysAllowAgentNonDestructiveOperations === undefined &&
     partial.desktop?.alwaysAllowAgentWriteOperations !== undefined
