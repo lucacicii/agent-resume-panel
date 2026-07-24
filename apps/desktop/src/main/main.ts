@@ -87,11 +87,12 @@ import {
   createExternalMcpLaunchConfig,
   listMcpClients,
   manualMcpConfig,
+  migrateLegacyAgentResumeRegistrations,
   registerMcpClient,
   removeMcpClient,
+  resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
-import { parseMcpRunnerArgs, runDesktopMcpService } from "./mcpRunner";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
@@ -629,12 +630,23 @@ function registerIpc(): void {
     const settings = await loadSettings();
     return createExternalMcpLaunchConfig({
       executablePath: process.execPath,
-      baseArgs: app.isPackaged ? [] : [app.getAppPath()],
+      cliPath: resolveExternalMcpCliPath({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath()
+      }),
       panelHome: resolvePanelHome(settings.panelHome)
     });
   };
 
-  safeHandle("mcp:listClients", async () => listMcpClients());
+  safeHandle("mcp:listClients", async () => {
+    try {
+      await migrateLegacyAgentResumeRegistrations(await externalMcpLaunch());
+    } catch (error) {
+      console.error("MCP legacy migration failed:", error instanceof Error ? error.message : String(error));
+    }
+    return listMcpClients();
+  });
 
   safeHandle("mcp:manualConfig", async () => manualMcpConfig(await externalMcpLaunch()));
 
@@ -1631,77 +1643,101 @@ function registerIpc(): void {
   );
 }
 
-const mcpInvocation = parseMcpRunnerArgs(process.argv);
-
-if (mcpInvocation) {
-  void runDesktopMcpService(mcpInvocation).catch((error) => {
-    console.error("Desktop MCP service failed:", error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+// Fail closed: never open a GUI instance when an outdated MCP client still passes
+// the removed --agent-resume-mcp flag (that path used to spawn Dock icons).
+if (process.argv.includes("--agent-resume-mcp")) {
+  console.error(
+    "[agent-resume] Outdated MCP launch rejected. Agent Resume MCP is headless only " +
+      "(ELECTRON_RUN_AS_NODE + packages/core dist/mcp/cli.js). " +
+      "Open Desktop Settings → MCP once, or re-copy config for Grok/Cursor."
+  );
+  app.exit(1);
 } else {
-  app.whenReady().then(async () => {
-    initI18nService(path.join(app.getAppPath()));
-    applyAppIcon();
-    registerIpc();
-    registerWorkbenchFsIpc();
-    registerWorkbenchGitIpc(() => app.getLocale());
-    tryRegisterPtyIpc();
-    try {
-      await loadPanelDbPaths();
-    } catch (error) {
-      console.error("Failed to prepare panel databases on startup:", error);
-    }
-    createWindow();
-    await installApplicationMenu();
-    startDesktopNotesIndexer();
-    startSessionSummaryAuto();
-    startSessionTranscriptIndexAuto();
-    startSessionEmbeddingIndexAuto();
-    await refreshMemorySchedulerFromSettings();
-    app.on("activate", () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        // Invariant fallback: settings must not outlive main
-        closeSettingsWindowIfOpen();
-        createWindow();
-        startDesktopNotesIndexer();
-        startSessionSummaryAuto();
-        startSessionTranscriptIndexAuto();
-        startSessionEmbeddingIndexAuto();
-        // Closing the last window on macOS used to stop the scheduler; restore it with the window.
-        void refreshMemorySchedulerFromSettings();
-        return;
-      }
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-      mainWindow.show();
-      mainWindow.focus();
-      void refreshMemorySchedulerFromSettings();
+app.whenReady().then(async () => {
+  initI18nService(path.join(app.getAppPath()));
+  applyAppIcon();
+  registerIpc();
+  registerWorkbenchFsIpc();
+  registerWorkbenchGitIpc(() => app.getLocale());
+  tryRegisterPtyIpc();
+  try {
+    await loadPanelDbPaths();
+  } catch (error) {
+    console.error("Failed to prepare panel databases on startup:", error);
+  }
+  // Rewrite any client configs still pointing at the old GUI Electron MCP entry.
+  try {
+    const settings = await loadSettings();
+    const launch = createExternalMcpLaunchConfig({
+      executablePath: process.execPath,
+      cliPath: resolveExternalMcpCliPath({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath()
+      }),
+      panelHome: resolvePanelHome(settings.panelHome)
     });
+    const migrated = await migrateLegacyAgentResumeRegistrations(launch);
+    if (migrated.migrated.length > 0) {
+      console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
+    }
+    for (const failure of migrated.failed) {
+      console.error(`[agent-resume] MCP migrate failed (${failure.target}): ${failure.error}`);
+    }
+  } catch (error) {
+    console.error("MCP legacy migration failed:", error instanceof Error ? error.message : String(error));
+  }
+  createWindow();
+  await installApplicationMenu();
+  startDesktopNotesIndexer();
+  startSessionSummaryAuto();
+  startSessionTranscriptIndexAuto();
+  startSessionEmbeddingIndexAuto();
+  await refreshMemorySchedulerFromSettings();
+  app.on("activate", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      // Invariant fallback: settings must not outlive main
+      closeSettingsWindowIfOpen();
+      createWindow();
+      startDesktopNotesIndexer();
+      startSessionSummaryAuto();
+      startSessionTranscriptIndexAuto();
+      startSessionEmbeddingIndexAuto();
+      // Closing the last window on macOS used to stop the scheduler; restore it with the window.
+      void refreshMemorySchedulerFromSettings();
+      return;
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    void refreshMemorySchedulerFromSettings();
   });
+});
 
-  app.on("before-quit", () => {
+app.on("before-quit", () => {
+  stopMemoryScheduler();
+  stopNotesIndexer();
+  stopSessionSummaryAuto();
+  stopSessionTranscriptIndexAuto();
+  stopSessionEmbeddingIndexAuto();
+  tryDestroyPtyOnQuit();
+});
+
+app.on("window-all-closed", () => {
+  // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
+  // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
+  if (process.platform !== "darwin") {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();
     stopSessionTranscriptIndexAuto();
     stopSessionEmbeddingIndexAuto();
     tryDestroyPtyOnQuit();
-  });
-
-  app.on("window-all-closed", () => {
-    // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
-    // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
-    if (process.platform !== "darwin") {
-      stopMemoryScheduler();
-      stopNotesIndexer();
-      stopSessionSummaryAuto();
-      stopSessionTranscriptIndexAuto();
-      stopSessionEmbeddingIndexAuto();
-      tryDestroyPtyOnQuit();
-      app.quit();
-    } else {
-      tryDestroyPtyOnQuit();
-    }
-  });
+    app.quit();
+  } else {
+    tryDestroyPtyOnQuit();
+  }
+});
 }
