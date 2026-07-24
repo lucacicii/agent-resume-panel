@@ -17,13 +17,6 @@ const noWatch = cliArgs.includes("--no-watch");
 const coreDistEntry = path.join(repoRoot, "packages", "core", "dist", "index.js");
 const mainDistEntry = path.join(root, "dist", "main", "main.js");
 const tscBin = require.resolve("typescript/bin/tsc");
-const corepackBin = path.join(
-  path.dirname(process.execPath),
-  process.platform === "win32" ? "corepack.cmd" : "corepack"
-);
-const pnpmLauncher = fs.existsSync(corepackBin)
-  ? { command: corepackBin, args: ["pnpm"] }
-  : { command: "pnpm", args: [] };
 const pnpmEnv = { ...process.env, PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false" };
 
 const children = [];
@@ -85,8 +78,8 @@ process.on("SIGTERM", () => shutdown(0));
 function runWorkspaceScript(workspace, script) {
   return new Promise((resolve, reject) => {
     const child = spawn(
-      pnpmLauncher.command,
-      [...pnpmLauncher.args, "--filter", workspace, "run", script],
+      "pnpm",
+      ["--filter", workspace, "run", script],
       {
         cwd: repoRoot,
         stdio: "inherit",
@@ -118,8 +111,8 @@ async function ensureInitialBuild() {
 
 function startWatchers() {
   spawnTracked(
-    pnpmLauncher.command,
-    [...pnpmLauncher.args, "--filter", "@agent-resume/core", "run", "watch"],
+    "pnpm",
+    ["--filter", "@agent-resume/core", "run", "watch"],
     { cwd: repoRoot, env: pnpmEnv }
   );
   spawnTracked(process.execPath, [tscBin, "-p", "tsconfig.json", "-w"], { cwd: root });

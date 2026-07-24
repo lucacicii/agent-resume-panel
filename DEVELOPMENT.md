@@ -39,14 +39,15 @@ Never commit:
 
 ## Setup
 
-Install dependencies:
+This repo pins Node via **fnm** (`.node-version`) and pnpm via **Corepack** (`packageManager` in root `package.json`).
 
 ```sh
-./pnpm install --frozen-lockfile
+# fnm with --use-on-cd, or once per shell:
+fnm install          # installs the version in .node-version
+fnm use
+corepack enable      # once per Node install; shims pnpm@packageManager
+pnpm install --frozen-lockfile
 ```
-
-`./pnpm` uses this repository's `packageManager` version through Corepack without changing
-the pnpm version managed by Volta for other projects.
 
 **Do not copy `node_modules` between machines** (especially Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
 
@@ -54,25 +55,25 @@ the pnpm version managed by Volta for other projects.
 
 | | Intel Mac | Apple Silicon |
 |--|-----------|---------------|
-| `./pnpm install` / `./pnpm run dev:desktop` | ✅ | ✅ |
-| `./pnpm run pack:desktop` (universal) | ✅ | ✅ |
+| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ |
+| `pnpm run pack:desktop` (universal) | ✅ | ✅ |
 
 After install or when Electron / node-pty / pack fails with env-looking errors:
 
 ```sh
-./pnpm run doctor:desktop
+pnpm run doctor:desktop
 ```
 
 Compile the extension:
 
 ```sh
-./pnpm run compile
+pnpm run compile
 ```
 
 For active development, run the TypeScript watcher:
 
 ```sh
-./pnpm run watch
+pnpm run watch
 ```
 
 ## Local Install

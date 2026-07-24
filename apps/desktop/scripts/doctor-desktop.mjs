@@ -44,7 +44,9 @@ function checkNode() {
     ok,
     name: "Node.js",
     detail: ok ? `v${actual} (>= ${MIN_NODE})` : `v${actual} — need >= ${MIN_NODE}`,
-    fix: ok ? undefined : "Install Node 22.13+ (volta pin in root package.json, or nvm/fnm)."
+    fix: ok
+      ? undefined
+      : "Install Node 22.13+ via fnm (reads .node-version): fnm install && fnm use"
   };
 }
 
@@ -56,14 +58,14 @@ function checkPnpm() {
       ok,
       name: "pnpm",
       detail: ok ? out : `${out} — expected ${EXPECTED_PNPM}`,
-      fix: ok ? undefined : "From repo root: ./pnpm install --frozen-lockfile"
+      fix: ok ? undefined : "From repo root: corepack enable && pnpm install --frozen-lockfile"
     };
   } catch {
     return {
       ok: false,
       name: "pnpm",
       detail: "not found on PATH",
-      fix: "From repo root: ./pnpm install --frozen-lockfile"
+      fix: "From repo root: corepack enable && pnpm install --frozen-lockfile"
     };
   }
 }

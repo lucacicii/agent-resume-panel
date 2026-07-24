@@ -40,13 +40,13 @@ Version: **0.1.4**
 
 ```sh
 # from monorepo root
-./pnpm install
-./pnpm run doctor:desktop   # optional: Node/pnpm/Electron/node-pty health
-./pnpm run dev:desktop
-./pnpm run pack:desktop     # universal .app + DMG; either Mac arch is fine
+pnpm install
+pnpm run doctor:desktop   # optional: Node/pnpm/Electron/node-pty health
+pnpm run dev:desktop
+pnpm run pack:desktop     # universal .app + DMG; either Mac arch is fine
 ```
 
-Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silicon machines—only clone/pull and `./pnpm install`.
+Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silicon machines—only clone/pull and `pnpm install`.
 
 ### Install
 
