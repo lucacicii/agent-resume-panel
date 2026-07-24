@@ -55,6 +55,48 @@ export interface CodeEditorHandle {
   find(query: string, direction?: "forward" | "backward"): boolean;
 }
 
+interface FloatingMenuAnchor {
+  left: number;
+  top: number;
+  bottom: number;
+}
+
+interface FloatingMenuSize {
+  width: number;
+  height: number;
+}
+
+interface ViewportSize {
+  width: number;
+  height: number;
+}
+
+const floatingMenuViewportMargin = 8;
+const floatingMenuAnchorGap = 4;
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+export function getFloatingMenuPosition(
+  anchor: FloatingMenuAnchor,
+  menu: FloatingMenuSize,
+  viewport: ViewportSize
+): { left: number; top: number } {
+  const horizontalInset = Math.min(floatingMenuViewportMargin, viewport.width / 2);
+  const verticalInset = Math.min(floatingMenuViewportMargin, viewport.height / 2);
+  const width = Math.min(menu.width, Math.max(0, viewport.width - horizontalInset * 2));
+  const height = Math.min(menu.height, Math.max(0, viewport.height - verticalInset * 2));
+  const left = clamp(anchor.left, horizontalInset, Math.max(horizontalInset, viewport.width - horizontalInset - width));
+  const belowTop = anchor.bottom + floatingMenuAnchorGap;
+  const aboveTop = anchor.top - floatingMenuAnchorGap - height;
+  const fitsBelow = belowTop + height <= viewport.height - verticalInset;
+  const fitsAbove = aboveTop >= verticalInset;
+  const preferredTop = fitsBelow || !fitsAbove ? belowTop : aboveTop;
+  const top = clamp(preferredTop, verticalInset, Math.max(verticalInset, viewport.height - verticalInset - height));
+  return { left, top };
+}
+
 const editable = new Compartment();
 const wrapping = new Compartment();
 const tabs = new Compartment();
@@ -338,7 +380,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         to: selection.head,
         needsNewline: !/^\s*$/.test(beforeCursor.slice(0, slashOffset))
       };
-      let coords: { left: number; bottom: number } | null = null;
+      let coords: { left: number; top: number; bottom: number } | null = null;
       try {
         coords = instance.coordsAtPos(selection.head);
       } catch {
@@ -353,10 +395,17 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         slashActiveIndex = 0;
       }
       renderSlashMenu(instance, available);
-      const left = coords?.left ?? hostRect?.left ?? 0;
-      const top = coords?.bottom ?? hostRect?.top ?? 0;
-      slashMenu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - 240))}px`;
-      slashMenu.style.top = `${top + 4}px`;
+      const position = getFloatingMenuPosition(
+        {
+          left: coords?.left ?? hostRect?.left ?? 0,
+          top: coords?.top ?? hostRect?.top ?? 0,
+          bottom: coords?.bottom ?? hostRect?.bottom ?? 0
+        },
+        slashMenu.getBoundingClientRect(),
+        { width: window.innerWidth, height: window.innerHeight }
+      );
+      slashMenu.style.left = `${position.left}px`;
+      slashMenu.style.top = `${position.top}px`;
     };
 
     const state = EditorState.create({
@@ -407,6 +456,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     const instance = new EditorView({ state, parent: host.current });
     view.current = instance;
 
+    const onWindowResize = () => {
+      if (slashMenu) updateSlashMenu(instance);
+    };
+    window.addEventListener("resize", onWindowResize);
+
     const applyTheme = () => {
       instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance())) });
     };
@@ -421,6 +475,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     return () => {
+      window.removeEventListener("resize", onWindowResize);
       window.removeEventListener("agent-resume:theme-change", onThemeChange);
       media.removeEventListener("change", onMedia);
       observer.disconnect();

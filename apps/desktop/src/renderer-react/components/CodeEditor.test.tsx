@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, getFloatingMenuPosition } from "./CodeEditor";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -36,6 +36,30 @@ const commands = statuses.map((status) => {
 });
 
 describe("CodeEditor slash commands", () => {
+  it("opens below the cursor when there is enough room", () => {
+    expect(getFloatingMenuPosition(
+      { left: 100, top: 100, bottom: 120 },
+      { width: 220, height: 248 },
+      { width: 1_120, height: 800 }
+    )).toEqual({ left: 100, top: 124 });
+  });
+
+  it("keeps the menu within the viewport and opens upward near the bottom edge", () => {
+    expect(getFloatingMenuPosition(
+      { left: 1_080, top: 730, bottom: 750 },
+      { width: 220, height: 248 },
+      { width: 1_120, height: 800 }
+    )).toEqual({ left: 892, top: 478 });
+  });
+
+  it("keeps the preferred below-cursor position within a narrow viewport", () => {
+    expect(getFloatingMenuPosition(
+      { left: 95, top: 40, bottom: 60 },
+      { width: 220, height: 248 },
+      { width: 100, height: 300 }
+    )).toEqual({ left: 8, top: 44 });
+  });
+
   it("cycles through tagged commands and inserts the selected GTD block", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

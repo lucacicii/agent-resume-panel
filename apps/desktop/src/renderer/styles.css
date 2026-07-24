@@ -7011,13 +7011,16 @@ textarea.wb-editor-host {
 .code-editor-slash-menu {
   position: fixed;
   z-index: 40;
-  min-width: 220px;
+  min-width: min(220px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-lg);
   background: var(--color-elevated-bg);
   color: var(--color-label-primary);
   box-shadow: var(--shadow-popover);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .code-editor-slash-command {
