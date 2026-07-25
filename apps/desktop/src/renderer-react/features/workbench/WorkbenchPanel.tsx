@@ -14,9 +14,9 @@ import type {
 } from "@agent-resume/core";
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
-  ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
+  ArrowDown, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin,
-  Plus, RefreshCw, Save, Search, TerminalSquare, X, GitCommitHorizontal
+  Plus, RefreshCw, Save, Search, TerminalSquare, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { CodeEditor } from "../../components/CodeEditor";
@@ -313,58 +313,148 @@ function expandedGitDirectories(changes: GitChange[]): Set<string> {
   return expanded;
 }
 
+function gitChangeKey(change: Pick<GitChange, "repoRoot" | "repoPath">): string {
+  return `${change.repoRoot}\0${change.repoPath}`;
+}
+
+function collectNodeChangeKeys(node: GitTreeNode): string[] {
+  if (!node.isDirectory) return node.change ? [gitChangeKey(node.change)] : [];
+  return node.children.flatMap(collectNodeChangeKeys);
+}
+
+function selectionTriState(keys: string[], selected: Set<string>): boolean | "mixed" {
+  if (!keys.length) return false;
+  let checked = 0;
+  for (const key of keys) if (selected.has(key)) checked += 1;
+  if (checked === 0) return false;
+  if (checked === keys.length) return true;
+  return "mixed";
+}
+
+function GitTreeCheckbox({
+  state,
+  ariaLabel,
+  disabled,
+  onChange
+}: {
+  state: boolean | "mixed";
+  ariaLabel: string;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}): React.JSX.Element {
+  const checked = state === true;
+  const mixed = state === "mixed";
+  return <button
+    type="button"
+    role="checkbox"
+    className={`wb-git-check${checked ? " is-checked" : ""}${mixed ? " is-mixed" : ""}`}
+    aria-checked={mixed ? "mixed" : checked}
+    aria-label={ariaLabel}
+    disabled={disabled}
+    onClick={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onChange(!(checked || mixed));
+    }}
+  >
+    {checked ? <Check size={11} strokeWidth={3} aria-hidden="true" /> : null}
+    {mixed ? <span className="wb-git-check-dash" aria-hidden="true" /> : null}
+  </button>;
+}
+
 function GitChangeTree({
   nodes,
   depth,
   expanded,
-  onToggle,
+  selected,
+  onToggleDir,
+  onToggleKeys,
   onOpen
 }: {
   nodes: GitTreeNode[];
   depth: number;
   expanded: Set<string>;
-  onToggle: (path: string) => void;
+  selected: Set<string>;
+  onToggleDir: (path: string) => void;
+  onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpen: (change: GitChange) => void;
 }): React.JSX.Element {
   return <>{nodes.map((node) => {
     const isExpanded = node.isDirectory && expanded.has(node.path);
-    if (node.isDirectory) return <div key={node.path}>
-      <button type="button" className="wb-file-tree-row wb-git-tree-row" style={{ paddingLeft: `${8 + depth * 14}px` }} aria-expanded={isExpanded} onClick={() => onToggle(node.path)}>
-        <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span>
-        <Folder size={14} className="wb-file-tree-icon" />
-        <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
-      </button>
-      {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} onToggle={onToggle} onOpen={onOpen} /></div> : null}
-    </div>;
+    if (node.isDirectory) {
+      const keys = collectNodeChangeKeys(node);
+      const state = selectionTriState(keys, selected);
+      return <div key={node.path}>
+        <div className="wb-file-tree-row wb-git-tree-row" style={{ paddingLeft: `${8 + depth * 14}px` }}>
+          <GitTreeCheckbox state={state} ariaLabel={node.path} onChange={(checked) => onToggleKeys(keys, checked)} />
+          <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(node.path)}>
+            <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span>
+            <Folder size={14} className="wb-file-tree-icon" />
+            <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
+          </button>
+        </div>
+        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} /></div> : null}
+      </div>;
+    }
     if (!node.change) return null;
-    return <button type="button" className="wb-file-tree-row wb-git-tree-file" key={node.path} style={{ paddingLeft: `${8 + depth * 14}px` }} title={node.change.path} onClick={() => onOpen(node.change!)}>
-      <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
-      <span className={`wb-git-file-status ${gitStatusClass(node.change.status)}`}>{gitStatusLetter(node.change.status)}</span>
-      <span className="wb-file-tree-label">{node.name}</span>
-    </button>;
+    const key = gitChangeKey(node.change);
+    return <div className="wb-file-tree-row wb-git-tree-file" key={node.path} style={{ paddingLeft: `${8 + depth * 14}px` }}>
+      <GitTreeCheckbox state={selected.has(key)} ariaLabel={node.change.path} onChange={(checked) => onToggleKeys([key], checked)} />
+      <button type="button" className="wb-git-tree-row-main" title={node.change.path} onClick={() => onOpen(node.change!)}>
+        <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
+        <span className={`wb-git-file-status ${gitStatusClass(node.change.status)}`}>{gitStatusLetter(node.change.status)}</span>
+        <span className="wb-file-tree-label">{node.name}</span>
+      </button>
+    </div>;
   })}</>;
 }
 
 function GitChangesPanel({
   visible,
   git,
+  gitRoot,
   expanded,
-  onToggle,
+  selected,
+  commitMessage,
+  commitBusy,
+  commitSuggestion,
+  canCommit,
+  onToggleDir,
+  onToggleKeys,
   onOpenDiff,
-  stagedTitle,
-  changesTitle,
-  noChanges,
-  unavailable
+  onCommitMessageChange,
+  onSuggestCommit,
+  onCommit,
+  labels
 }: {
   visible: boolean;
   git: GitStatusResult | null;
+  gitRoot: string;
   expanded: Set<string>;
-  onToggle: (path: string) => void;
+  selected: Set<string>;
+  commitMessage: string;
+  commitBusy: boolean;
+  commitSuggestion: CommitSuggestion | null;
+  canCommit: boolean;
+  onToggleDir: (path: string) => void;
+  onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpenDiff: (change: GitChange, staged: boolean) => void;
-  stagedTitle: string;
-  changesTitle: string;
-  noChanges: string;
-  unavailable: string;
+  onCommitMessageChange: (value: string) => void;
+  onSuggestCommit: () => void;
+  onCommit: (pushAfter: boolean) => void;
+  labels: {
+    stagedTitle: string;
+    changesTitle: string;
+    noChanges: string;
+    unavailable: string;
+    messageLabel: string;
+    autoGenerate: string;
+    commit: string;
+    commitAndPush: string;
+    suggestedLlm: string;
+    suggestedUnconfigured: string;
+    suggestedFallback: string;
+  };
 }): ReactPortal | null {
   const [host, setHost] = useState<HTMLElement | null>(null);
 
@@ -374,17 +464,69 @@ function GitChangesPanel({
 
   if (!visible || !host) return null;
   if (!git?.isRepo && !git?.nestedRepos?.length) {
-    return createPortal(<div className="react-git-panel"><p className="muted wb-git-empty">{unavailable}</p></div>, host);
+    return createPortal(<div className="react-git-panel"><p className="muted wb-git-empty">{labels.unavailable}</p></div>, host);
   }
 
+  const filterEntries = (entries: GitChange[]) => gitRoot ? entries.filter((change) => change.repoRoot === gitRoot) : entries;
   const sections = [
-    { title: stagedTitle, staged: true, entries: git.staged },
-    { title: changesTitle, staged: false, entries: git.unstaged }
+    { title: labels.stagedTitle, staged: true, entries: filterEntries(git.staged) },
+    { title: labels.changesTitle, staged: false, entries: filterEntries(git.unstaged) }
   ];
-  return createPortal(<div className="react-git-panel">{sections.map((section) => <section className="wb-git-section" key={section.title}>
-    <h4 className="wb-git-section-title">{section.title}</h4>
-    {section.entries.length ? <div className="wb-git-tree" role="tree"><GitChangeTree nodes={buildGitChangeTree(section.entries)} depth={0} expanded={expanded} onToggle={onToggle} onOpen={(change) => onOpenDiff(change, section.staged)} /></div> : <p className="muted wb-git-empty">{noChanges}</p>}
-  </section>)}</div>, host);
+  const hasEntries = sections.some((section) => section.entries.length > 0);
+  const suggestionText = commitSuggestion
+    ? commitSuggestion.source === "llm"
+      ? labels.suggestedLlm
+      : commitSuggestion.fallbackReason === "unconfigured"
+        ? labels.suggestedUnconfigured
+        : labels.suggestedFallback
+    : null;
+
+  return createPortal(<div className="react-git-panel wb-git-panel-layout">
+    <div className="wb-git-changes-scroll">
+      {hasEntries ? sections.map((section) => {
+        if (!section.entries.length) return null;
+        const keys = section.entries.map(gitChangeKey);
+        const state = selectionTriState(keys, selected);
+        return <section className="wb-git-section" key={section.title}>
+          <div className="wb-git-section-title">
+            <GitTreeCheckbox state={state} ariaLabel={section.title} onChange={(checked) => onToggleKeys(keys, checked)} />
+            <span className="wb-git-section-title-text">{section.title}</span>
+            <span className="wb-git-section-count">{section.entries.length}</span>
+          </div>
+          <div className="wb-git-tree" role="tree">
+            <GitChangeTree
+              nodes={buildGitChangeTree(section.entries)}
+              depth={0}
+              expanded={expanded}
+              selected={selected}
+              onToggleDir={onToggleDir}
+              onToggleKeys={onToggleKeys}
+              onOpen={(change) => onOpenDiff(change, section.staged)}
+            />
+          </div>
+        </section>;
+      }) : <p className="muted wb-git-empty">{labels.noChanges}</p>}
+    </div>
+    <div className="wb-git-commit-composer">
+      {suggestionText ? <p className={`wb-git-commit-suggestion${commitSuggestion?.source === "llm" ? " is-ai" : ""}`}>{suggestionText}</p> : null}
+      <textarea
+        className="wb-git-commit-input"
+        value={commitMessage}
+        disabled={commitBusy || !gitRoot}
+        placeholder={labels.messageLabel}
+        aria-label={labels.messageLabel}
+        onChange={(event) => onCommitMessageChange(event.target.value)}
+      />
+      <div className="wb-git-commit-actions">
+        <button type="button" className="wb-git-commit-btn wb-git-commit-auto-btn" disabled={commitBusy || !gitRoot} onClick={onSuggestCommit}>
+          {commitBusy ? <LoaderCircle className="spin" size={14} /> : null}
+          {labels.autoGenerate}
+        </button>
+        <button type="button" className="wb-git-commit-btn" disabled={!canCommit} onClick={() => onCommit(false)}>{labels.commit}</button>
+        <button type="button" className="wb-git-commit-btn primary" disabled={!canCommit} onClick={() => onCommit(true)}>{labels.commitAndPush}</button>
+      </div>
+    </div>
+  </div>, host);
 }
 
 function MergeDiffView({ oldText, newText }: { oldText: string; newText: string }): React.JSX.Element {
@@ -462,7 +604,6 @@ function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Element | 
   }, [visible]);
   if (!visible) return null;
   const icons = [
-    { label: "Commit", icon: <GitCommitHorizontal size={16} /> },
     { label: "Push", icon: <ArrowUp size={16} /> },
     { label: "Pull", icon: <ArrowDown size={16} /> },
     { label: "Git log", icon: <History size={16} /> },
@@ -696,10 +837,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
   const [gitRefreshing, setGitRefreshing] = useState(false);
-  const [commitOpen, setCommitOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitBusy, setCommitBusy] = useState(false);
   const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
+  const [selectedGitPaths, setSelectedGitPaths] = useState<Set<string>>(() => new Set());
+  const gitSelectionKnownRef = useRef<Set<string>>(new Set());
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
@@ -1549,6 +1691,18 @@ export function WorkbenchPanel(): ReactPortal | null {
         return current && roots.has(current) ? current : result.root || result.nestedRepos?.[0]?.root || "";
       });
       setGitExpandedDirs(expandedGitDirectories([...result.staged, ...result.unstaged]));
+      const currentKeys = new Set([...result.staged, ...result.unstaged].map(gitChangeKey));
+      setSelectedGitPaths((previous) => {
+        const known = gitSelectionKnownRef.current;
+        const next = new Set<string>();
+        for (const key of currentKeys) {
+          // Keep prior check state for known paths; brand-new paths default to checked.
+          if (previous.has(key) || !known.has(key)) next.add(key);
+        }
+        // Update inside the updater so it stays atomic with the derived selection.
+        gitSelectionKnownRef.current = currentKeys;
+        return next;
+      });
       if (withNotification) notifyGitSuccess("desktop.workbench.gitStatusRefreshed");
     } catch (error) {
       if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
@@ -1613,6 +1767,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure(action === "push" ? "desktop.workbench.gitPushFailed" : "desktop.workbench.gitPullFailed", error); }
   };
 
+  const toggleGitSelectionKeys = useCallback((keys: string[], checked: boolean) => {
+    setSelectedGitPaths((previous) => {
+      const next = new Set(previous);
+      for (const key of keys) {
+        if (checked) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectedCommitPaths = useMemo(() => {
+    if (!gitRoot || !git) return [] as string[];
+    const paths: string[] = [];
+    const seen = new Set<string>();
+    for (const change of [...git.staged, ...git.unstaged]) {
+      if (change.repoRoot !== gitRoot) continue;
+      const key = gitChangeKey(change);
+      if (!selectedGitPaths.has(key) || seen.has(change.repoPath)) continue;
+      seen.add(change.repoPath);
+      paths.push(change.repoPath);
+    }
+    return paths;
+  }, [git, gitRoot, selectedGitPaths]);
+
+  const canCommit = Boolean(gitRoot && commitMessage.trim() && selectedCommitPaths.length && !commitBusy);
+
   const suggestCommit = async () => {
     if (!gitRoot) return;
     try {
@@ -1627,10 +1808,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const commit = async (pushAfter = false) => {
-    if (!gitRoot || !commitMessage.trim()) return;
+    if (!gitRoot || !commitMessage.trim() || !selectedCommitPaths.length) return;
     try {
       setCommitBusy(true);
-      await desktopApi().terminalGitCommit({ repoRoot: gitRoot, message: commitMessage.trim() });
+      await desktopApi().terminalGitCommit({
+        repoRoot: gitRoot,
+        message: commitMessage.trim(),
+        paths: selectedCommitPaths
+      });
     } catch (error) {
       notifyGitFailure("desktop.workbench.gitCommitFailed", error);
       setCommitBusy(false);
@@ -1639,7 +1824,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
     setCommitMessage("");
     setCommitSuggestion(null);
-    setCommitOpen(false);
     if (pushAfter) {
       try {
         await desktopApi().terminalGitPush({ repoRoot: gitRoot });
@@ -1829,12 +2013,11 @@ export function WorkbenchPanel(): ReactPortal | null {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} onPty={onPty} onInput={onTerminalInput} />{visible ? <div className="wb-terminal-status"><span className="wb-terminal-status-path">{pane.cwd}</span>{pane.branch || (pane.gitMode === "nested" && pane.nestedRepos?.length) ? <><span className="wb-terminal-status-sep">·</span><button type="button" className="wb-terminal-status-branch" title={pane.gitMode === "nested" ? pane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ") : pane.branch || undefined} onClick={(event) => void openBranchMenu(pane, event.currentTarget)}><GitBranch size={12} />{pane.gitMode === "nested" ? t("desktop.workbench.nestedRepoCount", pane.nestedRepos?.length || 0) : pane.branch}</button></> : null}</div> : null}</div>;
           })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => { setCommitSuggestion(null); setCommitOpen(true); }} aria-label={t("desktop.workbench.gitCommit")}><Save size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>
       </main>
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}<button type="button" className="wb-git-branch-item" onClick={() => { setBranchPane(null); setBranchResult(null); }}>{t("desktop.common.close")}</button></div> : null}
-    {commitOpen ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !commitBusy && setCommitOpen(false)} /><div className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.gitCommitDialogTitle")}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.gitCommitDialogTitle")}</p>{gitRepositories.length > 1 ? <select className="react-git-repo-select wb-git-repo-select wb-git-commit-repo-select" value={gitRoot} disabled={commitBusy} aria-label={t("desktop.workbench.gitRepoSelect")} onChange={(event) => { setGitRoot(event.target.value); setCommitSuggestion(null); }}>{gitRepositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}</select> : gitRoot ? <span className="muted wb-git-commit-repo-path" title={gitRoot}>{gitRepositories[0]?.label || basename(gitRoot)}</span> : null}</div>{commitSuggestion ? <p className={`wb-rename-status wb-git-commit-suggestion${commitSuggestion.source === "llm" ? " is-ai" : ""}`}>{commitSuggestion.source === "llm" ? t("desktop.workbench.gitCommitSuggestedLlm") : commitSuggestion.fallbackReason === "unconfigured" ? t("desktop.workbench.gitCommitSuggestedUnconfigured") : t("desktop.workbench.gitCommitSuggestedFallback")}</p> : null}<textarea className="wb-git-commit-input" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} aria-label={t("desktop.workbench.gitCommitDialogTitle")} /><div className="wb-note-created-actions"><button type="button" className="wb-rename-auto-btn wb-git-commit-auto-btn" disabled={commitBusy} onClick={() => void suggestCommit()}>{commitBusy ? <LoaderCircle className="spin" size={14} /> : null}{t("desktop.workbench.gitCommitAutoGenerate")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy} onClick={() => setCommitOpen(false)}>{t("desktop.common.cancel")}</button><button type="button" className="wb-note-created-btn" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit()}>{t("desktop.workbench.gitCommit")}</button><button type="button" className="wb-note-created-btn primary" disabled={commitBusy || !commitMessage.trim()} onClick={() => void commit(true)}>{t("desktop.workbench.gitCommitAndPush")}</button></div></div></div> : null}
     {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
@@ -1948,7 +2131,36 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return null;
     })}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={projectPickDialog.busy} onClick={() => setProjectPickDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
-    <GitChangesPanel visible={side === "git" && !gitLog} git={git} expanded={gitExpandedDirs} onToggle={toggleGitDirectory} onOpenDiff={(change, staged) => void openDiff(change, staged)} stagedTitle={t("desktop.workbench.sidePanelStaged")} changesTitle={t("desktop.workbench.sidePanelChanges")} noChanges={t("desktop.workbench.sidePanelNoChanges")} unavailable={selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")} />
+    <GitChangesPanel
+      visible={side === "git" && !gitLog}
+      git={git}
+      gitRoot={gitRoot}
+      expanded={gitExpandedDirs}
+      selected={selectedGitPaths}
+      commitMessage={commitMessage}
+      commitBusy={commitBusy}
+      commitSuggestion={commitSuggestion}
+      canCommit={canCommit}
+      onToggleDir={toggleGitDirectory}
+      onToggleKeys={toggleGitSelectionKeys}
+      onOpenDiff={(change, staged) => void openDiff(change, staged)}
+      onCommitMessageChange={setCommitMessage}
+      onSuggestCommit={() => void suggestCommit()}
+      onCommit={(pushAfter) => void commit(pushAfter)}
+      labels={{
+        stagedTitle: t("desktop.workbench.sidePanelStaged"),
+        changesTitle: t("desktop.workbench.sidePanelChanges"),
+        noChanges: t("desktop.workbench.sidePanelNoChanges"),
+        unavailable: selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
+        messageLabel: t("desktop.workbench.gitCommitDialogTitle"),
+        autoGenerate: t("desktop.workbench.gitCommitAutoGenerate"),
+        commit: t("desktop.workbench.gitCommit"),
+        commitAndPush: t("desktop.workbench.gitCommitAndPush"),
+        suggestedLlm: t("desktop.workbench.gitCommitSuggestedLlm"),
+        suggestedUnconfigured: t("desktop.workbench.gitCommitSuggestedUnconfigured"),
+        suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback")
+      }}
+    />
     <GitDiffMergePanel diff={currentDiff} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitLog} />

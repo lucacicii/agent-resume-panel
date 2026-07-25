@@ -104,6 +104,43 @@ function normalizeCommitMessage(raw: string): string {
   return message;
 }
 
+/** Repo-relative paths only; reject absolute paths and parent traversal. */
+function normalizeCommitPaths(raw?: string[]): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const normalized = String(item || "")
+      .replace(/\\/g, "/")
+      .replace(/^\.?\//, "")
+      .trim();
+    if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) continue;
+    if (normalized.split("/").some((part) => part === ".." || part === "")) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function parseStagedRepoPaths(statusPorcelain: string): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const line of statusPorcelain.split("\n")) {
+    if (!line.trim() || line.startsWith("?? ") || line.length < 4) continue;
+    const indexStatus = line[0];
+    if (indexStatus === " " || indexStatus === "?") continue;
+    let filePath = line.slice(3).trim();
+    // Rename/copy lines look like "R  old -> new" — prefer the destination path.
+    const arrow = filePath.indexOf(" -> ");
+    if (arrow >= 0) filePath = filePath.slice(arrow + 4).trim();
+    if (!filePath || seen.has(filePath)) continue;
+    seen.add(filePath);
+    paths.push(filePath);
+  }
+  return paths;
+}
+
 async function resolveRepoRoot(raw: string): Promise<string> {
   const resolved = resolveCwd(raw);
   if (!(await isGitRepo(resolved))) {
@@ -405,18 +442,31 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     return suggestCommitMessage(repoRoot, getSystemLocale());
   });
 
-  safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string }) => {
+  safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string; paths?: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const message = normalizeCommitMessage(args.message);
-    const { statusText } = await collectGitCommitContext(repoRoot);
+    const paths = normalizeCommitPaths(args.paths);
+    if (!paths.length) {
+      throw new Error("请选择要提交的文件");
+    }
+    const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1"], 10000);
     if (!statusText.trim()) {
       throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
     }
+    const previouslyStaged = parseStagedRepoPaths(statusText);
+    const selected = new Set(paths);
+    const toUnstage = previouslyStaged.filter((path) => !selected.has(path));
     try {
-      await execFileAsync("git", ["-C", repoRoot, "add", "-A"], {
+      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
         timeout: 30000,
         maxBuffer: 1024 * 1024
       });
+      if (toUnstage.length) {
+        await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", ...toUnstage], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
       await execFileAsync("git", ["-C", repoRoot, "commit", "-m", message], {
         timeout: 30000,
         maxBuffer: 1024 * 1024

@@ -4934,7 +4934,10 @@ code {
 }
 
 #react-workbench .react-git-panel {
-  display: block;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
 }
 
 #react-workbench .spin {
@@ -5622,6 +5625,24 @@ code {
 
 .wb-git-panel {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.wb-git-panel > .react-git-panel,
+.wb-git-panel-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-git-changes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 4px 0 8px;
 }
@@ -5631,12 +5652,86 @@ code {
 }
 
 .wb-git-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
+}
+
+.wb-git-section-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.wb-git-section-count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.wb-git-check {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  min-height: 15px;
+  margin: 0 2px 0 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--color-label-secondary, var(--muted)) 70%, transparent);
+  border-radius: 3px;
+  background: var(--color-control-bg, var(--panel, #fff));
+  color: #fff;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  line-height: 0;
+}
+
+.wb-git-check:hover:not(:disabled) {
+  border-color: var(--color-accent, var(--accent, #007aff));
+}
+
+.wb-git-check:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent, var(--accent, #007aff)) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.wb-git-check.is-checked,
+.wb-git-check.is-mixed {
+  border-color: var(--color-accent, var(--accent, #007aff));
+  background: var(--color-accent, var(--accent, #007aff));
+  color: #fff;
+}
+
+.wb-git-check:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wb-git-check svg {
+  display: block;
+  width: 11px;
+  height: 11px;
+  stroke: currentColor;
+  fill: none;
+}
+
+.wb-git-check-dash {
+  display: block;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
 }
 
 .wb-git-tree {
@@ -5649,6 +5744,31 @@ code {
   background: transparent;
   text-align: left;
   font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+.wb-git-tree-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.wb-git-tree-row-main:hover .wb-file-tree-label {
+  color: var(--color-label-primary, var(--text));
 }
 
 .wb-git-tree-row .wb-file-tree-chevron {
@@ -5658,6 +5778,76 @@ code {
 .wb-git-tree-file .wb-git-file-status {
   width: 14px;
   flex-shrink: 0;
+}
+
+.wb-git-commit-composer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--color-separator, var(--border));
+  background: var(--color-secondary-bg, var(--panel));
+}
+
+.wb-git-commit-composer .wb-git-commit-suggestion {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wb-git-commit-composer .wb-git-commit-input {
+  width: 100%;
+  min-height: 72px;
+  max-height: 140px;
+  resize: vertical;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.wb-git-commit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-git-commit-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.wb-git-commit-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.wb-git-commit-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wb-git-commit-btn.primary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+}
+
+.wb-git-commit-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.wb-git-commit-auto-btn {
+  margin-right: auto;
 }
 
 .wb-git-file {
