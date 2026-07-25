@@ -191,7 +191,7 @@ function isOtherMachineSession(session: AgentSession, _localPath?: string | null
 }
 type BranchMenuPosition = {
   right: number;
-  bottom: number;
+  top: number;
 };
 
 const PROJECT_KEY = "workbench-selected-project";
@@ -1114,8 +1114,38 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
   const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
   const activePane = activePanes[paneProjectKey(selectedProject)] || "";
+  const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
+  /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
+  const branchStatusTerminal = activeTerminal
+    || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
+    || null;
+  const projectTracking = trackingForRoot(git, gitRoot);
+  const branchStatusNested = Boolean(
+    branchStatusTerminal?.gitMode === "nested" && (branchStatusTerminal.nestedRepos?.length || 0) > 0
+  );
+  const branchStatusLabel = branchStatusNested
+    ? t("desktop.workbench.nestedRepoCount", branchStatusTerminal?.nestedRepos?.length || 0)
+    : (branchStatusTerminal?.branch || projectTracking?.branch || null);
+  const branchStatusPane: TerminalPane | null = branchStatusTerminal || (
+    selectedProject && branchStatusLabel
+      ? {
+        key: `project-git:${selectedProject}`,
+        title: "",
+        cwd: gitRoot || selectedProject,
+        projectPath: selectedProject,
+        branch: projectTracking?.branch ?? null,
+        repoRoot: gitRoot || projectTracking?.repoRoot || selectedProject,
+        gitMode: git?.nestedRepos?.length ? "nested" : "direct",
+        nestedRepos: (git?.nestedRepos || []).map((repo) => ({
+          root: repo.root,
+          displayPath: repo.displayPath,
+          branch: git?.tracking?.find((item) => item.repoRoot === repo.root)?.branch ?? null
+        }))
+      }
+      : null
+  );
 
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
     const projectKey = paneProjectKey(projectPath);
@@ -1980,7 +2010,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       const rect = anchor.getBoundingClientRect();
       setBranchMenuPosition({
         right: Math.max(8, window.innerWidth - rect.right),
-        bottom: Math.max(8, window.innerHeight - rect.top + 6)
+        // Detail-head button: open menu below the chip (was bottom-anchored when status lived under the terminal).
+        top: Math.min(window.innerHeight - 16, rect.bottom + 6)
       });
       setBranchPane(pane);
       setBranchResult(null);
@@ -2130,11 +2161,37 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        <div className="wb-detail-head"><span className="wb-detail-project-label"><span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>{selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}</span><div className="wb-detail-tools"><button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><FolderTree size={16} /></button><button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><GitBranch size={16} /></button></div></div>
+        <div className="wb-detail-head">
+          <span className="wb-detail-project-label">
+            <span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>
+            {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
+          </span>
+          <div className="wb-detail-head-actions">
+            {branchStatusLabel && branchStatusPane ? (
+              <div className="wb-terminal-status">
+                <button
+                  type="button"
+                  className="wb-terminal-status-branch"
+                  title={branchStatusNested
+                    ? branchStatusPane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ")
+                    : branchStatusLabel}
+                  onClick={(event) => void openBranchMenu(branchStatusPane, event.currentTarget)}
+                >
+                  <GitBranch size={12} aria-hidden="true" />
+                  <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
+                </button>
+              </div>
+            ) : null}
+            <div className="wb-detail-tools">
+              <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><FolderTree size={16} /></button>
+              <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><GitBranch size={16} /></button>
+            </div>
+          </div>
+        </div>
         <div className="wb-detail-body">
           <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} onPty={onPty} onInput={onTerminalInput} />{visible ? <div className="wb-terminal-status"><span className="wb-terminal-status-path">{pane.cwd}</span>{pane.branch || (pane.gitMode === "nested" && pane.nestedRepos?.length) ? <><span className="wb-terminal-status-sep">·</span><button type="button" className="wb-terminal-status-branch" title={pane.gitMode === "nested" ? pane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ") : pane.branch || undefined} onClick={(event) => void openBranchMenu(pane, event.currentTarget)}><GitBranch size={12} />{pane.gitMode === "nested" ? t("desktop.workbench.nestedRepoCount", pane.nestedRepos?.length || 0) : pane.branch}</button></> : null}</div> : null}</div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} onPty={onPty} onInput={onTerminalInput} /></div>;
           })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
           {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>

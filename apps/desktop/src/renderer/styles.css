@@ -4809,10 +4809,6 @@ code {
   flex: 1 1 auto;
 }
 
-#react-workbench .wb-terminal-pane-wrap .wb-terminal-status {
-  flex: 0 0 auto;
-}
-
 #react-workbench .wb-git-diff-pane {
   display: flex;
   flex: 1 1 auto;
@@ -5014,6 +5010,46 @@ code {
   font-size: 11px;
   font-weight: 400;
   color: var(--muted);
+}
+
+.wb-detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 55%;
+}
+
+.wb-detail-head .wb-terminal-status {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.wb-detail-head .wb-terminal-status-branch {
+  color: var(--color-label-secondary, var(--muted));
+}
+
+.wb-detail-head .wb-terminal-status-branch:hover:not(:disabled),
+.wb-detail-head .wb-terminal-status-branch:focus-visible:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.wb-terminal-status-branch-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wb-detail-tools {
@@ -6488,31 +6524,22 @@ textarea.wb-editor-host {
   overflow: hidden;
 }
 
-.wb-terminal-status-path {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-terminal-status-sep {
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
 .wb-terminal-status-branch {
-  flex-shrink: 0;
-  max-width: 40%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: Menlo, Monaco, "Courier New", monospace;
-  color: var(--wb-terminal-tab-active-label);
+  color: inherit;
   appearance: none;
   border: none;
   background: transparent;
-  padding: 0;
+  padding: 2px 6px;
   margin: 0;
   cursor: pointer;
   border-radius: 4px;
@@ -6520,7 +6547,8 @@ textarea.wb-editor-host {
 
 .wb-terminal-status-branch:hover:not(:disabled),
 .wb-terminal-status-branch:focus-visible:not(:disabled) {
-  background: color-mix(in srgb, var(--wb-terminal-tab-active-label) 12%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
 }
 
 .wb-terminal-status-branch:disabled {

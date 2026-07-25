@@ -693,9 +693,8 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
-    await screen.findByRole("button", { name: "main" });
-
-    const branchButton = screen.getByRole("button", { name: "main" });
+    const branchButton = await screen.findByRole("button", { name: "main" });
+    expect(branchButton.closest(".wb-detail-head")).not.toBeNull();
     fireEvent.click(branchButton);
     await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
     fireEvent.mouseDown(document.body);
