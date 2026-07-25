@@ -6509,6 +6509,68 @@ textarea.wb-editor-host {
   height: 100%;
 }
 
+.wb-terminal-search {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(30, 30, 30, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.wb-terminal-search-input {
+  width: 160px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  outline: none;
+}
+
+.wb-terminal-search-input:focus {
+  border-color: rgba(10, 132, 255, 0.7);
+}
+
+.wb-terminal-search-meta {
+  min-width: 4.5em;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.wb-terminal-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wb-terminal-search-btn:hover,
+.wb-terminal-search-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
 .wb-terminal-status {
   display: flex;
   align-items: center;

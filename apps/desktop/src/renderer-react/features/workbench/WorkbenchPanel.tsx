@@ -1,7 +1,14 @@
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ReactPortal } from "react";
 import { Terminal } from "@xterm/xterm";
+import { CanvasAddon } from "@xterm/addon-canvas";
+import { ClipboardAddon, Base64, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { EditorState } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import { EditorView } from "@codemirror/view";
@@ -711,6 +718,68 @@ function ResizeHandle({ label, onDelta }: { label: string; onDelta: (delta: numb
   />;
 }
 
+/** OSC 52: allow apps to write the system clipboard; deny silent reads. */
+const writeOnlyClipboardProvider: IClipboardProvider = {
+  readText: () => "",
+  writeText: (_selection, text) => {
+    if (!text || !navigator.clipboard?.writeText) return;
+    return navigator.clipboard.writeText(text).catch(() => undefined);
+  }
+};
+
+const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
+  matchBackground: "#515c6a",
+  matchBorder: "#ffffff33",
+  matchOverviewRuler: "#515c6a",
+  activeMatchBackground: "#f5a623",
+  activeMatchBorder: "#ffffff",
+  activeMatchColorOverviewRuler: "#f5a623"
+};
+
+/** Prefer WebGL, fall back to Canvas 2D, else keep the default DOM renderer. */
+function tryLoadAcceleratedRenderer(terminal: Terminal): { dispose: () => void } {
+  let active: { dispose(): void } | null = null;
+  let contextLossSub: { dispose(): void } | null = null;
+
+  const loadCanvas = (): boolean => {
+    try {
+      contextLossSub?.dispose();
+      contextLossSub = null;
+      try { active?.dispose(); } catch { /* previous renderer already gone */ }
+      active = null;
+      const canvas = new CanvasAddon();
+      terminal.loadAddon(canvas);
+      active = canvas;
+      return true;
+    } catch {
+      active = null;
+      return false;
+    }
+  };
+
+  try {
+    const webgl = new WebglAddon();
+    terminal.loadAddon(webgl);
+    active = webgl;
+    contextLossSub = webgl.onContextLoss(() => {
+      try { webgl.dispose(); } catch { /* ignore */ }
+      active = null;
+      loadCanvas();
+    });
+  } catch {
+    loadCanvas();
+  }
+
+  return {
+    dispose: () => {
+      contextLossSub?.dispose();
+      contextLossSub = null;
+      try { active?.dispose(); } catch { /* ignore */ }
+      active = null;
+    }
+  };
+}
+
 function TerminalView({ pane, active, onPty, onInput }: {
   pane: TerminalPane;
   active: boolean;
@@ -720,14 +789,46 @@ function TerminalView({ pane, active, onPty, onInput }: {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const fit = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const ptyId = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
+
+  const runSearch = useCallback((direction: "next" | "prev", term: string) => {
+    const addon = searchAddonRef.current;
+    if (!addon) return;
+    const q = term.trim();
+    if (!q) {
+      addon.clearDecorations();
+      setSearchMeta(null);
+      return;
+    }
+    const opts: ISearchOptions = {
+      caseSensitive: false,
+      decorations: TERMINAL_SEARCH_DECORATIONS
+    };
+    if (direction === "next") addon.findNext(q, opts);
+    else addon.findPrevious(q, opts);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    searchAddonRef.current?.clearDecorations();
+    setSearchMeta(null);
+  }, []);
 
   useEffect(() => {
     if (!host.current) return;
     const hostEl = host.current;
     setReady(false);
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchMeta(null);
     const terminal = new Terminal({
+      allowProposedApi: true,
       cursorBlink: true,
       fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
       fontSize: 13,
@@ -738,6 +839,34 @@ function TerminalView({ pane, active, onPty, onInput }: {
     terminal.loadAddon(fitAddon);
     terminal.open(hostEl);
     fit.current = fitAddon;
+
+    const renderer = tryLoadAcceleratedRenderer(terminal);
+
+    terminal.loadAddon(new WebLinksAddon((_event, uri) => {
+      void desktopApi().openExternalUrl(uri).catch(() => undefined);
+    }));
+
+    const unicode11 = new Unicode11Addon();
+    terminal.loadAddon(unicode11);
+    terminal.unicode.activeVersion = "11";
+
+    // Runtime ctor is (base64?, provider?); published .d.ts only documents provider.
+    terminal.loadAddon(new (ClipboardAddon as unknown as new (
+      base64?: Base64,
+      provider?: IClipboardProvider
+    ) => ClipboardAddon)(new Base64(), writeOnlyClipboardProvider));
+
+    terminal.loadAddon(new ImageAddon({
+      storageLimit: 64,
+      enableSizeReports: true
+    }));
+
+    const searchAddon = new SearchAddon();
+    terminal.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
+    const searchResultsSub = searchAddon.onDidChangeResults?.((event) => {
+      setSearchMeta({ index: event.resultIndex, count: event.resultCount });
+    });
 
     // FitAddon only updates xterm cols/rows. PTY must be told separately so
     // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
@@ -790,6 +919,9 @@ function TerminalView({ pane, active, onPty, onInput }: {
       viewport?.removeEventListener("resize", fitHost);
       onTermResize.dispose();
       input.dispose();
+      searchResultsSub?.dispose();
+      searchAddonRef.current = null;
+      renderer.dispose();
       if (ptyId.current !== null) void desktopApi().terminalDestroy({ id: ptyId.current });
       terminal.dispose();
     };
@@ -811,8 +943,91 @@ function TerminalView({ pane, active, onPty, onInput }: {
     };
   }, [active]);
 
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+        return;
+      }
+      if (event.key === "Escape" && searchOpen) {
+        event.preventDefault();
+        closeSearch();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [active, closeSearch, searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [searchOpen]);
+
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className="wb-terminal-host" ref={host} />
+    {searchOpen ? (
+      <div className="wb-terminal-search" role="search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          ref={searchInputRef}
+          className="wb-terminal-search-input"
+          type="search"
+          value={searchQuery}
+          placeholder={t("desktop.workbench.terminalSearchPlaceholder")}
+          aria-label={t("desktop.workbench.terminalSearchPlaceholder")}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearchQuery(value);
+            runSearch("next", value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              runSearch(event.shiftKey ? "prev" : "next", searchQuery);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              closeSearch();
+            }
+          }}
+        />
+        <span className="wb-terminal-search-meta" aria-live="polite">
+          {searchQuery.trim()
+            ? (searchMeta && searchMeta.count > 0
+              ? t("desktop.workbench.terminalSearchCount", String(searchMeta.index + 1), String(searchMeta.count))
+              : t("desktop.workbench.terminalSearchNoResults"))
+            : ""}
+        </span>
+        <button
+          type="button"
+          className="wb-terminal-search-btn"
+          aria-label={t("desktop.workbench.terminalSearchPrev")}
+          onClick={() => runSearch("prev", searchQuery)}
+        >
+          <ArrowUp size={14} />
+        </button>
+        <button
+          type="button"
+          className="wb-terminal-search-btn"
+          aria-label={t("desktop.workbench.terminalSearchNext")}
+          onClick={() => runSearch("next", searchQuery)}
+        >
+          <ArrowDown size={14} />
+        </button>
+        <button
+          type="button"
+          className="wb-terminal-search-btn"
+          aria-label={t("desktop.workbench.terminalSearchClose")}
+          onClick={closeSearch}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    ) : null}
     {!ready ? (
       <div className="wb-terminal-loading" role="status" aria-live="polite">
         <LoaderCircle className="spin" size={18} aria-hidden="true" />

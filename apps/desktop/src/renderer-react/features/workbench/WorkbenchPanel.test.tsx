@@ -10,6 +10,7 @@ vi.mock("../../components/Notifications", () => notificationMocks);
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80;
   rows = 24;
+  unicode = { activeVersion: "6" };
   loadAddon() {}
   open() {}
   focus() {}
@@ -21,6 +22,35 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {
   fit() {}
   proposeDimensions() { return { cols: 80, rows: 24 }; }
+} }));
+vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class {
+  onContextLoss() { return { dispose() {} }; }
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-canvas", () => ({ CanvasAddon: class {
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class {
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class {
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-clipboard", () => ({
+  Base64: class {},
+  ClipboardAddon: class {
+    dispose() {}
+  }
+}));
+vi.mock("@xterm/addon-image", () => ({ ImageAddon: class {
+  dispose() {}
+} }));
+vi.mock("@xterm/addon-search", () => ({ SearchAddon: class {
+  findNext() { return false; }
+  findPrevious() { return false; }
+  clearDecorations() {}
+  onDidChangeResults() { return { dispose() {} }; }
+  dispose() {}
 } }));
 vi.stubGlobal("ResizeObserver", class {
   observe() {}
