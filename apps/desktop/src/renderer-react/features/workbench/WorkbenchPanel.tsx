@@ -29,6 +29,7 @@ type DesktopApi = ReturnType<typeof desktopApi>;
 type DirectoryEntry = Awaited<ReturnType<DesktopApi["workbenchListDirectory"]>>["entries"][number];
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
 type GitStatusResult = Awaited<ReturnType<DesktopApi["terminalGitStatus"]>>;
+type GitRepoTracking = NonNullable<GitStatusResult["tracking"]>[number];
 type TerminalGitInfo = Awaited<ReturnType<DesktopApi["terminalGitInfo"]>>;
 type TerminalGitBranches = Awaited<ReturnType<DesktopApi["terminalGitBranches"]>>;
 type GitChange = GitStatusResult["staged"][number];
@@ -37,6 +38,13 @@ type GitShow = Awaited<ReturnType<DesktopApi["terminalGitShow"]>>;
 type GitGraphLayout = GitLog["layout"];
 type GitGraphRow = GitGraphLayout["rows"][number];
 type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"]>>;
+
+/** Local porcelain status poll while Workbench is active. */
+const GIT_STATUS_POLL_MS = 4000;
+/** Remote fetch cadence while Workbench is active (VS Code-like). */
+const GIT_AUTO_FETCH_MS = 180_000;
+/** Cap nested monorepo fetch fan-out per sweep. */
+const GIT_AUTO_FETCH_MAX_ROOTS = 8;
 type GitTreeNode = {
   name: string;
   path: string;
@@ -409,6 +417,14 @@ function GitChangeTree({
   })}</>;
 }
 
+function trackingForRoot(git: GitStatusResult | null, gitRoot: string): GitRepoTracking | null {
+  if (!git?.tracking?.length) return null;
+  if (gitRoot) {
+    return git.tracking.find((item) => item.repoRoot === gitRoot) || null;
+  }
+  return git.tracking[0] || null;
+}
+
 function GitChangesPanel({
   visible,
   git,
@@ -456,11 +472,12 @@ function GitChangesPanel({
     suggestedFallback: string;
   };
 }): ReactPortal | null {
+  const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-panel") : null);
-  }, [visible]);
+  }, [visible, git, gitRoot]);
 
   if (!visible || !host) return null;
   if (!git?.isRepo && !git?.nestedRepos?.length) {
@@ -473,6 +490,12 @@ function GitChangesPanel({
     { title: labels.changesTitle, staged: false, entries: filterEntries(git.unstaged) }
   ];
   const hasEntries = sections.some((section) => section.entries.length > 0);
+  const tracking = trackingForRoot(git, gitRoot);
+  const trackingLabel = tracking?.branch
+    ? tracking.upstream
+      ? t("desktop.workbench.gitBranchTracking", tracking.branch, tracking.ahead, tracking.behind)
+      : t("desktop.workbench.gitNoUpstream", tracking.branch)
+    : null;
   const suggestionText = commitSuggestion
     ? commitSuggestion.source === "llm"
       ? labels.suggestedLlm
@@ -482,6 +505,7 @@ function GitChangesPanel({
     : null;
 
   return createPortal(<div className="react-git-panel wb-git-panel-layout">
+    {trackingLabel ? <p className="muted wb-git-tracking" title={tracking?.upstream || undefined}>{trackingLabel}</p> : null}
     <div className="wb-git-changes-scroll">
       {hasEntries ? sections.map((section) => {
         if (!section.entries.length) return null;
@@ -853,6 +877,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const gitRefreshTimers = useRef(new Map<string, number>());
+  const gitStatusInFlightRef = useRef(false);
+  const gitFetchInFlightRef = useRef(false);
+  const gitLastFetchAtRef = useRef(0);
+  const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
   const openingSessionKeysRef = useRef(new Set<string>());
   const settingsRef = useRef<PanelSettings | null>(null);
@@ -1673,9 +1701,31 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
+  const collectGitRoots = useCallback((result: GitStatusResult, preferredRoot = ""): string[] => {
+    const roots = new Set<string>();
+    if (preferredRoot) roots.add(preferredRoot);
+    if (result.root) roots.add(result.root);
+    (result.nestedRepos || []).forEach((repo) => roots.add(repo.root));
+    [...result.staged, ...result.unstaged].forEach((change) => {
+      if (change.repoRoot) roots.add(change.repoRoot);
+    });
+    (result.tracking || []).forEach((item) => {
+      if (item.repoRoot) roots.add(item.repoRoot);
+    });
+    return [...roots].filter(Boolean);
+  }, []);
+
   const refreshGit = useCallback(async (withNotification = false) => {
     if (!selectedProject) return;
-    setGitRefreshing(true);
+    if (gitStatusInFlightRef.current) {
+      if (!withNotification) return;
+      // Manual refresh waits for the in-flight call to finish, then runs once more.
+      while (gitStatusInFlightRef.current) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+    }
+    gitStatusInFlightRef.current = true;
+    if (withNotification) setGitRefreshing(true);
     try {
       const result = await desktopApi().terminalGitStatus({
         cwd: selectedProject,
@@ -1685,10 +1735,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
       });
       setGit(result);
+      const roots = collectGitRoots(result);
+      gitRootsRef.current = roots;
       setGitRoot((current) => {
-        const roots = new Set<string>([result.root || "", ...(result.nestedRepos || []).map((repo) => repo.root)]);
-        [...result.staged, ...result.unstaged].forEach((change) => roots.add(change.repoRoot));
-        return current && roots.has(current) ? current : result.root || result.nestedRepos?.[0]?.root || "";
+        if (current && roots.includes(current)) return current;
+        return result.root || result.nestedRepos?.[0]?.root || roots[0] || "";
       });
       setGitExpandedDirs(expandedGitDirectories([...result.staged, ...result.unstaged]));
       const currentKeys = new Set([...result.staged, ...result.unstaged].map(gitChangeKey));
@@ -1706,12 +1757,84 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (withNotification) notifyGitSuccess("desktop.workbench.gitStatusRefreshed");
     } catch (error) {
       if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
-      else setStatus({ text: gitOperationError(error), kind: "error" });
+      else if (side === "git") setStatus({ text: gitOperationError(error), kind: "error" });
+      // Silent background polls: ignore transient failures (no toast / status spam).
+    } finally {
+      gitStatusInFlightRef.current = false;
+      if (withNotification) setGitRefreshing(false);
     }
-    finally { setGitRefreshing(false); }
-  }, [notifyGitFailure, notifyGitSuccess, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth]);
+  }, [collectGitRoots, notifyGitFailure, notifyGitSuccess, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
 
-  useEffect(() => { if (active && side === "git") void refreshGit(); }, [active, refreshGit, side]);
+  const autoFetchGit = useCallback(async (force = false) => {
+    if (!selectedProject || gitFetchInFlightRef.current) return;
+    const now = Date.now();
+    if (!force && now - gitLastFetchAtRef.current < GIT_AUTO_FETCH_MS) return;
+    gitFetchInFlightRef.current = true;
+    try {
+      // Always refresh once when forcing so roots match the current project.
+      if (force || !gitRootsRef.current.length) {
+        await refreshGit(false);
+      }
+      const roots = gitRootsRef.current.slice(0, GIT_AUTO_FETCH_MAX_ROOTS);
+      for (const root of roots) {
+        try {
+          await desktopApi().terminalGitFetch({ repoRoot: root });
+        } catch {
+          // Soft-fail per root (offline remotes, auth prompts, etc.).
+        }
+      }
+      gitLastFetchAtRef.current = Date.now();
+      await refreshGit(false);
+    } finally {
+      gitFetchInFlightRef.current = false;
+    }
+  }, [refreshGit, selectedProject]);
+
+  // Reset cached roots/fetch clock when the selected project changes.
+  useEffect(() => {
+    gitRootsRef.current = [];
+    gitLastFetchAtRef.current = 0;
+    setGit(null);
+    setGitRoot("");
+  }, [selectedProject]);
+
+  // Keep status fresh while Workbench is active (Git side panel need not be open).
+  useEffect(() => {
+    if (!active || !selectedProject) return;
+    void refreshGit(false);
+    const poll = window.setInterval(() => {
+      void refreshGit(false);
+    }, GIT_STATUS_POLL_MS);
+    return () => window.clearInterval(poll);
+  }, [active, refreshGit, selectedProject]);
+
+  // Periodic remote fetch while Workbench is active.
+  useEffect(() => {
+    if (!active || !selectedProject) return;
+    void autoFetchGit(true);
+    const timer = window.setInterval(() => {
+      void autoFetchGit(false);
+    }, GIT_AUTO_FETCH_MS);
+    return () => window.clearInterval(timer);
+  }, [active, autoFetchGit, selectedProject]);
+
+  // Focus / visibility: status immediately; fetch only if stale.
+  useEffect(() => {
+    if (!active || !selectedProject) return;
+    const onFocus = () => {
+      void refreshGit(false);
+      void autoFetchGit(false);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [active, autoFetchGit, refreshGit, selectedProject]);
 
   const openDiff = async (change: GitChange, staged: boolean) => {
     if (!selectedProject) return;

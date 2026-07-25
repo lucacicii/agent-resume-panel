@@ -527,6 +527,19 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     return { ok: true };
   });
 
+  safeHandle("terminal:gitFetch", async (_event, args: { repoRoot: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
+        timeout: 60000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
   safeHandle("terminal:gitLog", async (_event, args: { repoRoot: string; limit?: number }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const commits = await queryGitLog(repoRoot, args.limit);

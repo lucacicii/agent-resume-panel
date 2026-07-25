@@ -580,7 +580,9 @@
       "desktop.workbench.gitCommitSuggestedUnconfigured": "Tool LLM is not configured, so a rule-based suggestion was inserted.",
       "desktop.workbench.gitCommitSuggestedFallback": "The AI request failed, so a rule-based suggestion was inserted.",
       "desktop.workbench.gtdStatus.done": "Done",
-      "desktop.workbench.gtdCompleted": "Completed"
+      "desktop.workbench.gtdCompleted": "Completed",
+      "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
+      "desktop.workbench.gitNoUpstream": "{0} · no upstream"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1543,7 +1545,9 @@
       "desktop.workbench.gitPush": "推送",
       "desktop.workbench.gitPushFailed": "推送失败：{0}",
       "desktop.workbench.gtdStatus.done": "完成",
-      "desktop.workbench.gtdCompleted": "已完成"
+      "desktop.workbench.gtdCompleted": "已完成",
+      "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
+      "desktop.workbench.gitNoUpstream": "{0} · 无上游分支"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2551,7 +2555,9 @@
       "desktop.workbench.sidePanelRevealFailed": "Finder で表示できませんでした: {0}",
       "desktop.workbench.sidePanelStaged": "ステージ済み",
       "desktop.workbench.gtdStatus.done": "完了",
-      "desktop.workbench.gtdCompleted": "完了"
+      "desktop.workbench.gtdCompleted": "完了",
+      "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
+      "desktop.workbench.gitNoUpstream": "{0} · 上流なし"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

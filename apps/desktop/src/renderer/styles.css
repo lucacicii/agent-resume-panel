@@ -4927,6 +4927,13 @@ code {
   overflow-wrap: anywhere;
 }
 
+#react-workbench .wb-git-tracking {
+  margin: 6px 10px 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 /* The React tree portal replaces the previous flat change rows while retaining
    the shared panel container and its Git action toolbar. */
 #react-workbench .wb-git-panel > :not(.react-git-panel) {

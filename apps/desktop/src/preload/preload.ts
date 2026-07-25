@@ -229,6 +229,7 @@ export interface DesktopApi {
   terminalGitCommit(args: { repoRoot: string; message: string; paths?: string[] }): Promise<{ ok: boolean }>;
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
+  terminalGitFetch(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitLog(args: {
     repoRoot: string;
     limit?: number;
@@ -350,6 +351,13 @@ export interface DesktopApi {
     }>;
     nestedRepos?: Array<{ root: string; displayPath: string }>;
     nestedScanDepth?: number;
+    tracking?: Array<{
+      repoRoot: string;
+      branch: string | null;
+      upstream: string | null;
+      ahead: number;
+      behind: number;
+    }>;
   }>;
   terminalGitDiffSides(args: {
     cwd: string;
@@ -763,6 +771,7 @@ const api: DesktopApi = {
   workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
+  terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
   terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),

@@ -12,6 +12,7 @@ import {
   type GitNestedScanOptions,
   type NestedGitRepoInfo
 } from "./gitNestedScan";
+import { parseLeftRightCount, type GitRepoTracking } from "./gitTracking";
 import { safeHandle } from "./ipcUtils";
 import {
   inspectWorkbenchFile,
@@ -20,10 +21,14 @@ import {
   type WorkbenchTextEncoding
 } from "./workbenchFileIo";
 
+export type { GitRepoTracking } from "./gitTracking";
+export { parseLeftRightCount } from "./gitTracking";
+
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_MAX_BYTES = 512 * 1024;
 const MAX_DIRECTORY_ENTRIES = 2000;
+const GIT_TRACKING_TIMEOUT_MS = 5000;
 
 export interface DirectoryEntry {
   name: string;
@@ -49,6 +54,8 @@ export interface GitStatusResult {
   unstaged: GitFileChange[];
   nestedRepos?: NestedGitRepoInfo[];
   nestedScanDepth?: number;
+  /** Per-repo branch / upstream / ahead-behind (best-effort). */
+  tracking?: GitRepoTracking[];
 }
 
 export interface GitDiffSidesResult {
@@ -187,6 +194,64 @@ async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitFileChan
   return parseGitStatusPorcelain(stdout);
 }
 
+async function queryGitTrackingForRepo(repoRoot: string): Promise<GitRepoTracking> {
+  let branch: string | null = null;
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
+      timeout: GIT_TRACKING_TIMEOUT_MS,
+      maxBuffer: 4096
+    });
+    const trimmed = String(stdout).trim();
+    branch = trimmed && trimmed !== "HEAD" ? trimmed : trimmed || null;
+  } catch {
+    branch = null;
+  }
+
+  let upstream: string | null = null;
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", repoRoot, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      { timeout: GIT_TRACKING_TIMEOUT_MS, maxBuffer: 4096 }
+    );
+    const trimmed = String(stdout).trim();
+    upstream = trimmed || null;
+  } catch {
+    upstream = null;
+  }
+
+  if (!upstream) {
+    return { repoRoot, branch, upstream: null, ahead: 0, behind: 0 };
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", repoRoot, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+      { timeout: GIT_TRACKING_TIMEOUT_MS, maxBuffer: 4096 }
+    );
+    const counts = parseLeftRightCount(String(stdout));
+    return { repoRoot, branch, upstream, ahead: counts.ahead, behind: counts.behind };
+  } catch {
+    return { repoRoot, branch, upstream, ahead: 0, behind: 0 };
+  }
+}
+
+async function queryTrackingForRoots(repoRoots: string[]): Promise<GitRepoTracking[]> {
+  const tracking: GitRepoTracking[] = [];
+  const seen = new Set<string>();
+  for (const root of repoRoots) {
+    if (!root || seen.has(root)) continue;
+    seen.add(root);
+    try {
+      tracking.push(await queryGitTrackingForRepo(root));
+    } catch {
+      // skip roots that fail tracking query
+    }
+  }
+  return tracking;
+}
+
 async function gitShowAtRef(cwd: string, ref: string, filePath: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", cwd, "show", `${ref}:${filePath}`], {
@@ -256,7 +321,8 @@ async function queryGitStatus(cwd: string, scanOptions?: GitNestedScanOptions): 
       const parsed = await gitStatusForRepo(repoRoot);
       const staged = prefixGitChanges(parsed.staged, resolved, repoRoot);
       const unstaged = prefixGitChanges(parsed.unstaged, resolved, repoRoot);
-      return { isRepo: true, root, staged, unstaged };
+      const tracking = await queryTrackingForRoots([repoRoot]);
+      return { isRepo: true, root, staged, unstaged, tracking };
     } catch (error) {
       throw new Error(formatExecError(error));
     }
@@ -270,7 +336,8 @@ async function queryGitStatus(cwd: string, scanOptions?: GitNestedScanOptions): 
       staged: [],
       unstaged: [],
       nestedRepos: [],
-      nestedScanDepth: scanOpts.maxDepth
+      nestedScanDepth: scanOpts.maxDepth,
+      tracking: []
     };
   }
 
@@ -286,13 +353,15 @@ async function queryGitStatus(cwd: string, scanOptions?: GitNestedScanOptions): 
     }
   }
 
+  const tracking = await queryTrackingForRoots(nestedRepos.map((repo) => repo.root));
   return {
     isRepo: true,
     root: null,
     staged,
     unstaged,
     nestedRepos,
-    nestedScanDepth: scanOpts.maxDepth
+    nestedScanDepth: scanOpts.maxDepth,
+    tracking
   };
 }
 
