@@ -389,6 +389,65 @@ describe("WorkbenchPanel", () => {
     expect(terminalDestroy).toHaveBeenCalledWith({ id: 1 });
   });
 
+  it("after Cmd+W activates the most recently used remaining terminal tab", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onWorkbenchCmdW: (() => void) | undefined;
+    let spawnSeq = 0;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      setWorkbenchActive: () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: (callback: () => void) => { onWorkbenchCmdW = callback; return () => undefined; },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "codex", id: "session-c", title: "Session C", projectPath: "/work/app", updatedAt: 1 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: ++spawnSeq }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // Open A → B → C (C is active), then switch back to A so MRU previous is C.
+    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(1));
+    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(2));
+    fireEvent.click(await screen.findByRole("button", { name: /Session C/ }));
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(3));
+
+    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
+      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
+    );
+    fireEvent.click(tabByLabel("Session A")!.querySelector("button.wb-terminal-tab-label")!);
+    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
+
+    act(() => onWorkbenchCmdW?.());
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(2);
+      // Previous MRU after A→B→C→A is C, not the first remaining tab B.
+      expect(tabByLabel("Session C")?.classList.contains("active")).toBe(true);
+      expect(tabByLabel("Session B")?.classList.contains("active")).toBe(false);
+      expect(tabByLabel("Session A")).toBeUndefined();
+    });
+  });
+
   it("shows loading until the new terminal PTY is ready", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

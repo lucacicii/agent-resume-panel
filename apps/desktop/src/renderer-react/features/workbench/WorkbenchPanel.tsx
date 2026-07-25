@@ -882,6 +882,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitLastFetchAtRef = useRef(0);
   const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
+  /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
+  const paneHistoryRef = useRef<Record<string, string[]>>({});
   const openingSessionKeysRef = useRef(new Set<string>());
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -1149,6 +1151,10 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
     const projectKey = paneProjectKey(projectPath);
+    if (paneKey) {
+      const previous = paneHistoryRef.current[projectKey] || [];
+      paneHistoryRef.current[projectKey] = [paneKey, ...previous.filter((key) => key !== paneKey)].slice(0, 32);
+    }
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
   }, [selectedProject]);
 
@@ -1251,10 +1257,29 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals((current) => current.filter((item) => item.key !== key));
     if (pane) {
       const projectKey = paneProjectKey(pane.projectPath);
-      const nextPane = currentTerminals.find((item) => item.key !== key)?.key || currentEditors[0]?.key || currentDiffs[0]?.key || "";
+      const history = (paneHistoryRef.current[projectKey] || []).filter((item) => item !== key);
+      paneHistoryRef.current[projectKey] = history;
+
+      const remainingTerminals = terminals.filter((item) => item.projectPath === pane.projectPath && item.key !== key);
+      const projectEditors = editors.filter((item) => item.projectPath === pane.projectPath);
+      const projectDiffs = diffs.filter((item) => item.projectPath === pane.projectPath);
+      const liveKeys = new Set([
+        ...remainingTerminals.map((item) => item.key),
+        ...projectEditors.map((item) => item.key),
+        ...projectDiffs.map((item) => item.key)
+      ]);
+      // Prefer most recently activated remaining pane (VS Code / browser-style ⌘W).
+      const nextPane = history.find((item) => liveKeys.has(item))
+        || remainingTerminals[remainingTerminals.length - 1]?.key
+        || projectEditors[0]?.key
+        || projectDiffs[0]?.key
+        || "";
+      if (nextPane) {
+        paneHistoryRef.current[projectKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
+      }
       setActivePanes((current) => current[projectKey] === key ? { ...current, [projectKey]: nextPane } : current);
     }
-  }, [currentDiffs, currentEditors, currentTerminals, terminals]);
+  }, [diffs, editors, terminals]);
 
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
