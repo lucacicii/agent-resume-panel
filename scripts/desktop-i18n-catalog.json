@@ -614,6 +614,7 @@
       "desktop.settings.paneStorage": "Storage",
       "desktop.settings.paneMcp": "MCP",
       "desktop.settings.paneUsage": "Usage",
+      "desktop.settings.paneLogs": "Logs",
       "desktop.settings.paneBackup": "Backup",
       "desktop.settings.paneGeneralDesc": "Appearance and daily preferences",
       "desktop.settings.paneModelsDesc": "Tool LLM, chat, and embedding",
@@ -623,6 +624,7 @@
       "desktop.settings.paneStorageDesc": "Panel home, notes, and agent data dirs",
       "desktop.settings.paneMcpDesc": "Register local data tools for external agents",
       "desktop.settings.paneUsageDesc": "LLM calls and scheduled task stats",
+      "desktop.settings.paneLogsDesc": "Application and background task failures",
       "desktop.settings.paneBackupDesc": "Export and merge app data",
       "desktop.settings.mcpServiceTitle": "Agent Resume MCP",
       "desktop.settings.mcpServiceDesc": "One local MCP service for Notes, Reports, Sessions, and GTD.",
@@ -838,6 +840,19 @@
       "desktop.usage.noLlmEvents": "No call details yet (appears after digests / Ask)",
       "desktop.usage.summaryStatus": "Last {0} days · {1} calls",
       "desktop.usage.detailTabs": "Usage detail tables"
+    },
+    "logs": {
+      "desktop.logs.loading": "Loading logs…",
+      "desktop.logs.summaryStatus": "{0} entries",
+      "desktop.logs.empty": "No application errors recorded yet",
+      "desktop.logs.clear": "Clear",
+      "desktop.logs.clearConfirm": "Clear all application error logs?",
+      "desktop.logs.cleared": "Logs cleared",
+      "desktop.logs.footnote": "Runtime and background-task failures. LLM usage and scheduled digests remain under Usage.",
+      "desktop.logs.colTime": "Time",
+      "desktop.logs.colLevel": "Level",
+      "desktop.logs.colSource": "Source",
+      "desktop.logs.colMessage": "Message"
     },
     "backfill": {
       "desktop.backfill.scanning": "Scanning catalog…",
@@ -1579,6 +1594,7 @@
       "desktop.settings.paneStorage": "存储",
       "desktop.settings.paneMcp": "MCP",
       "desktop.settings.paneUsage": "用量",
+      "desktop.settings.paneLogs": "错误记录",
       "desktop.settings.paneBackup": "备份与恢复",
       "desktop.settings.paneGeneralDesc": "外观与日常偏好",
       "desktop.settings.paneModelsDesc": "配置工具 LLM、对话与 Embedding",
@@ -1588,6 +1604,7 @@
       "desktop.settings.paneStorageDesc": "Panel home、笔记与 Agent 数据目录",
       "desktop.settings.paneMcpDesc": "为外部 Agent 注册本地数据工具",
       "desktop.settings.paneUsageDesc": "LLM 调用与定时任务统计",
+      "desktop.settings.paneLogsDesc": "应用运行与后台任务失败记录",
       "desktop.settings.paneBackupDesc": "导出和合并应用数据",
       "desktop.settings.mcpServiceTitle": "Agent Resume MCP",
       "desktop.settings.mcpServiceDesc": "一个本地 MCP 服务，统一提供 Notes、Reports、Sessions 与 GTD。",
@@ -1814,6 +1831,19 @@
       "desktop.usage.noLlmEvents": "暂无调用明细（生成 digests / Ask 后会出现）",
       "desktop.usage.summaryStatus": "近 {0} 天 · {1} 次调用",
       "desktop.usage.detailTabs": "用量明细"
+    },
+    "logs": {
+      "desktop.logs.loading": "正在加载日志…",
+      "desktop.logs.summaryStatus": "共 {0} 条",
+      "desktop.logs.empty": "暂无应用错误记录",
+      "desktop.logs.clear": "清空",
+      "desktop.logs.clearConfirm": "清空全部应用错误日志？",
+      "desktop.logs.cleared": "已清空",
+      "desktop.logs.footnote": "应用运行与后台任务失败。LLM 用量与定时 digest 请到「用量」。",
+      "desktop.logs.colTime": "时间",
+      "desktop.logs.colLevel": "级别",
+      "desktop.logs.colSource": "来源",
+      "desktop.logs.colMessage": "消息"
     },
     "backfill": {
       "desktop.backfill.scanning": "正在扫描 catalog…",
@@ -2589,6 +2619,7 @@
       "desktop.settings.paneStorage": "Storage",
       "desktop.settings.paneMcp": "MCP",
       "desktop.settings.paneUsage": "Usage",
+      "desktop.settings.paneLogs": "ログ",
       "desktop.settings.paneBackup": "バックアップ",
       "desktop.settings.paneGeneralDesc": "Appearance and daily preferences",
       "desktop.settings.paneModelsDesc": "Tool LLM, chat, and embedding",
@@ -2598,6 +2629,7 @@
       "desktop.settings.paneStorageDesc": "Panel home, notes, and agent data dirs",
       "desktop.settings.paneMcpDesc": "外部エージェント向けのローカルデータツールを登録",
       "desktop.settings.paneUsageDesc": "LLM calls and scheduled task stats",
+      "desktop.settings.paneLogsDesc": "アプリとバックグラウンドタスクの失敗",
       "desktop.settings.paneBackupDesc": "アプリデータのエクスポートとマージ",
       "desktop.settings.mcpServiceTitle": "Agent Resume MCP",
       "desktop.settings.mcpServiceDesc": "Notes、Reports、Sessions、GTD をまとめて提供するローカル MCP サービスです。",
@@ -2824,6 +2856,19 @@
       "desktop.usage.noLlmEvents": "呼び出し詳細はまだありません（digest / Ask 生成後に表示されます）",
       "desktop.usage.summaryStatus": "過去 {0} 日 · {1} 回の呼び出し",
       "desktop.usage.detailTabs": "利用詳細"
+    },
+    "logs": {
+      "desktop.logs.loading": "ログを読み込み中…",
+      "desktop.logs.summaryStatus": "{0} 件",
+      "desktop.logs.empty": "アプリエラーはまだありません",
+      "desktop.logs.clear": "クリア",
+      "desktop.logs.clearConfirm": "すべてのアプリエラーログをクリアしますか？",
+      "desktop.logs.cleared": "ログをクリアしました",
+      "desktop.logs.footnote": "ランタイムとバックグラウンドタスクの失敗。LLM 利用量とスケジュール digest は Usage を参照。",
+      "desktop.logs.colTime": "時刻",
+      "desktop.logs.colLevel": "レベル",
+      "desktop.logs.colSource": "ソース",
+      "desktop.logs.colMessage": "メッセージ"
     },
     "backfill": {
       "desktop.backfill.scanning": "catalog をスキャン中…",

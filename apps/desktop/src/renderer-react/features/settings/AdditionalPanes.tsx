@@ -319,7 +319,119 @@ function formatTime(value: number): string {
 
 export type UsageDetailTab = "byDay" | "schedule" | "llm";
 
+type AppErrorLogRow = Awaited<ReturnType<ReturnType<typeof desktopApi>["logsList"]>>[number];
+
 const USAGE_DETAIL_TABS = ["byDay", "schedule", "llm"] as const satisfies readonly UsageDetailTab[];
+
+export function LogsPane({ t }: { t: Translate }) {
+  const [entries, setEntries] = useState<AppErrorLogRow[]>([]);
+  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [busy, setBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setStatus({ text: t("desktop.logs.loading") });
+    try {
+      const rows = await desktopApi().logsList({ limit: 200 });
+      setEntries(rows);
+      setStatus({ text: t("desktop.logs.summaryStatus", rows.length), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const clear = async () => {
+    if (!window.confirm(t("desktop.logs.clearConfirm"))) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await desktopApi().logsClear();
+      setExpandedId(null);
+      await load();
+      setStatus({ text: t("desktop.logs.cleared"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-pane-body settings-usage-body">
+      <div className="settings-usage-toolbar">
+        <div className="settings-usage-toolbar-left">
+          <button type="button" className="ghost-btn" disabled={busy} onClick={() => void load()}>
+            {t("desktop.common.refresh")}
+          </button>
+          <button type="button" className="ghost-btn" disabled={busy} onClick={() => void clear()}>
+            {t("desktop.logs.clear")}
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={busy}
+            onClick={() => void desktopApi().logsOpenDir()}
+          >
+            {t("desktop.common.revealInFinder")}
+          </button>
+        </div>
+        {status.text ? <Status kind={status.kind}>{status.text}</Status> : null}
+      </div>
+      <p className="settings-footnote">{t("desktop.logs.footnote")}</p>
+      <div className="table-wrap compact usage-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t("desktop.logs.colTime")}</th>
+              <th>{t("desktop.logs.colLevel")}</th>
+              <th>{t("desktop.logs.colSource")}</th>
+              <th>{t("desktop.logs.colMessage")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length ? (
+              entries.map((entry) => {
+                const open = expandedId === entry.id;
+                return (
+                  <tr
+                    key={entry.id}
+                    className={open ? "is-selected" : undefined}
+                    title={entry.detail || entry.message}
+                    onClick={() => setExpandedId(open ? null : entry.id)}
+                    style={{ cursor: entry.detail ? "pointer" : undefined }}
+                  >
+                    <td>{formatTime(entry.createdAtMs)}</td>
+                    <td>{entry.level}</td>
+                    <td>{entry.source}</td>
+                    <td>
+                      <div>{entry.message}</div>
+                      {open && entry.detail ? (
+                        <pre className="settings-footnote" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>
+                          {entry.detail}
+                        </pre>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {t("desktop.logs.empty")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export function UsagePane({ t, initialDetailTab }: { t: Translate; initialDetailTab?: UsageDetailTab }) {
   const [days, setDays] = useState(30);

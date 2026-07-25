@@ -138,6 +138,16 @@ import {
   importBackup,
   selectBackupForImport
 } from "./backupService";
+import {
+  clearAppErrors,
+  installProcessErrorHandlers,
+  listAppErrors,
+  openAppErrorLogDir,
+  recordAppError,
+  type AppErrorLogLevel
+} from "./appErrorLog";
+
+installProcessErrorHandlers();
 
 function tryRegisterPtyIpc(): void {
   try {
@@ -145,7 +155,11 @@ function tryRegisterPtyIpc(): void {
     const { registerPtyIpc } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc(() => mainWindow);
   } catch (error) {
-    console.error("[desktop] node-pty unavailable — embedded terminal disabled.", error);
+    void recordAppError({
+      source: "pty-host",
+      message: "node-pty unavailable — embedded terminal disabled.",
+      error
+    });
   }
 }
 
@@ -643,7 +657,11 @@ function registerIpc(): void {
     try {
       await migrateLegacyAgentResumeRegistrations(await externalMcpLaunch());
     } catch (error) {
-      console.error("MCP legacy migration failed:", error instanceof Error ? error.message : String(error));
+      void recordAppError({
+        source: "mcp-migrate",
+        message: "MCP legacy migration failed.",
+        error
+      });
     }
     return listMcpClients();
   });
@@ -1055,7 +1073,7 @@ function registerIpc(): void {
       const paths = await loadPanelDbPaths();
       return (await getReportEntryById(paths.desktopDb, id)) ?? null;
     } catch (error) {
-      console.error("report:getEntry failed:", error);
+      void recordAppError({ source: "report", message: "report:getEntry failed.", error });
       return null;
     }
   });
@@ -1398,6 +1416,23 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
+    "logs:list",
+    async (_event, args?: { limit?: number; level?: string; source?: string }) => {
+      const level =
+        args?.level === "warn" || args?.level === "error"
+          ? (args.level as AppErrorLogLevel)
+          : undefined;
+      return listAppErrors({
+        limit: args?.limit,
+        level,
+        source: typeof args?.source === "string" ? args.source : undefined
+      });
+    }
+  );
+  ipcMain.handle("logs:clear", async () => clearAppErrors());
+  ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
+
+  ipcMain.handle(
     "workflow:previewBackfillDigests",
     async (
       _event,
@@ -1646,11 +1681,13 @@ function registerIpc(): void {
 // Fail closed: never open a GUI instance when an outdated MCP client still passes
 // the removed --agent-resume-mcp flag (that path used to spawn Dock icons).
 if (process.argv.includes("--agent-resume-mcp")) {
-  console.error(
-    "[agent-resume] Outdated MCP launch rejected. Agent Resume MCP is headless only " +
+  void recordAppError({
+    source: "startup",
+    message:
+      "Outdated MCP launch rejected. Agent Resume MCP is headless only " +
       "(ELECTRON_RUN_AS_NODE + packages/core dist/mcp/cli.js). " +
       "Open Desktop Settings → MCP once, or re-copy config for Grok/Cursor."
-  );
+  });
   app.exit(1);
 } else {
 app.whenReady().then(async () => {
@@ -1663,7 +1700,11 @@ app.whenReady().then(async () => {
   try {
     await loadPanelDbPaths();
   } catch (error) {
-    console.error("Failed to prepare panel databases on startup:", error);
+    void recordAppError({
+      source: "startup",
+      message: "Failed to prepare panel databases on startup.",
+      error
+    });
   }
   // Rewrite any client configs still pointing at the old GUI Electron MCP entry.
   try {
@@ -1682,10 +1723,17 @@ app.whenReady().then(async () => {
       console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
     }
     for (const failure of migrated.failed) {
-      console.error(`[agent-resume] MCP migrate failed (${failure.target}): ${failure.error}`);
+      void recordAppError({
+        source: "mcp-migrate",
+        message: `MCP migrate failed (${failure.target}): ${failure.error}`
+      });
     }
   } catch (error) {
-    console.error("MCP legacy migration failed:", error instanceof Error ? error.message : String(error));
+    void recordAppError({
+      source: "mcp-migrate",
+      message: "MCP legacy migration failed.",
+      error
+    });
   }
   createWindow();
   await installApplicationMenu();

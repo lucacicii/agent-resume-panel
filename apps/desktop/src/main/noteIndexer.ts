@@ -8,6 +8,7 @@ import {
   type NoteIndexProgressEvent
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 
 const NOTES_INDEX_INTERVAL_MS = 5 * 60_000;
 
@@ -43,7 +44,7 @@ export function scheduleNotesIndex(delayMs = 1_000): void {
     pending = null;
     void runNotesIndex().catch(async (error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("[notes-indexer]", error);
+      void recordAppError({ source: "notes-indexer", error });
       const settings = await loadSettings();
       const pt = createUiText(settings, app.getLocale());
       notifyProgress?.({ phase: "error", message: pt("desktop.notes.indexFailed", message) });

@@ -5,6 +5,7 @@ import {
   runAutoTranscriptIndex
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 
 const TICK_INTERVAL_MS = 5 * 60_000;
 const FAILURE_COOLDOWN_MS = 15 * 60_000;
@@ -51,7 +52,7 @@ async function runTranscriptIndexSafe(): Promise<void> {
   }
   inFlight = runTranscriptIndex()
     .catch((error) => {
-      console.error("[session-transcript-index-auto]", error);
+      void recordAppError({ source: "session-transcript-index-auto", error });
     })
     .finally(() => {
       inFlight = null;

@@ -527,6 +527,22 @@ export interface DesktopApi {
       error?: string | null;
     }>
   >;
+  logsList(args?: {
+    limit?: number;
+    level?: "error" | "warn";
+    source?: string;
+  }): Promise<
+    Array<{
+      id: string;
+      createdAtMs: number;
+      level: "error" | "warn";
+      source: string;
+      message: string;
+      detail?: string;
+    }>
+  >;
+  logsClear(): Promise<{ ok: true }>;
+  logsOpenDir(): Promise<{ ok: boolean; path: string }>;
   usageListScheduleRuns(args?: {
     limit?: number;
     level?: string;
@@ -868,6 +884,9 @@ const api: DesktopApi = {
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
   usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
   usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args),
+  logsList: (args) => ipcRenderer.invoke("logs:list", args),
+  logsClear: () => ipcRenderer.invoke("logs:clear"),
+  logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
   notesListGtd: (args) => ipcRenderer.invoke("notes:listGtd", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),

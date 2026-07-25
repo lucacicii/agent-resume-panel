@@ -13,6 +13,7 @@ import {
   startScheduleRun
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 
 /** Space retries after a failed or interrupted schedule attempt. */
 const RETRY_INTERVAL_MS = 30 * 60_000;
@@ -33,10 +34,12 @@ export function startMemoryScheduler(): void {
   stopMemoryScheduler();
   timer = setInterval(() => {
     void tick().catch((err) => {
-      console.error("[memory-scheduler]", err);
+      void recordAppError({ source: "memory-scheduler", error: err });
     });
   }, 60_000);
-  void tick().catch((err) => console.error("[memory-scheduler]", err));
+  void tick().catch((err) => {
+    void recordAppError({ source: "memory-scheduler", error: err });
+  });
 }
 
 export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
@@ -181,8 +184,12 @@ async function tick(): Promise<void> {
           }
         });
       } catch (error) {
-        // Logged in runLoggedSchedule; keep going for other due jobs.
-        console.error("[memory-scheduler] job failed", job.level, job.periodKey, error);
+        // Also stored in schedule_run_logs; keep going for other due jobs.
+        void recordAppError({
+          source: "memory-scheduler",
+          message: `job failed ${job.level} ${job.periodKey}`,
+          error
+        });
       }
     }
     if (attempted > 0 || skipRetry > 0) {

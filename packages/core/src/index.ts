@@ -16,7 +16,8 @@ export {
   desktopSettingsPath,
   desktopDataDir,
   desktopDbPath,
-  defaultScratchDir
+  defaultScratchDir,
+  desktopLogsDir
 } from "./panelHome";
 export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";
 export type { PanelDbPaths } from "./dbPaths";

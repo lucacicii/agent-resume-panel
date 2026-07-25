@@ -5,6 +5,7 @@ import {
   runAutoSessionSummaries
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 
 const TICK_INTERVAL_MS = 5 * 60_000;
 const FAILURE_COOLDOWN_MS = 15 * 60_000;
@@ -51,7 +52,7 @@ async function runSessionSummaryAutoSafe(): Promise<void> {
   }
   inFlight = runSessionSummaryAuto()
     .catch((error) => {
-      console.error("[session-summary-auto]", error);
+      void recordAppError({ source: "session-summary-auto", error });
     })
     .finally(() => {
       inFlight = null;

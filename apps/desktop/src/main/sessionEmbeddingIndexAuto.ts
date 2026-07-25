@@ -4,6 +4,7 @@ import {
   runAutoSessionEmbeddings
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { recordAppError } from "./appErrorLog";
 
 const TICK_INTERVAL_MS = 5 * 60_000;
 const FAILURE_COOLDOWN_MS = 15 * 60_000;
@@ -48,7 +49,7 @@ async function runEmbeddingIndexSafe(): Promise<void> {
   }
   inFlight = runEmbeddingIndex()
     .catch((error) => {
-      console.error("[session-embedding-index-auto]", error);
+      void recordAppError({ source: "session-embedding-index-auto", error });
     })
     .finally(() => {
       inFlight = null;

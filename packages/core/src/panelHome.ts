@@ -35,3 +35,8 @@ export function desktopDbPath(panelHome: string): string {
 export function defaultScratchDir(panelHome: string): string {
   return path.join(desktopDataDir(panelHome), "scratch");
 }
+
+/** Desktop app error / diagnostic logs: `<panelHome>/.desktop/logs`. */
+export function desktopLogsDir(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "logs");
+}

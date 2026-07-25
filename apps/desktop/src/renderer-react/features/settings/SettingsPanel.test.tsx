@@ -21,6 +21,8 @@ const messages = {
   "desktop.settings.paneStorageDesc": "Storage desc",
   "desktop.settings.paneUsage": "Usage",
   "desktop.settings.paneUsageDesc": "Usage desc",
+  "desktop.settings.paneLogs": "Logs",
+  "desktop.settings.paneLogsDesc": "Logs desc",
   "desktop.settings.paneAbout": "About",
   "desktop.settings.paneAboutDesc": "About desc",
   "desktop.settings.toolLlm": "Tool LLM",
