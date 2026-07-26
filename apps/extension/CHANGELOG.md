@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.8.1]
+
+#### 修复
+
+- **Marketplace 包缺少 Notes 视图**：`thunder-luc.agent-resume-panel-v2` 的 `contributes.views` 未声明 `agentResume.notes`，VS Code 激活时报 *No view is registered with id: agentResume.notes*，且侧栏无 Notes。现与 Open VSX 包对齐（含 `onView:agentResume.notes`）。
+
 ### [2.8.0]
 
 #### 新增
@@ -445,6 +451,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.8.1]
+
+#### Fixed
+
+- **Marketplace package missing Notes view**: `thunder-luc.agent-resume-panel-v2` did not declare `agentResume.notes` under `contributes.views`, so VS Code logged *No view is registered with id: agentResume.notes* and omitted the Notes tab. Aligned with the Open VSX package (including `onView:agentResume.notes`).
 
 ### [2.8.0]
 
