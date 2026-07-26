@@ -65,6 +65,16 @@ export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] =
   "one-dark",
   "dracula"
 ] as const;
+/**
+ * Embedded xterm accelerated renderer.
+ * - webgl: prefer WebGL, fall back to Canvas on failure/context loss (default)
+ * - canvas: force Canvas 2D (more stable for some CJK / GPU drivers)
+ */
+export type WorkbenchTerminalRenderer = "webgl" | "canvas";
+export const WORKBENCH_TERMINAL_RENDERERS: readonly WorkbenchTerminalRenderer[] = [
+  "webgl",
+  "canvas"
+] as const;
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
@@ -132,6 +142,8 @@ export interface WorkbenchSettings {
   terminalMode?: WorkbenchTerminalMode;
   /** Embedded xterm color preset. Default default-dark. */
   terminalTheme?: WorkbenchTerminalThemeId;
+  /** Embedded xterm GPU renderer. Default webgl (Canvas fallback on failure). */
+  terminalRenderer?: WorkbenchTerminalRenderer;
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
   externalLaunchMode?: GhosttyLaunchMode;
   externalAutoPasteDelayMs?: number;
@@ -332,6 +344,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   workbench: {
     projectEditor: "auto",
     terminalTheme: "default-dark",
+    terminalRenderer: "webgl",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],

@@ -63,6 +63,17 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
           <option key={id} value={id}>{t(terminalThemeLabelKey(id))}</option>
         ))}
       </SelectRow>
+      {draft.terminalMode === "xterm" ? (
+        <SelectRow
+          title={t("desktop.settings.terminalRenderer")}
+          description={t("desktop.settings.terminalRendererDesc")}
+          value={draft.terminalRenderer}
+          onChange={(value) => update("terminalRenderer", value as WorkbenchDraft["terminalRenderer"])}
+        >
+          <option value="webgl">{t("desktop.settings.terminalRendererWebgl")}</option>
+          <option value="canvas">{t("desktop.settings.terminalRendererCanvas")}</option>
+        </SelectRow>
+      ) : null}
       {draft.terminalMode === "external-system" ? <SelectRow title={t("desktop.settings.externalLaunch")} description={t("desktop.settings.externalLaunchDesc")} value={draft.externalLaunchMode} onChange={(value) => update("externalLaunchMode", value as WorkbenchDraft["externalLaunchMode"])}><option value="executeCommand">{t("desktop.settings.launchExecute")}</option><option value="pasteCommand">{t("desktop.settings.launchPaste")}</option><option value="copyCommand">{t("desktop.settings.launchCopy")}</option></SelectRow> : null}
       <SelectRow title={t("desktop.settings.cmdT")} description={t("desktop.settings.cmdTDesc")} value={draft.cmdTAction} onChange={(value) => update("cmdTAction", value as WorkbenchDraft["cmdTAction"])}><option value="newTerminal">{t("desktop.settings.cmdTNewTerminal")}</option><option value="newSession">{t("desktop.settings.cmdTNewSession")}</option></SelectRow>
     </div></section>

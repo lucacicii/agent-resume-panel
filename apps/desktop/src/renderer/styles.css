@@ -6819,6 +6819,15 @@ textarea.wb-editor-host {
 .wb-terminal-host .xterm {
   width: 100%;
   height: 100%;
+  /* Inherit nothing that skews cell geometry (CJK + canvas measure). */
+  letter-spacing: normal;
+  font-variant-ligatures: none;
+  text-rendering: geometricPrecision;
+}
+
+.wb-terminal-host .xterm-rows,
+.wb-terminal-host .xterm-screen {
+  letter-spacing: normal;
 }
 
 .wb-terminal-search {

@@ -98,6 +98,8 @@ export interface WorkbenchDraft {
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
   terminalTheme: WorkbenchTerminalThemeId;
+  /** webgl (default) or force canvas for CJK/GPU compatibility */
+  terminalRenderer: "webgl" | "canvas";
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
   cmdTAction: "newTerminal" | "newSession";
   editorEditable: boolean;
@@ -325,6 +327,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
+    terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
     cmdTAction: workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal",
     editorEditable: editor?.editable !== false,
@@ -351,6 +354,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
+      terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
       externalLaunchMode: draft.externalLaunchMode,
       cmdTAction: draft.cmdTAction,
       editor: {

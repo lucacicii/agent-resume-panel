@@ -771,8 +771,19 @@ const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = 
   activeMatchColorOverviewRuler: "#f5a623"
 };
 
-/** Prefer WebGL, fall back to Canvas 2D, else keep the default DOM renderer. */
-function tryLoadAcceleratedRenderer(terminal: Terminal): { dispose: () => void } {
+type TerminalRendererMode = "webgl" | "canvas";
+
+/**
+ * Prefer WebGL for throughput; fall back to Canvas 2D, then DOM.
+ * When `mode === "canvas"`, skip WebGL entirely (settings: force Canvas).
+ *
+ * CJK stability still depends on font stack + Unicode11 + rescaleOverlappingGlyphs.
+ * On context loss (or WebGL load failure) drop to Canvas so the session stays usable.
+ */
+function tryLoadAcceleratedRenderer(
+  terminal: Terminal,
+  mode: TerminalRendererMode = "webgl"
+): { dispose: () => void } {
   let active: { dispose(): void } | null = null;
   let contextLossSub: { dispose(): void } | null = null;
 
@@ -792,17 +803,21 @@ function tryLoadAcceleratedRenderer(terminal: Terminal): { dispose: () => void }
     }
   };
 
-  try {
-    const webgl = new WebglAddon();
-    terminal.loadAddon(webgl);
-    active = webgl;
-    contextLossSub = webgl.onContextLoss(() => {
-      try { webgl.dispose(); } catch { /* ignore */ }
-      active = null;
-      loadCanvas();
-    });
-  } catch {
+  if (mode === "canvas") {
     loadCanvas();
+  } else {
+    try {
+      const webgl = new WebglAddon();
+      terminal.loadAddon(webgl);
+      active = webgl;
+      contextLossSub = webgl.onContextLoss(() => {
+        try { webgl.dispose(); } catch { /* ignore */ }
+        active = null;
+        loadCanvas();
+      });
+    } catch {
+      loadCanvas();
+    }
   }
 
   return {
@@ -815,10 +830,38 @@ function tryLoadAcceleratedRenderer(terminal: Terminal): { dispose: () => void }
   };
 }
 
-function TerminalView({ pane, active, themeId, onPty, onInput }: {
+/**
+ * After zoom / DPR / theme changes the WebGL glyph atlas can keep stale samples
+ * (looks like scrambled CJK until hover forces a partial redraw). Rebuild atlas
+ * and repaint the visible buffer.
+ */
+function refreshTerminalGlyphs(terminal: Terminal): void {
+  try {
+    terminal.clearTextureAtlas?.();
+  } catch {
+    /* DOM renderer has no atlas */
+  }
+  try {
+    const last = Math.max(0, terminal.rows - 1);
+    terminal.refresh(0, last);
+  } catch {
+    /* terminal disposed mid-fit */
+  }
+}
+
+/**
+ * Latin mono first (cell metrics), then CJK faces so double-width glyphs do not
+ * fall back to a proportional UI font that bleeds across neighboring cells.
+ */
+const TERMINAL_FONT_FAMILY =
+  'Menlo, Monaco, "SF Mono", Consolas, "Cascadia Mono", "Courier New", "PingFang SC", "Hiragino Sans GB", "Noto Sans Mono CJK SC", "Microsoft YaHei UI", monospace';
+
+function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
+  /** webgl (default) or force canvas — hot-swapped without killing the PTY. */
+  rendererMode: TerminalRendererMode;
   onPty: (key: string, id: number, terminal: Terminal) => void;
   onInput: (key: string) => void;
 }): React.JSX.Element {
@@ -828,6 +871,8 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const rendererRef = useRef<{ dispose: () => void } | null>(null);
+  const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
   const ptyId = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -867,8 +912,13 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
     const terminal = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: 13,
+      // Keep cell metrics tight; non-zero letterSpacing skews FitAddon + CJK.
+      letterSpacing: 0,
+      lineHeight: 1.0,
+      // Ambiguous-width / fallback glyphs otherwise spill into the next cell.
+      rescaleOverlappingGlyphs: true,
       scrollback: 10_000,
       theme: resolveTerminalTheme(themeId)
     });
@@ -878,15 +928,17 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
     terminal.open(hostEl);
     fit.current = fitAddon;
 
-    const renderer = tryLoadAcceleratedRenderer(terminal);
+    // Unicode widths must be active before any write / accelerated paint.
+    const unicode11 = new Unicode11Addon();
+    terminal.loadAddon(unicode11);
+    terminal.unicode.activeVersion = "11";
+
+    const initialMode = rendererModeRef.current;
+    rendererRef.current = tryLoadAcceleratedRenderer(terminal, initialMode);
 
     terminal.loadAddon(new WebLinksAddon((_event, uri) => {
       void desktopApi().openExternalUrl(uri).catch(() => undefined);
     }));
-
-    const unicode11 = new Unicode11Addon();
-    terminal.loadAddon(unicode11);
-    terminal.unicode.activeVersion = "11";
 
     // Runtime ctor is (base64?, provider?); published .d.ts only documents provider.
     // Utf8Base64 avoids atob-as-Latin-1 mojibake for CJK OSC 52 payloads.
@@ -928,10 +980,18 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
       void desktopApi().terminalResize({ id: ptyId.current, cols, rows });
     });
 
+    let lastFitKey = "";
     const fitHost = () => {
       if (hostEl.clientWidth < 2 || hostEl.clientHeight < 2) return;
       try {
         fitAddon.fit();
+        // Only rebuild the WebGL glyph atlas when geometry or DPR actually changes.
+        // Continuous ResizeObserver ticks would thrash clearTextureAtlas otherwise.
+        const fitKey = `${terminal.cols}x${terminal.rows}@${window.devicePixelRatio || 1}`;
+        if (fitKey !== lastFitKey) {
+          lastFitKey = fitKey;
+          refreshTerminalGlyphs(terminal);
+        }
       } catch {
         /* hidden panes fit after activation */
       }
@@ -976,17 +1036,30 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
       searchResultsSub?.dispose();
       searchAddonRef.current = null;
       terminalRef.current = null;
-      renderer.dispose();
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
       if (ptyId.current !== null) void desktopApi().terminalDestroy({ id: ptyId.current });
       terminal.dispose();
     };
   }, [onInput, onPty, pane.command, pane.cwd, pane.key]);
+
+  // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
+  useEffect(() => {
+    if (rendererModeRef.current === rendererMode) return;
+    rendererModeRef.current = rendererMode;
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    try { rendererRef.current?.dispose(); } catch { /* ignore */ }
+    rendererRef.current = tryLoadAcceleratedRenderer(terminal, rendererMode);
+    refreshTerminalGlyphs(terminal);
+  }, [rendererMode]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
     // Replace full theme object so ANSI colors do not leak from the previous preset.
     terminal.options.theme = resolveTerminalTheme(themeId);
+    refreshTerminalGlyphs(terminal);
   }, [themeId]);
 
   useEffect(() => {
@@ -996,7 +1069,10 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
     let inner = 0;
     outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => {
-        try { fit.current?.fit(); } catch { /* fit guard */ }
+        try {
+          fit.current?.fit();
+          if (terminalRef.current) refreshTerminalGlyphs(terminalRef.current);
+        } catch { /* fit guard */ }
       });
     });
     return () => {
@@ -2065,6 +2141,8 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const editorSettings = settings?.workbench?.editor;
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
+  const terminalRendererMode: TerminalRendererMode =
+    settings?.workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl";
   const saveEditor = async (key: string, force = false) => {
     const editor = editors.find((item) => item.key === key);
     if (!editor || !editor.dirty) return true;
@@ -2683,7 +2761,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} onPty={onPty} onInput={onTerminalInput} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} /></div>;
           })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
           {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree wb-explorer-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div><div className="wb-search-pane"><div className="wb-search-form" role="search"><input ref={searchInputRef} type="search" className="wb-search-input" value={searchQuery} placeholder={t("desktop.workbench.searchPlaceholder")} aria-label={t("desktop.workbench.sidePanelSearch")} autoComplete="off" spellCheck={false} disabled={!selectedProject} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }} /><div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}><button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button><button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button><button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button></div></div>{!selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>

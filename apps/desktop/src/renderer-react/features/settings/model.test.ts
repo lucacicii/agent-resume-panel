@@ -149,6 +149,29 @@ describe("settings model", () => {
     expect(patch.workbench?.terminalTheme).toBe("dracula");
   });
 
+  it("defaults and persists workbench terminal renderer (webgl / force canvas)", () => {
+    const defaultDraft = workbenchDraftFromSettings(settings);
+    expect(defaultDraft.terminalRenderer).toBe("webgl");
+
+    const invalid = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { terminalRenderer: "dom" as never }
+    });
+    expect(invalid.terminalRenderer).toBe("webgl");
+
+    const canvasDraft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { terminalRenderer: "canvas" }
+    });
+    expect(canvasDraft.terminalRenderer).toBe("canvas");
+
+    const patch = workbenchPatch(settings, {
+      ...defaultDraft,
+      terminalRenderer: "canvas"
+    });
+    expect(patch.workbench?.terminalRenderer).toBe("canvas");
+  });
+
   it("preserves report invariants and only stores non-default agent homes", () => {
     const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
     expect(report.report?.scheduleDailyHour).toBe(23);

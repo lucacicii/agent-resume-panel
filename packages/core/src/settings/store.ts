@@ -13,7 +13,9 @@ import {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
+  WORKBENCH_TERMINAL_RENDERERS,
   WorkbenchProjectContextMenuAction,
+  type WorkbenchTerminalRenderer,
   type WorkbenchTerminalThemeId
 } from "./types";
 import {
@@ -26,6 +28,7 @@ const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
+const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
 
 export function normalizeWorkbenchTerminalTheme(
   value: string | undefined | null
@@ -34,6 +37,15 @@ export function normalizeWorkbenchTerminalTheme(
     return value as WorkbenchTerminalThemeId;
   }
   return DEFAULT_SETTINGS.workbench?.terminalTheme ?? "default-dark";
+}
+
+export function normalizeWorkbenchTerminalRenderer(
+  value: string | undefined | null
+): WorkbenchTerminalRenderer {
+  if (value && TERMINAL_RENDERERS.has(value)) {
+    return value as WorkbenchTerminalRenderer;
+  }
+  return DEFAULT_SETTINGS.workbench?.terminalRenderer ?? "webgl";
 }
 
 export function normalizeWorkbenchProjectContextMenu(
@@ -158,6 +170,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...(partial.workbench || {}),
       terminalTheme: normalizeWorkbenchTerminalTheme(
         partial.workbench?.terminalTheme ?? base.workbench?.terminalTheme
+      ),
+      terminalRenderer: normalizeWorkbenchTerminalRenderer(
+        partial.workbench?.terminalRenderer ?? base.workbench?.terminalRenderer
       ),
       gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(

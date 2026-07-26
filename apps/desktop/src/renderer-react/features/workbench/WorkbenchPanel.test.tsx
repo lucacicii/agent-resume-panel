@@ -17,6 +17,8 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   focus() {}
   write() {}
   getSelection() { return ""; }
+  clearTextureAtlas() {}
+  refresh() {}
   onData() { return { dispose() {} }; }
   onResize() { return { dispose() {} }; }
   dispose() {}
