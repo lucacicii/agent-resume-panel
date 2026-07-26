@@ -648,19 +648,24 @@
         "group": "navigation@1"
       },
       {
-        "command": "agentResume.openSessionManager",
+        "command": "agentResume.openReport",
         "when": "view == agentResume.sessions",
         "group": "navigation@2"
       },
       {
-        "command": "agentResume.refresh",
+        "command": "agentResume.openSessionManager",
         "when": "view == agentResume.sessions",
         "group": "navigation@3"
       },
       {
-        "command": "agentResume.openSettings",
+        "command": "agentResume.refresh",
         "when": "view == agentResume.sessions",
         "group": "navigation@4"
+      },
+      {
+        "command": "agentResume.openSettings",
+        "when": "view == agentResume.sessions",
+        "group": "navigation@5"
       },
       {
         "command": "agentResume.newAcpChat",

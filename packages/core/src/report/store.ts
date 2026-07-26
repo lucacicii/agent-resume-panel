@@ -1,5 +1,6 @@
+import * as fs from "node:fs/promises";
 import { ensureDesktopDbSchema } from "../catalog/db";
-import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
+import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "../sqlite";
 import { ReportEntry, ReportLevel } from "./schema";
 
 interface ReportEntryRow {
@@ -24,6 +25,125 @@ function rowToEntry(row: ReportEntryRow): ReportEntry {
     embeddingJson: row.embedding_json,
     createdAtMs: row.created_at_ms
   };
+}
+
+function isMissingReportSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("no such table") ||
+    message.includes("unable to open database file") ||
+    message.includes("does not exist")
+  );
+}
+
+/** True when desktop.db exists on disk (does not create files). */
+export async function desktopReportDbExists(dbPath: string): Promise<boolean> {
+  try {
+    await fs.access(dbPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read-only list for consumers that must not create desktop schema
+ * (e.g. VS Code extension). Returns [] when db/table is absent.
+ */
+export async function readReportEntries(
+  dbPath: string,
+  options?: { level?: ReportLevel | string; limit?: number }
+): Promise<ReportEntry[]> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return [];
+  }
+  const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
+  const levelClause = options?.level
+    ? `WHERE level = '${escapeSqlLiteral(options.level)}'`
+    : "";
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       ${levelClause}
+       ORDER BY period_start_ms DESC, created_at_ms DESC
+       LIMIT ${limit};`
+    );
+    return rows.map(rowToEntry);
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read-only range list. Returns [] when db/table is absent; never creates files.
+ */
+export async function readReportEntriesInRange(
+  dbPath: string,
+  options: {
+    level?: ReportLevel | string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+  }
+): Promise<ReportEntry[]> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return [];
+  }
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const levelClause = options.level
+    ? `AND level = '${escapeSqlLiteral(options.level)}'`
+    : "";
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       WHERE period_start_ms >= ${Math.floor(options.startMs)}
+         AND period_start_ms < ${Math.floor(options.endMs)}
+         ${levelClause}
+       ORDER BY period_start_ms ASC
+       LIMIT ${limit};`
+    );
+    return rows.map(rowToEntry);
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read-only get by id. Does not run ensureDesktopDbSchema.
+ */
+export async function readReportEntryById(
+  dbPath: string,
+  id: string
+): Promise<ReportEntry | undefined> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return undefined;
+  }
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       WHERE id = '${escapeSqlLiteral(id)}'
+       LIMIT 1;`
+    );
+    const row = rows[0];
+    return row ? rowToEntry(row) : undefined;
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 export async function listReportEntries(

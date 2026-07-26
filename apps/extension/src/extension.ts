@@ -92,6 +92,7 @@ import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionManagerPanel, refreshSessionManagerPanel } from "./manager/sessionManagerPanel";
 import { openSessionPreviewPanel, refreshSessionPreviewPanel } from "./preview/sessionPreviewPanel";
+import { openReportPanel, refreshReportPanel } from "./report/reportPanel";
 import { refreshSessionSearchPanel, searchAndOpenSessions } from "./search/sessionSearch";
 import {
   openSettingsPanel,
@@ -179,6 +180,9 @@ export function activate(context: vscode.ExtensionContext): void {
       openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
         refresh(tree, false)
       )
+    ),
+    vscode.commands.registerCommand("agentResume.openReport", () =>
+      openReportPanel(context, tree, () => refresh(tree, false), acpChatManager)
     ),
     ...menuCommand("agentResume.setSessionGtdStatus", (nodeOrSession?: unknown) =>
       setSessionGtdStatusCommand(tree, nodeOrSession)
@@ -483,6 +487,7 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshSessionSearch: refreshSessionSearchPanel,
     refreshSessionPreview: refreshSessionPreviewPanel,
     refreshSessionManager: refreshSessionManagerPanel,
+    refreshReportPanel,
     refreshAcpChatPanels
   });
 }

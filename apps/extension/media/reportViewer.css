@@ -1,0 +1,342 @@
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.banner {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+  background: color-mix(in srgb, var(--vscode-inputValidation-infoBackground, #0078d4) 35%, transparent);
+  color: var(--vscode-foreground);
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+  flex-wrap: wrap;
+}
+
+.nav-left,
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn,
+.select {
+  font: inherit;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.btn.ghost {
+  color: var(--vscode-foreground);
+  background: transparent;
+  border-color: var(--vscode-button-secondaryBackground, var(--vscode-widget-border));
+}
+
+.btn.ghost:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.select {
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border-color: var(--vscode-dropdown-border, var(--vscode-widget-border));
+}
+
+.status {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--vscode-errorForeground);
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+}
+
+.layout {
+  display: grid;
+  /* Always three columns; never stack to a single column. */
+  grid-template-columns: minmax(180px, 0.9fr) minmax(160px, 0.85fr) minmax(200px, 1.4fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.cal-pane,
+.session-pane,
+.detail-pane {
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+  padding: 10px;
+  overflow: auto;
+}
+
+.detail-pane {
+  border-right: none;
+}
+
+.weekdays,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(36px, 0.7fr);
+  gap: 4px;
+}
+
+.weekdays {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+}
+
+.cal-cell,
+.cal-week-btn,
+.month-btn {
+  font: inherit;
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  min-height: 40px;
+  padding: 4px;
+  text-align: left;
+}
+
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cal-cell.outside {
+  opacity: 0.45;
+}
+
+.cal-cell.selected,
+.cal-week-btn.selected,
+.month-btn.selected {
+  outline: 1px solid var(--vscode-focusBorder);
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.cal-cell:hover,
+.cal-week-btn:hover,
+.month-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.day-num {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.mark.daily {
+  background: var(--vscode-charts-green, #89d185);
+  color: #111;
+}
+
+.mark.daily-missing {
+  background: var(--vscode-charts-orange, #e2a03f);
+  color: #111;
+}
+
+.mark.no-session {
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+}
+
+.cal-week-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.cal-week-btn.has-digest,
+.month-btn.has-digest {
+  border-color: var(--vscode-charts-blue, #3794ff);
+}
+
+.month-btn {
+  width: 100%;
+  margin-top: 8px;
+  min-height: 32px;
+  text-align: center;
+}
+
+.legend {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.muted {
+  color: var(--vscode-descriptionForeground);
+}
+
+.pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.session-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.s-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.s-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.provider-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.detail-body {
+  min-height: 120px;
+}
+
+.digest-card {
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.digest-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+.meta-line {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 10px;
+}
+
+.markdown-body {
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.markdown-body :first-child {
+  margin-top: 0;
+}
+
+.markdown-body :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body pre {
+  overflow: auto;
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+}
+
+.markdown-body code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+}
+
+.empty-hint {
+  margin: 0;
+  line-height: 1.5;
+}

@@ -215,9 +215,33 @@ export {
   upsertReportJob,
   getReportJobStatus,
   listReportLinks,
-  getReportEntryById
+  getReportEntryById,
+  desktopReportDbExists,
+  readReportEntries,
+  readReportEntriesInRange,
+  readReportEntryById
 } from "./report/store";
 export type { ReportLinkRow } from "./report/store";
+export type {
+  ReportPeriodType,
+  CalendarPeriodRange,
+  CalendarCell
+} from "./report/calendar";
+export {
+  dayKeyFromDate,
+  dayKeyFromMs,
+  isoWeekLabelFromDate,
+  viewMonthKey,
+  parseDayRange,
+  parseWeekRange,
+  parseMonthRange,
+  rangeForPeriod,
+  paddedMonthRange,
+  calendarCells,
+  periodKeyFromEntry,
+  digestIndex,
+  isFuturePeriod
+} from "./report/calendar";
 export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./report/daily";
 export type { PeriodDigestRefreshCheck } from "./report/digestRefresh";
 export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./report/digestRefresh";

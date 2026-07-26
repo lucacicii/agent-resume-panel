@@ -67,6 +67,7 @@
     "onCommand:agentResume.setSessionGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
+    "onCommand:agentResume.openReport",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -673,6 +674,12 @@
         "title": "Session Manager",
         "category": "Agent Resume",
         "icon": "$(database)"
+      },
+      {
+        "command": "agentResume.openReport",
+        "title": "Reports (read-only)",
+        "category": "Agent Resume",
+        "icon": "$(calendar)"
       },
       {
         "command": "agentResume.newSession",
@@ -3335,19 +3342,24 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentResume.openSessionManager",
+          "command": "agentResume.openReport",
           "when": "view == agentResume.sessions",
           "group": "navigation@2"
         },
         {
-          "command": "agentResume.refresh",
+          "command": "agentResume.openSessionManager",
           "when": "view == agentResume.sessions",
           "group": "navigation@3"
         },
         {
-          "command": "agentResume.openSettings",
+          "command": "agentResume.refresh",
           "when": "view == agentResume.sessions",
           "group": "navigation@4"
+        },
+        {
+          "command": "agentResume.openSettings",
+          "when": "view == agentResume.sessions",
+          "group": "navigation@5"
         },
         {
           "command": "agentResume.newAcpChat",

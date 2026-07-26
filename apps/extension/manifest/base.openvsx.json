@@ -67,6 +67,7 @@
     "onCommand:agentResume.setSessionGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
+    "onCommand:agentResume.openReport",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -673,6 +674,12 @@
         "title": "Session Manager",
         "category": "Agent Resume",
         "icon": "$(database)"
+      },
+      {
+        "command": "agentResume.openReport",
+        "title": "Reports (read-only)",
+        "category": "Agent Resume",
+        "icon": "$(calendar)"
       },
       {
         "command": "agentResume.newSession",
