@@ -603,7 +603,19 @@
       "desktop.workbench.searchNoResults": "No results",
       "desktop.workbench.searchResultSummary": "{0} results in {1} files",
       "desktop.workbench.searchTruncated": "results limited",
-      "desktop.workbench.searchFailed": "Search failed: {0}"
+      "desktop.workbench.searchFailed": "Search failed: {0}",
+      "desktop.workbench.sidePanelScripts": "Scripts",
+      "desktop.workbench.scriptsEmpty": "No scripts found in this project.",
+      "desktop.workbench.scriptsRefresh": "Refresh scripts",
+      "desktop.workbench.scriptsTruncated": "Script scan reached the package limit; some folders may be omitted.",
+      "desktop.workbench.scriptsKind.npm": "npm",
+      "desktop.workbench.scriptsKind.pnpm": "pnpm",
+      "desktop.workbench.scriptsKind.yarn": "yarn",
+      "desktop.workbench.scriptsKind.bun": "bun",
+      "desktop.workbench.scriptsKind.make": "make",
+      "desktop.workbench.scriptsKind.gradle": "gradle",
+      "desktop.workbench.scriptsKind.python": "python",
+      "desktop.workbench.scriptsKind.cargo": "cargo"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1604,7 +1616,19 @@
       "desktop.workbench.searchNoResults": "无结果",
       "desktop.workbench.searchResultSummary": "{0} 条结果，{1} 个文件",
       "desktop.workbench.searchTruncated": "结果已截断",
-      "desktop.workbench.searchFailed": "搜索失败：{0}"
+      "desktop.workbench.searchFailed": "搜索失败：{0}",
+      "desktop.workbench.sidePanelScripts": "脚本",
+      "desktop.workbench.scriptsEmpty": "当前项目中未发现可运行脚本。",
+      "desktop.workbench.scriptsRefresh": "刷新脚本",
+      "desktop.workbench.scriptsTruncated": "脚本扫描达到包数量上限，部分目录可能未列出。",
+      "desktop.workbench.scriptsKind.npm": "npm",
+      "desktop.workbench.scriptsKind.pnpm": "pnpm",
+      "desktop.workbench.scriptsKind.yarn": "yarn",
+      "desktop.workbench.scriptsKind.bun": "bun",
+      "desktop.workbench.scriptsKind.make": "make",
+      "desktop.workbench.scriptsKind.gradle": "gradle",
+      "desktop.workbench.scriptsKind.python": "python",
+      "desktop.workbench.scriptsKind.cargo": "cargo"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2650,7 +2674,19 @@
       "desktop.workbench.searchNoResults": "結果なし",
       "desktop.workbench.searchResultSummary": "{1} ファイル内に {0} 件",
       "desktop.workbench.searchTruncated": "結果は制限されています",
-      "desktop.workbench.searchFailed": "検索に失敗しました: {0}"
+      "desktop.workbench.searchFailed": "検索に失敗しました: {0}",
+      "desktop.workbench.sidePanelScripts": "スクリプト",
+      "desktop.workbench.scriptsEmpty": "このプロジェクトにスクリプトが見つかりません。",
+      "desktop.workbench.scriptsRefresh": "スクリプトを更新",
+      "desktop.workbench.scriptsTruncated": "スクリプトスキャンがパッケージ上限に達したため、一部のフォルダーが省略されている可能性があります。",
+      "desktop.workbench.scriptsKind.npm": "npm",
+      "desktop.workbench.scriptsKind.pnpm": "pnpm",
+      "desktop.workbench.scriptsKind.yarn": "yarn",
+      "desktop.workbench.scriptsKind.bun": "bun",
+      "desktop.workbench.scriptsKind.make": "make",
+      "desktop.workbench.scriptsKind.gradle": "gradle",
+      "desktop.workbench.scriptsKind.python": "python",
+      "desktop.workbench.scriptsKind.cargo": "cargo"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

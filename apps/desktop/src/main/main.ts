@@ -95,6 +95,7 @@ import {
 } from "./mcpRegistration";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
+import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -1716,6 +1717,7 @@ app.whenReady().then(async () => {
   registerIpc();
   registerWorkbenchFsIpc();
   registerWorkbenchGitIpc(() => app.getLocale());
+  registerWorkbenchScriptsIpc();
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();

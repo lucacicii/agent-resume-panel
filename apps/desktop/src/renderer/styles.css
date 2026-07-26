@@ -5137,6 +5137,179 @@ code {
   overflow: hidden;
 }
 
+.wb-explorer-side-pane {
+  min-height: 0;
+}
+
+.wb-explorer-file-tree {
+  flex: 1 1 auto;
+  min-height: 80px;
+}
+
+.wb-explorer-scripts {
+  flex: 0 1 42%;
+  min-height: 96px;
+  max-height: 55%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-separator);
+  min-width: 0;
+  background: transparent;
+}
+
+.wb-explorer-scripts.is-collapsed {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.wb-explorer-scripts-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding-right: 6px;
+}
+
+.wb-explorer-scripts-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wb-explorer-scripts-toggle:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.04));
+}
+
+.wb-explorer-scripts .wb-scripts-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-scripts-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  background: transparent;
+}
+
+.wb-scripts-pane-head {
+  flex: 0 0 auto;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-scripts-pane-head.is-compact-head {
+  justify-content: flex-end;
+  border-bottom: none;
+  min-height: 24px;
+  padding: 0 8px 2px;
+}
+
+.wb-scripts-pane.is-compact .wb-scripts-tree,
+.wb-scripts-pane.is-compact .wb-file-tree-empty,
+.wb-scripts-pane.is-compact .wb-scripts-status {
+  flex: 1;
+  overflow: auto;
+}
+
+.wb-scripts-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 2px 0 8px;
+  font-size: 12px;
+  background: transparent;
+}
+
+/* Script rows are <button>; reset UA / global button chrome so they match the file tree. */
+.wb-scripts-tree button.wb-file-tree-row,
+.wb-explorer-scripts button.wb-file-tree-row,
+.wb-scripts-pane button.wb-file-tree-row {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wb-scripts-tree button.wb-file-tree-row:hover,
+.wb-explorer-scripts button.wb-file-tree-row:hover,
+.wb-scripts-pane button.wb-file-tree-row:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.04));
+}
+
+.wb-scripts-tree button.wb-file-tree-row:focus,
+.wb-explorer-scripts button.wb-file-tree-row:focus,
+.wb-scripts-pane button.wb-file-tree-row:focus {
+  outline: none;
+  background: transparent;
+}
+
+.wb-scripts-tree button.wb-file-tree-row:focus-visible,
+.wb-explorer-scripts button.wb-file-tree-row:focus-visible,
+.wb-scripts-pane button.wb-file-tree-row:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.wb-scripts-kind-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-label-secondary, var(--muted));
+  background: transparent;
+}
+
+.wb-scripts-kind-badge.is-inline {
+  margin-left: 0;
+}
+
+.wb-scripts-play-icon {
+  color: var(--color-accent, #007aff);
+  opacity: 0.85;
+}
+
+.wb-scripts-script-row:hover .wb-scripts-play-icon {
+  opacity: 1;
+}
+
+.wb-scripts-status,
+.wb-scripts-truncated {
+  margin: 8px 10px;
+  font-size: 12px;
+}
+
+.wb-scripts-status.is-error {
+  color: var(--color-destructive, #ff3b30);
+}
+
 .wb-side-pane[hidden] {
   display: none !important;
 }

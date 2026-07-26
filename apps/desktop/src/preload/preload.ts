@@ -295,6 +295,30 @@ export interface DesktopApi {
   }): Promise<{
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
+  workbenchListScripts(args: {
+    rootPath: string;
+    maxDepth?: number;
+    maxPackages?: number;
+    ignoreDirs?: string[];
+  }): Promise<{
+    packages: Array<{
+      id: string;
+      kind: "npm" | "pnpm" | "yarn" | "bun" | "make" | "gradle" | "python" | "cargo";
+      packageRoot: string;
+      relativeRoot: string;
+      label: string;
+      manifestPath: string;
+      managerHint?: string;
+      scripts: Array<{
+        id: string;
+        name: string;
+        detail?: string;
+        run: { cwd: string; command: string };
+      }>;
+    }>;
+    truncated: boolean;
+    scannedDirs: number;
+  }>;
   workbenchReadFileText(args: {
     rootPath: string;
     filePath: string;
@@ -805,6 +829,7 @@ const api: DesktopApi = {
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
+  workbenchListScripts: (args) => ipcRenderer.invoke("workbench:listScripts", args),
   workbenchReadFileText: (args) => ipcRenderer.invoke("workbench:readFileText", args),
   workbenchInspectFile: (args) => ipcRenderer.invoke("workbench:inspectFile", args),
   workbenchSaveFileText: (args) => ipcRenderer.invoke("workbench:saveFileText", args),
