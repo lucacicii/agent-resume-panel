@@ -8,6 +8,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.8.0]
+
+#### 新增
+
+- **Reports 只读查看器**：命令 **Agent Resume: Reports (read-only)**，以及 Sessions 标题栏日历入口；三栏布局（日历 · 时段会话 · Digest Markdown）查看 Desktop 已生成的日/周/月报告。
+- 可从时段会话列表打开已有 **Session Preview**；顶部说明生成 / 重生成 / 编辑 / 删除与定时向量化仅在 **Agent Resume Desktop** 完成。
+- 无 `desktop.db` 或尚无 digests 时给出空状态提示，扩展端不会创建或写入报告库。
+
+#### 文档
+
+- README 补充 Reports 只读能力与 Desktop 维护边界说明。
+
 ### [2.7.0]
 
 #### 新增
@@ -433,6 +445,18 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.8.0]
+
+#### Added
+
+- **Reports (read-only) viewer**: command **Agent Resume: Reports (read-only)** and a calendar action on the Sessions view title bar; three-pane layout (calendar · period sessions · digest Markdown) for digests produced by Desktop.
+- Open existing **Session Preview** from the period session list; banner explains that generate / regenerate / edit / delete and scheduled vectorization remain **Agent Resume Desktop** only.
+- Empty states when `desktop.db` or digests are missing; the extension never creates or writes the report database.
+
+#### Docs
+
+- README documents the read-only Reports surface and Desktop maintenance boundary.
 
 ### [2.7.0]
 
