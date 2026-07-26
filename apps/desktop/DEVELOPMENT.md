@@ -11,7 +11,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 | **Report issues** | [desktop-doc Issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 
-Version: **0.2.6**
+Version: **0.2.7**
 
 > **No cloud · Local-first**  
 > Session index, notes, and reports are stored on your machine under **`~/.agent-resume-panel`** (shared with the VS Code extension).  

@@ -10,6 +10,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+### [0.2.7]
+
+#### Added
+
+- **Terminal renderer setting**: **Settings → Workbench → Terminal renderer** — prefer WebGL (default) or force Canvas for better CJK layout stability; hot-swaps without killing the PTY session
+
+#### Improved
+
+- **Embedded xterm CJK layout**: Latin mono + CJK font fallback stack, Unicode 11 widths, overlapping-glyph rescale, and tighter cell metrics so mixed Chinese/English lines stay aligned
+- **WebGL glyph atlas refresh**: rebuild atlas after zoom / DPR / theme changes to avoid scrambled glyphs that only “fix” on hover
+- **Desktop i18n loading in dev**: locale catalogs reload on each bundle fetch so new settings strings appear without a full main-process restart
+- **i18n coverage for React settings**: checker scans `renderer-react` so Workbench/settings keys stay in sync with catalogs
+
+#### Fixed
+
+- **xterm layout corruption on hover**: WebGL-preferred path with Canvas fallback on context loss; force-Canvas option when GPU atlas still mis-paints double-width text
+- **Missing settings strings**: `desktop.settings.terminalRenderer*` and `desktop.common.save` resolve correctly in en / zh-cn / ja
+
 ### [0.2.6]
 
 #### Added
@@ -237,6 +255,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ## 简体中文
 
 ### [Unreleased]
+
+### [0.2.7]
+
+#### 新增
+
+- **终端渲染器设置**：**设置 → Workbench → 终端渲染器**，可优先 WebGL（默认）或强制 Canvas 以改善中文排版稳定性；切换时不中断当前 PTY 会话
+
+#### 改进
+
+- **内嵌 xterm 中文排版**：拉丁等宽 + CJK 回退字体栈、Unicode 11 双宽、重叠字形缩放与更紧的 cell 度量，中英混排更整齐
+- **WebGL 字形 atlas 刷新**：窗口缩放 / DPR / 主题变更后重建 atlas，避免悬停才「修好」的错位字形
+- **开发态 i18n 热加载**：每次拉取文案包时重载 catalog，新增设置字符串无需整进程重启即可显示
+- **React 设置 i18n 覆盖检查**：`i18n:check` 扫描 `renderer-react`，Workbench/设置 key 与 catalog 保持同步
+
+#### 修复
+
+- **xterm 悬停布局错乱**：默认仍优先 WebGL，context loss 时降级 Canvas；GPU atlas 仍异常时可强制 Canvas
+- **设置文案缺失**：`desktop.settings.terminalRenderer*` 与 `desktop.common.save` 在 en / zh-cn / ja 下正确显示
 
 ### [0.2.6]
 
