@@ -2,13 +2,18 @@ import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ReactPortal } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CanvasAddon } from "@xterm/addon-canvas";
-import { ClipboardAddon, Base64, type IClipboardProvider } from "@xterm/addon-clipboard";
+import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
+import {
+  createOsc52ClipboardProvider,
+  Utf8Base64,
+  writeTerminalSelection
+} from "./terminalClipboard";
 import { EditorState } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import { EditorView } from "@codemirror/view";
@@ -746,14 +751,16 @@ function ResizeHandle({ label, onDelta }: { label: string; onDelta: (delta: numb
   />;
 }
 
-/** OSC 52: allow apps to write the system clipboard; deny silent reads. */
-const writeOnlyClipboardProvider: IClipboardProvider = {
-  readText: () => "",
-  writeText: (_selection, text) => {
-    if (!text || !navigator.clipboard?.writeText) return;
-    return navigator.clipboard.writeText(text).catch(() => undefined);
+/**
+ * OSC 52: allow apps (tmux, neovim, Claude Code, …) to write the system clipboard.
+ * Prefer Electron's native clipboard so multi-byte UTF-8 (CJK) is not re-interpreted
+ * as Latin-1, and so writes work without a user-gesture permission prompt.
+ */
+const writeOnlyClipboardProvider = createOsc52ClipboardProvider({
+  writeText: (text) => {
+    writeTerminalSelection(text, (value) => desktopApi().clipboardWriteText?.(value));
   }
-};
+});
 
 const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
   matchBackground: "#515c6a",
@@ -882,10 +889,25 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
     terminal.unicode.activeVersion = "11";
 
     // Runtime ctor is (base64?, provider?); published .d.ts only documents provider.
+    // Utf8Base64 avoids atob-as-Latin-1 mojibake for CJK OSC 52 payloads.
     terminal.loadAddon(new (ClipboardAddon as unknown as new (
-      base64?: Base64,
-      provider?: IClipboardProvider
-    ) => ClipboardAddon)(new Base64(), writeOnlyClipboardProvider));
+      base64?: Utf8Base64,
+      provider?: typeof writeOnlyClipboardProvider
+    ) => ClipboardAddon)(new Utf8Base64(), writeOnlyClipboardProvider));
+
+    // Selection copy (Cmd/Ctrl+C): also push Unicode text through Electron clipboard.
+    // Some Chromium/Electron paths otherwise mishandle multi-byte clipboard data.
+    const onCopySelection = (event: Event) => {
+      const text = terminal.getSelection();
+      if (!text) return;
+      writeTerminalSelection(text, (value) => desktopApi().clipboardWriteText?.(value));
+      const ce = event as ClipboardEvent;
+      if (ce.clipboardData) {
+        ce.clipboardData.setData("text/plain", text);
+        ce.preventDefault();
+      }
+    };
+    hostEl.addEventListener("copy", onCopySelection);
 
     terminal.loadAddon(new ImageAddon({
       storageLimit: 64,
@@ -948,6 +970,7 @@ function TerminalView({ pane, active, themeId, onPty, onInput }: {
       observer.disconnect();
       window.removeEventListener("resize", fitHost);
       viewport?.removeEventListener("resize", fitHost);
+      hostEl.removeEventListener("copy", onCopySelection);
       onTermResize.dispose();
       input.dispose();
       searchResultsSub?.dispose();

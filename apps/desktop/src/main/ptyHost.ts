@@ -11,6 +11,7 @@ import {
   type GitNestedScanOptions
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
+import { ensureUtf8TerminalEnv } from "./terminalEnv";
 
 interface PtySession {
   pty: pty.IPty;
@@ -197,7 +198,14 @@ function resolveIntegrationScript(): string | null {
 }
 
 function envWithPath(integrationScript: string | null, shell: string): Record<string, string> {
-  const env = { ...process.env } as Record<string, string>;
+  // Strip undefined env values so node-pty always receives a clean string map.
+  const raw: Record<string, string | undefined> = { ...process.env };
+  const env = ensureUtf8TerminalEnv(raw) as Record<string, string>;
+  for (const key of Object.keys(env)) {
+    if (env[key] === undefined || env[key] === null) {
+      delete env[key];
+    }
+  }
   const home = os.homedir();
   const extra = [
     "/opt/homebrew/bin",

@@ -688,6 +688,10 @@ export interface DesktopApi {
     sessionId?: string;
   }): Promise<{ imported: number; skipped: number; errors: string[] }>;
   notesClipboardHasImage(): boolean;
+  /** Synchronous system clipboard write (UTF-16 / Unicode-safe via Electron). */
+  clipboardWriteText(text: string): void;
+  /** Synchronous system clipboard read. */
+  clipboardReadText(): string;
   notesPasteImage(args: { noteId: string }): Promise<{ snippet: string } | null>;
   notesOpenFolder(): Promise<{ ok: boolean }>;
   settingsOpenPanelHome(): Promise<{ ok: boolean }>;
@@ -953,6 +957,10 @@ const api: DesktopApi = {
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
   notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
+  clipboardWriteText: (text) => {
+    clipboard.writeText(typeof text === "string" ? text : String(text ?? ""));
+  },
+  clipboardReadText: () => clipboard.readText(),
   notesPasteImage: (args) => ipcRenderer.invoke("notes:pasteImage", args),
   notesOpenFolder: () => ipcRenderer.invoke("notes:openFolder"),
   settingsOpenPanelHome: () => ipcRenderer.invoke("settings:openPanelHome"),

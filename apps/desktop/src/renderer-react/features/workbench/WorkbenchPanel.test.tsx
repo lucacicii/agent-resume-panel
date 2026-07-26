@@ -10,11 +10,13 @@ vi.mock("../../components/Notifications", () => notificationMocks);
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80;
   rows = 24;
+  options: Record<string, unknown> = { theme: {} };
   unicode = { activeVersion: "6" };
   loadAddon() {}
   open() {}
   focus() {}
   write() {}
+  getSelection() { return ""; }
   onData() { return { dispose() {} }; }
   onResize() { return { dispose() {} }; }
   dispose() {}
