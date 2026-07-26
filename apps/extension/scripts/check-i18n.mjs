@@ -12,6 +12,7 @@ const desktopLocalesDir = join(desktopRoot, "locales");
 const extensionSrcDir = join(extensionRoot, "src");
 const mediaDir = join(extensionRoot, "media");
 const desktopRendererDir = join(desktopRoot, "src", "renderer");
+const desktopRendererReactDir = join(desktopRoot, "src", "renderer-react");
 const desktopMainDir = join(desktopRoot, "src", "main");
 const desktopIndexHtml = join(desktopRendererDir, "index.html");
 
@@ -121,6 +122,15 @@ const desktopPatterns = [
 ];
 const desktopScanFiles = [
   ...walk(desktopRendererDir, (path) => path.endsWith(".js")),
+  // React settings/workbench UI lives here; without it, desktop.* keys look "unused"
+  // and missing keys used only from TSX are not reported. Skip unit tests.
+  ...walk(
+    desktopRendererReactDir,
+    (path) =>
+      (path.endsWith(".ts") || path.endsWith(".tsx")) &&
+      !path.endsWith(".test.ts") &&
+      !path.endsWith(".test.tsx")
+  ),
   ...walk(desktopMainDir, (path) => path.endsWith(".ts")),
   ...walk(coreSrcDir, (path) => path.endsWith(".ts")),
   desktopIndexHtml
