@@ -10,6 +10,31 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+### [0.2.6]
+
+#### Added
+
+- **Workbench project search**: side panel **Search** indexes file contents in the selected project (match case, whole word, regex); open a hit in the file editor at the matching line
+- **Workbench scripts tree**: discover and run project scripts (npm / pnpm / yarn / bun, Makefile, Gradle, Python, Cargo) from the explorer or a dedicated **Scripts** side panel into the active terminal
+- **Terminal color presets**: **Settings → Workbench → Terminal theme** with Default Dark/Light, Solarized Dark/Light, One Dark, and Dracula; applies to open xterm tabs immediately and persists
+- **Selective Git commit**: choose individual changed files in the Git panel and commit only the selection; commit UI refined for clearer staging flow
+- **Git tracking indicators**: explorer and related surfaces show tracked / changed file state for faster orientation
+- **Backup & merge restore**: **Settings** export of reports, notes, ACP chats, and vector indexes; optional password-encrypted API keys; merge import prefers newer matching records
+- **Application error logs**: **Settings → Logs** lists runtime and background-task failures (redacted), with clear and reveal-in-Finder actions
+
+#### Improved
+
+- **Workbench title bar**: richer panel title interactions and localization
+- **Branch status placement**: branch controls live in the detail header with more reliable menu positioning
+- **Tab MRU focus**: closing a Workbench tab activates the most recently used panel
+- **Slash-command menu**: CodeEditor `/` menus stay within the viewport
+- **MCP process model**: registered clients start Agent Resume MCP via headless Node (`ELECTRON_RUN_AS_NODE` + core CLI) so each agent no longer spawns an extra Dock Electron icon
+
+#### Fixed
+
+- **Terminal clipboard**: paste into the PTY and copy from the terminal use correct text encoding
+- **Branch popover**: removed the redundant close control; dismiss via outside interaction as before
+
 ### [0.2.5]
 
 #### Added
@@ -212,6 +237,31 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ## 简体中文
 
 ### [Unreleased]
+
+### [0.2.6]
+
+#### 新增
+
+- **Workbench 项目内搜索**：侧栏 **Search** 可检索当前项目文件内容（区分大小写、整词、正则），点击结果在编辑器中跳到对应行
+- **Workbench 脚本树**：在资源管理器或独立 **Scripts** 侧栏中发现并运行项目脚本（npm / pnpm / yarn / bun、Makefile、Gradle、Python、Cargo），命令写入当前终端
+- **终端配色预设**：**设置 → Workbench → 终端主题**，提供 Default Dark/Light、Solarized Dark/Light、One Dark、Dracula；对已打开的 xterm 即时生效并持久化
+- **按文件选择提交**：Git 面板可勾选变更文件后仅提交选中项，提交区布局更清晰
+- **Git 跟踪状态提示**：资源管理器等位置展示跟踪 / 变更状态，便于快速定位改动
+- **备份与合并恢复**：在 **设置** 中导出报告、笔记、ACP 聊天与向量索引；可选密码加密 API Key；合并导入时较新同名记录覆盖较旧记录
+- **应用错误日志**：**设置 → 日志** 查看运行时与后台任务失败记录（敏感信息脱敏），支持清空与在访达中显示
+
+#### 改进
+
+- **Workbench 标题栏**：面板标题交互与国际化更完善
+- **分支状态位置**：分支控件移至详情头部，菜单定位更稳定
+- **标签 MRU**：关闭 Workbench 标签后激活最近使用的面板
+- **斜杠命令菜单**：CodeEditor 的 `/` 菜单会适配视口，避免被裁切
+- **MCP 进程模型**：注册客户端通过无界面 Node（`ELECTRON_RUN_AS_NODE` + core CLI）启动 Agent Resume MCP，避免每个 Agent 再多一个 Dock Electron 图标
+
+#### 修复
+
+- **终端剪贴板**：向 PTY 粘贴与从终端复制时使用正确文本编码
+- **分支弹层**：移除多余关闭按钮，仍可通过外部点击关闭
 
 ### [0.2.5]
 

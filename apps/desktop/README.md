@@ -25,9 +25,16 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 |------|-------------|
 | **Report** | Calendar with daily / weekly / monthly AI digests and GTD bar |
 | **Agent** | Natural-language Q&A over your digests and session history |
-| **Workbench** | Embedded terminal with multi-tab session resume and Git tooling |
+| **Workbench** | Embedded terminal (themes, multi-tab resume), project search, scripts runner, and Git tooling |
 | **Notes** | Markdown note editor (shared with the extension) |
 | **Sessions** | Reference list and read-only preview |
+
+### Workbench highlights
+
+- **Search** side panel: find text across the selected project (case / whole word / regex) and open hits in the file editor.
+- **Scripts**: run package manager, Make, Gradle, Python, and Cargo scripts into the active terminal.
+- **Terminal themes**: Default Dark/Light, Solarized, One Dark, Dracula under **Settings → Workbench**.
+- **Git**: selective file commit, tracking indicators, and branch controls in the detail header.
 
 ### External agent MCP
 
@@ -62,9 +69,16 @@ The service exposes 20 tools: 11 for Notes and note GTD, 3 for Reports, and 6 fo
 |------|------|
 | **Report** | 日历、日/周/月 AI 回顾报告与 GTD 条 |
 | **Agent** | 对回顾与会话历史的自然语言问答 |
-| **Workbench** | 内嵌终端、多标签恢复与 Git 工具 |
+| **Workbench** | 内嵌终端（配色、多标签恢复）、项目搜索、脚本运行与 Git 工具 |
 | **Notes** | Markdown 笔记编辑（与扩展共用） |
 | **Sessions** | 会话参考列表与只读预览 |
+
+### Workbench 要点
+
+- **Search** 侧栏：在当前项目中检索文本（大小写 / 整词 / 正则），点击结果在编辑器中打开。
+- **Scripts**：将 npm / pnpm / yarn / bun、Make、Gradle、Python、Cargo 等脚本写入当前终端执行。
+- **终端主题**：在 **设置 → Workbench** 中选择 Default Dark/Light、Solarized、One Dark、Dracula。
+- **Git**：支持按文件选择提交、跟踪状态提示，分支控件位于详情头部。
 
 ### 外部 Agent MCP
 

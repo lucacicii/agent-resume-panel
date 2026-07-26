@@ -11,7 +11,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 | **Report issues** | [desktop-doc Issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 
-Version: **0.1.4**
+Version: **0.2.6**
 
 > **No cloud · Local-first**  
 > Session index, notes, and reports are stored on your machine under **`~/.agent-resume-panel`** (shared with the VS Code extension).  
@@ -27,7 +27,7 @@ Version: **0.1.4**
 |------|-------------|
 | **Report** | Calendar with daily / weekly / monthly AI digests and GTD bar |
 | **Agent** | Natural-language Q&A over your digests and session history |
-| **Workbench** | Embedded terminal with multi-tab session resume and Git tooling |
+| **Workbench** | Embedded terminal (themes, multi-tab resume), project search, scripts runner, and Git tooling |
 | **Notes** | Markdown note editor (shared with the extension) |
 | **Sessions** | Reference list and read-only preview |
 
@@ -70,7 +70,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 |------|------|
 | **Report** | 日历、日/周/月 AI 回顾报告与 GTD 条 |
 | **Agent** | 对回顾与会话历史的自然语言问答 |
-| **Workbench** | 内嵌终端、多标签恢复与 Git 工具 |
+| **Workbench** | 内嵌终端（配色、多标签恢复）、项目搜索、脚本运行与 Git 工具 |
 | **Notes** | Markdown 笔记编辑（与扩展共用） |
 | **Sessions** | 会话参考列表与只读预览 |
 

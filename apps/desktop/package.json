@@ -1,6 +1,6 @@
 {
   "name": "@agent-resume/desktop",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",
