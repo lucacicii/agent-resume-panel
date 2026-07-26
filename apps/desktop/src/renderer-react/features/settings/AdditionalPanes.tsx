@@ -5,10 +5,24 @@ import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
 import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
+
+const TERMINAL_THEME_LABEL_KEYS: Record<string, string> = {
+  "default-dark": "desktop.settings.terminalThemeDefaultDark",
+  "default-light": "desktop.settings.terminalThemeDefaultLight",
+  "solarized-dark": "desktop.settings.terminalThemeSolarizedDark",
+  "solarized-light": "desktop.settings.terminalThemeSolarizedLight",
+  "one-dark": "desktop.settings.terminalThemeOneDark",
+  dracula: "desktop.settings.terminalThemeDracula"
+};
+
+function terminalThemeLabelKey(id: string): string {
+  return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
+}
 
 function ToggleRow({ title, description, checked, onChange }: { title: string; description?: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><span className="settings-toggle"><input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>;
@@ -39,6 +53,16 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
       <SelectRow title={t("desktop.settings.terminalMode")} description={t("desktop.settings.terminalModeDesc")} value={draft.terminalMode} onChange={(value) => update("terminalMode", value as WorkbenchDraft["terminalMode"])}><option value="xterm">{t("desktop.settings.terminalXterm")}</option><option value="external-system">{t("desktop.settings.terminalExternal")}</option></SelectRow>
+      <SelectRow
+        title={t("desktop.settings.terminalTheme")}
+        description={t("desktop.settings.terminalThemeDesc")}
+        value={draft.terminalTheme}
+        onChange={(value) => update("terminalTheme", value as WorkbenchDraft["terminalTheme"])}
+      >
+        {WORKBENCH_TERMINAL_THEME_IDS.map((id) => (
+          <option key={id} value={id}>{t(terminalThemeLabelKey(id))}</option>
+        ))}
+      </SelectRow>
       {draft.terminalMode === "external-system" ? <SelectRow title={t("desktop.settings.externalLaunch")} description={t("desktop.settings.externalLaunchDesc")} value={draft.externalLaunchMode} onChange={(value) => update("externalLaunchMode", value as WorkbenchDraft["externalLaunchMode"])}><option value="executeCommand">{t("desktop.settings.launchExecute")}</option><option value="pasteCommand">{t("desktop.settings.launchPaste")}</option><option value="copyCommand">{t("desktop.settings.launchCopy")}</option></SelectRow> : null}
       <SelectRow title={t("desktop.settings.cmdT")} description={t("desktop.settings.cmdTDesc")} value={draft.cmdTAction} onChange={(value) => update("cmdTAction", value as WorkbenchDraft["cmdTAction"])}><option value="newTerminal">{t("desktop.settings.cmdTNewTerminal")}</option><option value="newSession">{t("desktop.settings.cmdTNewSession")}</option></SelectRow>
     </div></section>

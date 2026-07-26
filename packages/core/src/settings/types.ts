@@ -49,6 +49,22 @@ export interface DesktopSettings {
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
+/** Built-in embedded xterm color presets (desktop Workbench). */
+export type WorkbenchTerminalThemeId =
+  | "default-dark"
+  | "default-light"
+  | "solarized-dark"
+  | "solarized-light"
+  | "one-dark"
+  | "dracula";
+export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] = [
+  "default-dark",
+  "default-light",
+  "solarized-dark",
+  "solarized-light",
+  "one-dark",
+  "dracula"
+] as const;
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
@@ -114,6 +130,8 @@ export interface WorkbenchSettings {
   /** Editor used by the workbench project context menu. Default auto. */
   projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;
+  /** Embedded xterm color preset. Default default-dark. */
+  terminalTheme?: WorkbenchTerminalThemeId;
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
   externalLaunchMode?: GhosttyLaunchMode;
   externalAutoPasteDelayMs?: number;
@@ -313,6 +331,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   workbench: {
     projectEditor: "auto",
+    terminalTheme: "default-dark",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],

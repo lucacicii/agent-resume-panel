@@ -12,7 +12,9 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   PanelSettings,
-  WorkbenchProjectContextMenuAction
+  WORKBENCH_TERMINAL_THEME_IDS,
+  WorkbenchProjectContextMenuAction,
+  type WorkbenchTerminalThemeId
 } from "./types";
 import {
   normalizeCommitMessageStyle,
@@ -23,6 +25,16 @@ type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["re
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
+const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
+
+export function normalizeWorkbenchTerminalTheme(
+  value: string | undefined | null
+): WorkbenchTerminalThemeId {
+  if (value && TERMINAL_THEME_IDS.has(value)) {
+    return value as WorkbenchTerminalThemeId;
+  }
+  return DEFAULT_SETTINGS.workbench?.terminalTheme ?? "default-dark";
+}
 
 export function normalizeWorkbenchProjectContextMenu(
   value: WorkbenchProjectContextMenuAction[] | undefined | null
@@ -144,6 +156,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     workbench: {
       ...base.workbench,
       ...(partial.workbench || {}),
+      terminalTheme: normalizeWorkbenchTerminalTheme(
+        partial.workbench?.terminalTheme ?? base.workbench?.terminalTheme
+      ),
       gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(
         partial.workbench?.gitCommitCustomInstructions

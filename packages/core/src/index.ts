@@ -49,6 +49,7 @@ export type {
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
+  WorkbenchTerminalThemeId,
   GhosttyLaunchMode,
   AgentHomesSettings,
   AgentSessionSyncSettings,
@@ -58,9 +59,13 @@ export type {
 export {
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
-  ALL_WORKBENCH_PROJECT_CONTEXT_MENU
+  ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
+  WORKBENCH_TERMINAL_THEME_IDS
 } from "./settings/types";
-export { normalizeWorkbenchProjectContextMenu } from "./settings/store";
+export {
+  normalizeWorkbenchProjectContextMenu,
+  normalizeWorkbenchTerminalTheme
+} from "./settings/store";
 export {
   parseNoteGtdTasks,
   appendNoteGtdTask,

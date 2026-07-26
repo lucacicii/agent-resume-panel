@@ -132,6 +132,23 @@ describe("settings model", () => {
     expect(patch.workbench?.gitNestedScanIgnoreDirs).toEqual(["node_modules", "dist"]);
   });
 
+  it("defaults and normalizes workbench terminal theme presets", () => {
+    const defaultDraft = workbenchDraftFromSettings(settings);
+    expect(defaultDraft.terminalTheme).toBe("default-dark");
+
+    const invalid = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { terminalTheme: "not-a-theme" as never }
+    });
+    expect(invalid.terminalTheme).toBe("default-dark");
+
+    const patch = workbenchPatch(settings, {
+      ...defaultDraft,
+      terminalTheme: "dracula"
+    });
+    expect(patch.workbench?.terminalTheme).toBe("dracula");
+  });
+
   it("preserves report invariants and only stores non-default agent homes", () => {
     const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
     expect(report.report?.scheduleDailyHour).toBe(23);

@@ -1,4 +1,8 @@
 import type { PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import {
+  resolveTerminalThemeId,
+  type WorkbenchTerminalThemeId
+} from "../workbench/terminalThemes";
 
 /** Keep in sync with packages/core WorkbenchProjectContextMenuAction. */
 export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
@@ -93,6 +97,7 @@ export interface WorkbenchDraft {
   defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "cursor";
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
+  terminalTheme: WorkbenchTerminalThemeId;
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
   cmdTAction: "newTerminal" | "newSession";
   editorEditable: boolean;
@@ -319,6 +324,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     defaultProvider: provider === "claude" || provider === "grok" || provider === "agy" || provider === "opencode" || provider === "pi" || provider === "cursor" ? provider : "codex",
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
+    terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
     cmdTAction: workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal",
     editorEditable: editor?.editable !== false,
@@ -344,6 +350,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       defaultNewSessionProvider: draft.defaultProvider,
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
+      terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
       externalLaunchMode: draft.externalLaunchMode,
       cmdTAction: draft.cmdTAction,
       editor: {
