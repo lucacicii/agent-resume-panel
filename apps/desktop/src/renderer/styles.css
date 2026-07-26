@@ -6188,47 +6188,21 @@ code {
 
 .wb-git-commit-actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.wb-git-commit-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
-  white-space: nowrap;
-}
-
-.wb-git-commit-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-}
-
-.wb-git-commit-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.wb-git-commit-btn.primary {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  font-weight: 600;
-}
-
-.wb-git-commit-btn.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .wb-git-commit-auto-btn {
   margin-right: auto;
+}
+
+.wb-git-commit-actions .wb-git-action-btn.primary {
+  color: var(--color-accent, var(--accent));
+}
+
+.wb-git-commit-actions .wb-git-action-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, transparent);
 }
 
 .wb-git-file {

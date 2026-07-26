@@ -21,9 +21,9 @@ import type {
 } from "@agent-resume/core";
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
+  ArrowDown, ArrowUp, ArrowUpToLine, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
-  Plus, RefreshCw, Save, Search, TerminalSquare, X
+  Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
@@ -552,12 +552,36 @@ function GitChangesPanel({
         onChange={(event) => onCommitMessageChange(event.target.value)}
       />
       <div className="wb-git-commit-actions">
-        <button type="button" className="wb-git-commit-btn wb-git-commit-auto-btn" disabled={commitBusy || !gitRoot} onClick={onSuggestCommit}>
-          {commitBusy ? <LoaderCircle className="spin" size={14} /> : null}
-          {labels.autoGenerate}
+        <button
+          type="button"
+          className="wb-git-action-btn wb-git-commit-auto-btn"
+          disabled={commitBusy || !gitRoot}
+          aria-label={labels.autoGenerate}
+          title={labels.autoGenerate}
+          onClick={onSuggestCommit}
+        >
+          {commitBusy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
         </button>
-        <button type="button" className="wb-git-commit-btn" disabled={!canCommit} onClick={() => onCommit(false)}>{labels.commit}</button>
-        <button type="button" className="wb-git-commit-btn primary" disabled={!canCommit} onClick={() => onCommit(true)}>{labels.commitAndPush}</button>
+        <button
+          type="button"
+          className="wb-git-action-btn"
+          disabled={!canCommit}
+          aria-label={labels.commit}
+          title={labels.commit}
+          onClick={() => onCommit(false)}
+        >
+          <Check size={16} />
+        </button>
+        <button
+          type="button"
+          className="wb-git-action-btn primary"
+          disabled={!canCommit}
+          aria-label={labels.commitAndPush}
+          title={labels.commitAndPush}
+          onClick={() => onCommit(true)}
+        >
+          <ArrowUpToLine size={16} />
+        </button>
       </div>
     </div>
   </div>, host);
