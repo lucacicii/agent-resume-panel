@@ -8194,6 +8194,15 @@ body.is-pane-resizing * {
   display: none !important;
 }
 
+.notes-editor-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .notes-detail-head {
   display: flex;
   align-items: flex-start;
@@ -8275,72 +8284,85 @@ body.is-pane-resizing * {
   color: var(--accent);
 }
 
-.notes-find-bar {
-  flex-shrink: 0;
+/* Notes find float — same layout as .wb-terminal-search (xterm Cmd+F). */
+.notes-find-bar.app-inline-search,
+.app-inline-search.notes-find-bar {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 12px 8px;
-  padding: 8px;
-  border: 1px solid var(--border);
+  margin: 0;
+  padding: 6px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--muted);
 }
 
 .notes-find-bar[hidden] {
   display: none !important;
 }
 
-.notes-find-input {
-  flex: 1;
+.notes-find-input.app-inline-search-input {
+  width: 160px;
+  flex: 0 0 auto;
   min-width: 0;
+  margin: 0;
+  padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
-  padding: 6px 8px;
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
 }
 
-.notes-find-input:focus {
+.notes-find-input.app-inline-search-input:focus {
   border-color: var(--accent);
 }
 
-.notes-find-count {
-  min-width: 42px;
+.notes-find-count.app-inline-search-meta {
+  min-width: 4.5em;
   color: var(--muted);
-  font-size: 12px;
-  text-align: center;
+  font-size: 11px;
+  text-align: right;
   white-space: nowrap;
 }
 
-.notes-find-count.is-empty {
+.notes-find-count.app-inline-search-meta.is-empty {
   color: var(--danger);
 }
 
-.notes-find-btn {
+.notes-find-btn.app-inline-search-btn {
   appearance: none;
-  width: 28px;
-  height: 28px;
-  padding: 5px;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text);
+  color: inherit;
   cursor: pointer;
 }
 
-.notes-find-btn:hover {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+.notes-find-btn.app-inline-search-btn:hover,
+.notes-find-btn.app-inline-search-btn:focus-visible {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
 }
 
-.notes-find-btn svg {
+.notes-find-btn.app-inline-search-btn svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;

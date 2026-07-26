@@ -50,9 +50,14 @@ export interface SlashCommand {
   cursorOffset?: number;
 }
 
+export interface CodeEditorFindOptions {
+  /** When false, highlight the match without stealing keyboard focus. Default true. */
+  focus?: boolean;
+}
+
 export interface CodeEditorHandle {
   focus(): void;
-  find(query: string, direction?: "forward" | "backward"): boolean;
+  find(query: string, direction?: "forward" | "backward", options?: CodeEditorFindOptions): boolean;
 }
 
 interface FloatingMenuAnchor {
@@ -255,7 +260,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
 
   useImperativeHandle(ref, () => ({
     focus: () => view.current?.focus(),
-    find: (query, direction = "forward") => {
+    find: (query, direction = "forward", options) => {
       const instance = view.current;
       const needle = query.trim().toLocaleLowerCase();
       if (!instance || !needle) return false;
@@ -273,7 +278,13 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         selection: { anchor: wrapped, head: wrapped + needle.length },
         effects: EditorView.scrollIntoView(wrapped, { y: "center" })
       });
-      instance.focus();
+      if (options?.focus === false) {
+        // Programmatic selection can move focus into the contenteditable; push it out
+        // so host find UIs keep receiving keyboard events (Enter = next match).
+        instance.contentDOM.blur();
+      } else {
+        instance.focus();
+      }
       return true;
     }
   }), []);

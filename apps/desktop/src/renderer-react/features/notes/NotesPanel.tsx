@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import {
-  ChevronLeft, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
+  ArrowDown, ArrowUp, ChevronRight, Clipboard, Eye, FilePlus2, FolderOpen,
   PanelRight, Pencil, Pin, RefreshCw, Save, Search, Trash2, Upload, X
 } from "lucide-react";
 import type { AgentSession, GtdStatus } from "@agent-resume/core";
@@ -97,6 +97,69 @@ function folderLabel(folder: Folder, aliases: Record<string, string>, t: (key: s
   return folder.sessionId;
 }
 
+/** Case-insensitive text search in a rendered preview; selects the match without mutating HTML. */
+function findInPreview(root: HTMLElement | null, query: string, direction: "forward" | "backward"): boolean {
+  if (!root) return false;
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return false;
+
+  type Piece = { node: Text; start: number; end: number };
+  const pieces: Piece[] = [];
+  let full = "";
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current) {
+    const node = current as Text;
+    const value = node.data;
+    if (value) {
+      pieces.push({ node, start: full.length, end: full.length + value.length });
+      full += value;
+    }
+    current = walker.nextNode();
+  }
+  if (!full) return false;
+
+  const haystack = full.toLocaleLowerCase();
+  const selection = window.getSelection();
+  let fromOffset = direction === "forward" ? 0 : haystack.length;
+  if (selection && selection.rangeCount > 0 && root.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0);
+    const pre = document.createRange();
+    pre.selectNodeContents(root);
+    if (direction === "forward") {
+      pre.setEnd(range.endContainer, range.endOffset);
+      fromOffset = pre.toString().length;
+    } else {
+      pre.setEnd(range.startContainer, range.startOffset);
+      fromOffset = Math.max(0, pre.toString().length - 1);
+    }
+  }
+
+  let match = direction === "forward"
+    ? haystack.indexOf(needle, fromOffset)
+    : haystack.lastIndexOf(needle, fromOffset);
+  if (match < 0) {
+    match = direction === "forward" ? haystack.indexOf(needle) : haystack.lastIndexOf(needle);
+  }
+  if (match < 0) return false;
+
+  const matchEnd = match + needle.length;
+  const startPiece = pieces.find((piece) => match >= piece.start && match < piece.end);
+  const endPiece = pieces.find((piece) => matchEnd > piece.start && matchEnd <= piece.end)
+    || pieces.find((piece) => matchEnd > piece.start && matchEnd - 1 < piece.end);
+  if (!startPiece || !endPiece) return false;
+
+  const range = document.createRange();
+  range.setStart(startPiece.node, match - startPiece.start);
+  range.setEnd(endPiece.node, matchEnd - endPiece.start);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  const anchor = startPiece.node.parentElement || root;
+  anchor.scrollIntoView({ block: "center", inline: "nearest" });
+  return true;
+}
+
 function PaneResizer({ label, onDelta }: { label: string; onDelta: (delta: number) => void }): React.JSX.Element {
   const [dragging, setDragging] = useState(false);
   return <div
@@ -167,10 +230,15 @@ export function NotesPanel(): ReactPortal | null {
   const contentRef = useRef(content);
   const selectedRef = useRef<Note | null>(selected);
   const editorRef = useRef<CodeEditorHandle>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const listSearchRef = useRef<HTMLInputElement>(null);
   const listSearchButtonRef = useRef<HTMLButtonElement>(null);
   const listSearchToolbarRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const findQueryRef = useRef(findQuery);
+  findQueryRef.current = findQuery;
   contentRef.current = content;
   selectedRef.current = selected;
   const gtdSlashCommands = useMemo(() => GTD_STATUSES.map((gtdStatus) => {
@@ -289,6 +357,71 @@ export function NotesPanel(): ReactPortal | null {
     if (!findOpen) return;
     window.requestAnimationFrame(() => findRef.current?.focus());
   }, [findOpen]);
+
+  const openFind = useCallback(() => {
+    if (!selectedRef.current) return;
+    setFindOpen(true);
+  }, []);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindMatch(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  const runFind = useCallback((direction: "forward" | "backward", query = findQueryRef.current) => {
+    const q = query.trim();
+    if (!q) {
+      setFindMatch(null);
+      if (viewRef.current === "view") window.getSelection()?.removeAllRanges();
+      return false;
+    }
+    const hit = viewRef.current === "edit"
+      ? (editorRef.current?.find(q, direction, { focus: false }) ?? false)
+      : findInPreview(previewRef.current, q, direction);
+    setFindMatch(hit);
+    // Keep keyboard focus on the find field so Enter is not handled by CodeMirror.
+    // rAF: selection updates can steal focus synchronously into contenteditable.
+    window.requestAnimationFrame(() => findRef.current?.focus());
+    return hit;
+  }, []);
+
+  useEffect(() => {
+    if (!active || !selected) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        openFind();
+        return;
+      }
+      if (!findOpen) return;
+
+      // Capture-phase: even if CodeMirror stole focus after a match, Enter must
+      // advance find — never insert a newline into the note body.
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        runFind(event.shiftKey ? "backward" : "forward");
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeFind();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [active, selected, findOpen, openFind, closeFind, runFind]);
+
+  useEffect(() => {
+    if (!findOpen || !findQueryRef.current.trim()) return;
+    // Re-run after edit/view switch so matches target the visible surface.
+    window.requestAnimationFrame(() => runFind("forward"));
+  }, [view, findOpen, runFind]);
 
   const projects = useMemo(() => {
     if (catalogProjects.length) {
@@ -559,7 +692,9 @@ export function NotesPanel(): ReactPortal | null {
     catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); return null; }
   };
 
-  const find = (direction: "forward" | "backward") => setFindMatch(editorRef.current?.find(findQuery, direction) ?? false);
+  const find = (direction: "forward" | "backward") => {
+    runFind(direction);
+  };
 
   if (!host) return null;
   return createPortal(
@@ -643,9 +778,71 @@ export function NotesPanel(): ReactPortal | null {
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
         <main className="notes-detail">
-          {selected ? <div className="notes-editor-shell"><div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><Save size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><Pencil size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><Eye size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={() => setFindOpen(true)}><Search size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><Clipboard size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><FolderOpen size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><Trash2 size={15} /></button></div></div>
-            {findOpen ? <div className="notes-find-bar"><input ref={findRef} className="notes-find-input" value={findQuery} onChange={(event) => { setFindQuery(event.target.value); setFindMatch(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); find(event.shiftKey ? "backward" : "forward"); } if (event.key === "Escape") setFindOpen(false); }} /><span className={`notes-find-count${findMatch === false ? " is-empty" : ""}`}>{findMatch === null ? "" : findMatch ? "1" : "0"}</span><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("backward")}><ChevronLeft size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => find("forward")}><ChevronRight size={15} /></button><button type="button" className="notes-find-btn" aria-label={t("desktop.common.closeFind")} onClick={() => setFindOpen(false)}><X size={15} /></button></div> : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={gtdSlashCommands} /> : <div className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+          {selected ? <div className="notes-editor-shell"><div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><Save size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><Pencil size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><Eye size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><Search size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><Clipboard size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><FolderOpen size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><Trash2 size={15} /></button></div></div>
+            <div className="notes-editor-body">
+            {findOpen ? (
+              <div className="notes-find-bar app-inline-search" role="search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  ref={findRef}
+                  className="notes-find-input app-inline-search-input"
+                  type="text"
+                  value={findQuery}
+                  placeholder={t("desktop.notes.findInNote")}
+                  aria-label={t("desktop.notes.findInNote")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  enterKeyHint="search"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setFindQuery(value);
+                    runFind("forward", value);
+                  }}
+                  onKeyDown={(event) => {
+                    // Window capture handler also covers Enter; keep local guard as backup.
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      closeFind();
+                    }
+                  }}
+                />
+                <span className={`notes-find-count app-inline-search-meta${findMatch === false ? " is-empty" : ""}`} aria-live="polite">
+                  {findQuery.trim()
+                    ? (findMatch === false ? t("desktop.common.findNoResults") : "")
+                    : ""}
+                </span>
+                <button
+                  type="button"
+                  className="notes-find-btn app-inline-search-btn"
+                  aria-label={t("desktop.common.findPrev")}
+                  onClick={() => find("backward")}
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="notes-find-btn app-inline-search-btn"
+                  aria-label={t("desktop.common.findNext")}
+                  onClick={() => find("forward")}
+                >
+                  <ArrowDown size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="notes-find-btn app-inline-search-btn"
+                  aria-label={t("desktop.common.closeFind")}
+                  onClick={closeFind}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
+            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={gtdSlashCommands} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
           <Status kind={status.kind}>{status.text}</Status>
         </main>
