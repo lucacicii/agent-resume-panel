@@ -18,7 +18,8 @@
     "test:mac-app": "node scripts/mac-app.test.mjs",
     "test:node-pty": "node scripts/fix-node-pty.test.mjs",
     "test:doctor": "node scripts/doctor-desktop.test.mjs",
-    "test:workbench-files": "node scripts/workbench-file-io.test.mjs"
+    "test:workbench-files": "node scripts/workbench-file-io.test.mjs",
+    "test:workbench-search": "node scripts/workbench-search.test.mjs"
   },
   "dependencies": {
     "@agent-resume/core": "workspace:*",

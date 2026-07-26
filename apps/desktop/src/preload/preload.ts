@@ -327,6 +327,28 @@ export interface DesktopApi {
     rootPath: string;
     targetPath: string;
   }): Promise<{ ok: boolean }>;
+  workbenchSearchText(args: {
+    rootPath: string;
+    query: string;
+    matchCase?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    maxResults?: number;
+    maxFileSizeBytes?: number;
+  }): Promise<{
+    matches: Array<{
+      path: string;
+      relativePath: string;
+      line: number;
+      column: number;
+      endColumn: number;
+      preview: string;
+    }>;
+    truncated: boolean;
+    filesSearched: number;
+    engine: "rg" | "node";
+  }>;
+  workbenchSearchTextCancel(): Promise<{ ok: boolean }>;
   terminalGitStatus(args: {
     cwd: string;
     nestedScan?: { maxDepth?: number; ignoreDirs?: string[]; maxRepos?: number };
@@ -370,6 +392,8 @@ export interface DesktopApi {
   setWorkbenchActive(active: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
+  /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
+  onWorkbenchCmdShiftF(callback: () => void): () => void;
   listReports(opts?: {
     level?: string;
     limit?: number;
@@ -786,6 +810,8 @@ const api: DesktopApi = {
   workbenchSaveFileText: (args) => ipcRenderer.invoke("workbench:saveFileText", args),
   workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
+  workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),
+  workbenchSearchTextCancel: () => ipcRenderer.invoke("workbench:searchTextCancel"),
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
@@ -822,6 +848,11 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdW", handler);
     return () => ipcRenderer.removeListener("workbench:cmdW", handler);
+  },
+  onWorkbenchCmdShiftF: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdShiftF", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),

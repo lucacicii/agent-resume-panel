@@ -55,9 +55,21 @@ export interface CodeEditorFindOptions {
   focus?: boolean;
 }
 
+export interface CodeEditorRevealRange {
+  /** 1-based line number */
+  line: number;
+  /** 1-based start column */
+  column: number;
+  /** 1-based end column (exclusive-style end for selection head). */
+  endColumn?: number;
+  focus?: boolean;
+}
+
 export interface CodeEditorHandle {
   focus(): void;
   find(query: string, direction?: "forward" | "backward", options?: CodeEditorFindOptions): boolean;
+  /** Select and scroll to a 1-based line/column range (for Find in Files). */
+  revealRange(range: CodeEditorRevealRange): boolean;
 }
 
 interface FloatingMenuAnchor {
@@ -281,6 +293,27 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       if (options?.focus === false) {
         // Programmatic selection can move focus into the contenteditable; push it out
         // so host find UIs keep receiving keyboard events (Enter = next match).
+        instance.contentDOM.blur();
+      } else {
+        instance.focus();
+      }
+      return true;
+    },
+    revealRange: (range) => {
+      const instance = view.current;
+      if (!instance || !range) return false;
+      const doc = instance.state.doc;
+      const lineNumber = Math.min(Math.max(1, Math.floor(range.line) || 1), doc.lines);
+      const line = doc.line(lineNumber);
+      const column = Math.max(1, Math.floor(range.column) || 1);
+      const endColumn = Math.max(column, Math.floor(range.endColumn ?? column + 1));
+      const anchor = Math.min(line.to, line.from + column - 1);
+      const head = Math.min(line.to, line.from + endColumn - 1);
+      instance.dispatch({
+        selection: { anchor, head: Math.max(anchor, head) },
+        effects: EditorView.scrollIntoView(anchor, { y: "center" })
+      });
+      if (range.focus === false) {
         instance.contentDOM.blur();
       } else {
         instance.focus();

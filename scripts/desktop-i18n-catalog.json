@@ -591,7 +591,19 @@
       "desktop.workbench.gtdStatus.done": "Done",
       "desktop.workbench.gtdCompleted": "Completed",
       "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
-      "desktop.workbench.gitNoUpstream": "{0} · no upstream"
+      "desktop.workbench.gitNoUpstream": "{0} · no upstream",
+      "desktop.workbench.sidePanelSearch": "Search",
+      "desktop.workbench.searchPlaceholder": "Search in project",
+      "desktop.workbench.searchOptions": "Search options",
+      "desktop.workbench.searchMatchCase": "Match Case",
+      "desktop.workbench.searchWholeWord": "Match Whole Word",
+      "desktop.workbench.searchUseRegex": "Use Regular Expression",
+      "desktop.workbench.searchHint": "Type to search file contents in the selected project.",
+      "desktop.workbench.searchSearching": "Searching…",
+      "desktop.workbench.searchNoResults": "No results",
+      "desktop.workbench.searchResultSummary": "{0} results in {1} files",
+      "desktop.workbench.searchTruncated": "results limited",
+      "desktop.workbench.searchFailed": "Search failed: {0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1580,7 +1592,19 @@
       "desktop.workbench.gtdStatus.done": "完成",
       "desktop.workbench.gtdCompleted": "已完成",
       "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
-      "desktop.workbench.gitNoUpstream": "{0} · 无上游分支"
+      "desktop.workbench.gitNoUpstream": "{0} · 无上游分支",
+      "desktop.workbench.sidePanelSearch": "全局查找",
+      "desktop.workbench.searchPlaceholder": "在项目中搜索",
+      "desktop.workbench.searchOptions": "搜索选项",
+      "desktop.workbench.searchMatchCase": "区分大小写",
+      "desktop.workbench.searchWholeWord": "全词匹配",
+      "desktop.workbench.searchUseRegex": "使用正则表达式",
+      "desktop.workbench.searchHint": "输入关键字，在当前项目文件内容中搜索。",
+      "desktop.workbench.searchSearching": "正在搜索…",
+      "desktop.workbench.searchNoResults": "无结果",
+      "desktop.workbench.searchResultSummary": "{0} 条结果，{1} 个文件",
+      "desktop.workbench.searchTruncated": "结果已截断",
+      "desktop.workbench.searchFailed": "搜索失败：{0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2614,7 +2638,19 @@
       "desktop.workbench.gtdStatus.done": "完了",
       "desktop.workbench.gtdCompleted": "完了",
       "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
-      "desktop.workbench.gitNoUpstream": "{0} · 上流なし"
+      "desktop.workbench.gitNoUpstream": "{0} · 上流なし",
+      "desktop.workbench.sidePanelSearch": "検索",
+      "desktop.workbench.searchPlaceholder": "プロジェクト内を検索",
+      "desktop.workbench.searchOptions": "検索オプション",
+      "desktop.workbench.searchMatchCase": "大文字と小文字を区別",
+      "desktop.workbench.searchWholeWord": "単語単位で一致",
+      "desktop.workbench.searchUseRegex": "正規表現を使用",
+      "desktop.workbench.searchHint": "選択中のプロジェクト内のファイル内容を検索します。",
+      "desktop.workbench.searchSearching": "検索中…",
+      "desktop.workbench.searchNoResults": "結果なし",
+      "desktop.workbench.searchResultSummary": "{1} ファイル内に {0} 件",
+      "desktop.workbench.searchTruncated": "結果は制限されています",
+      "desktop.workbench.searchFailed": "検索に失敗しました: {0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

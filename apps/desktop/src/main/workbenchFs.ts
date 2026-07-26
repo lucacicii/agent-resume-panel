@@ -20,6 +20,10 @@ import {
   saveWorkbenchFile,
   type WorkbenchTextEncoding
 } from "./workbenchFileIo";
+import {
+  cancelActiveWorkbenchSearch,
+  searchWorkbenchText
+} from "./workbenchSearch";
 
 export type { GitRepoTracking } from "./gitTracking";
 export { parseLeftRightCount } from "./gitTracking";
@@ -501,6 +505,43 @@ export function registerWorkbenchFsIpc(): void {
       throw new Error("路径不存在");
     }
     shell.showItemInFolder(targetPath);
+    return { ok: true };
+  });
+
+  safeHandle(
+    "workbench:searchText",
+    async (
+      _event,
+      args: {
+        rootPath: string;
+        query: string;
+        matchCase?: boolean;
+        wholeWord?: boolean;
+        useRegex?: boolean;
+        maxResults?: number;
+        maxFileSizeBytes?: number;
+      }
+    ) => {
+      if (typeof args?.query !== "string") {
+        throw new Error("无效的搜索参数");
+      }
+      if (typeof args?.rootPath !== "string" || !args.rootPath.trim()) {
+        throw new Error("无效的项目路径");
+      }
+      return searchWorkbenchText({
+        rootPath: args.rootPath,
+        query: args.query,
+        matchCase: Boolean(args.matchCase),
+        wholeWord: Boolean(args.wholeWord),
+        useRegex: Boolean(args.useRegex),
+        maxResults: args.maxResults,
+        maxFileSizeBytes: args.maxFileSizeBytes
+      });
+    }
+  );
+
+  safeHandle("workbench:searchTextCancel", async () => {
+    cancelActiveWorkbenchSearch();
     return { ok: true };
   });
 

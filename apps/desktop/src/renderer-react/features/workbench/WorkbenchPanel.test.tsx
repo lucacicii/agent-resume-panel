@@ -794,4 +794,116 @@ describe("WorkbenchPanel", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
   });
+
+  it("opens the search side panel from Cmd+Shift+F bridge", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onWorkbenchCmdShiftF: (() => void) | undefined;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdShiftF: (callback: () => void) => {
+        onWorkbenchCmdShiftF = callback;
+        return () => undefined;
+      },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSearchTextCancel: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await screen.findByRole("button", { name: /Fix renderer/ });
+    expect(screen.queryByRole("searchbox", { name: "Search" })).toBeNull();
+    act(() => onWorkbenchCmdShiftF?.());
+    const searchInput = await screen.findByRole("searchbox", { name: "Search" });
+    await waitFor(() => expect(document.activeElement).toBe(searchInput));
+  });
+
+  it("opens the search side panel and shows project content matches", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchSearchText = vi.fn(async () => ({
+      matches: [{
+        path: "/work/app/src/main.ts",
+        relativePath: "src/main.ts",
+        line: 12,
+        column: 3,
+        endColumn: 9,
+        preview: "const findme = 1;"
+      }],
+      truncated: false,
+      filesSearched: 3,
+      engine: "node" as const
+    }));
+    const workbenchInspectFile = vi.fn(async () => ({
+      kind: "text" as const,
+      content: "const findme = 1;\n",
+      encoding: "utf8" as const,
+      version: "v1",
+      size: 18,
+      mtimeMs: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSearchText,
+      workbenchSearchTextCancel: async () => ({ ok: true }),
+      workbenchInspectFile,
+      workbenchListDirectory: async () => ({ entries: [] })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
+    const searchInput = await screen.findByRole("searchbox", { name: "Search" });
+    fireEvent.change(searchInput, { target: { value: "findme" } });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenCalled());
+    expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        rootPath: "/work/app",
+        query: "findme"
+      })
+    );
+    await screen.findByText("src/main.ts");
+    expect(screen.getByText("const findme = 1;")).toBeTruthy();
+    expect(screen.getByText("1 results in 1 files")).toBeTruthy();
+    // Avoid mounting CodeMirror in jsdom (needs matchMedia); assert open intent via IPC.
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: "",
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }) as unknown as typeof window.matchMedia;
+    fireEvent.click(screen.getByText("const findme = 1;"));
+    await waitFor(() => expect(workbenchInspectFile).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      filePath: "/work/app/src/main.ts"
+    }));
+  });
 });

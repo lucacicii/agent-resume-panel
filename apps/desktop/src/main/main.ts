@@ -449,12 +449,32 @@ function isWorkbenchCmdWInput(input: Electron.Input): boolean {
   return key === "w" || input.code === "KeyW";
 }
 
+/** VS Code-style Find in Files: ⌘⇧F / Ctrl+Shift+F */
+function isWorkbenchCmdShiftFInput(input: Electron.Input): boolean {
+  if (input.type !== "keyDown") {
+    return false;
+  }
+  if (!(input.control || input.meta) || !input.shift || input.alt) {
+    return false;
+  }
+  const key = input.key?.toLowerCase();
+  return key === "f" || input.code === "KeyF";
+}
+
 function registerWorkbenchShortcuts(win: BrowserWindow): void {
   win.webContents.on("before-input-event", (event, input) => {
     if (isWorkbenchCmdTInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {
         win.webContents.send("workbench:cmdT");
+      }
+      return;
+    }
+
+    if (isWorkbenchCmdShiftFInput(input)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) {
+        win.webContents.send("workbench:cmdShiftF");
       }
       return;
     }
