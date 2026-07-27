@@ -10,6 +10,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+### [0.2.8]
+
+#### Added
+
+- **ACP visual chat in Workbench**: start and resume Claude Code, Codex, Grok Build, OpenCode, and Pi sessions directly in a native chat pane; ACP conversations are indexed with the shared session catalog
+- **ACP setup and connection test**: configure ACP agents from **Settings → Workbench**, verify a model or agent connection before starting work, and reuse the latest available command when a prompt is not required
+- **ACP collaboration controls**: choose an agent-supported mode such as **Plan**, use its dynamic `/` command menu, and answer agent questions without leaving the Workbench
+- **ACP tool interaction**: review streamed terminal and file-system activity, inspect file reads, and explicitly approve or deny permission requests before agent actions proceed
+
+#### Improved
+
+- **ACP chat experience**: Telegram-style conversation layout with clearer tool states, attachments, command submission, and automatic titles
+- **ACP session reliability**: shared local persistence, catalog previews, external-file change detection, connection reuse, and safer session resume handling
+
+#### Fixed
+
+- Empty ACP sessions no longer fail to render a preview
+- File-system tool calls and approval prompts now display and resolve correctly in the chat pane
+
 ### [0.2.7]
 
 #### Added
@@ -255,6 +274,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ## 简体中文
 
 ### [Unreleased]
+
+### [0.2.8]
+
+#### 新增
+
+- **Workbench ACP 可视化聊天**：可直接创建或恢复 Claude Code、Codex、Grok Build、OpenCode、Pi 会话；ACP 对话会进入共用会话索引
+- **ACP 设置与连接测试**：在 **设置 → Workbench** 配置 ACP Agent，开始工作前测试模型或 Agent 连接；无需输入提示时可复用最近可用命令
+- **ACP 协作控制**：选择 Agent 支持的协作模式（如 **Plan**）、使用动态 `/` 命令菜单，并在 Workbench 内回答 Agent 提问
+- **ACP 工具交互**：查看流式终端和文件系统操作、检查读取文件，并在操作继续前明确允许或拒绝权限请求
+
+#### 改进
+
+- **ACP 聊天体验**：Telegram 风格会话布局，工具状态、附件、命令提交和自动标题更清晰
+- **ACP 会话可靠性**：完善本机共用存储、目录预览、外部文件变更监听、连接复用与会话恢复
+
+#### 修复
+
+- 空 ACP 会话预览不再报错
+- 文件系统工具调用与授权提示可在聊天面板中正确展示和处理
 
 ### [0.2.7]
 
