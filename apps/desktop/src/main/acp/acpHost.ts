@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import type { BrowserWindow } from "electron";
+import { shell } from "electron";
 import type { PanelSettings } from "@agent-resume/core";
 import { effectivePanelHome } from "@agent-resume/core";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with {
@@ -33,6 +34,7 @@ import {
   type AskUserQuestionRequest,
   type AskUserQuestionResponse
 } from "./handlers/askUserQuestion";
+import { readPlanFile, setPlanWriteListener } from "./handlers/fs";
 import { setPermissionPromptHandler } from "./handlers/permission";
 import { clearSessionUpdateListeners, subscribeSessionUpdates } from "./sessionUpdateBus";
 import {
@@ -932,6 +934,21 @@ export function registerAcpIpc(deps: {
     });
   });
 
+  // Grok (and similar) write session plan.md via fs/write_text_file — surface to UI.
+  setPlanWriteListener(({ path: planPath, content }) => {
+    const chatId =
+      (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
+      controllers.keys().next().value;
+    if (!chatId) return;
+    emitToWindow(getMainWindow, {
+      type: "planFile",
+      chatId,
+      path: planPath,
+      content,
+      updatedAt: Date.now()
+    });
+  });
+
   safeHandle("acp:listSessions", async (_event, args?: { projectPath?: string }) => {
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
@@ -1101,6 +1118,18 @@ export function registerAcpIpc(deps: {
     }
   );
 
+  safeHandle("acp:readPlanFile", async (_event, args: { path: string }) => {
+    return readPlanFile(args.path);
+  });
+
+  safeHandle("acp:openPath", async (_event, args: { path: string }) => {
+    const target = typeof args.path === "string" ? args.path.trim() : "";
+    if (!target) throw new Error("Path is required.");
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+    return { ok: true };
+  });
+
   safeHandle("acp:disconnect", async (_event, args: { chatId: string }) => {
     const controller = controllers.get(args.chatId);
     controller?.dispose();
@@ -1118,6 +1147,7 @@ export function disposeAllAcpControllers(): void {
   questionWaiters.clear();
   setPermissionPromptHandler(null);
   setAskUserQuestionHandler(null);
+  setPlanWriteListener(null);
 }
 
 function extractTextFromContent(content: unknown): string {

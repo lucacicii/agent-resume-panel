@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Bot, Check, Copy, FileText, LoaderCircle, Paperclip, Send, Square, X } from "lucide-react";
+import { Bot, Check, Copy, ExternalLink, FileText, LoaderCircle, Paperclip, Send, Square, X } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
+import { Sheet } from "../../components/Sheet";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { toolCallLabel } from "./toolLabels";
@@ -73,6 +74,13 @@ type UserQuestionItem = {
 type UserQuestionRequest = {
   requestId: string;
   questions: UserQuestionItem[];
+};
+
+type PlanPreviewState = {
+  content: string;
+  path?: string;
+  updatedAt: number;
+  source: "file" | "message";
 };
 
 type ModeOption = { id: string; name: string };
@@ -309,6 +317,10 @@ export function AcpChatView({
   const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
+  /** Selected slash command chip; free text lives in `input` after the tag. */
+  const [slashTag, setSlashTag] = useState<{ name: string; inputHint?: string } | null>(null);
+  const [latestPlan, setLatestPlan] = useState<PlanPreviewState | null>(null);
+  const [planSheetOpen, setPlanSheetOpen] = useState(false);
   const [permission, setPermission] = useState<PermissionRequest | null>(null);
   const [userQuestion, setUserQuestion] = useState<UserQuestionRequest | null>(null);
   /** questionIndex → selected labels */
@@ -376,6 +388,9 @@ export function AcpChatView({
         title?: string;
         options?: Array<{ optionId: string; name: string; kind: string }>;
         questions?: UserQuestionItem[];
+        path?: string;
+        content?: string;
+        updatedAt?: number;
       };
       if (event.chatId !== recordId) return;
 
@@ -406,9 +421,19 @@ export function AcpChatView({
             setFileUpload(event.init.fileUpload !== false);
           }
           break;
-        case "history":
-          setMessages((event.messages || []).map((message) => ({ ...message })));
+        case "history": {
+          const history = (event.messages || []).map((message) => ({ ...message }));
+          setMessages(history);
+          const lastPlan = [...history].reverse().find((message) => message.role === "plan" && message.text?.trim());
+          if (lastPlan) {
+            setLatestPlan({
+              content: lastPlan.text,
+              updatedAt: lastPlan.timestamp || Date.now(),
+              source: "message"
+            });
+          }
           break;
+        }
         case "message":
           if (event.message && typeof event.message === "object") {
             const message = event.message as ChatMessage;
@@ -418,12 +443,26 @@ export function AcpChatView({
               }
               return [...current, { ...message }];
             });
+            if (message.role === "plan" && message.text?.trim()) {
+              setLatestPlan({
+                content: message.text,
+                updatedAt: message.timestamp || Date.now(),
+                source: "message"
+              });
+            }
           }
           break;
         case "messageUpdate":
           if (event.message && typeof event.message === "object") {
             const message = event.message as ChatMessage;
             setMessages((current) => current.map((entry) => (entry.id === message.id ? { ...message } : entry)));
+            if (message.role === "plan" && message.text?.trim()) {
+              setLatestPlan({
+                content: message.text,
+                updatedAt: message.timestamp || Date.now(),
+                source: "message"
+              });
+            }
           }
           break;
         case "assistantDelta":
@@ -477,6 +516,34 @@ export function AcpChatView({
               questions: event.questions
             });
             setQuestionSelections({});
+          }
+          break;
+        case "planFile":
+          if (typeof event.content === "string" && event.content.trim()) {
+            const updatedAt = typeof event.updatedAt === "number" ? event.updatedAt : Date.now();
+            const planPath = typeof event.path === "string" ? event.path : undefined;
+            setLatestPlan({
+              content: event.content,
+              path: planPath,
+              updatedAt,
+              source: "file"
+            });
+            // Surface in the message list (not a sticky bar above the composer).
+            const planMessage: ChatMessage = {
+              id: planPath ? `plan-file:${planPath}` : "plan-file:latest",
+              role: "plan",
+              text: event.content,
+              timestamp: updatedAt
+            };
+            setMessages((current) => {
+              const index = current.findIndex((entry) => entry.id === planMessage.id || entry.role === "plan");
+              if (index >= 0) {
+                const copy = [...current];
+                copy[index] = { ...planMessage, id: copy[index]!.id };
+                return copy;
+              }
+              return [...current, planMessage];
+            });
           }
           break;
       }
@@ -610,8 +677,20 @@ export function AcpChatView({
     [fileUpload, imageUpload, pending, t]
   );
 
+  const composePromptText = useCallback(
+    (textOverride?: string) => {
+      if (typeof textOverride === "string") return textOverride.trim();
+      const suffix = input.trim();
+      if (slashTag) {
+        return suffix ? `/${slashTag.name} ${suffix}` : `/${slashTag.name}`;
+      }
+      return suffix;
+    },
+    [input, slashTag]
+  );
+
   const send = async (textOverride?: string) => {
-    const text = (textOverride ?? input).trim();
+    const text = composePromptText(textOverride);
     if ((!text && !pending.length) || isRunning || isConnecting) return;
     const images = pending
       .filter((item): item is PendingImage => item.kind === "image")
@@ -626,6 +705,7 @@ export function AcpChatView({
         sizeBytes
       }));
     setInput("");
+    setSlashTag(null);
     setPending([]);
     setStatus({ text: "" });
     try {
@@ -635,7 +715,8 @@ export function AcpChatView({
     }
   };
 
-  const slashQuery = input.match(/^\/([^\s]*)$/)?.[1];
+  // Slash menu only while composing a leading `/…` token (no chip yet).
+  const slashQuery = !slashTag ? input.match(/^\/([^\s]*)$/)?.[1] : undefined;
   const filteredCommands = useMemo(() => {
     if (slashQuery === undefined) return [];
     const query = slashQuery.toLocaleLowerCase();
@@ -646,7 +727,7 @@ export function AcpChatView({
 
   useEffect(() => {
     setActiveCommandIndex(0);
-  }, [input, availableCommands]);
+  }, [input, availableCommands, slashTag]);
 
   useEffect(() => {
     const activeElement = activeCommandRef.current;
@@ -656,19 +737,22 @@ export function AcpChatView({
   }, [activeCommandIndex, slashMenuOpen]);
 
   const selectCommand = (command: AvailableCommand) => {
-    const commandText = `/${command.name}`;
+    // Always insert as a chip so the user can append args; Enter sends.
     setSlashMenuDismissed(true);
-    if (!command.inputHint) {
-      void send(commandText);
-      return;
-    }
-
-    const next = `${commandText} `;
-    setInput(next);
+    setSlashTag({
+      name: command.name,
+      ...(command.inputHint ? { inputHint: command.inputHint } : {})
+    });
+    setInput("");
     requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(next.length, next.length);
+      inputRef.current?.setSelectionRange(0, 0);
     });
+  };
+
+  const clearSlashTag = () => {
+    setSlashTag(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const cancel = async () => {
@@ -764,6 +848,69 @@ export function AcpChatView({
       options: flattenSelectOptions(config.options)
     };
   }, [configOptions, modeId, modes]);
+
+  const cycleMode = useCallback(() => {
+    if (!modeSelect || modeSelect.options.length < 2 || isRunning || isConnecting) return;
+    const options = modeSelect.options;
+    const currentIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === modeSelect.value)
+    );
+    const next = options[(currentIndex + 1) % options.length]!;
+    const label = next.name || next.value;
+    if (modeSelect.kind === "native-mode") {
+      const previous = modeId;
+      setModeId(next.value);
+      void desktopApi()
+        .acpSetMode({ chatId: recordId, modeId: next.value })
+        .catch((error: unknown) => {
+          setModeId(previous);
+          setStatus({ text: errorMessage(error), kind: "error" });
+        });
+    } else {
+      void onConfigSelectChange(modeSelect.configId, next.value);
+    }
+    setStatus({ text: t("desktop.workbench.acpModeSwitched", label), kind: "ok" });
+  }, [isConnecting, isRunning, modeId, modeSelect, onConfigSelectChange, recordId, t]);
+
+  // Grok-style Shift+Tab: cycle agent session modes when the ACP pane is active.
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isTab = event.key === "Tab" || event.code === "Tab";
+      if (!event.shiftKey || !isTab) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!modeSelect || modeSelect.options.length < 2) return;
+      if (isRunning || isConnecting) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cycleMode();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [active, cycleMode, isConnecting, isRunning, modeSelect]);
+
+  const openPlanPreview = useCallback((plan?: PlanPreviewState | null) => {
+    const target = plan
+      ? {
+          ...plan,
+          // Keep disk path from the latest file write when opening a plan bubble.
+          path: plan.path || latestPlan?.path
+        }
+      : latestPlan;
+    if (!target?.content) return;
+    setLatestPlan(target);
+    setPlanSheetOpen(true);
+  }, [latestPlan]);
+
+  const openPlanInEditor = useCallback(async () => {
+    if (!latestPlan?.path) return;
+    try {
+      await desktopApi().acpOpenPath({ path: latestPlan.path });
+    } catch (error) {
+      setStatus({ text: errorMessage(error), kind: "error" });
+    }
+  }, [latestPlan?.path]);
 
   const modelSelect = useMemo(() => {
     const config = configOptions.find(
@@ -903,13 +1050,17 @@ export function AcpChatView({
   }, [connectionStatus, isConnecting, isRunning, t]);
 
   const attachEnabled = (fileUpload || imageUpload) && !isRunning && !isConnecting;
-  const placeholder = imageUpload || fileUpload
-    ? t("desktop.workbench.acpInputPlaceholderAttach")
-    : t("desktop.workbench.acpInputPlaceholder");
+  const placeholder = slashTag
+    ? slashTag.inputHint || t("desktop.workbench.acpSlashArgPlaceholder")
+    : imageUpload || fileUpload
+      ? t("desktop.workbench.acpInputPlaceholderAttach")
+      : t("desktop.workbench.acpInputPlaceholder");
   const hasStreamingMessage = messages.some((message) => message.streaming);
   const showTypingIndicator = isRunning && !hasStreamingMessage;
+  const canSend = Boolean(composePromptText() || pending.length) && !isRunning && !isConnecting;
 
   return (
+    <>
     <div
       className={`wb-acp-chat${dragOver ? " is-dragover" : ""}`}
       hidden={!active}
@@ -1007,7 +1158,29 @@ export function AcpChatView({
                     ) : null}
                     <div className="chat-body">
                       {message.role === "plan" ? (
-                        <pre className="wb-acp-plan">{message.text}</pre>
+                        <div className="wb-acp-plan-inline">
+                          <div className="wb-acp-plan-inline-head">
+                            <FileText size={14} aria-hidden="true" />
+                            <strong>{t("desktop.workbench.acpPlanTitle")}</strong>
+                          </div>
+                          <p className="wb-acp-plan-inline-snippet">
+                            {message.text.split("\n").find((line) => line.trim())?.slice(0, 160) ||
+                              t("desktop.workbench.acpPlanEmpty")}
+                          </p>
+                          <button
+                            type="button"
+                            className="ghost-btn wb-acp-plan-preview-btn"
+                            onClick={() =>
+                              openPlanPreview({
+                                content: message.text,
+                                updatedAt: message.timestamp || Date.now(),
+                                source: "message"
+                              })
+                            }
+                          >
+                            {t("desktop.workbench.acpPlanPreview")}
+                          </button>
+                        </div>
                       ) : outbound ? (
                         <div className="chat-user-text">{message.text}</div>
                       ) : message.text ? (
@@ -1231,49 +1404,77 @@ export function AcpChatView({
       <div className="chat-compose wb-acp-compose">
         <div className="chat-compose-frame">
           <div className="chat-compose-field">
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={input}
-              disabled={isRunning || isConnecting}
-              placeholder={placeholder}
-              aria-autocomplete="list"
-              aria-controls={slashMenuOpen ? "wb-acp-command-list" : undefined}
-              aria-expanded={slashMenuOpen}
-              aria-activedescendant={slashMenuOpen && activeCommand ? `wb-acp-command-${activeCommand.name}` : undefined}
-              onChange={(event) => {
-                setInput(event.target.value);
-                setSlashMenuDismissed(false);
-              }}
-              onKeyDown={(event) => {
-                if (slashMenuOpen) {
-                  if (event.key === "ArrowDown") {
+            <div className={`wb-acp-compose-input${slashTag ? " has-slash-tag" : ""}`}>
+              {slashTag ? (
+                <span className="wb-acp-slash-tag" title={slashTag.inputHint || `/${slashTag.name}`}>
+                  <span className="wb-acp-slash-tag-name">/{slashTag.name}</span>
+                  <button
+                    type="button"
+                    className="wb-acp-slash-tag-clear"
+                    aria-label={t("desktop.common.close")}
+                    disabled={isRunning || isConnecting}
+                    onClick={clearSlashTag}
+                  >
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                </span>
+              ) : null}
+              <textarea
+                ref={inputRef}
+                rows={1}
+                value={input}
+                disabled={isRunning || isConnecting}
+                placeholder={placeholder}
+                aria-autocomplete="list"
+                aria-controls={slashMenuOpen ? "wb-acp-command-list" : undefined}
+                aria-expanded={slashMenuOpen}
+                aria-activedescendant={slashMenuOpen && activeCommand ? `wb-acp-command-${activeCommand.name}` : undefined}
+                onChange={(event) => {
+                  setInput(event.target.value);
+                  setSlashMenuDismissed(false);
+                }}
+                onKeyDown={(event) => {
+                  if (slashMenuOpen) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActiveCommandIndex((current) => (current + 1) % filteredCommands.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveCommandIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
+                      return;
+                    }
+                    if ((event.key === "Enter" || event.key === "Tab") && activeCommand) {
+                      event.preventDefault();
+                      selectCommand(activeCommand);
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setSlashMenuDismissed(true);
+                      return;
+                    }
+                  }
+                  if (
+                    event.key === "Backspace" &&
+                    slashTag &&
+                    !input &&
+                    !event.metaKey &&
+                    !event.ctrlKey &&
+                    !event.altKey
+                  ) {
                     event.preventDefault();
-                    setActiveCommandIndex((current) => (current + 1) % filteredCommands.length);
+                    clearSlashTag();
                     return;
                   }
-                  if (event.key === "ArrowUp") {
+                  if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    setActiveCommandIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
-                    return;
+                    void send();
                   }
-                  if ((event.key === "Enter" || event.key === "Tab") && activeCommand) {
-                    event.preventDefault();
-                    selectCommand(activeCommand);
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setSlashMenuDismissed(true);
-                    return;
-                  }
-                }
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void send();
-                }
-              }}
-            />
+                }}
+              />
+            </div>
             {slashMenuOpen ? (
               <div
                 id="wb-acp-command-list"
@@ -1410,7 +1611,7 @@ export function AcpChatView({
                 type="button"
                 className="chat-send-btn"
                 aria-label={t("desktop.common.send")}
-                disabled={(!input.trim() && !pending.length) || isConnecting}
+                disabled={!canSend}
                 onClick={() => void send()}
               >
                 <Send size={18} />
@@ -1421,6 +1622,32 @@ export function AcpChatView({
       </div>
       {dragOver ? <div className="wb-acp-drop-hint">{t("desktop.workbench.acpDropHint")}</div> : null}
     </div>
+    <Sheet
+      open={planSheetOpen && Boolean(latestPlan)}
+      title={t("desktop.workbench.acpPlanPreviewTitle")}
+      wide
+      onClose={() => setPlanSheetOpen(false)}
+      bodyClassName="wb-acp-plan-sheet-body"
+      actions={
+        latestPlan?.path ? (
+          <button type="button" className="ghost-btn" onClick={() => void openPlanInEditor()}>
+            <ExternalLink size={14} aria-hidden="true" />
+            {t("desktop.workbench.acpPlanOpen")}
+          </button>
+        ) : null
+      }
+    >
+      {latestPlan?.path ? (
+        <p className="wb-acp-plan-sheet-path muted" title={latestPlan.path}>
+          {latestPlan.path}
+        </p>
+      ) : null}
+      <div
+        className="markdown-body wb-acp-plan-markdown"
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(latestPlan?.content || "") }}
+      />
+    </Sheet>
+    </>
   );
 }
 

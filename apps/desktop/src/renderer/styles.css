@@ -4512,6 +4512,86 @@ code {
   padding: var(--space-3) var(--space-3) 0;
 }
 
+/* Chip + free text share one line (inline), like a token in the field. */
+.wb-acp-compose-input {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.wb-acp-compose-input.has-slash-tag {
+  align-items: flex-start;
+}
+
+.wb-acp-compose-input textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important; /* beat .chat-compose textarea { width: 100% } so chip stays inline */
+  display: block;
+}
+
+.wb-acp-compose-input.has-slash-tag textarea {
+  /* Match first-line height with the chip so they read as one run of text. */
+  min-height: 28px;
+  line-height: 1.4;
+  padding-top: 3px;
+}
+
+.wb-acp-slash-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: min(42%, 16em);
+  margin-top: 2px; /* sit on the first text line */
+  padding: 3px 4px 3px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-accent, var(--accent)) 28%, transparent);
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 14%, transparent);
+  color: var(--color-accent, var(--accent));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.wb-acp-slash-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14em;
+}
+
+.wb-acp-slash-tag-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 18%, transparent);
+  color: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.wb-acp-slash-tag-clear:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 28%, transparent);
+}
+
+.wb-acp-slash-tag-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .wb-acp-command-menu {
   position: absolute;
   z-index: 40;
@@ -7261,6 +7341,52 @@ select.wb-acp-toolbar-select option {
   white-space: pre-wrap;
   font-family: inherit;
   font-size: 12px;
+}
+
+.wb-acp-plan-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wb-acp-plan-inline-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.wb-acp-plan-inline-snippet {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.wb-acp-plan-preview-btn {
+  align-self: flex-start;
+}
+
+.wb-acp-plan-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wb-acp-plan-sheet-path {
+  margin: 0;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.wb-acp-plan-markdown {
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .wb-acp-permission {

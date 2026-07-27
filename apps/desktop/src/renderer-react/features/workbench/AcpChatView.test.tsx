@@ -10,11 +10,19 @@ function emit(event: Record<string, unknown>): void {
   for (const listener of streamListeners) listener(event);
 }
 
-async function renderChat(): Promise<void> {
+async function renderChat(initExtra: Record<string, unknown> = {}): Promise<void> {
   window.agentResume = {
     getI18nBundle: vi.fn(async () => ({
       locale: "en",
-      messages: { "desktop.workbench.acpSlashCommands": "Agent commands" }
+      messages: {
+        "desktop.workbench.acpSlashCommands": "Agent commands",
+        "desktop.workbench.acpModeSwitched": "Mode: {0}",
+        "desktop.workbench.acpPlanTitle": "Plan",
+        "desktop.workbench.acpPlanPreview": "Preview",
+        "desktop.workbench.acpPlanPreviewTitle": "Plan preview",
+        "desktop.workbench.acpPlanOpen": "Open file",
+        "desktop.workbench.acpPlanFromSession": "From session update"
+      }
     })),
     onLocaleChanged: vi.fn(() => () => undefined),
     onAcpStream: (listener: (event: Record<string, unknown>) => void) => {
@@ -23,7 +31,9 @@ async function renderChat(): Promise<void> {
     },
     acpConnect: vi.fn(async () => ({ ok: true, record: { id: "chat-1", title: "Chat", provider: "codex" } })),
     acpDisconnect: vi.fn(async () => ({ ok: true })),
-    acpPrompt: vi.fn(async () => ({ ok: true }))
+    acpPrompt: vi.fn(async () => ({ ok: true })),
+    acpSetMode: vi.fn(async () => ({ ok: true })),
+    acpOpenPath: vi.fn(async () => ({ ok: true }))
   } as unknown as typeof window.agentResume;
   render(<I18nProvider><AcpChatView recordId="chat-1" provider="codex" projectPath="/work/app" title="Chat" active /></I18nProvider>);
   await waitFor(() => expect(streamListeners.size).toBe(1));
@@ -36,10 +46,17 @@ async function renderChat(): Promise<void> {
         { name: "review", description: "Review the current changes" },
         { name: "plan", description: "Create a plan", inputHint: "topic" }
       ],
+      modes: [
+        { id: "build", name: "Build" },
+        { id: "plan", name: "Plan" },
+        { id: "ask", name: "Ask" }
+      ],
+      modeId: "build",
       isRunning: false,
       isConnecting: false,
       status: "ready",
-      fileUpload: true
+      fileUpload: true,
+      ...initExtra
     }
   });
 }
@@ -50,7 +67,7 @@ afterEach(() => {
 });
 
 describe("AcpChatView slash commands", () => {
-  it("filters dynamic agent commands and submits a selected command without input", async () => {
+  it("filters dynamic agent commands and inserts a tag on Enter (send on second Enter)", async () => {
     const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -58,25 +75,40 @@ describe("AcpChatView slash commands", () => {
     expect(await screen.findByRole("option", { name: /\/review/i })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /\/plan/i })).toBeNull();
     await user.keyboard("{Enter}");
+    // Tag chip is inserted; prompt not sent yet.
+    expect(window.agentResume.acpPrompt).not.toHaveBeenCalled();
+    expect(screen.getByText("/review")).toBeTruthy();
+    expect(input.value).toBe("");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    await user.keyboard("{Enter}");
     expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({
       chatId: "chat-1",
       text: "/review",
       images: [],
       files: []
     });
-    expect(input.value).toBe("");
-    expect(screen.queryByRole("listbox")).toBeNull();
   });
 
-  it("supports keyboard selection and retains a space for command input", async () => {
+  it("supports Tab selection into a tag, then free-text args before send", async () => {
     const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.type(input, "/");
     await screen.findAllByRole("option");
     await user.keyboard("{ArrowDown}{Tab}");
-    expect(input.value).toBe("/plan ");
+    expect(screen.getByText("/plan")).toBeTruthy();
+    await waitFor(() => expect(input.value).toBe(""));
     expect(window.agentResume.acpPrompt).not.toHaveBeenCalled();
+    // Set suffix via change to avoid cursor races after Tab clears the field.
+    fireEvent.change(input, { target: { value: "auth flow" } });
+    input.focus();
+    await user.keyboard("{Enter}");
+    expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({
+      chatId: "chat-1",
+      text: "/plan auth flow",
+      images: [],
+      files: []
+    });
   });
 
   it("keeps the keyboard-active command visible in the menu", async () => {
@@ -100,7 +132,7 @@ describe("AcpChatView slash commands", () => {
     }
   });
 
-  it("closes the menu with Escape and sends the retained input with Enter", async () => {
+  it("closes the menu with Escape and sends the retained plain input with Enter", async () => {
     const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -111,16 +143,76 @@ describe("AcpChatView slash commands", () => {
     expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({ chatId: "chat-1", text: "/review", images: [], files: [] });
   });
 
-  it("submits a command without input when selected with the pointer", async () => {
+  it("inserts a command tag with the pointer; Enter sends it", async () => {
+    const user = userEvent.setup();
     await renderChat();
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/re" } });
+    const input = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/re" } });
     fireEvent.click(screen.getByRole("option", { name: /\/review/i }));
+    expect(window.agentResume.acpPrompt).not.toHaveBeenCalled();
+    expect(screen.getByText("/review")).toBeTruthy();
+    input.focus();
+    await user.keyboard("{Enter}");
     expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({
       chatId: "chat-1",
       text: "/review",
       images: [],
       files: []
     });
+  });
+
+  it("removes the slash tag with Backspace when the free-text field is empty", async () => {
+    const user = userEvent.setup();
+    await renderChat();
+    await user.type(screen.getByRole("textbox"), "/re");
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("/review")).toBeTruthy();
+    await user.keyboard("{Backspace}");
+    expect(screen.queryByText("/review")).toBeNull();
+    expect(window.agentResume.acpPrompt).not.toHaveBeenCalled();
+  });
+});
+
+describe("AcpChatView modes and plan preview", () => {
+  it("cycles session modes with Shift+Tab", async () => {
+    await renderChat();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /mode/i })).toBeTruthy());
+    const shiftTab = () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Tab",
+          code: "Tab",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true
+        })
+      );
+    };
+    shiftTab();
+    await waitFor(() =>
+      expect(window.agentResume.acpSetMode).toHaveBeenCalledWith({ chatId: "chat-1", modeId: "plan" })
+    );
+    shiftTab();
+    await waitFor(() =>
+      expect(window.agentResume.acpSetMode).toHaveBeenCalledWith({ chatId: "chat-1", modeId: "ask" })
+    );
+  });
+
+  it("opens a markdown plan preview from planFile stream events in the message list", async () => {
+    await renderChat();
+    emit({
+      type: "planFile",
+      chatId: "chat-1",
+      path: "/Users/me/.grok/sessions/s1/plan.md",
+      content: "# Goal\n\nShip plan preview",
+      updatedAt: Date.now()
+    });
+    // Plan appears as an in-log card, not a sticky bar above the composer.
+    expect(document.querySelector(".wb-acp-plan-bar")).toBeNull();
+    expect(await screen.findByText("# Goal")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    expect(await screen.findByRole("dialog", { name: /plan preview/i })).toBeTruthy();
+    expect(screen.getByText("Ship plan preview")).toBeTruthy();
   });
 });
 

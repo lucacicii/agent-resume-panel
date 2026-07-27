@@ -665,7 +665,15 @@
       "desktop.workbench.resumeCommandMissing": "Could not build a resume command for this session.",
       "desktop.workbench.acpQuestionTitle": "Agent question",
       "desktop.workbench.acpQuestionSubmit": "Submit",
-      "desktop.workbench.acpQuestionSkip": "Skip"
+      "desktop.workbench.acpQuestionSkip": "Skip",
+      "desktop.workbench.acpSlashArgPlaceholder": "Add arguments…",
+      "desktop.workbench.acpModeSwitched": "Mode: {0}",
+      "desktop.workbench.acpPlanTitle": "Plan",
+      "desktop.workbench.acpPlanPreview": "Preview",
+      "desktop.workbench.acpPlanPreviewTitle": "Plan preview",
+      "desktop.workbench.acpPlanOpen": "Open file",
+      "desktop.workbench.acpPlanFromSession": "From session update",
+      "desktop.workbench.acpPlanEmpty": "Empty plan"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1766,7 +1774,15 @@
       "desktop.workbench.resumeCommandMissing": "无法为该会话生成恢复命令。",
       "desktop.workbench.acpQuestionTitle": "Agent 提问",
       "desktop.workbench.acpQuestionSubmit": "提交",
-      "desktop.workbench.acpQuestionSkip": "跳过"
+      "desktop.workbench.acpQuestionSkip": "跳过",
+      "desktop.workbench.acpSlashArgPlaceholder": "添加参数…",
+      "desktop.workbench.acpModeSwitched": "模式：{0}",
+      "desktop.workbench.acpPlanTitle": "计划",
+      "desktop.workbench.acpPlanPreview": "预览",
+      "desktop.workbench.acpPlanPreviewTitle": "计划预览",
+      "desktop.workbench.acpPlanOpen": "打开文件",
+      "desktop.workbench.acpPlanFromSession": "来自会话更新",
+      "desktop.workbench.acpPlanEmpty": "空计划"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2912,7 +2928,15 @@
       "desktop.workbench.resumeCommandMissing": "このセッションの再開コマンドを生成できませんでした。",
       "desktop.workbench.acpQuestionTitle": "エージェントの質問",
       "desktop.workbench.acpQuestionSubmit": "送信",
-      "desktop.workbench.acpQuestionSkip": "スキップ"
+      "desktop.workbench.acpQuestionSkip": "スキップ",
+      "desktop.workbench.acpSlashArgPlaceholder": "引数を追加…",
+      "desktop.workbench.acpModeSwitched": "モード: {0}",
+      "desktop.workbench.acpPlanTitle": "プラン",
+      "desktop.workbench.acpPlanPreview": "プレビュー",
+      "desktop.workbench.acpPlanPreviewTitle": "プランプレビュー",
+      "desktop.workbench.acpPlanOpen": "ファイルを開く",
+      "desktop.workbench.acpPlanFromSession": "セッション更新から",
+      "desktop.workbench.acpPlanEmpty": "空のプラン"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

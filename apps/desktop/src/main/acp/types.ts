@@ -156,6 +156,13 @@ export type AcpStreamEvent =
         options: Array<{ label: string; description?: string; preview?: string }>;
         multiSelect?: boolean;
       }>;
+    }
+  | {
+      type: "planFile";
+      chatId: string;
+      path: string;
+      content: string;
+      updatedAt: number;
     };
 
 export interface AcpChatInit {
