@@ -178,6 +178,7 @@ export function AcpChatView({
   const stickToBottom = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeCommandRef = useRef<HTMLButtonElement>(null);
   /** Tracks in-flight / completed connect for this mount so we do not double-connect. */
   const connectGenerationRef = useRef(0);
   /** True after a successful connect until unmount/error — skip reconnect on tab re-focus. */
@@ -457,8 +458,8 @@ export function AcpChatView({
     [fileUpload, imageUpload, pending, t]
   );
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
     if ((!text && !pending.length) || isRunning || isConnecting) return;
     const images = pending
       .filter((item): item is PendingImage => item.kind === "image")
@@ -495,15 +496,28 @@ export function AcpChatView({
     setActiveCommandIndex(0);
   }, [input, availableCommands]);
 
-  const selectCommand = useCallback((command: AvailableCommand) => {
-    const next = `/${command.name}${command.inputHint ? " " : ""}`;
-    setInput(next);
+  useEffect(() => {
+    const activeElement = activeCommandRef.current;
+    if (slashMenuOpen && typeof activeElement?.scrollIntoView === "function") {
+      activeElement.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeCommandIndex, slashMenuOpen]);
+
+  const selectCommand = (command: AvailableCommand) => {
+    const commandText = `/${command.name}`;
     setSlashMenuDismissed(true);
+    if (!command.inputHint) {
+      void send(commandText);
+      return;
+    }
+
+    const next = `${commandText} `;
+    setInput(next);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(next.length, next.length);
     });
-  }, []);
+  };
 
   const cancel = async () => {
     try {
@@ -925,6 +939,7 @@ export function AcpChatView({
                 {filteredCommands.map((command, index) => (
                   <button
                     key={command.name}
+                    ref={index === activeCommandIndex ? activeCommandRef : undefined}
                     id={`wb-acp-command-${command.name}`}
                     type="button"
                     className={`wb-acp-command${index === activeCommandIndex ? " is-active" : ""}`}

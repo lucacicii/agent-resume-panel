@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("AcpChatView slash commands", () => {
-  it("filters dynamic agent commands and inserts a selected command", async () => {
+  it("filters dynamic agent commands and submits a selected command without input", async () => {
     const user = userEvent.setup();
     await renderChat();
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -58,7 +58,13 @@ describe("AcpChatView slash commands", () => {
     expect(await screen.findByRole("option", { name: /\/review/i })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /\/plan/i })).toBeNull();
     await user.keyboard("{Enter}");
-    expect(input.value).toBe("/review");
+    expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({
+      chatId: "chat-1",
+      text: "/review",
+      images: [],
+      files: []
+    });
+    expect(input.value).toBe("");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
@@ -70,6 +76,28 @@ describe("AcpChatView slash commands", () => {
     await screen.findAllByRole("option");
     await user.keyboard("{ArrowDown}{Tab}");
     expect(input.value).toBe("/plan ");
+    expect(window.agentResume.acpPrompt).not.toHaveBeenCalled();
+  });
+
+  it("keeps the keyboard-active command visible in the menu", async () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView
+    });
+    try {
+      const user = userEvent.setup();
+      await renderChat();
+      await user.type(screen.getByRole("textbox"), "/");
+      await screen.findAllByRole("option");
+      await user.keyboard("{ArrowDown}");
+      expect(screen.getByRole("option", { name: /\/plan/i }).getAttribute("aria-selected")).toBe("true");
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+      else delete (HTMLElement.prototype as { scrollIntoView?: () => void }).scrollIntoView;
+    }
   });
 
   it("closes the menu with Escape and sends the retained input with Enter", async () => {
@@ -83,11 +111,15 @@ describe("AcpChatView slash commands", () => {
     expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({ chatId: "chat-1", text: "/review", images: [], files: [] });
   });
 
-  it("selects a command with the pointer", async () => {
+  it("submits a command without input when selected with the pointer", async () => {
     await renderChat();
-    const input = screen.getByRole("textbox") as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: "/pl" } });
-    fireEvent.click(screen.getByRole("option", { name: /\/plan/i }));
-    expect(input.value).toBe("/plan ");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/re" } });
+    fireEvent.click(screen.getByRole("option", { name: /\/review/i }));
+    expect(window.agentResume.acpPrompt).toHaveBeenCalledWith({
+      chatId: "chat-1",
+      text: "/review",
+      images: [],
+      files: []
+    });
   });
 });
