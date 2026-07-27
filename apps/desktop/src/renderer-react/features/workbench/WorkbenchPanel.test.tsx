@@ -910,4 +910,64 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/src/main.ts"
     }));
   });
+
+  it("discards a Git file after confirmation and refreshes its status", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    let hasChange = true;
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: hasChange ? [gitFile] : [],
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitDiscardChange = vi.fn(async () => {
+      hasChange = false;
+      return { ok: true };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitDiscard": "Discard changes", "desktop.workbench.gitDiscardConfirm": "Discard all staged and working tree changes to \"{0}\"? This cannot be undone.", "desktop.workbench.gitDiscardUntrackedConfirm": "Delete untracked \"{0}\"? This cannot be undone.", "desktop.workbench.gitDiscardSucceeded": "Discarded changes to {0}.", "desktop.workbench.gitDiscardFailed": "Could not discard changes: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiscardChange
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByTitle("/work/app"));
+      fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+      const discard = await screen.findByRole("button", { name: "Discard changes src/app.ts" });
+      fireEvent.click(discard);
+      expect(confirm).toHaveBeenCalledWith('Discard all staged and working tree changes to "src/app.ts"? This cannot be undone.');
+      await waitFor(() => expect(terminalGitDiscardChange).toHaveBeenCalledWith({ repoRoot: "/work/app", path: "src/app.ts" }));
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Discard changes src/app.ts" })).toBeNull());
+      expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Discarded changes to src/app.ts.", kind: "ok" });
+    } finally {
+      confirm.mockRestore();
+    }
+  });
 });

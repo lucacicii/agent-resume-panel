@@ -29,8 +29,8 @@ export interface AcpToolCallLocation {
 
 export interface AcpToolCallInfo {
   toolCallId: string;
-  title: string;
-  kind: string;
+  title?: string;
+  kind?: string;
   status: AcpToolCallStatus;
   locations?: AcpToolCallLocation[];
   content?: unknown[];

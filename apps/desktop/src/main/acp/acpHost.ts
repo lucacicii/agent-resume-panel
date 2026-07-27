@@ -1118,8 +1118,8 @@ function parseToolCallFromUpdate(
   defaultStatus?: AcpToolCallStatus
 ): AcpToolCallInfo {
   const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : crypto.randomUUID();
-  const title = typeof update.title === "string" ? update.title : "Tool";
-  const kind = typeof update.kind === "string" ? update.kind : "other";
+  const title = typeof update.title === "string" && update.title.trim() ? update.title : undefined;
+  const kind = typeof update.kind === "string" && update.kind.trim() ? update.kind : undefined;
   const status = normalizeToolStatus(
     typeof update.status === "string" ? update.status : defaultStatus ?? "in_progress"
   );
@@ -1138,8 +1138,8 @@ function parseToolCallFromUpdate(
 function mergeToolCallInfo(existing: AcpToolCallInfo, incoming: AcpToolCallInfo): AcpToolCallInfo {
   return {
     toolCallId: incoming.toolCallId || existing.toolCallId,
-    title: incoming.title || existing.title,
-    kind: incoming.kind || existing.kind,
+    title: incoming.title ?? existing.title,
+    kind: incoming.kind ?? existing.kind,
     status: incoming.status || existing.status,
     locations: incoming.locations ?? existing.locations,
     content: incoming.content ?? existing.content,

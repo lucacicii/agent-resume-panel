@@ -103,6 +103,20 @@ function resolvePathWithinRoot(raw: string, rootPath: string): string {
   return target;
 }
 
+/** Git pathspecs accepted from the renderer must remain relative to the selected repository. */
+function normalizeRepoRelativePath(raw: string): string {
+  const normalized = raw.trim().replace(/\\/g, "/");
+  if (
+    !normalized
+    || normalized.includes("\0")
+    || normalized.startsWith("/")
+    || normalized.split("/").some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error("无效的文件路径");
+  }
+  return normalized;
+}
+
 function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
 }
@@ -420,6 +434,68 @@ async function queryGitDiffSides(
   return { oldLabel, newLabel, oldText, newText };
 }
 
+async function repoHasHeadPath(repoRoot: string, repoPath: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["-C", repoRoot, "cat-file", "-e", `HEAD:${repoPath}`], {
+      timeout: 10000,
+      maxBuffer: 4096
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function discardGitChange(repoRootRaw: string, repoPathRaw: string): Promise<void> {
+  const requestedRoot = resolveCwd(repoRootRaw);
+  if (!(await isGitRepo(requestedRoot))) {
+    throw new Error("当前目录不是 Git 仓库");
+  }
+  const repoRoot = (await queryGitRoot(requestedRoot)) || requestedRoot;
+  const repoPath = normalizeRepoRelativePath(repoPathRaw);
+  resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
+
+  const { stdout } = await execFileAsync(
+    "git",
+    ["-C", repoRoot, "status", "--porcelain=v1", "--", repoPath],
+    { timeout: 10000, maxBuffer: 64 * 1024 }
+  );
+  const status = String(stdout).trim();
+  if (!status) {
+    throw new Error("该文件没有可回退的 Git 改动");
+  }
+
+  try {
+    if (status.startsWith("?? ")) {
+      await execFileAsync("git", ["-C", repoRoot, "clean", "-fd", "--", repoPath], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+      return;
+    }
+
+    if (await repoHasHeadPath(repoRoot, repoPath)) {
+      await execFileAsync("git", ["-C", repoRoot, "restore", "--source=HEAD", "--staged", "--worktree", "--", repoPath], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+      return;
+    }
+
+    // A newly added index entry has no HEAD version. Remove it from the index, then clean its worktree path.
+    await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", repoPath], {
+      timeout: 30000,
+      maxBuffer: 1024 * 1024
+    });
+    await execFileAsync("git", ["-C", repoRoot, "clean", "-fd", "--", repoPath], {
+      timeout: 30000,
+      maxBuffer: 1024 * 1024
+    });
+  } catch (error) {
+    throw new Error(formatExecError(error));
+  }
+}
+
 export function registerWorkbenchFsIpc(): void {
   safeHandle(
     "workbench:listDirectory",
@@ -556,6 +632,14 @@ export function registerWorkbenchFsIpc(): void {
     "terminal:gitDiffSides",
     async (_event, args: { cwd: string; path: string; staged?: boolean }) => {
       return queryGitDiffSides(args.cwd, args.path, Boolean(args.staged));
+    }
+  );
+
+  safeHandle(
+    "terminal:gitDiscardChange",
+    async (_event, args: { repoRoot: string; path: string }) => {
+      await discardGitChange(args.repoRoot, args.path);
+      return { ok: true };
     }
   );
 }

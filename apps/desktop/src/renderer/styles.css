@@ -6191,6 +6191,39 @@ code {
   color: var(--color-label-primary, var(--text));
 }
 
+.wb-git-discard-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+  cursor: pointer;
+}
+
+.wb-git-discard-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-destructive, #ff3b30) 12%, transparent);
+  color: var(--color-destructive, #ff3b30);
+}
+
+.wb-git-discard-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring, rgba(0, 122, 255, 0.45));
+  outline-offset: 1px;
+}
+
+.wb-git-discard-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.wb-git-discard-btn svg {
+  display: block;
+}
+
 .wb-git-tree-row .wb-file-tree-chevron {
   pointer-events: none;
 }

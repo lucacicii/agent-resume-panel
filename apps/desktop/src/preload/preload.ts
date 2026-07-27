@@ -525,6 +525,7 @@ export interface DesktopApi {
     path: string;
     staged?: boolean;
   }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string }>;
+  terminalGitDiscardChange(args: { repoRoot: string; path: string }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -978,6 +979,7 @@ const api: DesktopApi = {
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
+  terminalGitDiscardChange: (args) => ipcRenderer.invoke("terminal:gitDiscardChange", args),
   terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),

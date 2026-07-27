@@ -4,6 +4,7 @@ import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
+import { toolCallLabel } from "./toolLabels";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -18,9 +19,10 @@ export type AcpChatPaneProps = {
 
 type ToolCall = {
   toolCallId: string;
-  title: string;
-  kind: string;
+  title?: string;
+  kind?: string;
   status: string;
+  rawInput?: unknown;
 };
 
 type ImageAttachment = {
@@ -761,7 +763,7 @@ export function AcpChatView({
                         ) : (
                           <X size={12} />
                         )}
-                        <span>{tool.title}</span>
+                        <span>{toolCallLabel(tool, t)}</span>
                       </div>
                     ))}
                   </div>

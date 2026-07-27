@@ -28,7 +28,7 @@ import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
   ArrowDown, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
-  Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, X
+  Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
@@ -408,17 +408,23 @@ function GitChangeTree({
   depth,
   expanded,
   selected,
+  discarding,
   onToggleDir,
   onToggleKeys,
-  onOpen
+  onOpen,
+  onDiscard,
+  discardLabel
 }: {
   nodes: GitTreeNode[];
   depth: number;
   expanded: Set<string>;
   selected: Set<string>;
+  discarding: Set<string>;
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpen: (change: GitChange) => void;
+  onDiscard: (change: GitChange) => void;
+  discardLabel: string;
 }): React.JSX.Element {
   return <>{nodes.map((node) => {
     const isExpanded = node.isDirectory && expanded.has(node.path);
@@ -434,7 +440,7 @@ function GitChangeTree({
             <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
           </button>
         </div>
-        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} /></div> : null}
+        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onDiscard={onDiscard} discardLabel={discardLabel} /></div> : null}
       </div>;
     }
     if (!node.change) return null;
@@ -445,6 +451,16 @@ function GitChangeTree({
         <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
         <span className={`wb-git-file-status ${gitStatusClass(node.change.status)}`}>{gitStatusLetter(node.change.status)}</span>
         <span className="wb-file-tree-label">{node.name}</span>
+      </button>
+      <button
+        type="button"
+        className="wb-git-discard-btn"
+        disabled={discarding.has(key)}
+        aria-label={`${discardLabel} ${node.change.path}`}
+        title={discardLabel}
+        onClick={() => onDiscard(node.change!)}
+      >
+        {discarding.has(key) ? <LoaderCircle size={13} className="spin" /> : <Undo2 size={13} />}
       </button>
     </div>;
   })}</>;
@@ -464,6 +480,7 @@ function GitChangesPanel({
   gitRoot,
   expanded,
   selected,
+  discarding,
   commitMessage,
   commitBusy,
   commitSuggestion,
@@ -471,6 +488,7 @@ function GitChangesPanel({
   onToggleDir,
   onToggleKeys,
   onOpenDiff,
+  onDiscard,
   onCommitMessageChange,
   onSuggestCommit,
   onCommit,
@@ -481,6 +499,7 @@ function GitChangesPanel({
   gitRoot: string;
   expanded: Set<string>;
   selected: Set<string>;
+  discarding: Set<string>;
   commitMessage: string;
   commitBusy: boolean;
   commitSuggestion: CommitSuggestion | null;
@@ -488,6 +507,7 @@ function GitChangesPanel({
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpenDiff: (change: GitChange, staged: boolean) => void;
+  onDiscard: (change: GitChange) => void;
   onCommitMessageChange: (value: string) => void;
   onSuggestCommit: () => void;
   onCommit: (pushAfter: boolean) => void;
@@ -503,6 +523,7 @@ function GitChangesPanel({
     suggestedLlm: string;
     suggestedUnconfigured: string;
     suggestedFallback: string;
+    discard: string;
   };
 }): ReactPortal | null {
   const { t } = useI18n();
@@ -556,9 +577,12 @@ function GitChangesPanel({
               depth={0}
               expanded={expanded}
               selected={selected}
+              discarding={discarding}
               onToggleDir={onToggleDir}
               onToggleKeys={onToggleKeys}
               onOpen={(change) => onOpenDiff(change, section.staged)}
+              onDiscard={onDiscard}
+              discardLabel={labels.discard}
             />
           </div>
         </section>;
@@ -1258,6 +1282,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [commitBusy, setCommitBusy] = useState(false);
   const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
   const [selectedGitPaths, setSelectedGitPaths] = useState<Set<string>>(() => new Set());
+  const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
   const gitSelectionKnownRef = useRef<Set<string>>(new Set());
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
@@ -2597,6 +2622,38 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
+  const discardGitChange = async (change: GitChange) => {
+    const key = gitChangeKey(change);
+    if (discardingGitPaths.has(key)) return;
+    const confirmKey = change.status === "?"
+      ? "desktop.workbench.gitDiscardUntrackedConfirm"
+      : "desktop.workbench.gitDiscardConfirm";
+    if (!window.confirm(t(confirmKey, change.path))) return;
+    setDiscardingGitPaths((current) => new Set(current).add(key));
+    try {
+      await desktopApi().terminalGitDiscardChange({ repoRoot: change.repoRoot, path: change.repoPath });
+      setDiffs((current) => current.filter((pane) => !(pane.repoRoot === change.repoRoot && pane.path === change.path)));
+      setActivePanes((current) => {
+        const projectKey = paneProjectKey(selectedProject);
+        const active = current[projectKey];
+        return active?.startsWith(`diff:${change.repoRoot}:${change.repoPath}:`)
+          ? { ...current, [projectKey]: "" }
+          : current;
+      });
+      await refreshGit();
+      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
+      notifyGitSuccess("desktop.workbench.gitDiscardSucceeded", change.path);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
+    } finally {
+      setDiscardingGitPaths((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
   const openGitShowFileDiff = async (hash: string, path: string) => {
     if (!gitRoot) return;
     try {
@@ -3057,6 +3114,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRoot={gitRoot}
       expanded={gitExpandedDirs}
       selected={selectedGitPaths}
+      discarding={discardingGitPaths}
       commitMessage={commitMessage}
       commitBusy={commitBusy}
       commitSuggestion={commitSuggestion}
@@ -3064,6 +3122,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onToggleDir={toggleGitDirectory}
       onToggleKeys={toggleGitSelectionKeys}
       onOpenDiff={(change, staged) => void openDiff(change, staged)}
+      onDiscard={(change) => void discardGitChange(change)}
       onCommitMessageChange={setCommitMessage}
       onSuggestCommit={() => void suggestCommit()}
       onCommit={(pushAfter) => void commit(pushAfter)}
@@ -3078,7 +3137,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         commitAndPush: t("desktop.workbench.gitCommitAndPush"),
         suggestedLlm: t("desktop.workbench.gitCommitSuggestedLlm"),
         suggestedUnconfigured: t("desktop.workbench.gitCommitSuggestedUnconfigured"),
-        suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback")
+        suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback"),
+        discard: t("desktop.workbench.gitDiscard")
       }}
     />
     <GitDiffMergePanel diff={currentDiff} />
