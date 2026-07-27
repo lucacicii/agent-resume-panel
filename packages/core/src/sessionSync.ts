@@ -8,6 +8,7 @@ import {
   ensureExtensionCatalogSchema,
   syncStateHasExtendedColumns
 } from "./catalog/db";
+import { syncAcpRecordsIntoCatalog, type AcpCatalogRecordInput } from "./catalog/acpCatalog";
 import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
 import { escapeSqlLiteral, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "./sqlite";
@@ -165,6 +166,24 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
   }
   // Alma support removed: hard-delete leftover Alma catalog rows and Alma-only projects.
   await purgeRetiredAlmaCatalog(options.dbPath);
+
+  // ACP chats: dual-index into catalog from panelHome/acp JSONL (messages stay file-backed).
+  try {
+    const acpRecords = await loadAcpCatalogRecords(options.panelHome, options.maxItems);
+    const acpCount = await syncAcpRecordsIntoCatalog(
+      options.dbPath,
+      options.panelHome,
+      acpRecords,
+      result.syncedAt
+    );
+    if (acpCount > 0) {
+      result.sessionCount += acpCount;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.warnings.push(`ACP catalog sync failed. ${message}`);
+  }
+
   try {
     await reconcileProjectsFromSessions(options.dbPath);
   } catch (error) {
@@ -173,6 +192,50 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     result.warnings.push(`Project reconcile failed. ${message}`);
   }
   return result;
+}
+
+/** Read panelHome/acp/sessions.jsonl into catalog upsert inputs. */
+async function loadAcpCatalogRecords(panelHome: string, maxItems: number): Promise<AcpCatalogRecordInput[]> {
+  const file = path.join(panelHome, "acp", "sessions.jsonl");
+  if (!(await fileExists(file))) {
+    return [];
+  }
+  let raw = "";
+  try {
+    raw = await readCachedText(file);
+  } catch {
+    return [];
+  }
+  const byId = new Map<string, AcpCatalogRecordInput>();
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const row = JSON.parse(trimmed) as {
+        id?: string;
+        title?: string;
+        projectPath?: string;
+        provider?: string;
+        updatedAt?: number;
+        messageCount?: number;
+      };
+      if (!row.id) continue;
+      byId.set(row.id, {
+        id: row.id,
+        title: row.title || row.id,
+        projectPath: row.projectPath || panelHome,
+        acpProvider: row.provider || "claude",
+        updatedAt: Number(row.updatedAt) || Date.now(),
+        messageCount: row.messageCount,
+        model: row.provider || undefined
+      });
+    } catch {
+      /* skip malformed */
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, Math.max(0, maxItems));
 }
 
 async function loadProvider(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {

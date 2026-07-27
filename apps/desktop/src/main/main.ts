@@ -381,24 +381,29 @@ async function resumeCatalogSession(
   const paths = await loadPanelDbPaths(settings);
   const panelHome = effectivePanelHome(settings);
 
-  // ACP chats may only live under panelHome/acp (not catalog).
+  // ACP chats: catalog indexes metadata; JSONL holds messages. Resume opens AcpChatView.
   if (provider === "chat") {
     const record = await getAcpRecord(panelHome, id);
-    if (record) {
+    const catalogSession = await getSessionById(paths.catalogDb, "chat", id);
+    if (record || catalogSession) {
       return {
         mode: "acp",
         command: "",
-        cwd: record.projectPath,
-        acp: { chatId: record.id, provider: record.provider, title: record.title },
-        session: {
+        cwd: record?.projectPath || catalogSession?.projectPath || "",
+        acp: {
+          chatId: record?.id || catalogSession!.id,
+          provider: record?.provider || catalogSession?.acpProvider || "claude",
+          title: record?.title || catalogSession?.title
+        },
+        session: catalogSession || {
           provider: "chat",
-          id: record.id,
-          title: record.title,
-          projectPath: record.projectPath,
-          updatedAt: record.updatedAt,
-          messageCount: record.messageCount,
+          id: record!.id,
+          title: record!.title,
+          projectPath: record!.projectPath,
+          updatedAt: record!.updatedAt,
+          messageCount: record!.messageCount,
           source: "acp",
-          acpProvider: record.provider
+          acpProvider: record!.provider
         }
       };
     }

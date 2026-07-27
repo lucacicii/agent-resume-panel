@@ -1,4 +1,5 @@
 import { AgentSession } from "../catalog/types";
+import { previewAcpSession } from "./acp";
 import { previewAgySession } from "./agy";
 import { previewClaudeSession } from "./claude";
 import { previewCodexSession } from "./codex";
@@ -27,6 +28,8 @@ export async function loadSessionPreview(
       return previewPiSession(session, homes);
     case "cursor":
       return previewCursorSession(session, homes);
+    case "chat":
+      return previewAcpSession(session, homes);
     default:
       throw new Error(`Preview is not supported for provider ${session.provider}.`);
   }

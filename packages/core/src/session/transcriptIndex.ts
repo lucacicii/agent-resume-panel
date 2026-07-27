@@ -279,9 +279,6 @@ export async function indexSessionTranscript(
   }
 
   const provider = options.session.provider;
-  if (provider === "chat") {
-    return { indexed: false, skipped: "unsupported" };
-  }
 
   await ensureDesktopDbSchema(options.desktopDb);
 

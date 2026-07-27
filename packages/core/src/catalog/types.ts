@@ -9,6 +9,9 @@ export type AgentProvider =
   | "cursor-ide"
   | "chat";
 
+/** Underlying ACP agent when provider is "chat". */
+export type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi";
+
 export interface AgentSession {
   provider: AgentProvider;
   id: string;
@@ -24,7 +27,7 @@ export interface AgentSession {
    * When provider is "chat" (ACP), the underlying ACP agent
    * (codex / claude / grok / opencode / pi).
    */
-  acpProvider?: string;
+  acpProvider?: CatalogAcpProvider;
   archived?: boolean;
   messageCount?: number;
   sessionSummary?: string;
@@ -79,7 +82,16 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
     session.source = row.source;
   }
   if (row.acp_provider && row.provider === "chat") {
-    session.acpProvider = row.acp_provider;
+    const acp = row.acp_provider.trim();
+    if (
+      acp === "codex" ||
+      acp === "claude" ||
+      acp === "grok" ||
+      acp === "opencode" ||
+      acp === "pi"
+    ) {
+      session.acpProvider = acp;
+    }
   }
   const summary = row.session_summary?.trim();
   if (summary) {

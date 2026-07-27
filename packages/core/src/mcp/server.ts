@@ -324,7 +324,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "session_read_transcript",
     {
       description:
-        "Load a short recent transcript excerpt from the native CLI store for one session. Content is sent to the chat model — use only when summary is insufficient. Defaults to 2500 chars (max 8000). Not available for ACP chat provider. Read-only.",
+        "Load a short recent transcript excerpt for one session (CLI native store or ACP chat thread). Content is sent to the chat model — use only when summary is insufficient. Defaults to 2500 chars (max 8000). Read-only.",
       inputSchema: sessionReadTranscriptSchema
     },
     async (args: { provider: string; sessionId: string; maxChars?: number }) => {

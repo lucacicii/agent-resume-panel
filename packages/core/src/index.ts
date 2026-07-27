@@ -156,6 +156,15 @@ export {
   purgeRetiredAlmaCatalog
 } from "./catalog/mutations";
 export {
+  upsertAcpSessionInCatalog,
+  deleteAcpSessionFromCatalog,
+  syncAcpRecordsIntoCatalog,
+  buildAcpTranscriptRefs,
+  catalogDbForPanelHome,
+  countAcpCatalogSessions
+} from "./catalog/acpCatalog";
+export type { AcpCatalogRecordInput } from "./catalog/acpCatalog";
+export {
   loadProjectAliasesMap,
   getProjectAliasFromCatalog,
   setProjectAliasInCatalog,

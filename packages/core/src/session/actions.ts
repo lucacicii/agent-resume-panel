@@ -155,9 +155,7 @@ export async function autoRenameSessionAction(
       };
     }
 
-    if (session.provider !== "chat") {
-      await setUserTitleInCatalog(catalogDb, session.provider, session.id, result.title);
-    }
+    await setUserTitleInCatalog(catalogDb, session.provider, session.id, result.title);
 
     let nativeRenamed = false;
     let nativeError: string | undefined;
@@ -166,8 +164,9 @@ export async function autoRenameSessionAction(
       nativeRenamed = true;
     } catch (error) {
       nativeError = error instanceof Error ? error.message : String(error);
-      // Catalog title still updated for non-chat; surface native failure to caller.
+      // Catalog title still updated; surface native failure without failing auto-rename for CLI.
       if (session.provider === "chat") {
+        // ACP store rename failed after catalog write — still report error.
         throw error;
       }
     }
@@ -215,9 +214,7 @@ export async function renameSessionAction(
   }
   const homes = resolvePreviewHomes(settings);
 
-  if (session.provider !== "chat") {
-    await setUserTitleInCatalog(dbPath, session.provider, session.id, title);
-  }
+  await setUserTitleInCatalog(dbPath, session.provider, session.id, title);
 
   let nativeRenamed = false;
   let nativeError: string | undefined;

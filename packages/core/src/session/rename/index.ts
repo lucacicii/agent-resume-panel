@@ -1,4 +1,5 @@
 import { AgentSession } from "../../catalog/types";
+import { renameAcpSessionInStore } from "../../transcript/renameAcp";
 import { PreviewHomes } from "../../transcript/types";
 import { renameAgySession } from "./agy";
 import { renameClaudeSession } from "./claude";
@@ -42,7 +43,7 @@ export async function renameSessionNative(
     case "pi":
       return renamePiSession(homes.piHome, session, title);
     case "chat":
-      throw new Error("Rename is not supported for ACP chat sessions in Desktop yet.");
+      return renameAcpSessionInStore(homes.panelHome, session.id, title);
     default:
       throw new Error(`Rename is not supported for provider ${session.provider}.`);
   }

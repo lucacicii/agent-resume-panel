@@ -15,5 +15,5 @@
 
 ## Constraints
 
-- ACP chats are separate from CLI session history and are not GTD-tagged.
+- ACP **messages** stay in `panelHome/acp` JSONL; **session index** dual-writes to `catalog.db` as `provider=chat` + `acp_provider` so Workbench GTD, hide, rename, summary, search, and Memory ranges share the CLI session flow.
 - Do not broaden ACP filesystem, terminal, or permission capabilities without an explicit security review.

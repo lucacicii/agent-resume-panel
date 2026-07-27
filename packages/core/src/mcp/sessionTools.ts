@@ -394,17 +394,6 @@ export async function handleSessionReadTranscript(
     throw new Error("provider and sessionId are required.");
   }
 
-  if (provider === "chat") {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Transcript unavailable for provider chat (ACP chat sessions are not previewed via native CLI homes). Use session_read for metadata.`
-        }
-      ]
-    };
-  }
-
   const session = await getSessionById(ctx.catalogDb, provider, sessionId);
   if (!session) {
     return {

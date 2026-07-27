@@ -80,9 +80,6 @@ export function selectTranscriptIndexCandidates(
   const maybeStale: AgentSession[] = [];
 
   for (const session of sessions) {
-    if (session.provider === "chat") {
-      continue;
-    }
     const updatedAt = Number(session.updatedAt) || 0;
     if (nowMs < updatedAt + auto.quietDelayMs) {
       continue;

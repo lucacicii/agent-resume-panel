@@ -1,6 +1,12 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  catalogDbPath,
+  deleteAcpSessionFromCatalog,
+  ensureExtensionCatalogSchema,
+  upsertAcpSessionInCatalog
+} from "@agent-resume/core";
 import { readJsonLines } from "../history/jsonl";
 import { AcpAgentProvider, AcpChatMessage, AcpImageAttachment, AcpSessionRecord } from "./types";
 
@@ -60,6 +66,7 @@ export async function createAcpRecord(panelHome: string, projectPath: string, pr
     messageCount: 0
   };
   await appendJsonLine(acpSessionsPath(panelHome), record);
+  await mirrorAcpRecordToCatalog(panelHome, record);
   return record;
 }
 
@@ -76,6 +83,7 @@ export async function deleteAcpRecord(panelHome: string, chatId: string): Promis
       throw error;
     }
   }
+  await removeAcpRecordFromCatalog(panelHome, chatId);
 }
 
 export async function updateAcpRecord(panelHome: string, record: AcpSessionRecord): Promise<void> {
@@ -87,6 +95,33 @@ export async function updateAcpRecord(panelHome: string, record: AcpSessionRecor
     records.push(record);
   }
   await writeJsonLines(acpSessionsPath(panelHome), records);
+  await mirrorAcpRecordToCatalog(panelHome, record);
+}
+
+async function mirrorAcpRecordToCatalog(panelHome: string, record: AcpSessionRecord): Promise<void> {
+  try {
+    const dbPath = catalogDbPath(panelHome);
+    await ensureExtensionCatalogSchema(dbPath);
+    await upsertAcpSessionInCatalog(dbPath, panelHome, {
+      id: record.id,
+      title: record.title,
+      projectPath: record.projectPath,
+      acpProvider: record.provider,
+      updatedAt: record.updatedAt,
+      messageCount: record.messageCount,
+      model: record.provider
+    });
+  } catch {
+    // Dual-write must not break ACP chat; session sync backfills catalog.
+  }
+}
+
+async function removeAcpRecordFromCatalog(panelHome: string, chatId: string): Promise<void> {
+  try {
+    await deleteAcpSessionFromCatalog(catalogDbPath(panelHome), chatId);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function loadAcpMessages(panelHome: string, sessionId: string): Promise<AcpChatMessage[]> {
