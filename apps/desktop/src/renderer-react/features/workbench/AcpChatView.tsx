@@ -601,6 +601,20 @@ export function AcpChatView({
     };
   }, [configOptions]);
 
+  /** Codex (and similar): category collaboration_mode — Default / Plan. */
+  const collaborationSelect = useMemo(() => {
+    const config = configOptions.find(
+      (option): option is Extract<ConfigOption, { type: "select" }> =>
+        option.type === "select" && option.category === "collaboration_mode"
+    );
+    if (!config) return null;
+    return {
+      configId: config.id,
+      value: config.currentValue,
+      options: flattenSelectOptions(config.options)
+    };
+  }, [configOptions]);
+
   const respondPermission = async (optionId?: string, cancelled = false) => {
     if (!permission) return;
     const requestId = permission.requestId;
@@ -894,6 +908,24 @@ export function AcpChatView({
                 }}
               >
                 {modeSelect.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {collaborationSelect ? (
+              <select
+                className="wb-acp-toolbar-select"
+                value={collaborationSelect.value}
+                disabled={isRunning || isConnecting}
+                aria-label={t("desktop.workbench.acpCollaboration")}
+                title={t("desktop.workbench.acpCollaboration")}
+                onChange={(event) =>
+                  void onConfigSelectChange(collaborationSelect.configId, event.target.value)
+                }
+              >
+                {collaborationSelect.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.name}
                   </option>
