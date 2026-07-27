@@ -37,6 +37,10 @@ export class AcpChatManager {
     }
   }
 
+  async refreshExternalStore(): Promise<void> {
+    await Promise.allSettled([...this.panels.values()].map((panel) => panel.refreshExternalStore()));
+  }
+
   dispose(): void {
     for (const panel of this.panels.values()) {
       panel.dispose();

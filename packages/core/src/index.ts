@@ -165,6 +165,20 @@ export {
 } from "./catalog/acpCatalog";
 export type { AcpCatalogRecordInput } from "./catalog/acpCatalog";
 export {
+  acpSessionsPath,
+  acpThreadPath,
+  acpStoreLockPath,
+  ensureAcpStoreDirs,
+  loadAcpSessionRecords,
+  getAcpSessionRecord,
+  insertAcpSessionRecord,
+  updateAcpSessionRecord,
+  deleteAcpSessionRecord,
+  loadAcpThreadMessages,
+  appendAcpThreadMessage
+} from "./acp/store";
+export type { AcpSessionStoreRecord, AcpThreadStoreMessage } from "./acp/store";
+export {
   loadProjectAliasesMap,
   getProjectAliasFromCatalog,
   setProjectAliasInCatalog,

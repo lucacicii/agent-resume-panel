@@ -2,12 +2,21 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  acpSessionsPath as coreAcpSessionsPath,
+  acpThreadPath as coreAcpThreadPath,
+  appendAcpThreadMessage,
   catalogDbPath,
+  deleteAcpSessionRecord,
   deleteAcpSessionFromCatalog,
+  ensureAcpStoreDirs,
   ensureExtensionCatalogSchema,
+  getAcpSessionRecord,
+  insertAcpSessionRecord,
+  loadAcpSessionRecords,
+  loadAcpThreadMessages,
+  updateAcpSessionRecord,
   upsertAcpSessionInCatalog
 } from "@agent-resume/core";
-import { readJsonLines } from "../history/jsonl";
 import { AcpAgentProvider, AcpChatMessage, AcpImageAttachment, AcpSessionRecord } from "./types";
 
 export const ACP_MAX_IMAGES_PER_MESSAGE = 4;
@@ -26,35 +35,26 @@ export interface IncomingAcpImage {
 }
 
 export function acpSessionsPath(panelHome: string): string {
-  return path.join(panelHome, "acp", "sessions.jsonl");
+  return coreAcpSessionsPath(panelHome);
 }
 
 export function acpThreadPath(panelHome: string, sessionId: string): string {
-  return path.join(panelHome, "acp", "threads", `${sessionId}.jsonl`);
+  return coreAcpThreadPath(panelHome, sessionId);
 }
 
 export async function ensureAcpDirs(panelHome: string): Promise<void> {
-  await fs.mkdir(path.join(panelHome, "acp", "threads"), { recursive: true });
+  await ensureAcpStoreDirs(panelHome);
 }
 
 export async function loadAcpRecords(panelHome: string): Promise<AcpSessionRecord[]> {
-  const rows = await readJsonLines<AcpSessionRecord>(acpSessionsPath(panelHome));
-  const byId = new Map<string, AcpSessionRecord>();
-  for (const row of rows) {
-    if (row.id) {
-      byId.set(row.id, row);
-    }
-  }
-  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  return loadAcpSessionRecords<AcpSessionRecord>(panelHome);
 }
 
 export async function getAcpRecord(panelHome: string, id: string): Promise<AcpSessionRecord | undefined> {
-  const records = await loadAcpRecords(panelHome);
-  return records.find((record) => record.id === id);
+  return getAcpSessionRecord<AcpSessionRecord>(panelHome, id);
 }
 
 export async function createAcpRecord(panelHome: string, projectPath: string, provider: AcpAgentProvider): Promise<AcpSessionRecord> {
-  await ensureAcpDirs(panelHome);
   const now = Date.now();
   const record: AcpSessionRecord = {
     id: crypto.randomUUID(),
@@ -65,36 +65,18 @@ export async function createAcpRecord(panelHome: string, projectPath: string, pr
     updatedAt: now,
     messageCount: 0
   };
-  await appendJsonLine(acpSessionsPath(panelHome), record);
+  await insertAcpSessionRecord(panelHome, record);
   await mirrorAcpRecordToCatalog(panelHome, record);
   return record;
 }
 
 export async function deleteAcpRecord(panelHome: string, chatId: string): Promise<void> {
-  const records = await loadAcpRecords(panelHome);
-  const nextRecords = records.filter((record) => record.id !== chatId);
-  await writeJsonLines(acpSessionsPath(panelHome), nextRecords);
-
-  const threadFile = acpThreadPath(panelHome, chatId);
-  try {
-    await fs.unlink(threadFile);
-  } catch (error) {
-    if (!isMissingFile(error)) {
-      throw error;
-    }
-  }
+  await deleteAcpSessionRecord(panelHome, chatId);
   await removeAcpRecordFromCatalog(panelHome, chatId);
 }
 
 export async function updateAcpRecord(panelHome: string, record: AcpSessionRecord): Promise<void> {
-  const records = await loadAcpRecords(panelHome);
-  const index = records.findIndex((entry) => entry.id === record.id);
-  if (index >= 0) {
-    records[index] = record;
-  } else {
-    records.push(record);
-  }
-  await writeJsonLines(acpSessionsPath(panelHome), records);
+  await updateAcpSessionRecord(panelHome, record);
   await mirrorAcpRecordToCatalog(panelHome, record);
 }
 
@@ -125,19 +107,11 @@ async function removeAcpRecordFromCatalog(panelHome: string, chatId: string): Pr
 }
 
 export async function loadAcpMessages(panelHome: string, sessionId: string): Promise<AcpChatMessage[]> {
-  const rows = await readJsonLines<AcpChatMessage>(acpThreadPath(panelHome, sessionId));
-  const byId = new Map<string, AcpChatMessage>();
-  for (const row of rows) {
-    if (row.id) {
-      byId.set(row.id, row);
-    }
-  }
-  return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
+  return loadAcpThreadMessages<AcpChatMessage>(panelHome, sessionId);
 }
 
 export async function appendAcpMessage(panelHome: string, sessionId: string, message: AcpChatMessage): Promise<void> {
-  await ensureAcpDirs(panelHome);
-  await appendJsonLine(acpThreadPath(panelHome, sessionId), message);
+  await appendAcpThreadMessage(panelHome, sessionId, message);
 }
 
 export function acpAttachmentPath(
@@ -223,19 +197,4 @@ export async function readAcpImageBase64(panelHome: string, attachment: AcpImage
 function estimateBase64Bytes(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
-}
-
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
-async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf8");
-}
-
-async function writeJsonLines(filePath: string, values: unknown[]): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const body = values.map((value) => JSON.stringify(value)).join("\n");
-  await fs.writeFile(filePath, body ? `${body}\n` : "", "utf8");
 }

@@ -140,6 +140,37 @@ export function activate(context: vscode.ExtensionContext): void {
   gtdTree = new GtdTreeProvider(sessionGtdStore);
   notesTree = new NotesTreeProvider(notesStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
+  let acpStoreWatcher: vscode.Disposable | undefined;
+  let acpStoreWatcherHome: string | undefined;
+  let acpStoreRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const refreshAcpStoreFromDisk = () => {
+    if (acpStoreRefreshTimer) {
+      clearTimeout(acpStoreRefreshTimer);
+    }
+    acpStoreRefreshTimer = setTimeout(() => {
+      acpStoreRefreshTimer = undefined;
+      void refreshAcpChats(acpTree, false);
+      void acpChatManager.refreshExternalStore();
+    }, 200);
+  };
+  const replaceAcpStoreWatcher = () => {
+    const panelHome = panelHomeFromConfig();
+    if (acpStoreWatcher && acpStoreWatcherHome === panelHome) {
+      return;
+    }
+    acpStoreWatcher?.dispose();
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(path.join(panelHome, "acp")), "**/*.jsonl")
+    );
+    acpStoreWatcher = vscode.Disposable.from(
+      watcher,
+      watcher.onDidCreate(refreshAcpStoreFromDisk),
+      watcher.onDidChange(refreshAcpStoreFromDisk),
+      watcher.onDidDelete(refreshAcpStoreFromDisk)
+    );
+    acpStoreWatcherHome = panelHome;
+  };
+  replaceAcpStoreWatcher();
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
@@ -170,6 +201,14 @@ export function activate(context: vscode.ExtensionContext): void {
     gtdTreeView,
     notesTreeView,
     { dispose: () => acpChatManager.dispose() },
+    {
+      dispose: () => {
+        if (acpStoreRefreshTimer) {
+          clearTimeout(acpStoreRefreshTimer);
+        }
+        acpStoreWatcher?.dispose();
+      }
+    },
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshGtd", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshAcpChats", () => refreshAcpChats(acpTree, true)),
@@ -435,6 +474,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
+      }
+      if (event.affectsConfiguration("agentResume.panelHome")) {
+        replaceAcpStoreWatcher();
       }
       if (event.affectsConfiguration("agentResume.uiLanguage")) {
         void refreshAllLocalizedUi(false);
