@@ -26,7 +26,7 @@ test("resolveSessionTranscriptIndexSettings defaults and clamps", () => {
   assert.equal(b.concurrency, 1);
 });
 
-test("selectTranscriptIndexCandidates ignores chat and quiet delay; prefers missing index without requiring summary", () => {
+test("selectTranscriptIndexCandidates includes chat and respects quiet delay; prefers missing index without requiring summary", () => {
   const auto = resolveSessionTranscriptIndexSettings({
     sessionTranscriptIndex: { quietDelayMinutes: 15, maxPerTick: 5 }
   });
@@ -81,7 +81,7 @@ test("selectTranscriptIndexCandidates ignores chat and quiet delay; prefers miss
 
   const picked = selectTranscriptIndexCandidates(sessions, indexMeta, now, auto);
   assert.ok(picked.some((s) => s.id === "old-no-summary"), "missing summary still eligible");
-  assert.ok(!picked.some((s) => s.id === "acp"), "chat skipped");
+  assert.ok(picked.some((s) => s.id === "acp"), "chat now included");
   assert.ok(!picked.some((s) => s.id === "active"), "within quiet delay skipped");
   assert.ok(!picked.some((s) => s.id === "indexed-fresh"), "already indexed and not stale");
 });

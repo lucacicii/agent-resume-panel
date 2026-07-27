@@ -24,10 +24,10 @@ export async function previewAcpSession(
     raw = await fs.readFile(threadPath, "utf8");
   } catch (error) {
     if (isMissing(error)) {
+      // Thread files are created lazily on first message; absence just means an empty chat.
       return {
         title: session.title || session.id,
-        messages: [],
-        warning: "ACP thread file not found."
+        messages: []
       };
     }
     throw error;

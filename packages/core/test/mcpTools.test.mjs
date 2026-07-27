@@ -185,7 +185,7 @@ test("MCP GTD tools manage :::gtd blocks without rewriting unrelated content", a
 });
 
 test("session_search finds catalog sessions by title and session_read returns summary", async () => {
-  const { ctx, catalogDb } = await setupTestContext();
+  const { ctx, catalogDb, panelHome } = await setupTestContext();
   await seedSession(catalogDb, {
     id: "sess-auth-1",
     title: "Auth OAuth refactor",
@@ -202,6 +202,20 @@ test("session_search finds catalog sessions by title and session_read returns su
     summary: "hidden auth work",
     hidden: 1
   });
+  // ACP (provider "chat") sessions are first-class: seed one with a real thread file so
+  // session_read_transcript serves its transcript instead of reporting it unavailable.
+  await seedSession(catalogDb, {
+    provider: "chat",
+    id: "chat-acp-1",
+    title: "ACP chat",
+    summary: "ACP chat summary."
+  });
+  await fs.mkdir(path.join(panelHome, "acp", "threads"), { recursive: true });
+  await fs.writeFile(
+    path.join(panelHome, "acp", "threads", "chat-acp-1.jsonl"),
+    `${JSON.stringify({ id: "m1", role: "user", text: "hello from acp chat", timestamp: 1 })}\n`,
+    "utf8"
+  );
 
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -231,9 +245,10 @@ test("session_search finds catalog sessions by title and session_read returns su
 
     const chatTranscript = await client.callTool({
       name: "session_read_transcript",
-      arguments: { provider: "chat", sessionId: "any" }
+      arguments: { provider: "chat", sessionId: "chat-acp-1" }
     });
-    assert.ok(chatTranscript.content[0].text.toLowerCase().includes("unavailable"));
+    assert.ok(chatTranscript.content[0].text.includes("Transcript excerpt"));
+    assert.ok(chatTranscript.content[0].text.includes("hello from acp chat"));
 
     const gtdOk = await client.callTool({
       name: "session_set_gtd",
