@@ -123,3 +123,37 @@ describe("AcpChatView slash commands", () => {
     });
   });
 });
+
+describe("AcpChatView message layout", () => {
+  it("renders user and assistant rows with Telegram-style bubble classes", async () => {
+    await renderChat();
+    emit({
+      type: "history",
+      chatId: "chat-1",
+      messages: [
+        { id: "u1", role: "user", text: "Hello agent", timestamp: Date.UTC(2026, 0, 1, 12, 0, 0) },
+        { id: "a1", role: "assistant", text: "Hi there", timestamp: Date.UTC(2026, 0, 1, 12, 1, 0) },
+        { id: "a2", role: "assistant", text: "Second line", timestamp: Date.UTC(2026, 0, 1, 12, 2, 0) }
+      ]
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello agent")).toBeTruthy();
+      expect(screen.getByText("Hi there")).toBeTruthy();
+    });
+
+    const userBubble = screen.getByText("Hello agent").closest(".chat-bubble");
+    const assistantBubble = screen.getByText("Hi there").closest(".chat-bubble");
+    const secondAssistant = screen.getByText("Second line").closest(".chat-bubble");
+    expect(userBubble?.className).toContain("user");
+    expect(assistantBubble?.className).toContain("assistant");
+    expect(userBubble?.closest(".chat-message")?.className).toContain("chat-message-out");
+    expect(assistantBubble?.closest(".chat-message")?.className).toContain("chat-message-in");
+    expect(assistantBubble?.querySelector(".chat-sender")).toBeTruthy();
+    // Consecutive inbound messages only show sender on the first of the cluster.
+    expect(secondAssistant?.querySelector(".chat-sender")).toBeNull();
+    expect(assistantBubble?.querySelector(".chat-footer-meta")).toBeTruthy();
+    expect(document.querySelector(".wb-acp-day-separator")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /copy/i }).length).toBeGreaterThan(0);
+  });
+});

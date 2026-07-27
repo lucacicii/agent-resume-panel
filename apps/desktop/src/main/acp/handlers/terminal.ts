@@ -10,13 +10,34 @@ interface TerminalEntry {
 const terminals = new Map<string, TerminalEntry>();
 const OUTPUT_LIMIT = 200_000;
 
+function appendOutput(entry: TerminalEntry, value: string): void {
+  entry.output = (entry.output + value).slice(-OUTPUT_LIMIT);
+}
+
+function finishTerminal(entry: TerminalEntry, exitCode: number): void {
+  if (entry.exitCode != null) return;
+  entry.exitCode = exitCode;
+  for (const wait of entry.waiters) wait(exitCode);
+  entry.waiters = [];
+}
+
+function normalizeTerminalLaunch(command: string, args: string[]): { command: string; args: string[] } {
+  // Grok Build ACP currently sends this shell invocation as one command string
+  // rather than ACP's command + args shape. Keep the compatibility narrowly scoped.
+  if (!args.length && /^\/bin\/bash\s+-lc\s+\S/.test(command)) {
+    return { command: "/bin/bash", args: ["-lc", command] };
+  }
+  return { command, args };
+}
+
 export async function createTerminal(params: {
   command: string;
   args?: string[];
   cwd?: string | null;
 }): Promise<{ terminalId: string }> {
   const terminalId = `acp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const child = spawn(params.command, params.args ?? [], {
+  const launch = normalizeTerminalLaunch(params.command, params.args ?? []);
+  const child = spawn(launch.command, launch.args, {
     cwd: params.cwd || undefined,
     shell: false,
     env: process.env
@@ -28,15 +49,17 @@ export async function createTerminal(params: {
     waiters: []
   };
   child.stdout.on("data", (chunk: Buffer) => {
-    entry.output = (entry.output + chunk.toString()).slice(-OUTPUT_LIMIT);
+    appendOutput(entry, chunk.toString());
   });
   child.stderr.on("data", (chunk: Buffer) => {
-    entry.output = (entry.output + chunk.toString()).slice(-OUTPUT_LIMIT);
+    appendOutput(entry, chunk.toString());
+  });
+  child.on("error", (error: Error) => {
+    appendOutput(entry, `Failed to start terminal: ${error.message}\n`);
+    finishTerminal(entry, 127);
   });
   child.on("exit", (code) => {
-    entry.exitCode = code ?? 0;
-    for (const wait of entry.waiters) wait(entry.exitCode);
-    entry.waiters = [];
+    finishTerminal(entry, code ?? 0);
   });
   terminals.set(terminalId, entry);
   return { terminalId };

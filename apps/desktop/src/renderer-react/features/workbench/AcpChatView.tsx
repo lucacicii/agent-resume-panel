@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Check, FileText, LoaderCircle, Paperclip, Send, Square, X } from "lucide-react";
+import { Bot, Check, Copy, FileText, LoaderCircle, Paperclip, Send, Square, X } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
 import { Status, type StatusKind } from "../../components/Status";
@@ -135,6 +135,67 @@ function formatBytes(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatMessageTime(timestamp: number): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function dayKey(timestamp: number): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatDaySeparator(timestamp: number): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const today =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (today) {
+    return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date);
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+  if (isYesterday) {
+    return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date);
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" as const } : {})
+  }).format(date);
+}
+
+function isOutboundRole(role: string): boolean {
+  return role === "user";
+}
+
+async function copyText(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const area = document.createElement("textarea");
+  area.value = value;
+  area.style.position = "fixed";
+  area.style.left = "-9999px";
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand("copy");
+  area.remove();
 }
 
 function electronPath(file: File): string | undefined {
@@ -769,57 +830,110 @@ export function AcpChatView({
             <p className="chat-empty-hint">{t("desktop.workbench.acpEmptyHint")}</p>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`chat-turn ${message.role === "user" ? "user" : "assistant"}${message.streaming ? " streaming" : ""}`}
-            >
-              <div className="chat-bubble">
-                {message.role === "plan" ? (
-                  <pre className="wb-acp-plan">{message.text}</pre>
-                ) : message.role === "user" ? (
-                  <div className="chat-user-text">{message.text}</div>
-                ) : (
+          messages.map((message, index) => {
+            const outbound = isOutboundRole(message.role);
+            const prev = index > 0 ? messages[index - 1] : undefined;
+            const next = index < messages.length - 1 ? messages[index + 1] : undefined;
+            const currentDay = dayKey(message.timestamp);
+            const prevDay = prev ? dayKey(prev.timestamp) : "";
+            const showDay = Boolean(currentDay) && currentDay !== prevDay;
+            const prevSameSide = Boolean(prev) && isOutboundRole(prev!.role) === outbound && dayKey(prev!.timestamp) === currentDay;
+            const nextSameSide = Boolean(next) && isOutboundRole(next!.role) === outbound && dayKey(next!.timestamp) === currentDay;
+            const showSender = !outbound && !prevSameSide;
+            const clusterClass = [
+              prevSameSide ? "is-cluster-continue" : "is-cluster-start",
+              nextSameSide ? "is-cluster-before" : "is-cluster-end"
+            ].join(" ");
+            const timeLabel = formatMessageTime(message.timestamp);
+            const canCopy = !outbound && !message.streaming && Boolean(message.text?.trim());
+            return (
+              <div key={message.id} className="wb-acp-message-block">
+                {showDay ? (
+                  <div className="wb-acp-day-separator" role="separator">
+                    <span>{formatDaySeparator(message.timestamp)}</span>
+                  </div>
+                ) : null}
+                <div
+                  className={`chat-message ${outbound ? "chat-message-out" : "chat-message-in"} ${clusterClass}`}
+                >
                   <div
-                    className="markdown-body"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text || (message.streaming ? "…" : "")) }}
-                  />
-                )}
-                {message.images?.length || message.files?.length ? (
-                  <div className="wb-acp-message-attachments">
-                    {message.files?.map((file) => (
-                      <div className="wb-acp-file-chip" key={file.id} title={file.absolutePath || file.fileName}>
-                        <FileText size={13} aria-hidden="true" />
-                        <span className="wb-acp-file-name">{file.fileName}</span>
-                        {file.sizeBytes != null ? <span className="wb-acp-file-size">{formatBytes(file.sizeBytes)}</span> : null}
+                    className={`chat-bubble ${outbound ? "user" : "assistant"}${message.streaming ? " streaming" : ""}`}
+                  >
+                    {showSender ? (
+                      <div className="chat-sender">
+                        <Bot size={14} aria-hidden="true" />
+                        {providerLabel(provider, t)}
                       </div>
-                    ))}
-                    {message.images?.map((image) => (
-                      <div className="wb-acp-file-chip is-image" key={image.id} title={image.fileName}>
-                        <span className="wb-acp-file-name">{image.fileName}</span>
+                    ) : null}
+                    <div className="chat-body">
+                      {message.role === "plan" ? (
+                        <pre className="wb-acp-plan">{message.text}</pre>
+                      ) : outbound ? (
+                        <div className="chat-user-text">{message.text}</div>
+                      ) : (
+                        <div
+                          className="chat-body-text markdown-body"
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdown(message.text || (message.streaming ? "…" : ""))
+                          }}
+                        />
+                      )}
+                      {message.streaming && !message.text ? (
+                        <LoaderCircle className="chat-stream-cursor" size={14} aria-hidden="true" />
+                      ) : null}
+                    </div>
+                    {message.images?.length || message.files?.length ? (
+                      <div className="wb-acp-message-attachments">
+                        {message.files?.map((file) => (
+                          <div className="wb-acp-file-chip" key={file.id} title={file.absolutePath || file.fileName}>
+                            <FileText size={13} aria-hidden="true" />
+                            <span className="wb-acp-file-name">{file.fileName}</span>
+                            {file.sizeBytes != null ? <span className="wb-acp-file-size">{formatBytes(file.sizeBytes)}</span> : null}
+                          </div>
+                        ))}
+                        {message.images?.map((image) => (
+                          <div className="wb-acp-file-chip is-image" key={image.id} title={image.fileName}>
+                            <span className="wb-acp-file-name">{image.fileName}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : null}
+                    {message.toolCalls?.length ? (
+                      <div className="wb-acp-tools">
+                        {message.toolCalls.map((tool) => (
+                          <div className={`wb-acp-tool ${tool.status}`} key={tool.toolCallId}>
+                            {tool.status === "in_progress" || tool.status === "pending" ? (
+                              <LoaderCircle size={12} className="spin" />
+                            ) : tool.status === "completed" ? (
+                              <Check size={12} />
+                            ) : (
+                              <X size={12} />
+                            )}
+                            <span>{toolCallLabel(tool, t)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {timeLabel || canCopy ? (
+                      <div className="chat-footer">
+                        {canCopy ? (
+                          <button
+                            type="button"
+                            className="chat-copy-btn"
+                            onClick={() => void copyText(message.text)}
+                          >
+                            <Copy size={12} aria-hidden="true" />
+                            {t("desktop.common.copy")}
+                          </button>
+                        ) : null}
+                        {timeLabel ? <span className="chat-footer-meta">{timeLabel}</span> : null}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-                {message.toolCalls?.length ? (
-                  <div className="wb-acp-tools">
-                    {message.toolCalls.map((tool) => (
-                      <div className={`wb-acp-tool ${tool.status}`} key={tool.toolCallId}>
-                        {tool.status === "in_progress" || tool.status === "pending" ? (
-                          <LoaderCircle size={12} className="spin" />
-                        ) : tool.status === "completed" ? (
-                          <Check size={12} />
-                        ) : (
-                          <X size={12} />
-                        )}
-                        <span>{toolCallLabel(tool, t)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
