@@ -92,9 +92,15 @@ export interface SessionsDraft {
   embeddingIndexMaxPerTick: number;
 }
 
+/** Composite target: `cli:codex` | `acp:claude` | … */
+export type WorkbenchNewSessionTargetDraft = string;
+
 export interface WorkbenchDraft {
   scratchDir: string;
+  /** @deprecated Prefer defaultNewSessionTarget; kept for older call sites */
   defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "cursor";
+  /** Single-list Default Agent: CLI and ACP-prefixed options */
+  defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
   terminalTheme: WorkbenchTerminalThemeId;
@@ -113,7 +119,26 @@ export interface WorkbenchDraft {
   gitNestedScanIgnoreDirs: string;
   /** Enabled Workbench project context-menu actions. */
   projectContextMenu: WorkbenchProjectContextMenuAction[];
+  /** ACP permission policy */
+  acpAutoApprovePermissions: "ask" | "allowAll";
+  /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
+  acpExperimentalGrokVendorUi: boolean;
 }
+
+export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group: "cli" | "acp" }> = [
+  { value: "cli:codex", group: "cli" },
+  { value: "cli:claude", group: "cli" },
+  { value: "cli:grok", group: "cli" },
+  { value: "cli:agy", group: "cli" },
+  { value: "cli:opencode", group: "cli" },
+  { value: "cli:pi", group: "cli" },
+  { value: "cli:cursor", group: "cli" },
+  { value: "acp:claude", group: "acp" },
+  { value: "acp:codex", group: "acp" },
+  { value: "acp:grok", group: "acp" },
+  { value: "acp:opencode", group: "acp" },
+  { value: "acp:pi", group: "acp" }
+];
 
 export interface ReportDraft {
   enabled: boolean;
@@ -317,13 +342,43 @@ function numberInRange(value: number | undefined, fallback: number, min: number,
   return Math.max(min, Math.min(max, Math.round(Number(value) || fallback)));
 }
 
+function normalizeNewSessionTarget(settings: PanelSettings): string {
+  const workbench = settings.workbench;
+  const raw = workbench?.defaultNewSessionTarget?.trim();
+  if (raw && WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === raw)) {
+    return raw;
+  }
+  const provider = workbench?.defaultNewSessionProvider;
+  const cli =
+    provider === "claude" ||
+    provider === "grok" ||
+    provider === "agy" ||
+    provider === "opencode" ||
+    provider === "pi" ||
+    provider === "cursor"
+      ? provider
+      : "codex";
+  return `cli:${cli}`;
+}
+
 export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDraft {
   const workbench = settings.workbench;
   const editor = workbench?.editor;
+  const target = normalizeNewSessionTarget(settings);
   const provider = workbench?.defaultNewSessionProvider;
+  const defaultProvider =
+    provider === "claude" ||
+    provider === "grok" ||
+    provider === "agy" ||
+    provider === "opencode" ||
+    provider === "pi" ||
+    provider === "cursor"
+      ? provider
+      : "codex";
   return {
     scratchDir: workbench?.scratchDir || "",
-    defaultProvider: provider === "claude" || provider === "grok" || provider === "agy" || provider === "opencode" || provider === "pi" || provider === "cursor" ? provider : "codex",
+    defaultProvider: defaultProvider,
+    defaultNewSessionTarget: target,
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
@@ -341,16 +396,34 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
     projectContextMenu: normalizeProjectContextMenu(
       workbench?.projectContextMenu ?? DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU
-    )
+    ),
+    acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
+    acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
 }
 
 export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): Partial<PanelSettings> {
+  const target = WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === draft.defaultNewSessionTarget)
+    ? draft.defaultNewSessionTarget
+    : "cli:codex";
+  const cliProvider = target.startsWith("cli:")
+    ? (target.slice(4) as WorkbenchDraft["defaultProvider"])
+    : draft.defaultProvider;
+  const safeCli =
+    cliProvider === "claude" ||
+    cliProvider === "grok" ||
+    cliProvider === "agy" ||
+    cliProvider === "opencode" ||
+    cliProvider === "pi" ||
+    cliProvider === "cursor"
+      ? cliProvider
+      : "codex";
   return {
     workbench: {
       ...settings.workbench,
       scratchDir: draft.scratchDir.trim() || undefined,
-      defaultNewSessionProvider: draft.defaultProvider,
+      defaultNewSessionProvider: safeCli,
+      defaultNewSessionTarget: target,
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
@@ -369,6 +442,11 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
       projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu)
+    },
+    acp: {
+      ...settings.acp,
+      autoApprovePermissions: draft.acpAutoApprovePermissions === "allowAll" ? "allowAll" : "ask",
+      experimentalGrokVendorUi: draft.acpExperimentalGrokVendorUi === true
     }
   };
 }

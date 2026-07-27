@@ -20,6 +20,11 @@ export interface AgentSession {
   model?: string;
   branch?: string;
   source?: string;
+  /**
+   * When provider is "chat" (ACP), the underlying ACP agent
+   * (codex / claude / grok / opencode / pi).
+   */
+  acpProvider?: string;
   archived?: boolean;
   messageCount?: number;
   sessionSummary?: string;
@@ -72,6 +77,9 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   }
   if (row.source) {
     session.source = row.source;
+  }
+  if (row.acp_provider && row.provider === "chat") {
+    session.acpProvider = row.acp_provider;
   }
   const summary = row.session_summary?.trim();
   if (summary) {

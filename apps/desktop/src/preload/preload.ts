@@ -149,6 +149,7 @@ export interface DesktopApi {
     command?: string;
     cwd: string;
     external?: boolean;
+    acp?: { chatId: string; provider: string; title?: string };
     session?: AgentSession;
   }>;
   /** Agent tool/citation resume when terminal mode is xterm — open Workbench terminal. */
@@ -180,6 +181,111 @@ export interface DesktopApi {
     provider: string;
     useSystemTerminalOnly?: boolean;
   }): Promise<{ mode: string; command?: string; cwd: string }>;
+  /** ACP visual chat (Workbench). */
+  acpListSessions(args?: { projectPath?: string }): Promise<
+    Array<{
+      id: string;
+      title: string;
+      projectPath: string;
+      provider: string;
+      acpSessionId?: string;
+      currentModeId?: string;
+      createdAt: number;
+      updatedAt: number;
+      messageCount: number;
+    }>
+  >;
+  acpCreateSession(args: {
+    projectPath: string;
+    provider: string;
+  }): Promise<{
+    id: string;
+    title: string;
+    projectPath: string;
+    provider: string;
+    acpSessionId?: string;
+    currentModeId?: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+  }>;
+  acpGetSession(args: { chatId: string }): Promise<{
+    id: string;
+    title: string;
+    projectPath: string;
+    provider: string;
+    acpSessionId?: string;
+    currentModeId?: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+  } | null>;
+  acpDeleteSession(args: { chatId: string }): Promise<{ ok: boolean }>;
+  acpRenameSession(args: { chatId: string; title: string }): Promise<{
+    id: string;
+    title: string;
+    projectPath: string;
+    provider: string;
+    acpSessionId?: string;
+    currentModeId?: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+  }>;
+  acpLoadMessages(args: { chatId: string }): Promise<
+    Array<{
+      id: string;
+      role: string;
+      text: string;
+      timestamp: number;
+      images?: Array<{ id: string; mimeType: string; fileName: string; storagePath: string }>;
+      files?: Array<{
+        id: string;
+        mimeType: string;
+        fileName: string;
+        absolutePath?: string;
+        storagePath?: string;
+        sizeBytes?: number;
+      }>;
+      toolCalls?: Array<{
+        toolCallId: string;
+        title: string;
+        kind: string;
+        status: string;
+        locations?: Array<{ path: string; line?: number }>;
+        content?: unknown[];
+        rawInput?: unknown;
+        rawOutput?: unknown;
+      }>;
+    }>
+  >;
+  acpConnect(args: { chatId: string }): Promise<{ ok: boolean; record: { id: string; title: string; provider: string } }>;
+  acpPrompt(args: {
+    chatId: string;
+    text?: string;
+    images?: Array<{ mimeType: string; fileName: string; data: string }>;
+    files?: Array<{
+      mimeType: string;
+      fileName: string;
+      absolutePath?: string;
+      data?: string;
+      sizeBytes?: number;
+    }>;
+  }): Promise<{ ok: boolean }>;
+  acpCancel(args: { chatId: string }): Promise<{ ok: boolean }>;
+  acpSetMode(args: { chatId: string; modeId: string }): Promise<{ ok: boolean }>;
+  acpSetConfigOption(args: {
+    chatId: string;
+    configId: string;
+    value: string | boolean;
+  }): Promise<{ ok: boolean }>;
+  acpRespondPermission(args: {
+    requestId: string;
+    optionId?: string;
+    cancelled?: boolean;
+  }): Promise<{ ok: boolean }>;
+  acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
+  onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   terminalSpawn(args: {
     cwd: string;
     command?: string;
@@ -832,6 +938,24 @@ const api: DesktopApi = {
   },
   workbenchOpenCodexApp: (args) => ipcRenderer.invoke("workbench:openCodexApp", args),
   workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
+  acpListSessions: (args) => ipcRenderer.invoke("acp:listSessions", args),
+  acpCreateSession: (args) => ipcRenderer.invoke("acp:createSession", args),
+  acpGetSession: (args) => ipcRenderer.invoke("acp:getSession", args),
+  acpDeleteSession: (args) => ipcRenderer.invoke("acp:deleteSession", args),
+  acpRenameSession: (args) => ipcRenderer.invoke("acp:renameSession", args),
+  acpLoadMessages: (args) => ipcRenderer.invoke("acp:loadMessages", args),
+  acpConnect: (args) => ipcRenderer.invoke("acp:connect", args),
+  acpPrompt: (args) => ipcRenderer.invoke("acp:prompt", args),
+  acpCancel: (args) => ipcRenderer.invoke("acp:cancel", args),
+  acpSetMode: (args) => ipcRenderer.invoke("acp:setMode", args),
+  acpSetConfigOption: (args) => ipcRenderer.invoke("acp:setConfigOption", args),
+  acpRespondPermission: (args) => ipcRenderer.invoke("acp:respondPermission", args),
+  acpDisconnect: (args) => ipcRenderer.invoke("acp:disconnect", args),
+  onAcpStream: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: Record<string, unknown>) => callback(payload);
+    ipcRenderer.on("acp:stream", handler);
+    return () => ipcRenderer.removeListener("acp:stream", handler);
+  },
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),

@@ -46,6 +46,11 @@ export type {
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
   WorkbenchProjectContextMenuAction,
+  WorkbenchNewSessionTarget,
+  AcpAgentProvider,
+  AcpAutoApprovePermissions,
+  AcpAgentLaunchConfig,
+  AcpSettings,
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
@@ -62,13 +67,21 @@ export {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   WORKBENCH_TERMINAL_THEME_IDS,
-  WORKBENCH_TERMINAL_RENDERERS
+  WORKBENCH_TERMINAL_RENDERERS,
+  ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
   normalizeWorkbenchProjectContextMenu,
   normalizeWorkbenchTerminalTheme,
   normalizeWorkbenchTerminalRenderer
 } from "./settings/store";
+export {
+  formatCliNewSessionTarget,
+  formatAcpNewSessionTarget,
+  parseWorkbenchNewSessionTarget,
+  isAcpAgentProvider
+} from "./settings/newSessionTarget";
+export type { ParsedWorkbenchNewSessionTarget } from "./settings/newSessionTarget";
 export {
   parseNoteGtdTasks,
   appendNoteGtdTask,

@@ -94,6 +94,9 @@ import {
   type McpClientId
 } from "./mcpRegistration";
 import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
+import { disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
+import { loadAcpAgentSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
+import { getAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
@@ -370,16 +373,60 @@ async function resumeCatalogSession(
   command: string;
   cwd: string;
   external?: boolean;
+  /** ACP visual chat resume (Workbench opens AcpChatView). */
+  acp?: { chatId: string; provider: string; title?: string };
   session?: Awaited<ReturnType<typeof getSessionById>>;
 }> {
   const settings = await loadSettings();
   const paths = await loadPanelDbPaths(settings);
+  const panelHome = effectivePanelHome(settings);
+
+  // ACP chats may only live under panelHome/acp (not catalog).
+  if (provider === "chat") {
+    const record = await getAcpRecord(panelHome, id);
+    if (record) {
+      return {
+        mode: "acp",
+        command: "",
+        cwd: record.projectPath,
+        acp: { chatId: record.id, provider: record.provider, title: record.title },
+        session: {
+          provider: "chat",
+          id: record.id,
+          title: record.title,
+          projectPath: record.projectPath,
+          updatedAt: record.updatedAt,
+          messageCount: record.messageCount,
+          source: "acp",
+          acpProvider: record.provider
+        }
+      };
+    }
+  }
+
   const session = await getSessionById(paths.catalogDb, provider, id);
   if (!session) {
     throw new Error(`Session not found: ${provider} ${id}`);
   }
   const mode = resolveWorkbenchTerminalMode(settings);
   const cwd = await resolveSessionCwd(session.projectPath, settings);
+
+  if (session.provider === "chat" || session.source === "acp" || session.acpProvider) {
+    const acpProvider = session.acpProvider || "claude";
+    // Prefer store record for project path / title when present.
+    const record = await getAcpRecord(panelHome, session.id);
+    return {
+      mode: "acp",
+      command: "",
+      cwd: record?.projectPath || cwd,
+      acp: {
+        chatId: session.id,
+        provider: record?.provider || acpProvider,
+        title: record?.title || session.title
+      },
+      session
+    };
+  }
 
   if (session.provider === "cursor-ide") {
     await openProjectInEditor(cwd, "cursor", app.getLocale());
@@ -870,8 +917,12 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("sessions:list", async (_event, limit?: number) => {
-    const paths = await loadPanelDbPaths();
-    return listSessions(paths.catalogDb, limit ?? 500);
+    const settings = await loadSettings();
+    const paths = await loadPanelDbPaths(settings);
+    const cap = limit ?? 500;
+    const catalog = await listSessions(paths.catalogDb, cap);
+    const acp = await loadAcpAgentSessions(effectivePanelHome(settings), cap);
+    return mergeCatalogAndAcpSessions(catalog, acp, cap);
   });
 
   ipcMain.handle("gtd:listSessionStatuses", async () => {
@@ -1723,6 +1774,10 @@ app.whenReady().then(async () => {
   initI18nService(path.join(app.getAppPath()));
   applyAppIcon();
   registerIpc();
+  registerAcpIpc({
+    loadSettings,
+    getMainWindow: () => mainWindow
+  });
   registerWorkbenchFsIpc();
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
@@ -1800,6 +1855,7 @@ app.on("before-quit", () => {
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
+  disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
 });
 

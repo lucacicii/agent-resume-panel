@@ -7,7 +7,7 @@ import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
 import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
-import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU } from "./model";
+import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -40,7 +40,45 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
   };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
-      <SelectRow title={t("desktop.settings.defaultAgent")} description={t("desktop.settings.defaultAgentDesc")} value={draft.defaultProvider} onChange={(value) => update("defaultProvider", value as WorkbenchDraft["defaultProvider"])}><option value="codex">Codex</option><option value="claude">Claude</option><option value="grok">Grok</option><option value="agy">Antigravity</option><option value="opencode">OpenCode</option><option value="pi">Pi</option><option value="cursor">Cursor CLI</option></SelectRow>
+      <SelectRow
+        title={t("desktop.settings.defaultAgent")}
+        description={t("desktop.settings.defaultAgentDesc")}
+        value={draft.defaultNewSessionTarget}
+        onChange={(value) => {
+          const next = { ...draft, defaultNewSessionTarget: value };
+          if (value.startsWith("cli:")) {
+            next.defaultProvider = value.slice(4) as WorkbenchDraft["defaultProvider"];
+          }
+          setDraft(next);
+          scheduleSave(next);
+        }}
+      >
+        <optgroup label={t("desktop.settings.newSessionGroupCli")}>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => (
+            <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
+          ))}
+        </optgroup>
+        <optgroup label={t("desktop.settings.newSessionGroupAcp")}>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => (
+            <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
+          ))}
+        </optgroup>
+      </SelectRow>
+      <SelectRow
+        title={t("desktop.settings.acpAutoApprove")}
+        description={t("desktop.settings.acpAutoApproveDesc")}
+        value={draft.acpAutoApprovePermissions}
+        onChange={(value) => update("acpAutoApprovePermissions", value as WorkbenchDraft["acpAutoApprovePermissions"])}
+      >
+        <option value="ask">{t("desktop.settings.acpAutoApproveAsk")}</option>
+        <option value="allowAll">{t("desktop.settings.acpAutoApproveAllowAll")}</option>
+      </SelectRow>
+      <ToggleRow
+        title={t("desktop.settings.acpExperimentalGrokVendorUi")}
+        description={t("desktop.settings.acpExperimentalGrokVendorUiDesc")}
+        checked={draft.acpExperimentalGrokVendorUi}
+        onChange={(value) => update("acpExperimentalGrokVendorUi", value)}
+      />
       <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value)} /></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">

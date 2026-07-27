@@ -132,6 +132,31 @@ describe("settings model", () => {
     expect(patch.workbench?.gitNestedScanIgnoreDirs).toEqual(["node_modules", "dist"]);
   });
 
+  it("migrates legacy defaultNewSessionProvider and persists ACP targets", () => {
+    const draft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { defaultNewSessionProvider: "claude" }
+    });
+    expect(draft.defaultNewSessionTarget).toBe("cli:claude");
+    expect(draft.acpAutoApprovePermissions).toBe("ask");
+
+    const acpDraft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { defaultNewSessionTarget: "acp:claude" },
+      acp: { autoApprovePermissions: "allowAll" }
+    });
+    expect(acpDraft.defaultNewSessionTarget).toBe("acp:claude");
+    expect(acpDraft.acpAutoApprovePermissions).toBe("allowAll");
+
+    const patch = workbenchPatch(settings, {
+      ...acpDraft,
+      defaultNewSessionTarget: "acp:codex",
+      acpAutoApprovePermissions: "ask"
+    });
+    expect(patch.workbench?.defaultNewSessionTarget).toBe("acp:codex");
+    expect(patch.acp?.autoApprovePermissions).toBe("ask");
+  });
+
   it("defaults and normalizes workbench terminal theme presets", () => {
     const defaultDraft = workbenchDraftFromSettings(settings);
     expect(defaultDraft.terminalTheme).toBe("default-dark");

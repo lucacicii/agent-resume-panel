@@ -131,10 +131,55 @@ export interface WorkbenchEditorSettings {
   autoSaveDelayMs?: WorkbenchEditorAutoSaveDelayMs;
 }
 
+/**
+ * Workbench "New session" target.
+ * CLI and ACP share provider names; the channel prefix disambiguates launch path.
+ * Examples: `cli:codex`, `acp:claude`.
+ */
+export type WorkbenchNewSessionTarget = string;
+
+export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi";
+
+export const ACP_AGENT_PROVIDERS: readonly AcpAgentProvider[] = [
+  "claude",
+  "codex",
+  "grok",
+  "opencode",
+  "pi"
+] as const;
+
+export type AcpAutoApprovePermissions = "ask" | "allowAll";
+
+export interface AcpAgentLaunchConfig {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+/** Shared panel-home ACP settings (Desktop Workbench; optional for extension later). */
+export interface AcpSettings {
+  autoApprovePermissions?: AcpAutoApprovePermissions;
+  agents?: Partial<Record<AcpAgentProvider, AcpAgentLaunchConfig>>;
+  /**
+   * Experimental: map Grok Build proprietary ACP session meta into model + thinking toolbar options.
+   * Default false (opt-in). Disable when official ACP configOptions/modes cover Grok.
+   */
+  experimentalGrokVendorUi?: boolean;
+}
+
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/.desktop/scratch */
   scratchDir?: string;
+  /**
+   * Legacy CLI-only default agent. Prefer `defaultNewSessionTarget`.
+   * Still written for older readers as the CLI provider when target is CLI.
+   */
   defaultNewSessionProvider?: AgentProvider;
+  /**
+   * Composite default for Workbench new session: `cli:{provider}` or `acp:{provider}`.
+   * When unset, falls back to `cli:{defaultNewSessionProvider || "codex"}`.
+   */
+  defaultNewSessionTarget?: WorkbenchNewSessionTarget;
   /** Workbench ⌘T / Ctrl+T shortcut action. Default newTerminal. */
   cmdTAction?: WorkbenchCmdTAction;
   /** Editor used by the workbench project context menu. Default auto. */
@@ -286,6 +331,8 @@ export interface PanelSettings {
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
   workbench?: WorkbenchSettings;
+  /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
+  acp?: AcpSettings;
   ghosttyExecutable?: string;
   ghosttyLaunchMode?: GhosttyLaunchMode;
   ghosttyAutoPasteDelayMs?: number;

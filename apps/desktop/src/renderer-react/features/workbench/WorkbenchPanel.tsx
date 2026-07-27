@@ -26,7 +26,7 @@ import type {
 } from "@agent-resume/core";
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
-  ArrowDown, ArrowUp, ArrowUpToLine, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
+  ArrowDown, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
   Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, X
 } from "lucide-react";
@@ -36,6 +36,7 @@ import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
+import { AcpChatView } from "./AcpChatView";
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 
@@ -96,6 +97,13 @@ type TerminalPane = {
   repoRoot?: string | null;
   gitMode?: TerminalGitInfo["mode"];
   nestedRepos?: TerminalGitInfo["nestedRepos"];
+};
+type AcpChatPane = {
+  key: string;
+  recordId: string;
+  title: string;
+  provider: string;
+  projectPath: string;
 };
 type SideView = "files" | "git" | "search" | "scripts" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
@@ -236,6 +244,14 @@ function basename(value = ""): string {
 
 function sessionKey(session: AgentSession): string {
   return `${session.provider}:${session.id}`;
+}
+
+function isAcpSession(session: AgentSession): boolean {
+  return session.provider === "chat" || session.source === "acp" || Boolean(session.acpProvider);
+}
+
+function acpListSessionKey(recordId: string): string {
+  return `chat:${recordId}`;
 }
 
 function relativeTime(timestamp: number): string {
@@ -1204,6 +1220,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [terminalCreating, setTerminalCreating] = useState(false);
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
+  const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
@@ -1279,9 +1296,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  const openSessionKeys = useMemo(() => new Set(
-    terminals.flatMap((pane) => pane.sessionKey ? [pane.sessionKey] : [])
-  ), [terminals]);
+  const openSessionKeys = useMemo(() => {
+    const keys = new Set(terminals.flatMap((pane) => (pane.sessionKey ? [pane.sessionKey] : [])));
+    for (const pane of acpChats) {
+      keys.add(acpListSessionKey(pane.recordId));
+    }
+    return keys;
+  }, [acpChats, terminals]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -1490,10 +1511,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
   const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
   const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
+  const currentAcpChats = acpChats.filter((pane) => pane.projectPath === selectedProject);
   const activePane = activePanes[paneProjectKey(selectedProject)] || "";
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
+  const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
   const branchStatusTerminal = activeTerminal
     || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
@@ -1625,47 +1648,99 @@ export function WorkbenchPanel(): ReactPortal | null {
     void refreshTerminalGit(key);
   }, [refreshTerminalGit]);
 
+  const nextPaneAfterClose = useCallback((
+    projectPath: string,
+    closedKey: string,
+    options?: { remainingTerminals?: TerminalPane[]; remainingAcp?: AcpChatPane[] }
+  ) => {
+    const projectKey = paneProjectKey(projectPath);
+    const history = (paneHistoryRef.current[projectKey] || []).filter((item) => item !== closedKey);
+    paneHistoryRef.current[projectKey] = history;
+    const remainingTerminals =
+      options?.remainingTerminals ??
+      terminals.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const remainingAcp =
+      options?.remainingAcp ?? acpChats.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const projectEditors = editors.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const projectDiffs = diffs.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const liveKeys = new Set([
+      ...remainingTerminals.map((item) => item.key),
+      ...remainingAcp.map((item) => item.key),
+      ...projectEditors.map((item) => item.key),
+      ...projectDiffs.map((item) => item.key)
+    ]);
+    const nextPane =
+      history.find((item) => liveKeys.has(item)) ||
+      remainingTerminals[remainingTerminals.length - 1]?.key ||
+      remainingAcp[remainingAcp.length - 1]?.key ||
+      projectEditors[0]?.key ||
+      projectDiffs[0]?.key ||
+      "";
+    if (nextPane) {
+      paneHistoryRef.current[projectKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
+    }
+    setActivePanes((current) => (current[projectKey] === closedKey ? { ...current, [projectKey]: nextPane } : current));
+  }, [acpChats, diffs, editors, terminals]);
+
   const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);
     if (pane?.ptyId) terminalRefs.current.delete(pane.ptyId);
     terminalsRef.current = terminalsRef.current.filter((item) => item.key !== key);
     setTerminals((current) => current.filter((item) => item.key !== key));
     if (pane) {
-      const projectKey = paneProjectKey(pane.projectPath);
-      const history = (paneHistoryRef.current[projectKey] || []).filter((item) => item !== key);
-      paneHistoryRef.current[projectKey] = history;
-
-      const remainingTerminals = terminals.filter((item) => item.projectPath === pane.projectPath && item.key !== key);
-      const projectEditors = editors.filter((item) => item.projectPath === pane.projectPath);
-      const projectDiffs = diffs.filter((item) => item.projectPath === pane.projectPath);
-      const liveKeys = new Set([
-        ...remainingTerminals.map((item) => item.key),
-        ...projectEditors.map((item) => item.key),
-        ...projectDiffs.map((item) => item.key)
-      ]);
-      // Prefer most recently activated remaining pane (VS Code / browser-style ⌘W).
-      const nextPane = history.find((item) => liveKeys.has(item))
-        || remainingTerminals[remainingTerminals.length - 1]?.key
-        || projectEditors[0]?.key
-        || projectDiffs[0]?.key
-        || "";
-      if (nextPane) {
-        paneHistoryRef.current[projectKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
-      }
-      setActivePanes((current) => current[projectKey] === key ? { ...current, [projectKey]: nextPane } : current);
+      nextPaneAfterClose(pane.projectPath, key, {
+        remainingTerminals: terminals.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
+      });
     }
-  }, [diffs, editors, terminals]);
+  }, [nextPaneAfterClose, terminals]);
+
+  const closeAcpChat = useCallback((key: string) => {
+    const pane = acpChats.find((item) => item.key === key);
+    setAcpChats((current) => current.filter((item) => item.key !== key));
+    if (pane) {
+      void desktopApi().acpDisconnect({ chatId: pane.recordId });
+      nextPaneAfterClose(pane.projectPath, key, {
+        remainingAcp: acpChats.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
+      });
+    }
+  }, [acpChats, nextPaneAfterClose]);
+
+  const addAcpChat = useCallback((record: {
+    id: string;
+    title: string;
+    provider: string;
+    projectPath: string;
+  }) => {
+    const key = `acp:${record.id}`;
+    const projectPath = record.projectPath;
+    setAcpChats((current) => {
+      if (current.some((pane) => pane.key === key)) return current;
+      return [
+        ...current,
+        {
+          key,
+          recordId: record.id,
+          title: record.title || t("desktop.workbench.acpChat"),
+          provider: record.provider,
+          projectPath
+        }
+      ];
+    });
+    setActivePane(key, projectPath);
+  }, [setActivePane, t]);
 
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
     if (activePane.startsWith("terminal:")) {
       closeTerminal(activePane);
+    } else if (activePane.startsWith("acp:")) {
+      closeAcpChat(activePane);
     } else if (activePane.startsWith("editor:")) {
       setEditors((current) => current.filter((item) => item.key !== activePane));
     } else {
       setDiffs((current) => current.filter((item) => item.key !== activePane));
     }
-  }, [activePane, closeTerminal]);
+  }, [activePane, closeAcpChat, closeTerminal]);
 
   const openBlankTerminal = useCallback(async () => {
     if (terminalCreating) return;
@@ -1678,19 +1753,46 @@ export function WorkbenchPanel(): ReactPortal | null {
     finally { setTerminalCreating(false); }
   }, [addTerminal, currentTerminals.length, selectedProject, t, terminalCreating]);
 
+  const resolveNewSessionTarget = useCallback(():
+    | { channel: "cli"; provider: AgentProvider }
+    | { channel: "acp"; provider: string } => {
+    const raw = String(settings?.workbench?.defaultNewSessionTarget || "").trim();
+    if (raw.startsWith("acp:")) {
+      const provider = raw.slice(4);
+      if (["claude", "codex", "grok", "opencode", "pi"].includes(provider)) {
+        return { channel: "acp", provider };
+      }
+    }
+    if (raw.startsWith("cli:")) {
+      return { channel: "cli", provider: (raw.slice(4) || "codex") as AgentProvider };
+    }
+    return {
+      channel: "cli",
+      provider: (settings?.workbench?.defaultNewSessionProvider || "codex") as AgentProvider
+    };
+  }, [settings?.workbench?.defaultNewSessionProvider, settings?.workbench?.defaultNewSessionTarget]);
+
   const newSession = useCallback(async () => {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
       const cwd = selectedProject || await desktopApi().createScratchDir();
       if (!selectedProject) selectProject(cwd);
-      const provider = (settings?.workbench?.defaultNewSessionProvider || "codex") as AgentProvider;
-      const result = await desktopApi().workbenchNewSession({ cwd, provider });
-      if (result.mode === "xterm" && result.command) addTerminal(t("desktop.workbench.newSessionTitle", basename(cwd)), result.cwd, result.command, cwd);
-      await loadSessions();
+      const target = resolveNewSessionTarget();
+      if (target.channel === "acp") {
+        const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
+        addAcpChat(record);
+        await loadSessions();
+      } else {
+        const result = await desktopApi().workbenchNewSession({ cwd, provider: target.provider as AgentProvider });
+        if (result.mode === "xterm" && result.command) {
+          addTerminal(t("desktop.workbench.newSessionTitle", basename(cwd)), result.cwd, result.command, cwd);
+        }
+        await loadSessions();
+      }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addTerminal, loadSessions, selectedProject, settings?.workbench?.defaultNewSessionProvider, t, terminalCreating]);
+  }, [addAcpChat, addTerminal, loadSessions, resolveNewSessionTarget, selectedProject, t, terminalCreating]);
 
   const newSessionForProject = useCallback(async (cwd: string, projectId?: string) => {
     if (terminalCreating) return;
@@ -1705,14 +1807,22 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         resolvedCwd = resolved.cwd;
       }
-      const provider = (settings?.workbench?.defaultNewSessionProvider || "codex") as AgentProvider;
-      const result = await desktopApi().workbenchNewSession({ cwd: resolvedCwd, provider });
+      const target = resolveNewSessionTarget();
       selectProject(resolvedCwd);
-      if (result.mode === "xterm" && result.command) addTerminal(t("desktop.workbench.newSessionTitle", basename(resolvedCwd)), result.cwd, result.command, resolvedCwd);
-      await loadSessions();
+      if (target.channel === "acp") {
+        const record = await desktopApi().acpCreateSession({ projectPath: resolvedCwd, provider: target.provider });
+        addAcpChat(record);
+        await loadSessions();
+      } else {
+        const result = await desktopApi().workbenchNewSession({ cwd: resolvedCwd, provider: target.provider as AgentProvider });
+        if (result.mode === "xterm" && result.command) {
+          addTerminal(t("desktop.workbench.newSessionTitle", basename(resolvedCwd)), result.cwd, result.command, resolvedCwd);
+        }
+        await loadSessions();
+      }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addTerminal, loadSessions, settings?.workbench?.defaultNewSessionProvider, t, terminalCreating]);
+  }, [addAcpChat, addTerminal, loadSessions, resolveNewSessionTarget, t, terminalCreating]);
 
   const openSessionSearch = () => {
     setSessionSearchOpen(true);
@@ -1785,6 +1895,35 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const openSession = async (session: AgentSession) => {
     const key = sessionKey(session);
+
+    if (isAcpSession(session)) {
+      const projectPath = session.projectPath || "";
+      const existingAcp = acpChats.find((pane) => pane.recordId === session.id);
+      if (existingAcp) {
+        selectProject(existingAcp.projectPath || projectPath);
+        setActivePane(existingAcp.key, existingAcp.projectPath || projectPath);
+        setActiveSessionKey(key);
+        return;
+      }
+      if (openingSessionKeysRef.current.has(key)) return;
+      openingSessionKeysRef.current.add(key);
+      setActiveSessionKey(key);
+      try {
+        if (projectPath) selectProject(projectPath);
+        addAcpChat({
+          id: session.id,
+          title: session.title || session.id,
+          provider: session.acpProvider || "claude",
+          projectPath: projectPath || session.projectPath
+        });
+      } catch (error) {
+        setStatus({ text: statusError(error), kind: "error" });
+      } finally {
+        openingSessionKeysRef.current.delete(key);
+      }
+      return;
+    }
+
     const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
     if (existing) {
       selectProject(existing.projectPath);
@@ -1797,6 +1936,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActiveSessionKey(key);
     try {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
+      // Main may return ACP for chat rows when opened via generic resume path.
+      if (result.mode === "acp" && result.acp) {
+        if (result.cwd) selectProject(result.cwd);
+        addAcpChat({
+          id: result.acp.chatId,
+          title: result.acp.title || session.title || session.id,
+          provider: result.acp.provider || session.acpProvider || "claude",
+          projectPath: result.cwd || session.projectPath
+        });
+        return;
+      }
       if (result.external) {
         setStatus({ text: result.command || t("desktop.workbench.externalTerminalHint"), kind: "ok" });
         return;
@@ -2724,7 +2874,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           const isOpen = openSessionKeys.has(sessionKey(session));
           const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
           const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
-          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
         }) : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
@@ -2759,10 +2909,13 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
         </div>
         <div className="wb-detail-body">
-          <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
+          <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentAcpChats.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" /> {pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || currentAcpChats[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || currentAcpChats[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} /></div>;
-          })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
+          })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
+            const visible = pane.projectPath === selectedProject && activePane === pane.key;
+            return <AcpChatView key={pane.key} recordId={pane.recordId} provider={pane.provider} projectPath={pane.projectPath} title={pane.title} active={active && visible} onTitleChange={(nextTitle) => setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item))} />;
+          })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
           {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span></div><div className="wb-file-tree wb-explorer-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div><div className="wb-search-pane"><div className="wb-search-form" role="search"><input ref={searchInputRef} type="search" className="wb-search-input" value={searchQuery} placeholder={t("desktop.workbench.searchPlaceholder")} aria-label={t("desktop.workbench.sidePanelSearch")} autoComplete="off" spellCheck={false} disabled={!selectedProject} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }} /><div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}><button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button><button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button><button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button></div></div>{!selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>
       </main>

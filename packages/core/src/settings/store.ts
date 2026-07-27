@@ -183,10 +183,34 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ),
       editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },
+    // Desktop ACP (permissions, launch overrides, experimental vendor UI).
+    // Must merge or Workbench ACP toggles never persist across save/reload.
+    acp: mergeAcpSettings(base.acp, partial.acp),
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
     ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
   };
+}
+
+function mergeAcpSettings(
+  base: PanelSettings["acp"] | undefined,
+  partial: PanelSettings["acp"] | undefined
+): PanelSettings["acp"] | undefined {
+  if (!base && !partial) return undefined;
+  const agents = {
+    ...(base?.agents || {}),
+    ...(partial?.agents || {})
+  };
+  const merged = {
+    ...(base || {}),
+    ...(partial || {}),
+    ...(Object.keys(agents).length ? { agents } : {})
+  };
+  // Drop empty agents object noise.
+  if (merged.agents && !Object.keys(merged.agents).length) {
+    delete merged.agents;
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 /**

@@ -2,7 +2,7 @@
 
 > Parent index: `.agents/menus-index.md`
 >
-> **Scope:** VS Code extension only. Desktop has no ACP Chat surface.
+> **Scope:** VS Code extension owns the activity-bar ACP Chats tree and editor webview. **Desktop Workbench** also launches ACP visual chat panes when Settings → Workbench → New Session targets `acp:*` (see `apps/desktop/src/main/acp/` and `AcpChatView.tsx`). Both share `panelHome/acp` storage.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
