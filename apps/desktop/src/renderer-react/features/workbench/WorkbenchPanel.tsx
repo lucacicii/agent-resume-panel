@@ -246,8 +246,9 @@ function sessionKey(session: AgentSession): string {
   return `${session.provider}:${session.id}`;
 }
 
+/** ACP chats are catalog provider "chat" (extension dual-write + desktop merge). Never treat CLI providers as ACP. */
 function isAcpSession(session: AgentSession): boolean {
-  return session.provider === "chat" || session.source === "acp" || Boolean(session.acpProvider);
+  return session.provider === "chat";
 }
 
 function acpListSessionKey(recordId: string): string {
@@ -1556,13 +1557,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
   }, [selectedProject]);
 
-  const selectProject = (project: string | null) => {
-    setSelectedProject(project);
+  const selectProject = (project: string | null, options?: { keepSessionKey?: boolean }) => {
+    setSelectedProject((current) => {
+      if (current === project) return current;
+      return project;
+    });
     try {
       if (project) localStorage.setItem(PROJECT_KEY, project);
       else localStorage.removeItem(PROJECT_KEY);
     } catch { /* persistence is optional */ }
-    setActiveSessionKey("");
+    if (!options?.keepSessionKey) setActiveSessionKey("");
     setSide(null);
     setGit(null);
     setGitLog(null);
@@ -1900,7 +1904,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const projectPath = session.projectPath || "";
       const existingAcp = acpChats.find((pane) => pane.recordId === session.id);
       if (existingAcp) {
-        selectProject(existingAcp.projectPath || projectPath);
+        selectProject(existingAcp.projectPath || projectPath, { keepSessionKey: true });
         setActivePane(existingAcp.key, existingAcp.projectPath || projectPath);
         setActiveSessionKey(key);
         return;
@@ -1909,13 +1913,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       openingSessionKeysRef.current.add(key);
       setActiveSessionKey(key);
       try {
-        if (projectPath) selectProject(projectPath);
+        if (projectPath) selectProject(projectPath, { keepSessionKey: true });
         addAcpChat({
           id: session.id,
           title: session.title || session.id,
           provider: session.acpProvider || "claude",
           projectPath: projectPath || session.projectPath
         });
+        setActiveSessionKey(key);
       } catch (error) {
         setStatus({ text: statusError(error), kind: "error" });
       } finally {
@@ -1926,7 +1931,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
     const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
     if (existing) {
-      selectProject(existing.projectPath);
+      selectProject(existing.projectPath, { keepSessionKey: true });
       setActivePane(existing.key, existing.projectPath);
       setActiveSessionKey(key);
       return;
@@ -1938,22 +1943,34 @@ export function WorkbenchPanel(): ReactPortal | null {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
       // Main may return ACP for chat rows when opened via generic resume path.
       if (result.mode === "acp" && result.acp) {
-        if (result.cwd) selectProject(result.cwd);
+        const acpProject = result.cwd || session.projectPath || "";
+        if (acpProject) selectProject(acpProject, { keepSessionKey: true });
         addAcpChat({
           id: result.acp.chatId,
           title: result.acp.title || session.title || session.id,
           provider: result.acp.provider || session.acpProvider || "claude",
-          projectPath: result.cwd || session.projectPath
+          projectPath: acpProject
         });
+        setActiveSessionKey(key);
         return;
       }
-      if (result.external) {
+      if (result.external || result.mode === "external-system") {
         setStatus({ text: result.command || t("desktop.workbench.externalTerminalHint"), kind: "ok" });
         return;
       }
-      const projectPath = session.projectPath || result.cwd;
-      selectProject(projectPath);
-      addTerminal(session.title || session.id, result.cwd, result.command, projectPath, key);
+      const cwd = (result.cwd || session.projectPath || "").trim();
+      const command = (result.command || "").trim();
+      if (!cwd) {
+        setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
+        return;
+      }
+      if (!command) {
+        setStatus({ text: t("desktop.workbench.resumeCommandMissing"), kind: "error" });
+        return;
+      }
+      // Prefer resolved cwd so terminal pane projectPath matches selection.
+      selectProject(cwd, { keepSessionKey: true });
+      addTerminal(session.title || session.id, cwd, command, cwd, key);
       setActiveSessionKey(key);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { openingSessionKeysRef.current.delete(key); }

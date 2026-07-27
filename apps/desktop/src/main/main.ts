@@ -416,9 +416,9 @@ async function resumeCatalogSession(
   const mode = resolveWorkbenchTerminalMode(settings);
   const cwd = await resolveSessionCwd(session.projectPath, settings);
 
-  if (session.provider === "chat" || session.source === "acp" || session.acpProvider) {
+  // Only provider "chat" is ACP. Do not use source/acpProvider alone — that must never hijack CLI resume.
+  if (session.provider === "chat") {
     const acpProvider = session.acpProvider || "claude";
-    // Prefer store record for project path / title when present.
     const record = await getAcpRecord(panelHome, session.id);
     return {
       mode: "acp",

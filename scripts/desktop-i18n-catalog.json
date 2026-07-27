@@ -644,7 +644,8 @@
       "desktop.workbench.acpUnsupportedImage": "Unsupported image type. Use PNG, JPEG, WebP, or GIF.",
       "desktop.workbench.acpFileUploadUnavailable": "File upload is unavailable until the agent is connected.",
       "desktop.workbench.acpFileNeedPath": "\"{0}\" is too large to embed without a local path. Prefer files from disk.",
-      "desktop.workbench.acpModel": "Model"
+      "desktop.workbench.acpModel": "Model",
+      "desktop.workbench.resumeCommandMissing": "Could not build a resume command for this session."
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1724,7 +1725,8 @@
       "desktop.workbench.acpUnsupportedImage": "不支持的图片类型。请使用 PNG、JPEG、WebP 或 GIF。",
       "desktop.workbench.acpFileUploadUnavailable": "Agent 连接后才能上传文件。",
       "desktop.workbench.acpFileNeedPath": "「{0}」过大且无法在无本地路径时嵌入，请选择磁盘上的文件。",
-      "desktop.workbench.acpModel": "模型"
+      "desktop.workbench.acpModel": "模型",
+      "desktop.workbench.resumeCommandMissing": "无法为该会话生成恢复命令。"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2849,7 +2851,8 @@
       "desktop.workbench.acpUnsupportedImage": "未対応の画像形式です。PNG / JPEG / WebP / GIF を使用してください。",
       "desktop.workbench.acpFileUploadUnavailable": "エージェント接続後にファイルをアップロードできます。",
       "desktop.workbench.acpFileNeedPath": "「{0}」はローカルパスなしでは大きすぎて埋め込めません。ディスク上のファイルを選んでください。",
-      "desktop.workbench.acpModel": "モデル"
+      "desktop.workbench.acpModel": "モデル",
+      "desktop.workbench.resumeCommandMissing": "このセッションの再開コマンドを生成できませんでした。"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
