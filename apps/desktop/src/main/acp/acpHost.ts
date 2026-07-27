@@ -47,6 +47,7 @@ import {
 } from "./store";
 import type {
   AcpAgentProvider,
+  AcpAvailableCommand,
   AcpChatMessage,
   AcpConfigOption,
   AcpFileAttachment,
@@ -79,6 +80,7 @@ class AcpChatController {
   private currentModeId?: string;
   private models: AcpModelsState | null = null;
   private configOptions: AcpConfigOption[] = [];
+  private availableCommands: AcpAvailableCommand[] = [];
   private unsubscribeSessionUpdates?: () => void;
   private streamingAssistantId?: string;
   private turnAssistantId?: string;
@@ -143,6 +145,7 @@ class AcpChatController {
         models: this.models,
         modelId: this.models?.currentModelId,
         configOptions: this.configOptions,
+        availableCommands: this.availableCommands,
         isRunning: this.isRunning,
         isConnecting: this.isConnecting,
         status: this.isConnecting ? "connecting" : this.isRunning ? "running" : "ready",
@@ -296,6 +299,10 @@ class AcpChatController {
     }
 
     switch (kind) {
+      case "available_commands_update":
+        this.availableCommands = parseAvailableCommands(update.availableCommands);
+        this.postInit();
+        break;
       case "agent_message_chunk":
       case "agent_thought_chunk":
         this.handleAgentChunk(update);
@@ -1097,6 +1104,25 @@ function normalizeToolStatus(value: unknown): AcpToolCallStatus {
     return value;
   }
   return "in_progress";
+}
+
+function parseAvailableCommands(value: unknown): AcpAvailableCommand[] {
+  if (!Array.isArray(value)) return [];
+  const commands: AcpAvailableCommand[] = [];
+  const names = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as { name?: unknown; description?: unknown; input?: { hint?: unknown } | null };
+    const name = typeof raw.name === "string" ? raw.name.trim().replace(/^\/+/, "") : "";
+    if (!name || /[\s/]/.test(name)) continue;
+    const normalizedName = name.toLocaleLowerCase();
+    if (names.has(normalizedName)) continue;
+    names.add(normalizedName);
+    const description = typeof raw.description === "string" ? raw.description.trim() : "";
+    const inputHint = typeof raw.input?.hint === "string" ? raw.input.hint.trim() : "";
+    commands.push({ name, description, ...(inputHint ? { inputHint } : {}) });
+  }
+  return commands;
 }
 
 function parseLocations(value: unknown): AcpToolCallLocation[] | undefined {

@@ -124,6 +124,13 @@ export interface AcpModelsState {
   availableModels: Array<{ modelId: string; name: string }>;
 }
 
+/** A slash command advertised by the connected ACP agent. */
+export interface AcpAvailableCommand {
+  name: string;
+  description: string;
+  inputHint?: string;
+}
+
 export type AcpStreamEvent =
   | { type: "status"; chatId: string; status: string; isRunning: boolean; isConnecting: boolean }
   | { type: "error"; chatId: string; message: string }
@@ -153,6 +160,8 @@ export interface AcpChatInit {
   modelId?: string;
   /** Full session config options (model / thought_level / mode, etc.). */
   configOptions: AcpConfigOption[];
+  /** Commands dynamically advertised by the connected ACP agent. */
+  availableCommands: AcpAvailableCommand[];
   isRunning: boolean;
   isConnecting: boolean;
   status: string;

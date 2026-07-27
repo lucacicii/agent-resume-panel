@@ -8,6 +8,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.9.0]
+
+#### 新增
+
+- **ACP 会话纳入 catalog 索引**：ACP 聊天会话现写入共享 catalog，可在 Sessions 与搜索中按元数据检索，并支持 transcript 预览、自动重命名与自动向量化（此前 ACP 会话被排除在这些流程之外）。
+- **与 Agent Resume Desktop 共享 ACP 存储**：扩展通过共享 core 存储读写 ACP 会话，并监听 `panelHome/acp` 下的 `.jsonl` 变更，桌面端新建或更新会话后侧栏自动刷新；切换 `panelHome` 时自动重建监听。
+- **LLM 连接测试**：设置页可校验模型配置与连接是否可用（共享 core 的 `testConnection`）。
+
+#### 变更
+
+- **Codex ACP 默认适配器**：切换为官方包 `@agentclientprotocol/codex-acp`（原 `@zed-industries/codex-acp`），可在 ACP 启动参数中覆盖。
+
+#### 修复
+
+- **ACP 会话识别**：ACP 仅由 `chat` provider 判定，避免 Codex 等 CLI 会话被误识别为 ACP。
+
 ### [2.8.1]
 
 #### 修复
@@ -451,6 +467,22 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.9.0]
+
+#### Added
+
+- **ACP sessions indexed in the catalog**: ACP chat sessions now write into the shared catalog, so they are searchable in Sessions by metadata and support transcript preview, auto-rename, and auto-vectorization (previously excluded from these flows).
+- **Shared ACP store with Agent Resume Desktop**: the extension reads/writes ACP sessions through the shared core store and watches `panelHome/acp` `.jsonl` files, refreshing the sidebar when Desktop creates or updates a session; the watcher rebuilds when `panelHome` changes.
+- **LLM connection test**: validate model configuration and connectivity from Settings (shared core `testConnection`).
+
+#### Changed
+
+- **Codex ACP default adapter**: switched to the official `@agentclientprotocol/codex-acp` package (was `@zed-industries/codex-acp`); override via the ACP launch arguments.
+
+#### Fixed
+
+- **ACP session detection**: ACP is now identified only via the `chat` provider, so Codex and other CLI sessions are no longer misidentified as ACP.
 
 ### [2.8.1]
 

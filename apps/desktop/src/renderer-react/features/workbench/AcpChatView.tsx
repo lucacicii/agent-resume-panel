@@ -84,6 +84,12 @@ type ModelsState = {
   availableModels: Array<{ modelId: string; name: string }>;
 };
 
+type AvailableCommand = {
+  name: string;
+  description: string;
+  inputHint?: string;
+};
+
 type PendingImage = {
   kind: "image";
   id: string;
@@ -161,6 +167,9 @@ export function AcpChatView({
   const [modeId, setModeId] = useState<string | undefined>();
   const [models, setModels] = useState<ModelsState | null>(null);
   const [configOptions, setConfigOptions] = useState<ConfigOption[]>([]);
+  const [availableCommands, setAvailableCommands] = useState<AvailableCommand[]>([]);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
   const [permission, setPermission] = useState<PermissionRequest | null>(null);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -168,6 +177,7 @@ export function AcpChatView({
   const logRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   /** Tracks in-flight / completed connect for this mount so we do not double-connect. */
   const connectGenerationRef = useRef(0);
   /** True after a successful connect until unmount/error — skip reconnect on tab re-focus. */
@@ -211,6 +221,7 @@ export function AcpChatView({
           models?: ModelsState | null;
           modelId?: string;
           configOptions?: ConfigOption[];
+          availableCommands?: AvailableCommand[];
           isRunning?: boolean;
           isConnecting?: boolean;
           status?: string;
@@ -243,6 +254,7 @@ export function AcpChatView({
             setModeId(event.init.modeId);
             setModels(event.init.models || null);
             setConfigOptions(Array.isArray(event.init.configOptions) ? event.init.configOptions : []);
+            setAvailableCommands(Array.isArray(event.init.availableCommands) ? event.init.availableCommands : []);
             setIsRunning(Boolean(event.init.isRunning));
             setIsConnecting(Boolean(event.init.isConnecting));
             setConnectionStatus(event.init.status || "ready");
@@ -469,6 +481,29 @@ export function AcpChatView({
       setStatus({ text: errorMessage(error), kind: "error" });
     }
   };
+
+  const slashQuery = input.match(/^\/([^\s]*)$/)?.[1];
+  const filteredCommands = useMemo(() => {
+    if (slashQuery === undefined) return [];
+    const query = slashQuery.toLocaleLowerCase();
+    return availableCommands.filter((command) => command.name.toLocaleLowerCase().startsWith(query));
+  }, [availableCommands, slashQuery]);
+  const slashMenuOpen = !slashMenuDismissed && filteredCommands.length > 0;
+  const activeCommand = filteredCommands[activeCommandIndex] ?? filteredCommands[0];
+
+  useEffect(() => {
+    setActiveCommandIndex(0);
+  }, [input, availableCommands]);
+
+  const selectCommand = useCallback((command: AvailableCommand) => {
+    const next = `/${command.name}${command.inputHint ? " " : ""}`;
+    setInput(next);
+    setSlashMenuDismissed(true);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+    });
+  }, []);
 
   const cancel = async () => {
     try {
@@ -838,18 +873,73 @@ export function AcpChatView({
         <div className="chat-compose-frame">
           <div className="chat-compose-field">
             <textarea
+              ref={inputRef}
               rows={1}
               value={input}
               disabled={isRunning || isConnecting}
               placeholder={placeholder}
-              onChange={(event) => setInput(event.target.value)}
+              aria-autocomplete="list"
+              aria-controls={slashMenuOpen ? "wb-acp-command-list" : undefined}
+              aria-expanded={slashMenuOpen}
+              aria-activedescendant={slashMenuOpen && activeCommand ? `wb-acp-command-${activeCommand.name}` : undefined}
+              onChange={(event) => {
+                setInput(event.target.value);
+                setSlashMenuDismissed(false);
+              }}
               onKeyDown={(event) => {
+                if (slashMenuOpen) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setActiveCommandIndex((current) => (current + 1) % filteredCommands.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveCommandIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
+                    return;
+                  }
+                  if ((event.key === "Enter" || event.key === "Tab") && activeCommand) {
+                    event.preventDefault();
+                    selectCommand(activeCommand);
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setSlashMenuDismissed(true);
+                    return;
+                  }
+                }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void send();
                 }
               }}
             />
+            {slashMenuOpen ? (
+              <div
+                id="wb-acp-command-list"
+                className="wb-acp-command-menu"
+                role="listbox"
+                aria-label={t("desktop.workbench.acpSlashCommands")}
+              >
+                {filteredCommands.map((command, index) => (
+                  <button
+                    key={command.name}
+                    id={`wb-acp-command-${command.name}`}
+                    type="button"
+                    className={`wb-acp-command${index === activeCommandIndex ? " is-active" : ""}`}
+                    role="option"
+                    aria-selected={index === activeCommandIndex}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectCommand(command)}
+                  >
+                    <span className="wb-acp-command-name">/{command.name}</span>
+                    {command.description ? <span className="wb-acp-command-description">{command.description}</span> : null}
+                    {command.inputHint ? <span className="wb-acp-command-input">{command.inputHint}</span> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="chat-compose-toolbar">
             {fileUpload || imageUpload ? (
