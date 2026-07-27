@@ -7178,22 +7178,82 @@ select.wb-acp-toolbar-select option {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+  max-width: 100%;
 }
 
 .wb-acp-tool {
+  /*
+   * Fixed corner radius = half of *single-line* chip height.
+   * One line → perfect capsule (半圆 ends). Multi-line / expanded → same
+   * radius (not 999px), so text never sits outside the curved ends.
+   */
+  --wb-acp-tool-line-height: 1.35;
+  --wb-acp-tool-pad-y: 3px;
+  --wb-acp-tool-pad-x: 10px;
+  --wb-acp-tool-radius: calc(
+    (1em * var(--wb-acp-tool-line-height) + 2 * var(--wb-acp-tool-pad-y)) / 2
+  );
+  box-sizing: border-box;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--wb-acp-tool-pad-y) var(--wb-acp-tool-pad-x);
+  border-radius: var(--wb-acp-tool-radius);
   border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: var(--wb-acp-tool-line-height);
+  text-align: left;
+  cursor: default;
+  appearance: none;
+  -webkit-appearance: none;
+  /* Clip label/icon to the rounded rect (expanded multi-line safe). */
+  overflow: hidden;
+}
+
+.wb-acp-tool > svg {
+  flex: 0 0 auto;
+  /* Center icon against the first text line. */
+  margin-top: calc((1em * var(--wb-acp-tool-line-height) - 12px) / 2);
+}
+
+.wb-acp-tool-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.wb-acp-tool.is-expandable {
+  cursor: pointer;
+}
+
+.wb-acp-tool.is-expandable:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.wb-acp-tool.is-expanded .wb-acp-tool-label {
+  display: block;
+  -webkit-line-clamp: unset;
+  /* Parent .wb-acp-tool keeps overflow:hidden + fixed radius. */
+  overflow: hidden;
 }
 
 .wb-acp-tool.failed {
   background: color-mix(in srgb, #ff453a 12%, transparent);
   border-color: color-mix(in srgb, #ff453a 28%, transparent);
+}
+
+.wb-acp-tool.failed.is-expandable:hover {
+  background: color-mix(in srgb, #ff453a 18%, transparent);
 }
 
 .wb-acp-plan {
@@ -7205,6 +7265,151 @@ select.wb-acp-toolbar-select option {
 
 .wb-acp-permission {
   margin: 0 12px 8px;
+}
+
+/* Sequential bouncing dots while the model is generating. */
+.wb-acp-jumping-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-height: 1.1em;
+  padding: 2px 1px 0;
+  vertical-align: baseline;
+}
+
+.wb-acp-jumping-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+  transform: translateY(0);
+  animation: wb-acp-dot-jump 1.05s ease-in-out infinite;
+}
+
+.wb-acp-jumping-dot:nth-child(1) { animation-delay: 0ms; }
+.wb-acp-jumping-dot:nth-child(2) { animation-delay: 90ms; }
+.wb-acp-jumping-dot:nth-child(3) { animation-delay: 180ms; }
+.wb-acp-jumping-dot:nth-child(4) { animation-delay: 270ms; }
+.wb-acp-jumping-dot:nth-child(5) { animation-delay: 360ms; }
+.wb-acp-jumping-dot:nth-child(6) { animation-delay: 450ms; }
+
+@keyframes wb-acp-dot-jump {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 0.95;
+    transform: translateY(-5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-acp-jumping-dot {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+.wb-acp-log .chat-body .wb-acp-jumping-dots {
+  display: flex;
+  margin-top: 2px;
+}
+
+.wb-acp-log .chat-body .chat-body-text + .wb-acp-jumping-dots {
+  margin-top: 6px;
+}
+
+.wb-acp-question-card {
+  flex: 0 0 auto;
+  margin: 0 12px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--chat-compose-bg, var(--panel));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(42vh, 360px);
+  overflow: auto;
+}
+
+.wb-acp-question-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-label-primary, var(--text));
+}
+
+.wb-acp-question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wb-acp-question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-acp-question-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-label-primary, var(--text));
+}
+
+.wb-acp-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-acp-question-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 4%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-acp-question-option:hover {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 35%, transparent);
+}
+
+.wb-acp-question-option.is-selected {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 50%, transparent);
+}
+
+.wb-acp-question-option-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wb-acp-question-option-desc {
+  font-size: 11px;
+  color: var(--color-label-secondary, var(--muted));
+  line-height: 1.35;
+}
+
+.wb-acp-question-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .wb-acp-chat.is-dragover {

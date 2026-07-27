@@ -146,6 +146,16 @@ export type AcpStreamEvent =
       requestId: string;
       title: string;
       options: Array<{ optionId: string; name: string; kind: string }>;
+    }
+  | {
+      type: "userQuestion";
+      chatId: string;
+      requestId: string;
+      questions: Array<{
+        question: string;
+        options: Array<{ label: string; description?: string; preview?: string }>;
+        multiSelect?: boolean;
+      }>;
     };
 
 export interface AcpChatInit {

@@ -156,4 +156,54 @@ describe("AcpChatView message layout", () => {
     expect(document.querySelector(".wb-acp-day-separator")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /copy/i }).length).toBeGreaterThan(0);
   });
+
+  it("clamps long tool labels and expands on click", async () => {
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("wb-acp-tool-label") ? 48 : (scrollHeight?.get?.call(this) ?? 0);
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("wb-acp-tool-label") ? 20 : (clientHeight?.get?.call(this) ?? 0);
+      }
+    });
+
+    try {
+      await renderChat();
+      const longTitle =
+        "Run a very long shell command that definitely wraps past two lines of tool chip text when the bubble is constrained";
+      emit({
+        type: "history",
+        chatId: "chat-1",
+        messages: [
+          {
+            id: "a1",
+            role: "assistant",
+            text: "Working",
+            timestamp: Date.now(),
+            toolCalls: [{ toolCallId: "t1", title: longTitle, kind: "execute", status: "completed" }]
+          }
+        ]
+      });
+
+      const chip = await screen.findByRole("button", { name: new RegExp(longTitle.slice(0, 20)) });
+      expect(chip.querySelector(".wb-acp-tool-label")).toBeTruthy();
+      await waitFor(() => expect(chip.className).toContain("is-expandable"));
+      fireEvent.click(chip);
+      expect(chip.className).toContain("is-expanded");
+      expect(chip.getAttribute("aria-expanded")).toBe("true");
+      fireEvent.click(chip);
+      expect(chip.className).not.toContain("is-expanded");
+    } finally {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeight);
+      else delete (HTMLElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      else delete (HTMLElement.prototype as { clientHeight?: unknown }).clientHeight;
+    }
+  });
 });

@@ -662,7 +662,10 @@
       "desktop.workbench.acpToolKind.fetch": "Fetch",
       "desktop.workbench.acpToolKind.switchMode": "Switch mode",
       "desktop.workbench.acpToolKind.other": "Tool",
-      "desktop.workbench.resumeCommandMissing": "Could not build a resume command for this session."
+      "desktop.workbench.resumeCommandMissing": "Could not build a resume command for this session.",
+      "desktop.workbench.acpQuestionTitle": "Agent question",
+      "desktop.workbench.acpQuestionSubmit": "Submit",
+      "desktop.workbench.acpQuestionSkip": "Skip"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1760,7 +1763,10 @@
       "desktop.workbench.acpToolKind.fetch": "获取内容",
       "desktop.workbench.acpToolKind.switchMode": "切换模式",
       "desktop.workbench.acpToolKind.other": "工具",
-      "desktop.workbench.resumeCommandMissing": "无法为该会话生成恢复命令。"
+      "desktop.workbench.resumeCommandMissing": "无法为该会话生成恢复命令。",
+      "desktop.workbench.acpQuestionTitle": "Agent 提问",
+      "desktop.workbench.acpQuestionSubmit": "提交",
+      "desktop.workbench.acpQuestionSkip": "跳过"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2903,7 +2909,10 @@
       "desktop.workbench.acpToolKind.fetch": "取得",
       "desktop.workbench.acpToolKind.switchMode": "モードを切り替え",
       "desktop.workbench.acpToolKind.other": "ツール",
-      "desktop.workbench.resumeCommandMissing": "このセッションの再開コマンドを生成できませんでした。"
+      "desktop.workbench.resumeCommandMissing": "このセッションの再開コマンドを生成できませんでした。",
+      "desktop.workbench.acpQuestionTitle": "エージェントの質問",
+      "desktop.workbench.acpQuestionSubmit": "送信",
+      "desktop.workbench.acpQuestionSkip": "スキップ"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",

@@ -287,6 +287,11 @@ export interface DesktopApi {
     optionId?: string;
     cancelled?: boolean;
   }): Promise<{ ok: boolean }>;
+  acpRespondQuestion(args: {
+    requestId: string;
+    cancelled?: boolean;
+    answers?: Record<string, string>;
+  }): Promise<{ ok: boolean }>;
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   terminalSpawn(args: {
@@ -954,6 +959,7 @@ const api: DesktopApi = {
   acpSetMode: (args) => ipcRenderer.invoke("acp:setMode", args),
   acpSetConfigOption: (args) => ipcRenderer.invoke("acp:setConfigOption", args),
   acpRespondPermission: (args) => ipcRenderer.invoke("acp:respondPermission", args),
+  acpRespondQuestion: (args) => ipcRenderer.invoke("acp:respondQuestion", args),
   acpDisconnect: (args) => ipcRenderer.invoke("acp:disconnect", args),
   onAcpStream: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: Record<string, unknown>) => callback(payload);

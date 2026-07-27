@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Bot, Check, Copy, FileText, LoaderCircle, Paperclip, Send, Square, X } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
@@ -56,6 +56,23 @@ type PermissionRequest = {
   requestId: string;
   title: string;
   options: Array<{ optionId: string; name: string; kind: string }>;
+};
+
+type UserQuestionOption = {
+  label: string;
+  description?: string;
+  preview?: string;
+};
+
+type UserQuestionItem = {
+  question: string;
+  options: UserQuestionOption[];
+  multiSelect?: boolean;
+};
+
+type UserQuestionRequest = {
+  requestId: string;
+  questions: UserQuestionItem[];
 };
 
 type ModeOption = { id: string; name: string };
@@ -183,6 +200,67 @@ function isOutboundRole(role: string): boolean {
   return role === "user";
 }
 
+/** Sequential bouncing dots while the model is answering. */
+function JumpingDots({ label }: { label?: string }): React.JSX.Element {
+  return (
+    <span className="wb-acp-jumping-dots" role="status" aria-live="polite" aria-label={label || "…"}>
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+      <span className="wb-acp-jumping-dot" aria-hidden="true" />
+    </span>
+  );
+}
+
+function AcpToolChip({ tool, t }: { tool: ToolCall; t: Translate }): React.JSX.Element {
+  const label = toolCallLabel(tool, t);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [expandable, setExpandable] = useState(false);
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const el = labelRef.current;
+    if (!el) return;
+    const measure = () => {
+      setExpandable(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [expanded, label]);
+
+  const canToggle = expandable || expanded;
+
+  return (
+    <button
+      type="button"
+      className={`wb-acp-tool ${tool.status}${canToggle ? " is-expandable" : ""}${expanded ? " is-expanded" : ""}`}
+      title={label}
+      aria-expanded={canToggle ? expanded : undefined}
+      onClick={() => {
+        if (!canToggle) return;
+        setExpanded((value) => !value);
+      }}
+    >
+      {tool.status === "in_progress" || tool.status === "pending" ? (
+        <LoaderCircle size={12} className="spin" aria-hidden="true" />
+      ) : tool.status === "completed" ? (
+        <Check size={12} aria-hidden="true" />
+      ) : (
+        <X size={12} aria-hidden="true" />
+      )}
+      <span ref={labelRef} className="wb-acp-tool-label">
+        {label}
+      </span>
+    </button>
+  );
+}
+
 async function copyText(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
@@ -232,6 +310,9 @@ export function AcpChatView({
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
   const [permission, setPermission] = useState<PermissionRequest | null>(null);
+  const [userQuestion, setUserQuestion] = useState<UserQuestionRequest | null>(null);
+  /** questionIndex → selected labels */
+  const [questionSelections, setQuestionSelections] = useState<Record<number, string[]>>({});
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [headerTitle, setHeaderTitle] = useState(title);
@@ -294,6 +375,7 @@ export function AcpChatView({
         requestId?: string;
         title?: string;
         options?: Array<{ optionId: string; name: string; kind: string }>;
+        questions?: UserQuestionItem[];
       };
       if (event.chatId !== recordId) return;
 
@@ -386,6 +468,15 @@ export function AcpChatView({
               title: event.title || t("desktop.workbench.acpPermissionTitle"),
               options: event.options || []
             });
+          }
+          break;
+        case "userQuestion":
+          if (event.requestId && Array.isArray(event.questions) && event.questions.length) {
+            setUserQuestion({
+              requestId: event.requestId,
+              questions: event.questions
+            });
+            setQuestionSelections({});
           }
           break;
       }
@@ -738,6 +829,53 @@ export function AcpChatView({
     }
   };
 
+  const toggleQuestionOption = (questionIndex: number, label: string, multiSelect: boolean) => {
+    setQuestionSelections((current) => {
+      const prev = current[questionIndex] || [];
+      if (!multiSelect) {
+        return { ...current, [questionIndex]: [label] };
+      }
+      const exists = prev.includes(label);
+      const next = exists ? prev.filter((entry) => entry !== label) : [...prev, label];
+      return { ...current, [questionIndex]: next };
+    });
+  };
+
+  const respondQuestion = async (cancelled = false) => {
+    if (!userQuestion) return;
+    const requestId = userQuestion.requestId;
+    const questions = userQuestion.questions;
+    const answers: Record<string, string> = {};
+    if (!cancelled) {
+      questions.forEach((item, index) => {
+        const labels = questionSelections[index] || [];
+        if (!labels.length) return;
+        answers[item.question] = labels.join(", ");
+      });
+    }
+    // Single question + single-select can submit with one pick only if we have answers.
+    if (!cancelled && !Object.keys(answers).length) return;
+    setUserQuestion(null);
+    setQuestionSelections({});
+    try {
+      await desktopApi().acpRespondQuestion({
+        requestId,
+        cancelled,
+        answers: cancelled ? undefined : answers
+      });
+    } catch (error) {
+      setStatus({ text: errorMessage(error), kind: "error" });
+    }
+  };
+
+  const canSubmitQuestion = useMemo(() => {
+    if (!userQuestion) return false;
+    return userQuestion.questions.every((item, index) => {
+      const selected = questionSelections[index] || [];
+      return selected.length > 0;
+    });
+  }, [questionSelections, userQuestion]);
+
   useEffect(() => {
     if (!active) return;
     const onPaste = (event: ClipboardEvent) => {
@@ -768,6 +906,8 @@ export function AcpChatView({
   const placeholder = imageUpload || fileUpload
     ? t("desktop.workbench.acpInputPlaceholderAttach")
     : t("desktop.workbench.acpInputPlaceholder");
+  const hasStreamingMessage = messages.some((message) => message.streaming);
+  const showTypingIndicator = isRunning && !hasStreamingMessage;
 
   return (
     <div
@@ -870,16 +1010,16 @@ export function AcpChatView({
                         <pre className="wb-acp-plan">{message.text}</pre>
                       ) : outbound ? (
                         <div className="chat-user-text">{message.text}</div>
-                      ) : (
+                      ) : message.text ? (
                         <div
                           className="chat-body-text markdown-body"
                           dangerouslySetInnerHTML={{
-                            __html: renderMarkdown(message.text || (message.streaming ? "…" : ""))
+                            __html: renderMarkdown(message.text)
                           }}
                         />
-                      )}
-                      {message.streaming && !message.text ? (
-                        <LoaderCircle className="chat-stream-cursor" size={14} aria-hidden="true" />
+                      ) : null}
+                      {message.streaming ? (
+                        <JumpingDots label={t("desktop.workbench.acpThinking")} />
                       ) : null}
                     </div>
                     {message.images?.length || message.files?.length ? (
@@ -901,16 +1041,7 @@ export function AcpChatView({
                     {message.toolCalls?.length ? (
                       <div className="wb-acp-tools">
                         {message.toolCalls.map((tool) => (
-                          <div className={`wb-acp-tool ${tool.status}`} key={tool.toolCallId}>
-                            {tool.status === "in_progress" || tool.status === "pending" ? (
-                              <LoaderCircle size={12} className="spin" />
-                            ) : tool.status === "completed" ? (
-                              <Check size={12} />
-                            ) : (
-                              <X size={12} />
-                            )}
-                            <span>{toolCallLabel(tool, t)}</span>
-                          </div>
+                          <AcpToolChip key={tool.toolCallId} tool={tool} t={t} />
                         ))}
                       </div>
                     ) : null}
@@ -935,6 +1066,21 @@ export function AcpChatView({
             );
           })
         )}
+        {showTypingIndicator ? (
+          <div className="wb-acp-message-block">
+            <div className="chat-message chat-message-in is-cluster-start is-cluster-end">
+              <div className="chat-bubble assistant streaming">
+                <div className="chat-sender">
+                  <Bot size={14} aria-hidden="true" />
+                  {providerLabel(provider, t)}
+                </div>
+                <div className="chat-body">
+                  <JumpingDots label={t("desktop.workbench.acpThinking")} />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {permission ? (
@@ -958,6 +1104,91 @@ export function AcpChatView({
               {t("desktop.common.cancel")}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {userQuestion ? (
+        <div className="wb-acp-question-card" role="dialog" aria-label={t("desktop.workbench.acpQuestionTitle")}>
+          <div className="wb-acp-question-head">
+            <strong>{t("desktop.workbench.acpQuestionTitle")}</strong>
+          </div>
+          <div className="wb-acp-question-list">
+            {userQuestion.questions.map((item, questionIndex) => {
+              const selected = questionSelections[questionIndex] || [];
+              const singleFast =
+                userQuestion.questions.length === 1 && !item.multiSelect && item.options.length > 0;
+              return (
+                <div className="wb-acp-question-item" key={`${questionIndex}-${item.question}`}>
+                  <div className="wb-acp-question-text">{item.question}</div>
+                  <div className="wb-acp-question-options">
+                    {item.options.map((option) => {
+                      const isSelected = selected.includes(option.label);
+                      return (
+                        <button
+                          type="button"
+                          key={option.label}
+                          className={`wb-acp-question-option${isSelected ? " is-selected" : ""}`}
+                          title={option.description || option.preview || option.label}
+                          onClick={() => {
+                            if (singleFast) {
+                              setQuestionSelections({ [questionIndex]: [option.label] });
+                              // Defer so state flush isn't required — answer immediately.
+                              void (async () => {
+                                const requestId = userQuestion.requestId;
+                                setUserQuestion(null);
+                                setQuestionSelections({});
+                                try {
+                                  await desktopApi().acpRespondQuestion({
+                                    requestId,
+                                    answers: { [item.question]: option.label }
+                                  });
+                                } catch (error) {
+                                  setStatus({ text: errorMessage(error), kind: "error" });
+                                }
+                              })();
+                              return;
+                            }
+                            toggleQuestionOption(questionIndex, option.label, Boolean(item.multiSelect));
+                          }}
+                        >
+                          <span className="wb-acp-question-option-label">{option.label}</span>
+                          {option.description ? (
+                            <span className="wb-acp-question-option-desc">{option.description}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {userQuestion.questions.length > 1 ||
+          userQuestion.questions.some((item) => item.multiSelect) ? (
+            <div className="wb-acp-question-actions">
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => void respondQuestion(true)}
+              >
+                {t("desktop.workbench.acpQuestionSkip")}
+              </button>
+              <button
+                type="button"
+                className="ghost-btn"
+                disabled={!canSubmitQuestion}
+                onClick={() => void respondQuestion(false)}
+              >
+                {t("desktop.workbench.acpQuestionSubmit")}
+              </button>
+            </div>
+          ) : (
+            <div className="wb-acp-question-actions">
+              <button type="button" className="ghost-btn" onClick={() => void respondQuestion(true)}>
+                {t("desktop.workbench.acpQuestionSkip")}
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
 

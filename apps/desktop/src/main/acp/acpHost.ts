@@ -26,6 +26,13 @@ import {
   setGrokModel,
   setGrokReasoningEffort
 } from "./vendors/grok";
+import {
+  makeAcceptedQuestionResponse,
+  makeCancelledQuestionResponse,
+  setAskUserQuestionHandler,
+  type AskUserQuestionRequest,
+  type AskUserQuestionResponse
+} from "./handlers/askUserQuestion";
 import { setPermissionPromptHandler } from "./handlers/permission";
 import { clearSessionUpdateListeners, subscribeSessionUpdates } from "./sessionUpdateBus";
 import {
@@ -69,6 +76,12 @@ let lastActiveChatId: string | null = null;
 const permissionWaiters = new Map<
   string,
   { resolve: (value: RequestPermissionResponse) => void; chatId: string }
+>();
+/** Grok ask_user_question waiters — default timeout 30 minutes (Grok CLI default). */
+const QUESTION_TIMEOUT_MS = 30 * 60 * 1000;
+const questionWaiters = new Map<
+  string,
+  { resolve: (value: AskUserQuestionResponse) => void; chatId: string }
 >();
 
 class AcpChatController {
@@ -888,6 +901,37 @@ export function registerAcpIpc(deps: {
     });
   });
 
+  setAskUserQuestionHandler(async (params: AskUserQuestionRequest): Promise<AskUserQuestionResponse> => {
+    const chatId =
+      (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
+      controllers.keys().next().value;
+    if (!chatId) {
+      return makeCancelledQuestionResponse();
+    }
+
+    const requestId = crypto.randomUUID();
+    emitToWindow(getMainWindow, {
+      type: "userQuestion",
+      chatId,
+      requestId,
+      questions: params.questions
+    });
+
+    return await new Promise<AskUserQuestionResponse>((resolve) => {
+      const timer = setTimeout(() => {
+        questionWaiters.delete(requestId);
+        resolve(makeCancelledQuestionResponse());
+      }, QUESTION_TIMEOUT_MS);
+      questionWaiters.set(requestId, {
+        chatId,
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        }
+      });
+    });
+  });
+
   safeHandle("acp:listSessions", async (_event, args?: { projectPath?: string }) => {
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
@@ -1022,6 +1066,41 @@ export function registerAcpIpc(deps: {
     }
   );
 
+  safeHandle(
+    "acp:respondQuestion",
+    async (
+      _event,
+      args: {
+        requestId: string;
+        cancelled?: boolean;
+        /** question text → chosen option label(s), multi-select joined with ", " */
+        answers?: Record<string, string>;
+      }
+    ) => {
+      const waiter = questionWaiters.get(args.requestId);
+      if (!waiter) return { ok: false };
+      questionWaiters.delete(args.requestId);
+      if (args.cancelled) {
+        waiter.resolve(makeCancelledQuestionResponse());
+        return { ok: true };
+      }
+      const answers: Record<string, string> = {};
+      if (args.answers && typeof args.answers === "object") {
+        for (const [question, label] of Object.entries(args.answers)) {
+          if (typeof question === "string" && typeof label === "string" && question && label.trim()) {
+            answers[question] = label.trim();
+          }
+        }
+      }
+      if (!Object.keys(answers).length) {
+        waiter.resolve(makeCancelledQuestionResponse());
+      } else {
+        waiter.resolve(makeAcceptedQuestionResponse(answers));
+      }
+      return { ok: true };
+    }
+  );
+
   safeHandle("acp:disconnect", async (_event, args: { chatId: string }) => {
     const controller = controllers.get(args.chatId);
     controller?.dispose();
@@ -1036,7 +1115,9 @@ export function disposeAllAcpControllers(): void {
   }
   controllers.clear();
   permissionWaiters.clear();
+  questionWaiters.clear();
   setPermissionPromptHandler(null);
+  setAskUserQuestionHandler(null);
 }
 
 function extractTextFromContent(content: unknown): string {
