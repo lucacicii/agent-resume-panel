@@ -160,9 +160,12 @@ export class AcpAgentConnection {
           method
         };
       } catch (error) {
-        if (!isResourceNotFoundError(error)) {
-          throw error;
-        }
+        // Codex returns Internal error (-32603) for invalid/unknown session ids
+        // rather than Resource not found — fall through to resume / session/new.
+        console.warn(
+          `[ACP ${this.provider}] session/${method} failed for ${acpSessionId}:`,
+          error instanceof Error ? error.message : error
+        );
       }
     }
 
@@ -228,15 +231,6 @@ export class AcpAgentConnection {
 function supportsSessionResume(capabilities?: AgentCapabilities): boolean {
   const resume = capabilities?.sessionCapabilities?.resume;
   return resume != null && typeof resume === "object";
-}
-
-function isResourceNotFoundError(error: unknown): boolean {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    return (error as { code?: number }).code === -32002;
-  }
-
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Resource not found");
 }
 
 function normalizeSessionModes(response: Record<string, unknown>): AcpSessionModes | null {

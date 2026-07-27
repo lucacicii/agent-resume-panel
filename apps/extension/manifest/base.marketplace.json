@@ -220,7 +220,7 @@
           },
           "default": [
             "-y",
-            "@zed-industries/codex-acp@latest"
+            "@agentclientprotocol/codex-acp@latest"
           ],
           "description": "Launch arguments for Codex ACP agent."
         },

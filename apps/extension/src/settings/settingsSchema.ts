@@ -397,7 +397,7 @@ export function getSettingSections(): SettingSection[] {
               label: t("settings.fieldAcpLaunchArgsLabel"),
               description: t("settings.fieldAcpCodexLaunchArgsDescription"),
               type: "stringArray",
-              default: ["-y", "@zed-industries/codex-acp@latest"]
+              default: ["-y", "@agentclientprotocol/codex-acp@latest"]
             }
           ]
         },

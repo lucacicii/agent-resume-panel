@@ -168,6 +168,8 @@ export function AcpChatView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Tracks in-flight / completed connect for this mount so we do not double-connect. */
   const connectGenerationRef = useRef(0);
+  /** True after a successful connect until unmount/error — skip reconnect on tab re-focus. */
+  const sessionConnectedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     if (!stickToBottom.current || !logRef.current) return;
@@ -319,19 +321,27 @@ export function AcpChatView({
     if (!active) return;
     const generation = ++connectGenerationRef.current;
     let cancelled = false;
+    // Keep-alive: always call acp:connect (main reuses a live agent), but avoid the
+    // "connecting…" flash when this pane was already successfully connected.
+    const quiet = sessionConnectedRef.current;
     void (async () => {
       try {
-        setIsConnecting(true);
-        setConnectionStatus("connecting");
+        if (!quiet) {
+          setIsConnecting(true);
+          setConnectionStatus("connecting");
+        }
         await desktopApi().acpConnect({ chatId: recordId });
-        // Stream status/init should already have cleared this; keep a hard fallback
-        // so a missed event never leaves the UI stuck on "connecting…".
         if (!cancelled && connectGenerationRef.current === generation) {
+          sessionConnectedRef.current = true;
           setIsConnecting(false);
-          setConnectionStatus((status) => (status === "connecting" ? "ready" : status));
+          // Stream status/init usually wins; only clear a stuck connecting/error.
+          setConnectionStatus((status) =>
+            status === "connecting" || status === "error" ? "ready" : status
+          );
         }
       } catch (error) {
         if (!cancelled && connectGenerationRef.current === generation) {
+          sessionConnectedRef.current = false;
           setStatus({ text: errorMessage(error), kind: "error" });
           setConnectionStatus("error");
           setIsConnecting(false);
@@ -345,6 +355,7 @@ export function AcpChatView({
 
   useEffect(() => {
     return () => {
+      sessionConnectedRef.current = false;
       void desktopApi().acpDisconnect({ chatId: recordId });
       connectGenerationRef.current += 1;
     };
