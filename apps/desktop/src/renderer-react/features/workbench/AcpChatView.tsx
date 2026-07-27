@@ -166,7 +166,8 @@ export function AcpChatView({
   const logRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const connectedRef = useRef(false);
+  /** Tracks in-flight / completed connect for this mount so we do not double-connect. */
+  const connectGenerationRef = useRef(0);
 
   const scrollToBottom = useCallback(() => {
     if (!stickToBottom.current || !logRef.current) return;
@@ -183,28 +184,8 @@ export function AcpChatView({
     setHeaderTitle(title);
   }, [title]);
 
-  useEffect(() => {
-    if (!active || connectedRef.current) return;
-    let cancelled = false;
-    connectedRef.current = true;
-    void (async () => {
-      try {
-        setIsConnecting(true);
-        setConnectionStatus("connecting");
-        await desktopApi().acpConnect({ chatId: recordId });
-      } catch (error) {
-        if (!cancelled) {
-          setStatus({ text: errorMessage(error), kind: "error" });
-          setConnectionStatus("error");
-          setIsConnecting(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [active, recordId]);
-
+  // Subscribe to stream events first so connect status/init is never missed
+  // (especially under React StrictMode remount races).
   useEffect(() => {
     const off = desktopApi().onAcpStream((raw) => {
       const event = raw as {
@@ -335,9 +316,37 @@ export function AcpChatView({
   }, [onTitleChange, recordId, t]);
 
   useEffect(() => {
+    if (!active) return;
+    const generation = ++connectGenerationRef.current;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setIsConnecting(true);
+        setConnectionStatus("connecting");
+        await desktopApi().acpConnect({ chatId: recordId });
+        // Stream status/init should already have cleared this; keep a hard fallback
+        // so a missed event never leaves the UI stuck on "connecting…".
+        if (!cancelled && connectGenerationRef.current === generation) {
+          setIsConnecting(false);
+          setConnectionStatus((status) => (status === "connecting" ? "ready" : status));
+        }
+      } catch (error) {
+        if (!cancelled && connectGenerationRef.current === generation) {
+          setStatus({ text: errorMessage(error), kind: "error" });
+          setConnectionStatus("error");
+          setIsConnecting(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, recordId]);
+
+  useEffect(() => {
     return () => {
       void desktopApi().acpDisconnect({ chatId: recordId });
-      connectedRef.current = false;
+      connectGenerationRef.current += 1;
     };
   }, [recordId]);
 
