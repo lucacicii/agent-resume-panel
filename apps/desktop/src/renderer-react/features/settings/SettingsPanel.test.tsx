@@ -50,6 +50,8 @@ const messages = {
   "desktop.settings.baseUrl": "Base URL",
   "desktop.settings.model": "Model",
   "desktop.settings.apiKey": "API key",
+  "desktop.settings.showApiKey": "Show API key",
+  "desktop.settings.hideApiKey": "Hide API key",
   "desktop.settings.baseUrlOptional": "Base URL (optional)",
   "desktop.settings.apiKeyOptional": "API key (optional)",
   "desktop.settings.outputLanguage": "Output language",
@@ -194,5 +196,31 @@ describe("SettingsPanel (window)", () => {
         })
       )
     );
+  });
+
+  it("reveals and hides model API keys", async () => {
+    const { host } = renderWindowSettings("models");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-api-key-llmApiKey"]')).not.toBeNull());
+
+    const input = host.querySelector('[data-testid="settings-api-key-llmApiKey"]') as HTMLInputElement;
+    const toggle = host.querySelector('[data-testid="settings-api-key-reveal-llmApiKey"]') as HTMLButtonElement;
+    expect(input.type).toBe("password");
+    expect(toggle.getAttribute("aria-label")).toBe("Show API key");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.change(input, { target: { value: "sk-secret-value" } });
+    fireEvent.click(toggle);
+
+    expect(input.type).toBe("text");
+    expect(input.value).toBe("sk-secret-value");
+    expect(toggle.getAttribute("aria-label")).toBe("Hide API key");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(input.type).toBe("password");
+    expect(input.value).toBe("sk-secret-value");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    expect(host.querySelectorAll('[data-testid^="settings-api-key-reveal-"]')).toHaveLength(3);
   });
 });

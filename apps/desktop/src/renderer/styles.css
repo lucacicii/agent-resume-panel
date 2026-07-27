@@ -1088,6 +1088,31 @@ textarea:focus-visible,
   width: 100%;
 }
 
+.settings-field-input-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.settings-field-input-wrap input {
+  width: 100%;
+  padding-right: 36px;
+}
+
+.settings-field-reveal {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+}
+
+.settings-field-reveal:hover {
+  color: var(--text);
+}
+
 .settings-row {
   display: flex;
   align-items: center;

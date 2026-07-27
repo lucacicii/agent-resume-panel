@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -27,6 +28,9 @@ import {
   type StorageDraft,
   type WorkbenchDraft
 } from "./model";
+
+type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey";
+type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
 
 type Pane = "general" | "models" | "sessions" | "workbench" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
 type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
@@ -281,8 +285,54 @@ type ModelTestKind = "tool" | "chat" | "embedding";
 function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; setDraft: (value: ModelsDraft) => void; scheduleSave: (draft: ModelsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const [testing, setTesting] = useState<ModelTestKind | null>(null);
   const [testStatus, setTestStatus] = useState<Partial<Record<ModelTestKind, { text: string; kind?: StatusKind }>>>({});
+  const [revealedApiKeys, setRevealedApiKeys] = useState<Partial<Record<ModelsApiKeyField, boolean>>>({});
   const update = <K extends keyof ModelsDraft>(key: K, value: ModelsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
-  const fields = (items: ReadonlyArray<readonly ["llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey", string, "text" | "password"]>) => items.map(([key, label, type]) => <label className="settings-field" key={key}><span className="settings-field-label">{t(label)}</span><input type={type} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>);
+  const toggleApiKeyReveal = (key: ModelsApiKeyField) => {
+    setRevealedApiKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+  const fields = (items: ReadonlyArray<readonly [ModelsFieldKey, string, "text" | "password"]>) =>
+    items.map(([key, label, type]) => {
+      if (type !== "password") {
+        return (
+          <label className="settings-field" key={key}>
+            <span className="settings-field-label">{t(label)}</span>
+            <input type="text" value={draft[key]} onChange={(event) => update(key, event.target.value)} />
+          </label>
+        );
+      }
+      const apiKey = key as ModelsApiKeyField;
+      const revealed = Boolean(revealedApiKeys[apiKey]);
+      const revealLabel = revealed ? t("desktop.settings.hideApiKey") : t("desktop.settings.showApiKey");
+      return (
+        <label className="settings-field" key={key}>
+          <span className="settings-field-label">{t(label)}</span>
+          <span className="settings-field-input-wrap">
+            <input
+              type={revealed ? "text" : "password"}
+              autoComplete="off"
+              spellCheck={false}
+              value={draft[key]}
+              onChange={(event) => update(key, event.target.value)}
+              data-testid={`settings-api-key-${apiKey}`}
+            />
+            <button
+              type="button"
+              className="settings-field-reveal notes-icon-btn"
+              data-testid={`settings-api-key-reveal-${apiKey}`}
+              aria-label={revealLabel}
+              aria-pressed={revealed}
+              title={revealLabel}
+              onClick={(event) => {
+                event.preventDefault();
+                toggleApiKeyReveal(apiKey);
+              }}
+            >
+              {revealed ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+            </button>
+          </span>
+        </label>
+      );
+    });
   const runTest = async (kind: ModelTestKind) => {
     setTesting(kind);
     setTestStatus((prev) => ({ ...prev, [kind]: { text: t("desktop.settings.testConnectionTesting") } }));
