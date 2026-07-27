@@ -93,6 +93,7 @@ import {
   resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
+import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
@@ -660,6 +661,13 @@ function registerIpc(): void {
   ipcMain.handle("settings:get", async () => {
     return loadSettings();
   });
+
+  safeHandle(
+    "settings:testModel",
+    async (_event, args?: { kind?: unknown; draft?: ModelsTestDraft | null }) => {
+      return testModelConnectionFromDraft(args || {});
+    }
+  );
 
   const externalMcpLaunch = async () => {
     const settings = await loadSettings();

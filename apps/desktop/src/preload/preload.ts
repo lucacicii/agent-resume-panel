@@ -22,6 +22,7 @@ import type {
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupResult } from "../main/backupService";
+import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
@@ -45,6 +46,11 @@ export interface DesktopApi {
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  /** Probe Tool / Chat / Embedding using current Models form values (Save not required). */
+  testModelConnection(args: {
+    kind: ModelTestKind;
+    draft: ModelsTestDraft;
+  }): Promise<TestModelConnectionResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
   onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
@@ -761,6 +767,7 @@ const api: DesktopApi = {
   removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
   registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
+  testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   onSettingsNavigate: (callback) => {

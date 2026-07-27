@@ -55,6 +55,9 @@ const messages = {
   "desktop.settings.outputLanguage": "Output language",
   "desktop.settings.fieldOutputLanguageDescription": "Output lang desc",
   "desktop.settings.fieldOutputLanguageOptionAuto": "Auto",
+  "desktop.settings.testConnection": "Test Connection",
+  "desktop.settings.testConnectionHint": "Uses the values currently in the form above (Save is not required).",
+  "desktop.settings.testConnectionTesting": "Testing…",
   "desktop.settings.saving": "Saving…",
   "desktop.settings.saved": "Saved {0}",
   "desktop.settings.schedulerOn": "scheduler on",
@@ -72,6 +75,10 @@ function renderWindowSettings(initialPane = "general") {
     schedulerEnabled: false,
     options
   }));
+  const testModelConnection = vi.fn(async (args: { kind: string; draft: unknown }) => ({
+    ok: true,
+    message: `Connected mock (${args.kind})`
+  }));
   const navigateHandlers: Array<(payload: { pane: string }) => void> = [];
   vi.spyOn(window, "confirm").mockReturnValue(true);
   window.agentResume = {
@@ -84,6 +91,7 @@ function renderWindowSettings(initialPane = "general") {
       desktop: { theme: "system" }
     }),
     saveSettings,
+    testModelConnection,
     closeSettingsWindow,
     onSettingsNavigate: (callback: (payload: { pane: string }) => void) => {
       navigateHandlers.push(callback);
@@ -95,7 +103,7 @@ function renderWindowSettings(initialPane = "general") {
       <SettingsPanel variant="window" initialPane={initialPane} />
     </I18nProvider>
   );
-  return { host, closeSettingsWindow, saveSettings, navigateHandlers };
+  return { host, closeSettingsWindow, saveSettings, testModelConnection, navigateHandlers };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -155,6 +163,36 @@ describe("SettingsPanel (window)", () => {
         expect(last?.[1]).toMatchObject({ section: "models" });
       },
       { timeout: 2000 }
+    );
+  });
+
+  it("tests each model group with current form values without saving", async () => {
+    const { host, testModelConnection, saveSettings } = renderWindowSettings("models");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-test-model-tool"]')).not.toBeNull());
+    expect(host.querySelectorAll('[data-testid^="settings-test-model-"]')).toHaveLength(3);
+
+    saveSettings.mockClear();
+    fireEvent.click(host.querySelector('[data-testid="settings-test-model-tool"]')!);
+    await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "tool",
+        draft: expect.objectContaining({ llmBaseUrl: "https://example.test/v1", llmModel: "test" })
+      })
+    ));
+    await waitFor(() => expect(host.textContent).toContain("Connected mock (tool)"));
+    expect(saveSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(host.querySelector('[data-testid="settings-test-model-chat"]')!);
+    await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith(expect.objectContaining({ kind: "chat" })));
+
+    fireEvent.click(host.querySelector('[data-testid="settings-test-model-embedding"]')!);
+    await waitFor(() =>
+      expect(testModelConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "embedding",
+          draft: expect.objectContaining({ embModel: "text-embedding-3-small" })
+        })
+      )
     );
   });
 });

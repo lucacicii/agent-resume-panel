@@ -996,7 +996,10 @@
     "desktop.settings.embeddingIndexMaxPerTick": "Max per batch",
     "desktop.settings.embeddingIndexMaxPerTickHint": "How many sessions to embed in one background pass. Default 5.",
     "desktop.settings.embeddingIndexConcurrency": "Parallelism",
-    "desktop.settings.embeddingIndexConcurrencyHint": "Concurrent summary-embedding jobs (1–4). Default 2."
+    "desktop.settings.embeddingIndexConcurrencyHint": "Concurrent summary-embedding jobs (1–4). Default 2.",
+    "desktop.settings.testConnection": "Test Connection",
+    "desktop.settings.testConnectionHint": "Uses the values currently in the form above (Save is not required).",
+    "desktop.settings.testConnectionTesting": "Testing…"
   },
   "zh-cn": {
     "app": {
@@ -2036,7 +2039,10 @@
     "desktop.settings.embeddingIndexMaxPerTick": "每批最多条数",
     "desktop.settings.embeddingIndexMaxPerTickHint": "一次后台扫描最多向量化多少个已有摘要的 session。默认 5。",
     "desktop.settings.embeddingIndexConcurrency": "并行数",
-    "desktop.settings.embeddingIndexConcurrencyHint": "同时进行的摘要向量任务数（1–4）。默认 2。"
+    "desktop.settings.embeddingIndexConcurrencyHint": "同时进行的摘要向量任务数（1–4）。默认 2。",
+    "desktop.settings.testConnection": "测试连接",
+    "desktop.settings.testConnectionHint": "使用上方表单的当前值（无需先保存）。",
+    "desktop.settings.testConnectionTesting": "测试中…"
   },
   "ja": {
     "app": {
@@ -3107,6 +3113,9 @@
     "desktop.settings.embeddingIndexMaxPerTick": "1 回あたり上限",
     "desktop.settings.embeddingIndexMaxPerTickHint": "1 回で埋め込むセッション数。既定 5。",
     "desktop.settings.embeddingIndexConcurrency": "並列数",
-    "desktop.settings.embeddingIndexConcurrencyHint": "同時埋め込みジョブ数（1–4）。既定 2。"
+    "desktop.settings.embeddingIndexConcurrencyHint": "同時埋め込みジョブ数（1–4）。既定 2。",
+    "desktop.settings.testConnection": "接続をテスト",
+    "desktop.settings.testConnectionHint": "上のフォームの現在の値を使用します（保存は不要です）。",
+    "desktop.settings.testConnectionTesting": "テスト中…"
   }
 }

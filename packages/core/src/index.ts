@@ -187,6 +187,7 @@ export type { ChatStreamCallbacks, LlmToolCallResult } from "./llm/chat";
 export type { LlmCallResult } from "./llm/chat";
 export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
 export type { EmbedCallResult } from "./llm/embeddings";
+export { testChatLlmConnection, testEmbeddingConnection } from "./llm/testConnection";
 export {
   llmConfigFromSettings,
   chatLlmConfigFromSettings,

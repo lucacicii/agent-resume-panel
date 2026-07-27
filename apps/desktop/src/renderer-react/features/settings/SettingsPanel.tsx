@@ -276,13 +276,54 @@ function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft
   </>;
 }
 
+type ModelTestKind = "tool" | "chat" | "embedding";
+
 function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; setDraft: (value: ModelsDraft) => void; scheduleSave: (draft: ModelsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+  const [testing, setTesting] = useState<ModelTestKind | null>(null);
+  const [testStatus, setTestStatus] = useState<Partial<Record<ModelTestKind, { text: string; kind?: StatusKind }>>>({});
   const update = <K extends keyof ModelsDraft>(key: K, value: ModelsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
   const fields = (items: ReadonlyArray<readonly ["llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey", string, "text" | "password"]>) => items.map(([key, label, type]) => <label className="settings-field" key={key}><span className="settings-field-label">{t(label)}</span><input type={type} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>);
+  const runTest = async (kind: ModelTestKind) => {
+    setTesting(kind);
+    setTestStatus((prev) => ({ ...prev, [kind]: { text: t("desktop.settings.testConnectionTesting") } }));
+    try {
+      const result = await desktopApi().testModelConnection({ kind, draft });
+      setTestStatus((prev) => ({
+        ...prev,
+        [kind]: { text: result.message, kind: result.ok ? "ok" : "error" }
+      }));
+    } catch (error) {
+      setTestStatus((prev) => ({
+        ...prev,
+        [kind]: { text: error instanceof Error ? error.message : String(error), kind: "error" }
+      }));
+    } finally {
+      setTesting(null);
+    }
+  };
+  const testBlock = (kind: ModelTestKind) => {
+    const status = testStatus[kind];
+    const busy = testing === kind;
+    return (
+      <div className="settings-test-connection">
+        <p className="settings-footnote">{t("desktop.settings.testConnectionHint")}</p>
+        <button
+          type="button"
+          className="ghost-btn"
+          data-testid={`settings-test-model-${kind}`}
+          disabled={testing !== null}
+          onClick={() => void runTest(kind)}
+        >
+          {busy ? t("desktop.settings.testConnectionTesting") : t("desktop.settings.testConnection")}
+        </button>
+        {status?.text ? <Status kind={status.kind}>{status.text}</Status> : null}
+      </div>
+    );
+  };
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.toolLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.toolLlmFootnote")}</p>{fields([["llmBaseUrl", "desktop.settings.baseUrl", "text"], ["llmModel", "desktop.settings.model", "text"], ["llmApiKey", "desktop.settings.apiKey", "password"]])}<label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span><span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span></span><select className="settings-row-control" value={draft.llmLang} onChange={(event) => update("llmLang", event.target.value as ModelsDraft["llmLang"])}><option value="auto">{t("desktop.settings.fieldOutputLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label></div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.chatLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.chatModelFootnote")}</p>{fields([["chatBaseUrl", "desktop.settings.baseUrl", "text"], ["chatModel", "desktop.settings.model", "text"], ["chatApiKey", "desktop.settings.apiKey", "password"]])}</div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embedding")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.embeddingFootnote")}</p>{fields([["embBaseUrl", "desktop.settings.baseUrlOptional", "text"], ["embModel", "desktop.settings.model", "text"], ["embApiKey", "desktop.settings.apiKeyOptional", "password"]])}</div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.toolLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.toolLlmFootnote")}</p>{fields([["llmBaseUrl", "desktop.settings.baseUrl", "text"], ["llmModel", "desktop.settings.model", "text"], ["llmApiKey", "desktop.settings.apiKey", "password"]])}<label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span><span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span></span><select className="settings-row-control" value={draft.llmLang} onChange={(event) => update("llmLang", event.target.value as ModelsDraft["llmLang"])}><option value="auto">{t("desktop.settings.fieldOutputLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label>{testBlock("tool")}</div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.chatLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.chatModelFootnote")}</p>{fields([["chatBaseUrl", "desktop.settings.baseUrl", "text"], ["chatModel", "desktop.settings.model", "text"], ["chatApiKey", "desktop.settings.apiKey", "password"]])}{testBlock("chat")}</div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embedding")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.embeddingFootnote")}</p>{fields([["embBaseUrl", "desktop.settings.baseUrlOptional", "text"], ["embModel", "desktop.settings.model", "text"], ["embApiKey", "desktop.settings.apiKeyOptional", "password"]])}{testBlock("embedding")}</div></section>
   </>;
 }
 
