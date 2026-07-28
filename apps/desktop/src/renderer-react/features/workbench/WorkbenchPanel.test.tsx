@@ -586,7 +586,11 @@ describe("WorkbenchPanel", () => {
       tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 1, behind: 2 }]
     }));
     const terminalGitFetch = vi.fn(async () => ({ ok: true }));
-    const terminalGitPush = vi.fn(async () => ({ ok: true }));
+    let failPush = false;
+    const terminalGitPush = vi.fn(async () => {
+      if (failPush) throw new Error("remote rejected");
+      return { ok: true };
+    });
     const terminalGitPull = vi.fn(async () => { throw new Error("no upstream"); });
     const terminalGitCommit = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
@@ -644,6 +648,11 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-commit-composer")).not.toBeNull();
     expect(screen.getByRole("checkbox", { name: "src/app.ts" }).getAttribute("aria-checked")).toBe("true");
 
+    fireEvent.change(messageField, { target: { value: "draft before standalone push" } });
+    fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Push"]')!);
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
+    expect(messageField).toHaveProperty("value", "draft before standalone push");
+
     fireEvent.change(messageField, { target: { value: "feat: add toasts" } });
     fireEvent.click(screen.getByRole("button", { name: "Commit & Push" }));
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
@@ -653,6 +662,22 @@ describe("WorkbenchPanel", () => {
     }));
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
     expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" });
+    expect(messageField).toHaveProperty("value", "");
+
+    fireEvent.change(messageField, { target: { value: "fix: normal commit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+    await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
+      repoRoot: "/work/app",
+      message: "fix: normal commit",
+      paths: ["src/app.ts"]
+    }));
+    expect(messageField).toHaveProperty("value", "");
+
+    fireEvent.change(messageField, { target: { value: "feat: keep draft" } });
+    failPush = true;
+    fireEvent.click(screen.getByRole("button", { name: "Commit & Push" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "desktop.workbench.gitPushFailed", kind: "error" }));
+    expect(messageField).toHaveProperty("value", "feat: keep draft");
   });
 
   it("polls git status while Workbench is active without opening the Git panel", async () => {

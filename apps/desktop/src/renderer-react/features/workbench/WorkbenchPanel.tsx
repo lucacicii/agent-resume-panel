@@ -2751,13 +2751,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       return;
     }
     notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
-    setCommitMessage("");
     setCommitSuggestion(null);
     if (pushAfter) {
       try {
         await desktopApi().terminalGitPush({ repoRoot: gitRoot });
         notifyGitSuccess("desktop.workbench.gitPushSucceeded");
+        setCommitMessage("");
       } catch (error) { notifyGitFailure("desktop.workbench.gitPushFailed", error); }
+    } else {
+      setCommitMessage("");
     }
     await refreshGit();
     currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
