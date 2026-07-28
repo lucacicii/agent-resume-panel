@@ -14,9 +14,9 @@ import {
   Utf8Base64,
   writeTerminalSelection
 } from "./terminalClipboard";
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
-import { EditorView } from "@codemirror/view";
+import { Decoration, drawSelection, EditorView, type DecorationSet } from "@codemirror/view";
 import type {
   AgentProvider,
   AgentSession,
@@ -85,6 +85,46 @@ type DiffPane = {
   oldText: string;
   newText: string;
 };
+type DiffSearchMatch = {
+  side: "old" | "new";
+  from: number;
+  to: number;
+};
+type DiffSearchHandle = {
+  find: (query: string, direction: "forward" | "backward") => boolean;
+  prefillFromSelection: () => { query: string } | null;
+  clear: () => void;
+};
+
+const DIFF_COLLAPSE_UNCHANGED = { margin: 3, minSize: 8 } as const;
+const setDiffSearchDecorations = StateEffect.define<DecorationSet>();
+const diffSearchDecorations = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (decorations, transaction) => {
+    for (const effect of transaction.effects) {
+      if (effect.is(setDiffSearchDecorations)) return effect.value;
+    }
+    return decorations.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});
+
+const diffSearchSelectionTheme = EditorView.theme({
+  ".cm-selectionBackground": {
+    backgroundColor: "color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg))",
+    boxShadow: "inset 0 -2px 0 var(--color-accent)"
+  }
+});
+
+function readOnlyDiffExtensions() {
+  return [
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    drawSelection(),
+    diffSearchDecorations,
+    diffSearchSelectionTheme
+  ];
+}
 type TerminalPane = {
   key: string;
   title: string;
@@ -634,32 +674,365 @@ function GitChangesPanel({
   </div>, host);
 }
 
-function MergeDiffView({ oldText, newText }: { oldText: string; newText: string }): React.JSX.Element {
+export function collectDiffSearchMatches(oldText: string, newText: string, query: string): DiffSearchMatch[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return [];
+  const matches: DiffSearchMatch[] = [];
+  for (const [side, text] of [["old", oldText], ["new", newText]] as const) {
+    const haystack = text.toLocaleLowerCase();
+    let from = 0;
+    while (from <= haystack.length - needle.length) {
+      const match = haystack.indexOf(needle, from);
+      if (match < 0) break;
+      matches.push({ side, from: match, to: match + needle.length });
+      from = match + Math.max(1, needle.length);
+    }
+  }
+  return matches;
+}
+
+export function findDiffSearchMatchIndex(
+  matches: DiffSearchMatch[],
+  side: DiffSearchMatch["side"],
+  from: number,
+  to: number
+): number {
+  return matches.findIndex((match) => match.side === side && match.from === from && match.to === to);
+}
+
+export function advanceDiffSearchMatchIndex(
+  currentIndex: number,
+  matchCount: number,
+  direction: "forward" | "backward"
+): number {
+  if (matchCount <= 0) return -1;
+  return direction === "forward"
+    ? (currentIndex + 1 + matchCount) % matchCount
+    : (currentIndex - 1 + matchCount) % matchCount;
+}
+
+function MergeDiffView({
+  oldText,
+  newText,
+  onHandle
+}: {
+  oldText: string;
+  newText: string;
+  onHandle: (handle: DiffSearchHandle | null) => void;
+}): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!host.current) return;
     const view = new MergeView({
-      a: { doc: oldText, extensions: [EditorState.readOnly.of(true), EditorView.editable.of(false)] },
-      b: { doc: newText, extensions: [EditorState.readOnly.of(true), EditorView.editable.of(false)] },
+      a: { doc: oldText, extensions: readOnlyDiffExtensions() },
+      b: { doc: newText, extensions: readOnlyDiffExtensions() },
       parent: host.current,
       highlightChanges: true,
       gutter: true,
       revertControls: undefined,
-      collapseUnchanged: { margin: 3, minSize: 8 }
+      collapseUnchanged: DIFF_COLLAPSE_UNCHANGED
     });
-    return () => view.destroy();
-  }, [newText, oldText]);
+    let lastQuery = "";
+    let activeMatchIndex = -1;
+    let searchExpanded = false;
+    const setSearchExpanded = (expanded: boolean) => {
+      if (expanded === searchExpanded) return;
+      searchExpanded = expanded;
+      view.reconfigure({ collapseUnchanged: expanded ? undefined : DIFF_COLLAPSE_UNCHANGED });
+    };
+    const applyMatches = (matches: DiffSearchMatch[]) => {
+      setSearchExpanded(matches.length > 0);
+      for (const [side, editor] of [["old", view.a], ["new", view.b]] as const) {
+        const ranges = matches
+          .map((match, index) => match.side === side
+            ? Decoration.mark({
+              class: index === activeMatchIndex
+                ? "cm-diff-search-match cm-diff-search-match-current"
+                : "cm-diff-search-match"
+            }).range(match.from, match.to)
+            : null)
+          .filter((range): range is NonNullable<typeof range> => range !== null);
+        editor.dispatch({ effects: setDiffSearchDecorations.of(Decoration.set(ranges)) });
+      }
+    };
+    const selectActiveMatch = (matches: DiffSearchMatch[]) => {
+      const match = matches[activeMatchIndex];
+      if (!match) return;
+      applyMatches(matches);
+      for (const [side, editor] of [["old", view.a], ["new", view.b]] as const) {
+        if (side === match.side) {
+          editor.dispatch({
+            selection: { anchor: match.from, head: match.to },
+            effects: EditorView.scrollIntoView(match.from, { y: "center" })
+          });
+          editor.contentDOM.blur();
+        } else {
+          const head = editor.state.selection.main.head;
+          editor.dispatch({ selection: { anchor: head } });
+        }
+      }
+    };
+    const selectionText = (editor: EditorView) => {
+      const { from, to } = editor.state.selection.main;
+      return from === to ? null : { from, to, text: editor.state.sliceDoc(from, to) };
+    };
+    const domSelectionText = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !host.current) return null;
+      if (!host.current.contains(selection.anchorNode) || !host.current.contains(selection.focusNode)) return null;
+      return selection.toString() || null;
+    };
+    const prefillFromEditorSelection = (side: DiffSearchMatch["side"], selection: NonNullable<ReturnType<typeof selectionText>>) => {
+      const query = selection.text.trim();
+      if (!query) return null;
+      const leadingWhitespace = selection.text.length - selection.text.trimStart().length;
+      const matches = collectDiffSearchMatches(oldText, newText, query);
+      const selectedFrom = selection.from + leadingWhitespace;
+      activeMatchIndex = findDiffSearchMatchIndex(matches, side, selectedFrom, selectedFrom + query.length);
+      lastQuery = query.toLocaleLowerCase();
+      if (activeMatchIndex < 0 && matches.length) activeMatchIndex = 0;
+      selectActiveMatch(matches);
+      return { query };
+    };
+    const copySelection = (event: ClipboardEvent) => {
+      const focusedEditor = view.a.hasFocus ? view.a : view.b.hasFocus ? view.b : null;
+      const text = focusedEditor ? selectionText(focusedEditor)?.text : domSelectionText();
+      if (!text) return;
+      desktopApi().clipboardWriteText?.(text);
+      event.clipboardData?.setData("text/plain", text);
+      event.preventDefault();
+    };
+    for (const editor of [view.a, view.b]) editor.contentDOM.addEventListener("copy", copySelection);
+    const handle: DiffSearchHandle = {
+      find: (query, direction) => {
+        const normalizedQuery = query.trim().toLocaleLowerCase();
+        const matches = collectDiffSearchMatches(oldText, newText, query);
+        if (!matches.length) {
+          lastQuery = normalizedQuery;
+          activeMatchIndex = -1;
+          applyMatches([]);
+          return false;
+        }
+        if (normalizedQuery !== lastQuery) {
+          lastQuery = normalizedQuery;
+          activeMatchIndex = direction === "forward" ? -1 : matches.length;
+        }
+        activeMatchIndex = advanceDiffSearchMatchIndex(activeMatchIndex, matches.length, direction);
+        selectActiveMatch(matches);
+        return true;
+      },
+      prefillFromSelection: () => {
+        const focused = view.a.hasFocus ? { side: "old" as const, editor: view.a }
+          : view.b.hasFocus ? { side: "new" as const, editor: view.b }
+          : null;
+        const focusedSelection = focused && selectionText(focused.editor);
+        if (focused && focusedSelection) return prefillFromEditorSelection(focused.side, focusedSelection);
+
+        const domText = domSelectionText();
+        if (domText) {
+          const query = domText.trim();
+          if (!query) return null;
+          lastQuery = query.toLocaleLowerCase();
+          activeMatchIndex = -1;
+          applyMatches(collectDiffSearchMatches(oldText, newText, query));
+          return { query };
+        }
+
+        const selected = [
+          { side: "old" as const, editor: view.a },
+          { side: "new" as const, editor: view.b }
+        ].map((candidate) => {
+          const selection = selectionText(candidate.editor);
+          return selection ? { ...candidate, selection } : null;
+        }).find((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
+        if (!selected) return null;
+        return prefillFromEditorSelection(selected.side, selected.selection);
+      },
+      clear: () => {
+        applyMatches([]);
+        for (const editor of [view.a, view.b]) {
+          const head = editor.state.selection.main.head;
+          editor.dispatch({ selection: { anchor: head } });
+        }
+        lastQuery = "";
+        activeMatchIndex = -1;
+      }
+    };
+    onHandle(handle);
+    return () => {
+      for (const editor of [view.a, view.b]) editor.contentDOM.removeEventListener("copy", copySelection);
+      onHandle(null);
+      view.destroy();
+    };
+  }, [newText, oldText, onHandle]);
 
   return <div className="react-git-diff-merge" ref={host} />;
 }
 
-function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): ReactPortal | null {
-  const [host, setHost] = useState<HTMLElement | null>(null);
+function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.Element | null {
+  const [contentHost, setContentHost] = useState<HTMLElement | null>(null);
+  const [paneHost, setPaneHost] = useState<HTMLElement | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  const searchHandleRef = useRef<DiffSearchHandle | null>(null);
+  const findResultCount = useMemo(() => (
+    diff && findQuery.trim() ? collectDiffSearchMatches(diff.oldText, diff.newText, findQuery).length : null
+  ), [diff, findQuery]);
+  const setSearchHandle = useCallback((handle: DiffSearchHandle | null) => {
+    searchHandleRef.current = handle;
+  }, []);
+  const { t } = useI18n();
+
   useEffect(() => {
-    setHost(diff ? document.querySelector<HTMLElement>("#react-workbench .wb-git-diff-pane .wb-diff-content") : null);
-  }, [diff]);
-  return diff && host ? createPortal(<MergeDiffView oldText={diff.oldText} newText={diff.newText} />, host) : null;
+    if (!diff) {
+      setContentHost(null);
+      setPaneHost(null);
+      return;
+    }
+    setContentHost(document.querySelector<HTMLElement>("#react-workbench .wb-git-diff-pane .wb-diff-content"));
+    setPaneHost(document.querySelector<HTMLElement>("#react-workbench .wb-git-diff-pane"));
+  }, [diff?.key]);
+
+  useEffect(() => {
+    setFindOpen(false);
+    setFindQuery("");
+  }, [diff?.key]);
+
+  const runFind = useCallback((direction: "forward" | "backward", query = findQuery) => {
+    const value = query.trim();
+    if (!value) {
+      searchHandleRef.current?.clear();
+      return false;
+    }
+    const hit = searchHandleRef.current?.find(value, direction) ?? false;
+    window.requestAnimationFrame(() => findInputRef.current?.focus());
+    return hit;
+  }, [findQuery]);
+
+  const updateFindQuery = useCallback((value: string) => {
+    setFindQuery(value);
+    void runFind("forward", value);
+  }, [runFind]);
+
+  const focusFindInput = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    });
+  }, []);
+
+  const openFind = useCallback((readSelection: boolean) => {
+    const selected = readSelection ? searchHandleRef.current?.prefillFromSelection() : null;
+    if (selected) {
+      setFindQuery(selected.query);
+    }
+    setFindOpen(true);
+    focusFindInput();
+  }, [focusFindInput]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindQuery("");
+    searchHandleRef.current?.clear();
+  }, []);
+
+  useEffect(() => {
+    if (!diff) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        openFind(!(event.target instanceof HTMLInputElement));
+        return;
+      }
+      if (!findOpen) return;
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const findInput = findInputRef.current;
+        const query = findInput && event.target === findInput ? findInput.value : findQuery;
+        void runFind(event.shiftKey ? "backward" : "forward", query);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeFind();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [closeFind, diff, findOpen, openFind, runFind]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    window.requestAnimationFrame(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    });
+  }, [findOpen]);
+
+  if (!diff || !contentHost) return null;
+  return <>
+    {createPortal(<MergeDiffView oldText={diff.oldText} newText={diff.newText} onHandle={setSearchHandle} />, contentHost)}
+    {findOpen && paneHost ? createPortal(
+      <div className="wb-diff-find-bar app-inline-search" role="search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          ref={findInputRef}
+          className="wb-diff-find-input app-inline-search-input"
+          type="text"
+          value={findQuery}
+          placeholder={t("desktop.common.search")}
+          aria-label={t("desktop.common.search")}
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          onChange={(event) => {
+            updateFindQuery(event.target.value);
+          }}
+          onPaste={(event) => {
+            const value = event.clipboardData?.getData("text/plain") || desktopApi().clipboardReadText?.() || "";
+            if (!value) return;
+            event.preventDefault();
+            updateFindQuery(value);
+          }}
+          onKeyDown={(event) => {
+            const isPaste = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "v";
+            if (isPaste) {
+              const value = desktopApi().clipboardReadText?.() || "";
+              if (!value) return;
+              event.preventDefault();
+              event.stopPropagation();
+              updateFindQuery(value);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              closeFind();
+            }
+          }}
+        />
+        <span className={`wb-diff-find-count app-inline-search-meta${findResultCount === 0 ? " is-empty" : ""}`} aria-live="polite">
+          {findResultCount ?? ""}
+        </span>
+        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => void runFind("backward")}>
+          <ArrowUp size={14} />
+        </button>
+        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => void runFind("forward")}>
+          <ArrowDown size={14} />
+        </button>
+        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}>
+          <X size={14} />
+        </button>
+      </div>,
+      paneHost
+    ) : null}
+  </>;
 }
 
 function graphColumnX(layout: GitGraphLayout, column: number): number {
@@ -3143,7 +3516,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         discard: t("desktop.workbench.gitDiscard")
       }}
     />
-    <GitDiffMergePanel diff={currentDiff} />
+    <GitDiffMergePanel diff={active ? currentDiff : undefined} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitLog} />
     <GitRepositorySelector visible={side === "git" && !gitLog} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); }} />

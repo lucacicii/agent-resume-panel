@@ -1,7 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { WorkbenchPanel } from "./WorkbenchPanel";
+import {
+  WorkbenchPanel,
+  advanceDiffSearchMatchIndex,
+  collectDiffSearchMatches,
+  findDiffSearchMatchIndex
+} from "./WorkbenchPanel";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
 
@@ -69,6 +74,31 @@ afterEach(() => {
 });
 
 describe("WorkbenchPanel", () => {
+  it("collects case-insensitive matches across both Git diff sides", () => {
+    expect(collectDiffSearchMatches("const Value = 1;\nvalue++;", "const Value = 2;\nreturn value;", " VALUE ")).toEqual([
+      { side: "old", from: 6, to: 11 },
+      { side: "old", from: 17, to: 22 },
+      { side: "new", from: 6, to: 11 },
+      { side: "new", from: 24, to: 29 }
+    ]);
+    expect(collectDiffSearchMatches("old", "new", "missing")).toEqual([]);
+  });
+
+  it("keeps the selected Git diff match as the current search position", () => {
+    const matches = collectDiffSearchMatches("value value", "value", "value");
+    expect(findDiffSearchMatchIndex(matches, "old", 6, 11)).toBe(1);
+    expect(findDiffSearchMatchIndex(matches, "new", 0, 5)).toBe(2);
+    expect(findDiffSearchMatchIndex(matches, "old", 0, 4)).toBe(-1);
+  });
+
+  it("cycles Git diff search forward and backward across the boundaries", () => {
+    expect(advanceDiffSearchMatchIndex(-1, 3, "forward")).toBe(0);
+    expect(advanceDiffSearchMatchIndex(2, 3, "forward")).toBe(0);
+    expect(advanceDiffSearchMatchIndex(3, 3, "backward")).toBe(2);
+    expect(advanceDiffSearchMatchIndex(0, 3, "backward")).toBe(2);
+    expect(advanceDiffSearchMatchIndex(0, 0, "forward")).toBe(-1);
+  });
+
   it("loads project sessions and restores the selected session through the desktop bridge", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
