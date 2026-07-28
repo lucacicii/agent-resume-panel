@@ -31,7 +31,7 @@ import {
   Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
-import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
+import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -91,8 +91,8 @@ type DiffSearchMatch = {
   to: number;
 };
 type DiffSearchHandle = {
-  find: (query: string, direction: "forward" | "backward") => boolean;
-  prefillFromSelection: () => { query: string } | null;
+  find: (query: string, direction: "forward" | "backward", reset?: boolean) => CodeEditorSearchResult;
+  prefillFromSelection: () => { query: string; result: CodeEditorSearchResult } | null;
   clear: () => void;
 };
 
@@ -758,7 +758,7 @@ function MergeDiffView({
     };
     const selectActiveMatch = (matches: DiffSearchMatch[]) => {
       const match = matches[activeMatchIndex];
-      if (!match) return;
+      if (!match) return { current: 0, total: matches.length };
       applyMatches(matches);
       for (const [side, editor] of [["old", view.a], ["new", view.b]] as const) {
         if (side === match.side) {
@@ -772,6 +772,7 @@ function MergeDiffView({
           editor.dispatch({ selection: { anchor: head } });
         }
       }
+      return { current: activeMatchIndex + 1, total: matches.length };
     };
     const selectionText = (editor: EditorView) => {
       const { from, to } = editor.state.selection.main;
@@ -792,8 +793,8 @@ function MergeDiffView({
       activeMatchIndex = findDiffSearchMatchIndex(matches, side, selectedFrom, selectedFrom + query.length);
       lastQuery = query.toLocaleLowerCase();
       if (activeMatchIndex < 0 && matches.length) activeMatchIndex = 0;
-      selectActiveMatch(matches);
-      return { query };
+      const result = selectActiveMatch(matches);
+      return { query, result };
     };
     const copySelection = (event: ClipboardEvent) => {
       const focusedEditor = view.a.hasFocus ? view.a : view.b.hasFocus ? view.b : null;
@@ -805,22 +806,21 @@ function MergeDiffView({
     };
     for (const editor of [view.a, view.b]) editor.contentDOM.addEventListener("copy", copySelection);
     const handle: DiffSearchHandle = {
-      find: (query, direction) => {
+      find: (query, direction, reset = false) => {
         const normalizedQuery = query.trim().toLocaleLowerCase();
         const matches = collectDiffSearchMatches(oldText, newText, query);
         if (!matches.length) {
           lastQuery = normalizedQuery;
           activeMatchIndex = -1;
           applyMatches([]);
-          return false;
+          return { current: 0, total: 0 };
         }
-        if (normalizedQuery !== lastQuery) {
+        if (reset || normalizedQuery !== lastQuery) {
           lastQuery = normalizedQuery;
           activeMatchIndex = direction === "forward" ? -1 : matches.length;
         }
         activeMatchIndex = advanceDiffSearchMatchIndex(activeMatchIndex, matches.length, direction);
-        selectActiveMatch(matches);
-        return true;
+        return selectActiveMatch(matches);
       },
       prefillFromSelection: () => {
         const focused = view.a.hasFocus ? { side: "old" as const, editor: view.a }
@@ -834,9 +834,11 @@ function MergeDiffView({
           const query = domText.trim();
           if (!query) return null;
           lastQuery = query.toLocaleLowerCase();
-          activeMatchIndex = -1;
-          applyMatches(collectDiffSearchMatches(oldText, newText, query));
-          return { query };
+          const matches = collectDiffSearchMatches(oldText, newText, query);
+          activeMatchIndex = matches.length ? 0 : -1;
+          const result = selectActiveMatch(matches);
+          if (!matches.length) applyMatches([]);
+          return { query, result };
         }
 
         const selected = [
@@ -875,11 +877,9 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
   const [paneHost, setPaneHost] = useState<HTMLElement | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const searchHandleRef = useRef<DiffSearchHandle | null>(null);
-  const findResultCount = useMemo(() => (
-    diff && findQuery.trim() ? collectDiffSearchMatches(diff.oldText, diff.newText, findQuery).length : null
-  ), [diff, findQuery]);
   const setSearchHandle = useCallback((handle: DiffSearchHandle | null) => {
     searchHandleRef.current = handle;
   }, []);
@@ -898,22 +898,25 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
   useEffect(() => {
     setFindOpen(false);
     setFindQuery("");
+    setFindResult(null);
   }, [diff?.key]);
 
-  const runFind = useCallback((direction: "forward" | "backward", query = findQuery) => {
+  const runFind = useCallback((direction: "forward" | "backward", query = findQuery, reset = false) => {
     const value = query.trim();
     if (!value) {
       searchHandleRef.current?.clear();
-      return false;
+      setFindResult(null);
+      return { current: 0, total: 0 };
     }
-    const hit = searchHandleRef.current?.find(value, direction) ?? false;
+    const result = searchHandleRef.current?.find(value, direction, reset) ?? { current: 0, total: 0 };
+    setFindResult(result);
     window.requestAnimationFrame(() => findInputRef.current?.focus());
-    return hit;
+    return result;
   }, [findQuery]);
 
   const updateFindQuery = useCallback((value: string) => {
     setFindQuery(value);
-    void runFind("forward", value);
+    void runFind("forward", value, true);
   }, [runFind]);
 
   const focusFindInput = useCallback(() => {
@@ -927,6 +930,7 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
     const selected = readSelection ? searchHandleRef.current?.prefillFromSelection() : null;
     if (selected) {
       setFindQuery(selected.query);
+      setFindResult(selected.result);
     }
     setFindOpen(true);
     focusFindInput();
@@ -935,6 +939,7 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
   const closeFind = useCallback(() => {
     setFindOpen(false);
     setFindQuery("");
+    setFindResult(null);
     searchHandleRef.current?.clear();
   }, []);
 
@@ -1017,8 +1022,8 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
             }
           }}
         />
-        <span className={`wb-diff-find-count app-inline-search-meta${findResultCount === 0 ? " is-empty" : ""}`} aria-live="polite">
-          {findResultCount ?? ""}
+        <span className={`wb-diff-find-count app-inline-search-meta${findResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
+          {findQuery.trim() && findResult ? t("desktop.common.findCount", findResult.current, findResult.total) : ""}
         </span>
         <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => void runFind("backward")}>
           <ArrowUp size={14} />

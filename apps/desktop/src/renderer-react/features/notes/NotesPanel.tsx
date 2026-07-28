@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { AgentSession, GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
-import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
+import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -97,11 +97,29 @@ function folderLabel(folder: Folder, aliases: Record<string, string>, t: (key: s
   return folder.sessionId;
 }
 
-/** Case-insensitive text search in a rendered preview; selects the match without mutating HTML. */
-function findInPreview(root: HTMLElement | null, query: string, direction: "forward" | "backward"): boolean {
-  if (!root) return false;
+const PREVIEW_SEARCH_HIGHLIGHT = "notes-search-match";
+const PREVIEW_SEARCH_CURRENT_HIGHLIGHT = "notes-search-current";
+
+type PreviewSearchSession = {
+  query: string;
+  matches: Range[];
+  currentIndex: number;
+};
+
+type HighlightRegistry = {
+  set(name: string, value: unknown): void;
+  delete(name: string): boolean;
+};
+
+function previewHighlightRegistry(): HighlightRegistry | null {
+  return ((globalThis as typeof globalThis & { CSS?: { highlights?: HighlightRegistry } }).CSS?.highlights) || null;
+}
+
+/** Collects case-insensitive matches across rendered text nodes without mutating Markdown HTML. */
+export function collectPreviewSearchRanges(root: HTMLElement | null, query: string): Range[] {
+  if (!root) return [];
   const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return false;
+  if (!needle) return [];
 
   type Piece = { node: Text; start: number; end: number };
   const pieces: Piece[] = [];
@@ -117,47 +135,87 @@ function findInPreview(root: HTMLElement | null, query: string, direction: "forw
     }
     current = walker.nextNode();
   }
-  if (!full) return false;
+  if (!full) return [];
 
   const haystack = full.toLocaleLowerCase();
-  const selection = window.getSelection();
-  let fromOffset = direction === "forward" ? 0 : haystack.length;
-  if (selection && selection.rangeCount > 0 && root.contains(selection.anchorNode)) {
-    const range = selection.getRangeAt(0);
-    const pre = document.createRange();
-    pre.selectNodeContents(root);
-    if (direction === "forward") {
-      pre.setEnd(range.endContainer, range.endOffset);
-      fromOffset = pre.toString().length;
-    } else {
-      pre.setEnd(range.startContainer, range.startOffset);
-      fromOffset = Math.max(0, pre.toString().length - 1);
+  const ranges: Range[] = [];
+  let from = 0;
+  while (from <= haystack.length - needle.length) {
+    const match = haystack.indexOf(needle, from);
+    if (match < 0) break;
+    const matchEnd = match + needle.length;
+    const startPiece = pieces.find((piece) => match >= piece.start && match < piece.end);
+    const endPiece = pieces.find((piece) => matchEnd > piece.start && matchEnd <= piece.end)
+      || pieces.find((piece) => matchEnd > piece.start && matchEnd - 1 < piece.end);
+    if (startPiece && endPiece) {
+      const range = document.createRange();
+      range.setStart(startPiece.node, match - startPiece.start);
+      range.setEnd(endPiece.node, matchEnd - endPiece.start);
+      ranges.push(range);
     }
+    from = match + Math.max(1, needle.length);
   }
+  return ranges;
+}
 
-  let match = direction === "forward"
-    ? haystack.indexOf(needle, fromOffset)
-    : haystack.lastIndexOf(needle, fromOffset);
-  if (match < 0) {
-    match = direction === "forward" ? haystack.indexOf(needle) : haystack.lastIndexOf(needle);
+function clearPreviewSearch(root: HTMLElement | null): void {
+  const registry = previewHighlightRegistry();
+  registry?.delete(PREVIEW_SEARCH_HIGHLIGHT);
+  registry?.delete(PREVIEW_SEARCH_CURRENT_HIGHLIGHT);
+  const selection = window.getSelection();
+  if (selection?.rangeCount && root?.contains(selection.anchorNode)) selection.removeAllRanges();
+}
+
+function applyPreviewSearch(root: HTMLElement | null, session: PreviewSearchSession): CodeEditorSearchResult {
+  clearPreviewSearch(root);
+  const current = session.matches[session.currentIndex];
+  const HighlightConstructor = (globalThis as typeof globalThis & {
+    Highlight?: new (...ranges: Range[]) => unknown;
+  }).Highlight;
+  const registry = previewHighlightRegistry();
+  if (HighlightConstructor && registry && session.matches.length) {
+    registry.set(PREVIEW_SEARCH_HIGHLIGHT, new HighlightConstructor(...session.matches));
+    if (current) registry.set(PREVIEW_SEARCH_CURRENT_HIGHLIGHT, new HighlightConstructor(current));
   }
-  if (match < 0) return false;
+  if (current) {
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(current);
+    const anchor = current.startContainer.parentElement || root;
+    anchor?.scrollIntoView?.({ block: "center", inline: "nearest" });
+  }
+  return {
+    current: current ? session.currentIndex + 1 : 0,
+    total: session.matches.length
+  };
+}
 
-  const matchEnd = match + needle.length;
-  const startPiece = pieces.find((piece) => match >= piece.start && match < piece.end);
-  const endPiece = pieces.find((piece) => matchEnd > piece.start && matchEnd <= piece.end)
-    || pieces.find((piece) => matchEnd > piece.start && matchEnd - 1 < piece.end);
-  if (!startPiece || !endPiece) return false;
+function createPreviewSearchSession(
+  root: HTMLElement | null,
+  query: string,
+  currentIndex = 0,
+  selectedRange: Range | null = null
+): PreviewSearchSession {
+  const matches = collectPreviewSearchRanges(root, query);
+  const selectedIndex = selectedRange ? matches.findIndex((match) =>
+    match.startContainer === selectedRange.startContainer
+      && match.startOffset === selectedRange.startOffset
+      && match.endContainer === selectedRange.endContainer
+      && match.endOffset === selectedRange.endOffset
+  ) : -1;
+  return {
+    query: query.trim().toLocaleLowerCase(),
+    matches,
+    currentIndex: matches.length
+      ? (selectedIndex >= 0 ? selectedIndex : Math.min(Math.max(0, currentIndex), matches.length - 1))
+      : -1
+  };
+}
 
-  const range = document.createRange();
-  range.setStart(startPiece.node, match - startPiece.start);
-  range.setEnd(endPiece.node, matchEnd - endPiece.start);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-
-  const anchor = startPiece.node.parentElement || root;
-  anchor.scrollIntoView({ block: "center", inline: "nearest" });
-  return true;
+function selectedPreviewRange(root: HTMLElement | null): Range | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount || !root?.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return null;
+  return selection.getRangeAt(0).cloneRange();
 }
 
 function PaneResizer({ label, onDelta }: { label: string; onDelta: (delta: number) => void }): React.JSX.Element {
@@ -223,7 +281,7 @@ export function NotesPanel(): ReactPortal | null {
   const [renameDialog, setRenameDialog] = useState<RenameDialog | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
-  const [findMatch, setFindMatch] = useState<boolean | null>(null);
+  const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const saveTimer = useRef<number | null>(null);
@@ -231,11 +289,15 @@ export function NotesPanel(): ReactPortal | null {
   const selectedRef = useRef<Note | null>(selected);
   const editorRef = useRef<CodeEditorHandle>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const previewSearchRef = useRef<PreviewSearchSession | null>(null);
+  const previewSelectedRangeRef = useRef<Range | null>(null);
   const listSearchRef = useRef<HTMLInputElement>(null);
   const listSearchButtonRef = useRef<HTMLButtonElement>(null);
   const listSearchToolbarRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef(view);
+  const previousFindViewRef = useRef(view);
+  const previousFindContentRef = useRef(content);
   viewRef.current = view;
   const findQueryRef = useRef(findQuery);
   findQueryRef.current = findQuery;
@@ -358,33 +420,75 @@ export function NotesPanel(): ReactPortal | null {
     window.requestAnimationFrame(() => findRef.current?.focus());
   }, [findOpen]);
 
-  const openFind = useCallback(() => {
-    if (!selectedRef.current) return;
-    setFindOpen(true);
+  const clearFindSearch = useCallback(() => {
+    editorRef.current?.clearSearch();
+    clearPreviewSearch(previewRef.current);
+    previewSearchRef.current = null;
+    setFindResult(null);
   }, []);
 
-  const closeFind = useCallback(() => {
-    setFindOpen(false);
-    setFindMatch(null);
-    window.getSelection()?.removeAllRanges();
-  }, []);
-
-  const runFind = useCallback((direction: "forward" | "backward", query = findQueryRef.current) => {
+  const runFind = useCallback((
+    direction: "forward" | "backward",
+    query = findQueryRef.current,
+    reset = false
+  ) => {
     const q = query.trim();
     if (!q) {
-      setFindMatch(null);
-      if (viewRef.current === "view") window.getSelection()?.removeAllRanges();
-      return false;
+      clearFindSearch();
+      return { current: 0, total: 0 };
     }
-    const hit = viewRef.current === "edit"
-      ? (editorRef.current?.find(q, direction, { focus: false }) ?? false)
-      : findInPreview(previewRef.current, q, direction);
-    setFindMatch(hit);
+    let result: CodeEditorSearchResult;
+    if (viewRef.current === "edit") {
+      result = reset
+        ? (editorRef.current?.setSearchQuery(q) ?? { current: 0, total: 0 })
+        : (editorRef.current?.navigateSearch(direction) ?? { current: 0, total: 0 });
+    } else {
+      const normalized = q.toLocaleLowerCase();
+      let session = previewSearchRef.current;
+      if (reset || !session || session.query !== normalized) {
+        session = createPreviewSearchSession(previewRef.current, q, 0, previewSelectedRangeRef.current);
+        previewSelectedRangeRef.current = null;
+      } else if (session.matches.length) {
+        const delta = direction === "forward" ? 1 : -1;
+        session = { ...session, currentIndex: (session.currentIndex + delta + session.matches.length) % session.matches.length };
+      }
+      previewSearchRef.current = session;
+      result = applyPreviewSearch(previewRef.current, session);
+    }
+    setFindResult(result);
     // Keep keyboard focus on the find field so Enter is not handled by CodeMirror.
     // rAF: selection updates can steal focus synchronously into contenteditable.
     window.requestAnimationFrame(() => findRef.current?.focus());
-    return hit;
-  }, []);
+    return result;
+  }, [clearFindSearch]);
+
+  const openFind = useCallback(() => {
+    if (!selectedRef.current) return;
+    const selectedText = viewRef.current === "edit"
+      ? editorRef.current?.getSelectedText() || ""
+      : (() => {
+        const range = selectedPreviewRange(previewRef.current);
+        previewSelectedRangeRef.current = range;
+        return range?.toString() || "";
+      })();
+    const query = selectedText.trim();
+    if (query) {
+      setFindQuery(query);
+      findQueryRef.current = query;
+      runFind("forward", query, true);
+    } else if (findQueryRef.current.trim()) {
+      runFind("forward", findQueryRef.current, true);
+    }
+    setFindOpen(true);
+  }, [runFind]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindQuery("");
+    findQueryRef.current = "";
+    previewSelectedRangeRef.current = null;
+    clearFindSearch();
+  }, [clearFindSearch]);
 
   useEffect(() => {
     if (!active || !selected) return;
@@ -418,10 +522,32 @@ export function NotesPanel(): ReactPortal | null {
   }, [active, selected, findOpen, openFind, closeFind, runFind]);
 
   useEffect(() => {
+    if (previousFindViewRef.current === view) return;
+    previousFindViewRef.current = view;
     if (!findOpen || !findQueryRef.current.trim()) return;
-    // Re-run after edit/view switch so matches target the visible surface.
-    window.requestAnimationFrame(() => runFind("forward"));
+    editorRef.current?.clearSearch();
+    clearPreviewSearch(previewRef.current);
+    previewSearchRef.current = null;
+    previewSelectedRangeRef.current = null;
+    // Mode changes start a fresh search in the newly visible surface.
+    window.requestAnimationFrame(() => runFind("forward", findQueryRef.current, true));
   }, [view, findOpen, runFind]);
+
+  useEffect(() => {
+    if (previousFindContentRef.current === content) return;
+    previousFindContentRef.current = content;
+    if (!findOpen || !findQueryRef.current.trim()) return;
+    window.requestAnimationFrame(() => {
+      if (viewRef.current === "edit") setFindResult(editorRef.current?.getSearchResult() ?? { current: 0, total: 0 });
+      else runFind("forward", findQueryRef.current, true);
+    });
+  }, [content, findOpen, runFind]);
+
+  useEffect(() => {
+    closeFind();
+  // Changing notes must discard the previous note's search session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.noteId]);
 
   const projects = useMemo(() => {
     if (catalogProjects.length) {
@@ -796,23 +922,30 @@ export function NotesPanel(): ReactPortal | null {
                   onChange={(event) => {
                     const value = event.target.value;
                     setFindQuery(value);
-                    runFind("forward", value);
+                    findQueryRef.current = value;
+                    previewSelectedRangeRef.current = null;
+                    runFind("forward", value, true);
+                  }}
+                  onPaste={(event) => {
+                    const value = event.clipboardData.getData("text/plain");
+                    if (!value) return;
+                    event.preventDefault();
+                    setFindQuery(value);
+                    findQueryRef.current = value;
+                    previewSelectedRangeRef.current = null;
+                    runFind("forward", value, true);
                   }}
                   onKeyDown={(event) => {
-                    // Window capture handler also covers Enter; keep local guard as backup.
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    } else if (event.key === "Escape") {
+                    if (event.key === "Escape") {
                       event.preventDefault();
                       event.stopPropagation();
                       closeFind();
                     }
                   }}
                 />
-                <span className={`notes-find-count app-inline-search-meta${findMatch === false ? " is-empty" : ""}`} aria-live="polite">
-                  {findQuery.trim()
-                    ? (findMatch === false ? t("desktop.common.findNoResults") : "")
+                <span className={`notes-find-count app-inline-search-meta${findResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
+                  {findQuery.trim() && findResult
+                    ? t("desktop.common.findCount", findResult.current, findResult.total)
                     : ""}
                 </span>
                 <button

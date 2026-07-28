@@ -1,13 +1,44 @@
-import { forwardRef } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { NotesPanel } from "./NotesPanel";
+import { collectPreviewSearchRanges, NotesPanel } from "./NotesPanel";
 
 vi.mock("../../components/CodeEditor", () => ({
-  CodeEditor: forwardRef(({ value, onChange, onBlur, ariaLabel }: { value: string; onChange: (value: string) => void; onBlur?: () => void; ariaLabel: string }, _ref) => (
-    <textarea value={value} placeholder={ariaLabel} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />
-  ))
+  CodeEditor: forwardRef(({ value, onChange, onBlur, ariaLabel }: { value: string; onChange: (value: string) => void; onBlur?: () => void; ariaLabel: string }, ref) => {
+    const search = useRef({ query: "", current: 0, total: 0 });
+    const setQuery = (query: string) => {
+      const needle = query.trim().toLocaleLowerCase();
+      const haystack = value.toLocaleLowerCase();
+      let total = 0;
+      let from = 0;
+      while (needle && from <= haystack.length - needle.length) {
+        const match = haystack.indexOf(needle, from);
+        if (match < 0) break;
+        total += 1;
+        from = match + needle.length;
+      }
+      search.current = { query: needle, current: total ? 1 : 0, total };
+      return { current: search.current.current, total };
+    };
+    useImperativeHandle(ref, () => ({
+      focus: () => undefined,
+      find: () => false,
+      revealRange: () => false,
+      setSearchQuery: setQuery,
+      navigateSearch: (direction: "forward" | "backward") => {
+        const current = search.current;
+        if (current.total) current.current = direction === "forward"
+          ? current.current % current.total + 1
+          : (current.current - 2 + current.total) % current.total + 1;
+        return { current: current.current, total: current.total };
+      },
+      clearSearch: () => { search.current = { query: "", current: 0, total: 0 }; },
+      getSearchResult: () => ({ current: search.current.current, total: search.current.total }),
+      getSelectedText: () => ""
+    }));
+    return <textarea value={value} placeholder={ariaLabel} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />;
+  })
 }));
 
 const libraryNote = { noteId: "note-1", scope: "library", filename: "renderer.md", relDir: "library", relMdPath: "notes/library/renderer.md", title: "Renderer plan", contentPreview: "Move the Desktop renderer", createdAtMs: 1, updatedAtMs: 2 };
@@ -57,6 +88,9 @@ const messages = {
   "desktop.common.cancel": "Cancel",
   "desktop.common.close": "Close",
   "desktop.common.closeFind": "Close find",
+  "desktop.common.findCount": "{0} / {1}",
+  "desktop.common.findPrev": "Previous match",
+  "desktop.common.findNext": "Next match",
   "desktop.common.edit": "Edit",
   "desktop.common.view": "View",
   "desktop.common.rename": "Rename",
@@ -90,7 +124,7 @@ function installBridge() {
     listSessions: async () => [{ provider: "codex", id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }],
     listProjectAliases: async () => ({ "/work/panel": "Panel" }),
     setProjectAlias: async () => ({ ok: true }),
-    notesRead: async ({ noteId }: { noteId: string }) => ({ record: noteId === "note-3" ? { ...libraryNote, noteId, filename: "new-note.md", title: "New note" } : noteId === "note-2" ? projectNote : libraryNote, content: "# Renderer\nInitial" }),
+    notesRead: async ({ noteId }: { noteId: string }) => ({ record: noteId === "note-3" ? { ...libraryNote, noteId, filename: "new-note.md", title: "New note" } : noteId === "note-2" ? projectNote : libraryNote, content: "# Renderer\nInitial initial" }),
     notesWrite,
     notesCreate,
     notesMove: async () => ({ noteId: "note-2", filename: "project.md", scope: "library" }),
@@ -107,6 +141,15 @@ function installBridge() {
 }
 
 describe("NotesPanel", () => {
+  it("finds rendered preview text across element boundaries", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<span>Hello </span><strong>world</strong><span>. Hello world.</span>";
+    const ranges = collectPreviewSearchRanges(root, "lo wo");
+    expect(ranges).toHaveLength(2);
+    expect(ranges.map((range) => range.toString())).toEqual(["lo wo", "lo wo"]);
+    expect(root.innerHTML).toBe("<span>Hello </span><strong>world</strong><span>. Hello world.</span>");
+  });
+
   it("loads, edits, saves, and creates notes through the desktop bridge", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
     const { notesWrite, notesCreate } = installBridge();
@@ -149,5 +192,28 @@ describe("NotesPanel", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search GTD tasks" }), { target: { value: "Ship" } });
     fireEvent.click(screen.getByRole("button", { name: /Ship GTD/ }));
     expect(await screen.findByText("Renderer plan")).toBeTruthy();
+  });
+
+  it("shows the current and total find count and ignores composing Enter", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Find in note" }));
+    const input = screen.getByRole("textbox", { name: "Find in note" });
+    fireEvent.change(input, { target: { value: "Initial" } });
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Enter", isComposing: true });
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Enter", shiftKey: true });
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "missing" } });
+    expect(screen.getByText("0 / 0").classList.contains("is-empty")).toBe(true);
   });
 });

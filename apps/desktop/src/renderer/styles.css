@@ -5033,6 +5033,25 @@ code {
   box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
+.notes-editor-host .cm-editor-search-match {
+  background-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
+}
+
+.notes-editor-host .cm-editor-search-match-current {
+  background-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg));
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+::highlight(notes-search-match) {
+  background-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
+}
+
+::highlight(notes-search-current) {
+  background-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg));
+  text-decoration: underline 2px var(--color-accent);
+  text-underline-offset: 2px;
+}
+
 #react-workbench .wb-git-log-graph-row > .wb-git-graph-node {
   display: none;
 }

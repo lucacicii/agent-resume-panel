@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CodeEditor, getFloatingMenuPosition } from "./CodeEditor";
+import { CodeEditor, getFloatingMenuPosition, type CodeEditorHandle } from "./CodeEditor";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -93,5 +94,38 @@ describe("CodeEditor slash commands", () => {
     expect(await screen.findAllByRole("option")).toHaveLength(6);
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("option")).toBeNull();
+  });
+});
+
+describe("CodeEditor search sessions", () => {
+  it("decorates every match, tracks the current match, and wraps navigation", () => {
+    const ref = createRef<CodeEditorHandle>();
+    const { container } = render(
+      <CodeEditor ref={ref} value="Alpha alpha ALPHA" ariaLabel="Markdown editor" onChange={vi.fn()} />
+    );
+
+    let result = { current: 0, total: 0 };
+    act(() => { result = ref.current?.setSearchQuery("alpha") || result; });
+    expect(result).toEqual({ current: 1, total: 3 });
+    expect(container.querySelectorAll(".cm-editor-search-match")).toHaveLength(3);
+    expect(container.querySelectorAll(".cm-editor-search-match-current")).toHaveLength(1);
+
+    act(() => { result = ref.current?.navigateSearch("backward") || result; });
+    expect(result).toEqual({ current: 3, total: 3 });
+    act(() => { result = ref.current?.navigateSearch("forward") || result; });
+    expect(result).toEqual({ current: 1, total: 3 });
+
+    act(() => ref.current?.clearSearch());
+    expect(ref.current?.getSearchResult()).toEqual({ current: 0, total: 0 });
+    expect(container.querySelector(".cm-editor-search-match")).toBeNull();
+  });
+
+  it("uses an exact editor selection as the current prefilled match", () => {
+    const ref = createRef<CodeEditorHandle>();
+    render(<CodeEditor ref={ref} value="value value value" ariaLabel="Markdown editor" onChange={vi.fn()} />);
+
+    act(() => ref.current?.revealRange({ line: 1, column: 7, endColumn: 12, focus: false }));
+    expect(ref.current?.getSelectedText()).toBe("value");
+    expect(ref.current?.setSearchQuery("value")).toEqual({ current: 2, total: 3 });
   });
 });

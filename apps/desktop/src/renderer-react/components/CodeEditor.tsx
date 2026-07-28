@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from "@codemirror/state";
 import { cpp } from "@codemirror/lang-cpp";
 import { css } from "@codemirror/lang-css";
 import { go } from "@codemirror/lang-go";
@@ -15,7 +15,7 @@ import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { drawSelection, EditorView, keymap } from "@codemirror/view";
+import { Decoration, drawSelection, EditorView, keymap, type DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 
@@ -55,6 +55,12 @@ export interface CodeEditorFindOptions {
   focus?: boolean;
 }
 
+export interface CodeEditorSearchResult {
+  /** 1-based current match, or 0 when there are no matches. */
+  current: number;
+  total: number;
+}
+
 export interface CodeEditorRevealRange {
   /** 1-based line number */
   line: number;
@@ -68,6 +74,11 @@ export interface CodeEditorRevealRange {
 export interface CodeEditorHandle {
   focus(): void;
   find(query: string, direction?: "forward" | "backward", options?: CodeEditorFindOptions): boolean;
+  setSearchQuery(query: string): CodeEditorSearchResult;
+  navigateSearch(direction: "forward" | "backward"): CodeEditorSearchResult;
+  clearSearch(): void;
+  getSearchResult(): CodeEditorSearchResult;
+  getSelectedText(): string;
   /** Select and scroll to a 1-based line/column range (for Find in Files). */
   revealRange(range: CodeEditorRevealRange): boolean;
 }
@@ -119,6 +130,110 @@ const wrapping = new Compartment();
 const tabs = new Compartment();
 const theme = new Compartment();
 const language = new Compartment();
+
+interface SearchMatch {
+  from: number;
+  to: number;
+}
+
+interface EditorSearchState {
+  query: string;
+  matches: SearchMatch[];
+  currentIndex: number;
+  decorations: DecorationSet;
+}
+
+const setEditorSearchQuery = StateEffect.define<{ query: string; selectedFrom?: number; selectedTo?: number }>();
+const navigateEditorSearch = StateEffect.define<"forward" | "backward">();
+
+function collectSearchMatches(doc: Text, query: string): SearchMatch[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return [];
+  const haystack = doc.toString().toLocaleLowerCase();
+  const matches: SearchMatch[] = [];
+  let from = 0;
+  while (from <= haystack.length - needle.length) {
+    const match = haystack.indexOf(needle, from);
+    if (match < 0) break;
+    matches.push({ from: match, to: match + needle.length });
+    from = match + Math.max(1, needle.length);
+  }
+  return matches;
+}
+
+function createEditorSearchState(doc: Text, query: string, currentIndex = 0): EditorSearchState {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matches = collectSearchMatches(doc, normalizedQuery);
+  const nextIndex = matches.length ? Math.min(Math.max(0, currentIndex), matches.length - 1) : -1;
+  return {
+    query: normalizedQuery,
+    matches,
+    currentIndex: nextIndex,
+    decorations: Decoration.set(matches.map((match, index) => Decoration.mark({
+      class: index === nextIndex
+        ? "cm-editor-search-match cm-editor-search-match-current"
+        : "cm-editor-search-match"
+    }).range(match.from, match.to)))
+  };
+}
+
+const editorSearchState = StateField.define<EditorSearchState>({
+  create: (state) => createEditorSearchState(state.doc, ""),
+  update: (search, transaction) => {
+    for (const effect of transaction.effects) {
+      if (effect.is(setEditorSearchQuery)) {
+        const next = createEditorSearchState(transaction.newDoc, effect.value.query);
+        const selectedIndex = next.matches.findIndex((match) =>
+          match.from === effect.value.selectedFrom && match.to === effect.value.selectedTo
+        );
+        return selectedIndex >= 0
+          ? createEditorSearchState(transaction.newDoc, effect.value.query, selectedIndex)
+          : next;
+      }
+      if (effect.is(navigateEditorSearch)) {
+        if (!search.matches.length) return search;
+        const delta = effect.value === "forward" ? 1 : -1;
+        return createEditorSearchState(
+          transaction.newDoc,
+          search.query,
+          (search.currentIndex + delta + search.matches.length) % search.matches.length
+        );
+      }
+    }
+    if (!transaction.docChanged || !search.query) return search;
+    const current = search.matches[search.currentIndex];
+    const mappedPosition = current ? transaction.changes.mapPos(current.from, 1) : 0;
+    const matches = collectSearchMatches(transaction.newDoc, search.query);
+    const currentIndex = matches.findIndex((match) => match.from >= mappedPosition);
+    return createEditorSearchState(
+      transaction.newDoc,
+      search.query,
+      currentIndex >= 0 ? currentIndex : Math.max(0, matches.length - 1)
+    );
+  },
+  provide: (field) => EditorView.decorations.from(field, (search) => search.decorations)
+});
+
+function searchResult(search: EditorSearchState): CodeEditorSearchResult {
+  return {
+    current: search.currentIndex >= 0 ? search.currentIndex + 1 : 0,
+    total: search.matches.length
+  };
+}
+
+function revealSearchMatch(instance: EditorView, focus: boolean): CodeEditorSearchResult {
+  const search = instance.state.field(editorSearchState);
+  const match = search.matches[search.currentIndex];
+  if (match) {
+    instance.dispatch({
+      selection: { anchor: match.from, head: match.to },
+      effects: EditorView.scrollIntoView(match.from, { y: "center" })
+    });
+    if (focus) instance.focus();
+    else instance.contentDOM.blur();
+  }
+  return searchResult(search);
+}
 
 const lightEditorTheme = EditorView.theme({
   "&": {
@@ -299,6 +414,40 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       }
       return true;
     },
+    setSearchQuery: (query) => {
+      const instance = view.current;
+      if (!instance) return { current: 0, total: 0 };
+      const selection = instance.state.selection.main;
+      instance.dispatch({ effects: setEditorSearchQuery.of({
+        query,
+        selectedFrom: selection.from === selection.to ? undefined : selection.from,
+        selectedTo: selection.from === selection.to ? undefined : selection.to
+      }) });
+      return revealSearchMatch(instance, false);
+    },
+    navigateSearch: (direction) => {
+      const instance = view.current;
+      if (!instance) return { current: 0, total: 0 };
+      instance.dispatch({ effects: navigateEditorSearch.of(direction) });
+      return revealSearchMatch(instance, false);
+    },
+    clearSearch: () => {
+      const instance = view.current;
+      if (!instance) return;
+      instance.dispatch({ effects: setEditorSearchQuery.of({ query: "" }) });
+      const head = instance.state.selection.main.head;
+      instance.dispatch({ selection: { anchor: head } });
+    },
+    getSearchResult: () => {
+      const instance = view.current;
+      return instance ? searchResult(instance.state.field(editorSearchState)) : { current: 0, total: 0 };
+    },
+    getSelectedText: () => {
+      const instance = view.current;
+      if (!instance) return "";
+      const { from, to } = instance.state.selection.main;
+      return from === to ? "" : instance.state.sliceDoc(from, to);
+    },
     revealRange: (range) => {
       const instance = view.current;
       if (!instance || !range) return false;
@@ -456,6 +605,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       doc: value,
       extensions: [
         history(),
+        editorSearchState,
         keymap.of([
           { key: "ArrowDown", run: (instance) => handleSlashMenuKey(instance, "ArrowDown") },
           { key: "ArrowUp", run: (instance) => handleSlashMenuKey(instance, "ArrowUp") },
