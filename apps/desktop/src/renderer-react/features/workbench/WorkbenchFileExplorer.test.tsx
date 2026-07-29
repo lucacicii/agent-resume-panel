@@ -12,7 +12,8 @@ const apiMocks = vi.hoisted(() => ({
   workbenchRevealPath: vi.fn(),
   workbenchCopyPath: vi.fn(),
   workbenchClipboardHasFiles: vi.fn(),
-  workbenchPastePaths: vi.fn()
+  workbenchPastePaths: vi.fn(),
+  clipboardWriteText: vi.fn()
 }));
 
 vi.mock("../../bridge", () => ({ desktopApi: () => apiMocks }));
@@ -27,6 +28,7 @@ afterEach(() => {
   apiMocks.workbenchCopyPath.mockReset();
   apiMocks.workbenchClipboardHasFiles.mockReset();
   apiMocks.workbenchPastePaths.mockReset();
+  apiMocks.clipboardWriteText.mockReset();
 });
 
 describe("WorkbenchFileExplorer", () => {
@@ -150,7 +152,7 @@ describe("WorkbenchFileExplorer", () => {
     }));
   });
 
-  it("offers copy, paste, and Finder reveal from the file context menu", async () => {
+  it("offers copy, copy path, paste, and Finder reveal from the file context menu", async () => {
     apiMocks.workbenchListDirectory.mockResolvedValue({
       entries: [{ name: "package.json", path: "/work/app/package.json", isDirectory: false }]
     });
@@ -165,9 +167,36 @@ describe("WorkbenchFileExplorer", () => {
     fireEvent.contextMenu(row, { clientX: 20, clientY: 30 });
 
     expect(await screen.findByRole("menuitem", { name: "desktop.common.copy" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "desktop.common.copyPath" })).toBeTruthy();
     await waitFor(() => expect((screen.getByRole("menuitem", {
       name: "desktop.common.paste"
     }) as HTMLButtonElement).disabled).toBe(false));
     expect(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" })).toBeTruthy();
+  });
+
+  it("copies absolute file and directory paths as text from the context menu", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [
+        { name: "src", path: "/work/app/src", isDirectory: true },
+        { name: "package.json", path: "/work/app/package.json", isDirectory: false }
+      ]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+
+    const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.common.copyPath" }));
+    expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/src");
+
+    const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.common.copyPath" }));
+    expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/package.json");
   });
 });

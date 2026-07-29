@@ -221,6 +221,16 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     }
   };
 
+  const copyPathTarget = (target: ExplorerTarget) => {
+    setContextMenu(null);
+    try {
+      desktopApi().clipboardWriteText(target.path);
+      reportStatus(t("desktop.workbench.explorerPathCopied"));
+    } catch (error) {
+      onError(t("desktop.workbench.explorerCopyPathFailed", errorMessage(error)));
+    }
+  };
+
   const pasteTarget = async (target: ExplorerTarget) => {
     if (!rootPath) return;
     setContextMenu(null);
@@ -349,12 +359,13 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       role="menu"
       style={{
         left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 188)),
-        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 124))
+        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 156))
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button type="button" role="menuitem" onClick={() => void copyTarget(contextMenu.target)}>{t("desktop.common.copy")}</button>
+      <button type="button" role="menuitem" onClick={() => copyPathTarget(contextMenu.target)}>{t("desktop.common.copyPath")}</button>
       <button type="button" role="menuitem" disabled={!contextMenu.clipboardHasFiles} onClick={() => void pasteTarget(contextMenu.target)}>{t("desktop.common.paste")}</button>
       <div className="context-menu-separator" role="separator" />
       <button type="button" role="menuitem" onClick={() => void revealTarget(contextMenu.target)}>{t("desktop.workbench.explorerRevealInFinder")}</button>
