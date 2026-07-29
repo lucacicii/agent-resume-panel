@@ -7,6 +7,7 @@ Read [`.agents/extended/product-independence.md`](.agents/extended/product-indep
 ## Boundaries
 
 - Do not modify Java code.
+- Do not use automatic visual screenshot or computer-use screenshot tools for visual QA.
 - Never commit API keys, publish tokens (`OVSX_PAT`, Marketplace tokens), or `.env` files.
 - Do not alter existing user changes outside the requested task.
 

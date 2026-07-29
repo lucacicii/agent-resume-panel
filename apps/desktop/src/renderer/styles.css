@@ -5037,7 +5037,16 @@ code {
   background-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
 }
 
+.wb-editor-host .cm-editor-search-match {
+  background-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
+}
+
 .notes-editor-host .cm-editor-search-match-current {
+  background-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg));
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.wb-editor-host .cm-editor-search-match-current {
   background-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg));
   box-shadow: inset 0 -2px 0 var(--color-accent);
 }
@@ -6674,7 +6683,15 @@ code {
   position: relative;
 }
 
-/* Finder-style tab strip: flat segments, no top rounding, + on the right */
+/* Workbench pane groups share one active pane but keep type-specific tab rows. */
+.wb-pane-tab-groups {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+  background: var(--color-window-bg);
+}
+
 .wb-terminal-tabs {
   display: flex;
   align-items: stretch;
@@ -6684,6 +6701,37 @@ code {
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-window-bg);
   flex-shrink: 0;
+}
+
+.wb-pane-tab-group-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  min-width: 30px;
+  padding: 0;
+  border-right: 1px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.wb-pane-tab-group-label svg {
+  flex: 0 0 auto;
+}
+
+.is-session-group .wb-pane-tab-group-label svg {
+  color: var(--color-accent);
+}
+
+.is-terminal-group .wb-pane-tab-group-label svg {
+  color: var(--color-success);
+}
+
+.is-code-group .wb-pane-tab-group-label svg {
+  color: var(--color-warning);
 }
 
 .wb-terminal-tabs[hidden] {
@@ -6811,6 +6859,19 @@ code {
   margin-bottom: -1px;
 }
 
+.wb-terminal-tab.is-session.active {
+  box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.wb-terminal-tab.is-terminal.active {
+  box-shadow: inset 0 2px 0 var(--color-success);
+}
+
+.wb-terminal-tab.is-editor.active,
+.wb-terminal-tab.is-diff.active {
+  box-shadow: inset 0 2px 0 var(--color-warning);
+}
+
 .wb-terminal-tab-label {
   appearance: none;
   border: none;
@@ -6829,6 +6890,10 @@ code {
   min-width: 0;
   text-align: left;
   display: block;
+}
+
+.wb-terminal-tab-label svg {
+  flex: 0 0 auto;
 }
 
 .wb-terminal-tab:hover .wb-terminal-tab-label {
@@ -7808,7 +7873,9 @@ textarea.wb-editor-host {
 }
 
 .wb-diff-find-bar.app-inline-search,
-.app-inline-search.wb-diff-find-bar {
+.app-inline-search.wb-diff-find-bar,
+.wb-editor-find-bar.app-inline-search,
+.app-inline-search.wb-editor-find-bar {
   position: absolute;
   top: 4px;
   right: 10px;
@@ -7825,7 +7892,8 @@ textarea.wb-editor-host {
   color: var(--color-label-secondary);
 }
 
-.wb-diff-find-input.app-inline-search-input {
+.wb-diff-find-input.app-inline-search-input,
+.wb-editor-find-input.app-inline-search-input {
   width: 180px;
   flex: 0 1 180px;
   min-width: 80px;
@@ -7839,12 +7907,14 @@ textarea.wb-editor-host {
   outline: none;
 }
 
-.wb-diff-find-input.app-inline-search-input:focus {
+.wb-diff-find-input.app-inline-search-input:focus,
+.wb-editor-find-input.app-inline-search-input:focus {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -1px;
 }
 
-.wb-diff-find-count.app-inline-search-meta {
+.wb-diff-find-count.app-inline-search-meta,
+.wb-editor-find-count.app-inline-search-meta {
   min-width: 2ch;
   color: var(--color-label-secondary);
   font-size: var(--font-size-caption);
@@ -7852,11 +7922,13 @@ textarea.wb-editor-host {
   white-space: nowrap;
 }
 
-.wb-diff-find-count.app-inline-search-meta.is-empty {
+.wb-diff-find-count.app-inline-search-meta.is-empty,
+.wb-editor-find-count.app-inline-search-meta.is-empty {
   color: var(--color-destructive);
 }
 
-.wb-diff-find-btn.app-inline-search-btn {
+.wb-diff-find-btn.app-inline-search-btn,
+.wb-editor-find-btn.app-inline-search-btn {
   appearance: none;
   display: inline-flex;
   align-items: center;
@@ -7872,17 +7944,21 @@ textarea.wb-editor-host {
 }
 
 .wb-diff-find-btn.app-inline-search-btn:hover,
-.wb-diff-find-btn.app-inline-search-btn:focus-visible {
+.wb-diff-find-btn.app-inline-search-btn:focus-visible,
+.wb-editor-find-btn.app-inline-search-btn:hover,
+.wb-editor-find-btn.app-inline-search-btn:focus-visible {
   background: var(--color-fill-tertiary);
   color: var(--color-label-primary);
 }
 
-.wb-diff-find-btn.app-inline-search-btn:focus-visible {
+.wb-diff-find-btn.app-inline-search-btn:focus-visible,
+.wb-editor-find-btn.app-inline-search-btn:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
-.wb-diff-find-btn.app-inline-search-btn svg {
+.wb-diff-find-btn.app-inline-search-btn svg,
+.wb-editor-find-btn.app-inline-search-btn svg {
   display: block;
   width: 14px;
   height: 14px;

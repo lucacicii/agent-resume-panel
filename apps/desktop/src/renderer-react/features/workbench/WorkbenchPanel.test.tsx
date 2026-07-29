@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import {
@@ -11,6 +12,48 @@ import {
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
 
 vi.mock("../../components/Notifications", () => notificationMocks);
+
+vi.mock("../../components/CodeEditor", () => ({
+  CodeEditor: forwardRef(({ value, onChange, onBlur, ariaLabel }: {
+    value: string;
+    onChange: (value: string) => void;
+    onBlur?: () => void;
+    ariaLabel: string;
+  }, ref) => {
+    const search = useRef({ query: "", current: 0, total: 0 });
+    const setQuery = (query: string) => {
+      const needle = query.trim().toLocaleLowerCase();
+      const haystack = value.toLocaleLowerCase();
+      let total = 0;
+      let from = 0;
+      while (needle) {
+        const match = haystack.indexOf(needle, from);
+        if (match < 0) break;
+        total += 1;
+        from = match + needle.length;
+      }
+      search.current = { query: needle, current: total ? 1 : 0, total };
+      return { current: search.current.current, total };
+    };
+    useImperativeHandle(ref, () => ({
+      focus: () => undefined,
+      find: () => false,
+      revealRange: () => false,
+      setSearchQuery: setQuery,
+      navigateSearch: (direction: "forward" | "backward") => {
+        const current = search.current;
+        if (current.total) current.current = direction === "forward"
+          ? current.current % current.total + 1
+          : (current.current - 2 + current.total) % current.total + 1;
+        return { current: current.current, total: current.total };
+      },
+      clearSearch: () => { search.current = { query: "", current: 0, total: 0 }; },
+      getSearchResult: () => ({ current: search.current.current, total: search.current.total }),
+      getSelectedText: () => ""
+    }));
+    return <textarea value={value} placeholder={ariaLabel} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />;
+  })
+}));
 
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80;
@@ -551,6 +594,9 @@ describe("WorkbenchPanel", () => {
     await act(async () => resolveSpawn({ id: 11 }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     expect(terminalSpawn).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll('[data-pane-group="terminal"] .wb-terminal-tab')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(0);
+    expect(document.querySelector('[data-pane-group="code"]')).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeTruthy());
@@ -559,6 +605,8 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-loading")).toBeTruthy();
     await act(async () => resolveSpawn({ id: 12 }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    expect(document.querySelectorAll('[data-pane-group="terminal"] .wb-terminal-tab')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(1);
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {
@@ -1020,6 +1068,18 @@ describe("WorkbenchPanel", () => {
       rootPath: "/work/app",
       filePath: "/work/app/src/main.ts"
     }));
+    await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    const findInput = await waitFor(() => {
+      const input = document.querySelector<HTMLInputElement>(".wb-editor-find-input");
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    await waitFor(() => expect(document.activeElement).toBe(findInput));
+    fireEvent.change(findInput, { target: { value: "findme" } });
+    await waitFor(() => expect(document.querySelector(".wb-editor-find-count")?.textContent).not.toBe(""));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.querySelector(".wb-editor-find-input")).toBeNull();
   });
 
   it("discards a Git file after confirmation and refreshes its status", async () => {

@@ -27,7 +27,7 @@ import type {
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
   ArrowDown, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
-  FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
+  FileDiff, FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
   Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
@@ -95,6 +95,7 @@ type DiffSearchHandle = {
   prefillFromSelection: () => { query: string; result: CodeEditorSearchResult } | null;
   clear: () => void;
 };
+type WorkbenchPaneGroup = "session" | "terminal" | "code";
 
 const DIFF_COLLAPSE_UNCHANGED = { margin: 3, minSize: 8 } as const;
 const setDiffSearchDecorations = StateEffect.define<DecorationSet>();
@@ -128,6 +129,7 @@ function readOnlyDiffExtensions() {
 type TerminalPane = {
   key: string;
   title: string;
+  group: Exclude<WorkbenchPaneGroup, "code">;
   sessionKey?: string;
   projectPath: string;
   cwd: string;
@@ -1664,6 +1666,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const searchTimerRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<CodeEditorHandle | null>(null);
+  const [editorFindOpen, setEditorFindOpen] = useState(false);
+  const [editorFindQuery, setEditorFindQuery] = useState("");
+  const [editorFindResult, setEditorFindResult] = useState<CodeEditorSearchResult | null>(null);
+  const editorFindInputRef = useRef<HTMLInputElement | null>(null);
+  const editorFindQueryRef = useRef("");
+  const previousEditorKeyRef = useRef("");
   const pendingRevealRef = useRef<SearchReveal | null>(null);
   const [git, setGit] = useState<GitStatusResult | null>(null);
   const [gitRoot, setGitRoot] = useState("");
@@ -2019,6 +2027,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     `${pending.title} ${pending.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
   ).sort((a, b) => b.createdAt - a.createdAt), [selectedPendingSessions, sessionQuery]);
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
+  const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
+  const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
   const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
   const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
   const currentAcpChats = acpChats.filter((pane) => pane.projectPath === selectedProject);
@@ -2043,6 +2053,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       ? {
         key: `project-git:${selectedProject}`,
         title: "",
+        group: "terminal",
         cwd: gitRoot || selectedProject,
         projectPath: selectedProject,
         branch: projectTracking?.branch ?? null,
@@ -2057,14 +2068,60 @@ export function WorkbenchPanel(): ReactPortal | null {
       : null
   );
 
+  editorFindQueryRef.current = editorFindQuery;
+
+  const clearEditorFindSearch = useCallback(() => {
+    editorRef.current?.clearSearch();
+    setEditorFindResult(null);
+  }, []);
+
+  const runEditorFind = useCallback((
+    direction: "forward" | "backward",
+    query = editorFindQueryRef.current,
+    reset = false
+  ) => {
+    const value = query.trim();
+    if (!value) {
+      clearEditorFindSearch();
+      return { current: 0, total: 0 };
+    }
+    const result = reset
+      ? (editorRef.current?.setSearchQuery(value) ?? { current: 0, total: 0 })
+      : (editorRef.current?.navigateSearch(direction) ?? { current: 0, total: 0 });
+    setEditorFindResult(result);
+    window.requestAnimationFrame(() => editorFindInputRef.current?.focus());
+    return result;
+  }, [clearEditorFindSearch]);
+
+  const openEditorFind = useCallback(() => {
+    if (!currentEditor) return;
+    const selectedText = editorRef.current?.getSelectedText().trim() || "";
+    if (selectedText) {
+      setEditorFindQuery(selectedText);
+      editorFindQueryRef.current = selectedText;
+      runEditorFind("forward", selectedText, true);
+    } else if (editorFindQueryRef.current.trim()) {
+      runEditorFind("forward", editorFindQueryRef.current, true);
+    }
+    setEditorFindOpen(true);
+  }, [currentEditor, runEditorFind]);
+
+  const closeEditorFind = useCallback(() => {
+    setEditorFindOpen(false);
+    setEditorFindQuery("");
+    editorFindQueryRef.current = "";
+    clearEditorFindSearch();
+  }, [clearEditorFindSearch]);
+
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
+    if (paneKey !== activePane && activePane.startsWith("editor:")) closeEditorFind();
     const projectKey = paneProjectKey(projectPath);
     if (paneKey) {
       const previous = paneHistoryRef.current[projectKey] || [];
       paneHistoryRef.current[projectKey] = [paneKey, ...previous.filter((key) => key !== paneKey)].slice(0, 32);
     }
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
-  }, [selectedProject]);
+  }, [activePane, closeEditorFind, selectedProject]);
 
   const selectProject = (project: string | null, options?: { keepSessionKey?: boolean }) => {
     setSelectedProject((current) => {
@@ -2122,9 +2179,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const addTerminal = useCallback((title: string, cwd: string, command?: string, projectPath = selectedProject || cwd, openedSessionKey?: string): string => {
+  const addTerminal = useCallback((
+    title: string,
+    cwd: string,
+    command?: string,
+    projectPath = selectedProject || cwd,
+    openedSessionKey?: string,
+    group: Exclude<WorkbenchPaneGroup, "code"> = openedSessionKey ? "session" : "terminal"
+  ): string => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
-    const pane = { key, title, cwd, command, projectPath, sessionKey: openedSessionKey };
+    const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey };
     terminalsRef.current = [...terminalsRef.current, pane];
     setTerminals((current) => [...current, pane]);
     setActivePane(key, projectPath);
@@ -2185,7 +2249,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const nextPaneAfterClose = useCallback((
     projectPath: string,
     closedKey: string,
-    options?: { remainingTerminals?: TerminalPane[]; remainingAcp?: AcpChatPane[] }
+    options?: {
+      remainingTerminals?: TerminalPane[];
+      remainingAcp?: AcpChatPane[];
+      remainingEditors?: EditorPane[];
+      remainingDiffs?: DiffPane[];
+    }
   ) => {
     const projectKey = paneProjectKey(projectPath);
     const history = (paneHistoryRef.current[projectKey] || []).filter((item) => item !== closedKey);
@@ -2195,8 +2264,20 @@ export function WorkbenchPanel(): ReactPortal | null {
       terminals.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
     const remainingAcp =
       options?.remainingAcp ?? acpChats.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
-    const projectEditors = editors.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
-    const projectDiffs = diffs.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const projectEditors = options?.remainingEditors
+      ?? editors.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const projectDiffs = options?.remainingDiffs
+      ?? diffs.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+    const closedGroup: WorkbenchPaneGroup | null =
+      terminals.find((item) => item.key === closedKey)?.group
+      ?? (acpChats.some((item) => item.key === closedKey) ? "session" : null)
+      ?? (editors.some((item) => item.key === closedKey) || diffs.some((item) => item.key === closedKey) ? "code" : null);
+    const groupsByKey = new Map<string, WorkbenchPaneGroup>([
+      ...remainingTerminals.map((item) => [item.key, item.group] as const),
+      ...remainingAcp.map((item) => [item.key, "session"] as const),
+      ...projectEditors.map((item) => [item.key, "code"] as const),
+      ...projectDiffs.map((item) => [item.key, "code"] as const)
+    ]);
     const liveKeys = new Set([
       ...remainingTerminals.map((item) => item.key),
       ...remainingAcp.map((item) => item.key),
@@ -2204,6 +2285,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       ...projectDiffs.map((item) => item.key)
     ]);
     const nextPane =
+      history.find((item) => liveKeys.has(item) && groupsByKey.get(item) === closedGroup) ||
       history.find((item) => liveKeys.has(item)) ||
       remainingTerminals[remainingTerminals.length - 1]?.key ||
       remainingAcp[remainingAcp.length - 1]?.key ||
@@ -2240,6 +2322,24 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [acpChats, nextPaneAfterClose]);
 
+  const closeEditor = useCallback((key: string) => {
+    const pane = editors.find((item) => item.key === key);
+    if (!pane) return;
+    if (pane.dirty && !window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) return;
+    if (activePane === key) closeEditorFind();
+    const remainingEditors = editors.filter((item) => item.key !== key);
+    setEditors(remainingEditors);
+    nextPaneAfterClose(pane.projectPath, key, { remainingEditors });
+  }, [activePane, closeEditorFind, editors, nextPaneAfterClose, t]);
+
+  const closeDiff = useCallback((key: string) => {
+    const pane = diffs.find((item) => item.key === key);
+    if (!pane) return;
+    const remainingDiffs = diffs.filter((item) => item.key !== key);
+    setDiffs(remainingDiffs);
+    nextPaneAfterClose(pane.projectPath, key, { remainingDiffs });
+  }, [diffs, nextPaneAfterClose]);
+
   const addAcpChat = useCallback((record: {
     id: string;
     title: string;
@@ -2271,11 +2371,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     } else if (activePane.startsWith("acp:")) {
       closeAcpChat(activePane);
     } else if (activePane.startsWith("editor:")) {
-      setEditors((current) => current.filter((item) => item.key !== activePane));
+      closeEditor(activePane);
     } else {
-      setDiffs((current) => current.filter((item) => item.key !== activePane));
+      closeDiff(activePane);
     }
-  }, [activePane, closeAcpChat, closeTerminal]);
+  }, [activePane, closeAcpChat, closeDiff, closeEditor, closeTerminal]);
 
   const openBlankTerminal = useCallback(async () => {
     if (terminalCreating) return;
@@ -2283,10 +2383,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     try {
       const cwd = selectedProject || await desktopApi().createScratchDir();
       if (!selectedProject) selectProject(cwd);
-      addTerminal(t("desktop.workbench.terminalLabel", currentTerminals.length + 1), cwd, undefined, cwd);
+      addTerminal(t("desktop.workbench.terminalLabel", currentShellTerminals.length + 1), cwd, undefined, cwd);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addTerminal, currentTerminals.length, selectedProject, t, terminalCreating]);
+  }, [addTerminal, currentShellTerminals.length, selectedProject, t, terminalCreating]);
 
   const resolveNewSessionTarget = useCallback(():
     | { channel: "cli"; provider: AgentProvider }
@@ -2322,7 +2422,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         const result = await desktopApi().workbenchNewSession({ cwd, provider: target.provider as AgentProvider });
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, cwd);
+          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
           addPendingSession(terminalKey, target.provider, cwd, title);
         }
         await loadSessions();
@@ -2354,7 +2454,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         const result = await desktopApi().workbenchNewSession({ cwd: resolvedCwd, provider: target.provider as AgentProvider });
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(resolvedCwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, resolvedCwd);
+          const terminalKey = addTerminal(title, result.cwd, result.command, resolvedCwd, undefined, "session");
           addPendingSession(terminalKey, target.provider, resolvedCwd, title);
         }
         await loadSessions();
@@ -2431,6 +2531,54 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, closeActivePane]);
+
+  useEffect(() => {
+    if (!editorFindOpen) return;
+    window.requestAnimationFrame(() => {
+      editorFindInputRef.current?.focus();
+      editorFindInputRef.current?.select();
+    });
+  }, [editorFindOpen]);
+
+  useEffect(() => {
+    const editorKey = currentEditor?.key || "";
+    if (previousEditorKeyRef.current && previousEditorKeyRef.current !== editorKey) closeEditorFind();
+    previousEditorKeyRef.current = editorKey;
+  }, [closeEditorFind, currentEditor?.key]);
+
+  useEffect(() => {
+    if (!active || !currentEditor) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey)
+        && !event.shiftKey
+        && !event.altKey
+        && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        openEditorFind();
+        return;
+      }
+      if (!editorFindOpen) return;
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const input = editorFindInputRef.current;
+        runEditorFind(event.shiftKey ? "backward" : "forward", input && event.target === input ? input.value : undefined);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        closeEditorFind();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [active, closeEditorFind, currentEditor, editorFindOpen, openEditorFind, runEditorFind]);
 
   const openSession = async (session: AgentSession) => {
     const key = sessionKey(session);
@@ -3409,6 +3557,31 @@ export function WorkbenchPanel(): ReactPortal | null {
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
 
+  const paneTabGroups = <div className="wb-pane-tab-groups">
+    <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
+      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupSession")} title={t("desktop.workbench.tabGroupSession")}><Bot size={13} aria-hidden="true" /></div>
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><X size={13} /></button></div>)}
+      </div>
+      <div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div>
+    </div>
+    <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
+      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupTerminal")} title={t("desktop.workbench.tabGroupTerminal")}><TerminalSquare size={13} aria-hidden="true" /></div>
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")}>
+        {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><TerminalSquare size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}
+      </div>
+      <div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button></div>
+    </div>
+    {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
+      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><FileCode2 size={13} aria-hidden="true" /></div>
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")}>
+        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><FileCode2 size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><X size={13} /></button></div>)}
+        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><FileDiff size={13} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><X size={13} /></button></div>)}
+      </div>
+    </div> : null}
+  </div>;
+
   if (!host) return null;
   return createPortal(<section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
@@ -3497,10 +3670,44 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
         </div>
         <div className="wb-detail-body">
-          <div className="wb-terminal-shell"><div className="wb-terminal-tabs"><div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.terminalTabs")}>{currentTerminals.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}{currentAcpChats.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" /> {pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><X size={13} /></button></div>)}{currentEditors.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => { if (!pane.dirty || window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) { setEditors((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || currentAcpChats[0]?.key || ""); } }}><X size={13} /></button></div>)}{currentDiffs.map((pane) => <div className={`wb-terminal-tab${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}>{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => { setDiffs((current) => current.filter((item) => item.key !== pane.key)); setActivePane(currentTerminals[0]?.key || currentAcpChats[0]?.key || ""); }}><X size={13} /></button></div>)}</div><div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div></div><div className="wb-terminal-stack">{terminals.map((pane) => {
+          <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} /></div>;
-          })}{currentEditor ? <div className="wb-editor-pane"><CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
+          })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
+            <Search size={14} aria-hidden="true" />
+            <input
+              ref={editorFindInputRef}
+              className="wb-editor-find-input app-inline-search-input"
+              type="text"
+              value={editorFindQuery}
+              placeholder={t("desktop.common.search")}
+              aria-label={t("desktop.common.search")}
+              autoComplete="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              onChange={(event) => {
+                const value = event.target.value;
+                setEditorFindQuery(value);
+                editorFindQueryRef.current = value;
+                runEditorFind("forward", value, true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeEditorFind();
+                }
+              }}
+            />
+            <span className={`wb-editor-find-count app-inline-search-meta${editorFindResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
+              {editorFindQuery.trim() && editorFindResult
+                ? t("desktop.common.findCount", editorFindResult.current, editorFindResult.total)
+                : ""}
+            </span>
+            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ArrowUp size={14} /></button>
+            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ArrowDown size={14} /></button>
+            <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><X size={14} /></button>
+          </div> : null}{currentEditor ? <div className="wb-editor-pane"><CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><Save size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView key={pane.key} recordId={pane.recordId} provider={pane.provider} projectPath={pane.projectPath} title={pane.title} active={active && visible} onTitleChange={(nextTitle) => setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item))} />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
