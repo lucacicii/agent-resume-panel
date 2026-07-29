@@ -21,26 +21,54 @@ export type WorkbenchFileInspection =
       reason: "binary" | "too-large";
       size: number;
       mtimeMs: number;
-    };
+    }
+  | { kind: "missing" };
 
 export type WorkbenchFileSaveResult =
   | { ok: true; version: string; size: number; mtimeMs: number }
-  | { ok: false; reason: "conflict"; version: string; size: number; mtimeMs: number };
+  | { ok: false; reason: "conflict"; version: string; size: number; mtimeMs: number }
+  | { ok: false; reason: "missing" };
+
+export type WorkbenchFileCreateResult =
+  | { ok: true; version: string; size: number; mtimeMs: number }
+  | { ok: false; reason: "exists" };
 
 function isPathWithinRoot(targetPath: string, rootPath: string): boolean {
   return targetPath === rootPath || targetPath.startsWith(rootPath + path.sep);
 }
 
-export function resolveCanonicalWorkbenchPath(rootPath: string, targetPath: string): string {
+function resolveLexicalWorkbenchPath(rootPath: string, targetPath: string): string {
   const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
   const resolvedTarget = path.resolve(expandHome(targetPath.trim()));
   if (!isPathWithinRoot(resolvedTarget, resolvedRoot)) {
     throw new Error("路径超出允许范围");
   }
+  return resolvedTarget;
+}
+
+export function resolveCanonicalWorkbenchPath(rootPath: string, targetPath: string): string {
+  const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
+  const resolvedTarget = resolveLexicalWorkbenchPath(rootPath, targetPath);
 
   const canonicalRoot = fs.realpathSync.native(resolvedRoot);
   const canonicalTarget = fs.realpathSync.native(resolvedTarget);
   if (!isPathWithinRoot(canonicalTarget, canonicalRoot)) {
+    throw new Error("路径超出允许范围");
+  }
+  return canonicalTarget;
+}
+
+function resolveCreatableWorkbenchPath(rootPath: string, targetPath: string): string {
+  const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
+  const resolvedTarget = path.resolve(expandHome(targetPath.trim()));
+  if (!isPathWithinRoot(resolvedTarget, resolvedRoot)) {
+    throw new Error("路径超出允许范围");
+  }
+  const canonicalRoot = fs.realpathSync.native(resolvedRoot);
+  const relativePath = path.relative(resolvedRoot, resolvedTarget);
+  const canonicalTarget = path.resolve(canonicalRoot, relativePath);
+  const canonicalParent = fs.realpathSync.native(path.dirname(canonicalTarget));
+  if (!isPathWithinRoot(canonicalParent, canonicalRoot)) {
     throw new Error("路径超出允许范围");
   }
   return canonicalTarget;
@@ -112,6 +140,8 @@ function encodeText(content: string, encoding: WorkbenchTextEncoding): Buffer {
 }
 
 export function inspectWorkbenchFile(rootPath: string, filePath: string): WorkbenchFileInspection {
+  const lexicalPath = resolveLexicalWorkbenchPath(rootPath, filePath);
+  if (!fs.existsSync(lexicalPath)) return { kind: "missing" };
   const canonicalPath = resolveCanonicalWorkbenchPath(rootPath, filePath);
   const stat = fs.statSync(canonicalPath);
   if (!stat.isFile()) throw new Error("不是文件");
@@ -162,6 +192,8 @@ export function saveWorkbenchFile(
   expectedVersion: string,
   force = false
 ): WorkbenchFileSaveResult {
+  const lexicalPath = resolveLexicalWorkbenchPath(rootPath, filePath);
+  if (!fs.existsSync(lexicalPath)) return { ok: false, reason: "missing" };
   const canonicalPath = resolveCanonicalWorkbenchPath(rootPath, filePath);
   const stat = fs.statSync(canonicalPath);
   if (!stat.isFile()) throw new Error("不是文件");
@@ -189,5 +221,36 @@ export function saveWorkbenchFile(
     version: fileVersion(encoded),
     size: nextStat.size,
     mtimeMs: nextStat.mtimeMs
+  };
+}
+
+export function createWorkbenchFile(
+  rootPath: string,
+  filePath: string,
+  content: string,
+  encoding: WorkbenchTextEncoding
+): WorkbenchFileCreateResult {
+  const targetPath = resolveCreatableWorkbenchPath(rootPath, filePath);
+  if (fs.existsSync(targetPath)) return { ok: false, reason: "exists" };
+  const encoded = encodeText(content, encoding);
+  if (encoded.length > MAX_WORKBENCH_EDIT_BYTES) {
+    throw new Error(`文件过大（超过 ${Math.round(MAX_WORKBENCH_EDIT_BYTES / 1024 / 1024)}MB）`);
+  }
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(targetPath, "wx", 0o666);
+    fs.writeFileSync(fd, encoded);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+  const stat = fs.statSync(targetPath);
+  return {
+    ok: true,
+    version: fileVersion(encoded),
+    size: stat.size,
+    mtimeMs: stat.mtimeMs
   };
 }

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, StateEffect, StateField, Transaction, type Extension, type Text } from "@codemirror/state";
 import { cpp } from "@codemirror/lang-cpp";
 import { css } from "@codemirror/lang-css";
 import { go } from "@codemirror/lang-go";
@@ -130,6 +130,7 @@ const wrapping = new Compartment();
 const tabs = new Compartment();
 const theme = new Compartment();
 const language = new Compartment();
+const externalValueSync = Annotation.define<boolean>();
 
 interface SearchMatch {
   from: number;
@@ -642,7 +643,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
           }
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) change.current(update.state.doc.toString());
+          const programmatic = update.transactions.some((transaction) => transaction.annotation(externalValueSync));
+          if (update.docChanged && !programmatic) change.current(update.state.doc.toString());
           if (update.docChanged || update.selectionSet || update.viewportChanged) updateSlashMenu(update.view);
         })
       ]
@@ -684,7 +686,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   useEffect(() => {
     const instance = view.current;
     if (!instance || instance.state.doc.toString() === value) return;
-    instance.dispatch({ changes: { from: 0, to: instance.state.doc.length, insert: value } });
+    const selection = instance.state.selection.main;
+    instance.dispatch({
+      changes: { from: 0, to: instance.state.doc.length, insert: value },
+      selection: {
+        anchor: Math.min(selection.anchor, value.length),
+        head: Math.min(selection.head, value.length)
+      },
+      annotations: [externalValueSync.of(true), Transaction.addToHistory.of(false)]
+    });
   }, [value]);
 
   useEffect(() => {

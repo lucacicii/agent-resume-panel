@@ -23,6 +23,7 @@ import type {
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupResult } from "../main/backupService";
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
+import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
@@ -417,6 +418,8 @@ export interface DesktopApi {
   }): Promise<{
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
+  workbenchSetFileWatch(args: { rootPath: string | null }): Promise<{ rootPath: string | null }>;
+  onWorkbenchFileSystemChanged(callback: (event: WorkbenchFileSystemChangedEvent) => void): () => void;
   workbenchListScripts(args: {
     rootPath: string;
     maxDepth?: number;
@@ -456,6 +459,7 @@ export interface DesktopApi {
         mtimeMs: number;
       }
     | { kind: "external"; reason: "binary" | "too-large"; size: number; mtimeMs: number }
+    | { kind: "missing" }
   >;
   workbenchSaveFileText(args: {
     rootPath: string;
@@ -467,6 +471,16 @@ export interface DesktopApi {
   }): Promise<
     | { ok: true; version: string; size: number; mtimeMs: number }
     | { ok: false; reason: "conflict"; version: string; size: number; mtimeMs: number }
+    | { ok: false; reason: "missing" }
+  >;
+  workbenchCreateFileText(args: {
+    rootPath: string;
+    filePath: string;
+    content: string;
+    encoding: "utf8" | "utf8-bom" | "utf16le" | "utf16be";
+  }): Promise<
+    | { ok: true; version: string; size: number; mtimeMs: number }
+    | { ok: false; reason: "exists" }
   >;
   workbenchOpenPath(args: { rootPath: string; filePath: string }): Promise<{ ok: boolean }>;
   workbenchRevealPath(args: {
@@ -978,10 +992,17 @@ const api: DesktopApi = {
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
+  workbenchSetFileWatch: (args) => ipcRenderer.invoke("workbench:setFileWatch", args),
+  onWorkbenchFileSystemChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: WorkbenchFileSystemChangedEvent) => callback(payload);
+    ipcRenderer.on("workbench:fileSystemChanged", handler);
+    return () => ipcRenderer.removeListener("workbench:fileSystemChanged", handler);
+  },
   workbenchListScripts: (args) => ipcRenderer.invoke("workbench:listScripts", args),
   workbenchReadFileText: (args) => ipcRenderer.invoke("workbench:readFileText", args),
   workbenchInspectFile: (args) => ipcRenderer.invoke("workbench:inspectFile", args),
   workbenchSaveFileText: (args) => ipcRenderer.invoke("workbench:saveFileText", args),
+  workbenchCreateFileText: (args) => ipcRenderer.invoke("workbench:createFileText", args),
   workbenchOpenPath: (args) => ipcRenderer.invoke("workbench:openPath", args),
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),

@@ -7796,6 +7796,50 @@ select.wb-acp-toolbar-select option {
   flex-direction: column;
 }
 
+.wb-editor-disk-alert {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-separator);
+  color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-warning, #ff9500) 12%, var(--color-control-bg));
+  font-size: 12px;
+}
+
+.wb-editor-disk-alert.is-deleted,
+.wb-editor-disk-alert.is-external {
+  background: color-mix(in srgb, var(--color-destructive, #ff3b30) 10%, var(--color-control-bg));
+}
+
+.wb-editor-disk-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.wb-editor-disk-actions button {
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  color: var(--color-label-primary);
+  background: var(--color-control-bg);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.wb-editor-disk-actions button:hover:not(:disabled) {
+  background: var(--color-fill-secondary);
+}
+
+.wb-editor-disk-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .wb-editor-host {
   flex: 1 1 auto;
   min-height: 0;

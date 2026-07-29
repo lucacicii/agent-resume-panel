@@ -98,6 +98,7 @@ import { disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
 import { loadAcpAgentSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
 import { getAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
+import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
@@ -1784,6 +1785,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerWorkbenchFsIpc();
+  registerWorkbenchWatcherIpc(() => mainWindow);
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   tryRegisterPtyIpc();
@@ -1855,6 +1857,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  disposeWorkbenchWatchers();
   stopMemoryScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();

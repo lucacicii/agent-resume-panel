@@ -97,6 +97,20 @@ describe("CodeEditor slash commands", () => {
   });
 });
 
+describe("CodeEditor controlled value synchronization", () => {
+  it("does not report a programmatic disk reload as user input", async () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(
+      <CodeEditor value="before" ariaLabel="Text editor" onChange={onChange} />
+    );
+
+    rerender(<CodeEditor value="after" ariaLabel="Text editor" onChange={onChange} />);
+
+    await waitFor(() => expect(container.querySelector(".cm-content")?.textContent).toBe("after"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe("CodeEditor search sessions", () => {
   it("decorates every match, tracks the current match, and wraps navigation", () => {
     const ref = createRef<CodeEditorHandle>();

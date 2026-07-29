@@ -15,6 +15,7 @@ import {
 import { parseLeftRightCount, type GitRepoTracking } from "./gitTracking";
 import { safeHandle } from "./ipcUtils";
 import {
+  createWorkbenchFile,
   inspectWorkbenchFile,
   resolveCanonicalWorkbenchPath,
   saveWorkbenchFile,
@@ -563,6 +564,26 @@ export function registerWorkbenchFsIpc(): void {
         args.expectedVersion,
         Boolean(args.force)
       );
+    }
+  );
+
+  safeHandle(
+    "workbench:createFileText",
+    async (
+      _event,
+      args: {
+        rootPath: string;
+        filePath: string;
+        content: string;
+        encoding: WorkbenchTextEncoding;
+      }
+    ) => {
+      const rootPath = resolveCwd(args.rootPath);
+      if (typeof args.content !== "string") throw new Error("无效的保存参数");
+      if (!["utf8", "utf8-bom", "utf16le", "utf16be"].includes(args.encoding)) {
+        throw new Error("不支持的文件编码");
+      }
+      return createWorkbenchFile(rootPath, args.filePath, args.content, args.encoding);
     }
   );
 
