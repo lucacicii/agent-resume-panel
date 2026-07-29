@@ -595,6 +595,62 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("shows a pending new session until catalog sync supplies its session id", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onSessionsSynced: ((result: { syncedAt: number }) => void) | undefined;
+    let catalogSessions = [{ provider: "codex", id: "existing", title: "Existing session", projectPath: "/work/app", updatedAt: 1 }];
+    const workbenchOpenSession = vi.fn();
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onSessionsSynced: (callback: (result: { syncedAt: number }) => void) => { onSessionsSynced = callback; return () => undefined; },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => catalogSessions,
+      workbenchNewSession: async () => ({ mode: "xterm", command: "codex", cwd: "/work/app" }),
+      workbenchOpenSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    const pending = await waitFor(() => {
+      const row = [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+        .find((item) => item.textContent?.includes("New session app"));
+      if (!row) throw new Error("pending session row not rendered");
+      return row;
+    });
+    expect(document.querySelector(".wb-folder-row.has-wb-activity .wb-folder-activity-dot")).not.toBeNull();
+    expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+    fireEvent.click(pending);
+    expect(workbenchOpenSession).not.toHaveBeenCalled();
+
+    catalogSessions = [
+      ...catalogSessions,
+      { provider: "codex", id: "new-id", title: "Catalog session", projectPath: "/work/app", updatedAt: Date.now() }
+    ];
+    await act(async () => onSessionsSynced?.({ syncedAt: Date.now() }));
+
+    await screen.findByRole("button", { name: /Catalog session/ });
+    await waitFor(() => expect([...document.querySelectorAll(".wb-list-item")].some((item) => item.textContent?.includes("New session app"))).toBe(false));
+    expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+  });
+
   it("reports manual Git actions and keeps automatic refreshes silent", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
