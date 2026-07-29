@@ -202,6 +202,8 @@ afterEach(() => {
   xtermMocks.fitDimensions = { cols: 80, rows: 24 };
   document.getElementById("react-workbench")?.remove();
   localStorage.removeItem("workbench-sidebar-view");
+  localStorage.removeItem("workbench-selected-project");
+  localStorage.removeItem("workbench-quick-access-project");
 });
 
 describe("WorkbenchPanel", () => {
@@ -1335,6 +1337,74 @@ describe("WorkbenchPanel", () => {
       expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Discarded changes to src/app.ts.", kind: "ok" });
     } finally {
       confirm.mockRestore();
+    }
+  });
+
+  it("quick-opens a file from outside Workbench and switches to its project", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    localStorage.setItem("workbench-selected-project", "/work/app");
+    localStorage.setItem("workbench-quick-access-project", "/work/app");
+    let openQuickFiles: () => void = () => undefined;
+    const workbenchListFiles = vi.fn(async () => ({
+      files: [{ path: "/work/app/src/WorkbenchPanel.tsx", relativePath: "src/WorkbenchPanel.tsx" }],
+      truncated: false,
+      engine: "node" as const
+    }));
+    const workbenchInspectFile = vi.fn(async () => ({
+      kind: "external" as const,
+      reason: "too-large" as const,
+      size: 3_000_000,
+      mtimeMs: 1
+    }));
+    const workbenchOpenPath = vi.fn(async () => ({ ok: true }));
+    const onTabRequest = vi.fn();
+    window.addEventListener("agent-resume:tab-request", onTabRequest);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.quickAccessDialog": "Quick Access",
+        "desktop.workbench.quickAccessFilePlaceholder": "Search files by path",
+        "desktop.workbench.quickAccessLoading": "Loading",
+        "desktop.workbench.quickAccessNoFiles": "No files",
+        "desktop.workbench.quickAccessNoProject": "No project",
+        "desktop.workbench.quickAccessClose": "Close",
+        "desktop.workbench.quickAccessTruncated": "Limited"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdP: (callback: () => void) => { openQuickFiles = callback; return () => undefined; },
+      onWorkbenchCmdShiftP: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      workbenchListFiles,
+      workbenchListFilesCancel: async () => ({ ok: true }),
+      workbenchInspectFile,
+      workbenchOpenPath
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => openQuickFiles());
+      expect(await screen.findByRole("dialog", { name: "Quick Access" })).toBeTruthy();
+      await screen.findByText("WorkbenchPanel.tsx");
+      fireEvent.click(screen.getByText("WorkbenchPanel.tsx"));
+      await waitFor(() => expect(workbenchInspectFile).toHaveBeenCalledWith({
+        rootPath: "/work/app",
+        filePath: "/work/app/src/WorkbenchPanel.tsx"
+      }));
+      expect(workbenchOpenPath).toHaveBeenCalledWith({
+        rootPath: "/work/app",
+        filePath: "/work/app/src/WorkbenchPanel.tsx"
+      });
+      expect(onTabRequest).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("agent-resume:tab-request", onTabRequest);
     }
   });
 });

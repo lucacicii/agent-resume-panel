@@ -101,6 +101,7 @@ import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
+import { isQuickAccessShortcut } from "./desktopShortcuts";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -518,6 +519,18 @@ function isWorkbenchCmdShiftFInput(input: Electron.Input): boolean {
 
 function registerWorkbenchShortcuts(win: BrowserWindow): void {
   win.webContents.on("before-input-event", (event, input) => {
+    if (isQuickAccessShortcut(input, true)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) win.webContents.send("workbench:cmdShiftP");
+      return;
+    }
+
+    if (isQuickAccessShortcut(input, false)) {
+      event.preventDefault();
+      if (!win.isDestroyed()) win.webContents.send("workbench:cmdP");
+      return;
+    }
+
     if (isWorkbenchCmdTInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {

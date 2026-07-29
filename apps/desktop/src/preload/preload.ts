@@ -418,6 +418,12 @@ export interface DesktopApi {
   }): Promise<{
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
+  workbenchListFiles(args: { rootPath: string }): Promise<{
+    files: Array<{ path: string; relativePath: string }>;
+    truncated: boolean;
+    engine: "rg" | "node";
+  }>;
+  workbenchListFilesCancel(): Promise<{ ok: boolean }>;
   workbenchSetFileWatch(args: { rootPath: string | null }): Promise<{ rootPath: string | null }>;
   onWorkbenchFileSystemChanged(callback: (event: WorkbenchFileSystemChangedEvent) => void): () => void;
   workbenchListScripts(args: {
@@ -553,6 +559,10 @@ export interface DesktopApi {
   setWorkbenchActive(active: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
+  /** Quick Open (⌘P / Ctrl+P). */
+  onWorkbenchCmdP(callback: () => void): () => void;
+  /** Command Palette (⌘⇧P / Ctrl+Shift+P). */
+  onWorkbenchCmdShiftP(callback: () => void): () => void;
   /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
   onWorkbenchCmdShiftF(callback: () => void): () => void;
   listReports(opts?: {
@@ -992,6 +1002,8 @@ const api: DesktopApi = {
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
+  workbenchListFiles: (args) => ipcRenderer.invoke("workbench:listFiles", args),
+  workbenchListFilesCancel: () => ipcRenderer.invoke("workbench:listFilesCancel"),
   workbenchSetFileWatch: (args) => ipcRenderer.invoke("workbench:setFileWatch", args),
   onWorkbenchFileSystemChanged: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: WorkbenchFileSystemChangedEvent) => callback(payload);
@@ -1044,6 +1056,16 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdW", handler);
     return () => ipcRenderer.removeListener("workbench:cmdW", handler);
+  },
+  onWorkbenchCmdP: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdP", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdP", handler);
+  },
+  onWorkbenchCmdShiftP: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdShiftP", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdShiftP", handler);
   },
   onWorkbenchCmdShiftF: (callback) => {
     const handler = () => callback();

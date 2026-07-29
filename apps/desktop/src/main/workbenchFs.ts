@@ -25,6 +25,10 @@ import {
   cancelActiveWorkbenchSearch,
   searchWorkbenchText
 } from "./workbenchSearch";
+import {
+  cancelActiveWorkbenchFileList,
+  listWorkbenchFiles
+} from "./workbenchFileIndex";
 
 export type { GitRepoTracking } from "./gitTracking";
 export { parseLeftRightCount } from "./gitTracking";
@@ -498,6 +502,21 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
 }
 
 export function registerWorkbenchFsIpc(): void {
+  safeHandle(
+    "workbench:listFiles",
+    async (_event, args: { rootPath: string }) => {
+      if (!args || typeof args.rootPath !== "string" || !args.rootPath.trim()) {
+        throw new Error("无效的项目路径");
+      }
+      return listWorkbenchFiles({ rootPath: args.rootPath });
+    }
+  );
+
+  safeHandle("workbench:listFilesCancel", async () => {
+    cancelActiveWorkbenchFileList();
+    return { ok: true };
+  });
+
   safeHandle(
     "workbench:listDirectory",
     async (_event, args: { rootPath: string; dirPath: string }) => {

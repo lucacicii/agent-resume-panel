@@ -40,7 +40,7 @@ const DEFAULT_PREVIEW_LEN = 200;
 const YIELD_EVERY_FILES = 32;
 const RG_MAX_BUFFER = 12 * 1024 * 1024;
 
-const SKIP_DIR_NAMES = new Set([
+export const WORKBENCH_SKIP_DIR_NAMES = new Set([
   "node_modules",
   ".git",
   ".hg",
@@ -309,7 +309,7 @@ async function searchWithNodeWalk(
       const fullPath = path.join(dir, name);
 
       if (entry.isDirectory()) {
-        if (SKIP_DIR_NAMES.has(name)) continue;
+        if (WORKBENCH_SKIP_DIR_NAMES.has(name)) continue;
         stack.push(fullPath);
         continue;
       }
@@ -387,7 +387,7 @@ async function searchWithRipgrep(
   ];
 
   // Always exclude heavy build/deps dirs even if not in .gitignore
-  for (const dir of SKIP_DIR_NAMES) {
+  for (const dir of WORKBENCH_SKIP_DIR_NAMES) {
     args.push("--glob", `!${dir}`);
     args.push("--glob", `!**/${dir}/**`);
   }

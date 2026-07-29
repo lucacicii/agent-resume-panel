@@ -37,6 +37,13 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
+import {
+  QuickAccess,
+  type QuickAccessCommand,
+  type QuickAccessFile,
+  type QuickAccessMode,
+  type QuickAccessProject
+} from "./QuickAccess";
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 
@@ -272,6 +279,7 @@ type BranchMenuPosition = {
 };
 
 const PROJECT_KEY = "workbench-selected-project";
+const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
 const SIDEBAR_VIEW_KEY = "workbench-sidebar-view";
 const PINNED_PROJECTS_KEY = "pinned-projects";
 const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
@@ -1750,9 +1758,18 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [searchError, setSearchError] = useState("");
   const [searchExpanded, setSearchExpanded] = useState<Set<string>>(() => new Set());
   const [searchSelectedKey, setSearchSelectedKey] = useState("");
+  const [quickAccessOpen, setQuickAccessOpen] = useState(false);
+  const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
+  const [quickAccessQuery, setQuickAccessQuery] = useState("");
+  const [quickAccessFiles, setQuickAccessFiles] = useState<QuickAccessFile[]>([]);
+  const [quickAccessLoading, setQuickAccessLoading] = useState(false);
+  const [quickAccessTruncated, setQuickAccessTruncated] = useState(false);
+  const [quickAccessError, setQuickAccessError] = useState("");
   const searchSeqRef = useRef(0);
   const searchTimerRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const quickAccessCacheRef = useRef(new Map<string, { files: QuickAccessFile[]; truncated: boolean }>());
+  const quickAccessRequestRef = useRef(0);
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const [editorFindOpen, setEditorFindOpen] = useState(false);
   const [editorFindQuery, setEditorFindQuery] = useState("");
@@ -1987,7 +2004,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [renameDialog?.kind, renameDialog?.projectPath, renameDialog?.session?.id, renameDialog?.session?.provider]);
 
-  const projects = useMemo((): WorkbenchProject[] => {
+  const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
       const catalogRows = catalogProjects.flatMap((project) => {
         const group = sessions.filter((session) =>
@@ -2035,11 +2052,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         pinned: pinnedProjects.has(path),
         updatedAt: Math.max(...pending.map((item) => item.createdAt))
       }))];
-      return rows.filter((project) => {
-        const query = projectQuery.trim().toLowerCase();
-        return (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
-          && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
-      }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
+      return rows.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
     }
 
     const grouped = new Map<string, { sessions: AgentSession[]; pendingCount: number; updatedAt: number }>();
@@ -2067,16 +2080,20 @@ export function WorkbenchPanel(): ReactPortal | null {
       active: group.pendingCount > 0 || group.sessions.some((session) => openSessionKeys.has(sessionKey(session))),
       pinned: pinnedProjects.has(path),
       updatedAt: group.updatedAt
-    })).filter((project) => {
-      const query = projectQuery.trim().toLowerCase();
-      return (!query || `${project.label} ${project.path}`.toLowerCase().includes(query))
-        && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active));
-    }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
-  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, projectFilter, projectQuery, sessions]);
+    })).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
+  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions]);
+
+  const projects = useMemo(() => {
+    const query = projectQuery.trim().toLowerCase();
+    return allProjects.filter((project) =>
+      (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
+      && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active))
+    );
+  }, [allProjects, projectFilter, projectQuery]);
 
   const selectedProjectMeta = useMemo(
-    () => projects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
-    [projects, selectedProject]
+    () => allProjects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
+    [allProjects, selectedProject]
   );
 
   const selectedSessions = useMemo(() => {
@@ -2228,7 +2245,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       return project;
     });
     try {
-      if (project) localStorage.setItem(PROJECT_KEY, project);
+      if (project) {
+        localStorage.setItem(PROJECT_KEY, project);
+        localStorage.setItem(QUICK_ACCESS_PROJECT_KEY, project);
+      }
       else localStorage.removeItem(PROJECT_KEY);
     } catch { /* persistence is optional */ }
     if (!options?.keepSessionKey) setActiveSessionKey("");
@@ -2476,11 +2496,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [activePane, closeAcpChat, closeDiff, closeEditor, closeTerminal]);
 
-  const openBlankTerminal = useCallback(async () => {
+  const openBlankTerminal = useCallback(async (targetProject?: string) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      const cwd = selectedProject || await desktopApi().createScratchDir();
+      const cwd = targetProject || selectedProject || await desktopApi().createScratchDir();
       if (!selectedProject) selectProject(cwd);
       addTerminal(t("desktop.workbench.terminalLabel", currentShellTerminals.length + 1), cwd, undefined, cwd);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
@@ -3242,29 +3262,118 @@ export function WorkbenchPanel(): ReactPortal | null {
     }, delay));
   };
 
-  const openFile = async (path: string, reveal?: SearchReveal) => {
-    if (!selectedProject) return;
+  const openFile = async (path: string, reveal?: SearchReveal, targetProject = selectedProject) => {
+    if (!targetProject) return;
     try {
       const key = `editor:${path}`;
       const existing = editorsRef.current.find((item) => item.key === key);
       if (existing) {
         await syncEditorFromDisk(existing);
         if (reveal) pendingRevealRef.current = reveal;
-        setActivePane(key);
+        setActivePane(key, targetProject);
         return;
       }
-      const inspected = await desktopApi().workbenchInspectFile({ rootPath: selectedProject, filePath: path });
+      const inspected = await desktopApi().workbenchInspectFile({ rootPath: targetProject, filePath: path });
       if (inspected.kind === "missing") throw new Error(t("desktop.workbench.fileDeletedOnDisk"));
-      if (inspected.kind === "external") { await desktopApi().workbenchOpenPath({ rootPath: selectedProject, filePath: path }); return; }
+      if (inspected.kind === "external") { await desktopApi().workbenchOpenPath({ rootPath: targetProject, filePath: path }); return; }
       setEditors((current) => {
-        const next = [...current, { ...inspected, key, path, projectPath: selectedProject, content: inspected.content, dirty: false }];
+        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false }];
         editorsRef.current = next;
         return next;
       });
       if (reveal) pendingRevealRef.current = reveal;
-      setActivePane(key);
+      setActivePane(key, targetProject);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
+
+  const quickAccessRoot = selectedProject || storageString(QUICK_ACCESS_PROJECT_KEY) || "";
+  const quickAccessProjectLabel = quickAccessRoot
+    ? `${aliases[quickAccessRoot] || basename(quickAccessRoot)} — ${quickAccessRoot}`
+    : "";
+
+  const loadQuickAccessFiles = useCallback(async (rootPath: string) => {
+    if (!rootPath) return;
+    const cacheKey = projectPathKey(rootPath);
+    const cached = quickAccessCacheRef.current.get(cacheKey);
+    if (cached) {
+      setQuickAccessFiles(cached.files);
+      setQuickAccessTruncated(cached.truncated);
+    } else {
+      setQuickAccessFiles([]);
+      setQuickAccessTruncated(false);
+    }
+    const sequence = ++quickAccessRequestRef.current;
+    setQuickAccessLoading(!cached);
+    setQuickAccessError("");
+    try {
+      const api = desktopApi();
+      if (typeof api.workbenchListFiles !== "function") throw new Error(t("desktop.workbench.quickAccessUnavailable"));
+      const result = await api.workbenchListFiles({ rootPath });
+      if (quickAccessRequestRef.current !== sequence) return;
+      quickAccessCacheRef.current.set(cacheKey, { files: result.files, truncated: result.truncated });
+      setQuickAccessFiles(result.files);
+      setQuickAccessTruncated(result.truncated);
+    } catch (error) {
+      if (quickAccessRequestRef.current !== sequence || (error as Error)?.name === "AbortError") return;
+      setQuickAccessError(statusError(error));
+    } finally {
+      if (quickAccessRequestRef.current === sequence) setQuickAccessLoading(false);
+    }
+  }, [t]);
+
+  const openQuickAccess = useCallback((mode: QuickAccessMode) => {
+    if (!quickAccessOpen && document.querySelector('[aria-modal="true"]')) return;
+    setContextMenu(null);
+    setBranchPane(null);
+    setProjectPickDialog(null);
+    setQuickAccessMode(mode);
+    setQuickAccessQuery("");
+    setQuickAccessOpen(true);
+  }, [quickAccessOpen]);
+
+  useEffect(() => {
+    if (quickAccessOpen && quickAccessMode === "files" && quickAccessRoot) {
+      void loadQuickAccessFiles(quickAccessRoot);
+    }
+  }, [loadQuickAccessFiles, quickAccessMode, quickAccessOpen, quickAccessRoot]);
+
+  const closeQuickAccess = useCallback(() => {
+    quickAccessRequestRef.current += 1;
+    setQuickAccessOpen(false);
+    const api = desktopApi();
+    if (typeof api.workbenchListFilesCancel === "function") void api.workbenchListFilesCancel().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const api = desktopApi();
+    const offCmdP = typeof api.onWorkbenchCmdP === "function"
+      ? api.onWorkbenchCmdP(() => openQuickAccess("files"))
+      : () => undefined;
+    const offCmdShiftP = typeof api.onWorkbenchCmdShiftP === "function"
+      ? api.onWorkbenchCmdShiftP(() => openQuickAccess("commands"))
+      : () => undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "p") return;
+      event.preventDefault();
+      event.stopPropagation();
+      openQuickAccess(event.shiftKey ? "commands" : "files");
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      offCmdP();
+      offCmdShiftP();
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [openQuickAccess]);
+
+  const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
+    const rootPath = quickAccessRoot;
+    if (!rootPath) return;
+    closeQuickAccess();
+    selectProject(rootPath);
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    await openFile(file.path, undefined, rootPath);
+  }, [closeQuickAccess, quickAccessRoot, syncEditorFromDisk]);
 
   const reloadEditorFromDisk = useCallback(async (key: string) => {
     const editor = editorsRef.current.find((item) => item.key === key);
@@ -3345,6 +3454,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const api = desktopApi();
     if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
     const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
+      quickAccessCacheRef.current.delete(projectPathKey(event.rootPath));
       if (event.type === "error") {
         if (projectPathKey(event.rootPath) === projectPathKey(watchedRootRef.current)) {
           setStatus({ text: event.message, kind: "error" });
@@ -3905,6 +4015,63 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
   </div> : null;
 
+  const quickAccessRecentPaths = (paneHistoryRef.current[paneProjectKey(quickAccessRoot)] || [])
+    .filter((key) => key.startsWith("editor:"))
+    .map((key) => key.slice("editor:".length));
+  const quickAccessProjects: QuickAccessProject[] = allProjects.map((project) => ({
+    id: project.id,
+    path: project.path,
+    label: project.label,
+    detail: project.pathMissing
+      ? t("desktop.workbench.pathMissingLabel", project.portableKey)
+      : project.path,
+    pinned: project.pinned,
+    disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
+  }));
+  const noProjectReason = quickAccessRoot ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
+  const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
+  const openWorkbenchView = (view?: SideView) => {
+    closeQuickAccess();
+    if (quickAccessRoot) selectProject(quickAccessRoot);
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    if (view) setSide(view);
+    if (view === "search") window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  };
+  const navigateTo = (tab: "report" | "agent" | "workbench" | "notes") => {
+    closeQuickAccess();
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: tab }));
+  };
+  const quickAccessCommands: QuickAccessCommand[] = [
+    {
+      id: "file.goToFile",
+      label: t("desktop.workbench.quickAccessGoToFile"),
+      keywords: "quick open file path",
+      shortcut: shortcut("P"),
+      disabledReason: noProjectReason,
+      run: () => {
+        setQuickAccessMode("files");
+        setQuickAccessQuery("");
+        if (quickAccessRoot) void loadQuickAccessFiles(quickAccessRoot);
+      }
+    },
+    { id: "file.findInFiles", label: t("desktop.workbench.quickAccessFindInFiles"), keywords: "search project content", shortcut: macShortcuts ? "⌘⇧F" : "Ctrl+Shift+F", disabledReason: noProjectReason, run: () => openWorkbenchView("search") },
+    { id: "file.save", label: t("desktop.workbench.quickAccessSaveCurrentFile"), keywords: "write editor", shortcut: shortcut("S"), disabledReason: currentEditor ? undefined : t("desktop.workbench.quickAccessNoActiveEditor"), run: () => { closeQuickAccess(); if (currentEditor) void saveEditor(currentEditor.key); } },
+    { id: "file.closePane", label: t("desktop.workbench.quickAccessCloseActivePane"), keywords: "close tab terminal editor", shortcut: shortcut("W"), disabledReason: active && activePane ? undefined : t("desktop.workbench.quickAccessNoActivePane"), run: () => { closeQuickAccess(); closeActivePane(); } },
+    { id: "workbench.newSession", label: t("desktop.workbench.quickAccessNewSession"), keywords: "agent", disabledReason: noProjectReason, run: () => { openWorkbenchView(); if (quickAccessRoot) void newSessionForProject(quickAccessRoot); } },
+    { id: "workbench.newTerminal", label: t("desktop.workbench.quickAccessNewTerminal"), keywords: "shell", disabledReason: noProjectReason, run: () => { openWorkbenchView(); if (quickAccessRoot) void openBlankTerminal(quickAccessRoot); } },
+    { id: "workbench.explorer", label: t("desktop.workbench.quickAccessShowExplorer"), keywords: "files sidebar", disabledReason: noProjectReason, run: () => openWorkbenchView("files") },
+    { id: "workbench.scripts", label: t("desktop.workbench.quickAccessShowScripts"), keywords: "run package", disabledReason: noProjectReason, run: () => openWorkbenchView("scripts") },
+    { id: "workbench.search", label: t("desktop.workbench.quickAccessShowSearch"), keywords: "find content sidebar", disabledReason: noProjectReason, run: () => openWorkbenchView("search") },
+    { id: "workbench.git", label: t("desktop.workbench.quickAccessShowGit"), keywords: "changes source control", disabledReason: noProjectReason, run: () => openWorkbenchView("git") },
+    { id: "view.report", label: t("desktop.workbench.quickAccessShowReport"), keywords: "navigate tab", run: () => navigateTo("report") },
+    { id: "view.agent", label: t("desktop.workbench.quickAccessShowAgent"), keywords: "navigate tab", run: () => navigateTo("agent") },
+    { id: "view.workbench", label: t("desktop.workbench.quickAccessShowWorkbench"), keywords: "navigate tab", run: () => navigateTo("workbench") },
+    { id: "view.notes", label: t("desktop.workbench.quickAccessShowNotes"), keywords: "navigate tab", run: () => navigateTo("notes") },
+    { id: "app.sessions", label: t("desktop.workbench.quickAccessOpenSessions"), keywords: "history reference", run: () => { closeQuickAccess(); window.dispatchEvent(new Event("agent-resume:sessions-open")); } },
+    { id: "app.settings", label: t("desktop.workbench.quickAccessOpenSettings"), keywords: "preferences configuration", shortcut: shortcut(","), run: () => { closeQuickAccess(); void desktopApi().openSettingsWindow({ pane: "general" }); } }
+  ];
+
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : <Bot size={13} aria-hidden="true" />}</button>
@@ -3929,7 +4096,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   </div>;
 
   if (!host) return null;
-  return createPortal(<section className="panel workbench-panel react-workbench-panel" hidden={!active}>
+  return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
@@ -4214,5 +4381,41 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitRepositorySelector visible={side === "git" && !gitLog} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); }} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} projectLabel={basename(gitRoot)} ariaLabel={t("desktop.workbench.gitLogBackToChanges")} onBack={() => { setGitLog(null); setGitShow(null); }} />
     <Status kind={status.kind}>{status.text}</Status>
-  </section>, host);
+  </section>
+    <QuickAccess
+      open={quickAccessOpen}
+      mode={quickAccessMode}
+      query={quickAccessQuery}
+      files={quickAccessFiles}
+      projects={quickAccessProjects}
+      commands={quickAccessCommands}
+      recentPaths={quickAccessRecentPaths}
+      loading={quickAccessLoading}
+      truncated={quickAccessTruncated}
+      error={quickAccessError}
+      projectLabel={quickAccessProjectLabel}
+      currentProjectPath={quickAccessRoot}
+      labels={{
+        filePlaceholder: t("desktop.workbench.quickAccessFilePlaceholder"),
+        projectPlaceholder: t("desktop.workbench.quickAccessProjectPlaceholder"),
+        commandPlaceholder: t("desktop.workbench.quickAccessCommandPlaceholder"),
+        loading: t("desktop.workbench.quickAccessLoading"),
+        noFiles: t("desktop.workbench.quickAccessNoFiles"),
+        noProjects: t("desktop.workbench.quickAccessNoProjects"),
+        noCommands: t("desktop.workbench.quickAccessNoCommands"),
+        noProject: t("desktop.workbench.quickAccessNoProject"),
+        truncated: t("desktop.workbench.quickAccessTruncated"),
+        close: t("desktop.workbench.quickAccessClose"),
+        dialog: t("desktop.workbench.quickAccessDialog"),
+        selectProject: t("desktop.workbench.quickAccessSelectProject")
+      }}
+      onModeChange={(mode) => {
+        setQuickAccessMode(mode);
+      }}
+      onQueryChange={setQuickAccessQuery}
+      onClose={closeQuickAccess}
+      onOpenFile={openQuickAccessFile}
+      onSelectProject={(project) => selectProject(project.path)}
+    />
+  </>, host);
 }
