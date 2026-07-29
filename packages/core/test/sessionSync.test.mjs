@@ -150,6 +150,87 @@ test("syncs eight providers, preserves local enhancements, and isolates provider
   assert.ok((await listSessions(options.dbPath, 100)).some((item) => item.id === "opencode-1"), "failed provider keeps old catalog rows");
 });
 
+test("keeps Codex ACP threads out of CLI sessions and removes existing catalog duplicates", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-codex-acp-"));
+  const homes = {
+    codexHome: path.join(root, "codex"),
+    claudeHome: path.join(root, "claude"),
+    antigravityHome: path.join(root, "agy"),
+    grokHome: path.join(root, "grok"),
+    opencodeHome: path.join(root, "opencode"),
+    piHome: path.join(root, "pi"),
+    cursorHome: path.join(root, "cursor"),
+    cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
+  };
+  await Promise.all(Object.values(homes).map((dir) => mkdir(dir, { recursive: true })));
+
+  const knownAcpId = "11111111-1111-4111-8111-111111111111";
+  const originatorAcpId = "22222222-2222-4222-8222-222222222222";
+  const vscodeId = "33333333-3333-4333-8333-333333333333";
+  const malformedId = "44444444-4444-4444-8444-444444444444";
+  const codexDb = path.join(homes.codexHome, "state_1.sqlite");
+  sqlite(codexDb, `
+    CREATE TABLE threads(id TEXT,title TEXT,cwd TEXT,updated_at_ms INTEGER,updated_at INTEGER,model TEXT,git_branch TEXT,archived INTEGER,source TEXT,preview TEXT,first_user_message TEXT);
+    INSERT INTO threads VALUES('${knownAcpId}','Known ACP','/tmp/acp',4000,NULL,'gpt',NULL,0,'unknown',NULL,NULL);
+    INSERT INTO threads VALUES('${originatorAcpId}','Originator ACP','/tmp/acp',3000,NULL,'gpt',NULL,0,'vscode',NULL,NULL);
+    INSERT INTO threads VALUES('${vscodeId}','VS Code','/tmp/vscode',2000,NULL,'gpt',NULL,0,'vscode',NULL,NULL);
+    INSERT INTO threads VALUES('${malformedId}','Malformed rollout','/tmp/vscode',1000,NULL,'gpt',NULL,0,'vscode',NULL,NULL);
+  `);
+  await jsonl(path.join(homes.codexHome, "sessions", `rollout-${knownAcpId}.jsonl`), [
+    { type: "session_meta", payload: { id: knownAcpId, originator: "codex_cli_rs", source: "unknown" } }
+  ]);
+  await jsonl(path.join(homes.codexHome, "sessions", `rollout-${originatorAcpId}.jsonl`), [
+    { type: "session_meta", payload: { id: originatorAcpId, originator: "@agentclientprotocol/codex-acp", source: "vscode" } }
+  ]);
+  await jsonl(path.join(homes.codexHome, "sessions", `rollout-${vscodeId}.jsonl`), [
+    { type: "session_meta", payload: { id: vscodeId, originator: "codex_vscode", source: "vscode" } }
+  ]);
+  await mkdir(path.join(homes.codexHome, "sessions"), { recursive: true });
+  await writeFile(path.join(homes.codexHome, "sessions", `rollout-${malformedId}.jsonl`), "not-json\n", "utf8");
+
+  const panelHome = path.join(root, "panel");
+  await jsonl(path.join(panelHome, "acp", "sessions.jsonl"), [{
+    id: "chat-1",
+    title: "ACP chat",
+    projectPath: "/tmp/acp",
+    provider: "codex",
+    acpSessionId: knownAcpId,
+    createdAt: 1,
+    updatedAt: 4,
+    messageCount: 1
+  }]);
+  const settings = {
+    panelHome,
+    llm: { baseUrl: "http://localhost", model: "test" },
+    embedding: { model: "test" },
+    agentHomes: homes,
+    sessionSync: { maxItems: 10000, stalePolicy: "off" }
+  };
+  const options = sessionSyncOptionsFromSettings(settings);
+  const first = await syncAgentSessions(options);
+  const codexIds = first.sessions.filter((item) => item.provider === "codex").map((item) => item.id);
+  assert.deepEqual(new Set(codexIds), new Set([vscodeId, malformedId]));
+
+  sqlite(options.dbPath, `
+    INSERT INTO sessions(provider,agent_session_id,title,project_path,updated_at_ms,archived,hidden)
+      VALUES('codex','${knownAcpId}','Duplicate known ACP','/tmp/acp',1,0,0);
+    INSERT INTO sessions(provider,agent_session_id,title,project_path,updated_at_ms,archived,hidden)
+      VALUES('codex','${originatorAcpId}','Duplicate originator ACP','/tmp/acp',1,0,0);
+  `);
+  await syncAgentSessions(options);
+
+  const duplicateRows = await runSqliteJson(
+    options.dbPath,
+    `SELECT agent_session_id FROM sessions WHERE provider='codex' AND agent_session_id IN ('${knownAcpId}','${originatorAcpId}');`
+  );
+  assert.equal(duplicateRows.length, 0);
+  const acpRows = await runSqliteJson(
+    options.dbPath,
+    "SELECT agent_session_id,acp_provider FROM sessions WHERE provider='chat' AND agent_session_id='chat-1';"
+  );
+  assert.deepEqual(acpRows, [{ agent_session_id: "chat-1", acp_provider: "codex" }]);
+});
+
 test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", async () => {
   const { purgeRetiredAlmaCatalog, listSessions } = await import("../dist/index.js");
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-alma-purge-"));

@@ -16,6 +16,7 @@ export type AcpChatPaneProps = {
   title: string;
   active: boolean;
   onTitleChange?: (title: string) => void;
+  onSessionReady?: (acpSessionId: string) => void;
 };
 
 type ToolCall = {
@@ -299,7 +300,8 @@ export function AcpChatView({
   projectPath,
   title,
   active,
-  onTitleChange
+  onTitleChange,
+  onSessionReady
 }: AcpChatPaneProps): React.JSX.Element {
   const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -337,6 +339,8 @@ export function AcpChatView({
   const connectGenerationRef = useRef(0);
   /** True after a successful connect until unmount/error — skip reconnect on tab re-focus. */
   const sessionConnectedRef = useRef(false);
+  /** Last native ACP session id that triggered a parent session-list refresh. */
+  const notifiedSessionIdRef = useRef<string | undefined>(undefined);
 
   const scrollToBottom = useCallback(() => {
     if (!stickToBottom.current || !logRef.current) return;
@@ -564,8 +568,13 @@ export function AcpChatView({
           setIsConnecting(true);
           setConnectionStatus("connecting");
         }
-        await desktopApi().acpConnect({ chatId: recordId });
+        const result = await desktopApi().acpConnect({ chatId: recordId });
         if (!cancelled && connectGenerationRef.current === generation) {
+          const acpSessionId = result.record.acpSessionId?.trim();
+          if (acpSessionId && notifiedSessionIdRef.current !== acpSessionId) {
+            notifiedSessionIdRef.current = acpSessionId;
+            onSessionReady?.(acpSessionId);
+          }
           sessionConnectedRef.current = true;
           setIsConnecting(false);
           // Stream status/init usually wins; only clear a stuck connecting/error.
@@ -585,7 +594,7 @@ export function AcpChatView({
     return () => {
       cancelled = true;
     };
-  }, [active, recordId]);
+  }, [active, onSessionReady, recordId]);
 
   useEffect(() => {
     return () => {

@@ -263,7 +263,21 @@ export interface DesktopApi {
   acpConnect(args: {
     chatId: string;
     force?: boolean;
-  }): Promise<{ ok: boolean; reused?: boolean; record: { id: string; title: string; provider: string } }>;
+  }): Promise<{
+    ok: boolean;
+    reused?: boolean;
+    record: {
+      id: string;
+      title: string;
+      projectPath: string;
+      provider: string;
+      acpSessionId?: string;
+      currentModeId?: string;
+      createdAt: number;
+      updatedAt: number;
+      messageCount: number;
+    };
+  }>;
   acpPrompt(args: {
     chatId: string;
     text?: string;

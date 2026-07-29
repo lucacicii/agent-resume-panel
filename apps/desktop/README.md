@@ -25,16 +25,19 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 |------|-------------|
 | **Report** | Calendar with daily / weekly / monthly AI digests and GTD bar |
 | **Agent** | Natural-language Q&A over your digests and session history |
-| **Workbench** | Embedded terminal (themes, ACP visual chat, multi-tab resume), project search, scripts runner, and Git tooling |
+| **Workbench** | Embedded terminal (themes, ACP visual chat, multi-tab resume), project Quick Access, file operations, search, scripts runner, and Git tooling |
 | **Notes** | Markdown note editor (shared with the extension) |
 | **Sessions** | Reference list and read-only preview |
 
 ### Workbench highlights
 
+- **Quick Access**: select a project quickly before working in the Workbench.
+- **Explorer**: copy paths and cut, copy, paste, or delete project files; open files update when the workspace changes externally.
 - **Search** side panel: find text across the selected project (case / whole word / regex) and open hits in the file editor.
 - **Scripts**: run package manager, Make, Gradle, Python, and Cargo scripts into the active terminal.
 - **Terminal themes**: Default Dark/Light, Solarized, One Dark, Dracula under **Settings → Workbench**.
-- **Git**: selective file commit, tracking indicators, and branch controls in the detail header.
+- **Git**: selective file commit, tracking indicators, inline diff search, and branch controls in the detail header.
+- **Sessions**: display the complete merged session history, including ACP sessions.
 - **ACP visual chat**: create or resume supported agent sessions, select a mode such as Plan, use `/` commands, and approve requested actions in the Workbench.
 
 ### External agent MCP

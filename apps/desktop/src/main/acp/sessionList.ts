@@ -23,6 +23,25 @@ export async function loadAcpAgentSessions(panelHome: string, maxItems?: number)
 }
 
 /**
+ * Hide Codex's native catalog row when the same thread is owned by an ACP chat.
+ * This is a read-time guard for the short window before the shared catalog sync
+ * removes the duplicate row permanently.
+ */
+export function excludeCodexAcpNativeSessions(
+  catalog: AgentSession[],
+  records: AcpSessionRecord[]
+): AgentSession[] {
+  const nativeCodexIds = new Set(
+    records
+      .filter((record) => record.provider === "codex")
+      .map((record) => record.acpSessionId?.trim())
+      .filter((sessionId): sessionId is string => Boolean(sessionId))
+  );
+  if (!nativeCodexIds.size) return catalog;
+  return catalog.filter((session) => session.provider !== "codex" || !nativeCodexIds.has(session.id));
+}
+
+/**
  * Merge catalog sessions with ACP store sessions.
  * Keyed by provider:id (ACP uses chat:{recordId}). Prefer the fresher updatedAt.
  */

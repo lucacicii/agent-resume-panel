@@ -29,7 +29,19 @@ async function renderChat(initExtra: Record<string, unknown> = {}): Promise<void
       streamListeners.add(listener);
       return () => streamListeners.delete(listener);
     },
-    acpConnect: vi.fn(async () => ({ ok: true, record: { id: "chat-1", title: "Chat", provider: "codex" } })),
+    acpConnect: vi.fn(async () => ({
+      ok: true,
+      record: {
+        id: "chat-1",
+        title: "Chat",
+        projectPath: "/work/app",
+        provider: "codex",
+        acpSessionId: "native-1",
+        createdAt: 1,
+        updatedAt: 2,
+        messageCount: 0
+      }
+    })),
     acpDisconnect: vi.fn(async () => ({ ok: true })),
     acpPrompt: vi.fn(async () => ({ ok: true })),
     acpSetMode: vi.fn(async () => ({ ok: true })),
@@ -64,6 +76,56 @@ async function renderChat(initExtra: Record<string, unknown> = {}): Promise<void
 afterEach(() => {
   cleanup();
   streamListeners.clear();
+});
+
+describe("AcpChatView session readiness", () => {
+  it("notifies the parent once for the same native ACP session id", async () => {
+    const onSessionReady = vi.fn();
+    const acpConnect = vi.fn(async () => ({
+      ok: true,
+      reused: acpConnect.mock.calls.length > 1,
+      record: {
+        id: "chat-1",
+        title: "Chat",
+        projectPath: "/work/app",
+        provider: "codex",
+        acpSessionId: "native-1",
+        createdAt: 1,
+        updatedAt: 2,
+        messageCount: 0
+      }
+    }));
+    window.agentResume = {
+      getI18nBundle: vi.fn(async () => ({ locale: "en", messages: {} })),
+      onLocaleChanged: vi.fn(() => () => undefined),
+      onAcpStream: (listener: (event: Record<string, unknown>) => void) => {
+        streamListeners.add(listener);
+        return () => streamListeners.delete(listener);
+      },
+      acpConnect,
+      acpDisconnect: vi.fn(async () => ({ ok: true }))
+    } as unknown as typeof window.agentResume;
+
+    const view = (active: boolean) => (
+      <I18nProvider>
+        <AcpChatView
+          recordId="chat-1"
+          provider="codex"
+          projectPath="/work/app"
+          title="Chat"
+          active={active}
+          onSessionReady={onSessionReady}
+        />
+      </I18nProvider>
+    );
+    const rendered = render(view(true));
+    await waitFor(() => expect(onSessionReady).toHaveBeenCalledWith("native-1"));
+
+    rendered.rerender(view(false));
+    rendered.rerender(view(true));
+    await waitFor(() => expect(acpConnect).toHaveBeenCalledTimes(2));
+    expect(onSessionReady).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("AcpChatView slash commands", () => {

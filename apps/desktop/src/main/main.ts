@@ -95,8 +95,8 @@ import {
 } from "./mcpRegistration";
 import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
 import { disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
-import { loadAcpAgentSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
-import { getAcpRecord } from "./acp/store";
+import { acpRecordToAgentSession, excludeCodexAcpNativeSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
+import { getAcpRecord, loadAcpRecords } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
@@ -938,8 +938,9 @@ function registerIpc(): void {
   ipcMain.handle("sessions:list", async () => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const catalog = await listSessions(paths.catalogDb);
-    const acp = await loadAcpAgentSessions(effectivePanelHome(settings));
+    const records = await loadAcpRecords(effectivePanelHome(settings));
+    const catalog = excludeCodexAcpNativeSessions(await listSessions(paths.catalogDb), records);
+    const acp = records.map(acpRecordToAgentSession);
     return mergeCatalogAndAcpSessions(catalog, acp);
   });
 

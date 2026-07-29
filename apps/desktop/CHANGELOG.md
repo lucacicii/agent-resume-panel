@@ -10,6 +10,26 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+### [0.2.9]
+
+#### Added
+
+- **Workbench Quick Access**: choose a project quickly from the keyboard-friendly project picker before opening files or sessions
+- **Workbench file operations**: copy file paths and cut, copy, paste, and delete files from the project explorer
+- **Virtualized session lists**: load and render the complete catalog and ACP session history without the previous display cap
+
+#### Improved
+
+- **Workbench editor sync**: watch workspace files, refresh external changes, and surface conflicts when an open editor file changes or is deleted on disk
+- **Git workflow**: inspect inline diffs with find navigation, receive clearer push / pull / commit notifications, and keep editor and file-tree state synchronized
+- **Workbench navigation**: project selection, file explorer refresh, and pending-session binding are more reliable
+
+#### Fixed
+
+- Copying paths from the Workbench explorer now uses the localized desktop action consistently
+- Git push clears the commit input after a successful operation
+
+
 ### [0.2.8]
 
 #### Added

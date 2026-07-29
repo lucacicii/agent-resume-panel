@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadAcpSessionRecords, type AcpSessionStoreRecord } from "./acp/store";
 import { AgentSession, AgentProvider } from "./catalog/types";
 import {
   ensureCatalogSyncStateDesktop,
@@ -71,15 +72,24 @@ interface LoadedSession extends AgentSession {
 interface ProviderLoadResult {
   provider: SyncableAgentProvider;
   sessions: LoadedSession[];
+  excludedSessionIds?: string[];
   warning?: string;
   failed?: boolean;
+}
+
+interface AgentSessionLoadDetails {
+  result: AgentSessionSyncResult;
+  excludedCodexAcpSessionIds: string[];
 }
 
 const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor", "cursor-ide"];
 const textCache = new Map<string, { mtimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
+const codexOriginatorCache = new Map<string, { mtimeMs: number; size: number; value?: string }>();
 const syncTasks = new Map<string, Promise<AgentSessionSyncResult>>();
 const BATCH_SIZE = 80;
+const CODEX_ACP_ORIGINATOR = "@agentclientprotocol/codex-acp";
+const CODEX_SESSION_META_READ_LIMIT = 256 * 1024;
 
 export function sessionSyncOptionsFromSettings(
   settings: PanelSettings,
@@ -105,11 +115,16 @@ export function sessionSyncOptionsFromSettings(
 }
 
 export async function loadAllAgentSessions(options: AgentSessionSyncOptions): Promise<AgentSessionSyncResult> {
+  return (await loadAllAgentSessionDetails(options)).result;
+}
+
+async function loadAllAgentSessionDetails(options: AgentSessionSyncOptions): Promise<AgentSessionLoadDetails> {
   const syncedAt = Date.now();
+  const knownCodexAcpSessionIds = await loadCodexAcpSessionIds(options.panelHome);
   const settled = await Promise.all(
     PROVIDERS.map(async (provider) => {
       try {
-        return await loadProvider(provider, options);
+        return await loadProvider(provider, options, knownCodexAcpSessionIds);
       } catch (error) {
         return {
           provider,
@@ -132,11 +147,19 @@ export async function loadAllAgentSessions(options: AgentSessionSyncOptions): Pr
     syncedAt
   }));
   return {
-    sessions,
-    sessionCount: sessions.length,
-    providers,
-    warnings: providers.flatMap((item) => item.warning ? [item.warning] : []),
-    syncedAt
+    result: {
+      sessions,
+      sessionCount: sessions.length,
+      providers,
+      warnings: providers.flatMap((item) => item.warning ? [item.warning] : []),
+      syncedAt
+    },
+    excludedCodexAcpSessionIds: [...new Set([
+      ...knownCodexAcpSessionIds,
+      ...settled
+        .filter((item) => item.provider === "codex")
+        .flatMap((item) => item.excludedSessionIds ?? [])
+    ])]
   };
 }
 
@@ -154,7 +177,7 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
   if (options.catalogSchema === "desktop") {
     await ensureCatalogSyncStateDesktop(options.dbPath);
   }
-  const result = await loadAllAgentSessions(options);
+  const { result, excludedCodexAcpSessionIds } = await loadAllAgentSessionDetails(options);
   const loaded = result.sessions as LoadedSession[];
   for (const providerResult of result.providers) {
     const providerSessions = loaded.filter((session) => session.provider === providerResult.provider);
@@ -164,6 +187,7 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     }
     await writeSyncState(options.dbPath, providerResult);
   }
+  await deleteCodexAcpCatalogDuplicates(options.dbPath, excludedCodexAcpSessionIds);
   // Alma support removed: hard-delete leftover Alma catalog rows and Alma-only projects.
   await purgeRetiredAlmaCatalog(options.dbPath);
 
@@ -238,7 +262,11 @@ async function loadAcpCatalogRecords(panelHome: string, maxItems: number): Promi
     .slice(0, Math.max(0, maxItems));
 }
 
-async function loadProvider(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
+async function loadProvider(
+  provider: SyncableAgentProvider,
+  options: AgentSessionSyncOptions,
+  knownCodexAcpSessionIds: ReadonlySet<string>
+): Promise<ProviderLoadResult> {
   const home = providerHome(provider, options);
   if (!await fileExists(home)) {
     const configured = isConfiguredAgentHome(provider, options);
@@ -250,7 +278,7 @@ async function loadProvider(provider: SyncableAgentProvider, options: AgentSessi
     };
   }
   switch (provider) {
-    case "codex": return loadCodex(options);
+    case "codex": return loadCodex(options, knownCodexAcpSessionIds);
     case "claude": return { provider, sessions: await loadClaude(options.claudeHome, options.maxItems) };
     case "agy": return { provider, sessions: await loadAgy(options.antigravityHome, options.maxItems) };
     case "grok": return { provider, sessions: await loadGrok(options.grokHome, options.maxItems, options.showSubagentGrok) };
@@ -307,25 +335,116 @@ async function writeSyncState(dbPath: string, result: AgentSessionProviderSyncRe
     ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms`]);
 }
 
-async function loadCodex(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
+async function loadCodexAcpSessionIds(panelHome: string): Promise<Set<string>> {
+  const records = await loadAcpSessionRecords<AcpSessionStoreRecord>(panelHome);
+  return new Set(
+    records
+      .filter((record) => record.provider === "codex")
+      .map((record) => record.acpSessionId?.trim())
+      .filter((sessionId): sessionId is string => Boolean(sessionId))
+  );
+}
+
+async function deleteCodexAcpCatalogDuplicates(dbPath: string, sessionIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(sessionIds.map((id) => id.trim()).filter(Boolean))];
+  for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+    const ids = uniqueIds.slice(i, i + BATCH_SIZE).map(sql).join(",");
+    await runSqliteTransaction(dbPath, [
+      `DELETE FROM sessions WHERE provider='codex' AND agent_session_id IN (${ids})`
+    ]);
+  }
+}
+
+function indexCodexRollouts(files: string[]): Map<string, string[]> {
+  const bySessionId = new Map<string, string[]>();
+  for (const file of files) {
+    const match = path.basename(file).match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
+    const sessionId = match?.[1];
+    if (!sessionId) continue;
+    const existing = bySessionId.get(sessionId) ?? [];
+    existing.push(file);
+    bySessionId.set(sessionId, existing);
+  }
+  return bySessionId;
+}
+
+async function isCodexAcpRollout(source: unknown, files: string[]): Promise<boolean> {
+  if (source !== "vscode" && source !== "unknown" && source !== "appServer") {
+    return false;
+  }
+  for (const file of files) {
+    if (await readCodexRolloutOriginator(file) === CODEX_ACP_ORIGINATOR) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function readCodexRolloutOriginator(file: string): Promise<string | undefined> {
+  let handle: fs.FileHandle | undefined;
+  try {
+    const stat = await fs.stat(file);
+    const cached = codexOriginatorCache.get(file);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.value;
+    }
+    handle = await fs.open(file, "r");
+    const buffer = Buffer.alloc(CODEX_SESSION_META_READ_LIMIT);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (!bytesRead) return undefined;
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
+    const newline = text.indexOf("\n");
+    if (newline < 0 && bytesRead === buffer.length) return undefined;
+    const firstLine = (newline >= 0 ? text.slice(0, newline) : text).trim();
+    if (!firstLine) return undefined;
+    const row = JSON.parse(firstLine) as {
+      type?: unknown;
+      payload?: { originator?: unknown };
+    };
+    const originator = row.type === "session_meta" && typeof row.payload?.originator === "string"
+      ? row.payload.originator
+      : undefined;
+    codexOriginatorCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, value: originator });
+    return originator;
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function loadCodex(
+  options: AgentSessionSyncOptions,
+  knownAcpSessionIds: ReadonlySet<string>
+): Promise<ProviderLoadResult> {
   const dbFiles = (await safeReadDir(options.codexHome)).filter((name) => /^state_\d+\.sqlite$/.test(name));
   const stats = await Promise.all(dbFiles.map(async (name) => ({ file: path.join(options.codexHome, name), mtime: await mtime(path.join(options.codexHome, name)) })));
   const dbPath = stats.sort((a, b) => b.mtime - a.mtime)[0]?.file;
   if (!dbPath) {
     const rows = await readCachedJsonLinesSafe<{ id?: string; thread_name?: string; updated_at?: string }>(path.join(options.codexHome, "session_index.jsonl"));
     return { provider: "codex", warning: rows.length ? "Codex state database was not found; used session_index.jsonl." : "Codex state database and session index were not found.", failed: !rows.length,
-      sessions: rows.filter((row) => row.id).slice(-options.maxItems).map((row) => session("codex", row.id!, row.thread_name || row.id!, os.homedir(), Date.parse(row.updated_at || "") || 0)) };
+      excludedSessionIds: [...knownAcpSessionIds],
+      sessions: rows.filter((row) => row.id && !knownAcpSessionIds.has(row.id)).slice(-options.maxItems).map((row) => session("codex", row.id!, row.thread_name || row.id!, os.homedir(), Date.parse(row.updated_at || "") || 0)) };
   }
   const clauses = [!options.showArchivedCodex ? "archived=0" : "", !options.showSubagentCodex ? "(source IS NULL OR instr(source,'subagent')=0)" : ""].filter(Boolean);
   const rows = await runSqliteJson<any>(dbPath, `SELECT id,title,cwd,updated_at_ms,updated_at,model,git_branch,archived,source,preview,first_user_message FROM threads ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY coalesce(updated_at_ms,updated_at*1000) DESC LIMIT ${options.maxItems}`);
   const rollouts = await cachedFiles(`codex:${options.codexHome}`, async () => [...await listJsonlFiles(path.join(options.codexHome, "sessions")), ...await listJsonlFiles(path.join(options.codexHome, "archived_sessions"))]);
-  return { provider: "codex", sessions: rows.filter((row) => row.id).map((row) => {
-    const files = rollouts.filter((file) => path.basename(file).includes(row.id));
-    return session("codex", row.id, first(row.title, row.preview, row.first_user_message, row.id), first(row.cwd, os.homedir()), Number(row.updated_at_ms ?? ((row.updated_at || 0) * 1000)), {
+  const rolloutsBySessionId = indexCodexRollouts(rollouts);
+  const excludedSessionIds = new Set(knownAcpSessionIds);
+  const sessions: LoadedSession[] = [];
+  for (const row of rows.filter((entry) => entry.id)) {
+    const files = rolloutsBySessionId.get(row.id)
+      ?? rollouts.filter((file) => path.basename(file).includes(row.id));
+    if (excludedSessionIds.has(row.id) || await isCodexAcpRollout(row.source, files)) {
+      excludedSessionIds.add(row.id);
+      continue;
+    }
+    sessions.push(session("codex", row.id, first(row.title, row.preview, row.first_user_message, row.id), first(row.cwd, os.homedir()), Number(row.updated_at_ms ?? ((row.updated_at || 0) * 1000)), {
       model: row.model || undefined, branch: row.git_branch || undefined, source: row.source || undefined, archived: !!row.archived,
       transcriptKind: files.length ? "jsonl" : "unavailable", transcriptRefs: JSON.stringify(files.length ? { kind: "jsonl", paths: files } : { kind: "unavailable", reason: "Codex rollout file not indexed" })
-    });
-  }) };
+    }));
+  }
+  return { provider: "codex", sessions, excludedSessionIds: [...excludedSessionIds] };
 }
 
 async function loadClaude(home: string, maxItems: number): Promise<LoadedSession[]> {

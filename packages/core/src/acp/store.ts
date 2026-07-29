@@ -8,6 +8,8 @@ export interface AcpSessionStoreRecord {
   title: string;
   projectPath: string;
   provider: string;
+  /** Native agent session id returned by the ACP adapter after session/new. */
+  acpSessionId?: string;
   createdAt: number;
   updatedAt: number;
   messageCount: number;
