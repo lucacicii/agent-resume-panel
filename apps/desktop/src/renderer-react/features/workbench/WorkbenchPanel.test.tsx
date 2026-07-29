@@ -10,6 +10,28 @@ import {
 } from "./WorkbenchPanel";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
+type MockBuffer = {
+  type: "normal" | "alternate";
+  viewportY: number;
+  baseY: number;
+  cursorY: number;
+  cursorX: number;
+  length: number;
+};
+type MockTerminalInstance = {
+  cols: number;
+  rows: number;
+  buffer: { active: MockBuffer; normal: MockBuffer; alternate: MockBuffer };
+  focusCalls: number;
+  scrollTopCalls: number;
+  scrollBottomCalls: number;
+  setBuffer: (type: "normal" | "alternate", viewportY: number, baseY: number) => void;
+};
+const xtermMocks = vi.hoisted(() => ({
+  instances: [] as MockTerminalInstance[],
+  resizeObservers: [] as Array<() => void>,
+  fitDimensions: { cols: 80, rows: 24 }
+}));
 
 vi.mock("../../components/Notifications", () => notificationMocks);
 
@@ -60,20 +82,80 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   rows = 24;
   options: Record<string, unknown> = { theme: {} };
   unicode = { activeVersion: "6" };
-  loadAddon() {}
+  private normalBuffer: MockBuffer = { type: "normal", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
+  private alternateBuffer: MockBuffer = { type: "alternate", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
+  private resizeListeners = new Set<(event: { cols: number; rows: number }) => void>();
+  private scrollListeners = new Set<(position: number) => void>();
+  private writeListeners = new Set<() => void>();
+  private bufferListeners = new Set<(buffer: MockBuffer) => void>();
+  buffer = {
+    active: this.normalBuffer,
+    normal: this.normalBuffer,
+    alternate: this.alternateBuffer,
+    onBufferChange: (listener: (buffer: MockBuffer) => void) => {
+      this.bufferListeners.add(listener);
+      return { dispose: () => this.bufferListeners.delete(listener) };
+    }
+  };
+  focusCalls = 0;
+  scrollTopCalls = 0;
+  scrollBottomCalls = 0;
+  constructor() { xtermMocks.instances.push(this); }
+  loadAddon(addon: { activate?: (terminal: unknown) => void }) { addon.activate?.(this); }
   open() {}
-  focus() {}
-  write() {}
+  focus() { this.focusCalls += 1; }
+  write() { this.writeListeners.forEach((listener) => listener()); }
   getSelection() { return ""; }
   clearTextureAtlas() {}
   refresh() {}
   onData() { return { dispose() {} }; }
-  onResize() { return { dispose() {} }; }
+  onResize(listener: (event: { cols: number; rows: number }) => void) {
+    this.resizeListeners.add(listener);
+    return { dispose: () => this.resizeListeners.delete(listener) };
+  }
+  onScroll(listener: (position: number) => void) {
+    this.scrollListeners.add(listener);
+    return { dispose: () => this.scrollListeners.delete(listener) };
+  }
+  onWriteParsed(listener: () => void) {
+    this.writeListeners.add(listener);
+    return { dispose: () => this.writeListeners.delete(listener) };
+  }
+  resize(cols: number, rows: number) {
+    this.cols = cols;
+    this.rows = rows;
+    this.resizeListeners.forEach((listener) => listener({ cols, rows }));
+  }
+  scrollToTop() {
+    this.scrollTopCalls += 1;
+    this.buffer.active.viewportY = 0;
+    this.scrollListeners.forEach((listener) => listener(0));
+  }
+  scrollToBottom() {
+    this.scrollBottomCalls += 1;
+    this.buffer.active.viewportY = this.buffer.active.baseY;
+    this.scrollListeners.forEach((listener) => listener(this.buffer.active.baseY));
+  }
+  setBuffer(type: "normal" | "alternate", viewportY: number, baseY: number) {
+    const target = type === "normal" ? this.normalBuffer : this.alternateBuffer;
+    target.viewportY = viewportY;
+    target.baseY = baseY;
+    this.buffer.active = target;
+    this.bufferListeners.forEach((listener) => listener(target));
+    this.scrollListeners.forEach((listener) => listener(viewportY));
+  }
   dispose() {}
 } }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {
-  fit() {}
-  proposeDimensions() { return { cols: 80, rows: 24 }; }
+  private terminal: { cols: number; rows: number; resize: (cols: number, rows: number) => void } | null = null;
+  activate(terminal: { cols: number; rows: number; resize: (cols: number, rows: number) => void }) { this.terminal = terminal; }
+  fit() {
+    const dimensions = this.proposeDimensions();
+    if (this.terminal && (this.terminal.cols !== dimensions.cols || this.terminal.rows !== dimensions.rows)) {
+      this.terminal.resize(dimensions.cols, dimensions.rows);
+    }
+  }
+  proposeDimensions() { return { ...xtermMocks.fitDimensions }; }
 } }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class {
   onContextLoss() { return { dispose() {} }; }
@@ -105,6 +187,9 @@ vi.mock("@xterm/addon-search", () => ({ SearchAddon: class {
   dispose() {}
 } }));
 vi.stubGlobal("ResizeObserver", class {
+  constructor(callback: ResizeObserverCallback) {
+    xtermMocks.resizeObservers.push(() => callback([], this as unknown as ResizeObserver));
+  }
   observe() {}
   disconnect() {}
 });
@@ -112,6 +197,9 @@ vi.stubGlobal("ResizeObserver", class {
 afterEach(() => {
   cleanup();
   notificationMocks.notifyDesktop.mockClear();
+  xtermMocks.instances.length = 0;
+  xtermMocks.resizeObservers.length = 0;
+  xtermMocks.fitDimensions = { cols: 80, rows: 24 };
   document.getElementById("react-workbench")?.remove();
   localStorage.removeItem("workbench-sidebar-view");
 });
@@ -362,6 +450,103 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
   });
 
+  it("shows terminal history jump controls only for normal-buffer scrollback", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalScrollTop": "Scroll to terminal top", "desktop.workbench.terminalScrollBottom": "Scroll to terminal bottom"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    act(() => terminal.setBuffer("normal", 5, 10));
+    fireEvent.click(await screen.findByRole("button", { name: "Scroll to terminal top" }));
+    expect(terminal.scrollTopCalls).toBe(1);
+    expect(terminal.focusCalls).toBe(1);
+    expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Scroll to terminal bottom" })).toBeTruthy();
+
+    act(() => terminal.setBuffer("alternate", 0, 0));
+    expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to terminal bottom" })).toBeNull();
+  });
+
+  it("coalesces terminal fitting, deduplicates PTY resize, and preserves bottom intent", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalResize = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 80, rows: 24 }));
+    terminalResize.mockClear();
+    const terminal = xtermMocks.instances[0];
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    Object.defineProperties(terminalHost, {
+      clientWidth: { configurable: true, value: 800 },
+      clientHeight: { configurable: true, value: 500 }
+    });
+
+    act(() => terminal.setBuffer("normal", 12, 12));
+    xtermMocks.fitDimensions = { cols: 100, rows: 30 };
+    act(() => {
+      xtermMocks.resizeObservers.forEach((notify) => notify());
+      window.dispatchEvent(new Event("resize"));
+    });
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 100, rows: 30 }));
+    expect(terminalResize).toHaveBeenCalledTimes(1);
+    expect(terminal.scrollBottomCalls).toBe(1);
+
+    act(() => terminal.setBuffer("normal", 5, 12));
+    xtermMocks.fitDimensions = { cols: 110, rows: 32 };
+    act(() => xtermMocks.resizeObservers.forEach((notify) => notify()));
+    await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 110, rows: 32 }));
+    expect(terminal.scrollBottomCalls).toBe(1);
+  });
+
   it("locates an already-open embedded session instead of reopening it", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -588,7 +773,13 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    const newSessionButton = screen.getByRole("button", { name: "New session" }) as HTMLButtonElement;
+    const newTerminalButton = screen.getByRole("button", { name: "New terminal" }) as HTMLButtonElement;
+    expect(document.querySelector('[data-pane-group="session"] > .wb-pane-tab-group-label')).toBe(newSessionButton);
+    expect(document.querySelector('[data-pane-group="terminal"] > .wb-pane-tab-group-label')).toBe(newTerminalButton);
+    expect(document.querySelector(".wb-terminal-tabs-actions")).toBeNull();
+
+    fireEvent.click(newTerminalButton);
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeTruthy());
     expect(screen.getByRole("status").textContent).toContain("Loading");
     await act(async () => resolveSpawn({ id: 11 }));
@@ -598,10 +789,15 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(0);
     expect(document.querySelector('[data-pane-group="code"]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(newSessionButton);
+    await waitFor(() => expect(newSessionButton.disabled).toBe(true));
+    expect(newTerminalButton.disabled).toBe(true);
+    expect(newSessionButton.querySelector(".spin")).not.toBeNull();
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeTruthy());
     await act(async () => resolveNewSession({ mode: "xterm", command: "codex", cwd: "/work/app" }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(newSessionButton.disabled).toBe(false));
+    expect(newTerminalButton.disabled).toBe(false);
     expect(document.querySelector(".wb-terminal-loading")).toBeTruthy();
     await act(async () => resolveSpawn({ id: 12 }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());

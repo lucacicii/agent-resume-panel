@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,6 +9,8 @@ import {
   isLegacyAgentResumeLaunch,
   manualMcpConfig,
   migrateTomlAgentResumeSection,
+  parseMcpJsonConfig,
+  readMcpJsonConfig,
   resolveExternalMcpCliPath
 } from "./mcpRegistration";
 
@@ -65,6 +69,24 @@ describe("desktop external MCP registration", () => {
         }
       })
     ).toBe(false);
+  });
+
+  it("parses valid MCP JSON while keeping malformed non-empty JSON visible", () => {
+    expect(parseMcpJsonConfig('{"mcpServers":{}}')).toEqual({ mcpServers: {} });
+    expect(() => parseMcpJsonConfig("[]")).toThrow("Configuration root must be an object.");
+    expect(() => parseMcpJsonConfig("{")).toThrow();
+  });
+
+  it("repairs an empty MCP JSON file atomically", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-mcp-json-"));
+    const configPath = path.join(directory, "mcp.json");
+    try {
+      await fs.writeFile(configPath, " \n", "utf8");
+      expect(await readMcpJsonConfig(configPath)).toEqual({});
+      expect(JSON.parse(await fs.readFile(configPath, "utf8"))).toEqual({});
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("migrates Codex/Grok TOML agent-resume sections to headless CLI", () => {

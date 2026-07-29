@@ -26,9 +26,9 @@ import type {
 } from "@agent-resume/core";
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
-  ArrowDown, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
+  ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FileDiff, FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
-  Plus, RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
+  RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
@@ -1309,7 +1309,7 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
-  const fit = useRef<FitAddon | null>(null);
+  const scheduleFitRef = useRef<(() => void) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -1320,6 +1320,7 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
+  const [scrollState, setScrollState] = useState({ canScrollTop: false, canScrollBottom: false });
 
   const runSearch = useCallback((direction: "next" | "prev", term: string) => {
     const addon = searchAddonRef.current;
@@ -1351,6 +1352,7 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
     setSearchOpen(false);
     setSearchQuery("");
     setSearchMeta(null);
+    ptyId.current = null;
     const terminal = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
@@ -1368,7 +1370,6 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(hostEl);
-    fit.current = fitAddon;
 
     // Unicode widths must be active before any write / accelerated paint.
     const unicode11 = new Unicode11Addon();
@@ -1415,18 +1416,52 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
       setSearchMeta({ index: event.resultIndex, count: event.resultCount });
     });
 
+    let alive = true;
+    let lastPtySize = "";
+    const syncScrollState = () => {
+      if (!alive) return;
+      const buffer = terminal.buffer.active;
+      const next = buffer.type === "normal" && buffer.baseY > 0
+        ? { canScrollTop: buffer.viewportY > 0, canScrollBottom: buffer.viewportY < buffer.baseY }
+        : { canScrollTop: false, canScrollBottom: false };
+      setScrollState((current) => current.canScrollTop === next.canScrollTop
+        && current.canScrollBottom === next.canScrollBottom ? current : next);
+    };
+
+    const resizePty = (cols: number, rows: number) => {
+      if (ptyId.current === null) return;
+      const sizeKey = `${cols}x${rows}`;
+      if (sizeKey === lastPtySize) return;
+      lastPtySize = sizeKey;
+      void desktopApi().terminalResize({ id: ptyId.current, cols, rows }).catch(() => {
+        if (lastPtySize === sizeKey) lastPtySize = "";
+      });
+    };
+
     // FitAddon only updates xterm cols/rows. PTY must be told separately so
     // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
     const onTermResize = terminal.onResize(({ cols, rows }) => {
-      if (ptyId.current === null) return;
-      void desktopApi().terminalResize({ id: ptyId.current, cols, rows });
+      resizePty(cols, rows);
+      syncScrollState();
     });
+    const onTermScroll = terminal.onScroll(syncScrollState);
+    const onWriteParsed = terminal.onWriteParsed(syncScrollState);
+    const onBufferChange = terminal.buffer.onBufferChange(syncScrollState);
 
     let lastFitKey = "";
     const fitHost = () => {
       if (hostEl.clientWidth < 2 || hostEl.clientHeight < 2) return;
       try {
+        const proposed = fitAddon.proposeDimensions();
+        if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) return;
+        if (proposed.cols === terminal.cols && proposed.rows === terminal.rows) {
+          syncScrollState();
+          return;
+        }
+        const buffer = terminal.buffer.active;
+        const wasAtNormalBufferBottom = buffer.type === "normal" && buffer.viewportY === buffer.baseY;
         fitAddon.fit();
+        if (wasAtNormalBufferBottom && terminal.buffer.active.type === "normal") terminal.scrollToBottom();
         // Only rebuild the WebGL glyph atlas when geometry or DPR actually changes.
         // Continuous ResizeObserver ticks would thrash clearTextureAtlas otherwise.
         const fitKey = `${terminal.cols}x${terminal.rows}@${window.devicePixelRatio || 1}`;
@@ -1434,24 +1469,35 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
           lastFitKey = fitKey;
           refreshTerminalGlyphs(terminal);
         }
+        syncScrollState();
       } catch {
         /* hidden panes fit after activation */
       }
     };
 
+    let fitFrame = 0;
+    const scheduleFit = () => {
+      if (fitFrame) return;
+      fitFrame = window.requestAnimationFrame(() => {
+        fitFrame = 0;
+        fitHost();
+      });
+    };
+    scheduleFitRef.current = scheduleFit;
+
     fitHost();
-    const observer = new ResizeObserver(fitHost);
+    syncScrollState();
+    const observer = new ResizeObserver(scheduleFit);
     observer.observe(hostEl);
     // Window zoom / electron zoom-factor changes do not always re-fire RO alone.
-    window.addEventListener("resize", fitHost);
+    window.addEventListener("resize", scheduleFit);
     const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", fitHost);
+    viewport?.addEventListener("resize", scheduleFit);
 
     const input = terminal.onData((data) => {
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
       onInput(pane.key);
     });
-    let alive = true;
     void desktopApi().terminalSpawn({ cwd: pane.cwd, command: pane.command, cols: terminal.cols, rows: terminal.rows })
       .then(({ id }) => {
         if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
@@ -1459,8 +1505,8 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
         onPty(pane.key, id, terminal);
         setReady(true);
         // Re-fit after attach in case layout settled during spawn.
-        fitHost();
-        void desktopApi().terminalResize({ id, cols: terminal.cols, rows: terminal.rows });
+        scheduleFit();
+        resizePty(terminal.cols, terminal.rows);
       })
       .catch((error: unknown) => {
         if (!alive) return;
@@ -1470,17 +1516,24 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
     return () => {
       alive = false;
       observer.disconnect();
-      window.removeEventListener("resize", fitHost);
-      viewport?.removeEventListener("resize", fitHost);
+      window.cancelAnimationFrame(fitFrame);
+      if (scheduleFitRef.current === scheduleFit) scheduleFitRef.current = null;
+      window.removeEventListener("resize", scheduleFit);
+      viewport?.removeEventListener("resize", scheduleFit);
       hostEl.removeEventListener("copy", onCopySelection);
       onTermResize.dispose();
+      onTermScroll.dispose();
+      onWriteParsed.dispose();
+      onBufferChange.dispose();
       input.dispose();
       searchResultsSub?.dispose();
       searchAddonRef.current = null;
       terminalRef.current = null;
       rendererRef.current?.dispose();
       rendererRef.current = null;
-      if (ptyId.current !== null) void desktopApi().terminalDestroy({ id: ptyId.current });
+      const currentPtyId = ptyId.current;
+      ptyId.current = null;
+      if (currentPtyId !== null) void desktopApi().terminalDestroy({ id: currentPtyId });
       terminal.dispose();
     };
   }, [onInput, onPty, pane.command, pane.cwd, pane.key]);
@@ -1512,8 +1565,7 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
     outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => {
         try {
-          fit.current?.fit();
-          if (terminalRef.current) refreshTerminalGlyphs(terminalRef.current);
+          scheduleFitRef.current?.();
         } catch { /* fit guard */ }
       });
     });
@@ -1550,6 +1602,34 @@ function TerminalView({ pane, active, themeId, rendererMode, onPty, onInput }: {
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className="wb-terminal-host" ref={host} />
+    {scrollState.canScrollTop ? (
+      <button
+        type="button"
+        className={`wb-terminal-jump is-top${searchOpen ? " is-below-search" : ""}`}
+        aria-label={t("desktop.workbench.terminalScrollTop")}
+        title={t("desktop.workbench.terminalScrollTop")}
+        onClick={() => {
+          terminalRef.current?.scrollToTop();
+          terminalRef.current?.focus();
+        }}
+      >
+        <ArrowUpToLine size={15} aria-hidden="true" />
+      </button>
+    ) : null}
+    {scrollState.canScrollBottom ? (
+      <button
+        type="button"
+        className="wb-terminal-jump is-bottom"
+        aria-label={t("desktop.workbench.terminalScrollBottom")}
+        title={t("desktop.workbench.terminalScrollBottom")}
+        onClick={() => {
+          terminalRef.current?.scrollToBottom();
+          terminalRef.current?.focus();
+        }}
+      >
+        <ArrowDownToLine size={15} aria-hidden="true" />
+      </button>
+    ) : null}
     {searchOpen ? (
       <div className="wb-terminal-search" role="search">
         <Search size={14} aria-hidden="true" />
@@ -1716,6 +1796,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activeRef = useRef(active);
   const watchedRootRef = useRef("");
   const directoryLoadSeqRef = useRef(new Map<string, number>());
+  const projectReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
   const paneHistoryRef = useRef<Record<string, string[]>>({});
   const openingSessionKeysRef = useRef(new Set<string>());
@@ -3015,15 +3096,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
-  const reconcileProjectFiles = useCallback(async (rootPath: string) => {
-    const targets = new Set([rootPath]);
-    for (const directory of openDirectoriesRef.current) {
-      if (isPathWithinProject(directory, rootPath)) targets.add(directory);
+  const reconcileProjectFiles = useCallback((rootPath: string) => {
+    const key = projectPathKey(rootPath);
+    const existing = projectReconcilesRef.current.get(key);
+    if (existing) {
+      existing.queued = true;
+      return existing.promise;
     }
-    await Promise.all([...targets].map((directory) => loadDirectory(rootPath, directory)));
-    await Promise.all(editorsRef.current
-      .filter((editor) => editor.projectPath === rootPath)
-      .map((editor) => syncEditorFromDisk(editor)));
+
+    const state = { promise: Promise.resolve(), queued: false };
+    const reconcile = async () => {
+      do {
+        state.queued = false;
+        const targets = new Set([rootPath]);
+        for (const directory of openDirectoriesRef.current) {
+          if (isPathWithinProject(directory, rootPath)) targets.add(directory);
+        }
+        await Promise.all([...targets].map((directory) => loadDirectory(rootPath, directory)));
+        await Promise.all(editorsRef.current
+          .filter((editor) => editor.projectPath === rootPath)
+          .map((editor) => syncEditorFromDisk(editor)));
+      } while (state.queued);
+    };
+    state.promise = reconcile().finally(() => {
+      if (projectReconcilesRef.current.get(key) === state) projectReconcilesRef.current.delete(key);
+    });
+    projectReconcilesRef.current.set(key, state);
+    return state.promise;
   }, [loadDirectory, syncEditorFromDisk]);
 
   const refreshProjectFiles = useCallback(async () => {
@@ -3808,19 +3907,17 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
-      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupSession")} title={t("desktop.workbench.tabGroupSession")}><Bot size={13} aria-hidden="true" /></div>
+      <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : <Bot size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
         {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}
         {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><X size={13} /></button></div>)}
       </div>
-      <div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}</button></div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
-      <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupTerminal")} title={t("desktop.workbench.tabGroupTerminal")}><TerminalSquare size={13} aria-hidden="true" /></div>
+      <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : <TerminalSquare size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")}>
         {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><TerminalSquare size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}
       </div>
-      <div className="wb-terminal-tabs-actions"><button type="button" className={`wb-terminal-tab-action${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}</button></div>
     </div>
     {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
       <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><FileCode2 size={13} aria-hidden="true" /></div>

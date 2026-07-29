@@ -6,6 +6,7 @@ import { safeHandle } from "./ipcUtils";
 
 const CHANGE_BATCH_MS = 120;
 const MAX_PENDING_PATHS = 512;
+const POLL_INTERVAL_MS = 2_000;
 
 export type WorkbenchFileSystemChangedEvent =
   | {
@@ -26,9 +27,8 @@ type WatchState = {
   sender: WebContents;
   rootPath: string;
   recursiveWatcher: fs.FSWatcher | null;
-  directoryWatchers: Map<string, fs.FSWatcher>;
   batchTimer: NodeJS.Timeout | null;
-  rebuildTimer: NodeJS.Timeout | null;
+  pollTimer: NodeJS.Timeout | null;
   pendingPaths: Set<string>;
   fullRescan: boolean;
   sequence: number;
@@ -52,26 +52,6 @@ function resolveWatchRoot(raw: unknown): string {
 
 function closeWatcher(watcher: fs.FSWatcher): void {
   try { watcher.close(); } catch { /* watcher may already be closed */ }
-}
-
-function listDirectories(rootPath: string): string[] {
-  const result: string[] = [];
-  const pending = [rootPath];
-  while (pending.length) {
-    const current = pending.pop()!;
-    result.push(current);
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-      pending.push(path.join(current, entry.name));
-    }
-  }
-  return result;
 }
 
 function emit(state: WatchState, event: WorkbenchFileSystemChangedEvent): void {
@@ -111,44 +91,20 @@ function queueChange(state: WatchState, changedPath: string | null): void {
   }, CHANGE_BATCH_MS);
 }
 
-function scheduleFallbackRebuild(state: WatchState): void {
-  if (state.rebuildTimer || state.stopped) return;
-  state.rebuildTimer = setTimeout(() => {
-    state.rebuildTimer = null;
-    if (state.stopped) return;
-    for (const watcher of state.directoryWatchers.values()) closeWatcher(watcher);
-    state.directoryWatchers.clear();
-    installFallbackWatchers(state);
-  }, CHANGE_BATCH_MS);
+function installPolling(state: WatchState): void {
+  if (state.stopped || state.pollTimer) return;
+  state.pollTimer = setInterval(() => queueChange(state, null), POLL_INTERVAL_MS);
+  state.pollTimer.unref?.();
+  queueChange(state, null);
 }
 
-function installFallbackWatchers(state: WatchState): void {
-  for (const directory of listDirectories(state.rootPath)) {
-    if (state.stopped || state.directoryWatchers.has(directory)) continue;
-    try {
-      const watcher = fs.watch(directory, { persistent: false }, (_eventType, filename) => {
-        const changed = filename ? path.join(directory, filename.toString()) : null;
-        queueChange(state, changed);
-        scheduleFallbackRebuild(state);
-      });
-      watcher.on("error", (error) => {
-        emit(state, {
-          type: "error",
-          rootPath: state.rootPath,
-          message: error instanceof Error ? error.message : String(error),
-          sequence: ++state.sequence
-        });
-      });
-      state.directoryWatchers.set(directory, watcher);
-    } catch (error) {
-      emit(state, {
-        type: "error",
-        rootPath: state.rootPath,
-        message: error instanceof Error ? error.message : String(error),
-        sequence: ++state.sequence
-      });
-    }
-  }
+function fallBackToPolling(state: WatchState, error: unknown): void {
+  if (state.stopped || state.pollTimer) return;
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[workbench] Recursive file watching unavailable; using ${POLL_INTERVAL_MS}ms polling: ${message}`);
+  if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
+  state.recursiveWatcher = null;
+  installPolling(state);
 }
 
 function installWatchers(state: WatchState): void {
@@ -156,17 +112,10 @@ function installWatchers(state: WatchState): void {
     const watcher = fs.watch(state.rootPath, { recursive: true, persistent: false }, (_eventType, filename) => {
       queueChange(state, filename ? path.join(state.rootPath, filename.toString()) : null);
     });
-    watcher.on("error", (error) => {
-      emit(state, {
-        type: "error",
-        rootPath: state.rootPath,
-        message: error instanceof Error ? error.message : String(error),
-        sequence: ++state.sequence
-      });
-    });
+    watcher.on("error", (error) => fallBackToPolling(state, error));
     state.recursiveWatcher = watcher;
-  } catch {
-    installFallbackWatchers(state);
+  } catch (error) {
+    fallBackToPolling(state, error);
   }
 }
 
@@ -174,10 +123,8 @@ function stopWatch(state: WatchState): void {
   if (state.stopped) return;
   state.stopped = true;
   if (state.batchTimer) clearTimeout(state.batchTimer);
-  if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
+  if (state.pollTimer) clearInterval(state.pollTimer);
   if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
-  for (const watcher of state.directoryWatchers.values()) closeWatcher(watcher);
-  state.directoryWatchers.clear();
   state.pendingPaths.clear();
 }
 
@@ -204,9 +151,8 @@ export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow |
         sender: event.sender,
         rootPath,
         recursiveWatcher: null,
-        directoryWatchers: new Map(),
         batchTimer: null,
-        rebuildTimer: null,
+        pollTimer: null,
         pendingPaths: new Set(),
         fullRescan: false,
         sequence: 0,

@@ -211,14 +211,22 @@ function run(command: string, args: string[]): Promise<void> {
   });
 }
 
-async function readJson(target: string): Promise<Record<string, unknown>> {
+export function parseMcpJsonConfig(raw: string): Record<string, unknown> {
+  const value = JSON.parse(raw) as unknown;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Configuration root must be an object.");
+  }
+  return value as Record<string, unknown>;
+}
+
+export async function readMcpJsonConfig(target: string): Promise<Record<string, unknown>> {
   try {
     const raw = await readFile(target, "utf8");
-    const value = JSON.parse(raw) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error("Configuration root must be an object.");
+    if (!raw.trim()) {
+      await writeJsonAtomically(target, {});
+      return {};
     }
-    return value as Record<string, unknown>;
+    return parseMcpJsonConfig(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw new Error(`Unable to read MCP configuration: ${error instanceof Error ? error.message : String(error)}`);
@@ -240,7 +248,7 @@ function asObject(value: unknown): Record<string, unknown> {
 
 async function registerJsonClient(definition: McpClientDefinition, launch: McpLaunchConfig, replace: boolean): Promise<void> {
   if (!definition.configPath) throw new Error("MCP config path is unavailable.");
-  const config = await readJson(definition.configPath);
+  const config = await readMcpJsonConfig(definition.configPath);
   const rootKey = definition.id === "opencode" ? "mcp" : "mcpServers";
   const servers = asObject(config[rootKey]);
   const existing = servers[EXTERNAL_MCP_SERVICE_ID];
@@ -255,7 +263,7 @@ async function registerJsonClient(definition: McpClientDefinition, launch: McpLa
 
 async function removeJsonClient(definition: McpClientDefinition): Promise<void> {
   if (!definition.configPath) return;
-  const config = await readJson(definition.configPath);
+  const config = await readMcpJsonConfig(definition.configPath);
   const rootKey = definition.id === "opencode" ? "mcp" : "mcpServers";
   const servers = asObject(config[rootKey]);
   if (!(EXTERNAL_MCP_SERVICE_ID in servers)) return;
@@ -392,7 +400,7 @@ async function migrateJsonAgentResumeEntry(
   style: "standard" | "opencode"
 ): Promise<boolean> {
   if (!(await exists(configPath))) return false;
-  const config = await readJson(configPath);
+  const config = await readMcpJsonConfig(configPath);
   const servers = asObject(config[rootKey]);
   const existing = servers[EXTERNAL_MCP_SERVICE_ID];
   if (!existing) return false;

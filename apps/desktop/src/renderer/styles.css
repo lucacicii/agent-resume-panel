@@ -6752,24 +6752,6 @@ code {
   display: none;
 }
 
-.wb-terminal-tabs-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  padding: 0 6px 0 4px;
-  border-left: 1px solid var(--color-separator);
-  background: var(--color-window-bg);
-}
-
-.wb-terminal-tabs-action-sep {
-  width: 1px;
-  height: 16px;
-  background: var(--color-separator);
-  flex-shrink: 0;
-  margin: 0 1px;
-}
-
 /* Normalize tab-strip buttons against their local flat surface. */
 .wb-terminal-tabs button {
   margin: 0;
@@ -6783,49 +6765,24 @@ code {
   box-shadow: none;
 }
 
-.wb-terminal-tab-action {
+button.wb-pane-tab-group-label {
   appearance: none;
-  color: var(--text);
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  padding: 5px;
-  border-radius: var(--radius-md);
+  border-right: 1px solid var(--color-separator);
   cursor: pointer;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
 }
 
-.wb-terminal-tab-action svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.wb-terminal-tab-action svg path,
-.wb-terminal-tab-action svg rect {
-  stroke: currentColor;
-  fill: none;
-}
-
-.wb-terminal-tab-action:focus-visible {
+button.wb-pane-tab-group-label:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
-.wb-terminal-tab-action:hover:not(:disabled) {
+button.wb-pane-tab-group-label:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--color-label-primary);
 }
 
-.wb-terminal-tab-action:disabled,
-.wb-terminal-tab-action.is-busy {
+button.wb-pane-tab-group-label:disabled,
+button.wb-pane-tab-group-label.is-busy {
   opacity: 0.45;
   cursor: default;
   pointer-events: none;
@@ -8055,6 +8012,54 @@ textarea.wb-editor-host {
 .wb-terminal-host .xterm-rows,
 .wb-terminal-host .xterm-screen {
   letter-spacing: normal;
+}
+
+.wb-terminal-jump {
+  appearance: none;
+  position: absolute;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: var(--radius-md);
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
+  cursor: pointer;
+}
+
+.wb-terminal-jump.is-top {
+  top: 10px;
+}
+
+.wb-terminal-jump.is-top.is-below-search {
+  top: 56px;
+}
+
+.wb-terminal-jump.is-bottom {
+  bottom: 10px;
+}
+
+.wb-terminal-jump:hover {
+  background: var(--color-secondary-bg);
+}
+
+.wb-terminal-jump:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.wb-terminal-jump svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
 }
 
 .wb-terminal-search {
