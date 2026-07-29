@@ -3578,7 +3578,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         gitSelectionKnownRef.current = currentKeys;
         return next;
       });
-      if (withNotification) notifyGitSuccess("desktop.workbench.gitStatusRefreshed");
     } catch (error) {
       if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
       else if (side === "git") setStatus({ text: gitOperationError(error), kind: "error" });
@@ -3587,7 +3586,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitStatusInFlightRef.current = false;
       if (withNotification) setGitRefreshing(false);
     }
-  }, [collectGitRoots, notifyGitFailure, notifyGitSuccess, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
+  }, [collectGitRoots, notifyGitFailure, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
 
   const autoFetchGit = useCallback(async (force = false) => {
     if (!selectedProject || gitFetchInFlightRef.current) return;
@@ -3668,7 +3667,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       const result = await desktopApi().terminalGitDiffSides({ cwd: change.repoRoot, path: change.repoPath, staged });
       setDiffs((current) => [...current, { key, projectPath: selectedProject, repoRoot: change.repoRoot, path: change.path, ...result }]);
       setActivePane(key);
-      notifyGitSuccess("desktop.workbench.gitDiffOpened", change.path);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
@@ -3712,7 +3710,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       const key = `logdiff:${hash}:${path}`;
       setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot: gitRoot, path, ...result }]);
       setActivePane(key);
-      notifyGitSuccess("desktop.workbench.gitDiffOpened", path);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
@@ -3781,7 +3778,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot });
       setCommitMessage(result.message);
       setCommitSuggestion(result);
-      notifyGitSuccess("desktop.workbench.gitCommitMessageGenerated");
     } catch (error) { notifyGitFailure("desktop.workbench.gitCommitGenerateFailed", error); }
     finally { setCommitBusy(false); }
   };
@@ -3800,15 +3796,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       setCommitBusy(false);
       return;
     }
-    notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
     setCommitSuggestion(null);
     if (pushAfter) {
       try {
         await desktopApi().terminalGitPush({ repoRoot: gitRoot });
-        notifyGitSuccess("desktop.workbench.gitPushSucceeded");
+        notifyGitSuccess("desktop.workbench.gitCommitAndPushSucceeded");
         setCommitMessage("");
-      } catch (error) { notifyGitFailure("desktop.workbench.gitPushFailed", error); }
+      } catch (error) { notifyGitFailure("desktop.workbench.gitCommitSucceededPushFailed", error); }
     } else {
+      notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
       setCommitMessage("");
     }
     await refreshGit();
@@ -3821,7 +3817,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     try {
       setGitShow(null);
       setGitLog(await desktopApi().terminalGitLog({ repoRoot: gitRoot, limit: 150 }));
-      notifyGitSuccess("desktop.workbench.gitLogLoaded");
     } catch (error) { notifyGitFailure("desktop.workbench.gitLogLoadFailed", error); }
   };
 
@@ -3829,7 +3824,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!gitRoot) return;
     try {
       setGitShow(await desktopApi().terminalGitShow({ repoRoot: gitRoot, hash }));
-      notifyGitSuccess("desktop.workbench.gitShowLoaded");
     } catch (error) { notifyGitFailure("desktop.workbench.gitShowLoadFailed", error); }
   };
 
@@ -3852,7 +3846,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
       });
       setBranchResult(result);
-      notifyGitSuccess("desktop.workbench.gitBranchesLoaded");
     } catch (error) { notifyGitFailure("desktop.workbench.loadBranchesFailed", error); }
   };
 

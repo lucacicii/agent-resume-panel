@@ -897,7 +897,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
   });
 
-  it("reports manual Git actions and keeps automatic refreshes silent", async () => {
+  it("reports state-changing Git actions and keeps refreshes silent", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -927,7 +927,7 @@ describe("WorkbenchPanel", () => {
     const terminalGitCommit = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.gitCommitAutoGenerate": "Auto generate", "desktop.workbench.gitCommitSuggestedLlm": "AI message", "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message", "desktop.workbench.gitCommitSuggestedFallback": "Fallback message", "desktop.workbench.gitPush": "Push", "desktop.workbench.gitPull": "Pull", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitStatusRefreshed": "Git status refreshed.", "desktop.workbench.gitPushSucceeded": "Push completed.", "desktop.workbench.gitPullFailed": "Pull failed: {0}", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}", "desktop.workbench.gitNoUpstream": "{0} · no upstream"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitAndPushSucceeded": "Commit and push completed.", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.gitCommitAutoGenerate": "Auto generate", "desktop.workbench.gitCommitSuggestedLlm": "AI message", "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message", "desktop.workbench.gitCommitSuggestedFallback": "Fallback message", "desktop.workbench.gitPush": "Push", "desktop.workbench.gitPull": "Pull", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitPushSucceeded": "Push completed.", "desktop.workbench.gitPullFailed": "Pull failed: {0}", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitCommitSucceededPushFailed": "Commit completed, but push failed: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}", "desktop.workbench.gitNoUpstream": "{0} · no upstream"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -965,8 +965,8 @@ describe("WorkbenchPanel", () => {
 
     const gitActions = document.querySelector(".wb-git-actions")!;
     fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')!);
-    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Git status refreshed.", kind: "ok" }));
-    expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(autoStatusCalls);
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(autoStatusCalls));
+    expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
 
     fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Push"]')!);
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
@@ -986,29 +986,35 @@ describe("WorkbenchPanel", () => {
     expect(messageField).toHaveProperty("value", "draft before standalone push");
 
     fireEvent.change(messageField, { target: { value: "feat: add toasts" } });
+    notificationMocks.notifyDesktop.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Commit & Push" }));
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
       repoRoot: "/work/app",
       message: "feat: add toasts",
       paths: ["src/app.ts"]
     }));
-    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "Push completed.", kind: "ok" }));
-    expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" });
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit and push completed.", kind: "ok" }));
+    expect(notificationMocks.notifyDesktop).toHaveBeenCalledTimes(1);
     expect(messageField).toHaveProperty("value", "");
 
     fireEvent.change(messageField, { target: { value: "fix: normal commit" } });
+    notificationMocks.notifyDesktop.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Commit" }));
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
       repoRoot: "/work/app",
       message: "fix: normal commit",
       paths: ["src/app.ts"]
     }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" }));
+    expect(notificationMocks.notifyDesktop).toHaveBeenCalledTimes(1);
     expect(messageField).toHaveProperty("value", "");
 
     fireEvent.change(messageField, { target: { value: "feat: keep draft" } });
     failPush = true;
+    notificationMocks.notifyDesktop.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Commit & Push" }));
-    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith({ text: "desktop.workbench.gitPushFailed", kind: "error" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed, but push failed: remote rejected", kind: "error" }));
+    expect(notificationMocks.notifyDesktop).toHaveBeenCalledTimes(1);
     expect(messageField).toHaveProperty("value", "feat: keep draft");
   });
 
@@ -1147,6 +1153,7 @@ describe("WorkbenchPanel", () => {
     expect(branchButton.closest(".wb-detail-head")).not.toBeNull();
     fireEvent.click(branchButton);
     await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
+    expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
     fireEvent.mouseDown(document.body);
     await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
 
