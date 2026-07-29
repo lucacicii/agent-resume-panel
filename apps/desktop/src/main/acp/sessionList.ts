@@ -16,9 +16,10 @@ export function acpRecordToAgentSession(record: AcpSessionRecord): AgentSession 
   };
 }
 
-export async function loadAcpAgentSessions(panelHome: string, maxItems: number): Promise<AgentSession[]> {
+export async function loadAcpAgentSessions(panelHome: string, maxItems?: number): Promise<AgentSession[]> {
   const records = await loadAcpRecords(panelHome);
-  return records.slice(0, Math.max(0, maxItems)).map(acpRecordToAgentSession);
+  const selected = maxItems == null ? records : records.slice(0, Math.max(0, maxItems));
+  return selected.map(acpRecordToAgentSession);
 }
 
 /**
@@ -28,7 +29,7 @@ export async function loadAcpAgentSessions(panelHome: string, maxItems: number):
 export function mergeCatalogAndAcpSessions(
   catalog: AgentSession[],
   acp: AgentSession[],
-  limit: number
+  limit?: number
 ): AgentSession[] {
   const byKey = new Map<string, AgentSession>();
   for (const session of catalog) {
@@ -49,9 +50,8 @@ export function mergeCatalogAndAcpSessions(
       byKey.set(key, { ...existing, acpProvider: session.acpProvider, source: existing.source || "acp" });
     }
   }
-  return [...byKey.values()]
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, Math.max(0, limit));
+  const merged = [...byKey.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  return limit == null ? merged : merged.slice(0, Math.max(0, limit));
 }
 
 /** Catalog + desktop convention: ACP chats use provider "chat" only. */

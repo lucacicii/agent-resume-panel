@@ -116,12 +116,13 @@ afterEach(() => {
 function installBridge() {
   const notesWrite = vi.fn(async () => ({ noteId: "note-1", filename: "renderer.md", updatedAtMs: 3 }));
   const notesCreate = vi.fn(async () => ({ noteId: "note-3", filename: "new-note.md" }));
+  const listSessions = vi.fn(async () => [{ provider: "codex" as const, id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }]);
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
     notesList: async () => [libraryNote, projectNote],
     notesListGtd: async () => [{ text: "Ship GTD", status: "next", line: 3, occurrence: 1, noteId: "note-1", noteTitle: "Renderer plan", scope: "library", relMdPath: "notes/library/renderer.md", updatedAtMs: 2 }],
-    listSessions: async () => [{ provider: "codex", id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }],
+    listSessions,
     listProjectAliases: async () => ({ "/work/panel": "Panel" }),
     setProjectAlias: async () => ({ ok: true }),
     notesRead: async ({ noteId }: { noteId: string }) => ({ record: noteId === "note-3" ? { ...libraryNote, noteId, filename: "new-note.md", title: "New note" } : noteId === "note-2" ? projectNote : libraryNote, content: "# Renderer\nInitial initial" }),
@@ -137,7 +138,7 @@ function installBridge() {
     notesReveal: async () => ({ ok: true }),
     notesOpenFolder: async () => ({ ok: true })
   } as unknown as typeof window.agentResume;
-  return { notesWrite, notesCreate };
+  return { notesWrite, notesCreate, listSessions };
 }
 
 describe("NotesPanel", () => {
@@ -152,9 +153,10 @@ describe("NotesPanel", () => {
 
   it("loads, edits, saves, and creates notes through the desktop bridge", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    const { notesWrite, notesCreate } = installBridge();
+    const { notesWrite, notesCreate, listSessions } = installBridge();
     render(<I18nProvider><NotesPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    await waitFor(() => expect(listSessions).toHaveBeenCalledWith());
     fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
     const editor = await screen.findByPlaceholderText("Edit Markdown");
     fireEvent.change(editor, { target: { value: "# Renderer\nChanged" } });

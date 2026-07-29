@@ -57,6 +57,28 @@ describe("mergeCatalogAndAcpSessions", () => {
     expect(merged[0]?.title).toBe("New");
     expect(merged[0]?.acpProvider).toBe("claude");
   });
+
+  it("returns every merged session when no display limit is provided", () => {
+    const catalog = Array.from({ length: 600 }, (_, index): AgentSession => ({
+      provider: "codex",
+      id: `cli-${index}`,
+      title: `CLI ${index}`,
+      projectPath: "/p",
+      updatedAt: index
+    }));
+    const acp = Array.from({ length: 50 }, (_, index): AgentSession => ({
+      provider: "chat",
+      id: `acp-${index}`,
+      title: `ACP ${index}`,
+      projectPath: "/p",
+      updatedAt: 1_000 + index,
+      source: "acp"
+    }));
+
+    const merged = mergeCatalogAndAcpSessions(catalog, acp);
+    expect(merged).toHaveLength(650);
+    expect(merged[0]?.id).toBe("acp-49");
+  });
 });
 
 describe("isAcpAgentSession", () => {

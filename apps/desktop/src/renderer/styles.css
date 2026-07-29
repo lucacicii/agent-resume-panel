@@ -516,6 +516,29 @@ textarea:focus-visible,
   height: calc(100vh - 80px);
 }
 
+.virtual-list-viewport {
+  min-height: 0;
+  overflow: auto;
+}
+
+.virtual-list-inner {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.virtual-list-window {
+  position: absolute;
+  inset: 0 0 auto;
+  width: 100%;
+  will-change: transform;
+}
+
+.virtual-list-row {
+  width: 100%;
+  min-width: 0;
+}
+
 .sessions-list {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -525,6 +548,8 @@ textarea:focus-visible,
 
 .session-row {
   display: block;
+  box-sizing: border-box;
+  height: 100%;
   width: 100%;
   text-align: left;
   border: none;
@@ -631,12 +656,18 @@ textarea:focus-visible,
 .session-row .s-title {
   font-weight: 600;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-row .s-meta {
   color: var(--muted);
   margin-top: 2px;
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-preview-pane {
@@ -9551,6 +9582,11 @@ body.is-pane-resizing * {
   overflow: auto;
   min-height: 0;
   padding: 4px 0 8px;
+}
+
+.wb-list .virtual-list-row > .wb-list-item {
+  height: 60px;
+  min-height: 60px;
 }
 
 .notes-list-empty,

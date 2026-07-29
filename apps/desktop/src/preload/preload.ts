@@ -70,7 +70,7 @@ export interface DesktopApi {
     restored: number;
     counts: { total: number; visible: number; hidden: number };
   }>;
-  listSessions(limit?: number): Promise<AgentSession[]>;
+  listSessions(): Promise<AgentSession[]>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
   setSessionGtdStatus(args: {
     provider: string;
@@ -947,7 +947,7 @@ const api: DesktopApi = {
     ipcRenderer.on("sessions:syncFailed", handler);
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
-  listSessions: (limit) => ipcRenderer.invoke("sessions:list", limit),
+  listSessions: () => ipcRenderer.invoke("sessions:list"),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),

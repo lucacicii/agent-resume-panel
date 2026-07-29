@@ -1,8 +1,13 @@
 import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
 import { AgentProvider, AgentSession, CatalogSessionRow, toAgentSession } from "./types";
 
-export async function listSessions(dbPath: string, limit = 500): Promise<AgentSession[]> {
-  const safeLimit = Math.max(1, Math.min(limit, 50_000));
+export async function listSessions(dbPath: string, limit?: number): Promise<AgentSession[]> {
+  const safeLimit = limit == null
+    ? undefined
+    : Math.max(1, Math.min(Number.isFinite(limit) ? Math.floor(limit) : 500, 50_000));
+  const limitClause = limit == null
+    ? ""
+    : `\n     LIMIT ${safeLimit}`;
   const rows = await runSqliteJson<CatalogSessionRow>(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
@@ -10,8 +15,7 @@ export async function listSessions(dbPath: string, limit = 500): Promise<AgentSe
       session_summary, session_summary_language, session_summary_at_ms, project_id
      FROM sessions
      WHERE hidden = 0
-     ORDER BY updated_at_ms DESC
-     LIMIT ${safeLimit};`
+     ORDER BY updated_at_ms DESC${limitClause};`
   );
 
   return rows.map((row) => toAgentSession(row));

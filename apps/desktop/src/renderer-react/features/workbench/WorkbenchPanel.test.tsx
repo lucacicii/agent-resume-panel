@@ -237,6 +237,10 @@ describe("WorkbenchPanel", () => {
     host.id = "react-workbench";
     document.body.append(host);
     const workbenchOpenSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true }));
+    const listSessions = vi.fn(async () => [
+      { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+      { provider: "claude" as const, id: "session-2", title: "Write tests", projectPath: "/work/docs", updatedAt: 2 }
+    ]);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
@@ -249,16 +253,14 @@ describe("WorkbenchPanel", () => {
       onTerminalRespawned: () => () => undefined,
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
-        { provider: "claude", id: "session-2", title: "Write tests", projectPath: "/work/docs", updatedAt: 2 }
-      ],
+      listSessions,
       workbenchOpenSession
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const fixRenderer = await screen.findByRole("button", { name: /Fix renderer/ });
+    expect(listSessions).toHaveBeenCalledWith();
     const providerTag = fixRenderer.querySelector(".wb-list-item-preview .s-provider-tag");
     expect(providerTag?.classList.contains("s-provider-tag")).toBe(true);
     expect(providerTag?.getAttribute("data-provider")).toBe("codex");

@@ -86,3 +86,24 @@ test("syncAcpRecordsIntoCatalog is idempotent and preserves user_title", async (
 
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test("listSessions without a limit returns every visible catalog session", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-unbounded-"));
+  const dbPath = path.join(dir, "catalog.db");
+  await ensureExtensionCatalogSchema(dbPath);
+
+  const records = Array.from({ length: 550 }, (_, index) => ({
+    id: `chat-${index}`,
+    title: `Chat ${index}`,
+    projectPath: "/p",
+    acpProvider: "codex",
+    updatedAt: index + 1,
+    messageCount: 1
+  }));
+  await syncAcpRecordsIntoCatalog(dbPath, dir, records, 1_000);
+
+  assert.equal((await listSessions(dbPath)).length, 550);
+  assert.equal((await listSessions(dbPath, 500)).length, 500);
+
+  await fs.rm(dir, { recursive: true, force: true });
+});

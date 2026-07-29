@@ -35,6 +35,7 @@ import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
+import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
 import {
@@ -184,6 +185,9 @@ type PendingWorkbenchSession = {
   createdAt: number;
   knownSessionKeys: string[];
 };
+type WorkbenchSessionRow =
+  | { kind: "pending"; pending: PendingWorkbenchSession }
+  | { kind: "session"; session: AgentSession };
 type AcpChatPane = {
   key: string;
   recordId: string;
@@ -199,6 +203,7 @@ type SessionFilter = "all" | "active";
 type WorkbenchSidebarView = "projects" | "gtd";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
+const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
   portableKey: string;
@@ -1874,7 +1879,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         ? desktopApi().listSessionGtdStatuses()
         : Promise.resolve({} as Record<string, GtdStatus>);
       const [next, nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
-        desktopApi().listSessions(2_000),
+        desktopApi().listSessions(),
         desktopApi().listProjectAliases(),
         desktopApi().getSettings(),
         listProjects,
@@ -2022,15 +2027,32 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
+      const sessionsByProjectId = new Map<string, AgentSession[]>();
+      const unassignedSessionsByPath = new Map<string, AgentSession[]>();
+      const pendingCountByPath = new Map<string, number>();
+      for (const session of sessions) {
+        if (session.projectId) {
+          const group = sessionsByProjectId.get(session.projectId) || [];
+          group.push(session);
+          sessionsByProjectId.set(session.projectId, group);
+        } else if (session.projectPath) {
+          const key = projectPathKey(session.projectPath);
+          const group = unassignedSessionsByPath.get(key) || [];
+          group.push(session);
+          unassignedSessionsByPath.set(key, group);
+        }
+      }
+      for (const pending of pendingSessions) {
+        const key = projectPathKey(pending.projectPath);
+        pendingCountByPath.set(key, (pendingCountByPath.get(key) || 0) + 1);
+      }
       const catalogRows = catalogProjects.flatMap((project) => {
-        const group = sessions.filter((session) =>
-          (session.projectId && session.projectId === project.projectId)
-          || (!session.projectId && project.localPath && session.projectPath === project.localPath)
-        );
+        const group = [
+          ...(sessionsByProjectId.get(project.projectId) || []),
+          ...(project.localPath ? unassignedSessionsByPath.get(projectPathKey(project.localPath)) || [] : [])
+        ];
         const projectPath = project.localPath || project.portableKey;
-        const pendingCount = pendingSessions.filter((pending) =>
-          projectPathKey(pending.projectPath) === projectPathKey(projectPath)
-        ).length;
+        const pendingCount = pendingCountByPath.get(projectPathKey(projectPath)) || 0;
         // Hide catalog rows with no session data (catalog count and joined list both empty).
         if ((project.sessionCount || 0) === 0 && group.length === 0 && pendingCount === 0) return [];
         const path = projectPath;
@@ -2166,6 +2188,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   const visiblePendingSessions = useMemo(() => selectedPendingSessions.filter((pending) =>
     `${pending.title} ${pending.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
   ).sort((a, b) => b.createdAt - a.createdAt), [selectedPendingSessions, sessionQuery]);
+  const visibleSessionRows = useMemo<WorkbenchSessionRow[]>(() => [
+    ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
+    ...visibleSessions.map((session) => ({ kind: "session" as const, session }))
+  ], [visiblePendingSessions, visibleSessions]);
+  const activeSessionRowIndex = useMemo(() => visibleSessionRows.findIndex((row) =>
+    row.kind === "pending" ? row.pending.key === activeSessionKey : sessionKey(row.session) === activeSessionKey
+  ), [activeSessionKey, visibleSessionRows]);
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
   const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
   const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
@@ -4070,14 +4099,24 @@ export function WorkbenchPanel(): ReactPortal | null {
           />
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${selectedSessions.length + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><RefreshCw size={15} /></button></div>
-        <div className="wb-list">{visibleSessions.length || visiblePendingSessions.length ? <>
-          {visiblePendingSessions.map((pending) => <button type="button" className={`wb-list-item has-wb-activity${activeSessionKey === pending.key ? " active" : ""}`} key={pending.key} onClick={() => focusPendingSession(pending)}><span className="wb-list-item-top"><span className="wb-session-title-wrap"><span className="wb-session-activity-dot" aria-hidden="true" /><span className="wb-list-item-title">{pending.title}</span></span><span className="wb-list-item-date">{relativeTime(pending.createdAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={pending.provider}>{pending.provider}</span>{" · "}{aliases[pending.projectPath] || basename(pending.projectPath)}</span></button>)}
-          {visibleSessions.map((session) => {
-          const isOpen = openSessionKeys.has(sessionKey(session));
-          const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
-          const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
-          return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} key={sessionKey(session)} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
-          })}</> : <p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p>}</div>
+        {visibleSessionRows.length ? <VirtualList
+          className="wb-list"
+          items={visibleSessionRows}
+          itemHeight={WORKBENCH_SESSION_ROW_HEIGHT}
+          scrollToIndex={activeSessionRowIndex}
+          getKey={(row) => row.kind === "pending" ? row.pending.key : sessionKey(row.session)}
+          renderItem={(row) => {
+            if (row.kind === "pending") {
+              const pending = row.pending;
+              return <button type="button" className={`wb-list-item has-wb-activity${activeSessionKey === pending.key ? " active" : ""}`} onClick={() => focusPendingSession(pending)}><span className="wb-list-item-top"><span className="wb-session-title-wrap"><span className="wb-session-activity-dot" aria-hidden="true" /><span className="wb-list-item-title">{pending.title}</span></span><span className="wb-list-item-date">{relativeTime(pending.createdAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={pending.provider}>{pending.provider}</span>{" · "}{aliases[pending.projectPath] || basename(pending.projectPath)}</span></button>;
+            }
+            const session = row.session;
+            const isOpen = openSessionKeys.has(sessionKey(session));
+            const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
+            const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
+            return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+          }}
+        /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">

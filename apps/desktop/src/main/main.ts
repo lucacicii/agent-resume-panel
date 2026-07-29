@@ -935,13 +935,12 @@ function registerIpc(): void {
     return { restored, restoredProjects, counts };
   });
 
-  ipcMain.handle("sessions:list", async (_event, limit?: number) => {
+  ipcMain.handle("sessions:list", async () => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const cap = limit ?? 500;
-    const catalog = await listSessions(paths.catalogDb, cap);
-    const acp = await loadAcpAgentSessions(effectivePanelHome(settings), cap);
-    return mergeCatalogAndAcpSessions(catalog, acp, cap);
+    const catalog = await listSessions(paths.catalogDb);
+    const acp = await loadAcpAgentSessions(effectivePanelHome(settings));
+    return mergeCatalogAndAcpSessions(catalog, acp);
   });
 
   ipcMain.handle("gtd:listSessionStatuses", async () => {

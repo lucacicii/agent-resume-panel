@@ -323,7 +323,7 @@ export function NotesPanel(): ReactPortal | null {
         : Promise.resolve([] as GtdTask[]);
       const [nextNotes, nextSessions, nextAliases, nextProjects, nextGtdTasks] = await Promise.all([
         desktopApi().notesList(),
-        desktopApi().listSessions(2_000),
+        desktopApi().listSessions(),
         desktopApi().listProjectAliases(),
         listProjects,
         listGtd
@@ -551,6 +551,20 @@ export function NotesPanel(): ReactPortal | null {
 
   const projects = useMemo(() => {
     if (catalogProjects.length) {
+      const sessionsByProjectId = new Map<string, AgentSession[]>();
+      const sessionsByPath = new Map<string, AgentSession[]>();
+      for (const session of sessions) {
+        if (session.projectId) {
+          const group = sessionsByProjectId.get(session.projectId) || [];
+          group.push(session);
+          sessionsByProjectId.set(session.projectId, group);
+        }
+        if (session.projectPath) {
+          const group = sessionsByPath.get(session.projectPath) || [];
+          group.push(session);
+          sessionsByPath.set(session.projectPath, group);
+        }
+      }
       return catalogProjects.map((project) => {
         const path = project.localPath || project.portableKey;
         const projectNotes = notes.filter((note) =>
@@ -561,11 +575,13 @@ export function NotesPanel(): ReactPortal | null {
             || note.projectPath === project.portableKey
             || (project.localPath && note.projectPath.endsWith(project.portableKey.replace(/^~\//, ""))))
         );
-        const projectSessions = sessions.filter((session) =>
-          (session.projectId && session.projectId === project.projectId)
-          || session.projectPath === path
-          || session.projectPath === project.localPath
-        );
+        const projectSessions = new Map<string, AgentSession>();
+        for (const session of sessionsByProjectId.get(project.projectId) || []) projectSessions.set(sessionKey(session), session);
+        for (const session of sessionsByPath.get(path) || []) projectSessions.set(sessionKey(session), session);
+        if (project.localPath && project.localPath !== path) {
+          for (const session of sessionsByPath.get(project.localPath) || []) projectSessions.set(sessionKey(session), session);
+        }
+        const projectSessionList = [...projectSessions.values()];
         return {
           id: project.projectId,
           path,
@@ -573,14 +589,14 @@ export function NotesPanel(): ReactPortal | null {
           portableKey: project.portableKey,
           label: project.alias || aliases[path] || basename(path),
           count: projectNotes.length,
-          active: projectSessions.some(activeSession),
+          active: projectSessionList.some(activeSession),
           pinned: project.pinned === true || pinnedProjects.has(path) || pinnedProjects.has(project.projectId),
           updatedAt: Math.max(
             0,
             project.lastSeenAtMs || 0,
             project.updatedAtMs || 0,
             ...projectNotes.map((note) => note.updatedAtMs),
-            ...projectSessions.map((session) => session.updatedAt)
+            ...projectSessionList.map((session) => session.updatedAt)
           )
         };
       }).filter((project) => {
@@ -620,10 +636,16 @@ export function NotesPanel(): ReactPortal | null {
     }).sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt || left.label.localeCompare(right.label));
   }, [aliases, catalogProjects, notes, pinnedProjects, projectFilter, projectQuery, sessions]);
 
-  const folderSessions = useMemo(() => sessions.filter((session) => {
-    const hasNote = notes.some((note) => note.scope === "session" && note.provider === session.provider && note.agentSessionId === session.id);
-    return hasNote;
-  }).sort((left, right) => right.updatedAt - left.updatedAt), [notes, sessions]);
+  const folderSessions = useMemo(() => {
+    const sessionNoteKeys = new Set(notes.flatMap((note) =>
+      note.scope === "session" && note.provider && note.agentSessionId
+        ? [`${note.provider}:${note.agentSessionId}`]
+        : []
+    ));
+    return sessions
+      .filter((session) => sessionNoteKeys.has(sessionKey(session)))
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }, [notes, sessions]);
 
   const visibleNotes = useMemo(() => notes.filter((note) => {
     const inFolder = folder.kind === "all"

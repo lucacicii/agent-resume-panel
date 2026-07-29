@@ -4,6 +4,9 @@ import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { Sheet } from "../components/Sheet";
 import { Status, type StatusKind } from "../components/Status";
+import { VirtualList } from "../components/VirtualList";
+
+const SESSION_ROW_HEIGHT = 58;
 
 interface SessionPreview {
   title: string;
@@ -55,7 +58,7 @@ export function SessionsSheet(): React.JSX.Element {
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      setSessions(await desktopApi().listSessions(500));
+      setSessions(await desktopApi().listSessions());
       setStatus({ text: "" });
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
@@ -182,6 +185,10 @@ export function SessionsSheet(): React.JSX.Element {
     const synced = lastSyncedAt ? t("desktop.sessions.lastSynced", formatTime(lastSyncedAt, locale)) : "";
     return t("desktop.sessions.meta", sessions.length, interval, synced);
   }, [lastSyncedAt, locale, sessions.length, t]);
+  const selectedIndex = useMemo(
+    () => sessions.findIndex((session) => sessionKey(session) === selectedKey),
+    [selectedKey, sessions]
+  );
 
   return (
     <Sheet open={open} title={t("desktop.sessions.sheetTitle")} onClose={close} wide bodyClassName="sessions-split">
@@ -192,8 +199,13 @@ export function SessionsSheet(): React.JSX.Element {
           </button>
         </div>
         <p className="muted">{loading && !sessions.length ? t("desktop.common.loading") : meta}</p>
-        <div className="sessions-list">
-          {sessions.map((session) => {
+        <VirtualList
+          className="sessions-list"
+          items={sessions}
+          itemHeight={SESSION_ROW_HEIGHT}
+          getKey={sessionKey}
+          scrollToIndex={selectedIndex}
+          renderItem={(session) => {
             const key = sessionKey(session);
             return (
               <button
@@ -209,8 +221,8 @@ export function SessionsSheet(): React.JSX.Element {
                 </div>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       </div>
       <div className="session-preview-pane">
         {previewLoading && <p className="muted">{t("desktop.common.loadingPreview")}</p>}
