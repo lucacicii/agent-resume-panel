@@ -5995,6 +5995,15 @@ code {
   background: var(--color-fill-primary);
 }
 
+.wb-explorer-file-tree:focus {
+  outline: none;
+}
+
+.wb-explorer-file-tree .wb-file-tree-row:focus {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
 .wb-file-tree-chevron {
   width: 16px;
   height: 16px;
@@ -8382,9 +8391,14 @@ textarea.wb-editor-host {
   white-space: nowrap;
 }
 
+.wb-context-menu button:disabled,
 .chat-context-menu button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.wb-context-menu button:disabled:hover {
+  background: transparent;
 }
 
 .context-menu-separator {

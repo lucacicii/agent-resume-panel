@@ -424,6 +424,16 @@ export interface DesktopApi {
     engine: "rg" | "node";
   }>;
   workbenchListFilesCancel(): Promise<{ ok: boolean }>;
+  workbenchCopyPath(args: { rootPath: string; sourcePath: string }): Promise<{ ok: boolean }>;
+  workbenchClipboardHasFiles(): Promise<{ hasFiles: boolean }>;
+  workbenchPastePaths(args: { rootPath: string; targetDirectory: string }): Promise<{
+    copied: Array<{
+      sourcePath: string;
+      destinationPath: string;
+      isDirectory: boolean;
+    }>;
+    failures: Array<{ sourcePath: string; message: string }>;
+  }>;
   workbenchSetFileWatch(args: { rootPath: string | null }): Promise<{ rootPath: string | null }>;
   onWorkbenchFileSystemChanged(callback: (event: WorkbenchFileSystemChangedEvent) => void): () => void;
   workbenchListScripts(args: {
@@ -1004,6 +1014,9 @@ const api: DesktopApi = {
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
   workbenchListFiles: (args) => ipcRenderer.invoke("workbench:listFiles", args),
   workbenchListFilesCancel: () => ipcRenderer.invoke("workbench:listFilesCancel"),
+  workbenchCopyPath: (args) => ipcRenderer.invoke("workbench:copyPath", args),
+  workbenchClipboardHasFiles: () => ipcRenderer.invoke("workbench:clipboardHasFiles"),
+  workbenchPastePaths: (args) => ipcRenderer.invoke("workbench:pastePaths", args),
   workbenchSetFileWatch: (args) => ipcRenderer.invoke("workbench:setFileWatch", args),
   onWorkbenchFileSystemChanged: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: WorkbenchFileSystemChangedEvent) => callback(payload);

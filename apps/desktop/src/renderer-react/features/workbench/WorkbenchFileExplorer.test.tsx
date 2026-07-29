@@ -9,7 +9,10 @@ import {
 
 const apiMocks = vi.hoisted(() => ({
   workbenchListDirectory: vi.fn(),
-  workbenchRevealPath: vi.fn()
+  workbenchRevealPath: vi.fn(),
+  workbenchCopyPath: vi.fn(),
+  workbenchClipboardHasFiles: vi.fn(),
+  workbenchPastePaths: vi.fn()
 }));
 
 vi.mock("../../bridge", () => ({ desktopApi: () => apiMocks }));
@@ -21,6 +24,9 @@ afterEach(() => {
   cleanup();
   apiMocks.workbenchListDirectory.mockReset();
   apiMocks.workbenchRevealPath.mockReset();
+  apiMocks.workbenchCopyPath.mockReset();
+  apiMocks.workbenchClipboardHasFiles.mockReset();
+  apiMocks.workbenchPastePaths.mockReset();
 });
 
 describe("WorkbenchFileExplorer", () => {
@@ -99,5 +105,69 @@ describe("WorkbenchFileExplorer", () => {
     release?.();
     await act(async () => { await first; });
     expect(apiMocks.workbenchListDirectory).toHaveBeenCalledTimes(3);
+  });
+
+  it("copies the focused file through the desktop bridge with Cmd+C", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [{ name: "package.json", path: "/work/app/package.json", isDirectory: false }]
+    });
+    apiMocks.workbenchCopyPath.mockResolvedValue({ ok: true });
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+    const file = await screen.findByText("package.json");
+    const row = file.closest("[role=treeitem]")!;
+    fireEvent.focus(row);
+    fireEvent.keyDown(row, { key: "c", metaKey: true });
+
+    await waitFor(() => expect(apiMocks.workbenchCopyPath).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      sourcePath: "/work/app/package.json"
+    }));
+  });
+
+  it("pastes into a focused file's parent directory with Cmd+V", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [{ name: "package.json", path: "/work/app/package.json", isDirectory: false }]
+    });
+    apiMocks.workbenchPastePaths.mockResolvedValue({ copied: [], failures: [] });
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+    const row = (await screen.findByText("package.json")).closest("[role=treeitem]")!;
+    fireEvent.focus(row);
+    fireEvent.keyDown(row, { key: "v", metaKey: true });
+
+    await waitFor(() => expect(apiMocks.workbenchPastePaths).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      targetDirectory: "/work/app"
+    }));
+  });
+
+  it("offers copy, paste, and Finder reveal from the file context menu", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [{ name: "package.json", path: "/work/app/package.json", isDirectory: false }]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: true });
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+    const row = (await screen.findByText("package.json")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(row, { clientX: 20, clientY: 30 });
+
+    expect(await screen.findByRole("menuitem", { name: "desktop.common.copy" })).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole("menuitem", {
+      name: "desktop.common.paste"
+    }) as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" })).toBeTruthy();
   });
 });

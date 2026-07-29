@@ -29,6 +29,11 @@ import {
   cancelActiveWorkbenchFileList,
   listWorkbenchFiles
 } from "./workbenchFileIndex";
+import {
+  copyWorkbenchPathToClipboard,
+  pasteMacClipboardIntoWorkbench,
+  readMacPasteboardFilePaths
+} from "./workbenchFileClipboard";
 
 export type { GitRepoTracking } from "./gitTracking";
 export { parseLeftRightCount } from "./gitTracking";
@@ -516,6 +521,33 @@ export function registerWorkbenchFsIpc(): void {
     cancelActiveWorkbenchFileList();
     return { ok: true };
   });
+
+  safeHandle(
+    "workbench:copyPath",
+    async (_event, args: { rootPath: string; sourcePath: string }) => {
+      const rootPath = resolveCwd(args.rootPath);
+      if (typeof args?.sourcePath !== "string" || !args.sourcePath.trim()) {
+        throw new Error("无效的源文件路径");
+      }
+      await copyWorkbenchPathToClipboard(rootPath, args.sourcePath);
+      return { ok: true };
+    }
+  );
+
+  safeHandle("workbench:clipboardHasFiles", async () => ({
+    hasFiles: (await readMacPasteboardFilePaths()).length > 0
+  }));
+
+  safeHandle(
+    "workbench:pastePaths",
+    async (_event, args: { rootPath: string; targetDirectory: string }) => {
+      const rootPath = resolveCwd(args.rootPath);
+      if (typeof args?.targetDirectory !== "string" || !args.targetDirectory.trim()) {
+        throw new Error("无效的粘贴目标");
+      }
+      return pasteMacClipboardIntoWorkbench(rootPath, args.targetDirectory);
+    }
+  );
 
   safeHandle(
     "workbench:listDirectory",
