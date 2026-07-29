@@ -216,4 +216,164 @@ describe("QuickAccess", () => {
     expect(selectProject).not.toHaveBeenCalled();
     expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("gone");
   });
+
+  it("keeps the selected project across recreated and reordered result arrays", () => {
+    const selectProject = vi.fn();
+    const props = {
+      open: true,
+      mode: "projects" as const,
+      query: "",
+      files: [],
+      projects: sampleProjects,
+      commands: [],
+      recentPaths: [],
+      loading: false,
+      truncated: false,
+      error: "",
+      projectLabel: "One — /work/one",
+      currentProjectPath: "/work/one",
+      labels,
+      onModeChange: () => undefined,
+      onQueryChange: () => undefined,
+      onClose: () => undefined,
+      onOpenFile: () => undefined,
+      onSelectProject: selectProject
+    };
+    const { rerender } = render(<QuickAccess {...props} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: /Two/ }).getAttribute("aria-selected")).toBe("true");
+
+    const reordered = [sampleProjects[1], sampleProjects[0]].map((project) => ({ ...project }));
+    rerender(<QuickAccess {...props} projects={reordered} />);
+    expect(screen.getByRole("option", { name: /Two/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(selectProject).toHaveBeenCalledWith(expect.objectContaining({ id: "two" }));
+  });
+
+  it("falls back to the first project only when the selected project disappears", () => {
+    const props = {
+      open: true,
+      mode: "projects" as const,
+      query: "",
+      files: [],
+      projects: sampleProjects,
+      commands: [],
+      recentPaths: [],
+      loading: false,
+      truncated: false,
+      error: "",
+      projectLabel: "One — /work/one",
+      currentProjectPath: "/work/one",
+      labels,
+      onModeChange: () => undefined,
+      onQueryChange: () => undefined,
+      onClose: () => undefined,
+      onOpenFile: () => undefined,
+      onSelectProject: () => undefined
+    };
+    const { rerender } = render(<QuickAccess {...props} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    rerender(<QuickAccess {...props} projects={[{ ...sampleProjects[0] }]} />);
+    expect(screen.getByRole("option", { name: /One/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps file selection when the parent recreates file results", () => {
+    const openFile = vi.fn();
+    const files = [
+      { path: "/work/one.ts", relativePath: "one.ts" },
+      { path: "/work/two.ts", relativePath: "two.ts" }
+    ];
+    const props = {
+      open: true,
+      mode: "files" as const,
+      query: "",
+      files,
+      projects: [],
+      commands: [],
+      recentPaths: [],
+      loading: false,
+      truncated: false,
+      error: "",
+      projectLabel: "Project",
+      currentProjectPath: "/work",
+      labels,
+      onModeChange: () => undefined,
+      onQueryChange: () => undefined,
+      onClose: () => undefined,
+      onOpenFile: openFile,
+      onSelectProject: () => undefined
+    };
+    const { rerender } = render(<QuickAccess {...props} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    rerender(<QuickAccess {...props} files={files.map((file) => ({ ...file }))} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(openFile).toHaveBeenCalledWith(expect.objectContaining({ path: "/work/two.ts" }));
+  });
+
+  it("keeps command selection when the parent recreates command results", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const commands = [
+      { id: "first", label: "First command", run: first },
+      { id: "second", label: "Second command", run: second }
+    ];
+    const props = {
+      open: true,
+      mode: "commands" as const,
+      query: "",
+      files: [],
+      projects: [],
+      commands,
+      recentPaths: [],
+      loading: false,
+      truncated: false,
+      error: "",
+      projectLabel: "Project",
+      currentProjectPath: "",
+      labels,
+      onModeChange: () => undefined,
+      onQueryChange: () => undefined,
+      onClose: () => undefined,
+      onOpenFile: () => undefined,
+      onSelectProject: () => undefined
+    };
+    const { rerender } = render(<QuickAccess {...props} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    rerender(<QuickAccess {...props} commands={commands.map((command) => ({ ...command }))} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+  });
+
+  it("changes pointer selection only after the mouse actually moves", () => {
+    const selectProject = vi.fn();
+    render(<QuickAccess
+      open
+      mode="projects"
+      query=""
+      files={[]}
+      projects={sampleProjects}
+      commands={[]}
+      recentPaths={[]}
+      loading={false}
+      truncated={false}
+      error=""
+      projectLabel="Project"
+      currentProjectPath="/work/one"
+      labels={labels}
+      onModeChange={() => undefined}
+      onQueryChange={() => undefined}
+      onClose={() => undefined}
+      onOpenFile={() => undefined}
+      onSelectProject={selectProject}
+    />);
+    const secondOption = screen.getByRole("option", { name: /Two/ });
+    fireEvent.mouseEnter(secondOption);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(selectProject).toHaveBeenLastCalledWith(expect.objectContaining({ id: "one" }));
+
+    fireEvent.mouseMove(secondOption);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(selectProject).toHaveBeenLastCalledWith(expect.objectContaining({ id: "two" }));
+  });
 });

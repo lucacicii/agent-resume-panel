@@ -206,7 +206,8 @@ export function QuickAccess({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
   const savedFileQueryRef = useRef("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectionContextRef = useRef("");
+  const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
   const fileResults = useMemo(
     () => rankQuickAccessFiles(files, query, recentPaths),
     [files, query, recentPaths]
@@ -217,17 +218,24 @@ export function QuickAccess({
     .sort((a, b) => b.match.score - a.match.score || a.command.label.localeCompare(b.command.label))
     .map((entry) => entry.command), [commands, query]);
   const projectResults = useMemo(() => rankQuickAccessProjects(projects, query), [projects, query]);
-  const resultCount = mode === "files"
-    ? fileResults.length
-    : mode === "projects" ? projectResults.length : commandResults.length;
-  const activeIndex = resultCount ? Math.min(selectedIndex, resultCount - 1) : -1;
-  const activeId = activeIndex < 0
-    ? undefined
-    : mode === "files"
-      ? optionId("file", fileResults[activeIndex].path)
-      : mode === "projects"
-        ? optionId("project", projectResults[activeIndex].id)
-        : optionId("command", commandResults[activeIndex].id);
+  const resultOptionKeys = useMemo(() => mode === "files"
+    ? fileResults.map((file) => optionId("file", file.path))
+    : mode === "projects"
+      ? projectResults.map((project) => optionId("project", project.id))
+      : commandResults.map((command) => optionId("command", command.id)),
+  [commandResults, fileResults, mode, projectResults]);
+  const resultCount = resultOptionKeys.length;
+  const currentProjectKey = mode === "projects" && !normalizedQuery(query)
+    ? projectResults.find((project) => project.path === currentProjectPath)?.id
+    : undefined;
+  const preferredOptionKey = currentProjectKey
+    ? optionId("project", currentProjectKey)
+    : resultOptionKeys[0] || null;
+  const resultKeySignature = resultOptionKeys.join("\0");
+  const selectionContext = `${mode}\0${query}\0${currentProjectKey || ""}`;
+  const selectedResultIndex = selectedOptionKey ? resultOptionKeys.indexOf(selectedOptionKey) : -1;
+  const activeIndex = selectedResultIndex >= 0 ? selectedResultIndex : resultCount ? 0 : -1;
+  const activeId = activeIndex >= 0 ? resultOptionKeys[activeIndex] : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -244,13 +252,13 @@ export function QuickAccess({
   }, [open]);
 
   useEffect(() => {
-    if (mode === "projects" && !normalizedQuery(query)) {
-      const currentIndex = projectResults.findIndex((project) => project.path === currentProjectPath);
-      setSelectedIndex(Math.max(0, currentIndex));
-      return;
-    }
-    setSelectedIndex(0);
-  }, [currentProjectPath, mode, projectResults, query]);
+    const contextChanged = selectionContextRef.current !== selectionContext;
+    selectionContextRef.current = selectionContext;
+    setSelectedOptionKey((current) => {
+      if (!contextChanged && current && resultOptionKeys.includes(current)) return current;
+      return preferredOptionKey;
+    });
+  }, [preferredOptionKey, resultKeySignature, selectionContext]);
   useEffect(() => {
     if (!activeId) return;
     optionRefs.current.get(activeId)?.scrollIntoView?.({ block: "nearest" });
@@ -282,6 +290,19 @@ export function QuickAccess({
         leaveProjectMode();
       }
     } else if (!commandResults[activeIndex].disabledReason) void commandResults[activeIndex].run();
+  };
+
+  const selectResult = (index: number) => {
+    setSelectedOptionKey(resultOptionKeys[index] || null);
+  };
+
+  const moveSelection = (offset: -1 | 1) => {
+    if (!resultCount) return;
+    if (activeIndex < 0) {
+      selectResult(offset > 0 ? 0 : resultCount - 1);
+      return;
+    }
+    selectResult((activeIndex + offset + resultCount) % resultCount);
   };
 
   return <div className="quick-access-overlay">
@@ -328,16 +349,16 @@ export function QuickAccess({
               enterProjectMode();
             } else if (event.key === "ArrowDown") {
               event.preventDefault();
-              setSelectedIndex((index) => resultCount ? (index + 1) % resultCount : 0);
+              moveSelection(1);
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
-              setSelectedIndex((index) => resultCount ? (index - 1 + resultCount) % resultCount : 0);
+              moveSelection(-1);
             } else if (event.key === "Home") {
               event.preventDefault();
-              setSelectedIndex(0);
+              selectResult(0);
             } else if (event.key === "End") {
               event.preventDefault();
-              setSelectedIndex(Math.max(0, resultCount - 1));
+              selectResult(resultCount - 1);
             } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               activate();
@@ -362,7 +383,7 @@ export function QuickAccess({
               aria-selected={index === activeIndex}
               className={`quick-access-option${index === activeIndex ? " is-selected" : ""}`}
               key={file.path}
-              onMouseEnter={() => setSelectedIndex(index)}
+              onMouseMove={() => setSelectedOptionKey(id)}
               onClick={() => void onOpenFile(file)}
             >
               <FileCode2 size={16} aria-hidden="true" />
@@ -381,7 +402,7 @@ export function QuickAccess({
             aria-disabled={disabled}
             className={`quick-access-option${index === activeIndex ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
             key={project.id}
-            onMouseEnter={() => setSelectedIndex(index)}
+            onMouseMove={() => setSelectedOptionKey(id)}
             onClick={() => {
               if (disabled) return;
               void onSelectProject(project);
@@ -404,7 +425,7 @@ export function QuickAccess({
             aria-disabled={disabled}
             className={`quick-access-option${index === activeIndex ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
             key={command.id}
-            onMouseEnter={() => setSelectedIndex(index)}
+            onMouseMove={() => setSelectedOptionKey(id)}
             onClick={() => { if (!disabled) void command.run(); }}
           >
             <Command size={16} aria-hidden="true" />

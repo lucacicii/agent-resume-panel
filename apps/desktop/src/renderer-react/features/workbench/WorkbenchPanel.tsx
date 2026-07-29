@@ -27,7 +27,7 @@ import type {
 import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
 import {
   ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
-  FileDiff, FolderOpen, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
+  FileDiff, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
   RefreshCw, Save, Search, Sparkles, TerminalSquare, Undo2, X
 } from "lucide-react";
 import { desktopApi } from "../../bridge";
@@ -37,6 +37,10 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
+import {
+  WorkbenchFileExplorer,
+  type WorkbenchFileExplorerHandle
+} from "./WorkbenchFileExplorer";
 import {
   QuickAccess,
   type QuickAccessCommand,
@@ -48,7 +52,6 @@ import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./Scr
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
-type DirectoryEntry = Awaited<ReturnType<DesktopApi["workbenchListDirectory"]>>["entries"][number];
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
 type GitStatusResult = Awaited<ReturnType<DesktopApi["terminalGitStatus"]>>;
 type GitRepoTracking = NonNullable<GitStatusResult["tracking"]>[number];
@@ -83,6 +86,30 @@ type EditorPane = Extract<FileInspection, { kind: "text" }> & {
   saving?: boolean;
   diskState?: "changed" | "deleted" | "external";
 };
+
+function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection): EditorPane {
+  if (editor.saving) return editor;
+  if (inspected.kind === "missing") {
+    return editor.diskState === "deleted" ? editor : { ...editor, diskState: "deleted" };
+  }
+  if (inspected.kind === "external") {
+    return editor.diskState === "external" ? editor : { ...editor, diskState: "external" };
+  }
+  if (inspected.version === editor.version) {
+    return editor.diskState ? { ...editor, diskState: undefined } : editor;
+  }
+  if (editor.dirty) {
+    return editor.diskState === "changed" ? editor : { ...editor, diskState: "changed" };
+  }
+  return {
+    ...editor,
+    ...inspected,
+    content: inspected.content,
+    dirty: false,
+    diskState: undefined
+  };
+}
+
 type DiffPane = {
   key: string;
   projectPath: string;
@@ -309,12 +336,6 @@ function sessionKey(session: AgentSession): string {
 
 function projectPathKey(value = ""): string {
   return value.replaceAll("\\", "/").replace(/\/+$/, "");
-}
-
-function isPathWithinProject(value: string, projectPath: string): boolean {
-  const candidate = projectPathKey(value);
-  const root = projectPathKey(projectPath);
-  return candidate === root || candidate.startsWith(`${root}/`);
 }
 
 /** ACP chats are catalog provider "chat" (extension dual-write + desktop merge). Never treat CLI providers as ACP. */
@@ -1738,9 +1759,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
-  const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
-  const [directoryRefreshing, setDirectoryRefreshing] = useState(false);
   const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState("");
@@ -1808,12 +1826,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
   const editorsRef = useRef<EditorPane[]>([]);
-  const openDirectoriesRef = useRef<Set<string>>(new Set());
+  const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const activeRef = useRef(active);
   const watchedRootRef = useRef("");
-  const directoryLoadSeqRef = useRef(new Map<string, number>());
-  const projectReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
+  const editorReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
   const paneHistoryRef = useRef<Record<string, string[]>>({});
   const openingSessionKeysRef = useRef(new Set<string>());
@@ -1835,7 +1852,6 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { editorsRef.current = editors; }, [editors]);
-  useEffect(() => { openDirectoriesRef.current = openDirectories; }, [openDirectories]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { pendingSessionsRef.current = pendingSessions; }, [pendingSessions]);
@@ -2052,7 +2068,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         pinned: pinnedProjects.has(path),
         updatedAt: Math.max(...pending.map((item) => item.createdAt))
       }))];
-      return rows.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
+      return rows.sort((a, b) => Number(b.pinned) - Number(a.pinned)
+        || b.updatedAt - a.updatedAt
+        || a.label.localeCompare(b.label)
+        || a.path.localeCompare(b.path)
+        || a.id.localeCompare(b.id));
     }
 
     const grouped = new Map<string, { sessions: AgentSession[]; pendingCount: number; updatedAt: number }>();
@@ -2080,7 +2100,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       active: group.pendingCount > 0 || group.sessions.some((session) => openSessionKeys.has(sessionKey(session))),
       pinned: pinnedProjects.has(path),
       updatedAt: group.updatedAt
-    })).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt || a.label.localeCompare(b.label));
+    })).sort((a, b) => Number(b.pinned) - Number(a.pinned)
+      || b.updatedAt - a.updatedAt
+      || a.label.localeCompare(b.label)
+      || a.path.localeCompare(b.path)
+      || a.id.localeCompare(b.id));
   }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions]);
 
   const projects = useMemo(() => {
@@ -3053,33 +3077,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const loadDirectory = useCallback(async (rootPath: string, dirPath: string) => {
-    const sequence = (directoryLoadSeqRef.current.get(dirPath) || 0) + 1;
-    directoryLoadSeqRef.current.set(dirPath, sequence);
-    try {
-      const result = await desktopApi().workbenchListDirectory({ rootPath, dirPath });
-      if (directoryLoadSeqRef.current.get(dirPath) !== sequence) return;
-      setDirectories((current) => ({ ...current, [dirPath]: result.entries }));
-    } catch (error) {
-      if (directoryLoadSeqRef.current.get(dirPath) !== sequence) return;
-      if (dirPath !== rootPath) {
-        setDirectories((current) => {
-          const next = { ...current };
-          delete next[dirPath];
-          for (const cachedPath of Object.keys(next)) {
-            if (isPathWithinProject(cachedPath, dirPath)) delete next[cachedPath];
-          }
-          return next;
-        });
-        setOpenDirectories((current) => new Set([...current].filter((item) => !isPathWithinProject(item, dirPath))));
-      } else {
-        setDirectories((current) => ({ ...current, [rootPath]: [] }));
-        setOpenDirectories((current) => new Set([...current].filter((item) => item !== rootPath)));
-      }
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, []);
-
   const syncEditorFromDisk = useCallback(async (editor: EditorPane) => {
     if (editor.saving) return;
     try {
@@ -3087,27 +3084,17 @@ export function WorkbenchPanel(): ReactPortal | null {
         rootPath: editor.projectPath,
         filePath: editor.path
       });
+      const latestEditor = editorsRef.current.find((item) => item.key === editor.key);
+      if (!latestEditor || reconcileEditorInspection(latestEditor, inspected) === latestEditor) return;
       setEditors((current) => {
+        let changed = false;
         const next = current.map((item) => {
-          if (item.key !== editor.key || item.saving) return item;
-          if (inspected.kind === "missing") {
-            return item.diskState === "deleted" ? item : { ...item, diskState: "deleted" as const };
-          }
-          if (inspected.kind === "external") {
-            return item.diskState === "external" ? item : { ...item, diskState: "external" as const };
-          }
-          if (inspected.version === item.version) {
-            return item.diskState ? { ...item, diskState: undefined } : item;
-          }
-          if (item.dirty) return { ...item, diskState: "changed" as const };
-          return {
-            ...item,
-            ...inspected,
-            content: inspected.content,
-            dirty: false,
-            diskState: undefined
-          };
+          if (item.key !== editor.key) return item;
+          const updated = reconcileEditorInspection(item, inspected);
+          if (updated !== item) changed = true;
+          return updated;
         });
+        if (!changed) return current;
         editorsRef.current = next;
         return next;
       });
@@ -3116,9 +3103,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
-  const reconcileProjectFiles = useCallback((rootPath: string) => {
+  const reconcileProjectEditors = useCallback((rootPath: string) => {
     const key = projectPathKey(rootPath);
-    const existing = projectReconcilesRef.current.get(key);
+    const existing = editorReconcilesRef.current.get(key);
     if (existing) {
       existing.queued = true;
       return existing.promise;
@@ -3128,33 +3115,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     const reconcile = async () => {
       do {
         state.queued = false;
-        const targets = new Set([rootPath]);
-        for (const directory of openDirectoriesRef.current) {
-          if (isPathWithinProject(directory, rootPath)) targets.add(directory);
-        }
-        await Promise.all([...targets].map((directory) => loadDirectory(rootPath, directory)));
         await Promise.all(editorsRef.current
           .filter((editor) => editor.projectPath === rootPath)
           .map((editor) => syncEditorFromDisk(editor)));
       } while (state.queued);
     };
     state.promise = reconcile().finally(() => {
-      if (projectReconcilesRef.current.get(key) === state) projectReconcilesRef.current.delete(key);
+      if (editorReconcilesRef.current.get(key) === state) editorReconcilesRef.current.delete(key);
     });
-    projectReconcilesRef.current.set(key, state);
+    editorReconcilesRef.current.set(key, state);
     return state.promise;
-  }, [loadDirectory, syncEditorFromDisk]);
-
-  const refreshProjectFiles = useCallback(async () => {
-    if (!selectedProjectRef.current || directoryRefreshing) return;
-    setDirectoryRefreshing(true);
-    try { await reconcileProjectFiles(selectedProjectRef.current); }
-    finally { setDirectoryRefreshing(false); }
-  }, [directoryRefreshing, reconcileProjectFiles]);
-
-  useEffect(() => {
-    if (active && side === "files" && selectedProject && !directories[selectedProject]) void loadDirectory(selectedProject, selectedProject);
-  }, [active, directories, loadDirectory, selectedProject, side]);
+  }, [syncEditorFromDisk]);
 
   const loadScripts = useCallback(async (rootPath: string) => {
     setScriptsLoading(true);
@@ -3188,17 +3159,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     const projectPath = selectedProject || script.run.cwd;
     addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
   }, [addTerminal, selectedProject]);
-
-  const toggleDirectory = async (path: string) => {
-    if (!selectedProject) return;
-    const next = new Set(openDirectories);
-    if (next.has(path)) next.delete(path);
-    else {
-      next.add(path);
-      await loadDirectory(selectedProject, path);
-    }
-    setOpenDirectories(next);
-  };
 
   const editorSettings = settings?.workbench?.editor;
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
@@ -3424,9 +3384,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         editorsRef.current = next;
         return next;
       });
-      void refreshProjectFiles();
+      void fileExplorerRef.current?.refresh();
     } catch (error) { setStatus({ text: t("desktop.workbench.fileSaveFailed", statusError(error)), kind: "error" }); }
-  }, [refreshProjectFiles, reloadEditorFromDisk, t]);
+  }, [reloadEditorFromDisk, t]);
 
   useEffect(() => {
     const api = desktopApi();
@@ -3441,14 +3401,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       .then((result) => {
         if (projectPathKey(selectedProjectRef.current || "") !== projectPathKey(selectedProject)) return;
         watchedRootRef.current = result.rootPath || "";
-        return reconcileProjectFiles(selectedProject);
+        void fileExplorerRef.current?.refresh();
+        return reconcileProjectEditors(selectedProject);
       })
       .catch((error) => setStatus({ text: statusError(error), kind: "error" }));
     return () => {
       watchedRootRef.current = "";
       void api.workbenchSetFileWatch({ rootPath: null }).catch(() => undefined);
     };
-  }, [active, reconcileProjectFiles, selectedProject]);
+  }, [active, reconcileProjectEditors, selectedProject]);
 
   useEffect(() => {
     const api = desktopApi();
@@ -3462,18 +3423,21 @@ export function WorkbenchPanel(): ReactPortal | null {
         return;
       }
       if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
-      void reconcileProjectFiles(selectedProjectRef.current!);
+      void fileExplorerRef.current?.refresh();
+      void reconcileProjectEditors(selectedProjectRef.current!);
     });
     return unsubscribe;
-  }, [reconcileProjectFiles]);
+  }, [reconcileProjectEditors]);
 
   useEffect(() => {
     const onFocus = () => {
-      if (activeRef.current && selectedProjectRef.current) void reconcileProjectFiles(selectedProjectRef.current);
+      if (!activeRef.current || !selectedProjectRef.current) return;
+      void fileExplorerRef.current?.refresh();
+      void reconcileProjectEditors(selectedProjectRef.current);
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [reconcileProjectFiles]);
+  }, [reconcileProjectEditors]);
 
   const runProjectSearch = useCallback(async (query: string, options?: { matchCase?: boolean; wholeWord?: boolean; useRegex?: boolean }) => {
     const trimmed = query.trim();
@@ -3925,35 +3889,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => { data(); exited(); respawned(); };
   }, [t]);
 
-  const renderTree = (dirPath: string, depth: number): React.JSX.Element[] => (directories[dirPath] || []).flatMap((entry) => {
-    const expanded = entry.isDirectory && openDirectories.has(entry.path);
-    const toggle = () => entry.isDirectory ? void toggleDirectory(entry.path) : void openFile(entry.path);
-    const row = <div
-      className="wb-file-tree-row"
-      style={{ paddingLeft: `${8 + depth * 14}px` }}
-      key={entry.path}
-      role="treeitem"
-      tabIndex={0}
-      aria-expanded={entry.isDirectory ? expanded : undefined}
-      onClick={toggle}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        toggle();
-      }}
-      onContextMenu={(event) => {
-        if (entry.isDirectory) return;
-        event.preventDefault();
-        void desktopApi().workbenchRevealPath({ rootPath: selectedProject || "", targetPath: entry.path });
-      }}
-    >
-      {entry.isDirectory ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(entry.path); }}><ChevronRight size={14} /></button> : <span className="wb-file-tree-chevron is-placeholder" />}
-      {entry.isDirectory ? <Folder size={15} className="wb-file-tree-icon" /> : <FileCode2 size={15} className="wb-file-tree-icon" />}
-      <span className="wb-file-tree-label" title={entry.path}>{entry.name}</span>
-    </div>;
-    return expanded ? [row, ...renderTree(entry.path, depth + 1)] : [row];
-  });
-
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
   const searchGroups = useMemo(() => {
     const groups: Array<{ path: string; relativePath: string; matches: SearchMatch[] }> = [];
@@ -4018,7 +3953,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const quickAccessRecentPaths = (paneHistoryRef.current[paneProjectKey(quickAccessRoot)] || [])
     .filter((key) => key.startsWith("editor:"))
     .map((key) => key.slice("editor:".length));
-  const quickAccessProjects: QuickAccessProject[] = allProjects.map((project) => ({
+  const quickAccessProjects = useMemo<QuickAccessProject[]>(() => allProjects.map((project) => ({
     id: project.id,
     path: project.path,
     label: project.label,
@@ -4027,7 +3962,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       : project.path,
     pinned: project.pinned,
     disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
-  }));
+  })), [allProjects, t]);
   const noProjectReason = quickAccessRoot ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
   const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
@@ -4224,7 +4159,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView key={pane.key} recordId={pane.recordId} provider={pane.provider} projectPath={pane.projectPath} title={pane.title} active={active && visible} onTitleChange={(nextTitle) => setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item))} />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={directoryRefreshing} onClick={() => void refreshProjectFiles()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><RefreshCw size={14} className={directoryRefreshing ? "spin" : undefined} /></button> : null}</div><div className="wb-file-tree wb-explorer-file-tree" role="tree">{selectedProject ? <><div className="wb-file-tree-row"><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(selectedProject)}</span></div>{renderTree(selectedProject, 1)}</> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}</div><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div><div className="wb-search-pane"><div className="wb-search-form" role="search"><input ref={searchInputRef} type="search" className="wb-search-input" value={searchQuery} placeholder={t("desktop.workbench.searchPlaceholder")} aria-label={t("desktop.workbench.sidePanelSearch")} autoComplete="off" spellCheck={false} disabled={!selectedProject} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }} /><div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}><button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button><button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button><button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button></div></div>{!selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} onOpenFile={(path) => void openFile(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div><div className="wb-search-pane"><div className="wb-search-form" role="search"><input ref={searchInputRef} type="search" className="wb-search-input" value={searchQuery} placeholder={t("desktop.workbench.searchPlaceholder")} aria-label={t("desktop.workbench.sidePanelSearch")} autoComplete="off" spellCheck={false} disabled={!selectedProject} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }} /><div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}><button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button><button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button><button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button></div></div>{!selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>
       </main>
     </div>
