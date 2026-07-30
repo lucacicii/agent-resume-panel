@@ -28,6 +28,7 @@ interface ExplorerContextMenu {
 
 export interface WorkbenchFileExplorerHandle {
   refresh: () => Promise<void>;
+  revealPath: (targetPath: string) => Promise<void>;
 }
 
 function basename(value = ""): string {
@@ -91,6 +92,15 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
 
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { openDirectoriesRef.current = openDirectories; }, [openDirectories]);
+  useEffect(() => {
+    if (!selectedPath) return;
+    const target = pathKey(selectedPath);
+    const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-path]")]
+      .find((element) => pathKey(element.dataset.wbEntryPath || "") === target);
+    if (!row) return;
+    row.focus();
+    row.scrollIntoView?.({ block: "nearest" });
+  }, [directories, openDirectories, selectedPath]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -171,7 +181,34 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     return state.promise;
   }, [loadDirectory]);
 
-  useImperativeHandle(ref, () => ({ refresh }), [refresh]);
+  const revealPath = useCallback(async (targetPath: string): Promise<void> => {
+    const targetRoot = rootPathRef.current;
+    if (!targetRoot || !isPathWithin(targetPath, targetRoot)) return;
+    const root = pathKey(targetRoot);
+    const target = pathKey(targetPath);
+    const relative = target === root ? "" : target.slice(root.length).replace(/^\/+/, "");
+    const segments = relative.split("/").filter(Boolean);
+    const directoriesToOpen: string[] = [];
+    let current = root;
+    for (const segment of segments) {
+      current = `${current}/${segment}`;
+      directoriesToOpen.push(current);
+    }
+
+    await loadDirectory(targetRoot, targetRoot);
+    for (const directoryPath of directoriesToOpen) {
+      await loadDirectory(targetRoot, directoryPath);
+    }
+    if (pathKey(rootPathRef.current) !== root) return;
+    const nextOpenDirectories = new Set(openDirectoriesRef.current);
+    for (const directoryPath of directoriesToOpen) nextOpenDirectories.add(directoryPath);
+    openDirectoriesRef.current = nextOpenDirectories;
+    setOpenDirectories(nextOpenDirectories);
+    setSelectedPath(targetPath);
+
+  }, [loadDirectory]);
+
+  useImperativeHandle(ref, () => ({ refresh, revealPath }), [refresh, revealPath]);
 
   useEffect(() => {
     rootPathRef.current = rootPath;

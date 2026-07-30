@@ -91,6 +91,55 @@ describe("QuickAccess", () => {
     expect(rankQuickAccessFiles(files, "", ["/work/z.ts"])[0].path).toBe("/work/z.ts");
   });
 
+  it("matches directory entries using relative, absolute, and backslash path fragments", () => {
+    const entries = [
+      { path: "/work/app/apps/desktop", relativePath: "apps/desktop", kind: "directory" as const },
+      { path: "/work/app/apps/desktop/src/main.ts", relativePath: "apps/desktop/src/main.ts", kind: "file" as const }
+    ];
+    expect(rankQuickAccessFiles(entries, "apps/des")[0]).toMatchObject({ relativePath: "apps/desktop", kind: "directory" });
+    expect(rankQuickAccessFiles(entries, "/work/app/apps/desktop")[0]).toMatchObject({ relativePath: "apps/desktop", kind: "directory" });
+    expect(rankQuickAccessFiles(entries, "apps\\desktop")[0]).toMatchObject({ relativePath: "apps/desktop", kind: "directory" });
+  });
+
+  it("keeps directories out of the default recent-file view", () => {
+    const entries = [
+      { path: "/work/src", relativePath: "src", kind: "directory" as const },
+      { path: "/work/src/main.ts", relativePath: "src/main.ts", kind: "file" as const }
+    ];
+    expect(rankQuickAccessFiles(entries, "")).toEqual([
+      expect.objectContaining({ relativePath: "src/main.ts" })
+    ]);
+  });
+
+  it("activates a matched directory separately from files", () => {
+    const openFile = vi.fn();
+    const openDirectory = vi.fn();
+    render(<QuickAccess
+      open
+      mode="files"
+      query="src"
+      files={[{ path: "/work/src", relativePath: "src", kind: "directory" }]}
+      projects={[]}
+      commands={[]}
+      recentPaths={[]}
+      loading={false}
+      truncated={false}
+      error=""
+      projectLabel="Project"
+      currentProjectPath="/work"
+      labels={labels}
+      onModeChange={() => undefined}
+      onQueryChange={() => undefined}
+      onClose={() => undefined}
+      onOpenFile={openFile}
+      onOpenDirectory={openDirectory}
+      onSelectProject={() => undefined}
+    />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(openFile).not.toHaveBeenCalled();
+    expect(openDirectory).toHaveBeenCalledWith(expect.objectContaining({ path: "/work/src" }));
+  });
+
   it("supports keyboard selection and command execution", () => {
     const first = vi.fn();
     const second = vi.fn();

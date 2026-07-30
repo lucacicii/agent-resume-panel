@@ -1847,6 +1847,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
   const [quickAccessQuery, setQuickAccessQuery] = useState("");
   const [quickAccessFiles, setQuickAccessFiles] = useState<QuickAccessFile[]>([]);
+  const [quickAccessSearchFiles, setQuickAccessSearchFiles] = useState<QuickAccessFile[]>([]);
+  const [quickAccessSearchTruncated, setQuickAccessSearchTruncated] = useState(false);
   const [quickAccessLoading, setQuickAccessLoading] = useState(false);
   const [quickAccessTruncated, setQuickAccessTruncated] = useState(false);
   const [quickAccessError, setQuickAccessError] = useState("");
@@ -1856,6 +1858,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const quickAccessCacheRef = useRef(new Map<string, { files: QuickAccessFile[]; truncated: boolean }>());
   const quickAccessRequestRef = useRef(0);
+  const quickAccessSearchRequestRef = useRef(0);
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const [editorFindOpen, setEditorFindOpen] = useState(false);
   const [editorFindQuery, setEditorFindQuery] = useState("");
@@ -3362,6 +3365,9 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const loadQuickAccessFiles = useCallback(async (rootPath: string) => {
     if (!rootPath) return;
+    quickAccessSearchRequestRef.current += 1;
+    setQuickAccessSearchFiles([]);
+    setQuickAccessSearchTruncated(false);
     const cacheKey = projectPathKey(rootPath);
     const cached = quickAccessCacheRef.current.get(cacheKey);
     if (cached) {
@@ -3397,6 +3403,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     setProjectPickDialog(null);
     setQuickAccessMode(mode);
     setQuickAccessQuery("");
+    setQuickAccessSearchFiles([]);
+    setQuickAccessSearchTruncated(false);
     setQuickAccessOpen(true);
   }, [quickAccessOpen]);
 
@@ -3406,11 +3414,48 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [loadQuickAccessFiles, quickAccessMode, quickAccessOpen, quickAccessRoot]);
 
+  useEffect(() => {
+    const api = desktopApi();
+    const query = quickAccessQuery.trim();
+    if (!quickAccessOpen || quickAccessMode !== "files" || !quickAccessRoot || !quickAccessTruncated || !query
+      || typeof api.workbenchSearchPaths !== "function") {
+      quickAccessSearchRequestRef.current += 1;
+      setQuickAccessSearchFiles([]);
+      setQuickAccessSearchTruncated(false);
+      if (typeof api.workbenchSearchPathsCancel === "function") {
+        void api.workbenchSearchPathsCancel().catch(() => undefined);
+      }
+      return;
+    }
+
+    const sequence = ++quickAccessSearchRequestRef.current;
+    const timer = window.setTimeout(() => {
+      void api.workbenchSearchPaths({ rootPath: quickAccessRoot, query }).then((result) => {
+        if (quickAccessSearchRequestRef.current !== sequence) return;
+        setQuickAccessSearchFiles(result.files);
+        setQuickAccessSearchTruncated(result.truncated);
+      }).catch((error) => {
+        if (quickAccessSearchRequestRef.current !== sequence || (error as Error)?.name === "AbortError") return;
+        setQuickAccessSearchFiles([]);
+        setQuickAccessSearchTruncated(false);
+      });
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (typeof api.workbenchSearchPathsCancel === "function") {
+        void api.workbenchSearchPathsCancel().catch(() => undefined);
+      }
+    };
+  }, [quickAccessMode, quickAccessOpen, quickAccessQuery, quickAccessRoot, quickAccessTruncated]);
+
   const closeQuickAccess = useCallback(() => {
     quickAccessRequestRef.current += 1;
+    quickAccessSearchRequestRef.current += 1;
     setQuickAccessOpen(false);
     const api = desktopApi();
     if (typeof api.workbenchListFilesCancel === "function") void api.workbenchListFilesCancel().catch(() => undefined);
+    if (typeof api.workbenchSearchPathsCancel === "function") void api.workbenchSearchPathsCancel().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -4065,6 +4110,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const quickAccessRecentPaths = (paneHistoryRef.current[paneProjectKey(quickAccessRoot)] || [])
     .filter((key) => key.startsWith("editor:"))
     .map((key) => key.slice("editor:".length));
+  const quickAccessVisibleFiles = useMemo(() => {
+    if (!quickAccessSearchFiles.length) return quickAccessFiles;
+    const byPath = new Map(quickAccessFiles.map((entry) => [entry.path, entry]));
+    for (const entry of quickAccessSearchFiles) byPath.set(entry.path, entry);
+    return [...byPath.values()];
+  }, [quickAccessFiles, quickAccessSearchFiles]);
   const quickAccessProjects = useMemo<QuickAccessProject[]>(() => allProjects.map((project) => ({
     id: project.id,
     path: project.path,
@@ -4473,12 +4524,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       open={quickAccessOpen}
       mode={quickAccessMode}
       query={quickAccessQuery}
-      files={quickAccessFiles}
+      files={quickAccessVisibleFiles}
       projects={quickAccessProjects}
       commands={quickAccessCommands}
       recentPaths={quickAccessRecentPaths}
       loading={quickAccessLoading}
-      truncated={quickAccessTruncated}
+      truncated={quickAccessTruncated || quickAccessSearchTruncated}
       error={quickAccessError}
       projectLabel={quickAccessProjectLabel}
       currentProjectPath={quickAccessRoot}

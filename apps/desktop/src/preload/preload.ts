@@ -433,11 +433,17 @@ export interface DesktopApi {
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
   workbenchListFiles(args: { rootPath: string }): Promise<{
-    files: Array<{ path: string; relativePath: string }>;
+    files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
     truncated: boolean;
     engine: "rg" | "node";
   }>;
   workbenchListFilesCancel(): Promise<{ ok: boolean }>;
+  workbenchSearchPaths(args: { rootPath: string; query: string }): Promise<{
+    files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
+    truncated: boolean;
+    engine: "rg" | "node";
+  }>;
+  workbenchSearchPathsCancel(): Promise<{ ok: boolean }>;
   workbenchCopyPath(args: { rootPath: string; sourcePath: string }): Promise<{ ok: boolean }>;
   workbenchClipboardHasFiles(): Promise<{ hasFiles: boolean }>;
   workbenchPastePaths(args: { rootPath: string; targetDirectory: string }): Promise<{
@@ -1028,6 +1034,8 @@ const api: DesktopApi = {
   workbenchListDirectory: (args) => ipcRenderer.invoke("workbench:listDirectory", args),
   workbenchListFiles: (args) => ipcRenderer.invoke("workbench:listFiles", args),
   workbenchListFilesCancel: () => ipcRenderer.invoke("workbench:listFilesCancel"),
+  workbenchSearchPaths: (args) => ipcRenderer.invoke("workbench:searchPaths", args),
+  workbenchSearchPathsCancel: () => ipcRenderer.invoke("workbench:searchPathsCancel"),
   workbenchCopyPath: (args) => ipcRenderer.invoke("workbench:copyPath", args),
   workbenchClipboardHasFiles: () => ipcRenderer.invoke("workbench:clipboardHasFiles"),
   workbenchPastePaths: (args) => ipcRenderer.invoke("workbench:pastePaths", args),

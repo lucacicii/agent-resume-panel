@@ -1438,7 +1438,7 @@ describe("WorkbenchPanel", () => {
     }
   });
 
-  it("quick-opens a file from outside Workbench and switches to its project", async () => {
+  it("supplements a truncated Quick Access index before opening a deep path", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -1446,9 +1446,15 @@ describe("WorkbenchPanel", () => {
     localStorage.setItem("workbench-quick-access-project", "/work/app");
     let openQuickFiles: () => void = () => undefined;
     const workbenchListFiles = vi.fn(async () => ({
-      files: [{ path: "/work/app/src/WorkbenchPanel.tsx", relativePath: "src/WorkbenchPanel.tsx" }],
-      truncated: false,
+      files: [{ path: "/work/app/noise.ts", relativePath: "noise.ts", kind: "file" as const }],
+      truncated: true,
       engine: "node" as const
+    }));
+    const deepRelativePath = "web-manager/src/views/sysFinanceCenter/internetPaymentManage/prePaybankPayFail/index.vue";
+    const workbenchSearchPaths = vi.fn(async () => ({
+      files: [{ path: `/work/app/${deepRelativePath}`, relativePath: deepRelativePath, kind: "file" as const }],
+      truncated: false,
+      engine: "rg" as const
     }));
     const workbenchInspectFile = vi.fn(async () => ({
       kind: "external" as const,
@@ -1482,6 +1488,8 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [],
       workbenchListFiles,
       workbenchListFilesCancel: async () => ({ ok: true }),
+      workbenchSearchPaths,
+      workbenchSearchPathsCancel: async () => ({ ok: true }),
       workbenchInspectFile,
       workbenchOpenPath
     } as unknown as typeof window.agentResume;
@@ -1490,15 +1498,21 @@ describe("WorkbenchPanel", () => {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => openQuickFiles());
       expect(await screen.findByRole("dialog", { name: "Quick Access" })).toBeTruthy();
-      await screen.findByText("WorkbenchPanel.tsx");
-      fireEvent.click(screen.getByText("WorkbenchPanel.tsx"));
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "sysFinanceCenter/internetPaymentManage/prePaybankPayFail" }
+      });
+      await waitFor(() => expect(workbenchSearchPaths).toHaveBeenCalledWith({
+        rootPath: "/work/app",
+        query: "sysFinanceCenter/internetPaymentManage/prePaybankPayFail"
+      }));
+      fireEvent.click(await screen.findByText("index.vue"));
       await waitFor(() => expect(workbenchInspectFile).toHaveBeenCalledWith({
         rootPath: "/work/app",
-        filePath: "/work/app/src/WorkbenchPanel.tsx"
+        filePath: `/work/app/${deepRelativePath}`
       }));
       expect(workbenchOpenPath).toHaveBeenCalledWith({
         rootPath: "/work/app",
-        filePath: "/work/app/src/WorkbenchPanel.tsx"
+        filePath: `/work/app/${deepRelativePath}`
       });
       expect(onTabRequest).toHaveBeenCalled();
     } finally {

@@ -27,7 +27,9 @@ import {
 } from "./workbenchSearch";
 import {
   cancelActiveWorkbenchFileList,
-  listWorkbenchFiles
+  cancelActiveWorkbenchPathSearch,
+  listWorkbenchFiles,
+  searchWorkbenchPaths
 } from "./workbenchFileIndex";
 import {
   copyWorkbenchPathToClipboard,
@@ -519,6 +521,22 @@ export function registerWorkbenchFsIpc(): void {
 
   safeHandle("workbench:listFilesCancel", async () => {
     cancelActiveWorkbenchFileList();
+    return { ok: true };
+  });
+
+  safeHandle(
+    "workbench:searchPaths",
+    async (_event, args: { rootPath: string; query: string }) => {
+      if (!args || typeof args.rootPath !== "string" || !args.rootPath.trim()) {
+        throw new Error("无效的项目路径");
+      }
+      if (typeof args.query !== "string") throw new Error("无效的路径查询");
+      return searchWorkbenchPaths({ rootPath: args.rootPath, query: args.query });
+    }
+  );
+
+  safeHandle("workbench:searchPathsCancel", async () => {
+    cancelActiveWorkbenchPathSearch();
     return { ok: true };
   });
 

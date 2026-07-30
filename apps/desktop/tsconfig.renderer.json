@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src/renderer-react/**/*", "vitest.config.ts"]
+  "include": ["src/renderer-react/**/*", "src/shared/**/*", "vitest.config.ts"]
 }

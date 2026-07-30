@@ -63,8 +63,9 @@ describe("WorkbenchFileExplorer", () => {
 
     render(<Harness />);
     expect(await screen.findByText("package.json")).toBeTruthy();
-    fireEvent.click(screen.getByText("src"));
+    await act(async () => { fireEvent.click(screen.getByText("src")); });
     expect(await screen.findByText("index.ts")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("src").closest('[data-wb-entry-path="/work/app/src"]')?.getAttribute("aria-expanded")).toBe("true"));
 
     apiMocks.workbenchListDirectory.mockClear();
     const renderCountBeforeRefresh = parentRenderCount;
@@ -79,6 +80,33 @@ describe("WorkbenchFileExplorer", () => {
     expect(apiMocks.workbenchListDirectory).toHaveBeenCalledWith({
       rootPath: "/work/app",
       dirPath: "/work/app/src"
+    });
+  });
+
+  it("reveals a nested directory by expanding its ancestors and focusing it", async () => {
+    apiMocks.workbenchListDirectory.mockImplementation(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/work/app"
+        ? [{ name: "apps", path: "/work/app/apps", isDirectory: true }]
+        : dirPath === "/work/app/apps"
+          ? [{ name: "desktop", path: "/work/app/apps/desktop", isDirectory: true }]
+          : []
+    }));
+    const explorerRef = createRef<WorkbenchFileExplorerHandle>();
+    render(<WorkbenchFileExplorer
+      ref={explorerRef}
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+    await screen.findByText("apps");
+
+    await act(async () => { await explorerRef.current?.revealPath("/work/app/apps/desktop"); });
+
+    const desktop = await screen.findByText("desktop");
+    expect(desktop.closest('[data-wb-entry-path="/work/app/apps/desktop"]')).toBe(document.activeElement);
+    expect(apiMocks.workbenchListDirectory).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      dirPath: "/work/app/apps/desktop"
     });
   });
 

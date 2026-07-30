@@ -1,11 +1,22 @@
 import { ChevronLeft, Command, FileCode2, Folder, LoaderCircle, Pin, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  compareQuickAccessPathMatches,
+  fuzzyMatchPath,
+  matchQuickAccessPath,
+  normalizeQuickAccessQuery,
+  type FuzzyPathMatch
+} from "../../../shared/quickAccessPathMatch";
+
+export { fuzzyMatchPath } from "../../../shared/quickAccessPathMatch";
+export type { FuzzyPathMatch } from "../../../shared/quickAccessPathMatch";
 
 export type QuickAccessMode = "files" | "projects" | "commands";
 
 export interface QuickAccessFile {
   path: string;
   relativePath: string;
+  kind?: "file" | "directory";
 }
 
 export interface QuickAccessCommand {
@@ -42,52 +53,6 @@ export interface QuickAccessLabels {
   selectProject: string;
 }
 
-export interface FuzzyPathMatch {
-  score: number;
-  indices: number[];
-}
-
-function normalizedQuery(query: string): string {
-  return query.trim().toLocaleLowerCase().replace(/\s+/g, "");
-}
-
-export function fuzzyMatchPath(candidate: string, query: string): FuzzyPathMatch | null {
-  const needle = normalizedQuery(query);
-  if (!needle) return { score: 0, indices: [] };
-  const original = candidate.replace(/\\/g, "/");
-  const haystack = original.toLocaleLowerCase();
-  const basenameStart = haystack.lastIndexOf("/") + 1;
-  const basename = haystack.slice(basenameStart);
-  const indices: number[] = [];
-  let cursor = 0;
-  let score = 0;
-
-  for (const character of needle) {
-    const index = haystack.indexOf(character, cursor);
-    if (index < 0) return null;
-    const previous = indices[indices.length - 1];
-    const consecutive = previous !== undefined && index === previous + 1;
-    const segmentStart = index === 0 || haystack[index - 1] === "/" || haystack[index - 1] === "-" || haystack[index - 1] === "_" || haystack[index - 1] === ".";
-    const camelStart = index > 0 && /[a-z0-9]/.test(original[index - 1]) && /[A-Z]/.test(original[index]);
-    score += 4;
-    if (consecutive) score += 12;
-    if (segmentStart || camelStart) score += 10;
-    if (index >= basenameStart) score += 8;
-    if (previous !== undefined) score -= Math.min(8, index - previous - 1);
-    indices.push(index);
-    cursor = index + 1;
-  }
-
-  if (basename === needle) score += 1_000;
-  else if (basename.startsWith(needle)) score += 600;
-  else if (basename.includes(needle)) score += 300;
-  const contiguous = haystack.indexOf(needle);
-  if (contiguous >= 0) score += contiguous >= basenameStart ? 240 : 120;
-  score -= Math.min(120, haystack.length);
-  score -= indices[0] || 0;
-  return { score, indices };
-}
-
 export function rankQuickAccessFiles(
   files: QuickAccessFile[],
   query: string,
@@ -95,14 +60,15 @@ export function rankQuickAccessFiles(
   limit = 100
 ): Array<QuickAccessFile & FuzzyPathMatch> {
   const recentRank = new Map(recentPaths.map((filePath, index) => [filePath, index]));
+  const needle = normalizeQuickAccessQuery(query);
   return files
     .map((file) => {
-      const match = fuzzyMatchPath(file.relativePath, query);
-      return match ? { ...file, ...match } : null;
+      if (!needle && file.kind === "directory") return null;
+      return matchQuickAccessPath(file, query);
     })
     .filter((file): file is QuickAccessFile & FuzzyPathMatch => Boolean(file))
     .sort((a, b) => {
-      if (!normalizedQuery(query)) {
+      if (!normalizeQuickAccessQuery(query)) {
         const aRecent = recentRank.get(a.path);
         const bRecent = recentRank.get(b.path);
         if (aRecent !== undefined || bRecent !== undefined) {
@@ -111,7 +77,7 @@ export function rankQuickAccessFiles(
           return aRecent - bRecent;
         }
       }
-      return b.score - a.score || a.relativePath.localeCompare(b.relativePath, undefined, { sensitivity: "base" });
+      return compareQuickAccessPathMatches(a, b);
     })
     .slice(0, limit);
 }
@@ -120,7 +86,7 @@ export function rankQuickAccessProjects(
   projects: QuickAccessProject[],
   query: string
 ): QuickAccessProject[] {
-  if (!normalizedQuery(query)) return projects;
+  if (!normalizeQuickAccessQuery(query)) return projects;
   return projects
     .map((project) => ({
       project,
@@ -181,6 +147,7 @@ export function QuickAccess({
   onQueryChange,
   onClose,
   onOpenFile,
+  onOpenDirectory,
   onSelectProject
 }: {
   open: boolean;
@@ -200,6 +167,7 @@ export function QuickAccess({
   onQueryChange: (query: string) => void;
   onClose: () => void;
   onOpenFile: (file: QuickAccessFile) => void | Promise<void>;
+  onOpenDirectory?: (directory: QuickAccessFile) => void | Promise<void>;
   onSelectProject: (project: QuickAccessProject) => void | Promise<void>;
 }): React.JSX.Element | null {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -225,7 +193,7 @@ export function QuickAccess({
       : commandResults.map((command) => optionId("command", command.id)),
   [commandResults, fileResults, mode, projectResults]);
   const resultCount = resultOptionKeys.length;
-  const currentProjectKey = mode === "projects" && !normalizedQuery(query)
+  const currentProjectKey = mode === "projects" && !normalizeQuickAccessQuery(query)
     ? projectResults.find((project) => project.path === currentProjectPath)?.id
     : undefined;
   const preferredOptionKey = currentProjectKey
@@ -282,7 +250,11 @@ export function QuickAccess({
 
   const activate = () => {
     if (activeIndex < 0) return;
-    if (mode === "files") void onOpenFile(fileResults[activeIndex]);
+    if (mode === "files") {
+      const entry = fileResults[activeIndex];
+      if (entry.kind === "directory") void onOpenDirectory?.(entry);
+      else void onOpenFile(entry);
+    }
     else if (mode === "projects") {
       const project = projectResults[activeIndex];
       if (!project.disabledReason) {
@@ -384,9 +356,9 @@ export function QuickAccess({
               className={`quick-access-option${index === activeIndex ? " is-selected" : ""}`}
               key={file.path}
               onMouseMove={() => setSelectedOptionKey(id)}
-              onClick={() => void onOpenFile(file)}
+              onClick={() => file.kind === "directory" ? void onOpenDirectory?.(file) : void onOpenFile(file)}
             >
-              <FileCode2 size={16} aria-hidden="true" />
+              {file.kind === "directory" ? <Folder size={16} aria-hidden="true" /> : <FileCode2 size={16} aria-hidden="true" />}
               <span className="quick-access-option-copy"><span className="quick-access-option-label">{highlightPath(name, file.indices.filter((match) => match >= nameOffset).map((match) => match - nameOffset))}</span>{directory ? <span className="quick-access-option-detail">{highlightPath(directory, file.indices.filter((match) => match < nameOffset))}</span> : null}</span>
             </button>;
           }) : <p className="quick-access-state">{labels.noFiles}</p>}
