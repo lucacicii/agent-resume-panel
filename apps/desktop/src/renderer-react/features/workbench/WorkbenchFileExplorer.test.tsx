@@ -110,6 +110,61 @@ describe("WorkbenchFileExplorer", () => {
     });
   });
 
+  it("expands, scrolls to, and highlights the active editor file without stealing focus", async () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    apiMocks.workbenchListDirectory.mockImplementation(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/work/app"
+        ? [{ name: "src", path: "/work/app/src", isDirectory: true }]
+        : dirPath === "/work/app/src"
+          ? [{ name: "nested", path: "/work/app/src/nested", isDirectory: true }]
+          : dirPath === "/work/app/src/nested"
+            ? [
+                { name: "one.ts", path: "/work/app/src/nested/one.ts", isDirectory: false },
+                { name: "two.ts", path: "/work/app/src/nested/two.ts", isDirectory: false }
+              ]
+            : []
+    }));
+
+    const { rerender } = render(<>
+      <button type="button">Editor focus</button>
+      <WorkbenchFileExplorer
+        rootPath="/work/app"
+        activePath="/work/app/src/nested/one.ts"
+        onOpenFile={() => undefined}
+        onError={() => undefined}
+      />
+    </>);
+    const editorFocus = screen.getByRole("button", { name: "Editor focus" });
+    editorFocus.focus();
+
+    const firstRow = (await screen.findByText("one.ts")).closest("[role=treeitem]")!;
+    await waitFor(() => expect(firstRow.getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(editorFocus);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(apiMocks.workbenchListDirectory).not.toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      dirPath: "/work/app/src/nested/one.ts"
+    });
+
+    rerender(<>
+      <button type="button">Editor focus</button>
+      <WorkbenchFileExplorer
+        rootPath="/work/app"
+        activePath="/work/app/src/nested/two.ts"
+        onOpenFile={() => undefined}
+        onError={() => undefined}
+      />
+    </>);
+
+    const secondRow = (await screen.findByText("two.ts")).closest("[role=treeitem]")!;
+    await waitFor(() => expect(secondRow.getAttribute("aria-selected")).toBe("true"));
+    expect(firstRow.getAttribute("aria-selected")).toBe("false");
+    expect(document.activeElement).toBe(editorFocus);
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  });
+
   it("coalesces overlapping refresh requests into one queued pass", async () => {
     let release: (() => void) | undefined;
     apiMocks.workbenchListDirectory

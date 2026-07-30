@@ -71,10 +71,11 @@ export function directoryEntriesEqual(
 
 export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   rootPath: string;
+  activePath?: string;
   onOpenFile: (path: string) => void | Promise<void>;
   onShowGitHistory?: (path: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ rootPath, onOpenFile, onShowGitHistory, onError }, ref) {
+}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onShowGitHistory, onError }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -87,6 +88,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const loadSequenceRef = useRef(new Map<string, number>());
   const refreshesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   const refreshingRef = useRef(false);
+  const focusSelectedPathRef = useRef(false);
   const reportStatus = (message: string, kind: "ok" | "info" = "ok") => {
     notifyDesktop({ text: message, kind });
   };
@@ -94,14 +96,26 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { openDirectoriesRef.current = openDirectories; }, [openDirectories]);
   useEffect(() => {
-    if (!selectedPath) return;
+    if (!selectedPath || !focusSelectedPathRef.current) return;
     const target = pathKey(selectedPath);
     const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-path]")]
       .find((element) => pathKey(element.dataset.wbEntryPath || "") === target);
     if (!row) return;
+    focusSelectedPathRef.current = false;
     row.focus();
     row.scrollIntoView?.({ block: "nearest" });
   }, [directories, openDirectories, selectedPath]);
+
+  useEffect(() => {
+    if (!activePath || !isPathWithin(activePath, rootPath)) return;
+    const target = pathKey(activePath);
+    const frame = window.requestAnimationFrame(() => {
+      const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-path]")]
+        .find((element) => pathKey(element.dataset.wbEntryPath || "") === target);
+      row?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePath, directories, openDirectories, rootPath]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -205,6 +219,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     for (const directoryPath of directoriesToOpen) nextOpenDirectories.add(directoryPath);
     openDirectoriesRef.current = nextOpenDirectories;
     setOpenDirectories(nextOpenDirectories);
+    focusSelectedPathRef.current = true;
     setSelectedPath(targetPath);
 
   }, [loadDirectory]);
@@ -221,6 +236,39 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     setContextMenu(null);
     if (rootPath) void loadDirectory(rootPath, rootPath);
   }, [loadDirectory, rootPath]);
+
+  useEffect(() => {
+    if (!activePath || !rootPath || !isPathWithin(activePath, rootPath)) return;
+    let cancelled = false;
+    const targetRoot = rootPath;
+    const root = pathKey(targetRoot);
+    const target = pathKey(activePath);
+    const relative = target === root ? "" : target.slice(root.length).replace(/^\/+/, "");
+    const segments = relative.split("/").filter(Boolean).slice(0, -1);
+    const directoriesToOpen: string[] = [];
+    let current = root;
+    for (const segment of segments) {
+      current = `${current}/${segment}`;
+      directoriesToOpen.push(current);
+    }
+
+    void (async () => {
+      await loadDirectory(targetRoot, targetRoot);
+      for (const directoryPath of directoriesToOpen) {
+        await loadDirectory(targetRoot, directoryPath);
+      }
+      if (cancelled || pathKey(rootPathRef.current) !== root) return;
+      setOpenDirectories((currentOpenDirectories) => {
+        const next = new Set(currentOpenDirectories);
+        for (const directoryPath of directoriesToOpen) next.add(directoryPath);
+        openDirectoriesRef.current = next;
+        return next;
+      });
+      setSelectedPath(activePath);
+    })();
+
+    return () => { cancelled = true; };
+  }, [activePath, loadDirectory, rootPath]);
 
   const refreshManually = async () => {
     if (refreshingRef.current || !rootPathRef.current) return;
@@ -344,18 +392,19 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const renderTree = (directoryPath: string, depth: number): React.JSX.Element[] =>
     (directories[directoryPath] || []).flatMap((entry) => {
       const expanded = entry.isDirectory && openDirectories.has(entry.path);
+      const highlighted = selectedPath === entry.path;
       const activate = () => entry.isDirectory
         ? void toggleDirectory(entry.path)
         : void onOpenFile(entry.path);
       const row = <div
-        className={`wb-file-tree-row${selectedPath === entry.path ? " is-selected" : ""}`}
+        className={`wb-file-tree-row${highlighted ? " is-selected" : ""}`}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         key={entry.path}
         role="treeitem"
         tabIndex={0}
         data-wb-entry-path={entry.path}
         data-wb-entry-directory={String(entry.isDirectory)}
-        aria-selected={selectedPath === entry.path}
+        aria-selected={highlighted}
         aria-expanded={entry.isDirectory ? expanded : undefined}
         onFocus={() => setSelectedPath(entry.path)}
         onClick={(event) => { event.currentTarget.focus(); activate(); }}

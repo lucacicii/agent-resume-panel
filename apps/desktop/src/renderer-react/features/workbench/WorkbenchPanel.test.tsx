@@ -1243,7 +1243,13 @@ describe("WorkbenchPanel", () => {
       workbenchSearchText,
       workbenchSearchTextCancel: async () => ({ ok: true }),
       workbenchInspectFile,
-      workbenchListDirectory: async () => ({ entries: [] })
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [{ name: "src", path: "/work/app/src", isDirectory: true }]
+          : dirPath === "/work/app/src"
+            ? [{ name: "main.ts", path: "/work/app/src/main.ts", isDirectory: false }]
+            : []
+      })
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -1279,6 +1285,11 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/src/main.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
+    await waitFor(() => expect(document.querySelector(
+      '[data-wb-entry-path="/work/app/src/main.ts"]'
+    )?.getAttribute("aria-selected")).toBe("true"));
+    fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
     fireEvent.keyDown(window, { key: "f", metaKey: true });
     const findInput = await waitFor(() => {
       const input = document.querySelector<HTMLInputElement>(".wb-editor-find-input");
