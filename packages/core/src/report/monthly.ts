@@ -1,16 +1,14 @@
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
-import { chatCompletionDetailed } from "../llm/chat";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
 import { effectivePanelHome, loadSettings } from "../settings/store";
 import { buildMonthlySourceLines } from "./context";
 import { EnsureLevelStats } from "./ensureDailies";
-import {
-  ensureFreshDailiesForPeriod,
-  ensureFreshWeekliesForPeriod
-} from "./ensureFreshDigests";
+import { ensureFreshDailiesForPeriod } from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
+import { assertDigestCallBudget, estimateDigestRun, type DigestRunTrigger } from "./digestBudget";
+import { runHierarchicalDigest } from "./hierarchicalDigest";
 import { localMonthRange } from "./period";
 import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
@@ -32,6 +30,8 @@ export interface RunMonthlyDigestOptions {
   forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
   systemLocale?: string;
+  allowOverBudget?: boolean;
+  trigger?: DigestRunTrigger;
 }
 
 export interface RunMonthlyDigestResult {
@@ -41,7 +41,7 @@ export interface RunMonthlyDigestResult {
   usedDailies: number;
   /** Dailies ensured for this calendar month only. */
   ensuredDailies: EnsureLevelStats;
-  /** Weeklies refreshed in this calendar month before monthly aggregation. */
+  /** @deprecated Monthly aggregation uses dailies only; retained as empty stats for compatibility. */
   ensuredWeeklies: EnsureLevelStats;
   jobKey: string;
   embedded: boolean;
@@ -49,6 +49,7 @@ export interface RunMonthlyDigestResult {
   summarizedCount: number;
   summarySkippedCount: number;
   summaryFailed: Array<{ key: string; error: string }>;
+  chunkCount: number;
 }
 
 export async function runMonthlyDigest(
@@ -80,6 +81,13 @@ export async function runMonthlyDigest(
       );
     }
 
+    const estimate = await estimateDigestRun({
+      panelHome: options.panelHome,
+      level: "monthly",
+      periodKey: period.label
+    });
+    assertDigestCallBudget(estimate, options.allowOverBudget);
+
     const ensuredDailies = await ensureFreshDailiesForPeriod({
       catalogDb,
       desktopDb,
@@ -92,23 +100,19 @@ export async function runMonthlyDigest(
       onProgress,
       systemLocale: options.systemLocale,
       progressLevel: "monthly",
-      progressPeriodLabel: period.label
+      progressPeriodLabel: period.label,
+      allowOverBudget: options.allowOverBudget,
+      trigger: options.trigger
     });
 
-    const ensuredWeeklies = await ensureFreshWeekliesForPeriod({
-      catalogDb,
-      desktopDb,
-      startMs: period.startMs,
-      endMs: period.endMs,
-      panelHome,
-      forceRefresh: options.forceEnsureLower,
-      skipEmbedding: options.skipEmbedding,
-      forceResummarize: options.forceResummarize,
-      onProgress,
-      systemLocale: options.systemLocale,
-      progressLevel: "monthly",
-      progressPeriodLabel: period.label
-    });
+    // Monthly aggregation intentionally consumes this calendar month's dailies only.
+    // Keep the legacy result field without generating unrelated cross-month weeklies.
+    const ensuredWeeklies: EnsureLevelStats = {
+      planned: [],
+      ok: [],
+      skipped: [],
+      failed: []
+    };
 
     const { lines, sourceCount, usedWeeklies, usedDailies } = await buildMonthlySourceLines({
       dbPath: desktopDb,
@@ -131,24 +135,23 @@ export async function runMonthlyDigest(
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
     const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
-    const chatResult = await chatCompletionDetailed(
+    const generated = await runHierarchicalDigest({
       llm,
-      [
-        { role: "system", content: buildMonthlySystemPrompt(language) },
-        { role: "user", content: buildMonthlyUserPrompt(period.label, rangeHint, lines, language) }
-      ],
-      3000
-    );
-    const content = normalizeDigestMarkdown(chatResult.content);
-    await recordLlmUsage(desktopDb, {
-      kind: "chat",
+      desktopDb,
       source: "monthly",
       jobKey: period.jobKey,
-      model: chatResult.model,
-      usage: chatResult.usage,
-      durationMs: chatResult.durationMs,
-      ok: true
+      level: "monthly",
+      periodLabel: period.label,
+      outputLanguage: language,
+      sourceItems: lines,
+      finalSystemPrompt: buildMonthlySystemPrompt(language),
+      buildFinalUserPrompt: (items) => buildMonthlyUserPrompt(period.label, rangeHint, items, language),
+      maxTokens: 3000,
+      onProgress,
+      progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
+      reduceMessage: (round) => pt("desktop.report.reduceProgress", round)
     });
+    const content = normalizeDigestMarkdown(generated.content);
 
     const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
     const { embeddingJson, embedded } = embedResult;
@@ -183,8 +186,7 @@ export async function runMonthlyDigest(
       message: pt(
         "desktop.report.monthlyCompleteStats",
         usedDailies,
-        ensuredDailies.ok.length,
-        ensuredWeeklies.ok.length
+        ensuredDailies.ok.length
       )
     });
     return {
@@ -197,6 +199,7 @@ export async function runMonthlyDigest(
       summarizedCount: 0,
       summarySkippedCount: 0,
       summaryFailed: ensuredDailies.failed,
+      chunkCount: generated.chunkCount,
       jobKey: period.jobKey,
       embedded,
       replaced

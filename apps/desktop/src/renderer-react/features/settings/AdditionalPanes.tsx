@@ -246,6 +246,11 @@ export function ReportPane({
           onChange={(value) => update("enabled", value)}
         />
         <p className="settings-footnote">{t("desktop.settings.scheduleRuntimeNote")}</p>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.maxDigestLlmCalls")}</span>
+          <span className="settings-field-desc">{t("desktop.settings.maxDigestLlmCallsDesc")}</span>
+          <input type="number" min="10" max="1000" value={draft.maxDigestLlmCalls} onChange={(event) => update("maxDigestLlmCalls", Math.max(10, Math.min(1000, Number(event.target.value) || 100)))} />
+        </label>
         {draft.enabled ? (
           <div className="settings-schedule-fields">
             <label className="settings-field">

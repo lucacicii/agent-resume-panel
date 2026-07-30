@@ -1,13 +1,15 @@
-import { listSessionsInRange } from "../catalog/query";
+import { listAllSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
-import { chatCompletionDetailed } from "../llm/chat";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
-import { recordLlmUsage } from "../usage/store";
 import { effectivePanelHome, loadSettings } from "../settings/store";
+import type { PanelSettings } from "../settings/types";
 import { ensureSummariesForSessions } from "../session/ensureSummaries";
+import { recordLlmUsage } from "../usage/store";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
+import { assertDigestCallBudget, estimateDailyForSessions, type DigestRunTrigger } from "./digestBudget";
+import { runHierarchicalDigest } from "./hierarchicalDigest";
 import { localDayRange as localDayRangeImpl } from "./period";
 import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
@@ -18,46 +20,41 @@ import {
   normalizeDigestMarkdown
 } from "./prompts";
 import { ReportEntry } from "./schema";
-import { getReportEntryById, listReportLinks, upsertReportJob } from "./store";
+import { listReportEntriesInRange, listReportLinks, upsertReportJob } from "./store";
 
 export interface RunDailyDigestOptions {
-  /** Override panel home (default from settings / ~/.agent-resume-panel). */
   panelHome?: string;
   /** Local calendar date YYYY-MM-DD; default today. */
   date?: string;
-  /** Skip embedding even if configured. */
   skipEmbedding?: boolean;
   /** @deprecated Session summaries refresh automatically when stale. */
   forceResummarize?: boolean;
-  /** Progress for Desktop UI. */
   onProgress?: DigestProgressCallback;
-  /** OS display locale when UI language is auto. */
   systemLocale?: string;
-  /**
-   * @deprecated Transcript snippets are no longer used; digests extract from session summaries.
-   * Kept for API compatibility; ignored.
-   */
+  allowOverBudget?: boolean;
+  trigger?: DigestRunTrigger;
+  /** @deprecated Digests use session summaries. Kept for API compatibility. */
   includeTranscripts?: boolean;
 }
 
 export interface RunDailyDigestResult {
   entry: ReportEntry;
+  /** All visible catalog sessions in the day. */
   sessionCount: number;
-  /** Sessions that have a non-empty session_summary after ensure step. */
+  /** Sessions actually included in this digest; equal to sessionCount. */
+  includedSessionCount: number;
+  /** @deprecated Always 0 because report generation no longer drops sessions. */
+  omittedSessionCount: number;
+  /** Number of initial source chunks used by hierarchical generation. */
+  chunkCount: number;
   summaryReadyCount: number;
-  /** Newly summarized in this run. */
   summarizedCount: number;
-  /** Already had summary and were skipped. */
   summarySkippedCount: number;
-  /** Per-session summarize failures (digest still runs). */
   summaryFailed: Array<{ key: string; error: string }>;
-  /**
-   * @deprecated Alias of summaryReadyCount for older callers.
-   */
+  /** @deprecated Alias of summaryReadyCount. */
   snippetCount: number;
   jobKey: string;
   embedded: boolean;
-  /** True when an existing same-day entry was replaced. */
   replaced: boolean;
 }
 
@@ -90,31 +87,37 @@ export interface DailyDigestRefreshCheck {
   needed: boolean;
   reason: DailyDigestRefreshReason;
   sessionCount: number;
-  /** Sessions not linked on the existing daily digest. */
+  linkedSessionCount: number;
   newSessionCount: number;
-  /** Sessions with updatedAt after the daily was written. */
   updatedSessionCount: number;
+  omittedSessionCount: number;
   digestCreatedAtMs?: number;
   message: string;
 }
 
-/**
- * Decide whether auto-click should regenerate the daily digest for a local day.
- * Uses catalog session set + updated_at_ms vs digest created_at + report_links.
- */
-export async function needsDailyDigestRefresh(
-  options: { panelHome?: string; date?: string; systemLocale?: string } = {}
-): Promise<DailyDigestRefreshCheck> {
-  const settings = await loadSettings(options.panelHome);
-  const pt = createReportProgressText(settings, options.systemLocale);
-  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
-  const catalogDb = paths.catalogDb;
-  const desktopDb = paths.desktopDb;
+export interface DailyDigestRefreshContext {
+  settings: PanelSettings;
+  catalogDb: string;
+  desktopDb: string;
+  date?: string;
+  systemLocale?: string;
+}
 
+/** Evaluate one daily against the complete current session set and all report links. */
+export async function evaluateDailyDigestRefresh(
+  options: DailyDigestRefreshContext
+): Promise<DailyDigestRefreshCheck> {
+  const pt = createReportProgressText(options.settings, options.systemLocale);
   const period = localDayRangeImpl(options.date);
-  const sessions = await listSessionsInRange(catalogDb, period.startMs, period.endMs);
+  const sessions = await listAllSessionsInRange(options.catalogDb, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getReportEntryById(desktopDb, period.entryId);
+  const entries = await listReportEntriesInRange(options.desktopDb, {
+    level: "daily",
+    startMs: period.startMs,
+    endMs: period.endMs,
+    limit: 20
+  });
+  const entry = entries.sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -122,8 +125,10 @@ export async function needsDailyDigestRefresh(
         needed: false,
         reason: "no_sessions",
         sessionCount: 0,
+        linkedSessionCount: 0,
         newSessionCount: 0,
         updatedSessionCount: 0,
+        omittedSessionCount: 0,
         message: pt("desktop.report.refreshNoSessionsSkip")
       };
     }
@@ -131,38 +136,44 @@ export async function needsDailyDigestRefresh(
       needed: true,
       reason: "missing",
       sessionCount,
+      linkedSessionCount: 0,
       newSessionCount: sessionCount,
       updatedSessionCount: 0,
+      omittedSessionCount: 0,
       message: pt("desktop.report.refreshDailyMissing", sessionCount)
     };
   }
 
-  const links = await listReportLinks(desktopDb, entry.id);
+  const links = await listReportLinks(options.desktopDb, entry.id);
   const linked = new Set(
     links
-      .filter((l) => l.provider && l.agentSessionId)
-      .map((l) => `${l.provider}:${l.agentSessionId}`)
+      .filter((link) => link.provider && link.agentSessionId)
+      .map((link) => `${link.provider}:${link.agentSessionId}`)
   );
-
-  let newSessionCount = 0;
-  let updatedSessionCount = 0;
-  for (const s of sessions) {
-    const key = `${s.provider}:${s.id}`;
-    if (!linked.has(key)) {
-      newSessionCount += 1;
-    }
-    if (s.updatedAt > entry.createdAtMs) {
-      updatedSessionCount += 1;
-    }
-  }
+  const expectedSessions = sessions;
+  const linkedSessionCount = sessions.reduce(
+    (count, session) => count + (linked.has(`${session.provider}:${session.id}`) ? 1 : 0),
+    0
+  );
+  const newSessionCount = expectedSessions.reduce(
+    (count, session) => count + (linked.has(`${session.provider}:${session.id}`) ? 0 : 1),
+    0
+  );
+  const updatedSessionCount = expectedSessions.reduce(
+    (count, session) => count + (session.updatedAt > entry.createdAtMs ? 1 : 0),
+    0
+  );
+  const omittedSessionCount = Math.max(0, sessionCount - linkedSessionCount);
 
   if (newSessionCount > 0) {
     return {
       needed: true,
       reason: "new_sessions",
       sessionCount,
+      linkedSessionCount,
       newSessionCount,
       updatedSessionCount,
+      omittedSessionCount,
       digestCreatedAtMs: entry.createdAtMs,
       message: pt("desktop.report.refreshNewSessionsDaily", newSessionCount)
     };
@@ -172,32 +183,50 @@ export async function needsDailyDigestRefresh(
       needed: true,
       reason: "updated_sessions",
       sessionCount,
+      linkedSessionCount,
       newSessionCount: 0,
       updatedSessionCount,
+      omittedSessionCount,
       digestCreatedAtMs: entry.createdAtMs,
       message: pt("desktop.report.refreshUpdatedSessionsDaily", updatedSessionCount)
     };
   }
-
   return {
     needed: false,
     reason: "up_to_date",
     sessionCount,
+    linkedSessionCount,
     newSessionCount: 0,
     updatedSessionCount: 0,
+    omittedSessionCount: 0,
     digestCreatedAtMs: entry.createdAtMs,
     message: pt("desktop.report.refreshDailyUpToDateCount", sessionCount)
   };
 }
 
-export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promise<RunDailyDigestResult> {
+export async function needsDailyDigestRefresh(
+  options: { panelHome?: string; date?: string; systemLocale?: string } = {}
+): Promise<DailyDigestRefreshCheck> {
+  const settings = await loadSettings(options.panelHome);
+  const paths = await preparePanelDatabasesFromSettings(options.panelHome);
+  return evaluateDailyDigestRefresh({
+    settings,
+    catalogDb: paths.catalogDb,
+    desktopDb: paths.desktopDb,
+    date: options.date,
+    systemLocale: options.systemLocale
+  });
+}
+
+export async function runDailyDigest(
+  options: RunDailyDigestOptions = {}
+): Promise<RunDailyDigestResult> {
   const settings = await loadSettings(options.panelHome);
   const pt = createReportProgressText(settings, options.systemLocale);
   const panelHome = effectivePanelHome(settings, options.panelHome);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
   const desktopDb = paths.desktopDb;
-
   const period = localDayRangeImpl(options.date);
   const { startMs, endMs, label: dateLabel, jobKey, entryId } = period;
   const onProgress = options.onProgress;
@@ -215,24 +244,22 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     const llm = llmConfigFromSettings(settings);
     if (!llm) {
       throw new Error(
-        "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in ~/.agent-resume-panel/settings.json"
+        "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in Desktop Settings."
       );
     }
 
-    const maxSessions = Math.max(1, Math.min(settings.report?.maxSessionsPerDigest ?? 40, 200));
-
-    let sessions = await listSessionsInRange(catalogDb, startMs, endMs);
-    const totalFound = sessions.length;
-    if (sessions.length > maxSessions) {
-      sessions = sessions.slice(0, maxSessions);
-    }
+    const allSessions = await listAllSessionsInRange(catalogDb, startMs, endMs);
+    const totalFound = allSessions.length;
+    let sessions = allSessions;
+    const estimate = estimateDailyForSessions(settings, dateLabel, sessions);
+    assertDigestCallBudget(estimate, options.allowOverBudget);
+    const omittedSessionCount = 0;
 
     const ensure = await ensureSummariesForSessions({
       dbPath: catalogDb,
       sessions,
       settings,
       panelHome,
-      // A strict digest must not infer current work from a stale session summary.
       force: false,
       refreshIfStale: true,
       jobKeyPrefix: `summarize:${jobKey}`,
@@ -251,10 +278,7 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     const lines: string[] = [];
     let summaryReadyCount = 0;
     for (const session of sessions) {
-      const summary = session.sessionSummary?.trim();
-      if (summary) {
-        summaryReadyCount += 1;
-      }
+      if (session.sessionSummary?.trim()) summaryReadyCount += 1;
       lines.push(
         formatSessionForDigest({
           provider: session.provider,
@@ -265,13 +289,6 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
         })
       );
     }
-
-    if (totalFound > maxSessions) {
-      lines.push(
-        `(Note: ${totalFound - maxSessions} additional sessions on this day were omitted due to maxSessionsPerDigest=${maxSessions}.)`
-      );
-    }
-
     onProgress?.({
       phase: "digest",
       level: "daily",
@@ -281,24 +298,23 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
     });
 
     const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
-    const chatResult = await chatCompletionDetailed(
+    const generated = await runHierarchicalDigest({
       llm,
-      [
-        { role: "system", content: buildDailySystemPrompt(language) },
-        { role: "user", content: buildDailyUserPrompt(dateLabel, lines, language) }
-      ],
-      2000
-    );
-    const content = normalizeDigestMarkdown(chatResult.content);
-    await recordLlmUsage(desktopDb, {
-      kind: "chat",
+      desktopDb,
       source: "daily",
       jobKey,
-      model: chatResult.model,
-      usage: chatResult.usage,
-      durationMs: chatResult.durationMs,
-      ok: true
+      level: "daily",
+      periodLabel: dateLabel,
+      outputLanguage: language,
+      sourceItems: lines,
+      finalSystemPrompt: buildDailySystemPrompt(language),
+      buildFinalUserPrompt: (items) => buildDailyUserPrompt(dateLabel, items, language),
+      maxTokens: 2000,
+      onProgress,
+      progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
+      reduceMessage: (round) => pt("desktop.report.reduceProgress", round)
     });
+    const content = normalizeDigestMarkdown(generated.content);
 
     onProgress?.({
       phase: "embed",
@@ -334,14 +350,13 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       embeddingJson,
       createdAtMs: Date.now()
     };
-
     const { replaced } = await finalizeDigestEntry(
       desktopDb,
       entry,
-      sessions.map((s: AgentSession) => ({
-        provider: s.provider,
-        agentSessionId: s.id,
-        projectPath: s.projectPath
+      sessions.map((session: AgentSession) => ({
+        provider: session.provider,
+        agentSessionId: session.id,
+        projectPath: session.projectPath
       })),
       jobKey
     );
@@ -351,12 +366,20 @@ export async function runDailyDigest(options: RunDailyDigestOptions = {}): Promi
       level: "daily",
       periodLabel: dateLabel,
       dayKey: dateLabel,
-      message: pt("desktop.report.dailyCompleteCount", sessions.length)
+      message: pt(
+        "desktop.report.dailyCompleteStats",
+        sessions.length,
+        totalFound,
+        generated.chunkCount
+      )
     });
 
     return {
       entry,
-      sessionCount: sessions.length,
+      sessionCount: totalFound,
+      includedSessionCount: sessions.length,
+      omittedSessionCount,
+      chunkCount: generated.chunkCount,
       summaryReadyCount,
       summarizedCount: ensure.summarized,
       summarySkippedCount: ensure.skipped,

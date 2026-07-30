@@ -67,11 +67,82 @@ export async function listSessionsInRange(
      WHERE hidden = 0
        AND updated_at_ms >= ${from}
        AND updated_at_ms < ${to}
-     ORDER BY updated_at_ms DESC
+     ORDER BY updated_at_ms DESC, provider ASC, agent_session_id ASC
      LIMIT ${safeLimit};`
   );
 
   return rows.map((row) => toAgentSession(row));
+}
+
+
+export interface SessionRangeCursor {
+  updatedAt: number;
+  provider: string;
+  id: string;
+}
+
+/** Stable keyset-paginated session range reader for unbounded report generation. */
+export async function listSessionsInRangePage(
+  dbPath: string,
+  startMs: number,
+  endMs: number,
+  options?: { limit?: number; cursor?: SessionRangeCursor }
+): Promise<{ sessions: AgentSession[]; nextCursor?: SessionRangeCursor }> {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return { sessions: [] };
+  }
+  const from = Math.floor(startMs);
+  const to = Math.floor(endMs);
+  if (to <= from) return { sessions: [] };
+  const limit = Math.max(1, Math.min(options?.limit ?? 500, 5_000));
+  const cursor = options?.cursor;
+  const cursorClause = cursor
+    ? `AND (
+         updated_at_ms < ${Math.floor(cursor.updatedAt)}
+         OR (updated_at_ms = ${Math.floor(cursor.updatedAt)} AND provider > '${escapeSqlLiteral(cursor.provider)}')
+         OR (updated_at_ms = ${Math.floor(cursor.updatedAt)} AND provider = '${escapeSqlLiteral(cursor.provider)}' AND agent_session_id > '${escapeSqlLiteral(cursor.id)}')
+       )`
+    : "";
+  const rows = await runSqliteJson<CatalogSessionRow>(
+    dbPath,
+    `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
+      message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
+      session_summary, session_summary_language, session_summary_at_ms, project_id
+     FROM sessions
+     WHERE hidden = 0
+       AND updated_at_ms >= ${from}
+       AND updated_at_ms < ${to}
+       ${cursorClause}
+     ORDER BY updated_at_ms DESC, provider ASC, agent_session_id ASC
+     LIMIT ${limit};`
+  );
+  const sessions = rows.map((row) => toAgentSession(row));
+  const last = sessions.at(-1);
+  return {
+    sessions,
+    nextCursor: sessions.length === limit && last
+      ? { updatedAt: last.updatedAt, provider: last.provider, id: last.id }
+      : undefined
+  };
+}
+
+export async function listAllSessionsInRange(
+  dbPath: string,
+  startMs: number,
+  endMs: number,
+  pageSize = 500
+): Promise<AgentSession[]> {
+  const sessions: AgentSession[] = [];
+  let cursor: SessionRangeCursor | undefined;
+  do {
+    const page = await listSessionsInRangePage(dbPath, startMs, endMs, {
+      limit: pageSize,
+      cursor
+    });
+    sessions.push(...page.sessions);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return sessions;
 }
 
 export async function getSessionById(

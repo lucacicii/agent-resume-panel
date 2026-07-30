@@ -1,5 +1,5 @@
 import { loadSettings } from "../settings/store";
-import { needsDailyDigestRefresh } from "./daily";
+import { evaluateDailyDigestRefresh } from "./daily";
 import { needsWeeklyDigestRefresh } from "./digestRefresh";
 import { runDailyDigest } from "./daily";
 import { runWeeklyDigest } from "./weekly";
@@ -12,6 +12,7 @@ import {
 } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
 import type { EnsureLevelStats } from "./ensureDailies";
+import type { DigestRunTrigger } from "./digestBudget";
 import { listSessionsInRange } from "../catalog/query";
 import { localDayRange } from "./period";
 
@@ -40,6 +41,8 @@ export interface EnsureFreshDigestsOptions {
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
   systemLocale?: string;
+  allowOverBudget?: boolean;
+  trigger?: DigestRunTrigger;
 }
 
 /**
@@ -73,8 +76,10 @@ export async function ensureFreshDailiesForPeriod(
       continue;
     }
 
-    const check = await needsDailyDigestRefresh({
-      panelHome: options.panelHome,
+    const check = await evaluateDailyDigestRefresh({
+      settings,
+      catalogDb: options.catalogDb,
+      desktopDb: options.desktopDb,
       date: day,
       systemLocale: options.systemLocale
     });
@@ -130,6 +135,8 @@ export async function ensureFreshDailiesForPeriod(
         skipEmbedding: options.skipEmbedding,
         forceResummarize: options.forceResummarize,
         systemLocale: options.systemLocale,
+        allowOverBudget: options.allowOverBudget,
+        trigger: options.trigger,
         onProgress: (ev) => {
           options.onProgress?.({
             ...ev,
@@ -229,6 +236,8 @@ export async function ensureFreshWeekliesForPeriod(
         forceResummarize: options.forceResummarize,
         forceEnsureLower: options.forceRefresh,
         systemLocale: options.systemLocale,
+        allowOverBudget: options.allowOverBudget,
+        trigger: options.trigger,
         onProgress: (ev) => {
           options.onProgress?.({
             ...ev,

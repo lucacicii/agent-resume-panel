@@ -134,7 +134,8 @@ export {
   syncStateHasExtendedColumns
 } from "./catalog/db";
 
-export { listSessions, listSessionsInRange, getSessionById, countSessions } from "./catalog/query";
+export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions } from "./catalog/query";
+export type { SessionRangeCursor } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
 export {
   searchCatalogSessions,
@@ -254,6 +255,7 @@ export {
   insertReportEntry,
   upsertReportJob,
   getReportJobStatus,
+  clearReportJobsByStatus,
   listReportLinks,
   getReportEntryById,
   desktopReportDbExists,
@@ -282,6 +284,19 @@ export {
   digestIndex,
   isFuturePeriod
 } from "./report/calendar";
+export {
+  estimateDigestRun,
+  estimateDailyForSessions,
+  estimateHierarchicalCallCount,
+  digestCallBudget,
+  assertDigestCallBudget,
+  DigestBudgetExceededError
+} from "./report/digestBudget";
+export type {
+  DigestGenerationEstimate,
+  DigestRunLevel,
+  DigestRunTrigger
+} from "./report/digestBudget";
 export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./report/daily";
 export type { PeriodDigestRefreshCheck } from "./report/digestRefresh";
 export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./report/digestRefresh";

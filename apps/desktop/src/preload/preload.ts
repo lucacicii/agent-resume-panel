@@ -8,6 +8,7 @@ import type {
   AgentChatResult,
   AgentStreamEvent,
   DigestProgressEvent,
+  DigestGenerationEstimate,
   ReportEntry,
   ReportSearchHit,
   NoteIndexProgressEvent,
@@ -648,14 +649,15 @@ export interface DesktopApi {
   }): Promise<ReportEntry[]>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   listDailyDigests(limit?: number): Promise<ReportEntry[]>;
+  previewDigestRun(args: { level: "daily" | "weekly" | "monthly"; periodKey?: string }): Promise<DigestGenerationEstimate>;
   runDailyDigest(
-    dateOrOpts?: string | { date?: string; forceResummarize?: boolean }
+    dateOrOpts?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
   ): Promise<RunDailyDigestResult>;
   needsDailyDigestRefresh(date?: string): Promise<DailyDigestRefreshCheck>;
   needsWeeklyDigestRefresh(weekKey?: string): Promise<DailyDigestRefreshCheck>;
   needsMonthlyDigestRefresh(monthKey?: string): Promise<DailyDigestRefreshCheck>;
-  runWeeklyDigest(weekKey?: string): Promise<RunWeeklyDigestResult>;
-  runMonthlyDigest(monthKey?: string): Promise<RunMonthlyDigestResult>;
+  runWeeklyDigest(args?: string | { weekKey?: string; allowOverBudget?: boolean }): Promise<RunWeeklyDigestResult>;
+  runMonthlyDigest(args?: string | { monthKey?: string; allowOverBudget?: boolean }): Promise<RunMonthlyDigestResult>;
   onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
   searchReports(args: {
     query: string;
@@ -1156,6 +1158,7 @@ const api: DesktopApi = {
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
+  previewDigestRun: (args) => ipcRenderer.invoke("report:previewRun", args),
   runDailyDigest: (dateOrOpts) => {
     if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
       return ipcRenderer.invoke("report:runDaily", { date: dateOrOpts });
@@ -1165,8 +1168,8 @@ const api: DesktopApi = {
   needsDailyDigestRefresh: (date) => ipcRenderer.invoke("report:needsDailyRefresh", date),
   needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("report:needsWeeklyRefresh", weekKey),
   needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("report:needsMonthlyRefresh", monthKey),
-  runWeeklyDigest: (weekKey) => ipcRenderer.invoke("report:runWeekly", weekKey),
-  runMonthlyDigest: (monthKey) => ipcRenderer.invoke("report:runMonthly", monthKey),
+  runWeeklyDigest: (args) => ipcRenderer.invoke("report:runWeekly", args),
+  runMonthlyDigest: (args) => ipcRenderer.invoke("report:runMonthly", args),
   onDigestProgress: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: DigestProgressEvent) => {
       callback(progress);

@@ -1,5 +1,6 @@
 import {
   finishScheduleRun,
+  estimateDigestRun,
   getReportJobStatus,
   listLlmUsageEvents,
   loadSettings,
@@ -10,13 +11,15 @@ import {
   runDailyDigest,
   runMonthlyDigest,
   runWeeklyDigest,
-  startScheduleRun
+  startScheduleRun,
+  upsertReportJob
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
 /** Space retries after a failed or interrupted schedule attempt. */
 const RETRY_INTERVAL_MS = 30 * 60_000;
+const BUDGET_DEFER_INTERVAL_MS = 24 * 60 * 60_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -158,6 +161,10 @@ async function tick(): Promise<void> {
         skipOk += 1;
         continue;
       }
+      if (status?.status === "deferred_budget" && nowMs - status.updatedAtMs < BUDGET_DEFER_INTERVAL_MS) {
+        skipRetry += 1;
+        continue;
+      }
       const last = lastAttemptAt.get(job.periodKey) ?? 0;
       const waitMs = RETRY_INTERVAL_MS - (nowMs - last);
       if (waitMs > 0) {
@@ -172,15 +179,24 @@ async function tick(): Promise<void> {
         continue;
       }
       lastAttemptAt.set(job.periodKey, nowMs);
+      const estimate = await estimateDigestRun({ level: job.level, periodKey: job.periodLabel });
+      if (estimate.overBudget) {
+        const message = `Estimated LLM calls ${estimate.estimatedLlmCalls} exceed budget ${estimate.callBudget}.`;
+        await upsertReportJob(desktopDb, job.periodKey, "deferred_budget", message);
+        const runId = await startScheduleRun(desktopDb, { level: job.level, periodKey: job.periodKey, trigger: "schedule" });
+        await finishScheduleRun(desktopDb, runId, { status: "skipped", error: message });
+        skipRetry += 1;
+        continue;
+      }
       attempted += 1;
       try {
         await runLoggedSchedule(desktopDb, job.level, job.periodKey, async () => {
           if (job.level === "daily") {
-            await runDailyDigest({ date: job.periodLabel });
+            await runDailyDigest({ date: job.periodLabel, trigger: "schedule" });
           } else if (job.level === "weekly") {
-            await runWeeklyDigest({ weekKey: job.periodLabel });
+            await runWeeklyDigest({ weekKey: job.periodLabel, trigger: "schedule" });
           } else {
-            await runMonthlyDigest({ monthKey: job.periodLabel });
+            await runMonthlyDigest({ monthKey: job.periodLabel, trigger: "schedule" });
           }
         });
       } catch (error) {

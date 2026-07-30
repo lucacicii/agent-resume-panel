@@ -214,6 +214,13 @@ describe("settings model", () => {
     const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
     expect(report.report?.scheduleDailyHour).toBe(23);
     expect(report.report?.includeTranscripts).toBe(true);
+    expect(report.report?.maxDigestLlmCalls).toBe(100);
+
+    const preservedLimit = reportPatch(
+      { ...settings, report: { maxDigestLlmCalls: 300 } },
+      reportDraftFromSettings({ ...settings, report: { maxDigestLlmCalls: 300 } })
+    );
+    expect(preservedLimit.report?.maxDigestLlmCalls).toBe(300);
 
     const storage = storagePatch({ ...settings, agentHomes: { codexHome: "~/old-codex" } }, { ...storageDraftFromSettings(settings), panelHome: "~/panel", codexHome: "~/custom-codex" });
     expect(storage.panelHome).toBe("~/panel");

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import {
   runAgentChat,
   clearAgentMessages,
+  clearReportJobsByStatus,
   deleteAgentMessagesFromSortOrder,
   listOlderAgentMessages,
   listAgentNoteAudit,
@@ -19,6 +20,7 @@ import {
   buildNewSessionCommand,
   buildResumeCommand,
   effectivePanelHome,
+  estimateDigestRun,
   expandHome,
   getReportEntryById,
   getSessionById,
@@ -890,6 +892,10 @@ function registerIpc(): void {
       invalidateNotesStore();
       const schedulerEnabled = await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
+      if ((previous.report?.maxDigestLlmCalls ?? 100) !== (saved.report?.maxDigestLlmCalls ?? 100)) {
+        const paths = await loadPanelDbPaths(saved);
+        await clearReportJobsByStatus(paths.desktopDb, "deferred_budget");
+      }
       const bundle = buildI18nBundle(saved);
       const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
         ? await syncAndNotify()
@@ -1186,7 +1192,7 @@ function registerIpc(): void {
     "report:runDaily",
     async (
       event,
-      args?: string | { date?: string; forceResummarize?: boolean }
+      args?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
     ) => {
       const opts =
         typeof args === "string" || args === undefined
@@ -1198,11 +1204,27 @@ function registerIpc(): void {
       return runDailyDigest({
         date: opts.date,
         forceResummarize: opts.forceResummarize,
+        allowOverBudget: opts.allowOverBudget === true,
+        trigger: "manual",
         onProgress: sendProgress,
         systemLocale: app.getLocale()
       });
     }
   );
+
+  ipcMain.handle("report:previewRun", async (_event, args: unknown) => {
+    if (!args || typeof args !== "object") {
+      throw new Error("Invalid digest preview request.");
+    }
+    const input = args as { level?: unknown; periodKey?: unknown };
+    if (input.level !== "daily" && input.level !== "weekly" && input.level !== "monthly") {
+      throw new Error("Invalid digest level.");
+    }
+    return estimateDigestRun({
+      level: input.level,
+      periodKey: typeof input.periodKey === "string" ? input.periodKey : undefined
+    });
+  });
 
   ipcMain.handle("report:needsDailyRefresh", async (_event, date?: string) => {
     return needsDailyDigestRefresh({ date, systemLocale: app.getLocale() });
@@ -1216,23 +1238,29 @@ function registerIpc(): void {
     return needsMonthlyDigestRefresh({ monthKey, systemLocale: app.getLocale() });
   });
 
-  ipcMain.handle("report:runWeekly", async (event, weekKey?: string) => {
+  ipcMain.handle("report:runWeekly", async (event, args?: string | { weekKey?: string; allowOverBudget?: boolean }) => {
+    const opts = typeof args === "string" || args === undefined ? { weekKey: args } : args;
     const sendProgress = (progress: DigestProgressEvent) => {
       event.sender.send("report:digestProgress", progress);
     };
     return runWeeklyDigest({
-      weekKey,
+      weekKey: opts.weekKey,
+      allowOverBudget: opts.allowOverBudget === true,
+      trigger: "manual",
       onProgress: sendProgress,
       systemLocale: app.getLocale()
     });
   });
 
-  ipcMain.handle("report:runMonthly", async (event, monthKey?: string) => {
+  ipcMain.handle("report:runMonthly", async (event, args?: string | { monthKey?: string; allowOverBudget?: boolean }) => {
+    const opts = typeof args === "string" || args === undefined ? { monthKey: args } : args;
     const sendProgress = (progress: DigestProgressEvent) => {
       event.sender.send("report:digestProgress", progress);
     };
     return runMonthlyDigest({
-      monthKey,
+      monthKey: opts.monthKey,
+      allowOverBudget: opts.allowOverBudget === true,
+      trigger: "manual",
       onProgress: sendProgress,
       systemLocale: app.getLocale()
     });
@@ -1560,7 +1588,8 @@ function registerIpc(): void {
         maxDays: args?.maxDays,
         skipExisting: args?.skipExisting,
         skipEmbedding: args?.skipEmbedding,
-        minSessionsPerDay: args?.minSessionsPerDay
+        minSessionsPerDay: args?.minSessionsPerDay,
+        allowOverBudget: true
       });
     }
   );

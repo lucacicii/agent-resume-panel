@@ -5,7 +5,7 @@ import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { renderMarkdown as markdown } from "../../components/Markdown";
 import { useI18n } from "../../i18n";
-import { calendarCells, dayKeyFromDate, dayKeyFromMs, digestIndex, isoWeekLabelFromDate, paddedMonthRange, parseWeekRange, rangeForPeriod, type ReportPeriodType, viewMonthKey } from "./model";
+import { calendarCells, dayKeyFromDate, dayKeyFromMs, digestIndex, isoWeekLabelFromDate, paddedMonthRange, parseWeekRange, periodKeyFromEntry, rangeForPeriod, type ReportPeriodType, viewMonthKey } from "./model";
 
 type Focus = { type: ReportPeriodType; key: string };
 type SessionPreview = { title: string; messages: Array<{ role: string; text: string; timestamp?: string }>; truncated?: boolean; warning?: string };
@@ -54,12 +54,14 @@ export function ReportPanel(): ReactPortal | null {
   const [progressByPeriod, setProgressByPeriod] = useState<Map<string, DigestProgressEvent>>(new Map());
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const sessionRequestId = useRef(0);
+  const monthRequestId = useRef(0);
 
   const monthKey = viewMonthKey(view.year, view.month);
   const index = useMemo(() => digestIndex(entries), [entries]);
   const sessionDays = useMemo(() => new Set(monthSessions.map((item) => dayKeyFromMs(item.updatedAt))), [monthSessions]);
 
   const loadMonth = useCallback(async () => {
+    const requestId = ++monthRequestId.current;
     setMonthLoading(true);
     try {
       const padded = paddedMonthRange(view.year, view.month);
@@ -68,20 +70,32 @@ export function ReportPanel(): ReactPortal | null {
         desktopApi().listReports({ ...padded, limit: 300 }),
         exact ? desktopApi().listSessionsInRange({ ...exact, limit: 2000 }) : Promise.resolve([])
       ]);
+      if (requestId !== monthRequestId.current) return;
       setEntries(nextEntries);
       setMonthSessions(nextSessions);
       if (typeof desktopApi().needsDailyDigestRefresh === "function") {
-        const checks = await Promise.all(nextEntries.filter((entry) => entry.level === "daily" || entry.level === "weekly" || entry.level === "monthly").map(async (entry) => {
-          const key = entry.level === "daily" ? entry.id.replace(/^daily:/, "") : entry.level === "weekly" ? entry.id.replace(/^weekly:/, "") : entry.id.replace(/^monthly:/, "");
-          const check = entry.level === "daily" ? await desktopApi().needsDailyDigestRefresh(key) : entry.level === "weekly" ? await desktopApi().needsWeeklyDigestRefresh(key) : await desktopApi().needsMonthlyDigestRefresh(key);
-          return check.needed && (check.reason === "new_sessions" || check.reason === "updated_sessions") ? `${entry.level}:${key}` : "";
+        const canonicalEntries = [...digestIndex(nextEntries).values()];
+        const checks = await Promise.all(canonicalEntries.map(async (entry) => {
+          const key = periodKeyFromEntry(entry);
+          if (!key) return null;
+          const check = entry.level === "daily"
+            ? await desktopApi().needsDailyDigestRefresh(key)
+            : entry.level === "weekly"
+              ? await desktopApi().needsWeeklyDigestRefresh(key)
+              : await desktopApi().needsMonthlyDigestRefresh(key);
+          return { key: `${entry.level}:${key}`, check };
         }));
-        setStale(new Set(checks.filter(Boolean)));
+        if (requestId !== monthRequestId.current) return;
+        setStale(new Set(checks.filter((item) => item?.check.needed).map((item) => item!.key)));
+      } else {
+        setStale(new Set());
       }
       setStatus({ text: "" });
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally { setMonthLoading(false); }
+      if (requestId === monthRequestId.current) setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      if (requestId === monthRequestId.current) setMonthLoading(false);
+    }
   }, [view.month, view.year]);
 
   const loadSessions = useCallback(async () => {
@@ -186,13 +200,35 @@ export function ReportPanel(): ReactPortal | null {
       setStatus({ text: t(type === "week" ? "desktop.report.taskBusyGenWeekly" : "desktop.report.taskBusyGenMonthly"), kind: "error" });
       return;
     }
+    let allowOverBudget = false;
+    try {
+      if (typeof desktopApi().previewDigestRun === "function") {
+        const estimate = await desktopApi().previewDigestRun({ level: levelFor(type), periodKey: key });
+        if (estimate.overBudget) {
+          const confirmed = window.confirm(t(
+            "desktop.report.budgetConfirm",
+            estimate.sessionCount,
+            estimate.summaryCallCount,
+            estimate.digestCallCount,
+            estimate.estimatedLlmCalls,
+            estimate.callBudget
+          ));
+          if (!confirmed) return;
+          allowOverBudget = true;
+        }
+      }
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      return;
+    }
     setRunningPeriods((current) => new Set(current).add(periodKey));
     setProgressByPeriod((current) => new Map(current).set(periodKey, { phase: "start", level: levelFor(type), periodLabel: key, message: t("desktop.report.generatingLabel", digestLabel(type, t), key) }));
     setStatus({ text: "" });
     try {
-      if (type === "day") await desktopApi().runDailyDigest({ date: key });
-      else if (type === "week") await desktopApi().runWeeklyDigest(key);
-      else await desktopApi().runMonthlyDigest(key);
+      const approval = allowOverBudget ? { allowOverBudget: true } : {};
+      if (type === "day") await desktopApi().runDailyDigest({ date: key, ...approval });
+      else if (type === "week") await desktopApi().runWeeklyDigest({ weekKey: key, ...approval });
+      else await desktopApi().runMonthlyDigest({ monthKey: key, ...approval });
       setStatus({ text: t("desktop.report.digestOk", digestLabel(type, t), key, t("desktop.report.created"), 0, 0, ""), kind: "ok" });
       await loadMonth();
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }

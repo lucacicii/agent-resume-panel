@@ -1,5 +1,6 @@
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { runDailyDigest } from "../report/daily";
+import { estimateDigestRun } from "../report/digestBudget";
 import { runMonthlyDigest } from "../report/monthly";
 import { localDayRange, localMonthRange, localWeekRange } from "../report/period";
 import { getReportJobStatus } from "../report/store";
@@ -17,6 +18,8 @@ export interface BackfillReportDigestsOptions {
   maxDays?: number;
   /** Only days with at least this many sessions. Default 1. */
   minSessionsPerDay?: number;
+  /** Explicit approval for the batch confirmation dialog. */
+  allowOverBudget?: boolean;
 }
 
 export interface BackfillLevelStats {
@@ -149,7 +152,9 @@ export async function backfillReportDigests(
         panelHome,
         date: day,
         skipEmbedding,
-        includeTranscripts: false // bulk: title/summary only to control cost/time
+        includeTranscripts: false,
+        allowOverBudget: options.allowOverBudget,
+        trigger: "backfill"
       });
       daily.ok.push(day);
     } catch (error) {
@@ -171,7 +176,9 @@ export async function backfillReportDigests(
       await runWeeklyDigest({
         panelHome,
         weekKey: week,
-        skipEmbedding
+        skipEmbedding,
+        allowOverBudget: options.allowOverBudget,
+        trigger: "backfill"
       });
       weekly.ok.push(week);
     } catch (error) {
@@ -193,7 +200,9 @@ export async function backfillReportDigests(
       await runMonthlyDigest({
         panelHome,
         monthKey: month,
-        skipEmbedding
+        skipEmbedding,
+        allowOverBudget: options.allowOverBudget,
+        trigger: "backfill"
       });
       monthly.ok.push(month);
     } catch (error) {
@@ -235,7 +244,7 @@ export async function previewBackfillReportDigests(
 
   for (const day of activity.days) {
     if (!(await shouldSkip(paths.desktopDb, localDayRange(day).jobKey, skipExisting))) {
-      dayCalls += 1;
+      dayCalls += (await estimateDigestRun({ panelHome: options.panelHome, level: "daily", periodKey: day })).estimatedLlmCalls;
     }
   }
   for (const week of activity.weeks) {

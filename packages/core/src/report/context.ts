@@ -1,3 +1,4 @@
+import { digestIndex } from "./calendar";
 import { DigestProgressCallback } from "./progress";
 import { ReportProgressText } from "./progressI18n";
 import { formatSessionForDigest } from "./prompts";
@@ -35,12 +36,13 @@ export async function buildWeeklySourceLines(
     options;
   const pt = progressText ?? ((key: string) => key);
 
-  const dailies = await listReportEntriesInRange(dbPath, {
+  const dailyRows = await listReportEntriesInRange(dbPath, {
     level: "daily",
     startMs,
     endMs,
-    limit: 14
+    limit: 500
   });
+  const dailies = [...digestIndex(dailyRows).values()];
 
   if (dailies.length) {
     onProgress?.({
@@ -50,7 +52,7 @@ export async function buildWeeklySourceLines(
       message: pt("desktop.report.aggregateWeeklyFromDailies", dailies.length)
     });
     const lines = dailies.map(
-      (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 4000)}`
+      (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${e.content}`
     );
     return {
       lines,
@@ -84,12 +86,13 @@ export async function buildMonthlySourceLines(
   const pt = progressText ?? ((key: string) => key);
 
   // Month can have up to 31 dailies
-  const dailies = await listReportEntriesInRange(dbPath, {
+  const dailyRows = await listReportEntriesInRange(dbPath, {
     level: "daily",
     startMs,
     endMs,
-    limit: 40
+    limit: 500
   });
+  const dailies = [...digestIndex(dailyRows).values()];
 
   if (dailies.length) {
     onProgress?.({
@@ -99,7 +102,7 @@ export async function buildMonthlySourceLines(
       message: pt("desktop.report.aggregateMonthlyFromDailies", dailies.length)
     });
     const lines = dailies.map(
-      (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${truncate(e.content, 2500)}`
+      (e, i) => `Daily ${i + 1}: ${e.title || e.id}\n${e.content}`
     );
     return {
       lines,
@@ -123,12 +126,6 @@ export async function buildMonthlySourceLines(
   };
 }
 
-function truncate(text: string, max: number): string {
-  if (text.length <= max) {
-    return text;
-  }
-  return `${text.slice(0, max)}\n[...truncated...]`;
-}
 
 export { formatSessionForDigest };
 export type { ReportEntry, ReportLevel };

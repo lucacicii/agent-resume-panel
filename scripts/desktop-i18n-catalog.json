@@ -168,7 +168,7 @@
       "desktop.report.weeklyCompleteStats": "Weekly complete · dailies {0} · backfill +{1}/skip {2}",
       "desktop.report.extractMonthlyFromDailies": "Extracting monthly from {0} dailies this month…",
       "desktop.report.extractMonthlyPlaceholder": "No dailies this month; generating placeholder monthly…",
-      "desktop.report.monthlyCompleteStats": "Monthly complete · dailies {0} · daily +{1} · weekly +{2}",
+      "desktop.report.monthlyCompleteStats": "Monthly complete · dailies {0} · daily +{1}",
       "desktop.report.aggregateWeeklyFromDailies": "Aggregating weekly from {0} dailies",
       "desktop.report.aggregateWeeklyPlaceholder": "No dailies this week (will generate placeholder weekly)",
       "desktop.report.aggregateMonthlyFromDailies": "Aggregating monthly from {0} dailies this month",
@@ -246,7 +246,11 @@
       "desktop.report.backfillDaily": "backfill daily +{0}/skip {1}{2}",
       "desktop.report.backfillWeekly": "backfill weekly +{0}/skip {1}{2}",
       "desktop.report.gtdWarnDefault": "Possible reasons: no sessions in period, or model did not return session ids.",
-      "desktop.report.gtdMdDone": "Done"
+      "desktop.report.gtdMdDone": "Done",
+      "desktop.report.chunkProgress": "Compressing source batch {0}/{1}…",
+      "desktop.report.reduceProgress": "Merging digest summaries · round {0}…",
+      "desktop.report.dailyCompleteStats": "Daily complete · {0}/{1} sessions · {2} source chunk(s)",
+      "desktop.report.budgetConfirm": "This run includes {0} sessions and is estimated to use ~{3} LLM calls (summary {1}, digest {2}), above the configured budget of {4}. Continue?"
     },
     "calendar": {
       "desktop.calendar.month1": "Jan",
@@ -998,7 +1002,9 @@
       "desktop.settings.acpAutoApproveAsk": "Ask each time",
       "desktop.settings.acpAutoApproveAllowAll": "Allow all",
       "desktop.settings.acpExperimentalGrokVendorUi": "Experimental · Grok vendor options",
-      "desktop.settings.acpExperimentalGrokVendorUiDesc": "Map Grok Build proprietary ACP meta into Model + Thinking toolbar controls. Turn off when official ACP options appear, or if unstable. Plan mode is not exposed over ACP yet."
+      "desktop.settings.acpExperimentalGrokVendorUiDesc": "Map Grok Build proprietary ACP meta into Model + Thinking toolbar controls. Turn off when official ACP options appear, or if unstable. Plan mode is not exposed over ACP yet.",
+      "desktop.settings.maxDigestLlmCalls": "Digest LLM call budget",
+      "desktop.settings.maxDigestLlmCallsDesc": "Estimated call limit (10–1000) before manual approval is required. All sessions remain eligible; model capacity is handled with hierarchical chunks."
     },
     "usage": {
       "desktop.usage.scope": "Range",
@@ -1310,7 +1316,7 @@
       "desktop.report.weeklyCompleteStats": "周报完成 · dailies {0} · 补全 +{1}/skip {2}",
       "desktop.report.extractMonthlyFromDailies": "从本月 {0} 篇日报提取月报…",
       "desktop.report.extractMonthlyPlaceholder": "本月无日报，生成占位月报…",
-      "desktop.report.monthlyCompleteStats": "月报完成 · dailies {0} · 日报 +{1} · 周报 +{2}",
+      "desktop.report.monthlyCompleteStats": "月报完成 · dailies {0} · 日报 +{1}",
       "desktop.report.aggregateWeeklyFromDailies": "使用 {0} 篇日报聚合周报",
       "desktop.report.aggregateWeeklyPlaceholder": "本周无可用日报（将生成占位周报）",
       "desktop.report.aggregateMonthlyFromDailies": "使用本月 {0} 篇日报聚合月报",
@@ -1410,7 +1416,11 @@
       "desktop.report.gtdWasNone": "（无）",
       "desktop.report.monthlyDigestOk": "月报 {0} 完成 · {1} · 来源 {2}（日报 {3}）{4}{5}",
       "desktop.report.summarizeStats": "summarize +{0}/skip {1}{2}",
-      "desktop.report.weeklyDigestOk": "周报 {0} 完成 · {1} · 来源 {2}（日报 {3}）{4}{5}"
+      "desktop.report.weeklyDigestOk": "周报 {0} 完成 · {1} · 来源 {2}（日报 {3}）{4}{5}",
+      "desktop.report.chunkProgress": "正在压缩来源分块 {0}/{1}…",
+      "desktop.report.reduceProgress": "正在合并摘要 · 第 {0} 轮…",
+      "desktop.report.dailyCompleteStats": "日报完成 · 覆盖 {0}/{1} 个 session · {2} 个来源分块",
+      "desktop.report.budgetConfirm": "本次将处理 {0} 个 session，预计使用约 {3} 次 LLM 调用（摘要 {1}、报告 {2}），超过当前预算 {4}。是否继续？"
     },
     "calendar": {
       "desktop.calendar.month1": "1 月",
@@ -2185,7 +2195,9 @@
       "desktop.settings.acpAutoApproveAsk": "每次询问",
       "desktop.settings.acpAutoApproveAllowAll": "全部允许",
       "desktop.settings.acpExperimentalGrokVendorUi": "实验性 · Grok 厂商选项",
-      "desktop.settings.acpExperimentalGrokVendorUiDesc": "把 Grok Build 私有 ACP 元数据映射到工具栏的模型 / Thinking。官方提供标准选项后可关闭；不稳定时也可随时关掉。Plan 模式目前未通过 ACP 暴露。"
+      "desktop.settings.acpExperimentalGrokVendorUiDesc": "把 Grok Build 私有 ACP 元数据映射到工具栏的模型 / Thinking。官方提供标准选项后可关闭；不稳定时也可随时关掉。Plan 模式目前未通过 ACP 暴露。",
+      "desktop.settings.maxDigestLlmCalls": "报告 LLM 调用预算",
+      "desktop.settings.maxDigestLlmCallsDesc": "预计调用次数达到该阈值（10–1000）时需要手动确认。所有 session 仍会纳入处理，模型容量由分层分块解决。"
     },
     "usage": {
       "desktop.usage.scope": "范围",
@@ -2501,7 +2513,7 @@
       "desktop.report.weeklyCompleteStats": "週報完了 · dailies {0} · 補完 +{1}/skip {2}",
       "desktop.report.extractMonthlyFromDailies": "今月の {0} 件の日報から月報を抽出中…",
       "desktop.report.extractMonthlyPlaceholder": "今月の日報がありません。プレースホルダー月報を生成中…",
-      "desktop.report.monthlyCompleteStats": "月報完了 · dailies {0} · 日報 +{1} · 週報 +{2}",
+      "desktop.report.monthlyCompleteStats": "月報完了 · dailies {0} · 日報 +{1}",
       "desktop.report.aggregateWeeklyFromDailies": "{0} 件の日報から週報を集約",
       "desktop.report.aggregateWeeklyPlaceholder": "今週の日報がありません（プレースホルダー週報を生成します）",
       "desktop.report.aggregateMonthlyFromDailies": "今月の {0} 件の日報から月報を集約",
@@ -2599,7 +2611,11 @@
       "desktop.report.gtdWasLabel": "変更前: {0}",
       "desktop.report.gtdWasNone": "（なし）",
       "desktop.report.monthlyDigestOk": "月報 {0} 完了 · {1} · ソース {2}（日報 {3}）{4}{5}",
-      "desktop.report.weeklyDigestOk": "週報 {0} 完了 · {1} · ソース {2}（日報 {3}）{4}{5}"
+      "desktop.report.weeklyDigestOk": "週報 {0} 完了 · {1} · ソース {2}（日報 {3}）{4}{5}",
+      "desktop.report.chunkProgress": "ソース分割を圧縮中 {0}/{1}…",
+      "desktop.report.reduceProgress": "ダイジェスト要約を統合中 · ラウンド {0}…",
+      "desktop.report.dailyCompleteStats": "日報完了 · {0}/{1} sessions · ソース分割 {2} 件",
+      "desktop.report.budgetConfirm": "この実行は {0} sessions を処理し、約 {3} 回の LLM 呼び出し（要約 {1}、レポート {2}）を使用する見込みで、設定予算 {4} を超えます。続行しますか？"
     },
     "calendar": {
       "desktop.calendar.month1": "1 月",
@@ -3406,7 +3422,9 @@
       "desktop.settings.acpAutoApproveAsk": "毎回確認",
       "desktop.settings.acpAutoApproveAllowAll": "すべて許可",
       "desktop.settings.acpExperimentalGrokVendorUi": "実験的 · Grok ベンダーオプション",
-      "desktop.settings.acpExperimentalGrokVendorUiDesc": "Grok Build の独自 ACP メタをモデル / Thinking ツールバーにマップします。公式 ACP オプションが来たらオフにできます。不安定な場合もオフにできます。Plan モードは ACP 未公開です。"
+      "desktop.settings.acpExperimentalGrokVendorUiDesc": "Grok Build の独自 ACP メタをモデル / Thinking ツールバーにマップします。公式 ACP オプションが来たらオフにできます。不安定な場合もオフにできます。Plan モードは ACP 未公開です。",
+      "desktop.settings.maxDigestLlmCalls": "ダイジェスト LLM 呼び出し予算",
+      "desktop.settings.maxDigestLlmCallsDesc": "手動確認が必要になる推定呼び出し上限（10～1000）。すべての session が対象となり、モデル容量は階層的な分割で処理されます。"
     },
     "usage": {
       "desktop.usage.scope": "範囲",

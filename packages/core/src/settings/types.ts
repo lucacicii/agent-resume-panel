@@ -249,8 +249,10 @@ export interface ReportSettings {
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
   includeTranscripts?: boolean;
-  /** Max sessions included in one daily digest. Default 40. */
+  /** @deprecated Report generation now covers every session. */
   maxSessionsPerDigest?: number;
+  /** Maximum estimated LLM calls before manual approval is required. Default 100. */
+  maxDigestLlmCalls?: number;
   /** Max chars of transcript excerpt per session. Default 2500. */
   snippetMaxChars?: number;
   /** Local hour 0–23 for automatic daily job. Default 22. */
@@ -354,7 +356,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   report: {
     enabled: false,
     includeTranscripts: true,
-    maxSessionsPerDigest: 40,
+    maxDigestLlmCalls: 100,
     snippetMaxChars: 2500,
     scheduleDailyHour: 22,
     scheduleWeeklyHour: 9,

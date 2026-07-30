@@ -14,7 +14,7 @@ const weeklyReport: ReportEntry = { ...report, id: `weekly:${week}`, level: "wee
 const monthlyReport: ReportEntry = { ...report, id: `monthly:${month}`, level: "monthly" };
 const session: AgentSession = { provider: "codex", id: "s-1", title: "Renderer migration", projectPath: "/work/panel", updatedAt: now.getTime() };
 
-afterEach(() => { cleanup(); document.getElementById("react-report")?.remove(); });
+afterEach(() => { cleanup(); document.getElementById("react-report")?.remove(); vi.restoreAllMocks(); });
 
 describe("ReportPanel", () => {
   it("loads the current report, shows session details, and regenerates the focused digest", async () => {
@@ -22,6 +22,7 @@ describe("ReportPanel", () => {
     host.id = "react-report";
     document.body.append(host);
     const runDailyDigest = vi.fn(async () => ({ replaced: false, sessionCount: 1, summaryReadyCount: 1 }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const summarizeSession = vi.fn(async () => ({ summary: "Migrated the Report panel.", language: "en", session: { ...session, sessionSummary: "Migrated the Report panel." } }));
     const autoRenameSession = vi.fn(async () => ({ title: "Migrate Report panel", previousTitle: session.title, session: { ...session, title: "Migrate Report panel" }, nativeRenamed: true }));
     window.agentResume = {
@@ -29,12 +30,13 @@ describe("ReportPanel", () => {
       onLocaleChanged: () => () => undefined,
       listReports: async () => [report, weeklyReport, monthlyReport],
       listSessionsInRange: async () => [session],
-      needsDailyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
+      needsDailyDigestRefresh: async () => ({ needed: false, reason: "up_to_date", message: "64 sessions included" }),
       needsWeeklyDigestRefresh: async () => ({ needed: true, reason: "updated_sessions" }),
       needsMonthlyDigestRefresh: async () => ({ needed: true, reason: "updated_sessions" }),
       previewSession: async () => ({ session, preview: { title: session.title, messages: [{ role: "user", text: "Move it to React" }] } }),
       summarizeSession,
       autoRenameSession,
+      previewDigestRun: async () => ({ level: "daily", periodKey: day, sessionCount: 201, summaryCallCount: 201, digestCallCount: 3, estimatedLlmCalls: 204, callBudget: 100, overBudget: true }),
       runDailyDigest,
       runWeeklyDigest: async () => ({}),
       runMonthlyDigest: async () => ({}),
@@ -62,7 +64,8 @@ describe("ReportPanel", () => {
     await waitFor(() => expect(document.querySelector(".session-preview-title")?.textContent).toBe("Migrate Report panel"));
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
-    await waitFor(() => expect(runDailyDigest).toHaveBeenCalledWith({ date: day }));
+    await waitFor(() => expect(runDailyDigest).toHaveBeenCalledWith({ date: day, allowOverBudget: true }));
+    expect(confirm).toHaveBeenCalledOnce();
 
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
     expect(document.querySelector(".react-report-panel")?.hasAttribute("hidden")).toBe(true);
