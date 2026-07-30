@@ -64,6 +64,9 @@ type GitLog = Awaited<ReturnType<DesktopApi["terminalGitLog"]>>;
 type GitShow = Awaited<ReturnType<DesktopApi["terminalGitShow"]>>;
 type GitGraphLayout = GitLog["layout"];
 type GitGraphRow = GitGraphLayout["rows"][number];
+type GitHistoryContext =
+  | { kind: "repository"; repoRoot: string }
+  | { kind: "file"; projectRoot: string; filePath: string; repoRoot: string; repoPath: string };
 type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"]>>;
 
 /** Local porcelain status poll while Workbench is active. */
@@ -462,9 +465,19 @@ function gitChangeFilePath(change: Pick<GitChange, "repoRoot" | "repoPath">): st
   return `${repoRoot}/${repoPath}`;
 }
 
+function collectNodeChanges(node: GitTreeNode): GitChange[] {
+  if (!node.isDirectory) return node.change ? [node.change] : [];
+  return node.children.flatMap(collectNodeChanges);
+}
+
 function collectNodeChangeKeys(node: GitTreeNode): string[] {
-  if (!node.isDirectory) return node.change ? [gitChangeKey(node.change)] : [];
-  return node.children.flatMap(collectNodeChangeKeys);
+  return collectNodeChanges(node).map(gitChangeKey);
+}
+
+function uniqueGitChanges(changes: GitChange[]): GitChange[] {
+  const unique = new Map<string, GitChange>();
+  for (const change of changes) unique.set(gitChangeKey(change), change);
+  return [...unique.values()];
 }
 
 function selectionTriState(keys: string[], selected: Set<string>): boolean | "mixed" {
@@ -518,6 +531,7 @@ function GitChangeTree({
   onOpen,
   onContextMenu,
   onDiscard,
+  onDiscardDirectory,
   discardLabel
 }: {
   nodes: GitTreeNode[];
@@ -530,13 +544,17 @@ function GitChangeTree({
   onOpen: (change: GitChange) => void;
   onContextMenu: (event: React.MouseEvent, change: GitChange) => void;
   onDiscard: (change: GitChange) => void;
+  onDiscardDirectory: (directoryPath: string, repoRoot: string) => void;
   discardLabel: string;
 }): React.JSX.Element {
   return <>{nodes.map((node) => {
     const isExpanded = node.isDirectory && expanded.has(node.path);
     if (node.isDirectory) {
-      const keys = collectNodeChangeKeys(node);
+      const nodeChanges = collectNodeChanges(node);
+      const keys = nodeChanges.map(gitChangeKey);
       const state = selectionTriState(keys, selected);
+      const directoryDiscarding = keys.some((key) => discarding.has(key));
+      const repoRoot = nodeChanges[0]?.repoRoot || "";
       return <div key={node.path}>
         <div className="wb-file-tree-row wb-git-tree-row" style={{ paddingLeft: `${8 + depth * 14}px` }}>
           <GitTreeCheckbox state={state} ariaLabel={node.path} onChange={(checked) => onToggleKeys(keys, checked)} />
@@ -545,8 +563,18 @@ function GitChangeTree({
             <Folder size={14} className="wb-file-tree-icon" />
             <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
           </button>
+          <button
+            type="button"
+            className="wb-git-discard-btn"
+            disabled={directoryDiscarding || !repoRoot}
+            aria-label={`${discardLabel} ${node.path}`}
+            title={discardLabel}
+            onClick={() => onDiscardDirectory(node.path, repoRoot)}
+          >
+            {directoryDiscarding ? <LoaderCircle size={13} className="spin" /> : <Undo2 size={13} />}
+          </button>
         </div>
-        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} discardLabel={discardLabel} /></div> : null}
+        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} onDiscardDirectory={onDiscardDirectory} discardLabel={discardLabel} /></div> : null}
       </div>;
     }
     if (!node.change) return null;
@@ -603,6 +631,7 @@ function GitChangesPanel({
   onOpenExternal,
   onCopyPath,
   onDiscard,
+  onDiscardDirectory,
   onCommitMessageChange,
   onSuggestCommit,
   onCommit,
@@ -625,6 +654,7 @@ function GitChangesPanel({
   onOpenExternal: (change: GitChange) => void;
   onCopyPath: (change: GitChange) => void;
   onDiscard: (change: GitChange) => void;
+  onDiscardDirectory: (changes: GitChange[], directoryPath: string) => void;
   onCommitMessageChange: (value: string) => void;
   onSuggestCommit: () => void;
   onCommit: (pushAfter: boolean) => void;
@@ -684,6 +714,7 @@ function GitChangesPanel({
     { title: labels.stagedTitle, staged: true, entries: filterEntries(git.staged) },
     { title: labels.changesTitle, staged: false, entries: filterEntries(git.unstaged) }
   ];
+  const allEntries = uniqueGitChanges(sections.flatMap((section) => section.entries));
   const hasEntries = sections.some((section) => section.entries.length > 0);
   const tracking = trackingForRoot(git, gitRoot);
   const trackingLabel = tracking?.branch
@@ -728,6 +759,11 @@ function GitChangesPanel({
                 setContextMenu({ change, x: event.clientX, y: event.clientY });
               }}
               onDiscard={onDiscard}
+              onDiscardDirectory={(directoryPath, repoRoot) => {
+                const prefix = `${directoryPath}/`;
+                const changes = allEntries.filter((change) => change.repoRoot === repoRoot && change.path.startsWith(prefix));
+                if (changes.length) onDiscardDirectory(changes, directoryPath);
+              }}
               discardLabel={labels.discard}
             />
           </div>
@@ -1239,12 +1275,12 @@ function GitRepositorySelector({
 
 function BranchGraphNavigation({
   visible,
-  projectLabel,
+  title,
   ariaLabel,
   onBack
 }: {
   visible: boolean;
-  projectLabel: string;
+  title: string;
   ariaLabel: string;
   onBack: () => void;
 }): ReactPortal | null {
@@ -1254,7 +1290,7 @@ function BranchGraphNavigation({
   }, [visible]);
   return visible && host ? createPortal(<div className="react-branch-graph-nav">
     <button type="button" className="wb-diff-back" aria-label={ariaLabel} onClick={onBack}><ChevronLeft size={15} /></button>
-    <span className="react-branch-graph-title">Branch graph{projectLabel ? ` · ${projectLabel}` : ""}</span>
+    <span className="react-branch-graph-title">{title}</span>
   </div>, host) : null;
 }
 
@@ -1882,6 +1918,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
+  const [gitHistoryContext, setGitHistoryContext] = useState<GitHistoryContext | null>(null);
+  const [gitLogLoading, setGitLogLoading] = useState(false);
+  const [gitLogError, setGitLogError] = useState("");
   const [gitRefreshing, setGitRefreshing] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitBusy, setCommitBusy] = useState(false);
@@ -1904,6 +1943,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitStatusInFlightRef = useRef(false);
   const gitFetchInFlightRef = useRef(false);
   const gitLastFetchAtRef = useRef(0);
+  const gitLogRequestRef = useRef(0);
   const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
   const editorsRef = useRef<EditorPane[]>([]);
@@ -2402,6 +2442,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGit(null);
     setGitLog(null);
     setGitShow(null);
+    setGitHistoryContext(null);
+    setGitLogLoading(false);
+    setGitLogError("");
+    gitLogRequestRef.current += 1;
   };
 
   const focusPendingSession = useCallback((pending: PendingWorkbenchSession) => {
@@ -3866,45 +3910,87 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
-  const discardGitChange = async (change: GitChange) => {
-    const key = gitChangeKey(change);
-    if (discardingGitPaths.has(key)) return;
-    const confirmKey = change.status === "?"
-      ? "desktop.workbench.gitDiscardUntrackedConfirm"
-      : "desktop.workbench.gitDiscardConfirm";
-    if (!window.confirm(t(confirmKey, change.path))) return;
-    setDiscardingGitPaths((current) => new Set(current).add(key));
+  const discardGitChanges = async (changes: GitChange[], targetPath: string, isDirectory: boolean) => {
+    const uniqueChanges = uniqueGitChanges(changes);
+    const keys = uniqueChanges.map(gitChangeKey);
+    if (!uniqueChanges.length || keys.some((key) => discardingGitPaths.has(key))) return;
+    const confirmMessage = isDirectory
+      ? t("desktop.workbench.gitDiscardDirectoryConfirm", targetPath, uniqueChanges.length)
+      : t(
+          uniqueChanges[0]!.status === "?"
+            ? "desktop.workbench.gitDiscardUntrackedConfirm"
+            : "desktop.workbench.gitDiscardConfirm",
+          targetPath
+        );
+    if (!window.confirm(confirmMessage)) return;
+    setDiscardingGitPaths((current) => {
+      const next = new Set(current);
+      keys.forEach((key) => next.add(key));
+      return next;
+    });
+    const succeeded: GitChange[] = [];
+    const failures: unknown[] = [];
     try {
-      await desktopApi().terminalGitDiscardChange({ repoRoot: change.repoRoot, path: change.repoPath });
-      setDiffs((current) => current.filter((pane) => !(pane.repoRoot === change.repoRoot && pane.path === change.path)));
-      setActivePanes((current) => {
-        const projectKey = paneProjectKey(selectedProject);
-        const active = current[projectKey];
-        return active?.startsWith(`diff:${change.repoRoot}:${change.repoPath}:`)
-          ? { ...current, [projectKey]: "" }
-          : current;
-      });
+      for (const change of uniqueChanges) {
+        try {
+          await desktopApi().terminalGitDiscardChange({ repoRoot: change.repoRoot, path: change.repoPath });
+          succeeded.push(change);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (succeeded.length) {
+        const succeededPaneKeys = new Set(succeeded.map((change) => `${change.repoRoot}\0${change.path}`));
+        setDiffs((current) => current.filter((pane) => !succeededPaneKeys.has(`${pane.repoRoot}\0${pane.path}`)));
+        setActivePanes((current) => {
+          const projectKey = paneProjectKey(selectedProject);
+          const active = current[projectKey];
+          const activeWasDiscarded = succeeded.some((change) => active?.startsWith(`diff:${change.repoRoot}:${change.repoPath}:`));
+          return activeWasDiscarded ? { ...current, [projectKey]: "" } : current;
+        });
+      }
       await refreshGit();
       currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-      notifyGitSuccess("desktop.workbench.gitDiscardSucceeded", change.path);
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
+      if (!failures.length) {
+        notifyGitSuccess("desktop.workbench.gitDiscardSucceeded", targetPath);
+      } else if (isDirectory) {
+        const message = t(
+          "desktop.workbench.gitDiscardDirectoryPartial",
+          succeeded.length,
+          uniqueChanges.length,
+          targetPath,
+          gitOperationError(failures[0])
+        );
+        setStatus({ text: message, kind: "error" });
+        notifyDesktop({ text: message, kind: "error" });
+      } else {
+        notifyGitFailure("desktop.workbench.gitDiscardFailed", failures[0]);
+      }
     } finally {
       setDiscardingGitPaths((current) => {
         const next = new Set(current);
-        next.delete(key);
+        keys.forEach((key) => next.delete(key));
         return next;
       });
     }
   };
 
+  const discardGitChange = async (change: GitChange) => {
+    await discardGitChanges([change], change.path, false);
+  };
+
+  const discardGitDirectory = async (changes: GitChange[], directoryPath: string) => {
+    await discardGitChanges(changes, directoryPath, true);
+  };
+
   const openGitShowFileDiff = async (hash: string, path: string) => {
-    if (!gitRoot) return;
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
     try {
-      const result = await desktopApi().terminalGitShowFileDiffSides({ repoRoot: gitRoot, hash, path });
+      const result = await desktopApi().terminalGitShowFileDiffSides({ repoRoot, hash, path });
       if (!selectedProject) return;
-      const key = `logdiff:${hash}:${path}`;
-      setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot: gitRoot, path, ...result }]);
+      const key = `logdiff:${repoRoot}:${hash}:${path}`;
+      setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot, path, ...result }]);
       setActivePane(key);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
@@ -4010,17 +4096,82 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const loadGitLog = async () => {
     if (!gitRoot) return;
+    const requestId = gitLogRequestRef.current + 1;
+    gitLogRequestRef.current = requestId;
+    setGitHistoryContext({ kind: "repository", repoRoot: gitRoot });
+    setGitLogLoading(true);
+    setGitLogError("");
     try {
       setGitShow(null);
-      setGitLog(await desktopApi().terminalGitLog({ repoRoot: gitRoot, limit: 150 }));
-    } catch (error) { notifyGitFailure("desktop.workbench.gitLogLoadFailed", error); }
+      const result = await desktopApi().terminalGitLog({ repoRoot: gitRoot, limit: 150 });
+      if (gitLogRequestRef.current !== requestId) return;
+      setGitLog(result);
+    } catch (error) {
+      if (gitLogRequestRef.current !== requestId) return;
+      setGitLog(null);
+      setGitLogError(gitOperationError(error));
+      notifyGitFailure("desktop.workbench.gitLogLoadFailed", error);
+    } finally {
+      if (gitLogRequestRef.current === requestId) setGitLogLoading(false);
+    }
+  };
+
+  const loadGitFileHistory = async (filePath: string) => {
+    if (!selectedProject) return;
+    const projectRoot = selectedProject;
+    const requestId = gitLogRequestRef.current + 1;
+    gitLogRequestRef.current = requestId;
+    setSide("git");
+    setGitHistoryContext({ kind: "file", projectRoot, filePath, repoRoot: "", repoPath: "" });
+    setGitLog(null);
+    setGitShow(null);
+    setGitLogLoading(true);
+    setGitLogError("");
+    try {
+      const result = await desktopApi().workbenchGitFileLog({ rootPath: projectRoot, filePath, limit: 150 });
+      if (gitLogRequestRef.current !== requestId || selectedProjectRef.current !== projectRoot) return;
+      setGitHistoryContext({
+        kind: "file",
+        projectRoot,
+        filePath,
+        repoRoot: result.repoRoot,
+        repoPath: result.repoPath
+      });
+      setGitLog({ commits: result.commits, layout: result.layout });
+    } catch (error) {
+      if (gitLogRequestRef.current !== requestId || selectedProjectRef.current !== projectRoot) return;
+      setGitLogError(gitOperationError(error));
+      notifyGitFailure("desktop.workbench.gitFileHistoryLoadFailed", error);
+    } finally {
+      if (gitLogRequestRef.current === requestId) setGitLogLoading(false);
+    }
   };
 
   const showCommit = async (hash: string) => {
-    if (!gitRoot) return;
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
     try {
-      setGitShow(await desktopApi().terminalGitShow({ repoRoot: gitRoot, hash }));
+      setGitShow(await desktopApi().terminalGitShow({ repoRoot, hash }));
     } catch (error) { notifyGitFailure("desktop.workbench.gitShowLoadFailed", error); }
+  };
+
+  const closeGitHistory = () => {
+    const returnToExplorer = gitHistoryContext?.kind === "file";
+    gitLogRequestRef.current += 1;
+    setGitHistoryContext(null);
+    setGitLog(null);
+    setGitShow(null);
+    setGitLogLoading(false);
+    setGitLogError("");
+    if (returnToExplorer) setSide("files");
+  };
+
+  const retryGitHistory = () => {
+    if (gitHistoryContext?.kind === "file") {
+      void loadGitFileHistory(gitHistoryContext.filePath);
+    } else {
+      void loadGitLog();
+    }
   };
 
   const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
@@ -4298,6 +4449,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div> : null}
   </div>;
 
+  const gitHistoryTitle = gitHistoryContext?.kind === "file"
+    ? t("desktop.workbench.gitFileHistoryTitle", basename(gitHistoryContext.filePath))
+    : t("desktop.workbench.gitLogTitle");
+  const gitHistoryBackLabel = gitHistoryContext?.kind === "file"
+    ? t("desktop.workbench.gitFileHistoryBackToExplorer")
+    : t("desktop.workbench.gitLogBackToChanges");
+
   if (!host) return null;
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
@@ -4446,7 +4604,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onSessionReady={refreshSessionsAfterAcpConnect}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} onOpenFile={(path) => void openFile(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} onOpenFile={(path) => void openFile(path)} onShowGitHistory={(path) => void loadGitFileHistory(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
             <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
             <div className="wb-search-pane">
               <div className="wb-search-form" role="search">
@@ -4541,7 +4699,37 @@ export function WorkbenchPanel(): ReactPortal | null {
                 }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
               </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}
             </div>
-          </div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
+          </div> : <div className="wb-side-pane">
+            <div className="wb-side-pane-head wb-git-pane-head">
+              <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
+              <div className="wb-git-actions">{gitHistoryContext ? <>
+                <button type="button" className="wb-git-action-btn" onClick={closeGitHistory} aria-label={gitHistoryBackLabel}><ChevronLeft size={15} /></button>
+                <button type="button" className="wb-git-action-btn" disabled={gitLogLoading} onClick={retryGitHistory} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitLogLoading ? "spin" : undefined} /></button>
+              </> : <>
+                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button>
+                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button>
+                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button>
+                <button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button>
+              </>}</div>
+            </div>
+            {gitHistoryContext ? <div className="wb-log-body">
+              {gitLogLoading ? <p className="muted wb-git-empty" role="status">{t("desktop.workbench.gitFileHistoryLoading")}</p>
+                : gitLogError ? <div className="wb-git-panel"><p className="muted wb-git-empty is-error" role="alert">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoadFailed" : "desktop.workbench.gitLogLoadFailed", gitLogError)}</p><button type="button" className="ghost-btn" onClick={retryGitHistory}>{t("desktop.common.refresh")}</button></div>
+                  : gitShow ? <>
+                    <button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button>
+                    <h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4>
+                    <p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p>
+                    <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
+                    <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
+                  </>
+                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>
+                      : <p className="muted wb-git-empty">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryEmpty" : "desktop.workbench.gitLogEmpty")}</p>}
+            </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
+              {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
+              {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
+              {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
+            </> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
+          </div>}</aside></> : null}
         </div>
       </main>
     </div>
@@ -4660,7 +4848,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       return null;
     })}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={projectPickDialog.busy} onClick={() => setProjectPickDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     <GitChangesPanel
-      visible={side === "git" && !gitLog}
+      visible={side === "git" && !gitHistoryContext}
       git={git}
       gitRoot={gitRoot}
       expanded={gitExpandedDirs}
@@ -4692,6 +4880,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
       }}
       onDiscard={(change) => void discardGitChange(change)}
+      onDiscardDirectory={(changes, directoryPath) => void discardGitDirectory(changes, directoryPath)}
       onCommitMessageChange={setCommitMessage}
       onSuggestCommit={() => void suggestCommit()}
       onCommit={(pushAfter) => void commit(pushAfter)}
@@ -4715,9 +4904,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     />
     <GitDiffMergePanel diff={active ? currentDiff : undefined} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
-    <GitActionIcons visible={side === "git" && !gitLog} />
-    <GitRepositorySelector visible={side === "git" && !gitLog} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); }} />
-    <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} projectLabel={basename(gitRoot)} ariaLabel={t("desktop.workbench.gitLogBackToChanges")} onBack={() => { setGitLog(null); setGitShow(null); }} />
+    <GitActionIcons visible={side === "git" && !gitHistoryContext} />
+    <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
+    <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     <Status kind={status.kind}>{status.text}</Status>
   </section>
     <QuickAccess

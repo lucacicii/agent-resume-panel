@@ -1467,6 +1467,128 @@ describe("WorkbenchPanel", () => {
     }
   });
 
+  it("discards every unique Git change under a directory without touching siblings", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const stagedOnly = { path: "src/staged.ts", repoPath: "src/staged.ts", repoRoot: "/work/app", status: "M", staged: true, unstaged: false };
+    const stagedAndUnstaged = { path: "src/both.ts", repoPath: "src/both.ts", repoRoot: "/work/app", status: "M", staged: true, unstaged: true };
+    const unstagedCopy = { ...stagedAndUnstaged, staged: false };
+    const untracked = { path: "src/untracked.ts", repoPath: "src/untracked.ts", repoRoot: "/work/app", status: "?", staged: false, unstaged: true };
+    const sibling = { path: "sibling/keep.ts", repoPath: "sibling/keep.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    const remaining = new Set([stagedOnly.repoPath, stagedAndUnstaged.repoPath, untracked.repoPath, sibling.repoPath]);
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [stagedOnly, stagedAndUnstaged].filter((change) => remaining.has(change.repoPath)),
+      unstaged: [unstagedCopy, untracked, sibling].filter((change) => remaining.has(change.repoPath)),
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitDiscardChange = vi.fn(async ({ path }: { repoRoot: string; path: string }) => {
+      remaining.delete(path);
+      return { ok: true };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitDiscard": "Discard changes", "desktop.workbench.gitDiscardDirectoryConfirm": "Discard all staged, working tree, and untracked changes under \"{0}\" ({1} files)? This cannot be undone.", "desktop.workbench.gitDiscardSucceeded": "Discarded changes to {0}."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiscardChange
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByTitle("/work/app"));
+      fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+      fireEvent.click((await screen.findAllByRole("button", { name: "Discard changes src" }))[0]!);
+      expect(terminalGitDiscardChange).not.toHaveBeenCalled();
+      fireEvent.click((await screen.findAllByRole("button", { name: "Discard changes src" }))[0]!);
+
+      expect(confirm).toHaveBeenCalledWith('Discard all staged, working tree, and untracked changes under "src" (3 files)? This cannot be undone.');
+      await waitFor(() => expect(terminalGitDiscardChange).toHaveBeenCalledTimes(3));
+      expect(terminalGitDiscardChange.mock.calls.map(([args]) => args)).toEqual([
+        { repoRoot: "/work/app", path: "src/staged.ts" },
+        { repoRoot: "/work/app", path: "src/both.ts" },
+        { repoRoot: "/work/app", path: "src/untracked.ts" }
+      ]);
+      expect(remaining).toEqual(new Set(["sibling/keep.ts"]));
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Discard changes src" })).toBeNull());
+      expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Discarded changes to src.", kind: "ok" });
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("keeps processing a Git directory after one file fails and reports a partial result", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const first = { path: "src/first.ts", repoPath: "src/first.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    const second = { path: "src/second.ts", repoPath: "src/second.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    const remaining = new Set([first.repoPath, second.repoPath]);
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [first, second].filter((change) => remaining.has(change.repoPath)),
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitDiscardChange = vi.fn(async ({ path }: { repoRoot: string; path: string }) => {
+      if (path === first.repoPath) throw new Error("locked");
+      remaining.delete(path);
+      return { ok: true };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitDiscard": "Discard changes", "desktop.workbench.gitDiscardDirectoryConfirm": "Discard all staged, working tree, and untracked changes under \"{0}\" ({1} files)? This cannot be undone.", "desktop.workbench.gitDiscardDirectoryPartial": "Discarded {0} of {1} changes under {2}; the remaining changes failed: {3}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiscardChange
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByTitle("/work/app"));
+      fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+      fireEvent.click(await screen.findByRole("button", { name: "Discard changes src" }));
+
+      await waitFor(() => expect(terminalGitDiscardChange).toHaveBeenCalledTimes(2));
+      expect(remaining).toEqual(new Set(["src/first.ts"]));
+      expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({
+        text: "Discarded 1 of 2 changes under src; the remaining changes failed: locked",
+        kind: "error"
+      });
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
   it("supplements a truncated Quick Access index before opening a deep path", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
