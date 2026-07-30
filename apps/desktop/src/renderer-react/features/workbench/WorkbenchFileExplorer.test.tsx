@@ -202,6 +202,35 @@ describe("WorkbenchFileExplorer", () => {
     expect(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" })).toBeTruthy();
   });
 
+  it("offers Git file history only for files and passes the absolute path", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [
+        { name: "src", path: "/work/app/src", isDirectory: true },
+        { name: "package.json", path: "/work/app/package.json", isDirectory: false }
+      ]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    const onShowGitHistory = vi.fn();
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onShowGitHistory={onShowGitHistory}
+      onError={() => undefined}
+    />);
+
+    const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" })).toBeNull();
+
+    const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" }));
+
+    expect(onShowGitHistory).toHaveBeenCalledWith("/work/app/package.json");
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" })).toBeNull();
+  });
+
   it("copies absolute file and directory paths as text from the context menu", async () => {
     apiMocks.workbenchListDirectory.mockResolvedValue({
       entries: [

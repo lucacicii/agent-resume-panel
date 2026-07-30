@@ -1318,6 +1318,98 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByText("Search")).toBeTruthy();
   });
 
+  it("opens all-branch file history from Explorer and returns to Explorer", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchGitFileLog = vi.fn(async () => ({
+      repoRoot: "/work/app",
+      repoPath: "src/app.ts",
+      commits: [{
+        hash: "1234567890abcdef1234567890abcdef12345678",
+        shortHash: "1234567",
+        author: "Developer",
+        date: 1,
+        subject: "Update app",
+        parents: [],
+        decorations: "origin/feature",
+        refs: { heads: [], tags: [], isHead: false, primaryLabel: "feature" }
+      }],
+      layout: {
+        laneWidth: 18,
+        rowHeight: 52,
+        maxColumns: 1,
+        columnColors: [0],
+        rows: [{
+          index: 0,
+          commitColumn: 0,
+          incomingTracks: [],
+          outgoingTracks: [],
+          curves: [],
+          colorIndex: 0,
+          isHead: false
+        }]
+      }
+    }));
+    const terminalGitShow = vi.fn(async () => ({
+      hash: "1234567890abcdef1234567890abcdef12345678",
+      shortHash: "1234567",
+      author: "Developer",
+      date: 1,
+      subject: "Update app",
+      body: "Commit body",
+      files: [{ status: "M", path: "src/app.ts" }]
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.copy": "Copy", "desktop.common.copyPath": "Copy Path", "desktop.common.paste": "Paste", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.sidePanelScripts": "Scripts", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.explorerRevealInFinder": "Reveal in Finder", "desktop.workbench.gitFileHistoryTitle": "File history · {0}", "desktop.workbench.gitFileHistoryBackToExplorer": "Back to Explorer", "desktop.workbench.gitFileHistoryLoading": "Loading file history…", "desktop.workbench.gitFileHistoryEmpty": "No commits found for this file", "desktop.workbench.gitFileHistoryLoadFailed": "Could not load file history: {0}", "desktop.workbench.gitLogBackToList": "Back to commit history", "desktop.workbench.gitLogNoFiles": "No changed files", "desktop.workbench.gitLogUntitled": "(untitled)"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [{ name: "app.ts", path: "/work/app/src/app.ts", isDirectory: false }]
+          : []
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
+      workbenchGitFileLog,
+      terminalGitShow
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
+    const fileRow = (await screen.findByText("app.ts")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "View Git File History" }));
+
+    await waitFor(() => expect(workbenchGitFileLog).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      filePath: "/work/app/src/app.ts",
+      limit: 150
+    }));
+    expect(await screen.findByText("File history · app.ts")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Update app/ }));
+    await waitFor(() => expect(terminalGitShow).toHaveBeenCalledWith({
+      repoRoot: "/work/app",
+      hash: "1234567890abcdef1234567890abcdef12345678"
+    }));
+    expect(await screen.findByText("Commit body")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to commit history" }));
+    expect(await screen.findByRole("button", { name: /Update app/ })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Back to Explorer" }).at(-1)!);
+    expect(await screen.findByText("Explorer")).toBeTruthy();
+    expect(await screen.findByText("app.ts")).toBeTruthy();
+  });
+
   it("opens a Git change from its context menu in Workbench or the default app", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

@@ -72,8 +72,9 @@ export function directoryEntriesEqual(
 export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   rootPath: string;
   onOpenFile: (path: string) => void | Promise<void>;
+  onShowGitHistory?: (path: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ rootPath, onOpenFile, onError }, ref) {
+}>(function WorkbenchFileExplorer({ rootPath, onOpenFile, onShowGitHistory, onError }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -303,6 +304,12 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     }
   };
 
+  const showGitHistoryTarget = async (target: ExplorerTarget) => {
+    if (target.isDirectory || !onShowGitHistory) return;
+    setContextMenu(null);
+    await onShowGitHistory(target.path);
+  };
+
   const openContextMenu = (event: React.MouseEvent<HTMLElement>, target: ExplorerTarget) => {
     event.preventDefault();
     event.stopPropagation();
@@ -396,7 +403,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       role="menu"
       style={{
         left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 188)),
-        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 156))
+        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 190))
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
@@ -405,6 +412,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       <button type="button" role="menuitem" onClick={() => copyPathTarget(contextMenu.target)}>{t("desktop.common.copyPath")}</button>
       <button type="button" role="menuitem" disabled={!contextMenu.clipboardHasFiles} onClick={() => void pasteTarget(contextMenu.target)}>{t("desktop.common.paste")}</button>
       <div className="context-menu-separator" role="separator" />
+      {!contextMenu.target.isDirectory && onShowGitHistory ? <button type="button" role="menuitem" onClick={() => void showGitHistoryTarget(contextMenu.target)}>{t("desktop.workbench.explorerGitFileHistory")}</button> : null}
       <button type="button" role="menuitem" onClick={() => void revealTarget(contextMenu.target)}>{t("desktop.workbench.explorerRevealInFinder")}</button>
     </div> : null}
   </>;

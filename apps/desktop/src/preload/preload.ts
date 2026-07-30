@@ -409,6 +409,51 @@ export interface DesktopApi {
       }>;
     };
   }>;
+  workbenchGitFileLog(args: {
+    rootPath: string;
+    filePath: string;
+    limit?: number;
+  }): Promise<{
+    repoRoot: string;
+    repoPath: string;
+    commits: Array<{
+      hash: string;
+      shortHash: string;
+      author: string;
+      date: number;
+      subject: string;
+      parents: string[];
+      decorations: string;
+      refs: {
+        heads: string[];
+        tags: string[];
+        isHead: boolean;
+        primaryLabel: string | null;
+      };
+    }>;
+    layout: {
+      laneWidth: number;
+      rowHeight: number;
+      maxColumns: number;
+      columnColors: number[];
+      rows: Array<{
+        index: number;
+        commitColumn?: number;
+        incomingTracks: number[];
+        outgoingTracks: number[];
+        curves: Array<{
+          fromCol: number;
+          toCol: number;
+          side: "left" | "right";
+          colorIndex: number;
+        }>;
+        colorIndex: number;
+        isHead: boolean;
+        laneLabel?: string;
+        laneLabelColorIndex?: number;
+      }>;
+    };
+  }>;
   terminalGitShow(args: {
     repoRoot: string;
     hash: string;
@@ -1063,6 +1108,7 @@ const api: DesktopApi = {
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),
   terminalGitPull: (args) => ipcRenderer.invoke("terminal:gitPull", args),
   terminalGitLog: (args) => ipcRenderer.invoke("terminal:gitLog", args),
+  workbenchGitFileLog: (args) => ipcRenderer.invoke("workbench:gitFileLog", args),
   terminalGitShow: (args) => ipcRenderer.invoke("terminal:gitShow", args),
   terminalGitShowFileDiffSides: (args) => ipcRenderer.invoke("terminal:gitShowFileDiffSides", args),
   onTerminalData: (callback) => {

@@ -10,6 +10,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ### [Unreleased]
 
+#### Added
+
+- **Workbench file history**: right-click a file in Explorer to inspect commits from all local and remote-tracking branches, including history before file renames
+
 ### [0.2.9]
 
 #### Added

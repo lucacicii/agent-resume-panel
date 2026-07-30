@@ -4713,7 +4713,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               </>}</div>
             </div>
             {gitHistoryContext ? <div className="wb-log-body">
-              {gitLogLoading ? <p className="muted wb-git-empty" role="status">{t("desktop.workbench.gitFileHistoryLoading")}</p>
+              {gitLogLoading ? <p className="muted wb-git-empty" role="status">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoading" : "desktop.common.loading")}</p>
                 : gitLogError ? <div className="wb-git-panel"><p className="muted wb-git-empty is-error" role="alert">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoadFailed" : "desktop.workbench.gitLogLoadFailed", gitLogError)}</p><button type="button" className="ghost-btn" onClick={retryGitHistory}>{t("desktop.common.refresh")}</button></div>
                   : gitShow ? <>
                     <button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button>

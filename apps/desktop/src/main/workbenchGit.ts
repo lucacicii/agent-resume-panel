@@ -11,9 +11,11 @@ import {
   suggestCommitMessageFromGitContext
 } from "@agent-resume/core";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
 import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
 
 export type { GitGraphLayout } from "./gitGraphLayout";
 
@@ -62,6 +64,13 @@ export interface GitCommitFileDiffSidesResult {
   newLabel: string;
   oldText: string;
   newText: string;
+}
+
+export interface GitFileLogResult {
+  repoRoot: string;
+  repoPath: string;
+  commits: GitLogEntry[];
+  layout: GitGraphLayout;
 }
 
 function formatExecError(error: unknown): string {
@@ -299,6 +308,62 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
       2 * 1024 * 1024
     );
     return parseGitLogOutput(stdout);
+  } catch (error) {
+    throw new Error(formatExecError(error));
+  }
+}
+
+export async function queryGitFileLog(
+  rawRootPath: string,
+  rawFilePath: string,
+  limit?: number
+): Promise<GitFileLogResult> {
+  const rootPath = resolveCwd(rawRootPath);
+  const filePath = resolveCanonicalWorkbenchPath(rootPath, rawFilePath);
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile()) {
+    throw new Error("不是文件");
+  }
+
+  const repoRoot = await queryGitRoot(path.dirname(filePath));
+  if (!repoRoot) {
+    throw new Error("文件不在 Git 仓库中");
+  }
+  const relativePath = path.relative(repoRoot, filePath);
+  if (!relativePath || path.isAbsolute(relativePath) || relativePath.split(path.sep).includes("..")) {
+    throw new Error("文件不在 Git 仓库中");
+  }
+  const repoPath = relativePath.split(path.sep).join("/");
+  const n = normalizeGitLogLimit(limit);
+
+  try {
+    const stdout = await gitExec(
+      repoRoot,
+      [
+        "log",
+        "--branches",
+        "--remotes",
+        "--follow",
+        "--topo-order",
+        `-n${n}`,
+        "--date=unix",
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%d%x1f%P%x1f%s",
+        "--",
+        repoPath
+      ],
+      30000,
+      2 * 1024 * 1024
+    );
+    const commits = parseGitLogOutput(stdout);
+    const layout = buildGitGraphLayout(
+      commits.map((commit) => ({
+        hash: commit.hash,
+        parents: commit.parents,
+        decorations: commit.decorations,
+        refs: commit.refs
+      }))
+    );
+    return { repoRoot, repoPath, commits, layout };
   } catch (error) {
     throw new Error(formatExecError(error));
   }
@@ -553,6 +618,20 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     );
     return { commits, layout };
   });
+
+  safeHandle(
+    "workbench:gitFileLog",
+    async (_event, args: { rootPath: string; filePath: string; limit?: number }) => {
+      if (!args
+        || typeof args.rootPath !== "string"
+        || !args.rootPath.trim()
+        || typeof args.filePath !== "string"
+        || !args.filePath.trim()) {
+        throw new Error("无效的文件历史请求");
+      }
+      return queryGitFileLog(args.rootPath, args.filePath, args.limit);
+    }
+  );
 
   safeHandle("terminal:gitShow", async (_event, args: { repoRoot: string; hash: string }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
