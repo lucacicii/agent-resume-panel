@@ -1,4 +1,20 @@
-import { ChevronRight, FileCode2, Folder, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  RefreshCw,
+  File,
+  FileCode2,
+  FileText,
+  FileJson,
+  FileImage,
+  FileArchive,
+  FileAudio,
+  FileVideo,
+  FileTerminal,
+  FileCog,
+  FileSpreadsheet
+} from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -29,6 +45,144 @@ interface ExplorerContextMenu {
 export interface WorkbenchFileExplorerHandle {
   refresh: () => Promise<void>;
   revealPath: (targetPath: string) => Promise<void>;
+}
+
+function getFileIconComponent(filename: string): { IconComponent: any; color?: string } {
+  // Handle exact filenames for common configuration files
+  const name = filename.toLowerCase();
+  
+  // Build tools & configs
+  if (name === "dockerfile" || name === ".dockerignore") return { IconComponent: FileTerminal, color: "#0db7ed" }; // Docker Blue
+  if (name.includes("vite.config")) return { IconComponent: FileCog, color: "#646cff" }; // Vite Purple
+  if (name.includes("webpack.config")) return { IconComponent: FileCog, color: "#8dd6f9" }; // Webpack Blue
+  if (name.includes("rollup.config")) return { IconComponent: FileCog, color: "#ec4a3f" }; // Rollup Red
+  if (name === "tsconfig.json" || name === "jsconfig.json") return { IconComponent: FileJson, color: "#3178c6" }; // TS Blue
+  if (name === "pom.xml") return { IconComponent: FileCog, color: "#c71a36" }; // Maven Red
+  if (name === "build.gradle" || name === "settings.gradle") return { IconComponent: FileCog, color: "#02303a" }; // Gradle Blue
+  if (name === "requirements.txt" || name === "pipfile" || name === "pipfile.lock") return { IconComponent: FileCog, color: "#3572A5" }; // Python Blue
+  if (name === "pyproject.toml" || name === "setup.py" || name === "setup.cfg") return { IconComponent: FileCog, color: "#3572A5" }; // Python Blue
+  
+  // Linters and formatters
+  if (name.includes("eslint")) return { IconComponent: FileCog, color: "#4b32c3" }; // ESLint Purple
+  if (name.includes("prettier")) return { IconComponent: FileCog, color: "#f7ba3e" }; // Prettier Yellow
+  if (name.includes("stylelint")) return { IconComponent: FileCog, color: "#dd1155" }; // Stylelint Pink
+  if (name === ".babelrc" || name.includes("babel.config")) return { IconComponent: FileCog, color: "#f5da55" }; // Babel Yellow
+  
+  // Package managers
+  if (name === "package.json") return { IconComponent: FileJson, color: "#cb3837" }; // npm Red
+  if (name === "package-lock.json") return { IconComponent: FileJson, color: "#cb3837" };
+  if (name === "yarn.lock" || name === ".yarnrc") return { IconComponent: FileJson, color: "#2c8ebb" }; // Yarn Blue
+  if (name === "pnpm-lock.yaml" || name === ".pnpmfile.cjs") return { IconComponent: FileJson, color: "#f69220" }; // pnpm Orange
+  
+  if (name === ".gitignore" || name === ".npmrc" || name.endsWith("rc") || name === ".nvmrc") return { IconComponent: FileCog, color: "#6e7681" }; // Config Grey
+  if (name === ".env" || name.startsWith(".env.")) return { IconComponent: FileCog, color: "#ebd144" }; // Env Yellow
+
+  // Handle by extension
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  switch (ext) {
+    case "vue":
+      return { IconComponent: FileCode2, color: "#41b883" }; // Vue Green
+    case "svelte":
+      return { IconComponent: FileCode2, color: "#ff3e00" }; // Svelte Orange
+    case "astro":
+      return { IconComponent: FileCode2, color: "#ff5d01" }; // Astro Orange
+    case "json":
+    case "lock":
+      return { IconComponent: FileJson, color: "#cbcb41" }; // Yellowish
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "svg":
+    case "webp":
+    case "ico":
+      return { IconComponent: FileImage, color: "#a074c4" }; // Purple
+    case "zip":
+    case "tar":
+    case "gz":
+    case "rar":
+    case "7z":
+      return { IconComponent: FileArchive, color: "#e37933" }; // Orange
+    case "mp3":
+    case "wav":
+    case "ogg":
+    case "flac":
+      return { IconComponent: FileAudio, color: "#e37933" };
+    case "mp4":
+    case "webm":
+    case "mov":
+    case "mkv":
+      return { IconComponent: FileVideo, color: "#e37933" };
+    case "txt":
+    case "md":
+    case "mdx":
+    case "log":
+      return { IconComponent: FileText, color: "#519aba" }; // Blue
+    case "pdf":
+      return { IconComponent: FileText, color: "#b30b00" }; // PDF Red
+    case "csv":
+    case "xls":
+    case "xlsx":
+      return { IconComponent: FileSpreadsheet, color: "#217346" }; // Excel Green
+    case "doc":
+    case "docx":
+      return { IconComponent: FileText, color: "#2b579a" }; // Word Blue
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+      return { IconComponent: FileCode2, color: "#f1e05a" }; // JS Yellow
+    case "ts":
+    case "tsx":
+      return { IconComponent: FileCode2, color: "#3178c6" }; // TS Blue
+    case "html":
+    case "htm":
+    case "xml":
+      return { IconComponent: FileCode2, color: "#e34c26" }; // HTML Red
+    case "css":
+    case "scss":
+    case "less":
+      return { IconComponent: FileCode2, color: "#563d7c" }; // CSS Purple
+    case "py":
+    case "pyw":
+      return { IconComponent: FileCode2, color: "#3572A5" }; // Python Blue
+    case "pyc":
+    case "pyd":
+    case "pyo":
+      return { IconComponent: FileArchive, color: "#519aba" }; // Python Bytecode
+    case "java":
+    case "jsp":
+      return { IconComponent: FileCode2, color: "#b07219" }; // Java Brown
+    case "class":
+      return { IconComponent: FileCode2, color: "#b07219" }; // Java Class
+    case "jar":
+    case "war":
+    case "ear":
+      return { IconComponent: FileArchive, color: "#b07219" }; // Java Archive
+    case "properties":
+      return { IconComponent: FileCog, color: "#b07219" }; // Java Properties
+    case "c":
+    case "cpp":
+    case "h":
+    case "hpp":
+      return { IconComponent: FileCode2, color: "#f34b7d" }; // C++ Pink
+    case "go":
+      return { IconComponent: FileCode2, color: "#00ADD8" }; // Go Cyan
+    case "rs":
+      return { IconComponent: FileCode2, color: "#dea584" }; // Rust Peach
+    case "sh":
+    case "bash":
+    case "zsh":
+      return { IconComponent: FileTerminal, color: "#4eaa25" }; // Shell Green
+    case "yml":
+    case "yaml":
+    case "toml":
+    case "ini":
+    case "conf":
+      return { IconComponent: FileCog, color: "#6e7681" }; // Grey config
+    default:
+      return { IconComponent: File }; // Inherits default text color
+  }
 }
 
 function basename(value = ""): string {
@@ -418,9 +572,13 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         {entry.isDirectory
           ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(entry.path); }}><ChevronRight size={14} /></button>
           : <span className="wb-file-tree-chevron is-placeholder" />}
-        {entry.isDirectory
-          ? <Folder size={15} className="wb-file-tree-icon" />
-          : <FileCode2 size={15} className="wb-file-tree-icon" />}
+        {(() => {
+          if (entry.isDirectory) {
+            return <Folder size={15} color="#dcb67a" className="wb-file-tree-icon" />;
+          }
+          const { IconComponent, color } = getFileIconComponent(entry.name);
+          return <IconComponent size={15} color={color} className="wb-file-tree-icon" />;
+        })()}
         <span className="wb-file-tree-label" title={entry.path}>{entry.name}</span>
       </div>;
       return expanded ? [row, ...renderTree(entry.path, depth + 1)] : [row];
@@ -443,7 +601,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
           onFocus={() => setSelectedPath(rootPath)}
           onClick={(event) => event.currentTarget.focus()}
           onContextMenu={(event) => openContextMenu(event, { path: rootPath, isDirectory: true })}
-        ><FolderOpen size={15} className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(rootPath)}</span></div>
+        ><FolderOpen size={15} color="#dcb67a" className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(rootPath)}</span></div>
         {renderTree(rootPath, 1)}
       </> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}
     </div>
