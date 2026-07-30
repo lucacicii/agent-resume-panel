@@ -455,6 +455,12 @@ function gitChangeKey(change: Pick<GitChange, "repoRoot" | "repoPath">): string 
   return `${change.repoRoot}\0${change.repoPath}`;
 }
 
+function gitChangeFilePath(change: Pick<GitChange, "repoRoot" | "repoPath">): string {
+  const repoRoot = change.repoRoot.replace(/[\\/]+$/, "");
+  const repoPath = change.repoPath.replace(/^[\\/]+/, "");
+  return `${repoRoot}/${repoPath}`;
+}
+
 function collectNodeChangeKeys(node: GitTreeNode): string[] {
   if (!node.isDirectory) return node.change ? [gitChangeKey(node.change)] : [];
   return node.children.flatMap(collectNodeChangeKeys);
@@ -509,6 +515,7 @@ function GitChangeTree({
   onToggleDir,
   onToggleKeys,
   onOpen,
+  onContextMenu,
   onDiscard,
   discardLabel
 }: {
@@ -520,6 +527,7 @@ function GitChangeTree({
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpen: (change: GitChange) => void;
+  onContextMenu: (event: React.MouseEvent, change: GitChange) => void;
   onDiscard: (change: GitChange) => void;
   discardLabel: string;
 }): React.JSX.Element {
@@ -537,12 +545,17 @@ function GitChangeTree({
             <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
           </button>
         </div>
-        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onDiscard={onDiscard} discardLabel={discardLabel} /></div> : null}
+        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} discardLabel={discardLabel} /></div> : null}
       </div>;
     }
     if (!node.change) return null;
     const key = gitChangeKey(node.change);
-    return <div className="wb-file-tree-row wb-git-tree-file" key={node.path} style={{ paddingLeft: `${8 + depth * 14}px` }}>
+    return <div
+      className="wb-file-tree-row wb-git-tree-file"
+      key={node.path}
+      style={{ paddingLeft: `${8 + depth * 14}px` }}
+      onContextMenu={(event) => onContextMenu(event, node.change!)}
+    >
       <GitTreeCheckbox state={selected.has(key)} ariaLabel={node.change.path} onChange={(checked) => onToggleKeys([key], checked)} />
       <button type="button" className="wb-git-tree-row-main" title={node.change.path} onClick={() => onOpen(node.change!)}>
         <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
@@ -585,6 +598,9 @@ function GitChangesPanel({
   onToggleDir,
   onToggleKeys,
   onOpenDiff,
+  onOpenFile,
+  onOpenExternal,
+  onCopyPath,
   onDiscard,
   onCommitMessageChange,
   onSuggestCommit,
@@ -604,6 +620,9 @@ function GitChangesPanel({
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpenDiff: (change: GitChange, staged: boolean) => void;
+  onOpenFile: (change: GitChange) => void;
+  onOpenExternal: (change: GitChange) => void;
+  onCopyPath: (change: GitChange) => void;
   onDiscard: (change: GitChange) => void;
   onCommitMessageChange: (value: string) => void;
   onSuggestCommit: () => void;
@@ -620,15 +639,39 @@ function GitChangesPanel({
     suggestedLlm: string;
     suggestedUnconfigured: string;
     suggestedFallback: string;
+    openFile: string;
+    openDefault: string;
+    copyPath: string;
     discard: string;
   };
 }): ReactPortal | null {
   const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ change: GitChange; x: number; y: number } | null>(null);
 
   useEffect(() => {
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-panel") : null);
   }, [visible, git, gitRoot]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => {
+    setContextMenu(null);
+  }, [visible, gitRoot]);
 
   if (!visible || !host) return null;
   if (!git?.isRepo && !git?.nestedRepos?.length) {
@@ -655,7 +698,7 @@ function GitChangesPanel({
         : labels.suggestedFallback
     : null;
 
-  return createPortal(<div className="react-git-panel wb-git-panel-layout">
+  return createPortal(<><div className="react-git-panel wb-git-panel-layout">
     {trackingLabel ? <p className="muted wb-git-tracking" title={tracking?.upstream || undefined}>{trackingLabel}</p> : null}
     <div className="wb-git-changes-scroll">
       {hasEntries ? sections.map((section) => {
@@ -678,6 +721,11 @@ function GitChangesPanel({
               onToggleDir={onToggleDir}
               onToggleKeys={onToggleKeys}
               onOpen={(change) => onOpenDiff(change, section.staged)}
+              onContextMenu={(event, change) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setContextMenu({ change, x: event.clientX, y: event.clientY });
+              }}
               onDiscard={onDiscard}
               discardLabel={labels.discard}
             />
@@ -728,7 +776,21 @@ function GitChangesPanel({
         </button>
       </div>
     </div>
-  </div>, host);
+  </div>
+    {contextMenu ? createPortal(<div
+      className="wb-context-menu wb-git-context-menu"
+      role="menu"
+      style={{
+        left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 196)),
+        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button type="button" role="menuitem" onClick={() => { onOpenFile(contextMenu.change); setContextMenu(null); }}>{labels.openFile}</button>
+      <button type="button" role="menuitem" onClick={() => { onOpenExternal(contextMenu.change); setContextMenu(null); }}>{labels.openDefault}</button>
+      <button type="button" role="menuitem" onClick={() => { onCopyPath(contextMenu.change); setContextMenu(null); }}>{labels.copyPath}</button>
+    </div>, document.body) : null}
+  </>, host);
 }
 
 export function collectDiffSearchMatches(oldText: string, newText: string, query: string): DiffSearchMatch[] {
@@ -1788,6 +1850,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [quickAccessLoading, setQuickAccessLoading] = useState(false);
   const [quickAccessTruncated, setQuickAccessTruncated] = useState(false);
   const [quickAccessError, setQuickAccessError] = useState("");
+  const [pendingExplorerReveal, setPendingExplorerReveal] = useState<{ rootPath: string; path: string } | null>(null);
   const searchSeqRef = useRef(0);
   const searchTimerRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -1859,6 +1922,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
+
+  useEffect(() => {
+    if (!pendingExplorerReveal || side !== "files") return;
+    if (projectPathKey(selectedProject || "") !== projectPathKey(pendingExplorerReveal.rootPath)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const explorer = fileExplorerRef.current;
+      if (!explorer) return;
+      void explorer.revealPath(pendingExplorerReveal.path).finally(() => {
+        setPendingExplorerReveal((current) => current === pendingExplorerReveal ? null : current);
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingExplorerReveal, selectedProject, side]);
   useEffect(() => { pendingSessionsRef.current = pendingSessions; }, [pendingSessions]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
@@ -3368,6 +3444,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     await openFile(file.path, undefined, rootPath);
   }, [closeQuickAccess, quickAccessRoot, syncEditorFromDisk]);
 
+  const openQuickAccessDirectory = useCallback((directory: QuickAccessFile) => {
+    const rootPath = quickAccessRoot;
+    if (!rootPath) return;
+    closeQuickAccess();
+    selectProject(rootPath);
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    setPendingExplorerReveal({ rootPath, path: directory.path });
+    setSide("files");
+  }, [closeQuickAccess, quickAccessRoot]);
+
   const reloadEditorFromDisk = useCallback(async (key: string) => {
     const editor = editorsRef.current.find((item) => item.key === key);
     if (!editor) return;
@@ -4336,6 +4422,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       onToggleDir={toggleGitDirectory}
       onToggleKeys={toggleGitSelectionKeys}
       onOpenDiff={(change, staged) => void openDiff(change, staged)}
+      onOpenFile={(change) => void openFile(gitChangeFilePath(change))}
+      onOpenExternal={(change) => {
+        if (!selectedProject) return;
+        void desktopApi().workbenchOpenPath({
+          rootPath: selectedProject,
+          filePath: gitChangeFilePath(change)
+        }).catch((error) => {
+          setStatus({ text: t("desktop.workbench.fileOpenExternalFailed", statusError(error)), kind: "error" });
+        });
+      }}
+      onCopyPath={(change) => {
+        try {
+          desktopApi().clipboardWriteText(gitChangeFilePath(change));
+          setStatus({ text: t("desktop.workbench.explorerPathCopied") });
+        } catch (error) {
+          setStatus({ text: t("desktop.workbench.explorerCopyPathFailed", statusError(error)), kind: "error" });
+        }
+      }}
       onDiscard={(change) => void discardGitChange(change)}
       onCommitMessageChange={setCommitMessage}
       onSuggestCommit={() => void suggestCommit()}
@@ -4352,6 +4456,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         suggestedLlm: t("desktop.workbench.gitCommitSuggestedLlm"),
         suggestedUnconfigured: t("desktop.workbench.gitCommitSuggestedUnconfigured"),
         suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback"),
+        openFile: t("desktop.workbench.fileOpen"),
+        openDefault: t("desktop.workbench.fileOpenDefault"),
+        copyPath: t("desktop.common.copyPath"),
         discard: t("desktop.workbench.gitDiscard")
       }}
     />
@@ -4395,6 +4502,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onQueryChange={setQuickAccessQuery}
       onClose={closeQuickAccess}
       onOpenFile={openQuickAccessFile}
+      onOpenDirectory={openQuickAccessDirectory}
       onSelectProject={(project) => selectProject(project.path)}
     />
   </>, host);
