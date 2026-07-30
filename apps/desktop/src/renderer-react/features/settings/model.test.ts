@@ -157,6 +157,19 @@ describe("settings model", () => {
     expect(patch.acp?.autoApprovePermissions).toBe("ask");
   });
 
+  it("preserves an explicit empty Workbench new-session target", () => {
+    const draft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { defaultNewSessionProvider: "claude", defaultNewSessionTarget: "" }
+    });
+    expect(draft.defaultNewSessionTarget).toBe("");
+    expect(draft.defaultProvider).toBe("claude");
+
+    const patch = workbenchPatch(settings, { ...draft, defaultNewSessionTarget: "" });
+    expect(patch.workbench?.defaultNewSessionTarget).toBe("");
+    expect(patch.workbench?.defaultNewSessionProvider).toBe("claude");
+  });
+
   it("defaults and normalizes workbench terminal theme presets", () => {
     const defaultDraft = workbenchDraftFromSettings(settings);
     expect(defaultDraft.terminalTheme).toBe("default-dark");

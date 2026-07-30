@@ -53,6 +53,7 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
           scheduleSave(next);
         }}
       >
+        <option value="">{t("desktop.settings.newSessionTarget.askEveryTime")}</option>
         <optgroup label={t("desktop.settings.newSessionGroupCli")}>
           {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => (
             <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>

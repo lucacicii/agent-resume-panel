@@ -345,6 +345,9 @@ function numberInRange(value: number | undefined, fallback: number, min: number,
 function normalizeNewSessionTarget(settings: PanelSettings): string {
   const workbench = settings.workbench;
   const raw = workbench?.defaultNewSessionTarget?.trim();
+  if (workbench && Object.prototype.hasOwnProperty.call(workbench, "defaultNewSessionTarget") && raw === "") {
+    return "";
+  }
   if (raw && WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === raw)) {
     return raw;
   }
@@ -403,7 +406,9 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
 }
 
 export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): Partial<PanelSettings> {
-  const target = WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === draft.defaultNewSessionTarget)
+  const target = draft.defaultNewSessionTarget === ""
+    ? ""
+    : WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === draft.defaultNewSessionTarget)
     ? draft.defaultNewSessionTarget
     : "cli:codex";
   const cliProvider = target.startsWith("cli:")

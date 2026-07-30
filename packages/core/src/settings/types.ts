@@ -177,6 +177,7 @@ export interface WorkbenchSettings {
   defaultNewSessionProvider?: AgentProvider;
   /**
    * Composite default for Workbench new session: `cli:{provider}` or `acp:{provider}`.
+   * An explicit empty string means prompt for a target each time.
    * When unset, falls back to `cli:{defaultNewSessionProvider || "codex"}`.
    */
   defaultNewSessionTarget?: WorkbenchNewSessionTarget;
