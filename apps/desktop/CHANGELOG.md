@@ -8,11 +8,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
-### [Unreleased]
+### [0.2.10]
 
 #### Added
 
-- **Workbench file history**: right-click a file in Explorer to inspect commits from all local and remote-tracking branches, including history before file renames
+- **Workbench file history**: right-click a file in Explorer to inspect commits from all local and remote-tracking branches, including history before file renames ("文件历史" / "File History")
+- **Directory-level Git discard**: discard Git changes for an entire directory directly from the project explorer or Git changes panel
+- **Git changes context menu**: right-click changed files to open the file in editor or copy absolute / relative path
+
+#### Improved
+
+- **Explorer and editor sync**: active open files auto-reveal and synchronize tree highlight state in the project explorer
+- **Quick Access search & switching**: optimized path indexing and search performance for Cmd+P in large projects, along with improved project switching response
+- **Settings i18n**: localized tool interaction and execution tracking settings across English, Chinese, and Japanese
+
+#### Fixed
+
+- **Workbench editor find**: pressing Enter in the editor Find input bar now correctly advances to the next search match
 
 ### [0.2.9]
 
@@ -297,7 +309,42 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## 简体中文
 
-### [Unreleased]
+### [0.2.10]
+
+#### 新增
+
+- **Workbench 文件历史**：右键资源管理器文件可查看全分支（含本地与远程跟踪分支）提交记录，并支持追溯重命名以前的历史
+- **目录级 Git 改动回退**：支持在资源管理器与 Git 变更列表中右键选择目录并一键回退该目录下的全部 Git 改动
+- **Git 变更右键菜单**：右键 Git 变更文件支持直接打开文件、复制绝对路径与相对路径
+
+#### 改进
+
+- **资源管理器与编辑器同步**：在编辑器中切换文件时，资源管理器会自动展开并高亮当前活动文件
+- **Quick Access 搜索与项目切换**：优化大项目 Cmd+P 路径索引与匹配性能，修正快捷面板项目切换行为
+- **设置国际化**：补充工具交互与执行追踪设置的英文、中文及日文国际化文案
+
+#### 修复
+
+- **Workbench 编辑器查找**：在编辑器查找输入框中按下 Enter 键现在可正确跳转到下一个匹配项
+
+### [0.2.9]
+
+#### 新增
+
+- **Workbench Quick Access**：在打开文件或会话前，使用键盘友好的项目选择器快速切换项目
+- **Workbench 文件操作**：在资源管理器中支持复制文件路径，以及剪切、复制、粘贴与删除文件
+- **全量会话列表**：Workbench 与 Sessions 视图可全量展示合并的 Session 目录与 ACP 对话历史
+
+#### 改进
+
+- **Workbench 编辑器同步**：实时监听工作区文件变动，当磁盘文件发生修改或删除时提示冲突并刷新
+- **Git 流程体验**：改进内嵌 diff 查找跳转、推送/拉取/提交通知提示，并保持编辑器与文件树状态同步
+- **Workbench 导航交互**：优化项目选择、资源管理器刷新以及待绑定会话的操作可靠性
+
+#### 修复
+
+- 在资源管理器中复制路径统一步骤使用桌面端本地化文案
+- Git 推送成功后自动清空提交信息输入框
 
 ### [0.2.8]
 

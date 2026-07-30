@@ -32,7 +32,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 ### Workbench highlights
 
 - **Quick Access**: select a project quickly before working in the Workbench.
-- **Explorer**: copy paths and cut, copy, paste, or delete project files; open files update when the workspace changes externally.
+- **Explorer**: inspect full-branch file history ("File History"), discard folder-level Git changes, copy paths, and cut/copy/paste/delete project files; open files update when workspace files change.
 - **Search** side panel: find text across the selected project (case / whole word / regex) and open hits in the file editor.
 - **Scripts**: run package manager, Make, Gradle, Python, and Cargo scripts into the active terminal.
 - **Terminal themes**: Default Dark/Light, Solarized, One Dark, Dracula under **Settings → Workbench**.
@@ -79,7 +79,7 @@ The service exposes 20 tools: 11 for Notes and note GTD, 3 for Reports, and 6 fo
 
 ### Workbench 要点
 
-- **Search** 侧栏：在当前项目中检索文本（大小写 / 整词 / 正则），点击结果在编辑器中打开。
+- **Explorer**：支持右键查看文件历史（跨分支追溯重名前记录）、目录级 Git 改动回退、复制路径与文件剪切/复制/粘贴/删除；打开的编辑器监听工作区变动。
 - **Scripts**：将 npm / pnpm / yarn / bun、Make、Gradle、Python、Cargo 等脚本写入当前终端执行。
 - **终端主题**：在 **设置 → Workbench** 中选择 Default Dark/Light、Solarized、One Dark、Dracula。
 - **Git**：支持按文件选择提交、跟踪状态提示，分支控件位于详情头部。
