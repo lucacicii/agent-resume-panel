@@ -145,6 +145,8 @@ export function QuickAccess({
   labels,
   onModeChange,
   onQueryChange,
+  onEnterProjectMode,
+  onLeaveProjectMode,
   onClose,
   onOpenFile,
   onOpenDirectory,
@@ -165,6 +167,8 @@ export function QuickAccess({
   labels: QuickAccessLabels;
   onModeChange: (mode: QuickAccessMode) => void;
   onQueryChange: (query: string) => void;
+  onEnterProjectMode?: () => void;
+  onLeaveProjectMode?: () => void;
   onClose: () => void;
   onOpenFile: (file: QuickAccessFile) => void | Promise<void>;
   onOpenDirectory?: (directory: QuickAccessFile) => void | Promise<void>;
@@ -209,8 +213,13 @@ export function QuickAccess({
     if (!open) return;
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      input?.focus();
+      if (input?.value.startsWith(">")) {
+        input.setSelectionRange(input.value.length, input.value.length);
+      } else {
+        input?.select();
+      }
     });
     return () => {
       window.cancelAnimationFrame(frame);
@@ -238,12 +247,20 @@ export function QuickAccess({
 
   const enterProjectMode = () => {
     if (mode !== "files") return;
+    if (onEnterProjectMode) {
+      onEnterProjectMode();
+      return;
+    }
     savedFileQueryRef.current = query;
     onModeChange("projects");
     onQueryChange("");
   };
 
   const leaveProjectMode = () => {
+    if (onLeaveProjectMode) {
+      onLeaveProjectMode();
+      return;
+    }
     onModeChange("files");
     onQueryChange(savedFileQueryRef.current);
   };

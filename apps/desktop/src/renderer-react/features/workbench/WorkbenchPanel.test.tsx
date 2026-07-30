@@ -1226,7 +1226,7 @@ describe("WorkbenchPanel", () => {
     }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -1236,7 +1236,10 @@ describe("WorkbenchPanel", () => {
       onTerminalRespawned: () => () => undefined,
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "claude", id: "session-2", title: "Other project", projectPath: "/work/other", updatedAt: 1 }
+      ],
       workbenchSearchText,
       workbenchSearchTextCancel: async () => ({ ok: true }),
       workbenchInspectFile,
@@ -1287,6 +1290,32 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-editor-find-count")?.textContent).not.toBe(""));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(document.querySelector(".wb-editor-find-input")).toBeNull();
+
+    const projectSearchInput = screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement;
+    projectSearchInput.setSelectionRange(2, 2);
+    fireEvent.keyDown(projectSearchInput, { key: "ArrowLeft" });
+    expect(screen.queryByRole("combobox", { name: "Select project" })).toBeNull();
+
+    projectSearchInput.setSelectionRange(0, 0);
+    fireEvent.keyDown(projectSearchInput, { key: "ArrowLeft" });
+    let projectPicker = screen.getByRole("combobox", { name: "Select project" });
+    expect(screen.getByRole("option", { name: /app.*\/work\/app/i }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(projectPicker, { key: "Escape" });
+    expect((screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement).value).toBe("findme");
+
+    const restoredSearchInput = screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement;
+    restoredSearchInput.setSelectionRange(0, 0);
+    fireEvent.keyDown(restoredSearchInput, { key: "ArrowLeft" });
+    projectPicker = screen.getByRole("combobox", { name: "Select project" });
+    fireEvent.keyDown(projectPicker, { key: "ArrowDown" });
+    fireEvent.keyDown(projectPicker, { key: "Enter" });
+
+    expect((screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement).value).toBe("findme");
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPath: "/work/other", query: "findme" })
+    ));
+    expect(screen.getByText("Search")).toBeTruthy();
   });
 
   it("opens a Git change from its context menu in Workbench or the default app", async () => {
@@ -1518,5 +1547,73 @@ describe("WorkbenchPanel", () => {
     } finally {
       window.removeEventListener("agent-resume:tab-request", onTabRequest);
     }
+  });
+
+  it("switches projects from the command palette and closes Quick Access", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    localStorage.setItem("workbench-selected-project", "/work/app");
+    localStorage.setItem("workbench-quick-access-project", "/work/app");
+    let openCommands: () => void = () => undefined;
+    const onTabRequest = vi.fn();
+    window.addEventListener("agent-resume:tab-request", onTabRequest);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.quickAccessDialog": "Quick Access",
+        "desktop.workbench.quickAccessFilePlaceholder": "Search files by path",
+        "desktop.workbench.quickAccessProjectPlaceholder": "Search projects",
+        "desktop.workbench.quickAccessCommandPlaceholder": "Type a command",
+        "desktop.workbench.quickAccessNoFiles": "No files",
+        "desktop.workbench.quickAccessNoProjects": "No projects",
+        "desktop.workbench.quickAccessNoCommands": "No commands",
+        "desktop.workbench.quickAccessNoProject": "No project",
+        "desktop.workbench.quickAccessClose": "Close",
+        "desktop.workbench.quickAccessSelectProject": "Select project",
+        "desktop.workbench.quickAccessSwitchProject": "Workbench: Switch Project…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdP: () => () => undefined,
+      onWorkbenchCmdShiftP: (callback: () => void) => { openCommands = callback; return () => undefined; },
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "App", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "claude", id: "session-2", title: "Other", projectPath: "/work/other", updatedAt: 1 }
+      ]
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(screen.getByTitle("/work/app")).toBeTruthy());
+    await act(async () => openCommands());
+
+    let input = await screen.findByRole("combobox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: ">switch" } });
+    expect(await screen.findByRole("option", { name: "Workbench: Switch Project…" })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    input = screen.getByRole("combobox") as HTMLInputElement;
+    expect(input.placeholder).toBe("Search projects");
+    expect(screen.getByRole("option", { name: /app.*\/work\/app/i }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    input = screen.getByRole("combobox") as HTMLInputElement;
+    expect(input.value).toBe(">switch");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    input = screen.getByRole("combobox");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Quick Access" })).toBeNull());
+    expect(localStorage.getItem("workbench-selected-project")).toBe("/work/other");
+    expect(onTabRequest).toHaveBeenCalledWith(expect.objectContaining({ detail: "workbench" }));
+    window.removeEventListener("agent-resume:tab-request", onTabRequest);
   });
 });

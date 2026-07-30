@@ -44,6 +44,7 @@ import {
 } from "./WorkbenchFileExplorer";
 import {
   QuickAccess,
+  rankQuickAccessProjects,
   type QuickAccessCommand,
   type QuickAccessFile,
   type QuickAccessMode,
@@ -1843,6 +1844,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [searchError, setSearchError] = useState("");
   const [searchExpanded, setSearchExpanded] = useState<Set<string>>(() => new Set());
   const [searchSelectedKey, setSearchSelectedKey] = useState("");
+  const [searchProjectMode, setSearchProjectMode] = useState(false);
+  const [searchProjectQuery, setSearchProjectQuery] = useState("");
+  const [searchProjectSelectionId, setSearchProjectSelectionId] = useState("");
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
   const [quickAccessQuery, setQuickAccessQuery] = useState("");
@@ -1856,9 +1860,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   const searchSeqRef = useRef(0);
   const searchTimerRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchProjectOptionRefs = useRef(new Map<string, HTMLButtonElement>());
   const quickAccessCacheRef = useRef(new Map<string, { files: QuickAccessFile[]; truncated: boolean }>());
   const quickAccessRequestRef = useRef(0);
   const quickAccessSearchRequestRef = useRef(0);
+  const quickAccessProjectContextRef = useRef<{
+    mode: Exclude<QuickAccessMode, "projects">;
+    query: string;
+    closeOnSelect: boolean;
+  }>({ mode: "files", query: "", closeOnSelect: false });
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const [editorFindOpen, setEditorFindOpen] = useState(false);
   const [editorFindQuery, setEditorFindQuery] = useState("");
@@ -2375,7 +2385,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
   }, [activePane, closeEditorFind, selectedProject]);
 
-  const selectProject = (project: string | null, options?: { keepSessionKey?: boolean }) => {
+  const selectProject = (project: string | null, options?: { keepSessionKey?: boolean; keepSide?: boolean }) => {
     setSelectedProject((current) => {
       if (current === project) return current;
       return project;
@@ -2388,7 +2398,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       else localStorage.removeItem(PROJECT_KEY);
     } catch { /* persistence is optional */ }
     if (!options?.keepSessionKey) setActiveSessionKey("");
-    setSide(null);
+    if (!options?.keepSide) setSide(null);
     setGit(null);
     setGitLog(null);
     setGitShow(null);
@@ -2751,6 +2761,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     const openSearchPanel = () => {
       if (!active) return;
+      setSearchProjectMode(false);
+      setSearchProjectQuery("");
       setSide("search");
       window.requestAnimationFrame(() => {
         searchInputRef.current?.focus();
@@ -3401,6 +3413,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setContextMenu(null);
     setBranchPane(null);
     setProjectPickDialog(null);
+    quickAccessProjectContextRef.current = { mode: "files", query: "", closeOnSelect: false };
     setQuickAccessMode(mode);
     setQuickAccessQuery("");
     setQuickAccessSearchFiles([]);
@@ -3456,6 +3469,22 @@ export function WorkbenchPanel(): ReactPortal | null {
     const api = desktopApi();
     if (typeof api.workbenchListFilesCancel === "function") void api.workbenchListFilesCancel().catch(() => undefined);
     if (typeof api.workbenchSearchPathsCancel === "function") void api.workbenchSearchPathsCancel().catch(() => undefined);
+  }, []);
+
+  const enterQuickAccessProjectMode = useCallback((closeOnSelect = false) => {
+    quickAccessProjectContextRef.current = {
+      mode: quickAccessMode === "commands" ? "commands" : "files",
+      query: quickAccessQuery,
+      closeOnSelect
+    };
+    setQuickAccessMode("projects");
+    setQuickAccessQuery("");
+  }, [quickAccessMode, quickAccessQuery]);
+
+  const leaveQuickAccessProjectMode = useCallback(() => {
+    const context = quickAccessProjectContextRef.current;
+    setQuickAccessMode(context.mode);
+    setQuickAccessQuery(context.query);
   }, []);
 
   useEffect(() => {
@@ -3667,7 +3696,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     if (side === "search") {
       window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return;
     }
+    setSearchProjectMode(false);
+    setSearchProjectQuery("");
   }, [side]);
 
   useEffect(() => {
@@ -4126,6 +4158,69 @@ export function WorkbenchPanel(): ReactPortal | null {
     pinned: project.pinned,
     disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
   })), [allProjects, t]);
+  const searchProjectResults = useMemo(
+    () => rankQuickAccessProjects(quickAccessProjects, searchProjectQuery),
+    [quickAccessProjects, searchProjectQuery]
+  );
+  const searchProjectResultIds = searchProjectResults.map((project) => project.id);
+  const searchProjectResultSignature = searchProjectResultIds.join("\0");
+  const searchProjectCurrentPath = selectedProjectMeta?.path || selectedProject || "";
+  const searchProjectCurrentId = !searchProjectQuery.trim()
+    ? searchProjectResults.find((project) => projectPathKey(project.path) === projectPathKey(searchProjectCurrentPath))?.id || ""
+    : "";
+  const searchProjectSelectedIndex = searchProjectSelectionId
+    ? searchProjectResultIds.indexOf(searchProjectSelectionId)
+    : -1;
+  const searchProjectActiveIndex = searchProjectSelectedIndex >= 0
+    ? searchProjectSelectedIndex
+    : searchProjectResults.length ? 0 : -1;
+  const searchProjectActive = searchProjectActiveIndex >= 0
+    ? searchProjectResults[searchProjectActiveIndex]
+    : undefined;
+  const searchProjectOptionId = (projectId: string) => `wb-search-project-${encodeURIComponent(projectId)}`;
+
+  useEffect(() => {
+    if (!searchProjectMode) return;
+    setSearchProjectSelectionId((current) => {
+      if (current && searchProjectResultIds.includes(current)) return current;
+      return searchProjectCurrentId || searchProjectResultIds[0] || "";
+    });
+  }, [searchProjectCurrentId, searchProjectMode, searchProjectResultSignature]);
+
+  useEffect(() => {
+    if (!searchProjectMode || !searchProjectActive) return;
+    searchProjectOptionRefs.current.get(searchProjectActive.id)?.scrollIntoView?.({ block: "nearest" });
+  }, [searchProjectActive?.id, searchProjectMode]);
+
+  const enterSearchProjectMode = () => {
+    setSearchProjectQuery("");
+    setSearchProjectSelectionId("");
+    setSearchProjectMode(true);
+  };
+  const leaveSearchProjectMode = () => {
+    setSearchProjectMode(false);
+    setSearchProjectQuery("");
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  };
+  const moveSearchProjectSelection = (offset: -1 | 1) => {
+    if (!searchProjectResults.length) return;
+    const currentIndex = searchProjectActiveIndex >= 0
+      ? searchProjectActiveIndex
+      : offset > 0 ? -1 : 0;
+    const nextIndex = (currentIndex + offset + searchProjectResults.length) % searchProjectResults.length;
+    setSearchProjectSelectionId(searchProjectResults[nextIndex].id);
+  };
+  const activateSearchProject = (project = searchProjectActive) => {
+    if (!project || project.disabledReason) return;
+    selectProject(project.path, { keepSide: true });
+    leaveSearchProjectMode();
+  };
+  const searchProjectLabel = selectedProjectMeta
+    ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
+    : t("desktop.workbench.quickAccessSelectProject");
   const noProjectReason = quickAccessRoot ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
   const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
@@ -4134,7 +4229,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (quickAccessRoot) selectProject(quickAccessRoot);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     if (view) setSide(view);
-    if (view === "search") window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    if (view === "search") {
+      setSearchProjectMode(false);
+      setSearchProjectQuery("");
+      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
   };
   const navigateTo = (tab: "report" | "agent" | "workbench" | "notes") => {
     closeQuickAccess();
@@ -4152,6 +4251,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         setQuickAccessQuery("");
         if (quickAccessRoot) void loadQuickAccessFiles(quickAccessRoot);
       }
+    },
+    {
+      id: "workbench.switchProject",
+      label: t("desktop.workbench.quickAccessSwitchProject"),
+      keywords: "project workspace switch select",
+      run: () => enterQuickAccessProjectMode(true)
     },
     { id: "file.findInFiles", label: t("desktop.workbench.quickAccessFindInFiles"), keywords: "search project content", shortcut: macShortcuts ? "⌘⇧F" : "Ctrl+Shift+F", disabledReason: noProjectReason, run: () => openWorkbenchView("search") },
     { id: "file.save", label: t("desktop.workbench.quickAccessSaveCurrentFile"), keywords: "write editor", shortcut: shortcut("S"), disabledReason: currentEditor ? undefined : t("desktop.workbench.quickAccessNoActiveEditor"), run: () => { closeQuickAccess(); if (currentEditor) void saveEditor(currentEditor.key); } },
@@ -4341,7 +4446,102 @@ export function WorkbenchPanel(): ReactPortal | null {
               onSessionReady={refreshSessionsAfterAcpConnect}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><LoaderCircle className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} onOpenFile={(path) => void openFile(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane"><div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div><div className="wb-search-pane"><div className="wb-search-form" role="search"><input ref={searchInputRef} type="search" className="wb-search-input" value={searchQuery} placeholder={t("desktop.workbench.searchPlaceholder")} aria-label={t("desktop.workbench.sidePanelSearch")} autoComplete="off" spellCheck={false} disabled={!selectedProject} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }} /><div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}><button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button><button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button><button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button></div></div>{!selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}</div></div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} onOpenFile={(path) => void openFile(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ChevronRight size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><RefreshCw size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
+            <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
+            <div className="wb-search-pane">
+              <div className="wb-search-form" role="search">
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  role={searchProjectMode ? "combobox" : undefined}
+                  className="wb-search-input"
+                  value={searchProjectMode ? searchProjectQuery : searchQuery}
+                  placeholder={t(searchProjectMode ? "desktop.workbench.quickAccessProjectPlaceholder" : "desktop.workbench.searchPlaceholder")}
+                  aria-label={t(searchProjectMode ? "desktop.workbench.quickAccessSelectProject" : "desktop.workbench.sidePanelSearch")}
+                  aria-expanded={searchProjectMode ? true : undefined}
+                  aria-controls={searchProjectMode ? "wb-search-project-results" : undefined}
+                  aria-activedescendant={searchProjectMode && searchProjectActive ? searchProjectOptionId(searchProjectActive.id) : undefined}
+                  aria-autocomplete={searchProjectMode ? "list" : undefined}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => searchProjectMode
+                    ? setSearchProjectQuery(event.target.value)
+                    : setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (searchProjectMode) {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        leaveSearchProjectMode();
+                      } else if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        moveSearchProjectSelection(1);
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        moveSearchProjectSelection(-1);
+                      } else if (event.key === "Home") {
+                        event.preventDefault();
+                        setSearchProjectSelectionId(searchProjectResults[0]?.id || "");
+                      } else if (event.key === "End") {
+                        event.preventDefault();
+                        setSearchProjectSelectionId(searchProjectResults[searchProjectResults.length - 1]?.id || "");
+                      } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        activateSearchProject();
+                      }
+                      return;
+                    }
+                    if (event.key === "ArrowLeft"
+                      && event.currentTarget.selectionStart === 0
+                      && event.currentTarget.selectionEnd === 0) {
+                      event.preventDefault();
+                      enterSearchProjectMode();
+                    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      window.clearTimeout(searchTimerRef.current);
+                      void runProjectSearch(searchQuery);
+                    }
+                  }}
+                />
+                {!searchProjectMode ? <>
+                  <button
+                    type="button"
+                    className="wb-search-scope"
+                    aria-label={t("desktop.workbench.quickAccessSelectProject")}
+                    title={searchProjectLabel}
+                    onClick={enterSearchProjectMode}
+                  ><ChevronLeft size={13} aria-hidden="true" /><span>{searchProjectLabel}</span></button>
+                  <div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}>
+                    <button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button>
+                    <button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button>
+                    <button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button>
+                  </div>
+                </> : null}
+              </div>
+              {searchProjectMode ? <div className="wb-search-project-results" id="wb-search-project-results" role="listbox">
+                {searchProjectResults.length ? searchProjectResults.map((project, index) => {
+                  const disabled = Boolean(project.disabledReason);
+                  const selected = index === searchProjectActiveIndex;
+                  return <button
+                    ref={(node) => { if (node) searchProjectOptionRefs.current.set(project.id, node); else searchProjectOptionRefs.current.delete(project.id); }}
+                    type="button"
+                    role="option"
+                    id={searchProjectOptionId(project.id)}
+                    aria-selected={selected}
+                    aria-disabled={disabled}
+                    className={`wb-search-project-row${selected ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
+                    key={project.id}
+                    onMouseMove={() => setSearchProjectSelectionId(project.id)}
+                    onClick={() => activateSearchProject(project)}
+                  >
+                    <Folder size={15} aria-hidden="true" />
+                    <span className="wb-search-project-copy"><span className="wb-search-project-label">{project.label}</span><span className="wb-search-project-detail">{project.disabledReason || project.detail}</span></span>
+                    {project.pinned ? <Pin size={12} aria-hidden="true" /> : null}
+                  </button>;
+                }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
+              </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ChevronRight size={12} /></span><FileCode2 size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}
+            </div>
+          </div> : <div className="wb-side-pane"><div className="wb-side-pane-head wb-git-pane-head"><span className="wb-side-pane-title">{gitLog ? t("desktop.workbench.gitLogTitle") : t("desktop.workbench.sidePanelGit")}</span><div className="wb-git-actions">{gitLog ? <button type="button" className="wb-git-action-btn" onClick={() => { setGitLog(null); setGitShow(null); }} aria-label={t("desktop.workbench.gitLogBackToChanges")}><ChevronLeft size={15} /></button> : <><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ChevronRight size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ChevronDown size={15} /></button><button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><History size={15} /></button><button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><RefreshCw size={15} className={gitRefreshing ? "spin" : undefined} /></button></>}</div></div>{gitLog ? <div className="wb-log-body">{gitShow ? <><button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ChevronLeft size={15} /></button><h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4><p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p><pre className="wb-git-log-detail-body">{gitShow.body}</pre><div className="wb-git-log-files">{gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>)}</div></> : <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><Circle size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>}</div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>{gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}{changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}{!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}</> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}</div>}</aside></> : null}
         </div>
       </main>
     </div>
@@ -4551,10 +4751,18 @@ export function WorkbenchPanel(): ReactPortal | null {
         setQuickAccessMode(mode);
       }}
       onQueryChange={setQuickAccessQuery}
+      onEnterProjectMode={() => enterQuickAccessProjectMode(false)}
+      onLeaveProjectMode={leaveQuickAccessProjectMode}
       onClose={closeQuickAccess}
       onOpenFile={openQuickAccessFile}
       onOpenDirectory={openQuickAccessDirectory}
-      onSelectProject={(project) => selectProject(project.path)}
+      onSelectProject={(project) => {
+        selectProject(project.path);
+        if (quickAccessProjectContextRef.current.closeOnSelect) {
+          window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+          closeQuickAccess();
+        }
+      }}
     />
   </>, host);
 }

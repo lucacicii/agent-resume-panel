@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -140,7 +140,7 @@ describe("QuickAccess", () => {
     expect(openDirectory).toHaveBeenCalledWith(expect.objectContaining({ path: "/work/src" }));
   });
 
-  it("supports keyboard selection and command execution", () => {
+  it("keeps the command prefix unselected while supporting keyboard execution", async () => {
     const first = vi.fn();
     const second = vi.fn();
     render(<QuickAccess
@@ -166,7 +166,13 @@ describe("QuickAccess", () => {
       onOpenFile={() => undefined}
       onSelectProject={() => undefined}
     />);
-    const input = screen.getByRole("combobox");
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input);
+      expect(input.selectionStart).toBe(1);
+      expect(input.selectionEnd).toBe(1);
+    });
+
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(first).not.toHaveBeenCalled();
