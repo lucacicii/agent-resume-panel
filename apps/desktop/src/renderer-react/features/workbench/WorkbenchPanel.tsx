@@ -24,7 +24,10 @@ import type {
   PanelSettings,
   WorkbenchProjectContextMenuAction
 } from "@agent-resume/core";
-import { DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU } from "../settings/model";
+import {
+  DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
+  WORKBENCH_NEW_SESSION_TARGET_OPTIONS
+} from "../settings/model";
 import {
   ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileCode2, Folder,
   FileDiff, FolderTree, GitBranch, History, LoaderCircle, PanelRight, Pin, Play,
@@ -240,6 +243,13 @@ type WorkbenchContextMenu = {
   projectId?: string;
   session?: AgentSession;
   editorLabel?: string;
+};
+type WorkbenchNewSessionTarget =
+  | { channel: "cli"; provider: AgentProvider }
+  | { channel: "acp"; provider: string };
+type WorkbenchNewSessionPicker = {
+  projectPath?: string;
+  projectId?: string;
 };
 type WorkbenchRenameDialog = {
   kind: "project" | "session";
@@ -1935,6 +1945,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
+  const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
@@ -1960,6 +1971,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const sessionSearchInputRef = useRef<HTMLInputElement>(null);
   const sessionSearchButtonRef = useRef<HTMLButtonElement>(null);
   const sessionSearchToolbarRef = useRef<HTMLDivElement>(null);
+  const newSessionButtonRef = useRef<HTMLButtonElement>(null);
+  const newSessionPickerRef = useRef<HTMLDivElement>(null);
 
   const notifyGitSuccess = useCallback((key: string, ...args: Array<string | number>) => {
     notifyDesktop({ text: t(key, ...args), kind: "ok" });
@@ -2122,6 +2135,34 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!newSessionPicker) return;
+    const dismiss = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)
+        || (!newSessionPickerRef.current?.contains(target) && !newSessionButtonRef.current?.contains(target))) {
+        setNewSessionPicker(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setNewSessionPicker(null);
+        newSessionButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    const frame = window.requestAnimationFrame(() => {
+      newSessionPickerRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]')?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [newSessionPicker]);
 
   useEffect(() => {
     if (!branchPane) return;
@@ -2697,10 +2738,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     finally { setTerminalCreating(false); }
   }, [addTerminal, currentShellTerminals.length, selectedProject, t, terminalCreating]);
 
-  const resolveNewSessionTarget = useCallback(():
-    | { channel: "cli"; provider: AgentProvider }
-    | { channel: "acp"; provider: string } => {
-    const raw = String(settings?.workbench?.defaultNewSessionTarget || "").trim();
+  const parseNewSessionTarget = useCallback((rawValue: string): WorkbenchNewSessionTarget | null => {
+    const raw = rawValue.trim();
     if (raw.startsWith("acp:")) {
       const provider = raw.slice(4);
       if (["claude", "codex", "grok", "opencode", "pi"].includes(provider)) {
@@ -2710,19 +2749,42 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (raw.startsWith("cli:")) {
       return { channel: "cli", provider: (raw.slice(4) || "codex") as AgentProvider };
     }
+    return null;
+  }, []);
+
+  const resolveNewSessionTarget = useCallback((): WorkbenchNewSessionTarget | null => {
+    const workbench = settings?.workbench;
+    const raw = String(workbench?.defaultNewSessionTarget ?? "").trim();
+    if (workbench && Object.prototype.hasOwnProperty.call(workbench, "defaultNewSessionTarget") && raw === "") {
+      return null;
+    }
+    const target = parseNewSessionTarget(raw);
+    if (target) return target;
     return {
       channel: "cli",
-      provider: (settings?.workbench?.defaultNewSessionProvider || "codex") as AgentProvider
+      provider: (workbench?.defaultNewSessionProvider || "codex") as AgentProvider
     };
-  }, [settings?.workbench?.defaultNewSessionProvider, settings?.workbench?.defaultNewSessionTarget]);
+  }, [parseNewSessionTarget, settings?.workbench]);
 
-  const newSession = useCallback(async () => {
+  const launchNewSession = useCallback(async (
+    target: WorkbenchNewSessionTarget,
+    targetProject?: string,
+    projectId?: string
+  ) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      const cwd = selectedProject || await desktopApi().createScratchDir();
+      let cwd = targetProject || selectedProject || await desktopApi().createScratchDir();
+      if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
+        const resolved = await desktopApi().resolveProjectCwd({ projectId });
+        if (resolved.source === "missing" || !resolved.cwd) {
+          setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
+          return;
+        }
+        cwd = resolved.cwd;
+      }
       if (!selectedProject) selectProject(cwd);
-      const target = resolveNewSessionTarget();
+      else if (targetProject && projectPathKey(selectedProject) !== projectPathKey(cwd)) selectProject(cwd);
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record);
@@ -2738,39 +2800,45 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, resolveNewSessionTarget, selectedProject, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, selectedProject, t, terminalCreating]);
 
-  const newSessionForProject = useCallback(async (cwd: string, projectId?: string) => {
+  const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
-    setTerminalCreating(true);
-    try {
-      let resolvedCwd = cwd;
-      if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
-        const resolved = await desktopApi().resolveProjectCwd({ projectId });
-        if (resolved.source === "missing" || !resolved.cwd) {
-          setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
-          return;
-        }
-        resolvedCwd = resolved.cwd;
-      }
-      const target = resolveNewSessionTarget();
-      selectProject(resolvedCwd);
-      if (target.channel === "acp") {
-        const record = await desktopApi().acpCreateSession({ projectPath: resolvedCwd, provider: target.provider });
-        addAcpChat(record);
-        await loadSessions();
-      } else {
-        const result = await desktopApi().workbenchNewSession({ cwd: resolvedCwd, provider: target.provider as AgentProvider });
-        if (result.mode === "xterm" && result.command) {
-          const title = t("desktop.workbench.newSessionTitle", basename(resolvedCwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, resolvedCwd, undefined, "session");
-          addPendingSession(terminalKey, target.provider, resolvedCwd, title);
-        }
-        await loadSessions();
-      }
-    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-    finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, resolveNewSessionTarget, t, terminalCreating]);
+    const target = resolveNewSessionTarget();
+    if (!target) {
+      setNewSessionPicker({ projectPath: targetProject, projectId });
+      return;
+    }
+    await launchNewSession(target, targetProject, projectId);
+  }, [launchNewSession, resolveNewSessionTarget, terminalCreating]);
+
+  const newSession = useCallback(() => requestNewSession(), [requestNewSession]);
+  const newSessionForProject = useCallback(
+    (cwd: string, projectId?: string) => requestNewSession(cwd, projectId),
+    [requestNewSession]
+  );
+
+  const chooseNewSessionTarget = useCallback(async (rawTarget: string) => {
+    const target = parseNewSessionTarget(rawTarget);
+    const picker = newSessionPicker;
+    if (!target || !picker) return;
+    setNewSessionPicker(null);
+    await launchNewSession(target, picker.projectPath, picker.projectId);
+  }, [launchNewSession, newSessionPicker, parseNewSessionTarget]);
+
+  const handleNewSessionPickerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')];
+    if (!buttons.length) return;
+    event.preventDefault();
+    const current = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? buttons.length - 1
+        : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  }, []);
 
   const openSessionSearch = () => {
     setSessionSearchOpen(true);
@@ -2872,12 +2940,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         return;
       }
       if (!editorFindOpen) return;
-      if (event.key === "Enter" && !event.isComposing) {
+      const input = editorFindInputRef.current;
+      if (input && event.key === "Enter" && !event.isComposing && event.target === input) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        const input = editorFindInputRef.current;
-        runEditorFind(event.shiftKey ? "backward" : "forward", input && event.target === input ? input.value : undefined);
+        runEditorFind(event.shiftKey ? "backward" : "forward", input.value);
         return;
       }
       if (event.key === "Escape") {
@@ -4426,9 +4494,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     { id: "app.settings", label: t("desktop.workbench.quickAccessOpenSettings"), keywords: "preferences configuration", shortcut: shortcut(","), run: () => { closeQuickAccess(); void desktopApi().openSettingsWindow({ pane: "general" }); } }
   ];
 
+  const newSessionAnchorRect = newSessionButtonRef.current?.getBoundingClientRect();
+  const newSessionPickerStyle = newSessionAnchorRect
+    ? {
+        left: Math.max(8, Math.min(newSessionAnchorRect.left, window.innerWidth - 248)),
+        top: Math.min(newSessionAnchorRect.bottom + 4, window.innerHeight - 360)
+      }
+    : { left: 8, top: 48 };
+
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
-      <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} onClick={() => void newSession()}>{terminalCreating ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : <Bot size={13} aria-hidden="true" />}</button>
+      <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : <Bot size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
         {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><X size={13} /></button></div>)}
         {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><Bot size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><X size={13} /></button></div>)}
@@ -4734,6 +4810,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       </main>
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
+    {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
+      <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>
+      {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
+      <div className="context-menu-separator" role="separator" />
+      <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupAcp")}</span>
+      {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
+    </div> : null}
     {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -809,6 +809,63 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(1);
   });
 
+  it("asks for a CLI or ACP target when the default new-session target is empty", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
+    const acpCreateSession = vi.fn(async ({ projectPath, provider }: { projectPath: string; provider: string }) => ({
+      id: "acp-new",
+      title: "ACP session",
+      projectPath,
+      provider,
+      createdAt: 1,
+      updatedAt: 1,
+      messageCount: 0
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.terminalTabs": "Terminal tabs",
+        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude", "desktop.settings.newSessionTarget.cli_grok": "Grok", "desktop.settings.newSessionTarget.cli_agy": "Antigravity", "desktop.settings.newSessionTarget.cli_opencode": "OpenCode", "desktop.settings.newSessionTarget.cli_pi": "Pi", "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI", "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code", "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex", "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build", "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode", "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", defaultNewSessionTarget: "" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession,
+      acpCreateSession,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "acp-new", title: "ACP session", projectPath: "/work/app", provider: "codex", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    const newSessionButton = screen.getByRole("button", { name: "New session" });
+
+    fireEvent.click(newSessionButton);
+    const menu = await screen.findByRole("menu", { name: "Default agent" });
+    expect(newSessionButton.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "claude" }));
+    expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull();
+
+    fireEvent.click(newSessionButton);
+    const reopenedMenu = await screen.findByRole("menu", { name: "Default agent" });
+    fireEvent.click(within(reopenedMenu).getByRole("menuitem", { name: "ACP · Codex" }));
+    await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "codex" }));
+  });
+
   it("does not leave loading visible for external-system new sessions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -1218,7 +1275,7 @@ describe("WorkbenchPanel", () => {
     }));
     const workbenchInspectFile = vi.fn(async () => ({
       kind: "text" as const,
-      content: "const findme = 1;\n",
+      content: "const findme = 1;\nfindme();\n",
       encoding: "utf8" as const,
       version: "v1",
       size: 18,
@@ -1226,7 +1283,7 @@ describe("WorkbenchPanel", () => {
     }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.findCount": "{0} / {1}", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -1298,7 +1355,18 @@ describe("WorkbenchPanel", () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(findInput));
     fireEvent.change(findInput, { target: { value: "findme" } });
-    await waitFor(() => expect(document.querySelector(".wb-editor-find-count")?.textContent).not.toBe(""));
+    const findCount = document.querySelector(".wb-editor-find-count");
+    await waitFor(() => expect(findCount?.textContent).toBe("1 / 2"));
+    fireEvent.keyDown(findInput, { key: "Enter" });
+    await waitFor(() => expect(findCount?.textContent).toBe("2 / 2"));
+
+    const editor = screen.getByPlaceholderText("/work/app/src/main.ts");
+    editor.focus();
+    const editorEnter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    editor.dispatchEvent(editorEnter);
+    expect(editorEnter.defaultPrevented).toBe(false);
+    expect(findCount?.textContent).toBe("2 / 2");
+
     fireEvent.keyDown(window, { key: "Escape" });
     expect(document.querySelector(".wb-editor-find-input")).toBeNull();
 
