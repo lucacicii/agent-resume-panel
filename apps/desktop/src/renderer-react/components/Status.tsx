@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type StatusKind = "ok" | "error";
+export type StatusKind = "ok" | "error" | "warning";
 
 export function Status({ children, kind }: { children?: ReactNode; kind?: StatusKind }): ReactNode {
   if (!children) return null;

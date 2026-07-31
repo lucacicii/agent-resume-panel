@@ -144,8 +144,12 @@ import {
 } from "./sessionEmbeddingIndexAuto";
 import {
   exportBackup,
+  exportIcloudBackup,
+  getBackupStorageTargetStatus,
   importBackup,
-  selectBackupForImport
+  listIcloudBackups,
+  selectBackupForImport,
+  selectIcloudBackupForImport
 } from "./backupService";
 import {
   clearAppErrors,
@@ -570,11 +574,15 @@ function registerSettingsShortcuts(win: BrowserWindow): void {
   });
 }
 
+const DEFAULT_WINDOW_SIZE = {
+  width: 1120,
+  height: 780
+} as const;
+
 function createWindow(): void {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 780,
+    ...DEFAULT_WINDOW_SIZE,
     minWidth: 860,
     minHeight: 600,
     title: "Agent Resume Desktop",
@@ -611,8 +619,7 @@ function createWindow(): void {
 function createSettingsWindow(options: { pane: SettingsPaneId }): void {
   const icon = loadAppIcon();
   const win = new BrowserWindow({
-    width: 720,
-    height: 560,
+    ...DEFAULT_WINDOW_SIZE,
     minWidth: 640,
     minHeight: 480,
     title: "Settings",
@@ -814,33 +821,52 @@ function registerIpc(): void {
 
   safeHandle("app:getVersion", async () => ({ version: getAppVersion() }));
 
+  safeHandle("backup:targetStatus", async () => getBackupStorageTargetStatus());
+  safeHandle("backup:listIcloud", async () => listIcloudBackups());
+
   safeHandle(
     "backup:export",
-    async (_event, args?: { includeCredentials?: unknown; password?: unknown }) => {
+    async (event, args?: { target?: unknown; includeCredentials?: unknown; includeNativeConversations?: unknown; password?: unknown }) => {
       const settings = await loadSettings();
+      const target = args?.target === "icloud-drive" ? "icloud-drive" : "local-file";
       const includeCredentials = args?.includeCredentials === true;
+      const includeNativeConversations = args?.includeNativeConversations !== false;
       const password = typeof args?.password === "string" ? args.password : undefined;
+      const options = {
+        includeCredentials,
+        includeNativeConversations,
+        password,
+        onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
+      };
+      if (target === "icloud-drive") return exportIcloudBackup(settings, getAppVersion(), options);
       const selected = await dialog.showSaveDialog({
         defaultPath: `agent-resume-backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
       });
       if (selected.canceled || !selected.filePath) return { canceled: true };
-      return exportBackup(settings, selected.filePath, getAppVersion(), { includeCredentials, password });
+      return exportBackup(settings, selected.filePath, getAppVersion(), options);
     }
   );
 
   safeHandle("backup:selectImport", async () => {
     const selected = await dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "Agent Resume backup", extensions: ["zip"] }]
+      filters: [{ name: "Agent Resume local backup", extensions: ["zip"] }]
     });
     if (selected.canceled || !selected.filePaths[0]) return null;
     return selectBackupForImport(selected.filePaths[0]);
   });
 
+  safeHandle("backup:selectIcloudImport", async (_event, args?: { backupId?: unknown; password?: unknown }) => {
+    const backupId = typeof args?.backupId === "string" ? args.backupId : "";
+    const password = typeof args?.password === "string" ? args.password : "";
+    if (!backupId) throw new Error("An iCloud backup must be selected.");
+    return selectIcloudBackupForImport(backupId, password);
+  });
+
   safeHandle(
     "backup:import",
-    async (_event, args?: { importToken?: unknown; includeCredentials?: unknown; password?: unknown }) => {
+    async (event, args?: { importToken?: unknown; includeCredentials?: unknown; restoreNativeConversations?: unknown; password?: unknown }) => {
       const importToken = typeof args?.importToken === "string" ? args.importToken : "";
       if (!importToken) throw new Error("A selected backup is required.");
       stopMemoryScheduler();
@@ -852,7 +878,9 @@ function registerIpc(): void {
         const result = await importBackup(await loadSettings(), importToken, getAppVersion(), {
           includeCredentials: args?.includeCredentials === true,
           password: typeof args?.password === "string" ? args.password : undefined,
-          recoveryDir: path.join(app.getPath("userData"), "import-recovery")
+          restoreNativeConversations: args?.restoreNativeConversations === true,
+          recoveryDir: path.join(app.getPath("userData"), "import-recovery"),
+          onProgress: (progress: import("./backupService").BackupProgressEvent) => event.sender.send("backup:progress", progress)
         });
         invalidateNotesStore();
         const saved = await loadSettings();

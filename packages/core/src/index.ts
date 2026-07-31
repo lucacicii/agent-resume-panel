@@ -715,3 +715,13 @@ export type {
   IndexSessionTranscriptResult,
   SearchSessionsByTranscriptOptions
 } from "./session/transcriptIndex";
+export {
+  buildNativeConversationArtifacts
+} from "./backup/nativeConversations";
+export type {
+  NativeConversationProvider,
+  NativeConversationFile,
+  NativeConversationProviderSummary,
+  NativeConversationCollection,
+  CollectNativeConversationsOptions
+} from "./backup/nativeConversations";

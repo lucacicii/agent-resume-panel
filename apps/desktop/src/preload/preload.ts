@@ -22,18 +22,23 @@ import type {
   GtdStatus
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
-import type { BackupPreview, BackupResult } from "../main/backupService";
+import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
-  backupExport(args: { includeCredentials: boolean; password?: string }): Promise<BackupResult>;
+  backupTargetStatus(): Promise<BackupStorageTargetStatus[]>;
+  backupListIcloud(): Promise<BackupStoredItem[]>;
+  backupExport(args: { target: BackupStorageTarget; includeCredentials: boolean; includeNativeConversations: boolean; password?: string }): Promise<BackupResult>;
   backupSelectImport(): Promise<BackupPreview | null>;
+  backupSelectIcloudImport(args: { backupId: string; password: string }): Promise<BackupPreview>;
+  onBackupProgress(callback: (event: BackupProgressEvent) => void): () => void;
   backupImport(args: {
     importToken: string;
     includeCredentials: boolean;
+    restoreNativeConversations: boolean;
     password?: string;
   }): Promise<BackupResult>;
   listMcpClients(): Promise<McpClientInfo[]>;
@@ -976,8 +981,16 @@ export interface DesktopApi {
 const api: DesktopApi = {
   getPanelHome: () => ipcRenderer.invoke("panel:getHome"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
+  backupTargetStatus: () => ipcRenderer.invoke("backup:targetStatus"),
+  backupListIcloud: () => ipcRenderer.invoke("backup:listIcloud"),
   backupExport: (args) => ipcRenderer.invoke("backup:export", args),
   backupSelectImport: () => ipcRenderer.invoke("backup:selectImport"),
+  backupSelectIcloudImport: (args) => ipcRenderer.invoke("backup:selectIcloudImport", args),
+  onBackupProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: BackupProgressEvent) => callback(progress);
+    ipcRenderer.on("backup:progress", handler);
+    return () => ipcRenderer.removeListener("backup:progress", handler);
+  },
   backupImport: (args) => ipcRenderer.invoke("backup:import", args),
   listMcpClients: () => ipcRenderer.invoke("mcp:listClients"),
   getMcpManualConfig: () => ipcRenderer.invoke("mcp:manualConfig"),

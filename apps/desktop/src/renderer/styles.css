@@ -2412,6 +2412,10 @@ legend {
   color: var(--ok);
 }
 
+.status.warning {
+  color: var(--color-warning);
+}
+
 .digest-list {
   display: grid;
   gap: 12px;
@@ -10736,3 +10740,79 @@ html[data-window-mode="settings"] #react-notes {
     transition: none;
   }
 }
+
+/* Backup destinations and managed iCloud items. */
+.settings-backup-target {
+  width: min(320px, 100%);
+}
+
+.settings-backup-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.settings-backup-list .settings-row {
+  padding: 8px 10px;
+  background: var(--color-secondary-bg);
+}
+
+.settings-backup-item {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--color-separator);
+  background: transparent;
+  color: var(--color-label-primary);
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-backup-item:hover { background: var(--color-fill-tertiary); }
+.settings-backup-item.active { background: var(--color-fill-primary); font-weight: var(--font-weight-semibold); }
+.settings-backup-item small { color: var(--color-label-secondary); font-weight: var(--font-weight-regular); }
+.settings-backup-progress {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary-bg);
+}
+.settings-backup-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-callout);
+  font-variant-numeric: tabular-nums;
+}
+.settings-backup-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-fill-secondary);
+}
+.settings-backup-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 160ms ease-out;
+}
+.settings-backup-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary-bg);
+}
+.settings-callout.is-error { color: var(--color-destructive); }
