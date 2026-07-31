@@ -36,6 +36,7 @@ describe("AppChrome", () => {
     renderChrome();
     const report = await screen.findByRole("button", { name: "Report" });
     expect(report.classList.contains("active")).toBe(true);
+    expect(document.querySelector(".cyber-chrome-breath-line")?.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" }));

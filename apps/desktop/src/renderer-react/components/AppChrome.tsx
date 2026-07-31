@@ -72,54 +72,57 @@ export function AppChrome(): React.JSX.Element {
     : text("desktop.top.settingsTitle", "Settings");
 
   return (
-    <header className="top mac-top">
-      <nav className="tabs primary-tabs" aria-label="Primary navigation">
-        {tabs.map((tab) => (
+    <>
+      <header className="top mac-top">
+        <nav className="tabs primary-tabs" aria-label="Primary navigation">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`tab${activeTab === tab.id ? " active" : ""}`}
+              data-tab={tab.id}
+              onClick={() => selectTab(tab.id)}
+            >
+              {text(tab.key, tab.fallback)}
+            </button>
+          ))}
+        </nav>
+        <div className="top-actions">
           <button
-            key={tab.id}
             type="button"
-            className={`tab${activeTab === tab.id ? " active" : ""}`}
-            data-tab={tab.id}
-            onClick={() => selectTab(tab.id)}
+            className="icon-btn"
+            id="btnOpenSessions"
+            title={text("desktop.top.sessionsRefTitle", "Sessions")}
+            aria-label={text("desktop.top.sessionsRefTitle", "Sessions")}
+            onClick={() => window.dispatchEvent(new Event("agent-resume:sessions-open"))}
           >
-            {text(tab.key, tab.fallback)}
+            <ThemeIcon name="history" aria-hidden="true" />
           </button>
-        ))}
-      </nav>
-      <div className="top-actions">
-        <button
-          type="button"
-          className="icon-btn"
-          id="btnOpenSessions"
-          title={text("desktop.top.sessionsRefTitle", "Sessions")}
-          aria-label={text("desktop.top.sessionsRefTitle", "Sessions")}
-          onClick={() => window.dispatchEvent(new Event("agent-resume:sessions-open"))}
-        >
-          <ThemeIcon name="history" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          id="btnOpenSettings"
-          title={text("desktop.top.settingsTitle", "Settings")}
-          aria-label={text("desktop.top.settingsTitle", "Settings")}
-          onClick={() => openSettings()}
-        >
-          <ThemeIcon name="settings" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`icon-btn icon-btn-update${update.available ? "" : " is-hidden"}`}
-          id="btnOpenAboutUpdate"
-          hidden={!update.available}
-          aria-hidden={!update.available}
-          title={update.available ? updateTitle : undefined}
-          aria-label={updateTitle}
-          onClick={() => openSettings("about")}
-        >
-          <ThemeIcon name="download" aria-hidden="true" />
-        </button>
-      </div>
-    </header>
+          <button
+            type="button"
+            className="icon-btn"
+            id="btnOpenSettings"
+            title={text("desktop.top.settingsTitle", "Settings")}
+            aria-label={text("desktop.top.settingsTitle", "Settings")}
+            onClick={() => openSettings()}
+          >
+            <ThemeIcon name="settings" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`icon-btn icon-btn-update${update.available ? "" : " is-hidden"}`}
+            id="btnOpenAboutUpdate"
+            hidden={!update.available}
+            aria-hidden={!update.available}
+            title={update.available ? updateTitle : undefined}
+            aria-label={updateTitle}
+            onClick={() => openSettings("about")}
+          >
+            <ThemeIcon name="download" aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+      <div className="cyber-chrome-breath-line" aria-hidden="true" />
+    </>
   );
 }

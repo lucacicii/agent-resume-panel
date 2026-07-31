@@ -26,15 +26,23 @@ describe("built-in visual theme manifests", () => {
     expect(styles).not.toContain(':root:not([data-theme="light"]) {');
   });
 
-  it("adds a click-through full-screen monitor fault overlay only for full Cyberpunk effects", () => {
+  it("keeps only the intermittent click-through monitor fault overlay for full Cyberpunk effects", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
-    expect(styles).toContain(':root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::before');
     expect(styles).toContain(':root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::after');
-    expect(styles).toContain("@keyframes cyber-monitor-particles");
     expect(styles).toContain("@keyframes cyber-monitor-fault");
     expect(styles).toMatch(/z-index:\s*2300;[\s\S]*?pointer-events:\s*none;/);
-    expect(styles).toContain(':root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"]::before');
+    expect(styles).not.toContain("cyber-monitor-particles");
+    expect(styles).not.toContain("cyber-scan-sweep");
+    expect(styles).toContain(':root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"]::after');
     expect(styles).toContain('content: none !important;');
+  });
+
+  it("adds a breathing energy line below the Cyberpunk app chrome", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
+    expect(styles).toContain('.cyber-chrome-breath-line');
+    expect(styles).toContain('@keyframes cyber-chrome-line-breathe');
+    expect(styles).toContain('@keyframes cyber-chrome-line-core');
+    expect(styles).toContain('[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cyber-chrome-breath-line');
   });
 
   it("styles every visible scrollbar for Cyberpunk and DOS while leaving Classic native", () => {
