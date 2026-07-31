@@ -8,6 +8,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.12]
+
+#### Added
+
+- **Desktop visual themes & settings sync**: support application-wide visual themes in Settings → Visual Theme (Default Dark, Cyberpunk, DOS Amber, Clean Light) with auto system mode, synchronized across windows and settings
+- **CodeMirror & Diff Viewer theme integration**: synchronized CodeMirror editor and Git diff views with the active visual theme, providing matching editor themes (One Dark, Solarized, Amber Terminal, Cyberpunk) with theme auto-following and explicit light/dark overrides
+- **Cyberpunk visual effects & terminal transparency**: built Cyberpunk theme full-screen glitch particle background animation and top animated pulsing energy bar, and enabled transparent background for Workbench terminal (xterm)
+
+#### Improved
+
+- **DOS Amber palette & theme semantic contrast**: optimized semantic colors and DOS Amber contrast across Agent, Notes, and Report panels
+
 ### [0.2.11]
 
 #### Added
@@ -325,6 +337,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.12]
+
+#### 新增
+
+- **桌面视觉主题与设置同步**：在 **设置 → 视觉主题** 中新增应用全局主题支持（默认暗色、赛博朋克、DOS 琥珀、简约亮色）与跟随系统模式，并支持跨窗口与设置同步
+- **CodeMirror 编辑器与差异对比主题联动**：为 Workbench 编辑器与 Git 差异对比视图统一主题配置，支持跟随应用主题及显式亮暗主题设置，提供 One Dark、Solarized、琥珀终端与赛博朋克等匹配配色
+- **赛博朋克视觉特效与终端透明渲染**：为赛博朋克主题引入全屏坏屏粒子背景特效与顶部呼吸能量线动画，并为 Workbench 内置终端（xterm）开启透明背景渲染与主题边框强化
+
+#### 改进
+
+- **DOS 琥珀与主题配色优化**：优化应用主题语义色与 DOS 琥珀复古配色的对比度及面板视觉层级
 
 ### [0.2.11]
 
