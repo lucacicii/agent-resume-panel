@@ -11534,6 +11534,114 @@ body::before {
   animation: cyber-scan-sweep var(--theme-scan-period, 7s) linear infinite;
 }
 
+/* Full-screen broken-monitor overlay. The root pseudo-elements sit above all
+   product surfaces while remaining completely click-through. */
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::before,
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::before {
+  opacity: .16;
+  background-image:
+    radial-gradient(circle, rgba(234,255,255,.62) 0 1px, transparent 1.45px),
+    radial-gradient(circle, rgba(0,240,255,.58) 0 .9px, transparent 1.35px),
+    radial-gradient(circle, rgba(255,43,214,.54) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(255,212,0,.38) 0 .8px, transparent 1.3px);
+  background-size: 47px 43px, 71px 59px, 113px 83px, 157px 127px;
+  background-position: 0 0, 17px 11px, 43px 29px, 71px 53px;
+  animation: cyber-monitor-particles 480ms steps(2, end) infinite;
+  will-change: opacity, background-position;
+}
+
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::after {
+  opacity: 0;
+  background:
+    linear-gradient(90deg,
+      transparent 0 5%,
+      rgba(0,240,255,.30) 8% 27%,
+      transparent 31% 48%,
+      rgba(255,43,214,.26) 52% 76%,
+      transparent 80% 100%),
+    repeating-linear-gradient(0deg,
+      rgba(234,255,255,.12) 0 1px,
+      transparent 1px 3px);
+  background-size: 100% 100%, 100% 4px;
+  clip-path: inset(12% 0 84% 0);
+  animation: cyber-monitor-fault 8.2s steps(1, end) infinite;
+  will-change: opacity, transform, clip-path;
+}
+
+@keyframes cyber-monitor-particles {
+  0% { opacity: .11; background-position: 0 0, 17px 11px, 43px 29px, 71px 53px; }
+  25% { opacity: .18; background-position: -11px 7px, 31px -13px, 59px 41px, 93px 67px; }
+  50% { opacity: .13; background-position: 9px -8px, -23px 19px, 71px 17px, 49px 91px; }
+  75% { opacity: .20; background-position: -17px -5px, 7px 27px, 37px 53px, 107px 31px; }
+  100% { opacity: .14; background-position: 13px 11px, 29px -7px, 83px 35px, 61px 79px; }
+}
+
+@keyframes cyber-monitor-fault {
+  0%, 5.8%, 7.8%, 31.8%, 33.7%, 68.8%, 71.8%, 100% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  6% {
+    opacity: .32;
+    clip-path: inset(13% 0 82% 0);
+    transform: translateX(-14px);
+  }
+  6.7% {
+    opacity: .19;
+    clip-path: inset(44% 0 50% 0);
+    transform: translateX(19px);
+  }
+  7.4% {
+    opacity: .27;
+    clip-path: inset(76% 0 18% 0);
+    transform: translateX(-9px);
+  }
+  32% {
+    opacity: .24;
+    clip-path: inset(27% 0 69% 0);
+    transform: translateX(12px);
+  }
+  32.8% {
+    opacity: .36;
+    clip-path: inset(58% 0 36% 0);
+    transform: translateX(-20px);
+  }
+  33.4% {
+    opacity: .16;
+    clip-path: inset(84% 0 12% 0);
+    transform: translateX(7px);
+  }
+  69% {
+    opacity: .29;
+    clip-path: inset(8% 0 87% 0);
+    transform: translateX(17px);
+  }
+  69.8% {
+    opacity: .18;
+    clip-path: inset(39% 0 55% 0);
+    transform: translateX(-11px);
+  }
+  70.7% {
+    opacity: .31;
+    clip-path: inset(67% 0 27% 0);
+    transform: translateX(21px);
+  }
+  71.4% {
+    opacity: .14;
+    clip-path: inset(91% 0 6% 0);
+    transform: translateX(-6px);
+  }
+}
+
 @keyframes cyber-grid-drift {
   0% { background-position: center, center, center 0, center 0, center, center; transform: perspective(560px) rotateX(0deg) scale(1.02); }
   100% { background-position: center, center, center 46px, center 46px, center, center; transform: perspective(560px) rotateX(1.6deg) scale(1.08); }
@@ -11765,6 +11873,11 @@ body::before {
 
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::before,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::after { animation: none !important; }
+:root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"]::before,
+:root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"]::after {
+  content: none !important;
+  animation: none !important;
+}
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::before { opacity: .54; filter: none; }
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::after { opacity: .18; }
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .top,
@@ -11773,6 +11886,8 @@ body::before {
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .chat-bubble.assistant.streaming { animation: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
+  :root[data-visual-theme="cyberpunk"]::before,
+  :root[data-visual-theme="cyberpunk"]::after { content: none !important; animation: none !important; }
   [data-visual-theme="cyberpunk"] *,
   [data-visual-theme="cyberpunk"] *::before,
   [data-visual-theme="cyberpunk"] *::after { animation: none !important; transition-duration: 0ms !important; }
@@ -12803,4 +12918,91 @@ body::before {
 .wb-terminal-host .xterm-screen,
 .wb-terminal-host .xterm-rows {
   background: transparent !important;
+}
+
+/* ==========================================================================
+   GLOBAL THEME-AWARE SCROLLBARS
+   Classic keeps the platform-native macOS scrollbar. The custom visual themes
+   own every visible renderer scrollbar, including editor and terminal panes;
+   scrollbars intentionally hidden by a component remain hidden.
+   ========================================================================== */
+:root[data-visual-theme="cyberpunk"] {
+  --theme-scrollbar-size: 10px;
+  --theme-scrollbar-track: #05040d;
+  --theme-scrollbar-track-edge: rgba(0, 240, 255, .34);
+  --theme-scrollbar-thumb: linear-gradient(180deg, var(--cyber-cyan) 0 58%, var(--cyber-magenta) 58% 100%);
+  --theme-scrollbar-thumb-hover: linear-gradient(180deg, var(--cyber-hazard) 0 48%, var(--cyber-magenta) 48% 100%);
+  --theme-scrollbar-thumb-border: #05040d;
+  --theme-scrollbar-corner: #05040d;
+}
+
+:root[data-visual-theme="dos"] {
+  --theme-scrollbar-size: 12px;
+  --theme-scrollbar-track: #17120d;
+  --theme-scrollbar-track-edge: #74552e;
+  --theme-scrollbar-thumb: #f3b94f;
+  --theme-scrollbar-thumb-hover: #ffe2a0;
+  --theme-scrollbar-thumb-border: #17120d;
+  --theme-scrollbar-corner: #211a12;
+}
+
+:root[data-visual-theme="cyberpunk"]::-webkit-scrollbar,
+:root[data-visual-theme="cyberpunk"] *::-webkit-scrollbar,
+:root[data-visual-theme="dos"]::-webkit-scrollbar,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar {
+  width: var(--theme-scrollbar-size);
+  height: var(--theme-scrollbar-size);
+}
+
+:root[data-visual-theme="cyberpunk"]::-webkit-scrollbar-track,
+:root[data-visual-theme="cyberpunk"] *::-webkit-scrollbar-track,
+:root[data-visual-theme="dos"]::-webkit-scrollbar-track,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px var(--theme-scrollbar-track-edge);
+}
+
+:root[data-visual-theme="cyberpunk"]::-webkit-scrollbar-thumb,
+:root[data-visual-theme="cyberpunk"] *::-webkit-scrollbar-thumb,
+:root[data-visual-theme="dos"]::-webkit-scrollbar-thumb,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid var(--theme-scrollbar-thumb-border);
+  border-radius: 0;
+  background: var(--theme-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+:root[data-visual-theme="cyberpunk"]::-webkit-scrollbar-thumb:hover,
+:root[data-visual-theme="cyberpunk"] *::-webkit-scrollbar-thumb:hover,
+:root[data-visual-theme="dos"]::-webkit-scrollbar-thumb:hover,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+:root[data-visual-theme="cyberpunk"]::-webkit-scrollbar-corner,
+:root[data-visual-theme="cyberpunk"] *::-webkit-scrollbar-corner,
+:root[data-visual-theme="dos"]::-webkit-scrollbar-corner,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar-corner {
+  background: var(--theme-scrollbar-corner);
+}
+
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::-webkit-scrollbar-thumb,
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"] *::-webkit-scrollbar-thumb {
+  box-shadow: inset 0 0 0 1px rgba(234, 255, 255, .38), 0 0 8px rgba(0, 240, 255, .42);
+}
+
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"]::-webkit-scrollbar-thumb:hover,
+:root[data-visual-theme="cyberpunk"][data-theme-effects="full"] *::-webkit-scrollbar-thumb:hover {
+  box-shadow: inset 0 0 0 1px rgba(255, 245, 173, .52), 0 0 10px rgba(255, 43, 214, .52);
+}
+
+:root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"]::-webkit-scrollbar-thumb,
+:root[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] *::-webkit-scrollbar-thumb,
+:root[data-visual-theme="dos"]::-webkit-scrollbar-thumb,
+:root[data-visual-theme="dos"] *::-webkit-scrollbar-thumb {
+  box-shadow: none;
 }
