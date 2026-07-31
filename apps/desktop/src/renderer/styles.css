@@ -183,7 +183,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  /* System dark fallback is only for Classic or the pre-theme bootstrap state.
+     Custom visual themes own their semantic palette below. */
+  :root:not([data-theme="light"]):not([data-visual-theme]),
+  :root[data-visual-theme="classic"]:not([data-theme="light"]) {
     color-scheme: dark;
     --color-window-bg: #1e1e1e;
     --color-control-bg: #2c2c2e;
@@ -8310,8 +8313,8 @@ select.wb-acp-toolbar-select option {
   justify-content: center;
   gap: 10px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.72);
-  background: #1e1e1e;
+  color: var(--color-label-secondary);
+  background: var(--wb-terminal-surface, var(--color-window-bg));
   font-size: 13px;
   pointer-events: none;
 }
@@ -8653,10 +8656,10 @@ textarea.wb-editor-host {
   gap: 6px;
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(30, 30, 30, 0.96);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--color-elevated-bg) 96%, #000);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
 }
 
 .wb-terminal-search-input {
@@ -8664,22 +8667,22 @@ textarea.wb-editor-host {
   min-width: 0;
   margin: 0;
   padding: 4px 6px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.28);
-  color: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--color-secondary-bg) 82%, #000);
+  color: var(--color-label-primary);
   font-size: 12px;
   outline: none;
 }
 
 .wb-terminal-search-input:focus {
-  border-color: rgba(10, 132, 255, 0.7);
+  border-color: var(--color-accent);
 }
 
 .wb-terminal-search-meta {
   min-width: 4.5em;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--color-label-secondary);
   white-space: nowrap;
   text-align: right;
 }
@@ -11376,34 +11379,36 @@ body::before {
 [data-visual-theme="cyberpunk"] [data-theme-icon] { stroke-linejoin: miter; }
 [data-visual-theme="cyberpunk"] [data-theme-icon] { transform: skewX(-5deg); }
 
-[data-visual-theme="dos"] {
+/* Keep DOS semantic tokens stronger than the generic system-dark fallback. */
+:root[data-visual-theme="dos"] {
   color-scheme: dark;
-  --color-window-bg: #0000aa;
-  --color-control-bg: #0000aa;
-  --color-secondary-bg: #000080;
-  --color-tertiary-bg: #000055;
-  --color-elevated-bg: #0000aa;
-  --color-separator: #aaaaff;
-  --color-separator-opaque: #aaaaff;
-  --color-label-primary: #e8e8e8;
-  --color-label-secondary: #c8c8c8;
-  --color-label-tertiary: #aaaaff;
-  --color-accent: #ffff55;
-  --color-accent-hover: #ffffff;
-  --color-destructive: #ff5555;
-  --color-success: #55ff55;
-  --color-warning: #ffff55;
-  --color-fill-primary: rgba(255, 255, 85, .24);
-  --color-fill-secondary: rgba(255, 255, 255, .13);
-  --color-fill-tertiary: rgba(255, 255, 255, .08);
-  --color-focus-ring: #ffff55;
-  --editor-caret-color: #ffff55;
-  --chat-bubble-user: #000080;
-  --chat-bubble-assistant: #0000aa;
-  --chat-meta: #ffff55;
-  --chat-send: #ffff55;
-  --wb-terminal-surface: #0000aa;
-  --wb-terminal-tab-active-label: #ffff55;
+  /* Amber phosphor: a warm charcoal base replaces the saturated blue DOS field. */
+  --color-window-bg: #17120d;
+  --color-control-bg: #211a12;
+  --color-secondary-bg: #2a2116;
+  --color-tertiary-bg: #3a2b1c;
+  --color-elevated-bg: #261d14;
+  --color-separator: rgba(214, 157, 72, .42);
+  --color-separator-opaque: #74552e;
+  --color-label-primary: #f0d7a0;
+  --color-label-secondary: #c6aa7b;
+  --color-label-tertiary: #8e7654;
+  --color-accent: #f3b94f;
+  --color-accent-hover: #ffe2a0;
+  --color-destructive: #d87963;
+  --color-success: #9fbf75;
+  --color-warning: #e6b65c;
+  --color-fill-primary: rgba(243, 185, 79, .22);
+  --color-fill-secondary: rgba(240, 215, 160, .12);
+  --color-fill-tertiary: rgba(240, 215, 160, .06);
+  --color-focus-ring: #f5c96a;
+  --editor-caret-color: #ffd479;
+  --chat-bubble-user: #352716;
+  --chat-bubble-assistant: #211a12;
+  --chat-meta: #e6a642;
+  --chat-send: #d8953c;
+  --wb-terminal-surface: #17120d;
+  --wb-terminal-tab-active-label: #f3c978;
   --shadow-popover: none;
   --shadow-segment-thumb: none;
 }
@@ -11411,11 +11416,11 @@ body::before {
 [data-visual-theme="dos"] *::before,
 [data-visual-theme="dos"] *::after { border-radius: 0 !important; }
 [data-visual-theme="dos"] body::before {
-  opacity: .55;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 3px);
+  opacity: .28;
+  background: repeating-linear-gradient(0deg, rgba(240, 215, 160, .035) 0 1px, transparent 1px 4px);
   image-rendering: pixelated;
 }
-[data-visual-theme="dos"][data-theme-effects="reduced"] body::before { opacity: .18; }
+[data-visual-theme="dos"][data-theme-effects="reduced"] body::before { opacity: .11; }
 [data-visual-theme="dos"] .settings-group,
 [data-visual-theme="dos"] .sheet-panel,
 [data-visual-theme="dos"] .wb-terminal-shell,
@@ -11442,7 +11447,11 @@ body::before {
 .theme-preview-copy small { min-height: 3.8em; color: var(--color-label-secondary); font-size: var(--font-size-caption); line-height: 1.3; }
 .theme-preview-cyberpunk .theme-preview-art { color: #00e5ff; background: linear-gradient(135deg, #0b0920, #2b123c); }
 .theme-preview-cyberpunk .theme-preview-art i { border-radius: 1px; transform: skewX(-15deg); box-shadow: 0 0 10px rgba(0,229,255,.7); }
-.theme-preview-dos .theme-preview-art { color: #ffff55; background: #0000aa; image-rendering: pixelated; }
+.theme-preview-dos .theme-preview-art {
+  color: #f3b94f;
+  background: #17120d;
+  image-rendering: pixelated;
+}
 .theme-preview-dos .theme-preview-art i { border-radius: 0; width: 13px; height: 13px; }
 .settings-theme-field { display: flex; flex-direction: column; gap: 6px; }
 .theme-mode-control { display: inline-flex; align-self: flex-start; padding: 2px; gap: 2px; background: var(--color-secondary-bg); border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-lg); }
