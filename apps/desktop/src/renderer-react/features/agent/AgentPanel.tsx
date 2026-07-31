@@ -45,7 +45,7 @@ const SIDEBAR_WIDTH_KEY = "sidebar-folders-width";
 const SIDEBAR_COLLAPSED_KEY = "askSidebarCollapsed";
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 400;
-const DEFAULT_SIDEBAR_WIDTH = 220;
+const DEFAULT_SIDEBAR_WIDTH = 260;
 function isNote(citation: AgentCitation): boolean {
   return citation.source === "note" || citation.level === "note";
 }

@@ -270,8 +270,8 @@ export function NotesPanel(): ReactPortal | null {
   const [listQuery, setListQuery] = useState("");
   const [listSearchOpen, setListSearchOpen] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageString(FOLDERS_COLLAPSED_KEY) === "true");
-  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 220, 140, 400));
-  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 320, 240, 520));
+  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 400));
+  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 520));
   const [target, setTarget] = useState<TargetState | null>(null);
   const [targetQuery, setTargetQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);

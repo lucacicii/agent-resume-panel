@@ -597,6 +597,7 @@ function createWindow(): void {
     }
   });
 
+  mainWindow.maximize();
   registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());

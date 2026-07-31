@@ -1628,6 +1628,450 @@ textarea:focus-visible,
   }
 }
 
+/* --------------------------------------------------------------------------
+   CYBERPUNK / REPORT + AGENT SIDE CHANNELS
+   Report sessions read as a magenta time-range data feed; Ask threads read as
+   a cyan/magenta communications uplink. These rules only alter presentation.
+   -------------------------------------------------------------------------- */
+[data-visual-theme="cyberpunk"] .report-session-pane {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-right-color: rgba(255,43,214,.74);
+  background:
+    linear-gradient(180deg, rgba(255,43,214,.10), transparent 16%),
+    repeating-linear-gradient(0deg, transparent 0 25px, rgba(255,43,214,.035) 25px 26px),
+    linear-gradient(122deg, #07050f 0%, #130918 72%, #1b091a 100%);
+  box-shadow: inset -5px 0 19px rgba(255,43,214,.08), 7px 0 22px rgba(255,43,214,.07);
+}
+
+[data-visual-theme="cyberpunk"] .report-session-pane::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--cyber-magenta) 0 61%, transparent 61% 84%, var(--cyber-hazard) 84% 100%);
+  box-shadow: 0 0 15px rgba(255,43,214,.52);
+}
+
+[data-visual-theme="cyberpunk"] .report-session-pane::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 49px;
+  right: 4px;
+  bottom: 12px;
+  width: 2px;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
+  box-shadow: 0 0 9px rgba(255,43,214,.7);
+}
+
+[data-visual-theme="cyberpunk"] .report-session-pane > * {
+  position: relative;
+  z-index: 1;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-panel {
+  padding: 10px 9px 12px 7px;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-panel-head {
+  min-height: 32px;
+  margin: 0 0 8px;
+  padding: 0 5px 7px;
+  border-bottom: 1px solid rgba(255,43,214,.36);
+  background: linear-gradient(90deg, rgba(255,43,214,.12), transparent 72%);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-panel-head strong {
+  min-width: 0;
+  color: #f8eaff;
+  font-family: var(--font-family-heading);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .075em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(255,43,214,.34);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-panel-head strong::before {
+  content: "//";
+  margin-right: 6px;
+  color: var(--cyber-hazard);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-panel-head .muted {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  border: 1px solid rgba(255,43,214,.36);
+  color: var(--cyber-magenta);
+  background: rgba(255,43,214,.08);
+  clip-path: var(--cyber-notch-small);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-list {
+  counter-reset: cyber-report-session;
+  padding: 2px 2px 9px;
+  background:
+    linear-gradient(90deg, transparent 0 7px, rgba(255,43,214,.08) 7px 8px, transparent 8px),
+    repeating-linear-gradient(0deg, transparent 0 65px, rgba(255,43,214,.035) 65px 66px);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row {
+  counter-increment: cyber-report-session;
+  position: relative;
+  width: calc(100% - 10px);
+  min-height: 58px;
+  margin: 0 5px 5px;
+  padding: 9px 9px 9px 29px;
+  border: 1px solid rgba(255,43,214,.24);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.065), transparent 46%),
+    rgba(5,4,13,.62);
+  color: var(--color-label-primary);
+  overflow: hidden;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row::before {
+  content: counter(cyber-report-session, decimal-leading-zero);
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  bottom: 9px;
+  left: 6px;
+  display: grid;
+  width: 17px;
+  place-items: start center;
+  border-right: 1px solid rgba(255,43,214,.48);
+  color: rgba(255,43,214,.76);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  text-shadow: 0 0 7px rgba(255,43,214,.48);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -12%;
+  bottom: -12%;
+  left: -42%;
+  width: 31%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,43,214,.28), rgba(0,240,255,.12), transparent);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row > * {
+  position: relative;
+  z-index: 2;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row:hover {
+  border-color: rgba(255,43,214,.82);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.17), rgba(0,240,255,.035) 68%),
+    rgba(7,5,15,.92);
+  box-shadow: inset -2px 0 0 rgba(0,240,255,.58), 0 0 14px rgba(255,43,214,.13);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row.active {
+  border-color: var(--cyber-hazard);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.28), rgba(255,43,214,.09) 48%, rgba(0,240,255,.18)),
+    #090611;
+  box-shadow: inset 3px 0 0 var(--cyber-hazard), inset -2px 0 0 var(--cyber-cyan), 0 0 18px rgba(255,43,214,.2);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row.active::before {
+  border-right-color: var(--cyber-hazard);
+  color: var(--cyber-hazard);
+  text-shadow: 0 0 9px rgba(255,212,0,.7);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row .s-title {
+  color: #f4eaff;
+  font-family: var(--font-family-heading);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row .s-meta {
+  color: #867d9c;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: .005em;
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-row .s-provider-tag {
+  border-radius: 0;
+  border: 1px solid rgba(0,240,255,.36);
+  background: rgba(0,240,255,.08);
+  box-shadow: 0 0 7px rgba(0,240,255,.08);
+}
+
+[data-visual-theme="cyberpunk"] .cal-session-empty {
+  margin: 12px 8px;
+  padding: 9px;
+  border: 1px dashed rgba(255,43,214,.34);
+  color: #8b819f;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  line-height: 1.45;
+  clip-path: var(--cyber-notch-small);
+}
+
+/* Ask: communication uplink, intentionally distinct from project navigation. */
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane.agent-sidebar-pane {
+  border-right-color: rgba(0,240,255,.76);
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.075), transparent 18%),
+    repeating-linear-gradient(90deg, transparent 0 29px, rgba(0,240,255,.026) 29px 30px),
+    linear-gradient(123deg, #05040d 0%, #08121c 62%, #130a20 100%);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane.agent-sidebar-pane::before {
+  background: linear-gradient(90deg, var(--cyber-hazard) 0 14px, transparent 14px 18px, var(--cyber-cyan) 18px 70%, var(--cyber-magenta) 70% 88%, transparent 88%);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane.agent-sidebar-pane::after {
+  background: repeating-linear-gradient(180deg, var(--cyber-cyan) 0 7px, transparent 7px 12px, var(--cyber-magenta) 12px 14px, transparent 14px 19px);
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .sidebar-folders-header {
+  min-height: 42px;
+  padding: 7px 7px 7px 9px;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(0,240,255,.35);
+  background:
+    linear-gradient(90deg, rgba(0,240,255,.11), transparent 58%, rgba(255,43,214,.09)),
+    rgba(5,4,13,.54);
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane.is-collapsed .sidebar-folders-header {
+  justify-content: center;
+  padding-inline: 5px;
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .notes-icon-btn,
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .sidebar-collapse-toggle {
+  border: 1px solid rgba(0,240,255,.46);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: rgba(5,4,13,.76);
+  color: var(--cyber-cyan);
+  box-shadow: inset 0 0 0 1px rgba(0,240,255,.03);
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .sidebar-collapse-toggle {
+  border-color: rgba(255,43,214,.42);
+  color: var(--cyber-magenta);
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .notes-icon-btn:hover,
+[data-visual-theme="cyberpunk"] .agent-sidebar-pane .sidebar-collapse-toggle:hover {
+  border-color: var(--cyber-hazard);
+  background: var(--cyber-hazard);
+  color: #05040d;
+  box-shadow: 0 0 13px rgba(255,212,0,.32);
+}
+
+[data-visual-theme="cyberpunk"] .agent-sidebar-list {
+  counter-reset: cyber-agent-thread;
+  gap: 4px;
+  padding: 8px 8px 13px 6px;
+  background:
+    linear-gradient(90deg, transparent 0 8px, rgba(0,240,255,.08) 8px 9px, transparent 9px),
+    repeating-linear-gradient(0deg, transparent 0 49px, rgba(0,240,255,.03) 49px 50px);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row {
+  counter-increment: cyber-agent-thread;
+  position: relative;
+  min-height: 42px;
+  padding: 5px 6px 5px 28px;
+  border: 1px solid rgba(0,240,255,.19);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.05), transparent 48%),
+    rgba(5,4,13,.54);
+  overflow: hidden;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row::before {
+  content: counter(cyber-agent-thread, decimal-leading-zero);
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  transform: translateY(-50%);
+  color: rgba(0,240,255,.72);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  text-shadow: 0 0 7px rgba(0,240,255,.42);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -12%;
+  bottom: -12%;
+  left: -42%;
+  width: 31%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(0,240,255,.28), rgba(255,43,214,.14), transparent);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row > * {
+  position: relative;
+  z-index: 2;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row:hover {
+  border-color: rgba(0,240,255,.78);
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.14), rgba(255,43,214,.045) 68%),
+    rgba(5,6,15,.9);
+  box-shadow: inset 2px 0 0 var(--cyber-cyan), 0 0 14px rgba(0,240,255,.11);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row.active {
+  border-color: var(--cyber-hazard);
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.27), rgba(0,240,255,.10) 52%, rgba(255,43,214,.2)),
+    #070711;
+  box-shadow: inset 3px 0 0 var(--cyber-hazard), inset -2px 0 0 var(--cyber-magenta), 0 0 18px rgba(0,240,255,.17);
+  color: #eaffff;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row.active::before {
+  color: var(--cyber-hazard);
+  text-shadow: 0 0 9px rgba(255,212,0,.72);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row-select {
+  color: inherit;
+  font-family: var(--font-family-heading);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row-select:focus-visible {
+  outline: 1px solid var(--cyber-hazard);
+  outline-offset: 3px;
+  border-radius: 0;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row-delete {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  color: #ff6b83;
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row:hover .ask-thread-row-delete,
+[data-visual-theme="cyberpunk"] .ask-thread-row-delete:focus-visible {
+  opacity: .82;
+  border-color: rgba(255,59,92,.56);
+  background: rgba(255,59,92,.08);
+}
+
+[data-visual-theme="cyberpunk"] .ask-thread-row-delete:hover {
+  color: #05040d;
+  border-color: #ff6b83;
+  background: #ff6b83;
+  box-shadow: 0 0 12px rgba(255,59,92,.4);
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .report-session-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .agent-sidebar-pane::after {
+  animation: cyber-sidebar-rail-pulse 3.1s ease-in-out infinite;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .cal-session-row:hover::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .ask-thread-row:hover::after {
+  animation: cyber-sidebar-data-scan 520ms steps(4, end) both;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .report-session-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .agent-sidebar-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cal-session-row::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .ask-thread-row::after {
+  animation: none !important;
+}
+
+@media (max-width: 900px) {
+  [data-visual-theme="cyberpunk"] .cal-session-panel {
+    padding-left: 5px;
+    padding-right: 7px;
+  }
+
+  [data-visual-theme="cyberpunk"] .cal-session-row {
+    width: calc(100% - 6px);
+    margin-left: 3px;
+    margin-right: 3px;
+    padding-left: 27px;
+  }
+
+  [data-visual-theme="cyberpunk"] .agent-sidebar-list {
+    padding-left: 4px;
+    padding-right: 6px;
+  }
+
+  [data-visual-theme="cyberpunk"] .ask-thread-row {
+    padding-left: 25px;
+  }
+}
+
+@media (max-width: 899px) {
+  [data-visual-theme="cyberpunk"] .report-session-pane {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,43,214,.74);
+    box-shadow: inset 0 -5px 19px rgba(255,43,214,.08), 0 7px 22px rgba(255,43,214,.07);
+  }
+
+  [data-visual-theme="cyberpunk"] .report-session-pane::after {
+    top: auto;
+    right: 14px;
+    bottom: 4px;
+    left: 14px;
+    width: auto;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
+  }
+}
+
 .section-h {
   font-size: 13px;
   font-weight: 600;
@@ -8839,7 +9283,7 @@ textarea.wb-editor-host {
 }
 
 .sidebar-folders-pane {
-  width: var(--sidebar-folders-width, 220px);
+  width: var(--sidebar-folders-width, 260px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -9354,11 +9798,11 @@ textarea.wb-editor-host {
 }
 
 .wb-list-pane {
-  width: var(--wb-list-width, 320px);
+  width: var(--wb-list-width, 324px);
 }
 
 .notes-list-pane {
-  width: var(--notes-list-width, 320px);
+  width: var(--notes-list-width, 324px);
 }
 
 .pane-resizer {
@@ -10832,7 +11276,10 @@ html[data-window-mode="settings"] #react-notes {
 }
 
 body { isolation: isolate; }
-#react-chrome, main { position: relative; z-index: 1; }
+/* Keep the application content above the theme backdrop without trapping
+   fixed sheets and notifications inside the chrome's stacking context. */
+#react-chrome { position: relative; }
+main { position: relative; z-index: 1; }
 body::before {
   content: "";
   position: fixed;
@@ -11320,4 +11767,1031 @@ body::before {
   [data-visual-theme="cyberpunk"] *,
   [data-visual-theme="cyberpunk"] *::before,
   [data-visual-theme="cyberpunk"] *::after { animation: none !important; transition-duration: 0ms !important; }
+}
+
+/* --------------------------------------------------------------------------
+   CYBERPUNK / DUAL SIDEBAR COMMAND DECK
+
+   Projects are rendered as a cyan navigation matrix. Sessions and Notes are
+   rendered as a magenta data feed. The business layout and list behavior stay
+   unchanged; all extra chrome is host-owned and non-interactive.
+   -------------------------------------------------------------------------- */
+@keyframes cyber-sidebar-rail-pulse {
+  0%, 100% { opacity: .48; filter: brightness(.78); }
+  50% { opacity: 1; filter: brightness(1.34); }
+}
+
+@keyframes cyber-sidebar-node-pulse {
+  0%, 100% { transform: rotate(45deg) scale(.82); opacity: .7; }
+  50% { transform: rotate(45deg) scale(1.18); opacity: 1; }
+}
+
+@keyframes cyber-sidebar-data-scan {
+  0% { transform: translateX(-145%) skewX(-18deg); opacity: 0; }
+  18% { opacity: .72; }
+  100% { transform: translateX(520%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes cyber-sidebar-lock-pulse {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(255,212,0,.38)); }
+  50% { filter: drop-shadow(0 0 9px rgba(255,212,0,.92)); }
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane,
+[data-visual-theme="cyberpunk"] .notes-list-pane,
+[data-visual-theme="cyberpunk"] .wb-list-pane {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane {
+  border-right: 1px solid rgba(0,240,255,.72);
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.075), transparent 18%),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(0,240,255,.035) 23px 24px),
+    linear-gradient(112deg, #05040d 0%, #0a0a19 67%, #07151d 100%);
+  box-shadow: inset -5px 0 18px rgba(0,240,255,.07), 6px 0 22px rgba(0,240,255,.08);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane,
+[data-visual-theme="cyberpunk"] .wb-list-pane {
+  border-right: 1px solid rgba(255,43,214,.68);
+  background:
+    linear-gradient(180deg, rgba(255,43,214,.085), transparent 20%),
+    repeating-linear-gradient(90deg, transparent 0 31px, rgba(255,43,214,.028) 31px 32px),
+    linear-gradient(118deg, #07050f 0%, #10091c 72%, #18091a 100%);
+  box-shadow: inset -5px 0 20px rgba(255,43,214,.075), 7px 0 24px rgba(255,43,214,.07);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane::before,
+[data-visual-theme="cyberpunk"] .notes-list-pane::before,
+[data-visual-theme="cyberpunk"] .wb-list-pane::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane::before {
+  background: linear-gradient(90deg, var(--cyber-hazard) 0 14px, transparent 14px 18px, var(--cyber-cyan) 18px 62%, transparent 92%);
+  box-shadow: 0 0 15px rgba(0,240,255,.52);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane::before,
+[data-visual-theme="cyberpunk"] .wb-list-pane::before {
+  background: linear-gradient(90deg, var(--cyber-magenta) 0 58%, transparent 88%, var(--cyber-hazard) 88% 100%);
+  box-shadow: 0 0 15px rgba(255,43,214,.44);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane::after,
+[data-visual-theme="cyberpunk"] .notes-list-pane::after,
+[data-visual-theme="cyberpunk"] .wb-list-pane::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 52px;
+  bottom: 14px;
+  right: 4px;
+  width: 2px;
+  pointer-events: none;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane::after {
+  background: repeating-linear-gradient(180deg, var(--cyber-cyan) 0 8px, transparent 8px 15px);
+  box-shadow: 0 0 9px rgba(0,240,255,.65);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane::after,
+[data-visual-theme="cyberpunk"] .wb-list-pane::after {
+  background: repeating-linear-gradient(180deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
+  box-shadow: 0 0 9px rgba(255,43,214,.62);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane > *,
+[data-visual-theme="cyberpunk"] .notes-list-pane > *,
+[data-visual-theme="cyberpunk"] .wb-list-pane > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Mechanical control decks. */
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane > .sidebar-project-filter-wrap,
+[data-visual-theme="cyberpunk"] .notes-list-pane .notes-list-search-wrap,
+[data-visual-theme="cyberpunk"] .wb-list-pane .wb-session-filter-wrap {
+  padding-top: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid currentColor;
+  background-image:
+    linear-gradient(90deg, currentColor 0 22px, transparent 22px),
+    linear-gradient(135deg, rgba(255,255,255,.035), transparent 56%);
+  background-size: 100% 2px, auto;
+  background-position: left bottom, center;
+  background-repeat: no-repeat;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane > .sidebar-project-filter-wrap {
+  color: rgba(0,240,255,.58);
+  background-color: rgba(0,240,255,.035);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane .notes-list-search-wrap,
+[data-visual-theme="cyberpunk"] .wb-list-pane .wb-session-filter-wrap {
+  color: rgba(255,43,214,.58);
+  background-color: rgba(255,43,214,.035);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane .sidebar-project-filter-segmented,
+[data-visual-theme="cyberpunk"] .notes-list-pane .sidebar-project-filter-segmented,
+[data-visual-theme="cyberpunk"] .wb-list-pane .sidebar-project-filter-segmented {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: rgba(5,4,13,.9);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane .sidebar-project-filter-segmented {
+  border-color: rgba(0,240,255,.52);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane .sidebar-project-filter-segmented,
+[data-visual-theme="cyberpunk"] .wb-list-pane .sidebar-project-filter-segmented {
+  border-color: rgba(255,43,214,.5);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-project-filter-segmented button {
+  min-height: 25px;
+  border-radius: 0;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-folders-pane .sidebar-project-filter-thumb {
+  border-radius: 0;
+  background: linear-gradient(105deg, rgba(0,240,255,.92), rgba(0,240,255,.48));
+  box-shadow: 0 0 13px rgba(0,240,255,.4), inset 0 -1px rgba(5,4,13,.56);
+  clip-path: var(--cyber-notch-small);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane .sidebar-project-filter-thumb,
+[data-visual-theme="cyberpunk"] .wb-list-pane .sidebar-project-filter-thumb {
+  border-radius: 0;
+  background: linear-gradient(105deg, rgba(255,43,214,.92), rgba(255,43,214,.46));
+  box-shadow: 0 0 13px rgba(255,43,214,.4), inset 0 -1px rgba(5,4,13,.58);
+  clip-path: var(--cyber-notch-small);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-project-filter-segmented button.active {
+  color: #05040d;
+  text-shadow: none;
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-project-search,
+[data-visual-theme="cyberpunk"] .notes-list-search-input,
+[data-visual-theme="cyberpunk"] .wb-session-search-input,
+[data-visual-theme="cyberpunk"] .notes-gtd-search-wrap {
+  border: 1px solid rgba(0,240,255,.38);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background:
+    linear-gradient(90deg, rgba(0,240,255,.09), transparent 45%),
+    rgba(3,3,10,.88);
+  color: #eaffff;
+  font-family: var(--font-family-mono);
+  letter-spacing: .02em;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-search-input,
+[data-visual-theme="cyberpunk"] .wb-session-search-input,
+[data-visual-theme="cyberpunk"] .notes-gtd-search-wrap {
+  border-color: rgba(255,43,214,.44);
+  background-image: linear-gradient(90deg, rgba(255,43,214,.10), transparent 48%);
+}
+
+[data-visual-theme="cyberpunk"] .sidebar-project-search:focus,
+[data-visual-theme="cyberpunk"] .notes-list-search-input:focus,
+[data-visual-theme="cyberpunk"] .wb-session-search-input:focus,
+[data-visual-theme="cyberpunk"] .notes-gtd-search-wrap:focus-within {
+  border-color: var(--cyber-hazard);
+  outline: 1px solid rgba(255,212,0,.62);
+  box-shadow: 0 0 14px rgba(255,212,0,.17);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane .sidebar-collapse-toggle,
+[data-visual-theme="cyberpunk"] .wb-list-pane .sidebar-collapse-toggle,
+[data-visual-theme="cyberpunk"] .notes-list-pane .notes-icon-btn,
+[data-visual-theme="cyberpunk"] .wb-list-pane .wb-icon-btn {
+  border: 1px solid rgba(255,43,214,.38);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: rgba(5,4,13,.72);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-pane .sidebar-collapse-toggle:hover,
+[data-visual-theme="cyberpunk"] .wb-list-pane .sidebar-collapse-toggle:hover,
+[data-visual-theme="cyberpunk"] .notes-list-pane .notes-icon-btn:hover,
+[data-visual-theme="cyberpunk"] .wb-list-pane .wb-icon-btn:hover {
+  color: #05040d;
+  border-color: var(--cyber-hazard);
+  background: var(--cyber-hazard);
+  box-shadow: 0 0 13px rgba(255,212,0,.32);
+}
+
+/* Cyan project navigation matrix. */
+[data-visual-theme="cyberpunk"] .notes-folders,
+[data-visual-theme="cyberpunk"] .wb-folders,
+[data-visual-theme="cyberpunk"] .notes-gtd-folders {
+  counter-reset: cyber-sidebar-row;
+  gap: 3px;
+  padding: 8px 9px 14px 7px;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-section,
+[data-visual-theme="cyberpunk"] .wb-folder-section {
+  margin-top: 13px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(0,240,255,.24);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-section-label,
+[data-visual-theme="cyberpunk"] .wb-folder-section-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px 7px;
+  color: var(--cyber-cyan);
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-shadow: 0 0 9px rgba(0,240,255,.42);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-section-label::before,
+[data-visual-theme="cyberpunk"] .wb-folder-section-label::before {
+  content: "//";
+  color: var(--cyber-hazard);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-section-label::after,
+[data-visual-theme="cyberpunk"] .wb-folder-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0,240,255,.62), transparent);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row,
+[data-visual-theme="cyberpunk"] .wb-folder-row {
+  counter-increment: cyber-sidebar-row;
+  position: relative;
+  min-height: 34px;
+  padding: 5px 7px 5px 5px;
+  border: 1px solid rgba(0,240,255,.16);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: linear-gradient(90deg, rgba(0,240,255,.035), rgba(5,4,13,.32));
+  font-family: var(--font-family-mono);
+  overflow: hidden;
+  transition: color 130ms ease-out, border-color 130ms ease-out, background-color 130ms ease-out, box-shadow 130ms ease-out;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row::before,
+[data-visual-theme="cyberpunk"] .wb-folder-row::before {
+  content: counter(cyber-sidebar-row, decimal-leading-zero);
+  flex: 0 0 19px;
+  color: rgba(0,240,255,.54);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  text-shadow: 0 0 7px rgba(0,240,255,.3);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row::after,
+[data-visual-theme="cyberpunk"] .wb-folder-row::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: -42%;
+  width: 34%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(0,240,255,.24), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row > *,
+[data-visual-theme="cyberpunk"] .wb-folder-row > * {
+  position: relative;
+  z-index: 2;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row:hover,
+[data-visual-theme="cyberpunk"] .wb-folder-row:hover {
+  border-color: rgba(0,240,255,.72);
+  background: linear-gradient(90deg, rgba(0,240,255,.12), rgba(255,43,214,.035));
+  box-shadow: inset 2px 0 0 var(--cyber-cyan), 0 0 12px rgba(0,240,255,.10);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row.active,
+[data-visual-theme="cyberpunk"] .wb-folder-row.active {
+  color: #eaffff;
+  border-color: var(--cyber-hazard);
+  background:
+    linear-gradient(90deg, rgba(0,240,255,.32), rgba(0,240,255,.12) 58%, rgba(255,43,214,.18)),
+    #080712;
+  box-shadow: inset 4px 0 0 var(--cyber-hazard), inset -2px 0 0 var(--cyber-magenta), 0 0 16px rgba(0,240,255,.18);
+  text-shadow: 0 0 9px rgba(0,240,255,.24);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row.active::before,
+[data-visual-theme="cyberpunk"] .wb-folder-row.active::before {
+  color: var(--cyber-hazard);
+  text-shadow: 0 0 8px rgba(255,212,0,.65);
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row-label,
+[data-visual-theme="cyberpunk"] .wb-folder-row-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row-desc,
+[data-visual-theme="cyberpunk"] .wb-folder-row-desc {
+  color: #77728f;
+  font-size: 9px;
+  letter-spacing: -.01em;
+}
+
+[data-visual-theme="cyberpunk"] .notes-folder-row-count,
+[data-visual-theme="cyberpunk"] .wb-folder-row-count {
+  min-width: 22px;
+  padding: 1px 4px;
+  border: 1px solid rgba(0,240,255,.34);
+  color: var(--cyber-cyan);
+  background: rgba(0,240,255,.055);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  clip-path: var(--cyber-notch-small);
+}
+
+[data-visual-theme="cyberpunk"] .active > .notes-folder-row-count,
+[data-visual-theme="cyberpunk"] .active > .wb-folder-row-count {
+  border-color: var(--cyber-hazard);
+  color: #05040d;
+  background: var(--cyber-hazard);
+  text-shadow: none;
+}
+
+[data-visual-theme="cyberpunk"] .wb-folder-activity-dot,
+[data-visual-theme="cyberpunk"] .wb-session-activity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 0;
+  transform: rotate(45deg);
+  background: #63f7b4;
+  box-shadow: 0 0 3px #63f7b4, 0 0 10px rgba(99,247,180,.68);
+}
+
+[data-visual-theme="cyberpunk"] .project-pin-icon {
+  color: var(--cyber-hazard);
+  filter: drop-shadow(0 0 5px rgba(255,212,0,.62));
+}
+
+/* Magenta session/note data stream. */
+[data-visual-theme="cyberpunk"] .notes-list-meta-row,
+[data-visual-theme="cyberpunk"] .wb-list-meta-row {
+  min-height: 27px;
+  margin: 0;
+  padding: 3px 9px 4px 11px;
+  border-bottom: 1px solid rgba(255,43,214,.22);
+  background: linear-gradient(90deg, rgba(255,43,214,.075), transparent 72%);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-meta,
+[data-visual-theme="cyberpunk"] .wb-list-meta {
+  color: #8e87a4;
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list,
+[data-visual-theme="cyberpunk"] .wb-list {
+  padding: 7px 3px 11px;
+  background:
+    linear-gradient(90deg, transparent 0 9px, rgba(255,43,214,.08) 9px 10px, transparent 10px),
+    repeating-linear-gradient(0deg, transparent 0 63px, rgba(255,43,214,.035) 63px 64px);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item,
+[data-visual-theme="cyberpunk"] .wb-list-item {
+  position: relative;
+  width: calc(100% - 12px);
+  margin: 0 6px 5px;
+  padding: 9px 11px 9px 14px;
+  border: 1px solid rgba(255,43,214,.21);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.055), transparent 46%),
+    rgba(5,4,13,.58);
+  overflow: hidden;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item > *,
+[data-visual-theme="cyberpunk"] .wb-list-item > * {
+  position: relative;
+  z-index: 2;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item::before,
+[data-visual-theme="cyberpunk"] .wb-list-item::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 7px;
+  bottom: 7px;
+  left: 4px;
+  width: 2px;
+  background: var(--cyber-magenta);
+  box-shadow: 0 0 8px rgba(255,43,214,.72);
+  pointer-events: none;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item::after,
+[data-visual-theme="cyberpunk"] .wb-list-item::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -12%;
+  bottom: -12%;
+  left: -42%;
+  width: 31%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,43,214,.27), rgba(0,240,255,.11), transparent);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item:hover,
+[data-visual-theme="cyberpunk"] .wb-list-item:hover {
+  border-color: rgba(255,43,214,.78);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.14), rgba(0,240,255,.035) 68%),
+    rgba(7,5,15,.9);
+  box-shadow: inset -2px 0 0 rgba(0,240,255,.55), 0 0 14px rgba(255,43,214,.12);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item.active,
+[data-visual-theme="cyberpunk"] .wb-list-item.active {
+  color: #eaffff;
+  border-color: var(--cyber-hazard);
+  background:
+    linear-gradient(105deg, rgba(255,43,214,.27), rgba(255,43,214,.09) 48%, rgba(0,240,255,.17)),
+    #090611;
+  box-shadow: inset 3px 0 0 var(--cyber-hazard), inset -2px 0 0 var(--cyber-cyan), 0 0 18px rgba(255,43,214,.18);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item.active::before,
+[data-visual-theme="cyberpunk"] .wb-list-item.active::before {
+  background: var(--cyber-hazard);
+  box-shadow: 0 0 10px rgba(255,212,0,.88);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item-title,
+[data-visual-theme="cyberpunk"] .wb-list-item-title {
+  color: #efffff;
+  font-family: var(--font-family-heading);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item-date,
+[data-visual-theme="cyberpunk"] .wb-list-item-date {
+  padding-left: 7px;
+  color: var(--cyber-magenta);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-shadow: 0 0 7px rgba(255,43,214,.38);
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item-preview,
+[data-visual-theme="cyberpunk"] .wb-list-item-preview {
+  color: #827b99;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: .005em;
+}
+
+[data-visual-theme="cyberpunk"] .notes-list-item.is-pinned:not(.active),
+[data-visual-theme="cyberpunk"] .wb-list-item.has-wb-activity:not(.active) {
+  border-color: rgba(255,212,0,.34);
+}
+
+[data-visual-theme="cyberpunk"] .wb-list-item .s-provider-tag {
+  border-radius: 0;
+  border: 1px solid rgba(0,240,255,.34);
+  background: rgba(0,240,255,.08);
+  box-shadow: 0 0 7px rgba(0,240,255,.08);
+}
+
+[data-visual-theme="cyberpunk"] .wb-other-machine-badge,
+[data-visual-theme="cyberpunk"] .wb-gtd-status-badge {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+}
+
+/* Visible energy rail between panes, while retaining the existing hit target. */
+[data-visual-theme="cyberpunk"] .pane-resizer {
+  background: linear-gradient(180deg, var(--cyber-cyan), rgba(0,240,255,.18) 44%, rgba(255,43,214,.28) 56%, var(--cyber-magenta));
+  box-shadow: 0 0 7px rgba(0,240,255,.34), 0 0 10px rgba(255,43,214,.22);
+}
+
+[data-visual-theme="cyberpunk"] .pane-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  width: 7px;
+  height: 38px;
+  transform: translateY(-50%);
+  border-top: 2px solid var(--cyber-cyan);
+  border-bottom: 2px solid var(--cyber-magenta);
+  background: repeating-linear-gradient(180deg, transparent 0 4px, rgba(234,255,255,.72) 4px 5px);
+  box-shadow: 0 0 11px rgba(0,240,255,.28);
+  pointer-events: none;
+}
+
+[data-visual-theme="cyberpunk"] .pane-resizer:hover,
+[data-visual-theme="cyberpunk"] .pane-resizer.is-dragging {
+  background: var(--cyber-hazard);
+  box-shadow: 0 0 14px rgba(255,212,0,.68);
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .sidebar-folders-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .notes-list-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-list-pane::after {
+  animation: cyber-sidebar-rail-pulse 3.1s ease-in-out infinite;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-folder-activity-dot,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-session-activity-dot {
+  animation: cyber-sidebar-node-pulse 1.5s steps(2, end) infinite;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .project-pin-icon {
+  animation: cyber-sidebar-lock-pulse 2.4s ease-in-out infinite;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .notes-folder-row:hover::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-folder-row:hover::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .notes-list-item:hover::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-list-item:hover::after {
+  animation: cyber-sidebar-data-scan 520ms steps(4, end) both;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .sidebar-folders-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .notes-list-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-list-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-folder-activity-dot,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-session-activity-dot,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .project-pin-icon,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .notes-folder-row::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-folder-row::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .notes-list-item::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-list-item::after {
+  animation: none !important;
+}
+
+@media (max-width: 900px) {
+  [data-visual-theme="cyberpunk"] .notes-folders,
+  [data-visual-theme="cyberpunk"] .wb-folders,
+  [data-visual-theme="cyberpunk"] .notes-gtd-folders {
+    padding-left: 4px;
+    padding-right: 6px;
+  }
+
+  [data-visual-theme="cyberpunk"] .notes-folder-row,
+  [data-visual-theme="cyberpunk"] .wb-folder-row {
+    gap: 4px;
+    padding-left: 4px;
+    padding-right: 5px;
+  }
+
+  [data-visual-theme="cyberpunk"] .notes-folder-row::before,
+  [data-visual-theme="cyberpunk"] .wb-folder-row::before {
+    flex-basis: 15px;
+    font-size: 7px;
+  }
+
+  [data-visual-theme="cyberpunk"] .notes-list-item,
+  [data-visual-theme="cyberpunk"] .wb-list-item {
+    width: calc(100% - 8px);
+    margin-left: 4px;
+    margin-right: 4px;
+    padding-left: 12px;
+    padding-right: 8px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   CYBERPUNK / SESSIONS REFERENCE SHEET
+   A dedicated two-channel archive console: cyan session index on the left,
+   magenta inspection stream on the right.
+   -------------------------------------------------------------------------- */
+[data-visual-theme="cyberpunk"] .sheet-panel:has(.sessions-split) {
+  width: min(1020px, 100%);
+  border-left-color: rgba(0,240,255,.68);
+  background-color: #07050f;
+  background-image:
+    linear-gradient(135deg, rgba(0,240,255,.075), transparent 30%, rgba(255,43,214,.08) 100%),
+    repeating-linear-gradient(90deg, rgba(0,240,255,.04) 0 1px, transparent 1px 32px);
+}
+
+[data-visual-theme="cyberpunk"] .sheet-body.sessions-split {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(252px, .88fr) minmax(0, 1.42fr);
+  gap: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #07050f;
+}
+
+[data-visual-theme="cyberpunk"] .sheet-body.sessions-split::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--cyber-cyan) 0 38%, var(--cyber-hazard) 38% 40%, var(--cyber-magenta) 40% 100%);
+  box-shadow: 0 0 14px rgba(0,240,255,.48), 0 0 18px rgba(255,43,214,.34);
+}
+
+[data-visual-theme="cyberpunk"] .sheet-body.sessions-split::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 10px;
+  bottom: 10px;
+  left: calc(38.25% - 1px);
+  width: 2px;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, var(--cyber-cyan) 0 8px, transparent 8px 14px, var(--cyber-magenta) 14px 16px, transparent 16px 22px);
+  box-shadow: 0 0 10px rgba(0,240,255,.42), 0 0 10px rgba(255,43,214,.28);
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane,
+[data-visual-theme="cyberpunk"] .session-preview-pane {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 8px 12px;
+  border-right: 1px solid rgba(0,240,255,.48);
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.09), transparent 22%),
+    repeating-linear-gradient(0deg, transparent 0 29px, rgba(0,240,255,.034) 29px 30px),
+    rgba(5,4,13,.78);
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane .form-row {
+  margin: 0;
+  padding: 0 2px;
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane .ghost-btn {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid rgba(0,240,255,.5);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: linear-gradient(100deg, rgba(0,240,255,.14), rgba(5,4,13,.78));
+  color: var(--cyber-cyan);
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane .ghost-btn:hover:not(:disabled) {
+  border-color: var(--cyber-hazard);
+  background: var(--cyber-hazard);
+  color: #05040d;
+  box-shadow: 0 0 14px rgba(255,212,0,.3);
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list-pane > .muted {
+  margin: 0 4px;
+  color: #82819a;
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .055em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .sessions-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  border: 1px solid rgba(0,240,255,.31);
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background:
+    linear-gradient(90deg, rgba(0,240,255,.07) 0 1px, transparent 1px),
+    rgba(3,3,10,.72);
+}
+
+[data-visual-theme="cyberpunk"] .session-row {
+  position: relative;
+  height: 100%;
+  padding: 10px 10px 9px 20px;
+  border: 0;
+  border-bottom: 1px solid rgba(0,240,255,.15);
+  border-radius: 0;
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.038), transparent 52%),
+    transparent;
+  color: #dffcff;
+  overflow: hidden;
+  transition: background-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+[data-visual-theme="cyberpunk"] .session-row::before {
+  content: ">";
+  position: absolute;
+  top: 11px;
+  left: 7px;
+  color: var(--cyber-cyan);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: 900;
+  text-shadow: 0 0 7px rgba(0,240,255,.65);
+}
+
+[data-visual-theme="cyberpunk"] .session-row::after {
+  content: "";
+  position: absolute;
+  top: -15%;
+  bottom: -15%;
+  left: -42%;
+  width: 31%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(0,240,255,.30), rgba(255,43,214,.14), transparent);
+}
+
+[data-visual-theme="cyberpunk"] .session-row:hover {
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.14), rgba(255,43,214,.04) 70%),
+    rgba(4,8,17,.92);
+  box-shadow: inset 3px 0 0 var(--cyber-cyan);
+}
+
+[data-visual-theme="cyberpunk"] .session-row.active {
+  background:
+    linear-gradient(105deg, rgba(0,240,255,.27), rgba(0,240,255,.09) 55%, rgba(255,43,214,.19)),
+    #080712;
+  box-shadow: inset 3px 0 0 var(--cyber-hazard), inset -2px 0 0 var(--cyber-magenta), 0 0 14px rgba(0,240,255,.13);
+}
+
+[data-visual-theme="cyberpunk"] .session-row.active::before {
+  color: var(--cyber-hazard);
+  text-shadow: 0 0 8px rgba(255,212,0,.76);
+}
+
+[data-visual-theme="cyberpunk"] .session-row .s-title {
+  color: #ecffff;
+  font-family: var(--font-family-heading);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .session-row .s-meta {
+  color: #7e839a;
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+[data-visual-theme="cyberpunk"] .session-row .s-provider-tag {
+  border-radius: 0;
+  border: 1px solid rgba(0,240,255,.34);
+  background: rgba(0,240,255,.08);
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-pane {
+  max-height: none;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(ellipse at 92% 5%, rgba(255,43,214,.12), transparent 40%),
+    repeating-linear-gradient(0deg, transparent 0 29px, rgba(255,43,214,.028) 29px 30px),
+    rgba(8,5,17,.76);
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-head {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,43,214,.4);
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-title {
+  color: #f9eaff;
+  font-family: var(--font-family-heading);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  text-shadow: 0 0 11px rgba(255,43,214,.32);
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-actions .tool-btn {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  border-color: rgba(255,43,214,.48);
+  background: rgba(255,43,214,.08);
+  color: #f5dbff;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-actions .tool-btn:hover:not(:disabled) {
+  border-color: var(--cyber-hazard);
+  background: var(--cyber-hazard);
+  color: #05040d;
+}
+
+[data-visual-theme="cyberpunk"] .session-preview-meta {
+  padding: 7px 9px;
+  border-left: 2px solid var(--cyber-magenta);
+  color: #9384a7;
+  background: rgba(255,43,214,.055);
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+}
+
+[data-visual-theme="cyberpunk"] .session-summary-box,
+[data-visual-theme="cyberpunk"] .preview-msg {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  background: rgba(5,4,13,.64);
+}
+
+[data-visual-theme="cyberpunk"] .session-summary-box {
+  border-color: rgba(255,43,214,.48);
+  box-shadow: inset 2px 0 0 var(--cyber-magenta);
+}
+
+[data-visual-theme="cyberpunk"] .session-summary-label,
+[data-visual-theme="cyberpunk"] .preview-msg .role {
+  color: var(--cyber-hazard);
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+
+[data-visual-theme="cyberpunk"] .session-summary-body,
+[data-visual-theme="cyberpunk"] .preview-msg {
+  color: #ced3e8;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+[data-visual-theme="cyberpunk"] .preview-msg {
+  border-color: rgba(255,43,214,.26);
+  box-shadow: inset 2px 0 0 var(--cyber-magenta);
+}
+
+[data-visual-theme="cyberpunk"] .preview-msg.user {
+  border-color: rgba(0,240,255,.44);
+  box-shadow: inset 2px 0 0 var(--cyber-cyan);
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .sheet-body.sessions-split::after {
+  animation: cyber-sidebar-rail-pulse 3.1s ease-in-out infinite;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .session-row:hover::after {
+  animation: cyber-sidebar-data-scan 520ms steps(4, end) both;
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .sheet-body.sessions-split::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .session-row::after {
+  animation: none !important;
+}
+
+@media (max-width: 900px) {
+  [data-visual-theme="cyberpunk"] .sheet-body.sessions-split {
+    grid-template-columns: minmax(228px, .82fr) minmax(0, 1.18fr);
+  }
+
+  [data-visual-theme="cyberpunk"] .session-preview-pane {
+    padding-inline: 13px;
+  }
+}
+
+/* Transparent detail surfaces: reveal the host theme backdrop while keeping
+   editor, terminal, chat controls, and message surfaces readable. */
+.notes-detail,
+.wb-detail,
+.wb-detail-head,
+.ask-main-pane,
+.ask-chat-shell,
+.chat-log,
+.notes-editor-shell,
+.wb-terminal-shell {
+  background: transparent;
+}
+
+/* Cyberpunk adds opaque gradients to these containers above the base rules;
+   clear those paints while retaining its borders, clipping, and decoration. */
+[data-visual-theme="cyberpunk"] .ask-chat-shell,
+[data-visual-theme="cyberpunk"] .notes-editor-shell,
+[data-visual-theme="cyberpunk"] .wb-terminal-shell {
+  background-color: transparent;
+  background-image: none;
+}
+
+[data-visual-theme="cyberpunk"] .chat-log {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* Report detail surfaces: let the report content share the host backdrop
+   while preserving borders, spacing, sticky headers, and controls. */
+.report-detail-pane,
+.report-detail-head,
+.digest-panel,
+.digest-card,
+.digest-card-head {
+  background: transparent;
+}
+
+/* Cyberpunk paints the digest card and header with opaque gradients above the
+   base rules; clear only those paints and retain the theme chrome. */
+[data-visual-theme="cyberpunk"] .report-detail-pane,
+[data-visual-theme="cyberpunk"] .report-detail-head,
+[data-visual-theme="cyberpunk"] .digest-panel,
+[data-visual-theme="cyberpunk"] .digest-card,
+[data-visual-theme="cyberpunk"] .digest-card-head {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* xterm paints its own viewport/canvas surface; clear the host and renderer
+   layers as well so the transparent terminal theme can reveal the backdrop. */
+.wb-terminal-host,
+.wb-terminal-host .xterm,
+.wb-terminal-host .xterm-viewport,
+.wb-terminal-host .xterm-screen,
+.wb-terminal-host .xterm-rows {
+  background: transparent !important;
 }

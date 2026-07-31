@@ -1438,6 +1438,12 @@ function refreshTerminalGlyphs(terminal: Terminal): void {
 const TERMINAL_FONT_FAMILY =
   'Menlo, Monaco, "SF Mono", Consolas, "Cascadia Mono", "Courier New", "PingFang SC", "Hiragino Sans GB", "Noto Sans Mono CJK SC", "Microsoft YaHei UI", monospace';
 
+function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appearance: DesktopAppearanceState) {
+  // The xterm CSS parser rejects the transparent keyword and falls back to
+  // its opaque default background. Use an explicit zero-alpha color instead.
+  return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
+}
+
 function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput }: {
   pane: TerminalPane;
   active: boolean;
@@ -1505,7 +1511,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       // Ambiguous-width / fallback glyphs otherwise spill into the next cell.
       rescaleOverlappingGlyphs: true,
       scrollback: 10_000,
-      theme: resolveTerminalTheme(themeId, appearance)
+      allowTransparency: true,
+      theme: resolveTransparentTerminalTheme(themeId, appearance)
     });
     terminalRef.current = terminal;
     const fitAddon = new FitAddon();
@@ -1694,7 +1701,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     const terminal = terminalRef.current;
     if (!terminal) return;
     // Replace full theme object so ANSI colors do not leak from the previous preset.
-    terminal.options.theme = resolveTerminalTheme(themeId, appearance);
+    terminal.options.theme = resolveTransparentTerminalTheme(themeId, appearance);
     refreshTerminalGlyphs(terminal);
   }, [appearance, themeId]);
 
@@ -1860,8 +1867,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageBoolean(FOLDERS_COLLAPSED_KEY));
-  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 220, 140, 400));
-  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 320, 240, 520));
+  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 400));
+  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 520));
   const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 600));
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [pendingSessions, setPendingSessions] = useState<PendingWorkbenchSession[]>([]);

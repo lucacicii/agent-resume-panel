@@ -21,6 +21,7 @@ type MockBuffer = {
 type MockTerminalInstance = {
   cols: number;
   rows: number;
+  options: Record<string, unknown>;
   buffer: { active: MockBuffer; normal: MockBuffer; alternate: MockBuffer };
   focusCalls: number;
   scrollTopCalls: number;
@@ -80,7 +81,7 @@ vi.mock("../../components/CodeEditor", () => ({
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
   cols = 80;
   rows = 24;
-  options: Record<string, unknown> = { theme: {} };
+  options: Record<string, unknown>;
   unicode = { activeVersion: "6" };
   private normalBuffer: MockBuffer = { type: "normal", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
   private alternateBuffer: MockBuffer = { type: "alternate", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
@@ -100,7 +101,10 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   focusCalls = 0;
   scrollTopCalls = 0;
   scrollBottomCalls = 0;
-  constructor() { xtermMocks.instances.push(this); }
+  constructor(options: Record<string, unknown>) {
+    this.options = options;
+    xtermMocks.instances.push(this);
+  }
   loadAddon(addon: { activate?: (terminal: unknown) => void }) { addon.activate?.(this); }
   open() {}
   focus() { this.focusCalls += 1; }
@@ -483,6 +487,8 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     const terminal = xtermMocks.instances[0];
+    expect(terminal.options.allowTransparency).toBe(true);
+    expect((terminal.options.theme as { background?: string }).background).toBe("rgba(0, 0, 0, 0)");
 
     act(() => terminal.setBuffer("normal", 5, 10));
     fireEvent.click(await screen.findByRole("button", { name: "Scroll to terminal top" }));
