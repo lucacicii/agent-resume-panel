@@ -167,18 +167,38 @@ describe("NotesPanel", () => {
     await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "library" }));
   });
 
+  it("closes the target picker after creating a note even when opening it fails", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    const { notesCreate } = installBridge();
+    const originalNotesRead = window.agentResume.notesRead;
+    vi.spyOn(window.agentResume, "notesRead").mockImplementation(async ({ noteId }) => {
+      if (noteId === "note-3") throw new Error("Unable to open the created note");
+      return originalNotesRead({ noteId });
+    });
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    fireEvent.click(await screen.findByRole("button", { name: "New note" }));
+    fireEvent.click(document.querySelector(".notes-target-item") as HTMLButtonElement);
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "library" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
   it("raises the note list only while the target picker is open", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
     installBridge();
     render(<I18nProvider><NotesPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
     const pane = document.querySelector(".notes-list-pane") as HTMLElement;
+    const toolbar = document.querySelector(".notes-list-toolbar-wrap") as HTMLElement;
     expect(pane.classList.contains("is-target-open")).toBe(false);
+    expect(toolbar.classList.contains("is-target-open")).toBe(false);
     fireEvent.click(await screen.findByRole("button", { name: "New note" }));
     expect(screen.getByRole("dialog").classList.contains("notes-target-popover")).toBe(true);
     expect(pane.classList.contains("is-target-open")).toBe(true);
+    expect(toolbar.classList.contains("is-target-open")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(pane.classList.contains("is-target-open")).toBe(false);
+    expect(toolbar.classList.contains("is-target-open")).toBe(false);
   });
 
   it("uses Workbench-compatible project aliases and shared project pins", async () => {

@@ -774,6 +774,7 @@ export function NotesPanel(): ReactPortal | null {
     try {
       if (target.action === "create") {
         const result = await desktopApi().notesCreate(owner);
+        setTarget(null);
         await load();
         const next = await desktopApi().notesRead({ noteId: result.noteId });
         setSelected(next.record); setContent(next.content); setTitle(titleFor(next.record));
@@ -789,7 +790,7 @@ export function NotesPanel(): ReactPortal | null {
           ? { kind: "project", projectPath: owner.projectPath }
           : { kind: "session", provider: owner.provider || "", sessionId: owner.sessionId || "" });
       }
-      setTarget(null);
+      if (target.action !== "create") setTarget(null);
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
 
@@ -884,7 +885,7 @@ export function NotesPanel(): ReactPortal | null {
         <PaneResizer label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
         <aside className={"notes-list-pane" + (target ? " is-target-open" : "")} style={{ width: listWidth }}>
           {sidebarView === "notes" ? <>
-          <div className="notes-list-toolbar-wrap">
+          <div className={`notes-list-toolbar-wrap${target ? " is-target-open" : ""}`}>
             <div ref={listSearchToolbarRef} className={`notes-list-search-wrap${listSearchOpen ? " is-search-open" : ""}`}>
               <button type="button" id="btnNotesToggleFolders" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} title={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} aria-expanded={!foldersCollapsed} onClick={toggleFolders}>
                 <ThemeIcon name="panel-right" size={17} />

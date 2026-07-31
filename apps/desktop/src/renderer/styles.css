@@ -9812,10 +9812,14 @@ textarea.wb-editor-host {
   width: var(--notes-list-width, 324px);
 }
 
-/* The target picker must escape the Cyberpunk list-pane stacking context. */
+/* The target picker must clear both the pane and the list-content stacking layers. */
 .notes-list-pane.is-target-open {
   position: relative;
   z-index: 4;
+}
+
+.notes-list-pane.is-target-open > .notes-list-toolbar-wrap.is-target-open {
+  z-index: 2;
 }
 
 .pane-resizer {

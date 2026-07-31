@@ -8,6 +8,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.13]
+
+#### Fixed
+
+- **Notes target picker stacking & dismissal**: fixed popover stacking context issues in theme list panes and guaranteed target picker closes cleanly when note creation fails
+
 ### [0.2.12]
 
 #### Added
@@ -337,6 +343,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.13]
+
+#### 修复
+
+- **笔记目标选择器层级与关闭逻辑**：修复特定主题下笔记目标选择器弹层的层级（stacking context）遮挡问题，并确保创建笔记失败时弹层能正确收起
 
 ### [0.2.12]
 
