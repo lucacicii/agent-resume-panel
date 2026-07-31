@@ -9812,6 +9812,12 @@ textarea.wb-editor-host {
   width: var(--notes-list-width, 324px);
 }
 
+/* The target picker must escape the Cyberpunk list-pane stacking context. */
+.notes-list-pane.is-target-open {
+  position: relative;
+  z-index: 4;
+}
+
 .pane-resizer {
   position: relative;
   flex: 0 0 1px;
@@ -11685,34 +11691,37 @@ body::before {
 [data-visual-theme="cyberpunk"] .cyber-chrome-breath-line::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0 25%, rgba(234,255,255,.94) 42%, #ffffff 50%, rgba(234,255,255,.94) 58%, transparent 75%);
+  top: 0;
+  bottom: 0;
+  left: -30%;
+  width: min(280px, 30%);
+  background: linear-gradient(90deg, transparent, rgba(234,255,255,.94) 38%, #ffffff 50%, rgba(234,255,255,.94) 62%, transparent);
   filter: blur(.35px);
   opacity: .56;
-  transform: scaleX(.42);
-  transform-origin: center;
+  will-change: left, opacity, filter;
 }
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .cyber-chrome-breath-line {
   animation: cyber-chrome-line-breathe 2.8s ease-in-out infinite;
 }
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .cyber-chrome-breath-line::after {
-  animation: cyber-chrome-line-core 2.8s ease-in-out infinite;
+  animation: cyber-chrome-line-core 2.8s ease-in-out infinite alternate;
 }
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cyber-chrome-breath-line {
   opacity: .68;
   box-shadow: 0 0 5px rgba(0,240,255,.28), 0 0 9px rgba(255,43,214,.14);
 }
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cyber-chrome-breath-line::after {
+  left: 35%;
   opacity: .35;
-  transform: scaleX(.7);
 }
 @keyframes cyber-chrome-line-breathe {
   0%, 100% { opacity: .58; box-shadow: 0 0 6px rgba(0,240,255,.32), 0 0 12px rgba(255,43,214,.18); }
   50% { opacity: 1; box-shadow: 0 0 10px rgba(0,240,255,.68), 0 0 24px rgba(255,43,214,.38); }
 }
 @keyframes cyber-chrome-line-core {
-  0%, 100% { opacity: .34; transform: scaleX(.28); }
-  50% { opacity: .96; transform: scaleX(1); }
+  0% { left: -30%; opacity: .32; filter: blur(.5px); }
+  50% { opacity: .96; filter: blur(.15px); }
+  100% { left: 100%; opacity: .52; filter: blur(.4px); }
 }
 [data-visual-theme="cyberpunk"] .primary-tabs { gap: 4px; }
 [data-visual-theme="cyberpunk"] .primary-tabs .tab {

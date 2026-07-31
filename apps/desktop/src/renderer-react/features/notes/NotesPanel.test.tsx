@@ -167,6 +167,20 @@ describe("NotesPanel", () => {
     await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "library" }));
   });
 
+  it("raises the note list only while the target picker is open", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    const pane = document.querySelector(".notes-list-pane") as HTMLElement;
+    expect(pane.classList.contains("is-target-open")).toBe(false);
+    fireEvent.click(await screen.findByRole("button", { name: "New note" }));
+    expect(screen.getByRole("dialog").classList.contains("notes-target-popover")).toBe(true);
+    expect(pane.classList.contains("is-target-open")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(pane.classList.contains("is-target-open")).toBe(false);
+  });
+
   it("uses Workbench-compatible project aliases and shared project pins", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
     installBridge();

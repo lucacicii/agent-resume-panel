@@ -882,7 +882,7 @@ export function NotesPanel(): ReactPortal | null {
           </div>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
-        <aside className="notes-list-pane" style={{ width: listWidth }}>
+        <aside className={"notes-list-pane" + (target ? " is-target-open" : "")} style={{ width: listWidth }}>
           {sidebarView === "notes" ? <>
           <div className="notes-list-toolbar-wrap">
             <div ref={listSearchToolbarRef} className={`notes-list-search-wrap${listSearchOpen ? " is-search-open" : ""}`}>
