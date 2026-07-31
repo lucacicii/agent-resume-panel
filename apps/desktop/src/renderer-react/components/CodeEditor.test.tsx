@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CodeEditor, getFloatingMenuPosition, type CodeEditorHandle } from "./CodeEditor";
+import { resolveCodeMirrorThemeId } from "./codeMirrorThemes";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -23,7 +24,11 @@ Object.defineProperty(Range.prototype, "getBoundingClientRect", {
   value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 })
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.visualTheme;
+  delete document.documentElement.dataset.theme;
+});
 
 const statuses = ["inbox", "next", "waiting", "someday", "reference", "done"];
 const commands = statuses.map((status) => {
@@ -34,6 +39,39 @@ const commands = statuses.map((status) => {
     insert: opener + "\n\n:::",
     cursorOffset: opener.length + 1
   };
+});
+
+
+describe("CodeEditor visual themes", () => {
+  it("resolves Cyberpunk and DOS when following the desktop theme", () => {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.visualTheme = "cyberpunk";
+    expect(resolveCodeMirrorThemeId("follow-app")).toBe("cyberpunk");
+
+    document.documentElement.dataset.visualTheme = "dos";
+    expect(resolveCodeMirrorThemeId("follow-app")).toBe("dos");
+  });
+
+  it("keeps an explicit Workbench editor appearance independent from the desktop visual theme", () => {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.visualTheme = "dos";
+    expect(resolveCodeMirrorThemeId("light")).toBe("classic-light");
+    expect(resolveCodeMirrorThemeId("dark")).toBe("classic-dark");
+  });
+
+  it("reconfigures a mounted follow-app editor when the visual theme changes", async () => {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.visualTheme = "cyberpunk";
+    const { container } = render(
+      <CodeEditor value="const theme = true;" language="javascript" ariaLabel="Theme editor" onChange={vi.fn()} />
+    );
+    const editor = container.querySelector(".cm-editor") as HTMLElement;
+    expect(getComputedStyle(editor).backgroundColor).toBe("rgb(7, 6, 17)");
+
+    document.documentElement.dataset.visualTheme = "dos";
+    act(() => window.dispatchEvent(new CustomEvent("agent-resume:appearance-change")));
+    await waitFor(() => expect(getComputedStyle(editor).backgroundColor).toBe("rgb(23, 18, 13)"));
+  });
 });
 
 describe("CodeEditor slash commands", () => {

@@ -14,10 +14,10 @@ import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { Decoration, drawSelection, EditorView, keymap, type DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching } from "@codemirror/language";
+import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "./codeMirrorThemes";
 
 export interface CodeEditorProps {
   value: string;
@@ -30,7 +30,7 @@ export interface CodeEditorProps {
   wordWrap?: boolean;
   tabSize?: number;
   /** Workbench may use an independent editor appearance; other editors follow the app. */
-  appearance?: "follow-app" | "light" | "dark";
+  appearance?: CodeMirrorAppearance;
   /** File path or language id used to pick a CodeMirror language pack. */
   filePath?: string;
   /** Explicit language id (overrides filePath extension when set). */
@@ -236,66 +236,6 @@ function revealSearchMatch(instance: EditorView, focus: boolean): CodeEditorSear
     else instance.contentDOM.blur();
   }
   return searchResult(search);
-}
-
-const lightEditorTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "transparent",
-    color: "var(--color-label-primary)"
-  },
-  ".cm-content": {
-    caretColor: "var(--editor-caret-color)"
-  },
-  ".cm-cursor, .cm-dropCursor": {
-    borderLeftColor: "var(--editor-caret-color)"
-  },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-    backgroundColor: "var(--color-fill-primary)"
-  },
-  ".cm-activeLine": {
-    backgroundColor: "var(--color-fill-tertiary)"
-  },
-  ".cm-gutters": {
-    backgroundColor: "transparent",
-    color: "var(--color-label-tertiary)",
-    border: "none"
-  }
-});
-
-const caretTheme = EditorView.theme({
-  ".cm-cursor": {
-    borderLeft: "2px solid var(--editor-caret-color)",
-    marginLeft: "-1px"
-  }
-});
-
-const cyberpunkEditorTheme = EditorView.theme({
-  "&": { backgroundColor: "#070611", color: "#eaffff" },
-  ".cm-content": { caretColor: "#ff2bd6", fontFamily: "var(--font-family-mono)" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#ff2bd6" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(0, 240, 255, .26)" },
-  ".cm-activeLine": { backgroundColor: "rgba(255, 43, 214, .075)" },
-  ".cm-gutters": { backgroundColor: "#05040d", color: "#716a91", borderRight: "1px solid rgba(0, 240, 255, .35)" },
-  ".cm-activeLineGutter": { color: "#ffd400", backgroundColor: "rgba(255, 212, 0, .08)" },
-  ".cm-matchingBracket": { color: "#05040d !important", backgroundColor: "#00f0ff", outline: "1px solid #ff2bd6" }
-});
-
-function isDarkAppearance(preference: "follow-app" | "light" | "dark" = "follow-app"): boolean {
-  if (preference === "dark") return true;
-  if (preference === "light") return false;
-  const root = document.documentElement;
-  const explicit = root.dataset.theme;
-  if (explicit === "dark") return true;
-  if (explicit === "light") return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function themeExtensions(dark: boolean, preference: "follow-app" | "light" | "dark" = "follow-app"): Extension[] {
-  if (preference === "follow-app" && document.documentElement.dataset.visualTheme === "cyberpunk") {
-    return [oneDark, cyberpunkEditorTheme, caretTheme];
-  }
-  if (dark) return [oneDark, caretTheme];
-  return [lightEditorTheme, syntaxHighlighting(defaultHighlightStyle), caretTheme];
 }
 
 function normalizeLanguageKey(filePath?: string, languageId?: string): string {
@@ -636,7 +576,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         ]),
         bracketMatching(),
         language.of(languageExtension(filePath, languageId)),
-        theme.of(themeExtensions(isDarkAppearance(appearanceMode.current), appearanceMode.current)),
+        theme.of(codeMirrorThemeExtensions(appearanceMode.current)),
         drawSelection(),
         wrapping.of(wordWrap ? EditorView.lineWrapping : []),
         tabs.of(EditorState.tabSize.of(tabSize)),
@@ -676,7 +616,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     window.addEventListener("resize", onWindowResize);
 
     const applyTheme = () => {
-      instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance(appearanceMode.current), appearanceMode.current)) });
+      instance.dispatch({ effects: theme.reconfigure(codeMirrorThemeExtensions(appearanceMode.current)) });
     };
     const onThemeChange = () => applyTheme();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -686,7 +626,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     window.addEventListener("agent-resume:appearance-change", onThemeChange);
     media.addEventListener("change", onMedia);
     const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-visual-theme"] });
 
     return () => {
       window.removeEventListener("resize", onWindowResize);
@@ -742,7 +682,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   useEffect(() => {
     const instance = view.current;
     if (!instance) return;
-    instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance(appearance), appearance)) });
+    instance.dispatch({ effects: theme.reconfigure(codeMirrorThemeExtensions(appearance)) });
   }, [appearance]);
 
   return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;

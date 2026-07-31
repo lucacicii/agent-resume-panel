@@ -15,7 +15,7 @@ import {
   Utf8Base64,
   writeTerminalSelection
 } from "./terminalClipboard";
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import { Decoration, drawSelection, EditorView, type DecorationSet } from "@codemirror/view";
 import type {
@@ -31,6 +31,7 @@ import {
 } from "../settings/model";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
+import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -157,10 +158,11 @@ const diffSearchSelectionTheme = EditorView.theme({
   }
 });
 
-function readOnlyDiffExtensions() {
+function readOnlyDiffExtensions(themeCompartment: Compartment, appearance: CodeMirrorAppearance) {
   return [
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
+    themeCompartment.of(codeMirrorThemeExtensions(appearance)),
     drawSelection(),
     diffSearchDecorations,
     diffSearchSelectionTheme
@@ -877,25 +879,45 @@ export function advanceDiffSearchMatchIndex(
 function MergeDiffView({
   oldText,
   newText,
-  onHandle
+  onHandle,
+  appearance
 }: {
   oldText: string;
   newText: string;
   onHandle: (handle: DiffSearchHandle | null) => void;
+  appearance: CodeMirrorAppearance;
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<MergeView | null>(null);
+  const appearanceRef = useRef<CodeMirrorAppearance>(appearance);
+  const themeCompartmentsRef = useRef({ a: new Compartment(), b: new Compartment() });
 
   useEffect(() => {
     if (!host.current) return;
+    const themeCompartments = themeCompartmentsRef.current;
     const view = new MergeView({
-      a: { doc: oldText, extensions: readOnlyDiffExtensions() },
-      b: { doc: newText, extensions: readOnlyDiffExtensions() },
+      a: { doc: oldText, extensions: readOnlyDiffExtensions(themeCompartments.a, appearanceRef.current) },
+      b: { doc: newText, extensions: readOnlyDiffExtensions(themeCompartments.b, appearanceRef.current) },
       parent: host.current,
       highlightChanges: true,
       gutter: true,
       revertControls: undefined,
       collapseUnchanged: DIFF_COLLAPSE_UNCHANGED
     });
+    viewRef.current = view;
+    const applyTheme = () => {
+      view.a.dispatch({ effects: themeCompartments.a.reconfigure(codeMirrorThemeExtensions(appearanceRef.current)) });
+      view.b.dispatch({ effects: themeCompartments.b.reconfigure(codeMirrorThemeExtensions(appearanceRef.current)) });
+    };
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onMedia = () => {
+      if (appearanceRef.current === "follow-app") applyTheme();
+    };
+    window.addEventListener("agent-resume:appearance-change", applyTheme);
+    media.addEventListener("change", onMedia);
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-visual-theme"] });
+
     let lastQuery = "";
     let activeMatchIndex = -1;
     let searchExpanded = false;
@@ -1026,16 +1048,29 @@ function MergeDiffView({
     };
     onHandle(handle);
     return () => {
+      window.removeEventListener("agent-resume:appearance-change", applyTheme);
+      media.removeEventListener("change", onMedia);
+      observer.disconnect();
       for (const editor of [view.a, view.b]) editor.contentDOM.removeEventListener("copy", copySelection);
       onHandle(null);
       view.destroy();
+      if (viewRef.current === view) viewRef.current = null;
     };
   }, [newText, oldText, onHandle]);
+
+  useEffect(() => {
+    appearanceRef.current = appearance;
+    const view = viewRef.current;
+    if (!view) return;
+    const themeCompartments = themeCompartmentsRef.current;
+    view.a.dispatch({ effects: themeCompartments.a.reconfigure(codeMirrorThemeExtensions(appearance)) });
+    view.b.dispatch({ effects: themeCompartments.b.reconfigure(codeMirrorThemeExtensions(appearance)) });
+  }, [appearance]);
 
   return <div className="react-git-diff-merge" ref={host} />;
 }
 
-function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.Element | null {
+function GitDiffMergePanel({ diff, appearance }: { diff: DiffPane | undefined; appearance: CodeMirrorAppearance }): React.JSX.Element | null {
   const [contentHost, setContentHost] = useState<HTMLElement | null>(null);
   const [paneHost, setPaneHost] = useState<HTMLElement | null>(null);
   const [findOpen, setFindOpen] = useState(false);
@@ -1147,7 +1182,7 @@ function GitDiffMergePanel({ diff }: { diff: DiffPane | undefined }): React.JSX.
 
   if (!diff || !contentHost) return null;
   return <>
-    {createPortal(<MergeDiffView oldText={diff.oldText} newText={diff.newText} onHandle={setSearchHandle} />, contentHost)}
+    {createPortal(<MergeDiffView oldText={diff.oldText} newText={diff.newText} onHandle={setSearchHandle} appearance={appearance} />, contentHost)}
     {findOpen && paneHost ? createPortal(
       <div className="wb-diff-find-bar app-inline-search" role="search">
         <ThemeIcon name="search" size={14} aria-hidden="true" />
@@ -3402,6 +3437,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [addTerminal, selectedProject]);
 
   const editorSettings = settings?.workbench?.editor;
+  const editorAppearance: CodeMirrorAppearance = settings?.workbench?.editorTheme === "light" || settings?.workbench?.editorTheme === "dark"
+    ? settings.workbench.editorTheme
+    : "follow-app";
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
   const desktopAppearance = useMemo(() => appearanceStateFromSettings(settings || {}), [settings]);
   const terminalRendererMode: TerminalRendererMode =
@@ -4673,7 +4711,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={settings?.workbench?.editorTheme === "light" || settings?.workbench?.editorTheme === "dark" ? settings.workbench.editorTheme : "follow-app"} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -4991,7 +5029,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         discard: t("desktop.workbench.gitDiscard")
       }}
     />
-    <GitDiffMergePanel diff={active ? currentDiff : undefined} />
+    <GitDiffMergePanel diff={active ? currentDiff : undefined} appearance={editorAppearance} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
