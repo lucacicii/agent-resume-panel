@@ -10818,3 +10818,506 @@ html[data-window-mode="settings"] #react-notes {
   background: var(--color-secondary-bg);
 }
 .settings-callout.is-error { color: var(--color-destructive); }
+
+
+/* --------------------------------------------------------------------------
+   Desktop visual theme host. Theme manifests only set semantic variables and
+   these host-owned variants; no theme code can target business DOM selectors.
+   -------------------------------------------------------------------------- */
+:root {
+  --font-family-heading: var(--font-family-system);
+  --font-family-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --theme-cut: var(--radius-lg);
+  --theme-glow: none;
+}
+
+body { isolation: isolate; }
+#react-chrome, main { position: relative; z-index: 1; }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+[data-density="compact"] {
+  --space-1: 3px;
+  --space-2: 6px;
+  --space-3: 9px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --font-size-body: 12px;
+  --font-size-callout: 11px;
+}
+[data-density="relaxed"] {
+  --space-2: 10px;
+  --space-3: 14px;
+  --space-4: 18px;
+  --space-5: 24px;
+}
+
+[data-visual-theme="classic"] {
+  --theme-panel-radius: var(--radius-xl);
+}
+
+[data-visual-theme="cyberpunk"] {
+  color-scheme: dark;
+  --color-window-bg: #090817;
+  --color-control-bg: #121027;
+  --color-secondary-bg: #1a1736;
+  --color-tertiary-bg: #28224a;
+  --color-elevated-bg: #17132e;
+  --color-separator: rgba(0, 229, 255, .32);
+  --color-separator-opaque: #3b3a70;
+  --color-label-primary: #ebfaff;
+  --color-label-secondary: #aeb5d2;
+  --color-label-tertiary: #747b9e;
+  --color-accent: #00e5ff;
+  --color-accent-hover: #7bf3ff;
+  --color-destructive: #ff5874;
+  --color-success: #72f1b8;
+  --color-warning: #ffe66d;
+  --color-fill-primary: rgba(0, 229, 255, .16);
+  --color-fill-secondary: rgba(247, 108, 255, .10);
+  --color-fill-tertiary: rgba(255, 255, 255, .06);
+  --color-focus-ring: rgba(247, 108, 255, .78);
+  --editor-caret-color: #f76cff;
+  --chat-bubble-user: rgba(0, 229, 255, .13);
+  --chat-bubble-assistant: #15122c;
+  --chat-meta: #f76cff;
+  --chat-send: #f76cff;
+  --wb-terminal-surface: #0b0920;
+  --wb-terminal-tab-active-label: #d7f9ff;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+  --shadow-popover: 0 0 0 1px rgba(0, 229, 255, .34), 0 10px 36px rgba(0, 0, 0, .52), var(--theme-glow);
+}
+[data-visual-theme="cyberpunk"] .top,
+[data-visual-theme="cyberpunk"] .toolbar,
+[data-visual-theme="cyberpunk"] .sheet-panel,
+[data-visual-theme="cyberpunk"] .settings-group,
+[data-visual-theme="cyberpunk"] .wb-terminal-shell,
+[data-visual-theme="cyberpunk"] .ask-chat-shell,
+[data-visual-theme="cyberpunk"] .notes-editor-shell {
+  border-radius: var(--theme-cut);
+  box-shadow: var(--theme-glow);
+}
+[data-visual-theme="cyberpunk"] body::before {
+  opacity: 1;
+  background-image:
+    linear-gradient(rgba(0,229,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(247,108,255,.04) 1px, transparent 1px),
+    radial-gradient(ellipse at 55% -20%, rgba(247,108,255,.16), transparent 55%);
+  background-size: 34px 34px, 34px 34px, auto;
+}
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::before { opacity: .28; }
+[data-visual-theme="cyberpunk"] button:not(:disabled),
+[data-visual-theme="cyberpunk"] .tab,
+[data-visual-theme="cyberpunk"] .icon-btn {
+  text-shadow: 0 0 10px rgba(0, 229, 255, .24);
+}
+[data-visual-theme="cyberpunk"] .theme-preview-art,
+[data-visual-theme="cyberpunk"] [data-theme-icon] { stroke-linejoin: miter; }
+[data-visual-theme="cyberpunk"] [data-theme-icon] { transform: skewX(-5deg); }
+
+[data-visual-theme="dos"] {
+  color-scheme: dark;
+  --color-window-bg: #0000aa;
+  --color-control-bg: #0000aa;
+  --color-secondary-bg: #000080;
+  --color-tertiary-bg: #000055;
+  --color-elevated-bg: #0000aa;
+  --color-separator: #aaaaff;
+  --color-separator-opaque: #aaaaff;
+  --color-label-primary: #e8e8e8;
+  --color-label-secondary: #c8c8c8;
+  --color-label-tertiary: #aaaaff;
+  --color-accent: #ffff55;
+  --color-accent-hover: #ffffff;
+  --color-destructive: #ff5555;
+  --color-success: #55ff55;
+  --color-warning: #ffff55;
+  --color-fill-primary: rgba(255, 255, 85, .24);
+  --color-fill-secondary: rgba(255, 255, 255, .13);
+  --color-fill-tertiary: rgba(255, 255, 255, .08);
+  --color-focus-ring: #ffff55;
+  --editor-caret-color: #ffff55;
+  --chat-bubble-user: #000080;
+  --chat-bubble-assistant: #0000aa;
+  --chat-meta: #ffff55;
+  --chat-send: #ffff55;
+  --wb-terminal-surface: #0000aa;
+  --wb-terminal-tab-active-label: #ffff55;
+  --shadow-popover: none;
+  --shadow-segment-thumb: none;
+}
+[data-visual-theme="dos"] *,
+[data-visual-theme="dos"] *::before,
+[data-visual-theme="dos"] *::after { border-radius: 0 !important; }
+[data-visual-theme="dos"] body::before {
+  opacity: .55;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 3px);
+  image-rendering: pixelated;
+}
+[data-visual-theme="dos"][data-theme-effects="reduced"] body::before { opacity: .18; }
+[data-visual-theme="dos"] .settings-group,
+[data-visual-theme="dos"] .sheet-panel,
+[data-visual-theme="dos"] .wb-terminal-shell,
+[data-visual-theme="dos"] .ask-chat-shell,
+[data-visual-theme="dos"] .notes-editor-shell {
+  border: 3px double var(--color-separator-opaque);
+  box-shadow: none;
+}
+[data-visual-theme="dos"] button,
+[data-visual-theme="dos"] input,
+[data-visual-theme="dos"] select,
+[data-visual-theme="dos"] textarea { font-family: var(--font-family-mono); }
+[data-visual-theme="dos"] [data-theme-icon] { shape-rendering: crispEdges; stroke-linecap: square; stroke-linejoin: miter; }
+[data-visual-theme="classic"] [data-theme-icon] { stroke-linecap: round; stroke-linejoin: round; }
+
+.theme-preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.theme-preview-card { min-width: 0; padding: 0; overflow: hidden; text-align: left; border: 1px solid var(--color-separator-opaque); background: var(--color-control-bg); color: var(--color-label-primary); border-radius: var(--radius-lg); cursor: pointer; }
+.theme-preview-card:hover { border-color: var(--color-accent); }
+.theme-preview-card.is-selected { border-color: var(--color-accent); outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.theme-preview-art { display: flex; align-items: center; gap: 5px; height: 54px; padding: 10px; background: var(--color-secondary-bg); }
+.theme-preview-art i { display: block; width: 14px; height: 14px; border: 1px solid currentColor; border-radius: 50%; opacity: .75; }
+.theme-preview-copy { display: flex; flex-direction: column; gap: 4px; padding: 9px; }
+.theme-preview-copy strong { font-size: var(--font-size-callout); }
+.theme-preview-copy small { min-height: 3.8em; color: var(--color-label-secondary); font-size: var(--font-size-caption); line-height: 1.3; }
+.theme-preview-cyberpunk .theme-preview-art { color: #00e5ff; background: linear-gradient(135deg, #0b0920, #2b123c); }
+.theme-preview-cyberpunk .theme-preview-art i { border-radius: 1px; transform: skewX(-15deg); box-shadow: 0 0 10px rgba(0,229,255,.7); }
+.theme-preview-dos .theme-preview-art { color: #ffff55; background: #0000aa; image-rendering: pixelated; }
+.theme-preview-dos .theme-preview-art i { border-radius: 0; width: 13px; height: 13px; }
+.settings-theme-field { display: flex; flex-direction: column; gap: 6px; }
+.theme-mode-control { display: inline-flex; align-self: flex-start; padding: 2px; gap: 2px; background: var(--color-secondary-bg); border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-lg); }
+.theme-mode-control button { border: 0; background: transparent; color: var(--color-label-secondary); border-radius: var(--radius-md); padding: 5px 9px; font: inherit; cursor: pointer; }
+.theme-mode-control button.is-selected { background: var(--color-control-bg); color: var(--color-label-primary); box-shadow: var(--shadow-segment-thumb); }
+.theme-mode-control button:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 700px) { .theme-preview-grid { grid-template-columns: 1fr; } .theme-preview-copy small { min-height: 0; } }
+@media (prefers-reduced-motion: reduce) { body::before { transition: none; } }
+
+
+/* ==========================================================================
+   CYBERPUNK / NIGHT CITY INDUSTRIAL NEON
+   Host-owned component variants. Full effects are deliberately immersive;
+   reduced effects remain static and preserve all readable content contrast.
+   ========================================================================== */
+[data-visual-theme="cyberpunk"] {
+  --color-window-bg: #05040d;
+  --color-control-bg: #0c0a18;
+  --color-secondary-bg: #15112a;
+  --color-tertiary-bg: #282042;
+  --color-elevated-bg: #100c22;
+  --color-separator: rgba(0, 240, 255, .42);
+  --color-separator-opaque: #3b3372;
+  --color-label-primary: #eaffff;
+  --color-label-secondary: #a49dbc;
+  --color-label-tertiary: #655f80;
+  --color-accent: #00f0ff;
+  --color-accent-hover: #8bfbff;
+  --color-destructive: #ff3b5c;
+  --color-success: #63f7b4;
+  --color-warning: #ffd400;
+  --color-fill-primary: rgba(0, 240, 255, .16);
+  --color-fill-secondary: rgba(255, 43, 214, .13);
+  --color-fill-tertiary: rgba(255, 255, 255, .055);
+  --color-focus-ring: #ffd400;
+  --editor-caret-color: #ff2bd6;
+  --chat-bubble-user: linear-gradient(135deg, rgba(0,240,255,.16), rgba(0,240,255,.06));
+  --chat-bubble-assistant: linear-gradient(135deg, rgba(255,43,214,.14), rgba(14,10,29,.92));
+  --chat-meta: #00f0ff;
+  --chat-send: #ff2bd6;
+  --wb-terminal-surface: #05040d;
+  --wb-terminal-tab-active-label: #eaffff;
+  --theme-cut: 12px;
+  --theme-glow: 0 0 0 1px rgba(0,240,255,.34), 0 0 16px rgba(0,240,255,.10), 0 0 36px rgba(255,43,214,.08);
+  --cyber-notch: polygon(0 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 13px 100%, 0 calc(100% - 13px));
+  --cyber-notch-small: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+}
+
+[data-visual-theme="cyberpunk"] body::before,
+[data-visual-theme="cyberpunk"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+[data-visual-theme="cyberpunk"] body::before {
+  opacity: 1;
+  background:
+    linear-gradient(180deg, rgba(5,4,13,.10) 0%, rgba(5,4,13,.82) 58%, #05040d 100%),
+    linear-gradient(90deg, transparent 49.8%, rgba(0,240,255,.19) 50%, transparent 50.2%),
+    linear-gradient(rgba(0,240,255,.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,43,214,.085) 1px, transparent 1px),
+    radial-gradient(ellipse at 78% -10%, rgba(255,43,214,.26), transparent 46%),
+    radial-gradient(ellipse at 12% 16%, rgba(0,240,255,.15), transparent 42%);
+  background-size: auto, 100% 100%, 46px 46px, 46px 46px, auto, auto;
+  background-position: center, center, center 0, center 0, center, center;
+  transform-origin: center bottom;
+  animation: cyber-grid-drift 18s linear infinite, cyber-haze-pulse 5.8s ease-in-out infinite;
+}
+[data-visual-theme="cyberpunk"] body::after {
+  opacity: .58;
+  background:
+    repeating-linear-gradient(0deg, rgba(234,255,255,.032) 0 1px, transparent 1px 4px),
+    linear-gradient(90deg, transparent 0 5%, rgba(0,240,255,.05) 5.1% 5.25%, transparent 5.35% 94.65%, rgba(255,43,214,.05) 94.75% 94.9%, transparent 95%),
+    linear-gradient(180deg, transparent 0 47%, rgba(0,240,255,.17) 50%, transparent 53%);
+  background-size: auto, 100% 100%, 100% 220%;
+  background-position: center, center, center -115%;
+  mix-blend-mode: screen;
+  animation: cyber-scan-sweep var(--theme-scan-period, 7s) linear infinite;
+}
+
+@keyframes cyber-grid-drift {
+  0% { background-position: center, center, center 0, center 0, center, center; transform: perspective(560px) rotateX(0deg) scale(1.02); }
+  100% { background-position: center, center, center 46px, center 46px, center, center; transform: perspective(560px) rotateX(1.6deg) scale(1.08); }
+}
+@keyframes cyber-haze-pulse { 0%,100% { filter: saturate(1) brightness(.92); } 50% { filter: saturate(1.32) brightness(1.08); } }
+@keyframes cyber-scan-sweep { from { background-position: center, center, center -115%; } to { background-position: center, center, center 115%; } }
+@keyframes cyber-border-pulse { 0%,100% { box-shadow: var(--theme-glow); } 50% { box-shadow: 0 0 0 1px rgba(0,240,255,.68), 0 0 22px rgba(0,240,255,.23), 0 0 48px rgba(255,43,214,.16); } }
+@keyframes cyber-glitch-hit { 0% { transform: translate(0); filter: none; } 20% { transform: translate(-1px, 1px); filter: drop-shadow(2px 0 #ff2bd6); } 42% { transform: translate(2px, -1px); filter: drop-shadow(-2px 0 #00f0ff); } 65% { transform: translate(-1px, 0); } 100% { transform: translate(0); filter: none; } }
+
+[data-visual-theme="cyberpunk"] .top,
+[data-visual-theme="cyberpunk"] .toolbar,
+[data-visual-theme="cyberpunk"] .sheet-panel,
+[data-visual-theme="cyberpunk"] .settings-group,
+[data-visual-theme="cyberpunk"] .report-cal-pane,
+[data-visual-theme="cyberpunk"] .digest-card,
+[data-visual-theme="cyberpunk"] .ask-chat-shell,
+[data-visual-theme="cyberpunk"] .notes-editor-shell,
+[data-visual-theme="cyberpunk"] .wb-terminal-shell {
+  position: relative;
+  clip-path: var(--cyber-notch);
+  border: 1px solid rgba(0,240,255,.52);
+  box-shadow: var(--theme-glow);
+  background-color: rgba(10,8,23,.91);
+  background-image: linear-gradient(135deg, rgba(0,240,255,.075), transparent 28%, rgba(255,43,214,.07) 100%);
+}
+[data-visual-theme="cyberpunk"] .top::after,
+[data-visual-theme="cyberpunk"] .toolbar::after,
+[data-visual-theme="cyberpunk"] .sheet-panel::after,
+[data-visual-theme="cyberpunk"] .settings-group::after,
+[data-visual-theme="cyberpunk"] .digest-card::after,
+[data-visual-theme="cyberpunk"] .ask-chat-shell::after,
+[data-visual-theme="cyberpunk"] .wb-terminal-shell::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 24px;
+  height: 7px;
+  border-top: 1px solid var(--cyber-hazard);
+  border-right: 1px solid var(--cyber-hazard);
+  opacity: .86;
+  pointer-events: none;
+}
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .top,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-terminal-shell,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .ask-chat-shell { animation: cyber-border-pulse 3.2s ease-in-out infinite; }
+
+[data-visual-theme="cyberpunk"] .mac-top {
+  min-height: 52px;
+  padding-top: 12px;
+  padding-bottom: 11px;
+  background: linear-gradient(90deg, rgba(5,4,13,.98), rgba(16,10,37,.94) 62%, rgba(5,4,13,.98));
+}
+[data-visual-theme="cyberpunk"] .primary-tabs { gap: 4px; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab {
+  position: relative;
+  min-width: 82px;
+  padding: 7px 12px 7px 29px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: #9d96b8;
+  font-family: var(--font-family-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  clip-path: var(--cyber-notch-small);
+}
+[data-visual-theme="cyberpunk"] .primary-tabs .tab::before {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  color: #655f80;
+  font-family: var(--font-family-mono);
+  font-size: 8px;
+  letter-spacing: 0;
+}
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="report"]::before { content: "01"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="agent"]::before { content: "02"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="workbench"]::before { content: "03"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="notes"]::before { content: "04"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab:hover { border-color: rgba(255,43,214,.65); background: rgba(255,43,214,.11); color: #eaffff; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab.active {
+  color: #05040d;
+  background: linear-gradient(100deg, #00f0ff, #9afaff 58%, #ff2bd6);
+  border-color: #eaffff;
+  box-shadow: 0 0 20px rgba(0,240,255,.44);
+}
+[data-visual-theme="cyberpunk"] .primary-tabs .tab.active::before { color: #05040d; }
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .primary-tabs .tab.active { animation: cyber-glitch-hit 240ms steps(2,end) both; }
+
+[data-visual-theme="cyberpunk"] .icon-btn,
+[data-visual-theme="cyberpunk"] .tool-btn,
+[data-visual-theme="cyberpunk"] .ghost-btn,
+[data-visual-theme="cyberpunk"] .wb-git-action-btn,
+[data-visual-theme="cyberpunk"] .wb-detail-tool {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  border: 1px solid rgba(0,240,255,.34);
+  background: rgba(5,4,13,.46);
+  color: var(--color-label-primary);
+}
+[data-visual-theme="cyberpunk"] .icon-btn:hover:not(:disabled),
+[data-visual-theme="cyberpunk"] .tool-btn:hover:not(:disabled),
+[data-visual-theme="cyberpunk"] .ghost-btn:hover:not(:disabled),
+[data-visual-theme="cyberpunk"] .wb-git-action-btn:hover:not(:disabled),
+[data-visual-theme="cyberpunk"] .wb-detail-tool:hover:not(:disabled) {
+  color: #05040d;
+  background: var(--cyber-hazard);
+  border-color: #fff5ad;
+  box-shadow: 0 0 15px rgba(255,212,0,.34);
+}
+[data-visual-theme="cyberpunk"] input,
+[data-visual-theme="cyberpunk"] select,
+[data-visual-theme="cyberpunk"] textarea {
+  border-radius: 0;
+  border-color: rgba(0,240,255,.44);
+  background: rgba(5,4,13,.76);
+  color: #eaffff;
+  font-family: var(--font-family-mono);
+}
+[data-visual-theme="cyberpunk"] input:focus,
+[data-visual-theme="cyberpunk"] select:focus,
+[data-visual-theme="cyberpunk"] textarea:focus { border-color: var(--cyber-hazard); box-shadow: 0 0 0 1px var(--cyber-hazard), 0 0 16px rgba(255,212,0,.18); }
+[data-visual-theme="cyberpunk"] :focus-visible { outline-color: var(--cyber-hazard); outline-offset: 3px; }
+
+[data-visual-theme="cyberpunk"] .settings-group-title,
+[data-visual-theme="cyberpunk"] .quiet-title,
+[data-visual-theme="cyberpunk"] .settings-pane-title,
+[data-visual-theme="cyberpunk"] .digest-card-head h3 {
+  color: #eaffff;
+  font-family: var(--font-family-heading);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+[data-visual-theme="cyberpunk"] .settings-group-title {
+  border-bottom: 1px solid rgba(0,240,255,.32);
+  background: linear-gradient(90deg, rgba(0,240,255,.13), transparent 62%);
+}
+[data-visual-theme="cyberpunk"] .settings-group-title::before { content: "//"; margin-right: 7px; color: var(--cyber-hazard); }
+[data-visual-theme="cyberpunk"] .settings-nav-item.active,
+[data-visual-theme="cyberpunk"] .session-row.active,
+[data-visual-theme="cyberpunk"] .notes-list-item.active,
+[data-visual-theme="cyberpunk"] .wb-folder-row.active {
+  color: #eaffff;
+  background: linear-gradient(90deg, rgba(0,240,255,.22), rgba(255,43,214,.08));
+  box-shadow: inset 3px 0 0 var(--cyber-hazard);
+}
+
+[data-visual-theme="cyberpunk"] .chat-log,
+[data-visual-theme="cyberpunk"] .wb-acp-log { background-image: radial-gradient(circle at 10% 15%, rgba(0,240,255,.06), transparent 32%), radial-gradient(circle at 92% 82%, rgba(255,43,214,.07), transparent 36%); }
+[data-visual-theme="cyberpunk"] .chat-bubble {
+  position: relative;
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  border-color: rgba(0,240,255,.42);
+  box-shadow: inset 0 0 0 1px rgba(255,43,214,.10), 0 0 16px rgba(0,0,0,.24);
+}
+[data-visual-theme="cyberpunk"] .chat-bubble::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  left: 0;
+  background: var(--cyber-cyan);
+  box-shadow: 0 0 12px var(--cyber-cyan);
+}
+[data-visual-theme="cyberpunk"] .chat-bubble.assistant::before { background: var(--cyber-magenta); box-shadow: 0 0 12px var(--cyber-magenta); }
+[data-visual-theme="cyberpunk"] .chat-bubble.user { border-color: rgba(0,240,255,.65); }
+[data-visual-theme="cyberpunk"] .chat-bubble.assistant { border-color: rgba(255,43,214,.55); }
+[data-visual-theme="cyberpunk"] .chat-sender { color: var(--cyber-hazard); font-family: var(--font-family-mono); letter-spacing: .08em; text-transform: uppercase; }
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .chat-bubble.assistant.streaming { animation: cyber-border-pulse 2.3s ease-in-out infinite; }
+
+[data-visual-theme="cyberpunk"] .wb-pane-tab-groups,
+[data-visual-theme="cyberpunk"] .wb-terminal-tabs { background: #05040d; border-color: rgba(0,240,255,.38); }
+[data-visual-theme="cyberpunk"] .wb-pane-tab-group-label {
+  border-right-color: rgba(0,240,255,.38);
+  color: var(--cyber-hazard);
+  background: linear-gradient(135deg, rgba(255,212,0,.15), transparent);
+}
+[data-visual-theme="cyberpunk"] .wb-terminal-tab {
+  clip-path: var(--cyber-notch-small);
+  border-right: 1px solid rgba(0,240,255,.34);
+  background: #0b0917;
+}
+[data-visual-theme="cyberpunk"] .wb-terminal-tab.active { background: #05040d; box-shadow: inset 0 2px 0 var(--cyber-hazard), 0 0 14px rgba(0,240,255,.14); }
+[data-visual-theme="cyberpunk"] .wb-terminal-tab.is-session.active { box-shadow: inset 0 2px 0 var(--cyber-cyan), 0 0 14px rgba(0,240,255,.22); }
+[data-visual-theme="cyberpunk"] .wb-terminal-tab.is-terminal.active { box-shadow: inset 0 2px 0 var(--cyber-hazard), 0 0 14px rgba(255,212,0,.18); }
+[data-visual-theme="cyberpunk"] .wb-terminal-tab.is-editor.active,
+[data-visual-theme="cyberpunk"] .wb-terminal-tab.is-diff.active { box-shadow: inset 0 2px 0 var(--cyber-magenta), 0 0 14px rgba(255,43,214,.19); }
+[data-visual-theme="cyberpunk"] .wb-terminal-pane-wrap { border-top: 1px solid rgba(255,43,214,.24); }
+
+[data-visual-theme="cyberpunk"] .report-cal-pane { background-image: linear-gradient(135deg, rgba(0,240,255,.08), transparent 45%), repeating-linear-gradient(90deg, rgba(0,240,255,.045) 0 1px, transparent 1px 18px); }
+[data-visual-theme="cyberpunk"] .cal-cell,
+[data-visual-theme="cyberpunk"] .cal-week-btn {
+  border-radius: 0;
+  clip-path: var(--cyber-notch-small);
+  border-color: rgba(0,240,255,.38) !important;
+  background: rgba(5,4,13,.58);
+}
+[data-visual-theme="cyberpunk"] .cal-cell:hover,
+[data-visual-theme="cyberpunk"] .cal-week-btn:hover { border-color: var(--cyber-hazard) !important; box-shadow: 0 0 13px rgba(255,212,0,.22); }
+[data-visual-theme="cyberpunk"] .cal-cell.selected { background: linear-gradient(135deg, rgba(0,240,255,.28), rgba(255,43,214,.15)) !important; border-color: var(--cyber-hazard) !important; }
+[data-visual-theme="cyberpunk"] .cal-cell.today .day-num { background: var(--cyber-magenta); color: #05040d; border-radius: 0; box-shadow: 0 0 12px rgba(255,43,214,.68); }
+[data-visual-theme="cyberpunk"] .digest-card { border-color: rgba(255,43,214,.40); }
+[data-visual-theme="cyberpunk"] .digest-card-head { border-bottom-color: rgba(0,240,255,.34); background: linear-gradient(90deg, rgba(255,43,214,.11), transparent 70%); }
+[data-visual-theme="cyberpunk"] .badge { border-radius: 0; border-color: var(--cyber-hazard); color: var(--cyber-hazard); font-family: var(--font-family-mono); }
+
+[data-visual-theme="cyberpunk"] [data-theme-icon] {
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-width: 2.25;
+  filter: drop-shadow(1px 0 rgba(0,240,255,.82)) drop-shadow(-1px 0 rgba(255,43,214,.55));
+}
+[data-visual-theme="cyberpunk"] button:hover [data-theme-icon],
+[data-visual-theme="cyberpunk"] .active [data-theme-icon] { transform: skewX(-10deg) scale(1.08); }
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] button:hover [data-theme-icon] { animation: cyber-glitch-hit 180ms steps(2,end) both; }
+
+[data-visual-theme="cyberpunk"] .theme-preview-cyberpunk .theme-preview-art {
+  height: 62px;
+  color: #eaffff;
+  background: linear-gradient(160deg, #05040d 12%, #19102e 46%, #05040d 47%), repeating-linear-gradient(90deg, rgba(0,240,255,.20) 0 1px, transparent 1px 12px);
+  border-bottom: 2px solid var(--cyber-cyan);
+}
+[data-visual-theme="cyberpunk"] .theme-preview-cyberpunk .theme-preview-art::after { content: "NIGHT//CITY"; margin-left: auto; color: var(--cyber-hazard); font: 700 8px var(--font-family-mono); letter-spacing: .1em; }
+[data-visual-theme="cyberpunk"] .theme-preview-cyberpunk .theme-preview-art i { border-color: var(--cyber-cyan); box-shadow: 5px 0 var(--cyber-magenta), 0 0 12px rgba(0,240,255,.72); }
+
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::before,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::after { animation: none !important; }
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::before { opacity: .54; filter: none; }
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] body::after { opacity: .18; }
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .top,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-terminal-shell,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .ask-chat-shell,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .chat-bubble.assistant.streaming { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-visual-theme="cyberpunk"] *,
+  [data-visual-theme="cyberpunk"] *::before,
+  [data-visual-theme="cyberpunk"] *::after { animation: none !important; transition-duration: 0ms !important; }
+}

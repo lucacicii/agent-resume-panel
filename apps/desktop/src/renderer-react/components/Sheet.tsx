@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ThemeIcon } from "./ThemeIcon";
 import { useEffect, type ReactNode } from "react";
 
 interface SheetProps {
@@ -32,7 +32,7 @@ export function Sheet({ open, title, children, onClose, wide = false, actions, b
           <div className="sheet-actions">
             {actions}
             {dismissible ? <button type="button" className="icon-btn" aria-label={`Close ${title}`} title={`Close ${title}`} onClick={onClose}>
-              <X aria-hidden="true" />
+              <ThemeIcon name="close" aria-hidden="true" />
             </button> : null}
           </div>
         </div>

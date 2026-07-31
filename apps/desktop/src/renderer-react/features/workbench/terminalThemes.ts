@@ -1,7 +1,9 @@
 import type { ITheme } from "@xterm/xterm";
+import { appThemeTerminal, type DesktopAppearanceState } from "../../themes";
 
 /** Keep in sync with packages/core WorkbenchTerminalThemeId. */
 export type WorkbenchTerminalThemeId =
+  | "follow-app"
   | "default-dark"
   | "default-light"
   | "solarized-dark"
@@ -11,6 +13,7 @@ export type WorkbenchTerminalThemeId =
 
 /** Built-in embedded xterm color presets (desktop Workbench). */
 export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] = [
+  "follow-app",
   "default-dark",
   "default-light",
   "solarized-dark",
@@ -22,7 +25,9 @@ export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] =
 const THEME_ID_SET = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 
 /** Full xterm themes — pass the whole object when updating so ANSI colors do not leak across presets. */
-const THEMES: Record<WorkbenchTerminalThemeId, ITheme> = {
+type TerminalPresetId = Exclude<WorkbenchTerminalThemeId, "follow-app">;
+
+const THEMES: Record<TerminalPresetId, ITheme> = {
   "default-dark": {
     background: "#1e1e1e",
     foreground: "#f2f2f7",
@@ -173,10 +178,16 @@ export function resolveTerminalThemeId(value: string | undefined | null): Workbe
   if (value && THEME_ID_SET.has(value)) {
     return value as WorkbenchTerminalThemeId;
   }
-  return "default-dark";
+  return "follow-app";
 }
 
-export function resolveTerminalTheme(id: string | undefined | null): ITheme {
+export function resolveTerminalTheme(
+  id: string | undefined | null,
+  appearance?: DesktopAppearanceState
+): ITheme {
   const resolved = resolveTerminalThemeId(id);
+  if (resolved === "follow-app") {
+    return appearance ? appThemeTerminal(appearance) : { ...THEMES["default-dark"] };
+  }
   return { ...THEMES[resolved] };
 }

@@ -1,4 +1,4 @@
-import { Download, History, Settings } from "lucide-react";
+import { ThemeIcon } from "./ThemeIcon";
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 
@@ -95,7 +95,7 @@ export function AppChrome(): React.JSX.Element {
           aria-label={text("desktop.top.sessionsRefTitle", "Sessions")}
           onClick={() => window.dispatchEvent(new Event("agent-resume:sessions-open"))}
         >
-          <History aria-hidden="true" />
+          <ThemeIcon name="history" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -105,7 +105,7 @@ export function AppChrome(): React.JSX.Element {
           aria-label={text("desktop.top.settingsTitle", "Settings")}
           onClick={() => openSettings()}
         >
-          <Settings aria-hidden="true" />
+          <ThemeIcon name="settings" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -117,7 +117,7 @@ export function AppChrome(): React.JSX.Element {
           aria-label={updateTitle}
           onClick={() => openSettings("about")}
         >
-          <Download aria-hidden="true" />
+          <ThemeIcon name="download" aria-hidden="true" />
         </button>
       </div>
     </header>

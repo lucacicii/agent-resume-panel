@@ -1,4 +1,4 @@
-import { ChevronLeft, Command, FileCode2, Folder, LoaderCircle, Pin, Search } from "lucide-react";
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   compareQuickAccessPathMatches,
@@ -298,7 +298,7 @@ export function QuickAccess({
     <button type="button" className="quick-access-backdrop" aria-label={labels.close} onClick={onClose} />
     <section className="quick-access-panel" role="dialog" aria-modal="true" aria-label={labels.dialog}>
       <div className="quick-access-input-row">
-        {mode === "files" ? <Search size={17} aria-hidden="true" /> : mode === "projects" ? <Folder size={17} aria-hidden="true" /> : <Command size={17} aria-hidden="true" />}
+        {mode === "files" ? <ThemeIcon name="search" size={17} aria-hidden="true" /> : mode === "projects" ? <ThemeIcon name="folder" size={17} aria-hidden="true" /> : <ThemeIcon name="command" size={17} aria-hidden="true" />}
         <input
           ref={inputRef}
           className="quick-access-input"
@@ -356,10 +356,10 @@ export function QuickAccess({
         />
         <kbd>{mode === "files" ? (mac ? "⌘P" : "Ctrl+P") : mode === "projects" ? "↵" : (mac ? "⌘⇧P" : "Ctrl+Shift+P")}</kbd>
       </div>
-      {mode === "files" && projectLabel ? <button type="button" className="quick-access-scope" aria-label={labels.selectProject} onClick={enterProjectMode}><ChevronLeft size={13} aria-hidden="true" /><span>{projectLabel}</span></button> : null}
+      {mode === "files" && projectLabel ? <button type="button" className="quick-access-scope" aria-label={labels.selectProject} onClick={enterProjectMode}><ThemeIcon name="chevron-left" size={13} aria-hidden="true" /><span>{projectLabel}</span></button> : null}
       <div className="quick-access-results" id="quick-access-results" role="listbox">
         {mode === "files" ? <>
-          {!projectLabel ? <p className="quick-access-state">{labels.noProject}</p> : loading && !files.length ? <p className="quick-access-state"><LoaderCircle className="spin" size={15} />{labels.loading}</p> : error ? <p className="quick-access-state is-error" role="alert">{error}</p> : fileResults.length ? fileResults.map((file, index) => {
+          {!projectLabel ? <p className="quick-access-state">{labels.noProject}</p> : loading && !files.length ? <p className="quick-access-state"><ThemeIcon name="loader" className="spin" size={15} />{labels.loading}</p> : error ? <p className="quick-access-state is-error" role="alert">{error}</p> : fileResults.length ? fileResults.map((file, index) => {
             const id = optionId("file", file.path);
             const name = basename(file.relativePath);
             const directory = dirname(file.relativePath);
@@ -375,7 +375,7 @@ export function QuickAccess({
               onMouseMove={() => setSelectedOptionKey(id)}
               onClick={() => file.kind === "directory" ? void onOpenDirectory?.(file) : void onOpenFile(file)}
             >
-              {file.kind === "directory" ? <Folder size={16} aria-hidden="true" /> : <FileCode2 size={16} aria-hidden="true" />}
+              {file.kind === "directory" ? <ThemeIcon name="folder" size={16} aria-hidden="true" /> : <ThemeIcon name="file-code" size={16} aria-hidden="true" />}
               <span className="quick-access-option-copy"><span className="quick-access-option-label">{highlightPath(name, file.indices.filter((match) => match >= nameOffset).map((match) => match - nameOffset))}</span>{directory ? <span className="quick-access-option-detail">{highlightPath(directory, file.indices.filter((match) => match < nameOffset))}</span> : null}</span>
             </button>;
           }) : <p className="quick-access-state">{labels.noFiles}</p>}
@@ -398,9 +398,9 @@ export function QuickAccess({
               leaveProjectMode();
             }}
           >
-            <Folder size={16} aria-hidden="true" />
+            <ThemeIcon name="folder" size={16} aria-hidden="true" />
             <span className="quick-access-option-copy"><span className="quick-access-option-label">{project.label}</span><span className="quick-access-option-detail">{project.disabledReason || project.detail}</span></span>
-            {project.pinned ? <Pin size={13} aria-hidden="true" /> : null}
+            {project.pinned ? <ThemeIcon name="pin" size={13} aria-hidden="true" /> : null}
           </button>;
         }) : <p className="quick-access-state">{labels.noProjects}</p> : commandResults.length ? commandResults.map((command, index) => {
           const id = optionId("command", command.id);
@@ -417,7 +417,7 @@ export function QuickAccess({
             onMouseMove={() => setSelectedOptionKey(id)}
             onClick={() => { if (!disabled) void command.run(); }}
           >
-            <Command size={16} aria-hidden="true" />
+            <ThemeIcon name="command" size={16} aria-hidden="true" />
             <span className="quick-access-option-copy"><span className="quick-access-option-label">{command.label}</span>{command.disabledReason || command.detail ? <span className="quick-access-option-detail">{command.disabledReason || command.detail}</span> : null}</span>
             {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
           </button>;

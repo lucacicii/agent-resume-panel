@@ -41,6 +41,8 @@ export type {
   SessionEmbeddingIndexSettings,
   DesktopSettings,
   DesktopTheme,
+  DesktopVisualThemeId,
+  DesktopThemeEffects,
   WorkbenchSettings,
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
@@ -68,12 +70,17 @@ export {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
+  DESKTOP_VISUAL_THEME_IDS,
   ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
   normalizeWorkbenchProjectContextMenu,
   normalizeWorkbenchTerminalTheme,
-  normalizeWorkbenchTerminalRenderer
+  normalizeWorkbenchTerminalRenderer,
+  normalizeDesktopVisualTheme,
+  normalizeDesktopThemeEffects,
+  normalizeDesktopTheme,
+  normalizeWorkbenchEditorTheme
 } from "./settings/store";
 export {
   formatCliNewSessionTarget,

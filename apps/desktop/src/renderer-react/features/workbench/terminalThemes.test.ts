@@ -16,9 +16,9 @@ describe("terminalThemes", () => {
     }
   });
 
-  it("falls back to default-dark for unknown ids", () => {
-    expect(resolveTerminalThemeId(undefined)).toBe("default-dark");
-    expect(resolveTerminalThemeId("nope")).toBe("default-dark");
+  it("falls back to follow-app for unknown ids", () => {
+    expect(resolveTerminalThemeId(undefined)).toBe("follow-app");
+    expect(resolveTerminalThemeId("nope")).toBe("follow-app");
     expect(resolveTerminalTheme("nope").background).toBe(
       resolveTerminalTheme("default-dark").background
     );

@@ -1,5 +1,5 @@
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { desktopApi } from "../../bridge";
 import { Sheet } from "../../components/Sheet";
 import { Status, type StatusKind } from "../../components/Status";
@@ -190,7 +190,7 @@ export function GtdSheet(): React.JSX.Element | null {
   return <Sheet open={open} title={t("desktop.sheet.gtdTitle")} onClose={close} wide bodyClassName="gtd-sheet">
     <p className="muted gtd-sheet-description">{t("desktop.sheet.gtdDesc")}</p>
     <div className="gtd-sheet-toolbar">
-      <button type="button" className="tool-btn" onClick={() => void preview(scope, true)}><RefreshCw size={15} /> {t("desktop.report.gtdReanalyze")}</button>
+      <button type="button" className="tool-btn" onClick={() => void preview(scope, true)}><ThemeIcon name="refresh" size={15} /> {t("desktop.report.gtdReanalyze")}</button>
     </div>
     {warnings.length ? <ul className="gtd-empty-warnings">{warnings.map((warning, index) => <li key={`${warning}:${index}`}>{warning}</li>)}</ul> : null}
     {!items.length ? <div className="muted gtd-empty"><p>{allApplied ? t("desktop.report.gtdAllApplied") : t("desktop.report.gtdNoProposals")}</p></div> : <div className="gtd-preview">
@@ -219,7 +219,7 @@ function GtdItem({ item, applying, t, onChange, onApply, onOpenMarkdown }: {
   const previous = item.previousGtd ? `@${item.previousGtd}` : t("desktop.report.gtdWasNone");
   return <article className={`gtd-row${collapsed ? " collapsed" : ""}`}>
     <div className="gtd-row-head">
-      <button type="button" className="gtd-row-toggle" aria-label={t("desktop.report.gtdCollapseTitle")} onClick={() => setCollapsed((value) => !value)}>{collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}</button>
+      <button type="button" className="gtd-row-toggle" aria-label={t("desktop.report.gtdCollapseTitle")} onClick={() => setCollapsed((value) => !value)}>{collapsed ? <ThemeIcon name="chevron-right" size={16} /> : <ThemeIcon name="chevron-down" size={16} />}</button>
       <div className="gtd-row-title"><strong>{item.title || item.sessionId}</strong><div className="meta">{item.provider} · {item.sessionId.slice(0, 18)} · {t("desktop.report.gtdWasLabel", previous)}</div></div>
       <button type="button" className="tool-btn gtd-add-btn" disabled={applying} onClick={onApply}>{applying ? t("desktop.report.gtdAdding") : t("desktop.report.gtdAddBtn")}</button>
     </div>

@@ -12,23 +12,24 @@ import { NotesPanel } from "./features/notes/NotesPanel";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
+import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
 
-function applyTheme(theme: "system" | "light" | "dark" | undefined): void {
-  const root = document.documentElement;
-  const effective = theme && theme !== "system"
-    ? theme
-    : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  if (!theme || theme === "system") {
-    root.removeAttribute("data-theme");
-    root.style.colorScheme = "light dark";
-  } else {
-    root.dataset.theme = theme;
-    root.style.colorScheme = theme;
-  }
+export function applyTheme(settings: Parameters<typeof appearanceStateFromSettings>[0]): DesktopAppearanceState {
+  const state = appearanceStateFromSettings(settings);
+  applyDesktopAppearance(state);
   const light = document.getElementById("hljsLightCss") as HTMLLinkElement | null;
   const dark = document.getElementById("hljsDarkCss") as HTMLLinkElement | null;
-  if (light) light.disabled = effective === "dark";
-  if (dark) dark.disabled = effective !== "dark";
+  if (light) light.disabled = state.appearance === "dark";
+  if (dark) dark.disabled = state.appearance !== "dark";
+  return state;
+}
+
+function applyAppearanceState(state: DesktopAppearanceState): void {
+  applyDesktopAppearance(state);
+  const light = document.getElementById("hljsLightCss") as HTMLLinkElement | null;
+  const dark = document.getElementById("hljsDarkCss") as HTMLLinkElement | null;
+  if (light) light.disabled = state.appearance === "dark";
+  if (dark) dark.disabled = state.appearance !== "dark";
 }
 
 export function getDesktopWindowMode(): "main" | "settings" {
@@ -51,10 +52,19 @@ export function getInitialSettingsPane(): string {
 function MainRuntimeBootstrap(): null {
   useEffect(() => {
     let active = true;
-    const onThemeChange = (event: Event) => applyTheme((event as CustomEvent<"system" | "light" | "dark">).detail);
-    window.addEventListener("agent-resume:theme-change", onThemeChange);
+    const onAppearanceChange = (event: Event) => applyAppearanceState((event as CustomEvent<DesktopAppearanceState>).detail);
+    const onSystemAppearance = () => {
+      void window.agentResume.getSettings().then((settings) => {
+        if (active) applyTheme(settings);
+      }).catch(() => undefined);
+    };
+    window.addEventListener("agent-resume:appearance-change", onAppearanceChange);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    media.addEventListener("change", onSystemAppearance);
+    reduceMotion.addEventListener("change", onSystemAppearance);
     void window.agentResume.getSettings().then((settings) => {
-      if (active) applyTheme(settings.desktop?.theme);
+      if (active) applyTheme(settings);
     }).catch(() => undefined);
     void window.agentResume.syncSessions().catch(() => undefined);
     const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
@@ -66,7 +76,9 @@ function MainRuntimeBootstrap(): null {
       : () => undefined;
     return () => {
       active = false;
-      window.removeEventListener("agent-resume:theme-change", onThemeChange);
+      window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
+      media.removeEventListener("change", onSystemAppearance);
+      reduceMotion.removeEventListener("change", onSystemAppearance);
       stopSettings();
     };
   }, []);
@@ -76,17 +88,31 @@ function MainRuntimeBootstrap(): null {
 function SettingsRuntimeBootstrap(): null {
   useEffect(() => {
     let active = true;
+    const onAppearanceChange = (event: Event) => applyAppearanceState((event as CustomEvent<DesktopAppearanceState>).detail);
+    const onSystemAppearance = () => {
+      void window.agentResume.getSettings().then((settings) => {
+        if (active) applyTheme(settings);
+      }).catch(() => undefined);
+    };
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    window.addEventListener("agent-resume:appearance-change", onAppearanceChange);
+    media.addEventListener("change", onSystemAppearance);
+    reduceMotion.addEventListener("change", onSystemAppearance);
     void window.agentResume.getSettings().then((settings) => {
-      if (active) applyTheme(settings.desktop?.theme);
+      if (active) applyTheme(settings);
     }).catch(() => undefined);
-    // Theme only — do not full-hydrate Settings drafts from broadcast (K17)
+    // Appearance only — do not full-hydrate Settings drafts from broadcast.
     const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
       ? window.agentResume.onSettingsChanged((detail) => {
-          applyTheme(detail.settings?.desktop?.theme);
+          if (active) applyTheme(detail.settings);
         })
       : () => undefined;
     return () => {
       active = false;
+      window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
+      media.removeEventListener("change", onSystemAppearance);
+      reduceMotion.removeEventListener("change", onSystemAppearance);
       stopSettings();
     };
   }, []);

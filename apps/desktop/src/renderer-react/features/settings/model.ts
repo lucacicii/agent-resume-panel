@@ -1,4 +1,4 @@
-import type { PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import type { DesktopThemeEffects, DesktopVisualThemeId, PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import {
   resolveTerminalThemeId,
   type WorkbenchTerminalThemeId
@@ -49,6 +49,8 @@ export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
+  visualTheme: DesktopVisualThemeId;
+  themeEffects: DesktopThemeEffects;
   alwaysAllowAgentNonDestructiveOperations: boolean;
 }
 
@@ -104,6 +106,7 @@ export interface WorkbenchDraft {
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
   terminalTheme: WorkbenchTerminalThemeId;
+  editorTheme: "follow-app" | "light" | "dark";
   /** webgl (default) or force canvas for CJK/GPU compatibility */
   terminalRenderer: "webgl" | "canvas";
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
@@ -175,6 +178,8 @@ export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft 
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
     desktopTheme: settings.desktop?.theme || "system",
+    visualTheme: settings.desktop?.visualTheme === "cyberpunk" || settings.desktop?.visualTheme === "dos" ? settings.desktop.visualTheme : "classic",
+    themeEffects: settings.desktop?.themeEffects === "reduced" ? "reduced" : "full",
     alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true
   };
 }
@@ -238,7 +243,9 @@ export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Part
     uiLanguage: draft.uiLanguage,
     desktop: {
       ...settings.desktop,
-      theme: draft.desktopTheme,
+      theme: draft.visualTheme === "cyberpunk" || draft.visualTheme === "dos" ? "dark" : draft.desktopTheme,
+      visualTheme: draft.visualTheme,
+      themeEffects: draft.themeEffects,
       alwaysAllowAgentWriteOperations: false,
       alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
     }
@@ -386,6 +393,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
+    editorTheme: workbench?.editorTheme === "light" || workbench?.editorTheme === "dark" ? workbench.editorTheme : "follow-app",
     terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
     cmdTAction: workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal",
@@ -433,6 +441,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
+      editorTheme: draft.editorTheme,
       terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
       externalLaunchMode: draft.externalLaunchMode,
       cmdTAction: draft.cmdTAction,

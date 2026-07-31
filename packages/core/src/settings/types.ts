@@ -36,12 +36,25 @@ export interface EmbeddingSettings {
 }
 
 export type DesktopTheme = "system" | "light" | "dark";
+/** Official visual theme packages bundled with the Desktop renderer. */
+export type DesktopVisualThemeId = "classic" | "cyberpunk" | "dos";
+export const DESKTOP_VISUAL_THEME_IDS: readonly DesktopVisualThemeId[] = [
+  "classic",
+  "cyberpunk",
+  "dos"
+] as const;
+/** Decorative effects preference. The OS reduced-motion preference always wins at runtime. */
+export type DesktopThemeEffects = "full" | "reduced";
 
 export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
+  /** Theme package controlling the visual language; defaults to Classic. */
+  visualTheme?: DesktopVisualThemeId;
+  /** User preference for decorative effects; system reduced motion overrides it. */
+  themeEffects?: DesktopThemeEffects;
   /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
   alwaysAllowAgentWriteOperations?: boolean;
   /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
@@ -51,6 +64,7 @@ export interface DesktopSettings {
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
 /** Built-in embedded xterm color presets (desktop Workbench). */
 export type WorkbenchTerminalThemeId =
+  | "follow-app"
   | "default-dark"
   | "default-light"
   | "solarized-dark"
@@ -58,6 +72,7 @@ export type WorkbenchTerminalThemeId =
   | "one-dark"
   | "dracula";
 export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] = [
+  "follow-app",
   "default-dark",
   "default-light",
   "solarized-dark",
@@ -186,8 +201,10 @@ export interface WorkbenchSettings {
   /** Editor used by the workbench project context menu. Default auto. */
   projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;
-  /** Embedded xterm color preset. Default default-dark. */
+  /** Embedded xterm color preset. `follow-app` follows the active visual theme. */
   terminalTheme?: WorkbenchTerminalThemeId;
+  /** Workbench CodeMirror scheme. `follow-app` is the default. */
+  editorTheme?: "follow-app" | "light" | "dark";
   /** Embedded xterm GPU renderer. Default webgl (Canvas fallback on failure). */
   terminalRenderer?: WorkbenchTerminalRenderer;
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
@@ -393,7 +410,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   workbench: {
     projectEditor: "auto",
-    terminalTheme: "default-dark",
+    terminalTheme: "follow-app",
+    editorTheme: "follow-app",
     terminalRenderer: "webgl",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
@@ -408,6 +426,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   desktop: {
     theme: "system",
+    visualTheme: "classic",
+    themeEffects: "full",
     alwaysAllowAgentWriteOperations: false,
     alwaysAllowAgentNonDestructiveOperations: false
   }

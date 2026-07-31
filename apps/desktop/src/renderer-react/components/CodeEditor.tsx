@@ -29,6 +29,8 @@ export interface CodeEditorProps {
   fontSize?: number;
   wordWrap?: boolean;
   tabSize?: number;
+  /** Workbench may use an independent editor appearance; other editors follow the app. */
+  appearance?: "follow-app" | "light" | "dark";
   /** File path or language id used to pick a CodeMirror language pack. */
   filePath?: string;
   /** Explicit language id (overrides filePath extension when set). */
@@ -267,7 +269,20 @@ const caretTheme = EditorView.theme({
   }
 });
 
-function isDarkAppearance(): boolean {
+const cyberpunkEditorTheme = EditorView.theme({
+  "&": { backgroundColor: "#070611", color: "#eaffff" },
+  ".cm-content": { caretColor: "#ff2bd6", fontFamily: "var(--font-family-mono)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#ff2bd6" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(0, 240, 255, .26)" },
+  ".cm-activeLine": { backgroundColor: "rgba(255, 43, 214, .075)" },
+  ".cm-gutters": { backgroundColor: "#05040d", color: "#716a91", borderRight: "1px solid rgba(0, 240, 255, .35)" },
+  ".cm-activeLineGutter": { color: "#ffd400", backgroundColor: "rgba(255, 212, 0, .08)" },
+  ".cm-matchingBracket": { color: "#05040d !important", backgroundColor: "#00f0ff", outline: "1px solid #ff2bd6" }
+});
+
+function isDarkAppearance(preference: "follow-app" | "light" | "dark" = "follow-app"): boolean {
+  if (preference === "dark") return true;
+  if (preference === "light") return false;
   const root = document.documentElement;
   const explicit = root.dataset.theme;
   if (explicit === "dark") return true;
@@ -275,11 +290,11 @@ function isDarkAppearance(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function themeExtensions(dark: boolean): Extension[] {
-  if (dark) {
-    // One Dark: high-contrast tokens for markdown + code on dark chrome.
-    return [oneDark, caretTheme];
+function themeExtensions(dark: boolean, preference: "follow-app" | "light" | "dark" = "follow-app"): Extension[] {
+  if (preference === "follow-app" && document.documentElement.dataset.visualTheme === "cyberpunk") {
+    return [oneDark, cyberpunkEditorTheme, caretTheme];
   }
+  if (dark) return [oneDark, caretTheme];
   return [lightEditorTheme, syntaxHighlighting(defaultHighlightStyle), caretTheme];
 }
 
@@ -367,6 +382,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   fontSize = 13,
   wordWrap = true,
   tabSize = 4,
+  appearance = "follow-app",
   filePath,
   language: languageId,
   shouldHandlePaste,
@@ -380,11 +396,13 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   const pasteImage = useRef(onPasteImage);
   const handlesPaste = useRef(shouldHandlePaste);
   const commands = useRef<readonly SlashCommand[]>(slashCommands || []);
+  const appearanceMode = useRef(appearance);
   change.current = onChange;
   blur.current = onBlur;
   pasteImage.current = onPasteImage;
   handlesPaste.current = shouldHandlePaste;
   commands.current = slashCommands || [];
+  appearanceMode.current = appearance;
 
   useImperativeHandle(ref, () => ({
     focus: () => view.current?.focus(),
@@ -618,7 +636,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         ]),
         bracketMatching(),
         language.of(languageExtension(filePath, languageId)),
-        theme.of(themeExtensions(isDarkAppearance())),
+        theme.of(themeExtensions(isDarkAppearance(appearanceMode.current), appearanceMode.current)),
         drawSelection(),
         wrapping.of(wordWrap ? EditorView.lineWrapping : []),
         tabs.of(EditorState.tabSize.of(tabSize)),
@@ -658,21 +676,21 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     window.addEventListener("resize", onWindowResize);
 
     const applyTheme = () => {
-      instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance())) });
+      instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance(appearanceMode.current), appearanceMode.current)) });
     };
     const onThemeChange = () => applyTheme();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onMedia = () => {
-      if (!document.documentElement.dataset.theme) applyTheme();
+      if (appearanceMode.current === "follow-app") applyTheme();
     };
-    window.addEventListener("agent-resume:theme-change", onThemeChange);
+    window.addEventListener("agent-resume:appearance-change", onThemeChange);
     media.addEventListener("change", onMedia);
     const observer = new MutationObserver(applyTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     return () => {
       window.removeEventListener("resize", onWindowResize);
-      window.removeEventListener("agent-resume:theme-change", onThemeChange);
+      window.removeEventListener("agent-resume:appearance-change", onThemeChange);
       media.removeEventListener("change", onMedia);
       observer.disconnect();
       hideSlashMenu();
@@ -720,6 +738,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     if (!instance) return;
     instance.dispatch({ effects: language.reconfigure(languageExtension(filePath, languageId)) });
   }, [filePath, languageId]);
+
+  useEffect(() => {
+    const instance = view.current;
+    if (!instance) return;
+    instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance(appearance), appearance)) });
+  }, [appearance]);
 
   return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;
 });

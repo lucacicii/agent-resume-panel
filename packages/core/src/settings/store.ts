@@ -11,10 +11,14 @@ import {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
+  DESKTOP_VISUAL_THEME_IDS,
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
   WorkbenchProjectContextMenuAction,
+  type DesktopTheme,
+  type DesktopThemeEffects,
+  type DesktopVisualThemeId,
   type WorkbenchTerminalRenderer,
   type WorkbenchTerminalThemeId
 } from "./types";
@@ -29,14 +33,35 @@ const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
+const VISUAL_THEME_IDS = new Set<string>(DESKTOP_VISUAL_THEME_IDS);
+
+export function normalizeDesktopVisualTheme(value: string | undefined | null): DesktopVisualThemeId {
+  return value && VISUAL_THEME_IDS.has(value)
+    ? value as DesktopVisualThemeId
+    : "classic";
+}
+
+export function normalizeDesktopThemeEffects(value: string | undefined | null): DesktopThemeEffects {
+  return value === "reduced" ? "reduced" : "full";
+}
+
+export function normalizeDesktopTheme(value: string | undefined | null, visualTheme: DesktopVisualThemeId): DesktopTheme {
+  if (visualTheme === "cyberpunk" || visualTheme === "dos") return "dark";
+  return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
+export function normalizeWorkbenchEditorTheme(value: string | undefined | null): "follow-app" | "light" | "dark" {
+  return value === "light" || value === "dark" ? value : "follow-app";
+}
 
 export function normalizeWorkbenchTerminalTheme(
   value: string | undefined | null
 ): WorkbenchTerminalThemeId {
+  if (value === "default-dark") return "follow-app";
   if (value && TERMINAL_THEME_IDS.has(value)) {
     return value as WorkbenchTerminalThemeId;
   }
-  return DEFAULT_SETTINGS.workbench?.terminalTheme ?? "default-dark";
+  return DEFAULT_SETTINGS.workbench?.terminalTheme ?? "follow-app";
 }
 
 export function normalizeWorkbenchTerminalRenderer(
@@ -163,7 +188,13 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     desktop: {
       ...base.desktop,
-      ...(partial.desktop || {})
+      ...(partial.desktop || {}),
+      visualTheme: normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme),
+      themeEffects: normalizeDesktopThemeEffects(partial.desktop?.themeEffects ?? base.desktop?.themeEffects),
+      theme: normalizeDesktopTheme(
+        partial.desktop?.theme ?? base.desktop?.theme,
+        normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme)
+      )
     },
     workbench: {
       ...base.workbench,
@@ -173,6 +204,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ),
       terminalRenderer: normalizeWorkbenchTerminalRenderer(
         partial.workbench?.terminalRenderer ?? base.workbench?.terminalRenderer
+      ),
+      editorTheme: normalizeWorkbenchEditorTheme(
+        partial.workbench?.editorTheme ?? base.workbench?.editorTheme
       ),
       gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(

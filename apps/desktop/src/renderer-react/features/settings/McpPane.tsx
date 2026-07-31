@@ -1,5 +1,5 @@
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useState } from "react";
-import { Copy, RefreshCw } from "lucide-react";
 import type { McpClientInfo } from "../../../main/mcpRegistration";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -91,7 +91,7 @@ export function McpPane({ t }: { t: Translate }) {
         <p className="settings-footnote">{t("desktop.settings.mcpWriteWarning")}</p>
         <div className="settings-action-row">
           <button type="button" className="tool-btn" disabled={busy !== null || loading} onClick={() => void registerAll()}>{t("desktop.settings.mcpRegisterAll")}</button>
-          <button type="button" className="tool-btn" aria-label={t("desktop.settings.mcpRefresh")} disabled={busy !== null} onClick={() => void refresh()}><RefreshCw size={15} /></button>
+          <button type="button" className="tool-btn" aria-label={t("desktop.settings.mcpRefresh")} disabled={busy !== null} onClick={() => void refresh()}><ThemeIcon name="refresh" size={15} /></button>
         </div>
         <Status kind={status.kind}>{status.text}</Status>
       </div>
@@ -109,7 +109,7 @@ export function McpPane({ t }: { t: Translate }) {
               {client.mode === "automatic" ? <>
                 <button type="button" className="tool-btn" disabled={!client.detected || busy !== null} onClick={() => void register(client)}>{client.registered ? t("desktop.settings.mcpUpdate") : t("desktop.settings.mcpRegister")}</button>
                 {client.registered ? <button type="button" className="tool-btn" disabled={busy !== null} onClick={() => void remove(client)}>{t("desktop.settings.mcpRemove")}</button> : null}
-              </> : <button type="button" className="tool-btn" disabled={busy !== null} onClick={() => void copyManualConfig()}><Copy size={14} />{t("desktop.settings.mcpCopyConfig")}</button>}
+              </> : <button type="button" className="tool-btn" disabled={busy !== null} onClick={() => void copyManualConfig()}><ThemeIcon name="copy" size={14} />{t("desktop.settings.mcpCopyConfig")}</button>}
             </span>
           </div>
         ))}

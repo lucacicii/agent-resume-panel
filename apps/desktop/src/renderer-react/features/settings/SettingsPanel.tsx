@@ -1,6 +1,7 @@
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { appearanceStateFromSettings } from "../../themes";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
@@ -79,8 +80,10 @@ export function SettingsPanel({
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
   const timer = useRef<number | null>(null);
+  const lastSavedSettings = useRef<PanelSettings | null>(null);
 
   const hydrate = useCallback((next: PanelSettings) => {
+    lastSavedSettings.current = next;
     setSettings(next);
     setGeneral(generalDraftFromSettings(next));
     setModels(modelsDraftFromSettings(next));
@@ -154,6 +157,13 @@ export function SettingsPanel({
         kind: "ok"
       });
     } catch (error) {
+      const last = lastSavedSettings.current;
+      if (last) {
+        hydrate(last);
+        window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
+          detail: appearanceStateFromSettings(last)
+        }));
+      }
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     }
   }, [hydrate, isWindow, t]);
@@ -273,9 +283,31 @@ export function SettingsPanel({
 }
 
 function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; scheduleSave: (draft: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
-  const update = <K extends keyof GeneralDraft>(key: K, value: GeneralDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); if (key === "desktopTheme") window.dispatchEvent(new CustomEvent("agent-resume:theme-change", { detail: value })); scheduleSave(next); };
+  const darkOnly = draft.visualTheme !== "classic";
+  const preview = (next: GeneralDraft) => window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
+    detail: appearanceStateFromSettings({ desktop: {
+      theme: next.visualTheme === "classic" ? next.desktopTheme : "dark",
+      visualTheme: next.visualTheme,
+      themeEffects: next.themeEffects
+    } })
+  }));
+  const update = <K extends keyof GeneralDraft>(key: K, value: GeneralDraft[K]) => {
+    const next = { ...draft, [key]: value };
+    if (key === "visualTheme" && value !== "classic") next.desktopTheme = "dark";
+    setDraft(next); preview(next); scheduleSave(next);
+  };
+  const themes: Array<{ id: GeneralDraft["visualTheme"]; label: string; description: string }> = [
+    { id: "classic", label: t("desktop.settings.visualThemeClassic"), description: t("desktop.settings.visualThemeClassicDesc") },
+    { id: "cyberpunk", label: t("desktop.settings.visualThemeCyberpunk"), description: t("desktop.settings.visualThemeCyberpunkDesc") },
+    { id: "dos", label: t("desktop.settings.visualThemeDos"), description: t("desktop.settings.visualThemeDosDesc") }
+  ];
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appearance")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.theme")}</span><span className="settings-row-desc">{t("desktop.settings.themeDesc")}</span></span><select className="settings-row-control" value={draft.desktopTheme} onChange={(event) => update("desktopTheme", event.target.value as GeneralDraft["desktopTheme"])}><option value="system">{t("desktop.settings.themeSystem")}</option><option value="light">{t("desktop.settings.themeLight")}</option><option value="dark">{t("desktop.settings.themeDark")}</option></select></label><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">UI Language</span><span className="settings-row-desc">{t("desktop.settings.fieldUiLanguageDescription")}</span></span><select className="settings-row-control" value={draft.uiLanguage} onChange={(event) => update("uiLanguage", event.target.value as GeneralDraft["uiLanguage"])}><option value="auto">{t("desktop.settings.fieldUiLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label></div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appearance")}</h3><div className="settings-group-body">
+      <div className="settings-theme-field"><span className="settings-field-label">{t("desktop.settings.visualTheme")}</span><span className="settings-field-desc muted">{t("desktop.settings.visualThemeDesc")}</span><div className="theme-preview-grid" role="radiogroup" aria-label={t("desktop.settings.visualTheme")}>{themes.map((theme) => <button type="button" role="radio" aria-checked={draft.visualTheme === theme.id} className={`theme-preview-card theme-preview-${theme.id}${draft.visualTheme === theme.id ? " is-selected" : ""}`} key={theme.id} onClick={() => update("visualTheme", theme.id)}><span className="theme-preview-art" aria-hidden="true"><i /><i /><i /></span><span className="theme-preview-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span></button>)}</div></div>
+      <div className="settings-theme-field"><span className="settings-field-label">{t("desktop.settings.theme")}</span><span className="settings-field-desc muted">{darkOnly ? t("desktop.settings.themeDarkOnly") : t("desktop.settings.themeDesc")}</span><div className="theme-mode-control" role="radiogroup" aria-label={t("desktop.settings.theme")}>{(["system", "light", "dark"] as const).map((mode) => <button type="button" role="radio" aria-checked={draft.desktopTheme === mode} disabled={darkOnly && mode !== "dark"} className={draft.desktopTheme === mode ? "is-selected" : ""} key={mode} onClick={() => update("desktopTheme", mode)}>{t(mode === "system" ? "desktop.settings.themeSystem" : mode === "light" ? "desktop.settings.themeLight" : "desktop.settings.themeDark")}</button>)}</div></div>
+      <div className="settings-theme-field"><span className="settings-field-label">{t("desktop.settings.themeEffects")}</span><span className="settings-field-desc muted">{t("desktop.settings.themeEffectsDesc")}</span><div className="theme-mode-control" role="radiogroup" aria-label={t("desktop.settings.themeEffects")}>{(["full", "reduced"] as const).map((effects) => <button type="button" role="radio" aria-checked={draft.themeEffects === effects} className={draft.themeEffects === effects ? "is-selected" : ""} key={effects} onClick={() => update("themeEffects", effects)}>{t(effects === "full" ? "desktop.settings.themeEffectsFull" : "desktop.settings.themeEffectsReduced")}</button>)}</div></div>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">UI Language</span><span className="settings-row-desc">{t("desktop.settings.fieldUiLanguageDescription")}</span></span><select className="settings-row-control" value={draft.uiLanguage} onChange={(event) => update("uiLanguage", event.target.value as GeneralDraft["uiLanguage"])}><option value="auto">{t("desktop.settings.fieldUiLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label>
+    </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.agentActions")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.alwaysAllowAgentWrites")}</span><span className="settings-row-desc">{t("desktop.settings.alwaysAllowAgentWritesDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft.alwaysAllowAgentNonDestructiveOperations} onChange={(event) => update("alwaysAllowAgentNonDestructiveOperations", event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label></div></section>
   </>;
 }
@@ -327,7 +359,7 @@ function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; 
                 toggleApiKeyReveal(apiKey);
               }}
             >
-              {revealed ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+              {revealed ? <ThemeIcon name="eye-off" size={15} aria-hidden="true" /> : <ThemeIcon name="eye" size={15} aria-hidden="true" />}
             </button>
           </span>
         </label>

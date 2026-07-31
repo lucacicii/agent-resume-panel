@@ -172,19 +172,33 @@ describe("settings model", () => {
 
   it("defaults and normalizes workbench terminal theme presets", () => {
     const defaultDraft = workbenchDraftFromSettings(settings);
-    expect(defaultDraft.terminalTheme).toBe("default-dark");
+    expect(defaultDraft.terminalTheme).toBe("follow-app");
 
     const invalid = workbenchDraftFromSettings({
       ...settings,
       workbench: { terminalTheme: "not-a-theme" as never }
     });
-    expect(invalid.terminalTheme).toBe("default-dark");
+    expect(invalid.terminalTheme).toBe("follow-app");
 
     const patch = workbenchPatch(settings, {
       ...defaultDraft,
       terminalTheme: "dracula"
     });
     expect(patch.workbench?.terminalTheme).toBe("dracula");
+    expect(defaultDraft.editorTheme).toBe("follow-app");
+  });
+
+  it("forces dark appearance for dark-only visual themes and persists effects", () => {
+    const draft = generalDraftFromSettings(settings);
+    const patch = generalPatch(settings, {
+      ...draft,
+      visualTheme: "cyberpunk",
+      desktopTheme: "light",
+      themeEffects: "reduced"
+    });
+    expect(patch.desktop?.visualTheme).toBe("cyberpunk");
+    expect(patch.desktop?.theme).toBe("dark");
+    expect(patch.desktop?.themeEffects).toBe("reduced");
   });
 
   it("defaults and persists workbench terminal renderer (webgl / force canvas)", () => {

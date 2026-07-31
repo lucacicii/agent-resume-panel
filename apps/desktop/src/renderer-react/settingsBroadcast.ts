@@ -1,4 +1,5 @@
 import type { AgentSessionSyncResult, PanelSettings } from "@agent-resume/core";
+import { appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
 
 export type SettingsChangedPayload = {
   settings: PanelSettings;
@@ -6,22 +7,14 @@ export type SettingsChangedPayload = {
   sync?: AgentSessionSyncResult;
 };
 
+/** One complete state keeps every renderer subsystem synchronized during a live switch. */
 export type BridgedCustomEvent =
   | { name: "agent-resume:settings-saved"; detail: SettingsChangedPayload }
-  | { name: "agent-resume:theme-change"; detail: "system" | "light" | "dark" };
+  | { name: "agent-resume:appearance-change"; detail: DesktopAppearanceState };
 
-/**
- * Map main-process `settings:changed` IPC payload into same-document CustomEvents
- * so Workbench / theme listeners keep working without multi-window awareness.
- * Main window only — settings window must not call this for full hydrate.
- */
 export function settingsChangedToCustomEvents(detail: SettingsChangedPayload): BridgedCustomEvent[] {
-  const events: BridgedCustomEvent[] = [
-    { name: "agent-resume:settings-saved", detail }
+  return [
+    { name: "agent-resume:settings-saved", detail },
+    { name: "agent-resume:appearance-change", detail: appearanceStateFromSettings(detail.settings) }
   ];
-  const theme = detail.settings?.desktop?.theme;
-  if (theme === "system" || theme === "light" || theme === "dark") {
-    events.push({ name: "agent-resume:theme-change", detail: theme });
-  }
-  return events;
 }
