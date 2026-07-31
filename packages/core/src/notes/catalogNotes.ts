@@ -126,6 +126,19 @@ export async function listProjectNotes(dbPath: string, projectPath: string): Pro
 export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Promise<void> {
   const projectPath =
     record.projectPath !== undefined ? normalizeProjectPath(record.projectPath) : undefined;
+
+  // Path is UNIQUE. If another note_id already owns this path, update that row
+  // (path identity) instead of inserting a second note_id for the same file.
+  const existingByPath = await getNoteByRelPath(dbPath, record.relMdPath);
+  const noteId =
+    existingByPath && existingByPath.noteId !== record.noteId
+      ? existingByPath.noteId
+      : record.noteId;
+  const createdAtMs =
+    existingByPath && existingByPath.noteId === noteId
+      ? Math.min(existingByPath.createdAtMs, record.createdAtMs)
+      : record.createdAtMs;
+
   await runSqlite(
     dbPath,
     `INSERT INTO notes (
@@ -133,7 +146,7 @@ export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Prom
        filename, rel_dir, rel_md_path, title, content_preview,
        created_at_ms, updated_at_ms, fs_mtime_ms
      ) VALUES (
-       '${escapeSqlLiteral(record.noteId)}',
+       '${escapeSqlLiteral(noteId)}',
        '${escapeSqlLiteral(record.scope)}',
        ${sqlNullOrString(record.provider)},
        ${sqlNullOrString(record.agentSessionId)},
@@ -143,7 +156,7 @@ export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Prom
        '${escapeSqlLiteral(record.relMdPath)}',
        ${sqlNullOrString(record.title)},
        ${sqlNullOrString(record.contentPreview)},
-       ${record.createdAtMs},
+       ${createdAtMs},
        ${record.updatedAtMs},
        ${record.fsMtimeMs ?? "NULL"}
      )
