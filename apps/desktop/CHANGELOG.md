@@ -8,6 +8,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.11]
+
+#### Added
+
+- **Native Agent conversation backup**: in-app backup (**Settings → Data**) supports including native CLI agent conversation histories (Claude, Codex, Gemini, Antigravity, OpenCode, Pi, etc.) in local ZIP archives and encrypted iCloud Drive backups (`.arbak`)
+- **Backup & restore progress feedback**: live progress bar with percentage, current operation phase, and item counter during export and restore
+- **Workbench Explorer colorful file icons**: distinct file type icons and color styling for common programming languages, configs, assets, images, and archives in the project file tree
+
+#### Improved
+
+- **Report hierarchical digests & refresh budget**: two-tier session summaries for large sessions to avoid prompt token limits, plus configurable daily digest refresh budget controls and progress feedback
+- **Settings layout**: refined Settings detail pane max-width and layout responsiveness
+
+#### Fixed
+
+- **Notes path conflicts & idempotent indexing**: resolved path collision handling during note reconciliation and guaranteed SQLite index migration idempotency
+
 ### [0.2.10]
 
 #### Added
@@ -308,6 +325,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.11]
+
+#### 新增
+
+- **原生 Agent 对话备份**：在应用内备份（**设置 → 数据**）中支持将原生 CLI Agent（Claude、Codex、Gemini、Antigravity、OpenCode、Pi 等）的对话历史一并打包到本地 ZIP 或加密 iCloud Drive 备份（`.arbak`）中
+- **备份与恢复进度反馈**：导出与恢复全过程提供带百分比、当前步骤与项目计数的实时进度条反馈
+- **Workbench 资源管理器彩色文件图标**：为项目文件树中常见的编程语言、配置文件、资源图片与压缩包等提供丰富的图标与色彩样式
+
+#### 改进
+
+- **Report 分层摘要与刷新预算**：长会话日回顾引入两层分层摘要避免 Token 超限，并新增每日摘要刷新预算控制与进度显示
+- **设置详情页布局**：优化设置分区详情页的最大宽度限制与响应式布局
+
+#### 修复
+
+- **笔记路径冲突与索引迁移幂等**：修复笔记同步时的路径冲突处理，并确保 SQLite 索引迁移的幂等性
 
 ### [0.2.10]
 
