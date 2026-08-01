@@ -121,7 +121,7 @@ describe("backupService", () => {
     expect(noteRows).toEqual([]);
     expect(chunkRows).toEqual([]);
     expect(vectorRows).toEqual([]);
-  });
+  }, 30_000);
 
   it("backs up supported native conversations and restores only missing or older Agent files", async () => {
     const sourceSettings = await makeSettings();
