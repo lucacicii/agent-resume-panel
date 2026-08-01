@@ -856,6 +856,48 @@ export interface DesktopApi {
       fsMtimeMs?: number;
     }>
   >;
+  notesListRoot(): Promise<
+    Array<{
+      noteId: string;
+      scope: string;
+      provider?: string;
+      agentSessionId?: string;
+      projectPath?: string;
+      filename: string;
+      relDir: string;
+      relMdPath: string;
+      title?: string;
+      contentPreview?: string;
+      createdAtMs: number;
+      updatedAtMs: number;
+      fsMtimeMs?: number;
+    }>
+  >;
+  notesListLinks(): Promise<Array<{ parentNoteId: string; childNoteId: string; createdAtMs: number }>>;
+  notesListLinkedChildIds(): Promise<string[]>;
+  notesListChildCounts(): Promise<Record<string, number>>;
+  notesGetParent(args: { noteId: string }): Promise<{ parentNoteId: string; childNoteId: string; createdAtMs: number } | null>;
+  notesSetParent(args: { childNoteId: string; parentNoteId: string | null }): Promise<{ ok: boolean }>;
+  notesCreateLinkedChild(args: { parentNoteId: string }): Promise<{ noteId: string; filename: string }>;
+  notesGetSubtree(args: { rootNoteId: string }): Promise<{
+    rootNoteId: string;
+    root: {
+      noteId: string;
+      title: string;
+      filename: string;
+      projectPath?: string;
+      children: Array<{
+        noteId: string;
+        title: string;
+        filename: string;
+        projectPath?: string;
+        children: unknown[];
+      }>;
+    };
+    nodesById: Record<string, { noteId: string; title: string; filename: string; projectPath?: string; children: unknown[] }>;
+    edges: Array<{ parentNoteId: string; childNoteId: string }>;
+  }>;
+  notesResolveLinkRoot(args: { noteId: string }): Promise<{ rootNoteId: string }>;
   notesListGtd(args?: { query?: string; status?: GtdStatus }): Promise<
     Array<{
       text: string;
@@ -1234,6 +1276,15 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
+  notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
+  notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
+  notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),
+  notesListChildCounts: () => ipcRenderer.invoke("notes:listChildCounts"),
+  notesGetParent: (args) => ipcRenderer.invoke("notes:getParent", args),
+  notesSetParent: (args) => ipcRenderer.invoke("notes:setParent", args),
+  notesCreateLinkedChild: (args) => ipcRenderer.invoke("notes:createLinkedChild", args),
+  notesGetSubtree: (args) => ipcRenderer.invoke("notes:getSubtree", args),
+  notesResolveLinkRoot: (args) => ipcRenderer.invoke("notes:resolveLinkRoot", args),
   notesListGtd: (args) => ipcRenderer.invoke("notes:listGtd", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),

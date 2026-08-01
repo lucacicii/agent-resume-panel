@@ -8,9 +8,23 @@ import { renderMarkdown } from "../../components/Markdown";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
+import { NoteLinkTree } from "./NoteLinkTree";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type GtdTask = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListGtd"]>>[number];
+type NoteTreeNode = {
+  noteId: string;
+  title: string;
+  filename: string;
+  projectPath?: string;
+  children: NoteTreeNode[];
+};
+type NoteSubtree = {
+  rootNoteId: string;
+  root: NoteTreeNode;
+  nodesById: Record<string, NoteTreeNode>;
+  edges: Array<{ parentNoteId: string; childNoteId: string }>;
+};
 type Owner = { scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string };
 type Folder = { kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string };
 type ProjectFilter = "all" | "pinned" | "active";
@@ -31,6 +45,7 @@ type CatalogProject = {
 };
 type ContextMenu = { kind: "project"; projectPath: string; projectId?: string; x: number; y: number } | { kind: "note"; note: Note; x: number; y: number };
 type RenameDialog = { kind: "project"; projectPath: string; projectId?: string; title: string } | { kind: "note"; note: Note; title: string };
+type ParentPicker = { child: Note; query: string };
 
 const PINNED_PROJECTS_KEY = "pinned-projects";
 const PINNED_NOTES_KEY = "pinned-notes";
@@ -252,6 +267,12 @@ export function NotesPanel(): ReactPortal | null {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Note | null>(null);
+  /** Root note for the association tree (list selection). May differ from `selected` when browsing child nodes. */
+  const [treeRootId, setTreeRootId] = useState<string | null>(null);
+  const [subtree, setSubtree] = useState<NoteSubtree | null>(null);
+  const [linkedChildIds, setLinkedChildIds] = useState<Set<string>>(() => new Set());
+  const [childCounts, setChildCounts] = useState<Record<string, number>>({});
+  const [parentPicker, setParentPicker] = useState<ParentPicker | null>(null);
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
@@ -310,6 +331,35 @@ export function NotesPanel(): ReactPortal | null {
     };
   }), [t]);
 
+  const refreshLinkMeta = useCallback(async () => {
+    const api = desktopApi();
+    if (typeof api.notesListLinkedChildIds !== "function") {
+      setLinkedChildIds(new Set());
+      setChildCounts({});
+      return;
+    }
+    const [childIds, counts] = await Promise.all([
+      api.notesListLinkedChildIds(),
+      typeof api.notesListChildCounts === "function" ? api.notesListChildCounts() : Promise.resolve({} as Record<string, number>)
+    ]);
+    setLinkedChildIds(new Set(childIds || []));
+    setChildCounts(counts || {});
+  }, []);
+
+  const loadSubtree = useCallback(async (rootNoteId: string | null) => {
+    if (!rootNoteId || typeof desktopApi().notesGetSubtree !== "function") {
+      setSubtree(null);
+      return;
+    }
+    try {
+      const next = await desktopApi().notesGetSubtree({ rootNoteId }) as NoteSubtree;
+      setSubtree(next);
+      setTreeRootId(rootNoteId);
+    } catch {
+      setSubtree(null);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const listProjects = typeof desktopApi().listProjects === "function"
@@ -331,9 +381,10 @@ export function NotesPanel(): ReactPortal | null {
       setAliases(nextAliases);
       setCatalogProjects(nextProjects || []);
       setSelected((current) => current ? nextNotes.find((item) => item.noteId === current.noteId) || null : null);
+      await refreshLinkMeta();
       setStatus({ text: "" });
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-  }, []);
+  }, [refreshLinkMeta]);
 
   const save = useCallback(async () => {
     const note = selectedRef.current;
@@ -349,7 +400,7 @@ export function NotesPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   }, []);
 
-  const open = useCallback(async (note: Note) => {
+  const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -364,8 +415,40 @@ export function NotesPanel(): ReactPortal | null {
       setView("edit");
       setFindOpen(false);
       setFindQuery("");
+
+      const asTreeRoot = options?.asTreeRoot !== false && !options?.treeRootId;
+      if (result.record.scope === "project") {
+        let rootId = options?.treeRootId;
+        if (!rootId && asTreeRoot) {
+          if (typeof desktopApi().notesResolveLinkRoot === "function") {
+            rootId = (await desktopApi().notesResolveLinkRoot({ noteId: result.record.noteId })).rootNoteId;
+          } else {
+            rootId = result.record.noteId;
+          }
+        }
+        if (rootId) {
+          await loadSubtree(rootId);
+        }
+      } else {
+        setTreeRootId(null);
+        setSubtree(null);
+      }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-  }, [save]);
+  }, [loadSubtree, save]);
+
+  const openTreeNode = useCallback(async (noteId: string) => {
+    const existing = notes.find((item) => item.noteId === noteId);
+    if (existing) {
+      await open(existing, { asTreeRoot: false, treeRootId: treeRootId || undefined });
+      return;
+    }
+    try {
+      const result = await desktopApi().notesRead({ noteId });
+      await open(result.record, { asTreeRoot: false, treeRootId: treeRootId || undefined });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [notes, open, treeRootId]);
 
   useEffect(() => {
     const onTab = (event: Event) => {
@@ -375,16 +458,13 @@ export function NotesPanel(): ReactPortal | null {
     };
     const onOpen = (event: Event) => {
       const noteId = (event as CustomEvent<string>).detail;
-      void desktopApi().notesRead({ noteId }).then((result) => {
-        setSelected(result.record);
-        setContent(result.content);
-        setTitle(titleFor(result.record));
-        setView("edit");
+      void desktopApi().notesRead({ noteId }).then(async (result) => {
         setFolder(result.record.scope === "project" && result.record.projectPath
           ? { kind: "project", projectPath: result.record.projectPath }
           : result.record.scope === "session" && result.record.provider && result.record.agentSessionId
             ? { kind: "session", provider: result.record.provider, sessionId: result.record.agentSessionId }
             : { kind: "library" });
+        await open(result.record, { asTreeRoot: true });
       }).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
     };
     window.addEventListener("agent-resume:tab-change", onTab);
@@ -394,7 +474,12 @@ export function NotesPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:open-note", onOpen);
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-  }, [load]);
+  }, [load, open]);
+
+  useEffect(() => {
+    if (!treeRootId) return;
+    void loadSubtree(treeRootId);
+  }, [notes, treeRootId, loadSubtree]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -645,13 +730,33 @@ export function NotesPanel(): ReactPortal | null {
   }, [notes, sessions]);
 
   const visibleNotes = useMemo(() => notes.filter((note) => {
+    // List shows only root/main notes: hide project notes that have a parent link.
+    if (note.scope === "project" && linkedChildIds.has(note.noteId)) return false;
     const inFolder = folder.kind === "all"
       || (folder.kind === "library" && note.scope === "library")
       || (folder.kind === "project" && note.scope === "project" && note.projectPath === folder.projectPath)
       || (folder.kind === "session" && note.scope === "session" && note.provider === folder.provider && note.agentSessionId === folder.sessionId);
     const matchesQuery = `${titleFor(note)} ${note.filename} ${note.contentPreview || ""}`.toLocaleLowerCase().includes(listQuery.trim().toLocaleLowerCase());
-    return inFolder && matchesQuery && (listFilter === "all" || pinnedNotes.has(note.noteId) || selected?.noteId === note.noteId);
-  }).sort((left, right) => Number(pinnedNotes.has(right.noteId)) - Number(pinnedNotes.has(left.noteId)) || right.updatedAtMs - left.updatedAtMs), [folder, listFilter, listQuery, notes, pinnedNotes, selected?.noteId]);
+    return inFolder && matchesQuery && (listFilter === "all" || pinnedNotes.has(note.noteId) || treeRootId === note.noteId || selected?.noteId === note.noteId);
+  }).sort((left, right) => Number(pinnedNotes.has(right.noteId)) - Number(pinnedNotes.has(left.noteId)) || right.updatedAtMs - left.updatedAtMs), [folder, linkedChildIds, listFilter, listQuery, notes, pinnedNotes, selected?.noteId, treeRootId]);
+
+  const parentPickerCandidates = useMemo(() => {
+    if (!parentPicker) return [] as Note[];
+    const childId = parentPicker.child.noteId;
+    const query = parentPicker.query.trim().toLocaleLowerCase();
+    return notes
+      .filter((note) => note.scope === "project" && note.noteId !== childId)
+      .filter((note) => {
+        if (!query) return true;
+        const hay = `${titleFor(note)} ${note.filename} ${note.projectPath || ""}`.toLocaleLowerCase();
+        return hay.includes(query);
+      })
+      .sort((left, right) => {
+        const sameLeft = left.projectPath === parentPicker.child.projectPath ? 1 : 0;
+        const sameRight = right.projectPath === parentPicker.child.projectPath ? 1 : 0;
+        return sameRight - sameLeft || right.updatedAtMs - left.updatedAtMs;
+      });
+  }, [notes, parentPicker]);
 
   const gtdStatusCounts = useMemo(() => {
     const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
@@ -826,9 +931,70 @@ export function NotesPanel(): ReactPortal | null {
     try {
       await desktopApi().notesDelete({ noteId: note.noteId });
       setPinnedNotes((current) => { const next = new Set(current); next.delete(note.noteId); savePinned(PINNED_NOTES_KEY, next); return next; });
-      if (selected?.noteId === note.noteId) { setSelected(null); setContent(""); }
+      if (selected?.noteId === note.noteId) {
+        setSelected(null);
+        setContent("");
+        if (treeRootId === note.noteId) {
+          setTreeRootId(null);
+          setSubtree(null);
+        } else if (treeRootId) {
+          await loadSubtree(treeRootId);
+        }
+      }
       await load();
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+  };
+
+  const createLinkedChild = async (parent: Note) => {
+    if (parent.scope !== "project") {
+      setStatus({ text: t("desktop.notes.linkProjectOnly"), kind: "error" });
+      return;
+    }
+    if (typeof desktopApi().notesCreateLinkedChild !== "function") {
+      setStatus({ text: t("desktop.notes.linkApiUnavailable"), kind: "error" });
+      return;
+    }
+    try {
+      setStatus({ text: t("desktop.notes.creatingLinkedChild") });
+      const created = await desktopApi().notesCreateLinkedChild({ parentNoteId: parent.noteId });
+      await load();
+      const rootId = treeRootId
+        || (typeof desktopApi().notesResolveLinkRoot === "function"
+          ? (await desktopApi().notesResolveLinkRoot({ noteId: parent.noteId })).rootNoteId
+          : parent.noteId);
+      await loadSubtree(rootId);
+      const result = await desktopApi().notesRead({ noteId: created.noteId });
+      await open(result.record, { asTreeRoot: false, treeRootId: rootId });
+      setStatus({ text: t("desktop.notes.linkedChildCreated", titleFor(result.record)), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  };
+
+  const applyParentLink = async (childNoteId: string, parentNoteId: string | null) => {
+    if (typeof desktopApi().notesSetParent !== "function") {
+      setStatus({ text: t("desktop.notes.linkApiUnavailable"), kind: "error" });
+      return;
+    }
+    try {
+      await desktopApi().notesSetParent({ childNoteId, parentNoteId });
+      setParentPicker(null);
+      await load();
+      if (parentNoteId) {
+        const rootId = typeof desktopApi().notesResolveLinkRoot === "function"
+          ? (await desktopApi().notesResolveLinkRoot({ noteId: parentNoteId })).rootNoteId
+          : parentNoteId;
+        await loadSubtree(rootId);
+        const result = await desktopApi().notesRead({ noteId: childNoteId });
+        await open(result.record, { asTreeRoot: false, treeRootId: rootId });
+      } else {
+        const result = await desktopApi().notesRead({ noteId: childNoteId });
+        await open(result.record, { asTreeRoot: true });
+      }
+      setStatus({ text: parentNoteId ? t("desktop.notes.parentLinkSet") : t("desktop.notes.parentLinkCleared"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
   };
 
   const pasteImage = async (): Promise<string | null> => {
@@ -915,7 +1081,7 @@ export function NotesPanel(): ReactPortal | null {
             </div> : null}
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${selected?.noteId === note.noteId ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note)} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "note", note, x: event.clientX, y: event.clientY }); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span></span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "note", note, x: event.clientX, y: event.clientY }); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
           </> : <>
             <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtd")} placeholder={t("desktop.notes.searchGtd")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
             <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdListMeta", visibleGtdTasks.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
@@ -924,7 +1090,34 @@ export function NotesPanel(): ReactPortal | null {
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
         <main className="notes-detail">
-          {selected ? <div className="notes-editor-shell"><div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
+          {selected ? <div className="notes-editor-shell">
+            {selected.scope === "project" && subtree ? (
+              <div className="notes-link-tree-panel" aria-label={t("desktop.notes.linkTree")}>
+                <div className="notes-link-tree-head">
+                  <span className="notes-link-tree-label">{t("desktop.notes.linkTree")}</span>
+                  <button
+                    type="button"
+                    className="notes-icon-btn"
+                    aria-label={t("desktop.notes.newLinkedChild")}
+                    title={t("desktop.notes.newLinkedChild")}
+                    onClick={() => void createLinkedChild(selected)}
+                  >
+                    <ThemeIcon name="file-plus" size={14} />
+                  </button>
+                </div>
+                <NoteLinkTree
+                  root={subtree.root}
+                  selectedNoteId={selected.noteId}
+                  treeRootId={treeRootId || subtree.rootNoteId}
+                  aliases={aliases}
+                  onSelect={(noteId) => void openTreeNode(noteId)}
+                  onReparent={(childNoteId, parentNoteId) => applyParentLink(childNoteId, parentNoteId)}
+                  truncatedHint={t("desktop.notes.linkTreeTruncated")}
+                  detachLabel={t("desktop.notes.dragToDetach")}
+                />
+              </div>
+            ) : null}
+            <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
             <div className="notes-editor-body">
             {findOpen ? (
               <div className="notes-find-bar app-inline-search" role="search">
@@ -1025,6 +1218,14 @@ export function NotesPanel(): ReactPortal | null {
           }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          {contextMenu.note.scope === "project" ? <>
+            <div className="context-menu-separator" role="separator" />
+            <button type="button" role="menuitem" onClick={() => { void createLinkedChild(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.newLinkedChild")}</button>
+            <button type="button" role="menuitem" onClick={() => { setParentPicker({ child: contextMenu.note, query: "" }); setContextMenu(null); }}>{t("desktop.notes.setAsLinkedChild")}</button>
+            {linkedChildIds.has(contextMenu.note.noteId) ? (
+              <button type="button" role="menuitem" onClick={() => { void applyParentLink(contextMenu.note.noteId, null); setContextMenu(null); }}>{t("desktop.notes.clearParentLink")}</button>
+            ) : null}
+          </> : null}
           <div className="context-menu-separator" role="separator" />
           <button type="button" role="menuitem" onClick={() => { beginTarget("move", contextMenu.note); setContextMenu(null); }}><span>{t("desktop.notes.changeOwner")}</span><ThemeIcon name="chevron-right" className="context-menu-chevron" size={14} aria-hidden="true" /></button>
           <button type="button" role="menuitem" onClick={() => { setRenameDialog({ kind: "note", note: contextMenu.note, title: titleFor(contextMenu.note) }); setContextMenu(null); }}>{t("desktop.common.rename")}</button>
@@ -1033,6 +1234,7 @@ export function NotesPanel(): ReactPortal | null {
         </>}
       </div> : null}
       {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); void applyRenameDialog(); }}><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.notes.renameProject" : "desktop.common.rename")}</p><input className="wb-rename-input" autoFocus value={renameDialog.title} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
+      {parentPicker ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setParentPicker(null)} /><div className="wb-note-created-panel notes-parent-picker-panel" role="dialog" aria-modal="true" aria-label={t("desktop.notes.setAsLinkedChild")}><p className="wb-note-created-title">{t("desktop.notes.setAsLinkedChild")}</p><p className="muted notes-parent-picker-hint">{t("desktop.notes.setAsLinkedChildHint", titleFor(parentPicker.child))}</p><input className="wb-rename-input" autoFocus value={parentPicker.query} placeholder={t("desktop.common.search")} onChange={(event) => setParentPicker((current) => current ? { ...current, query: event.target.value } : current)} /><div className="notes-parent-picker-list">{parentPickerCandidates.length ? parentPickerCandidates.map((note) => <button type="button" key={note.noteId} className="notes-parent-picker-item" onClick={() => void applyParentLink(parentPicker.child.noteId, note.noteId)}><span className="notes-parent-picker-item-title">{titleFor(note)}</span><span className="notes-parent-picker-item-meta">{note.projectPath ? (aliases[note.projectPath] || basename(note.projectPath)) : note.filename}</span></button>) : <p className="muted notes-list-empty">{t("desktop.notes.noMatchingNotes")}</p>}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setParentPicker(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
       {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
     </section>, host
   );

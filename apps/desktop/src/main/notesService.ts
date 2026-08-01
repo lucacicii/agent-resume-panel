@@ -13,8 +13,10 @@ import {
   type GtdStatus,
   type ImportNotesResult,
   type NoteGtdTask,
+  type NoteLink,
   type NoteOwner,
-  type NoteRecord
+  type NoteRecord,
+  type NoteSubtree
 } from "@agent-resume/core";
 import { desktopT } from "./i18nService";
 import { loadPanelDbPaths } from "./panelDatabases";
@@ -227,6 +229,58 @@ export async function notesCopyPath(noteId: string): Promise<{ path: string }> {
   const abs = store.absolutePath(record);
   clipboard.writeText(abs);
   return { path: abs };
+}
+
+export async function notesListRootNotes(): Promise<DesktopNoteRecord[]> {
+  const store = await getNotesStore();
+  await store.reload();
+  return store.listRootNotes();
+}
+
+export async function notesListLinks(): Promise<NoteLink[]> {
+  const store = await getNotesStore();
+  return store.listNoteLinks();
+}
+
+export async function notesGetParent(noteId: string): Promise<NoteLink | null> {
+  const store = await getNotesStore();
+  return (await store.getNoteParent(noteId)) ?? null;
+}
+
+export async function notesSetParent(
+  childNoteId: string,
+  parentNoteId: string | null
+): Promise<{ ok: boolean }> {
+  const store = await getNotesStore();
+  await store.setNoteParent(childNoteId, parentNoteId);
+  return { ok: true };
+}
+
+export async function notesCreateLinkedChild(parentNoteId: string): Promise<NoteRecord> {
+  const store = await getNotesStore();
+  return store.createLinkedChildNote(parentNoteId);
+}
+
+export async function notesGetSubtree(rootNoteId: string): Promise<NoteSubtree> {
+  const store = await getNotesStore();
+  return store.getNoteSubtree(rootNoteId);
+}
+
+export async function notesResolveLinkRoot(noteId: string): Promise<{ rootNoteId: string }> {
+  const store = await getNotesStore();
+  const rootNoteId = await store.resolveNoteLinkRoot(noteId);
+  return { rootNoteId };
+}
+
+export async function notesListLinkedChildIds(): Promise<string[]> {
+  const store = await getNotesStore();
+  return [...(await store.listLinkedChildIds())];
+}
+
+export async function notesListChildCounts(): Promise<Record<string, number>> {
+  const store = await getNotesStore();
+  const map = await store.listNoteChildCounts();
+  return Object.fromEntries(map.entries());
 }
 
 export function invalidateNotesStore(): void {

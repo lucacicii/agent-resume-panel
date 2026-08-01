@@ -10357,6 +10357,323 @@ body.is-pane-resizing * {
   display: none !important;
 }
 
+.notes-link-tree-panel {
+  flex-shrink: 0;
+  max-height: min(340px, 42vh);
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-separator, rgba(128, 128, 128, 0.28));
+  background:
+    linear-gradient(180deg, var(--color-fill-quaternary, rgba(128, 128, 128, 0.1)) 0%, transparent 100%),
+    var(--color-control-bg, var(--bg, #fff));
+}
+
+.notes-link-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px 2px 20px;
+  flex-shrink: 0;
+}
+
+.notes-link-tree-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-label-secondary, rgba(128, 128, 128, 0.9));
+}
+
+.notes-link-dendrogram {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+  position: relative;
+  user-select: none;
+}
+
+.notes-link-dendrogram.is-dragging {
+  cursor: grabbing;
+}
+
+.notes-link-dendrogram-detach {
+  display: none;
+  flex-shrink: 0;
+  margin: 0 4px 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--color-separator-opaque, rgba(128, 128, 128, 0.45));
+  font-size: 11px;
+  text-align: center;
+  color: var(--color-label-secondary, rgba(128, 128, 128, 0.9));
+  background: color-mix(in srgb, var(--color-fill-quaternary, rgba(128, 128, 128, 0.12)) 80%, transparent);
+}
+
+.notes-link-dendrogram-detach.is-visible {
+  display: block;
+}
+
+.notes-link-dendrogram-detach.is-drop-ok {
+  border-color: var(--color-accent, #0a84ff);
+  color: var(--color-accent, #0a84ff);
+  background: color-mix(in srgb, var(--color-accent, #0a84ff) 12%, transparent);
+}
+
+.notes-link-dendrogram-detach.is-drop-bad {
+  border-color: var(--color-destructive, #ff453a);
+  color: var(--color-destructive, #ff453a);
+  opacity: 0.85;
+}
+
+.notes-link-dendrogram-node.is-draggable {
+  cursor: grab;
+}
+
+.notes-link-dendrogram-node.is-drag-source {
+  opacity: 0.32;
+}
+
+.notes-link-dendrogram-node.is-drop-ok .notes-link-dendrogram-dot {
+  fill: var(--color-accent, #0a84ff);
+}
+
+.notes-link-dendrogram-node.is-drop-ok .notes-link-dendrogram-ring {
+  fill: color-mix(in srgb, var(--color-accent, #0a84ff) 22%, transparent);
+}
+
+.notes-link-dendrogram-node.is-drop-bad .notes-link-dendrogram-dot {
+  fill: var(--color-destructive, #ff453a);
+}
+
+.notes-link-dendrogram-ghost {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -120%);
+  pointer-events: none;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-control-bg, #1c1c1e) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #0a84ff) 45%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-width: 220px;
+}
+
+.notes-link-dendrogram-ghost.is-invalid {
+  border-color: color-mix(in srgb, var(--color-destructive, #ff453a) 55%, transparent);
+  opacity: 0.85;
+}
+
+.notes-link-dendrogram-ghost-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-accent, #0a84ff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0a84ff) 25%, transparent);
+}
+
+.notes-link-dendrogram-ghost.is-invalid .notes-link-dendrogram-ghost-dot {
+  background: var(--color-destructive, #ff453a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-destructive, #ff453a) 25%, transparent);
+}
+
+.notes-link-dendrogram-ghost-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-label-primary, var(--text, #f5f5f7));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-link-dendrogram-scroll {
+  flex: 1;
+  min-height: 160px;
+  overflow: auto;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-control-bg, #fff) 88%, transparent);
+}
+
+.notes-link-dendrogram-svg {
+  display: block;
+  min-width: 100%;
+  font-family: inherit;
+}
+
+.notes-link-dendrogram-edge {
+  stroke: var(--color-separator-opaque, rgba(128, 128, 128, 0.45));
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  opacity: 0.72;
+  transition: opacity 120ms ease, stroke 120ms ease;
+}
+
+.notes-link-dendrogram-edge.is-active {
+  stroke: var(--color-accent, #0a84ff);
+  opacity: 0.85;
+  stroke-width: 1.35;
+}
+
+.notes-link-dendrogram-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.notes-link-dendrogram-node:focus-visible .notes-link-dendrogram-dot {
+  stroke: var(--color-accent, #0a84ff);
+  stroke-width: 2;
+}
+
+.notes-link-dendrogram-dot {
+  fill: var(--color-label-tertiary, rgba(128, 128, 128, 0.7));
+  stroke: var(--color-control-bg, #fff);
+  stroke-width: 1.5;
+  transition: fill 120ms ease;
+}
+
+.notes-link-dendrogram-node.is-root .notes-link-dendrogram-dot {
+  fill: var(--color-label-secondary, rgba(60, 60, 67, 0.75));
+}
+
+.notes-link-dendrogram-node.is-selected .notes-link-dendrogram-dot {
+  fill: var(--color-accent, #0a84ff);
+  stroke: color-mix(in srgb, var(--color-accent, #0a84ff) 30%, white);
+}
+
+.notes-link-dendrogram-node.is-hovered .notes-link-dendrogram-dot {
+  fill: var(--color-accent, #0a84ff);
+}
+
+.notes-link-dendrogram-ring {
+  fill: color-mix(in srgb, var(--color-accent, #0a84ff) 18%, transparent);
+  stroke: none;
+  pointer-events: none;
+}
+
+.notes-link-dendrogram-label {
+  /* Must use --color-label-primary (not --color-label); black fallback is invisible on dark themes. */
+  fill: var(--color-label-primary, var(--text, #f5f5f7));
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--color-control-bg, var(--bg, #1c1c1e));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  opacity: 0.92;
+}
+
+.notes-link-dendrogram-node.is-selected .notes-link-dendrogram-label {
+  fill: var(--color-accent, #0a84ff);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.notes-link-dendrogram-node.is-hovered .notes-link-dendrogram-label {
+  fill: var(--color-accent, #0a84ff);
+  opacity: 1;
+}
+
+.notes-link-dendrogram-truncated {
+  margin: 4px 8px 0;
+  font-size: 11px;
+}
+
+.notes-list-item-child-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-label-secondary, rgba(128, 128, 128, 0.9));
+  background: var(--color-fill-tertiary, rgba(128, 128, 128, 0.16));
+}
+
+.notes-parent-picker-panel {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-parent-picker-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.notes-parent-picker-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: 280px;
+  overflow: auto;
+  margin: 10px 0;
+  border: 1px solid var(--color-separator, rgba(128, 128, 128, 0.28));
+  border-radius: 8px;
+}
+
+.notes-parent-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--color-separator, rgba(128, 128, 128, 0.18));
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.notes-parent-picker-item:last-child {
+  border-bottom: 0;
+}
+
+.notes-parent-picker-item:hover {
+  background: var(--color-fill-tertiary, rgba(128, 128, 128, 0.14));
+}
+
+.notes-parent-picker-item-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.notes-parent-picker-item-meta {
+  font-size: 11px;
+  color: var(--color-label-tertiary, rgba(128, 128, 128, 0.75));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-link-dendrogram-edge,
+  .notes-link-dendrogram-dot {
+    transition: none;
+  }
+}
+
+[data-theme="dark"] .notes-link-dendrogram-label,
+:root[data-theme="dark"] .notes-link-dendrogram-label {
+  stroke: var(--color-control-bg, #1c1c1e);
+}
+
+[data-theme="dark"] .notes-link-dendrogram-dot,
+:root[data-theme="dark"] .notes-link-dendrogram-dot {
+  stroke: var(--color-control-bg, #1c1c1e);
+}
+
 .notes-editor-body {
   position: relative;
   flex: 1;

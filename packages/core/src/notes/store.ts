@@ -51,6 +51,22 @@ import {
   writeNewNoteFile
 } from "./fs";
 import { reconcileNotesIndex } from "./reconcile";
+import {
+  clearParentLink,
+  collectDescendantIds,
+  deleteLinksForNote,
+  getNoteSubtree,
+  getParentLink,
+  listAllNoteLinks,
+  listChildCounts,
+  listChildLinks,
+  listLinkedChildNoteIds,
+  resolveLinkRoot,
+  setParentLink,
+  type NoteLink,
+  type NoteSubtree,
+  type NoteTreeNode
+} from "./links";
 
 export interface ImportNotesResult {
   imported: number;
@@ -58,6 +74,8 @@ export interface ImportNotesResult {
   errors: string[];
   records: NoteRecord[];
 }
+
+export type { NoteLink, NoteSubtree, NoteTreeNode };
 
 export class NotesStore {
   private sessionFlags = new Set<string>();
@@ -305,9 +323,83 @@ export class NotesStore {
     }
     const ownerDir = path.join(this.panelHome, "notes", record.relDir);
     await deleteNoteFiles(ownerDir, record.filename);
+    await deleteLinksForNote(this.dbPath, noteId);
     await deleteNoteRecord(this.dbPath, noteId);
     this.cachedNotes = this.cachedNotes.filter((n) => n.noteId !== noteId);
     await this.rebuildFlagsFromCache();
+  }
+
+  // --- Note links (tree associations among project notes) ---
+
+  async listNoteLinks(): Promise<NoteLink[]> {
+    return listAllNoteLinks(this.dbPath);
+  }
+
+  async getNoteParent(noteId: string): Promise<NoteLink | undefined> {
+    return getParentLink(this.dbPath, noteId);
+  }
+
+  async listNoteChildren(parentNoteId: string): Promise<NoteLink[]> {
+    return listChildLinks(this.dbPath, parentNoteId);
+  }
+
+  async listLinkedChildIds(): Promise<Set<string>> {
+    return listLinkedChildNoteIds(this.dbPath);
+  }
+
+  async listNoteChildCounts(): Promise<Map<string, number>> {
+    return listChildCounts(this.dbPath);
+  }
+
+  /**
+   * Root notes for list UI: library/session always roots; project notes without a parent.
+   */
+  async listRootNotes(): Promise<NoteRecord[]> {
+    const childIds = await listLinkedChildNoteIds(this.dbPath);
+    return this.cachedNotes.filter((note) => {
+      if (note.scope !== "project") {
+        return true;
+      }
+      return !childIds.has(note.noteId);
+    });
+  }
+
+  async setNoteParent(childNoteId: string, parentNoteId: string | null): Promise<void> {
+    await setParentLink(this.dbPath, childNoteId, parentNoteId);
+  }
+
+  async clearNoteParent(childNoteId: string): Promise<void> {
+    await clearParentLink(this.dbPath, childNoteId);
+  }
+
+  async createLinkedChildNote(parentNoteId: string, body = ""): Promise<NoteRecord> {
+    const parent = await getNoteById(this.dbPath, parentNoteId);
+    if (!parent) {
+      throw new Error("Parent note not found.");
+    }
+    if (parent.scope !== "project" || !parent.projectPath) {
+      throw new Error("Linked children can only be created under a project note.");
+    }
+    const child = await this.createProjectNote(parent.projectPath, body);
+    try {
+      await setParentLink(this.dbPath, child.noteId, parentNoteId);
+    } catch (error) {
+      await this.deleteNote(child.noteId);
+      throw error;
+    }
+    return child;
+  }
+
+  async getNoteSubtree(rootNoteId: string): Promise<NoteSubtree> {
+    return getNoteSubtree(this.dbPath, rootNoteId);
+  }
+
+  async resolveNoteLinkRoot(noteId: string): Promise<string> {
+    return resolveLinkRoot(this.dbPath, noteId);
+  }
+
+  async collectNoteDescendantIds(rootNoteId: string): Promise<Set<string>> {
+    return collectDescendantIds(this.dbPath, rootNoteId);
   }
 
   async moveNote(noteId: string, newOwner: NoteOwner): Promise<NoteRecord> {

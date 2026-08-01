@@ -469,6 +469,21 @@ export {
   listLegacyProjectNotes
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
+export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
+export {
+  listAllNoteLinks,
+  getParentLink,
+  listChildLinks,
+  deleteLinksForNote,
+  clearParentLink,
+  listLinkedChildNoteIds,
+  listChildCounts,
+  collectDescendantIds,
+  wouldCreateCycle,
+  setParentLink,
+  getNoteSubtree,
+  resolveLinkRoot
+} from "./notes/links";
 export { ensureNotesVectorIndex, chunkNoteMarkdown } from "./notes/vectorIndex";
 export type {
   NoteIndexProgressCallback,

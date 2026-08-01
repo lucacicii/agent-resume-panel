@@ -112,18 +112,27 @@ import {
   invalidateNotesStore,
   notesCopyPath,
   notesCreate,
+  notesCreateLinkedChild,
   notesDelete,
+  notesGetParent,
+  notesGetSubtree,
   notesImport,
-  notesPasteImage,
   notesList,
+  notesListChildCounts,
   notesListGtd,
+  notesListLinkedChildIds,
+  notesListLinks,
+  notesListRootNotes,
   notesMove,
   notesOpenFolder,
-  settingsOpenPanelHome,
+  notesPasteImage,
   notesRead,
   notesRename,
+  notesResolveLinkRoot,
   notesReveal,
-  notesWrite
+  notesSetParent,
+  notesWrite,
+  settingsOpenPanelHome
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import { scheduleNotesIndex, startNotesIndexer, stopNotesIndexer } from "./noteIndexer";
@@ -1624,6 +1633,30 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("notes:list", async () => notesList());
+  ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
+  ipcMain.handle("notes:listLinks", async () => notesListLinks());
+  ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
+  ipcMain.handle("notes:listChildCounts", async () => notesListChildCounts());
+  ipcMain.handle("notes:getParent", async (_event, args: { noteId: string }) => notesGetParent(args.noteId));
+  ipcMain.handle(
+    "notes:setParent",
+    async (_event, args: { childNoteId: string; parentNoteId: string | null }) => {
+      const result = await notesSetParent(args.childNoteId, args.parentNoteId);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle("notes:createLinkedChild", async (_event, args: { parentNoteId: string }) => {
+    const result = await notesCreateLinkedChild(args.parentNoteId);
+    scheduleNotesIndex();
+    return result;
+  });
+  ipcMain.handle("notes:getSubtree", async (_event, args: { rootNoteId: string }) =>
+    notesGetSubtree(args.rootNoteId)
+  );
+  ipcMain.handle("notes:resolveLinkRoot", async (_event, args: { noteId: string }) =>
+    notesResolveLinkRoot(args.noteId)
+  );
   ipcMain.handle("notes:listGtd", async (_event, args?: { query?: unknown; status?: unknown }) => {
     const query = typeof args?.query === "string" ? args.query : undefined;
     const status = typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined;

@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS note_links (
+  child_note_id TEXT PRIMARY KEY,
+  parent_note_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -147,6 +153,12 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS note_links (
+  child_note_id TEXT PRIMARY KEY,
+  parent_note_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

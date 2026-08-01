@@ -477,7 +477,15 @@
       "desktop.notes.searchGtd": "Search GTD tasks",
       "desktop.notes.gtdListMeta": "{0} GTD tasks",
       "desktop.notes.noGtdTasks": "No GTD tasks found",
-      "desktop.notes.slashGtdTask": "GTD task"
+      "desktop.notes.slashGtdTask": "GTD task",
+      "desktop.notes.linkProjectOnly": "Only project notes can be linked.",
+      "desktop.notes.linkApiUnavailable": "Note links require a rebuilt Desktop app. Quit the installed app and run the monorepo build (pnpm --filter @agent-resume/desktop run build && pnpm --filter @agent-resume/desktop start), or reinstall a package that includes this feature.",
+      "desktop.notes.creatingLinkedChild": "Creating linked child note…",
+      "desktop.notes.linkedChildCreated": "Linked child created: {0}",
+      "desktop.notes.parentLinkSet": "Parent link updated.",
+      "desktop.notes.parentLinkCleared": "Parent link cleared.",
+      "desktop.notes.linkTreeTruncated": "Tree truncated — only the nearest nodes are shown.",
+      "desktop.notes.dragToDetach": "Drop here to unlink · become a main note"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "Editor",
@@ -1701,7 +1709,15 @@
       "desktop.notes.searchGtd": "搜索 GTD 任务",
       "desktop.notes.gtdListMeta": "{0} 个 GTD 任务",
       "desktop.notes.noGtdTasks": "未找到 GTD 任务",
-      "desktop.notes.slashGtdTask": "GTD 任务"
+      "desktop.notes.slashGtdTask": "GTD 任务",
+      "desktop.notes.linkProjectOnly": "只有项目笔记可以建立关联。",
+      "desktop.notes.linkApiUnavailable": "笔记关联需要重新构建的 Desktop。请退出 /Applications 里的安装版，在仓库执行 pnpm --filter @agent-resume/desktop run build && pnpm --filter @agent-resume/desktop start，或安装包含该功能的新包。",
+      "desktop.notes.creatingLinkedChild": "正在创建关联子笔记…",
+      "desktop.notes.linkedChildCreated": "已创建关联子笔记：{0}",
+      "desktop.notes.parentLinkSet": "已更新父笔记关联。",
+      "desktop.notes.parentLinkCleared": "已清除父笔记关联。",
+      "desktop.notes.linkTreeTruncated": "关联树已截断，仅显示部分节点。",
+      "desktop.notes.dragToDetach": "拖到此处解除关联 · 成为主笔记"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "编辑器",
@@ -2945,7 +2961,15 @@
       "desktop.notes.searchGtd": "GTD タスクを検索",
       "desktop.notes.gtdListMeta": "GTD タスク {0} 件",
       "desktop.notes.noGtdTasks": "GTD タスクがありません",
-      "desktop.notes.slashGtdTask": "GTD タスク"
+      "desktop.notes.slashGtdTask": "GTD タスク",
+      "desktop.notes.linkProjectOnly": "プロジェクトノートのみ関連付けできます。",
+      "desktop.notes.linkApiUnavailable": "ノート関連付けには再ビルドした Desktop が必要です。インストール版を終了し、リポジトリで pnpm --filter @agent-resume/desktop run build && pnpm --filter @agent-resume/desktop start を実行するか、本機能を含むパッケージを再インストールしてください。",
+      "desktop.notes.creatingLinkedChild": "関連する子ノートを作成中…",
+      "desktop.notes.linkedChildCreated": "関連する子ノートを作成しました: {0}",
+      "desktop.notes.parentLinkSet": "親リンクを更新しました。",
+      "desktop.notes.parentLinkCleared": "親リンクを解除しました。",
+      "desktop.notes.linkTreeTruncated": "関連ツリーは切り詰められ、一部のノードのみ表示しています。",
+      "desktop.notes.dragToDetach": "ここにドロップしてリンク解除 · メインノートにする"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "エディター",
