@@ -5225,11 +5225,13 @@ code {
 
 .chat-send-btn svg {
   display: block;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+/* Optically center the paper plane which has asymmetrical visual weight */
+.chat-send-btn svg.lucide-send {
+  margin-left: -1px;
+  margin-top: 1px;
 }
 
 .chat-send-btn:hover:not(:disabled) {
