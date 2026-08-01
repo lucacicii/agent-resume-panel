@@ -3149,11 +3149,29 @@ export function WorkbenchPanel(): ReactPortal | null {
     setContextMenu({ kind: "session", session, x: event.clientX, y: event.clientY });
   };
 
+  const openNoteInNotesTab = (noteId: string) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: noteId }));
+  };
+
   const openMountedNote = async (owner: { scope: "project" | "session"; projectPath: string; provider?: string; sessionId?: string }) => {
     try {
+      // Project mount: jump to first root note when any exist; only create when empty.
+      if (owner.scope === "project" && typeof desktopApi().notesListRoot === "function") {
+        const roots = await desktopApi().notesListRoot();
+        const projectRoots = roots
+          .filter((note) => note.scope === "project" && note.projectPath === owner.projectPath)
+          .sort((left, right) =>
+            (right.updatedAtMs || 0) - (left.updatedAtMs || 0)
+            || (right.createdAtMs || 0) - (left.createdAtMs || 0)
+          );
+        if (projectRoots[0]) {
+          openNoteInNotesTab(projectRoots[0].noteId);
+          return;
+        }
+      }
       const result = await desktopApi().notesCreate(owner);
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
-      window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: result.noteId }));
+      openNoteInNotesTab(result.noteId);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 

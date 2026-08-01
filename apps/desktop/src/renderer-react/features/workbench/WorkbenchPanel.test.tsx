@@ -316,6 +316,118 @@ describe("WorkbenchPanel", () => {
     window.removeEventListener("agent-resume:sessions-preview", onPreview);
   });
 
+  it("mount note opens the first project root note without creating when roots exist", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const notesCreate = vi.fn(async () => ({ noteId: "new-note", filename: "new.md" }));
+    const notesListRoot = vi.fn(async () => [
+      {
+        noteId: "root-old",
+        scope: "project",
+        projectPath: "/work/app",
+        filename: "old.md",
+        relDir: "projects/app",
+        relMdPath: "notes/projects/app/old.md",
+        title: "Older root",
+        createdAtMs: 1,
+        updatedAtMs: 10
+      },
+      {
+        noteId: "root-new",
+        scope: "project",
+        projectPath: "/work/app",
+        filename: "new.md",
+        relDir: "projects/app",
+        relMdPath: "notes/projects/app/new.md",
+        title: "Newer root",
+        createdAtMs: 2,
+        updatedAtMs: 99
+      },
+      {
+        noteId: "other-project",
+        scope: "project",
+        projectPath: "/work/other",
+        filename: "other.md",
+        relDir: "projects/other",
+        relMdPath: "notes/projects/other/other.md",
+        title: "Other",
+        createdAtMs: 3,
+        updatedAtMs: 1000
+      }
+    ]);
+    const openNote = vi.fn();
+    const tabRequest = vi.fn();
+    window.addEventListener("agent-resume:open-note", openNote);
+    window.addEventListener("agent-resume:tab-request", tabRequest);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New Session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.mountNote": "Mount note"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", projectContextMenu: ["note"] } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
+      notesListRoot,
+      notesCreate
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const project = await screen.findByTitle("/work/app");
+    fireEvent.contextMenu(project);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mount note" }));
+    await waitFor(() => expect(notesListRoot).toHaveBeenCalled());
+    expect(notesCreate).not.toHaveBeenCalled();
+    expect(openNote).toHaveBeenCalled();
+    expect((openNote.mock.calls.at(-1)?.[0] as CustomEvent<string>).detail).toBe("root-new");
+    expect(tabRequest).toHaveBeenCalled();
+    window.removeEventListener("agent-resume:open-note", openNote);
+    window.removeEventListener("agent-resume:tab-request", tabRequest);
+  });
+
+  it("mount note creates a note when the project has no root notes", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
+    const notesListRoot = vi.fn(async () => []);
+    const openNote = vi.fn();
+    window.addEventListener("agent-resume:open-note", openNote);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New Session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.mountNote": "Mount note"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", projectContextMenu: ["note"] } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
+      notesListRoot,
+      notesCreate
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const project = await screen.findByTitle("/work/app");
+    fireEvent.contextMenu(project);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mount note" }));
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "project", projectPath: "/work/app" }));
+    expect((openNote.mock.calls.at(-1)?.[0] as CustomEvent<string>).detail).toBe("created-note");
+    window.removeEventListener("agent-resume:open-note", openNote);
+  });
+
   it("hides catalog projects with zero sessions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

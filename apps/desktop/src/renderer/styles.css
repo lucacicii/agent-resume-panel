@@ -9844,6 +9844,19 @@ textarea.wb-editor-host {
   right: -4px;
 }
 
+.pane-resizer.is-horizontal {
+  width: auto;
+  height: 1px;
+  cursor: row-resize;
+}
+
+.pane-resizer.is-horizontal::before {
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+}
+
 .pane-resizer:hover,
 .pane-resizer.is-dragging {
   background: color-mix(in srgb, var(--accent) 55%, var(--border));
@@ -9860,6 +9873,14 @@ body.is-pane-resizing {
 
 body.is-pane-resizing * {
   cursor: col-resize !important;
+}
+
+body.is-pane-resizing-row {
+  cursor: row-resize !important;
+}
+
+body.is-pane-resizing-row * {
+  cursor: row-resize !important;
 }
 
 .notes-list-toolbar-wrap,
@@ -10358,11 +10379,11 @@ body.is-pane-resizing * {
 }
 
 .notes-link-tree-panel {
-  flex-shrink: 0;
-  max-height: min(340px, 42vh);
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--color-separator, rgba(128, 128, 128, 0.28));
   background:
     linear-gradient(180deg, var(--color-fill-quaternary, rgba(128, 128, 128, 0.1)) 0%, transparent 100%),
     var(--color-control-bg, var(--bg, #fff));
@@ -10583,6 +10604,47 @@ body.is-pane-resizing * {
 .notes-link-dendrogram-truncated {
   margin: 4px 8px 0;
   font-size: 11px;
+}
+
+.notes-link-dendrogram.is-renaming {
+  user-select: text;
+}
+
+.notes-link-dendrogram-node.is-renameable {
+  cursor: pointer;
+}
+
+.notes-link-dendrogram-node.is-renaming .notes-link-dendrogram-dot {
+  fill: var(--color-accent, #0a84ff);
+}
+
+.notes-link-dendrogram-rename-input {
+  position: absolute;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 8px;
+  min-width: 96px;
+  max-width: 260px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--color-accent, #0a84ff);
+  background: var(--color-control-bg, var(--bg, #1c1c1e));
+  color: var(--color-label-primary, var(--text, #f5f5f7));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  outline: none;
+}
+
+.notes-link-dendrogram-rename-input:focus {
+  border-color: var(--color-accent, #0a84ff);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-accent, #0a84ff) 28%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.28);
 }
 
 .notes-list-item-child-count {
@@ -12819,6 +12881,26 @@ body::before {
   background: repeating-linear-gradient(180deg, transparent 0 4px, rgba(234,255,255,.72) 4px 5px);
   box-shadow: 0 0 11px rgba(0,240,255,.28);
   pointer-events: none;
+}
+
+/* Horizontal energy rail (tree ↔ editor): rotate the grip for row-resize. */
+[data-visual-theme="cyberpunk"] .pane-resizer.is-horizontal {
+  background: linear-gradient(90deg, var(--cyber-cyan), rgba(0,240,255,.18) 44%, rgba(255,43,214,.28) 56%, var(--cyber-magenta));
+  box-shadow: 0 0 7px rgba(0,240,255,.34), 0 0 10px rgba(255,43,214,.22);
+}
+
+[data-visual-theme="cyberpunk"] .pane-resizer.is-horizontal::after {
+  top: -3px;
+  left: 50%;
+  width: 38px;
+  height: 7px;
+  transform: translateX(-50%);
+  border-top: none;
+  border-bottom: none;
+  border-left: 2px solid var(--cyber-cyan);
+  border-right: 2px solid var(--cyber-magenta);
+  background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(234,255,255,.72) 4px 5px);
+  box-shadow: 0 0 11px rgba(0,240,255,.28);
 }
 
 [data-visual-theme="cyberpunk"] .pane-resizer:hover,

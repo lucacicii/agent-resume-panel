@@ -485,7 +485,8 @@
       "desktop.notes.parentLinkSet": "Parent link updated.",
       "desktop.notes.parentLinkCleared": "Parent link cleared.",
       "desktop.notes.linkTreeTruncated": "Tree truncated — only the nearest nodes are shown.",
-      "desktop.notes.dragToDetach": "Drop here to unlink · become a main note"
+      "desktop.notes.dragToDetach": "Drop here to unlink · become a main note",
+      "desktop.notes.resizeLinkTree": "Resize related notes"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "Editor",
@@ -1717,7 +1718,8 @@
       "desktop.notes.parentLinkSet": "已更新父笔记关联。",
       "desktop.notes.parentLinkCleared": "已清除父笔记关联。",
       "desktop.notes.linkTreeTruncated": "关联树已截断，仅显示部分节点。",
-      "desktop.notes.dragToDetach": "拖到此处解除关联 · 成为主笔记"
+      "desktop.notes.dragToDetach": "拖到此处解除关联 · 成为主笔记",
+      "desktop.notes.resizeLinkTree": "调整关联笔记高度"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "编辑器",
@@ -2969,7 +2971,8 @@
       "desktop.notes.parentLinkSet": "親リンクを更新しました。",
       "desktop.notes.parentLinkCleared": "親リンクを解除しました。",
       "desktop.notes.linkTreeTruncated": "関連ツリーは切り詰められ、一部のノードのみ表示しています。",
-      "desktop.notes.dragToDetach": "ここにドロップしてリンク解除 · メインノートにする"
+      "desktop.notes.dragToDetach": "ここにドロップしてリンク解除 · メインノートにする",
+      "desktop.notes.resizeLinkTree": "関連ノートの高さを変更"
     },
     "workbench": {
       "desktop.workbench.editorAuto": "エディター",

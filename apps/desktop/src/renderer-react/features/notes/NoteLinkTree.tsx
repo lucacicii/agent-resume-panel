@@ -21,9 +21,12 @@ export type NoteLinkTreeProps = {
   truncatedHint?: string;
   /** Drag-reparent; omit to disable drag. null parent = detach to root note. */
   onReparent?: (childNoteId: string, newParentNoteId: string | null) => void | Promise<void>;
+  /** Double-click label rename; omit to disable. */
+  onRename?: (noteId: string, newTitle: string) => void | Promise<void>;
   /** Tree root note id — not draggable in v1. */
   treeRootId?: string;
   detachLabel?: string;
+  renameAriaLabel?: string;
 };
 
 type DragState = {
@@ -40,8 +43,26 @@ type DragState = {
   dropValid: boolean;
 };
 
+type RenameState = {
+  noteId: string;
+  value: string;
+  original: string;
+  left: number;
+  top: number;
+  width: number;
+};
+
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
+function displayName(node: Pick<LaidOutNode, "title" | "filename">): string {
+  if (node.title?.trim()) return node.title.trim();
+  return node.filename.replace(/\.md$/i, "") || node.filename;
+}
+
+function labelYOffset(node: LaidOutNode): number {
+  return node.isRoot || !node.isLeaf ? -14 : 20;
 }
 
 export function NoteLinkTree({
@@ -51,18 +72,27 @@ export function NoteLinkTree({
   onSelect,
   truncatedHint,
   onReparent,
+  onRename,
   treeRootId,
-  detachLabel
+  detachLabel,
+  renameAriaLabel
 }: NoteLinkTreeProps): JSX.Element {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [rename, setRename] = useState<RenameState | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const renameRef = useRef<RenameState | null>(null);
+  const skipBlurCommitRef = useRef(false);
   dragRef.current = drag;
+  renameRef.current = rename;
 
   const layout = useMemo(() => layoutNoteTree(root), [root]);
   const rootId = treeRootId || root.noteId;
   const dragEnabled = typeof onReparent === "function";
+  const renameEnabled = typeof onRename === "function";
 
   const projectLabel = (projectPath?: string) => {
     if (!projectPath) return "";
@@ -70,6 +100,7 @@ export function NoteLinkTree({
   };
 
   const onKeyActivate = (event: KeyboardEvent, noteId: string) => {
+    if (rename) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onSelect(noteId);
@@ -136,6 +167,7 @@ export function NoteLinkTree({
     const onMove = (event: PointerEvent) => {
       const current = dragRef.current;
       if (!current || event.pointerId !== current.pointerId) return;
+      if (renameRef.current) return;
       const dx = event.clientX - current.startClientX;
       const dy = event.clientY - current.startClientY;
       const moved = current.moved || Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX;
@@ -154,6 +186,10 @@ export function NoteLinkTree({
     const onUp = (event: PointerEvent) => {
       const current = dragRef.current;
       if (!current || event.pointerId !== current.pointerId) return;
+      if (renameRef.current) {
+        setDrag(null);
+        return;
+      }
       void endDrag(
         {
           ...current,
@@ -181,7 +217,69 @@ export function NoteLinkTree({
     };
   }, [drag, endDrag, resolveDrop]);
 
+  const beginRename = useCallback((node: LaidOutNode) => {
+    if (!onRename) return;
+    const svg = svgRef.current;
+    const container = containerRef.current;
+    if (!svg || !container) return;
+
+    const labelY = labelYOffset(node);
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+
+    const pt = svg.createSVGPoint();
+    pt.x = node.x;
+    pt.y = node.y + labelY;
+    const screen = pt.matrixTransform(ctm);
+    const crect = container.getBoundingClientRect();
+    const name = displayName(node);
+    const approxWidth = Math.max(120, Math.min(240, name.length * 8 + 24));
+
+    setDrag(null);
+    setRename({
+      noteId: node.noteId,
+      value: name,
+      original: name,
+      left: screen.x - crect.left,
+      top: screen.y - crect.top,
+      width: approxWidth
+    });
+  }, [onRename]);
+
+  const cancelRename = useCallback(() => {
+    skipBlurCommitRef.current = true;
+    renameRef.current = null;
+    setRename(null);
+  }, []);
+
+  const commitRename = useCallback(async () => {
+    const current = renameRef.current;
+    renameRef.current = null;
+    setRename(null);
+    if (!current || !onRename) {
+      return;
+    }
+    const next = current.value.trim();
+    if (!next || next === current.original) {
+      return;
+    }
+    try {
+      await onRename(current.noteId, next);
+    } catch {
+      // Parent surfaces errors via status.
+    }
+  }, [onRename]);
+
+  useEffect(() => {
+    if (!rename) return;
+    const input = renameInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [rename?.noteId]);
+
   const onNodePointerDown = (event: ReactPointerEvent, node: LaidOutNode) => {
+    if (renameRef.current) return;
     if (!dragEnabled || event.button !== 0) return;
     if (node.noteId === rootId) return; // v1: root not draggable
     event.preventDefault();
@@ -202,9 +300,22 @@ export function NoteLinkTree({
     });
   };
 
+  const onNodeDoubleClick = (event: React.MouseEvent, node: LaidOutNode) => {
+    if (!renameEnabled) return;
+    if (drag?.moved) return;
+    event.preventDefault();
+    event.stopPropagation();
+    beginRename(node);
+  };
+
   return (
     <div
-      className={`notes-link-dendrogram${drag?.moved ? " is-dragging" : ""}`}
+      ref={containerRef}
+      className={[
+        "notes-link-dendrogram",
+        drag?.moved ? "is-dragging" : "",
+        rename ? "is-renaming" : ""
+      ].filter(Boolean).join(" ")}
       data-testid="notes-link-dendrogram"
     >
       {dragEnabled ? (
@@ -264,7 +375,8 @@ export function NoteLinkTree({
               const radius = node.isRoot ? 6 : selected || dropOk ? 5 : 3.5;
               const proj = projectLabel(node.projectPath);
               const fullTitle = proj ? `${node.title} · ${proj}` : node.title;
-              const canDrag = dragEnabled && node.noteId !== rootId;
+              const canDrag = dragEnabled && node.noteId !== rootId && !rename;
+              const isEditing = rename?.noteId === node.noteId;
               return (
                 <g
                   key={node.noteId}
@@ -277,7 +389,9 @@ export function NoteLinkTree({
                     isDragSource && drag?.moved ? "is-drag-source" : "",
                     dropOk ? "is-drop-ok" : "",
                     dropBad ? "is-drop-bad" : "",
-                    canDrag ? "is-draggable" : ""
+                    canDrag ? "is-draggable" : "",
+                    isEditing ? "is-renaming" : "",
+                    renameEnabled ? "is-renameable" : ""
                   ].filter(Boolean).join(" ")}
                   transform={`translate(${node.x} ${node.y})`}
                   role="treeitem"
@@ -286,10 +400,12 @@ export function NoteLinkTree({
                   aria-selected={selected}
                   data-note-id={node.noteId}
                   onClick={() => {
+                    if (renameRef.current) return;
                     // Draggable nodes select on pointerup; root (non-draggable) still uses click.
-                    if (dragEnabled && canDrag) return;
+                    if (dragEnabled && node.noteId !== rootId) return;
                     onSelect(node.noteId);
                   }}
+                  onDoubleClick={(event) => onNodeDoubleClick(event, node)}
                   onKeyDown={(event) => onKeyActivate(event, node.noteId)}
                   onPointerDown={(event) => onNodePointerDown(event, node)}
                   onMouseEnter={() => setHoveredId(node.noteId)}
@@ -298,15 +414,21 @@ export function NoteLinkTree({
                 >
                   {selected || dropOk ? <circle className="notes-link-dendrogram-ring" r={radius + 5} /> : null}
                   <circle className="notes-link-dendrogram-dot" r={radius} />
-                  <text
-                    className="notes-link-dendrogram-label"
-                    y={node.isRoot || !node.isLeaf ? -14 : 20}
-                    textAnchor="middle"
-                    dominantBaseline={node.isRoot || !node.isLeaf ? "auto" : "hanging"}
-                  >
-                    {truncateLabel(node.title || node.filename, node.isRoot ? 24 : 18)}
-                  </text>
-                  <title>{fullTitle}{canDrag ? " · drag to reparent" : ""}</title>
+                  {!isEditing ? (
+                    <text
+                      className="notes-link-dendrogram-label"
+                      y={labelYOffset(node)}
+                      textAnchor="middle"
+                      dominantBaseline={node.isRoot || !node.isLeaf ? "auto" : "hanging"}
+                    >
+                      {truncateLabel(node.title || node.filename, node.isRoot ? 24 : 18)}
+                    </text>
+                  ) : null}
+                  <title>
+                    {fullTitle}
+                    {renameEnabled ? " · double-click to rename" : ""}
+                    {canDrag ? " · drag to reparent" : ""}
+                  </title>
                 </g>
               );
             })}
@@ -315,6 +437,43 @@ export function NoteLinkTree({
       </div>
       {layout.truncated && truncatedHint ? (
         <p className="muted notes-link-dendrogram-truncated">{truncatedHint}</p>
+      ) : null}
+      {rename ? (
+        <input
+          ref={renameInputRef}
+          className="notes-link-dendrogram-rename-input"
+          data-testid="notes-link-rename-input"
+          style={{
+            left: rename.left,
+            top: rename.top,
+            width: rename.width
+          }}
+          value={rename.value}
+          aria-label={renameAriaLabel || "Rename note"}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => setRename((current) => current ? { ...current, value: event.target.value } : current)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              skipBlurCommitRef.current = true;
+              void commitRename();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              cancelRename();
+            }
+          }}
+          onBlur={() => {
+            if (skipBlurCommitRef.current) {
+              skipBlurCommitRef.current = false;
+              return;
+            }
+            void commitRename();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        />
       ) : null}
       {drag?.moved ? (
         <div

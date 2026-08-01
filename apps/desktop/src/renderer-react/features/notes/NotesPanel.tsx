@@ -52,6 +52,7 @@ const PINNED_NOTES_KEY = "pinned-notes";
 const FOLDERS_COLLAPSED_KEY = "notes-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "notes-list-pane-width";
+const LINK_TREE_HEIGHT_KEY = "notes-link-tree-height";
 const SIDEBAR_VIEW_KEY = "notes-sidebar-view";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 
@@ -230,25 +231,38 @@ function selectedPreviewRange(root: HTMLElement | null): Range | null {
   return selection.getRangeAt(0).cloneRange();
 }
 
-function PaneResizer({ label, onDelta }: { label: string; onDelta: (delta: number) => void }): React.JSX.Element {
+function PaneResizer({
+  label,
+  onDelta,
+  orientation = "vertical"
+}: {
+  label: string;
+  onDelta: (delta: number) => void;
+  /** vertical = width (sidebar); horizontal = height (stacked panes). */
+  orientation?: "vertical" | "horizontal";
+}): React.JSX.Element {
   const [dragging, setDragging] = useState(false);
+  const horizontal = orientation === "horizontal";
   return <div
-    className={`pane-resizer${dragging ? " is-dragging" : ""}`}
+    className={`pane-resizer${horizontal ? " is-horizontal" : ""}${dragging ? " is-dragging" : ""}`}
     role="separator"
     aria-label={label}
-    aria-orientation="vertical"
+    aria-orientation={horizontal ? "horizontal" : "vertical"}
     onPointerDown={(event) => {
       event.preventDefault();
-      let previous = event.clientX;
+      let previous = horizontal ? event.clientY : event.clientX;
       setDragging(true);
       document.body.classList.add("is-pane-resizing");
+      if (horizontal) document.body.classList.add("is-pane-resizing-row");
       const move = (next: PointerEvent) => {
-        onDelta(next.clientX - previous);
-        previous = next.clientX;
+        const current = horizontal ? next.clientY : next.clientX;
+        onDelta(current - previous);
+        previous = current;
       };
       const end = () => {
         setDragging(false);
         document.body.classList.remove("is-pane-resizing");
+        document.body.classList.remove("is-pane-resizing-row");
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", end);
       };
@@ -293,6 +307,7 @@ export function NotesPanel(): ReactPortal | null {
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageString(FOLDERS_COLLAPSED_KEY) === "true");
   const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 400));
   const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 520));
+  const [linkTreeHeight, setLinkTreeHeight] = useState(() => storedWidth(LINK_TREE_HEIGHT_KEY, 220, 120, 520));
   const [target, setTarget] = useState<TargetState | null>(null);
   const [targetQuery, setTargetQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
@@ -808,6 +823,14 @@ export function NotesPanel(): ReactPortal | null {
     });
   };
 
+  const setLinkTreeHeightByDelta = (delta: number) => {
+    setLinkTreeHeight((current) => {
+      const next = Math.min(520, Math.max(120, current + delta));
+      try { localStorage.setItem(LINK_TREE_HEIGHT_KEY, String(next)); } catch { /* persistence is optional */ }
+      return next;
+    });
+  };
+
   const selectFolder = (next: Folder) => {
     if (!sameFolder(folder, next)) setFolder(next);
     setListQuery("");
@@ -899,15 +922,59 @@ export function NotesPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
 
+  const patchSubtreeTitle = (node: NoteSubtree["root"], noteId: string, nextTitle: string, nextFilename: string): NoteSubtree["root"] => {
+    const children = node.children.map((child) => patchSubtreeTitle(child, noteId, nextTitle, nextFilename));
+    if (node.noteId !== noteId) {
+      return children === node.children ? node : { ...node, children };
+    }
+    return { ...node, title: nextTitle, filename: nextFilename, children };
+  };
+
+  const applyNoteRenameLocal = (noteId: string, nextTitle: string, nextFilename: string) => {
+    setNotes((current) => current.map((note) => (
+      note.noteId === noteId ? { ...note, filename: nextFilename, title: nextTitle } : note
+    )));
+    setSelected((current) => (
+      current?.noteId === noteId ? { ...current, filename: nextFilename, title: nextTitle } : current
+    ));
+    if (selected?.noteId === noteId) {
+      setTitle(nextTitle);
+    }
+    setSubtree((current) => {
+      if (!current) return current;
+      const root = patchSubtreeTitle(current.root, noteId, nextTitle, nextFilename);
+      const prev = current.nodesById[noteId];
+      return {
+        ...current,
+        root,
+        nodesById: prev
+          ? { ...current.nodesById, [noteId]: { ...prev, title: nextTitle, filename: nextFilename } }
+          : current.nodesById
+      };
+    });
+  };
+
   const rename = async () => {
     if (!selected || !title.trim()) return;
     try {
       const filename = title.trim().endsWith(".md") ? title.trim() : `${title.trim()}.md`;
       const result = await desktopApi().notesRename({ noteId: selected.noteId, filename });
-      setSelected((current) => current ? { ...current, filename: result.filename, title: title.trim() } : current);
-      setNotes((current) => current.map((note) => note.noteId === selected.noteId ? { ...note, filename: result.filename, title: title.trim() } : note));
+      applyNoteRenameLocal(selected.noteId, title.trim(), result.filename);
       setEditingTitle(false);
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+  };
+
+  const renameTreeNode = async (noteId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    try {
+      const filename = trimmed.endsWith(".md") ? trimmed : `${trimmed}.md`;
+      const result = await desktopApi().notesRename({ noteId, filename });
+      applyNoteRenameLocal(noteId, trimmed, result.filename);
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      throw error;
+    }
   };
 
   const applyRenameDialog = async () => {
@@ -1092,30 +1159,43 @@ export function NotesPanel(): ReactPortal | null {
         <main className="notes-detail">
           {selected ? <div className="notes-editor-shell">
             {selected.scope === "project" && subtree ? (
-              <div className="notes-link-tree-panel" aria-label={t("desktop.notes.linkTree")}>
-                <div className="notes-link-tree-head">
-                  <span className="notes-link-tree-label">{t("desktop.notes.linkTree")}</span>
-                  <button
-                    type="button"
-                    className="notes-icon-btn"
-                    aria-label={t("desktop.notes.newLinkedChild")}
-                    title={t("desktop.notes.newLinkedChild")}
-                    onClick={() => void createLinkedChild(selected)}
-                  >
-                    <ThemeIcon name="file-plus" size={14} />
-                  </button>
+              <>
+                <div
+                  className="notes-link-tree-panel"
+                  style={{ height: linkTreeHeight }}
+                  aria-label={t("desktop.notes.linkTree")}
+                >
+                  <div className="notes-link-tree-head">
+                    <span className="notes-link-tree-label">{t("desktop.notes.linkTree")}</span>
+                    <button
+                      type="button"
+                      className="notes-icon-btn"
+                      aria-label={t("desktop.notes.newLinkedChild")}
+                      title={t("desktop.notes.newLinkedChild")}
+                      onClick={() => void createLinkedChild(selected)}
+                    >
+                      <ThemeIcon name="file-plus" size={14} />
+                    </button>
+                  </div>
+                  <NoteLinkTree
+                    root={subtree.root}
+                    selectedNoteId={selected.noteId}
+                    treeRootId={treeRootId || subtree.rootNoteId}
+                    aliases={aliases}
+                    onSelect={(noteId) => void openTreeNode(noteId)}
+                    onReparent={(childNoteId, parentNoteId) => applyParentLink(childNoteId, parentNoteId)}
+                    onRename={(noteId, newTitle) => renameTreeNode(noteId, newTitle)}
+                    truncatedHint={t("desktop.notes.linkTreeTruncated")}
+                    detachLabel={t("desktop.notes.dragToDetach")}
+                    renameAriaLabel={t("desktop.common.rename")}
+                  />
                 </div>
-                <NoteLinkTree
-                  root={subtree.root}
-                  selectedNoteId={selected.noteId}
-                  treeRootId={treeRootId || subtree.rootNoteId}
-                  aliases={aliases}
-                  onSelect={(noteId) => void openTreeNode(noteId)}
-                  onReparent={(childNoteId, parentNoteId) => applyParentLink(childNoteId, parentNoteId)}
-                  truncatedHint={t("desktop.notes.linkTreeTruncated")}
-                  detachLabel={t("desktop.notes.dragToDetach")}
+                <PaneResizer
+                  orientation="horizontal"
+                  label={t("desktop.notes.resizeLinkTree")}
+                  onDelta={setLinkTreeHeightByDelta}
                 />
-              </div>
+              </>
             ) : null}
             <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
             <div className="notes-editor-body">

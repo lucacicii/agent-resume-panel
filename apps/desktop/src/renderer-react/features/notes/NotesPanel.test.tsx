@@ -78,6 +78,8 @@ const messages = {
   "desktop.notes.clearParentLink": "Clear parent link",
   "desktop.notes.linkedChildrenCount": "{0} linked children",
   "desktop.notes.linkTreeTruncated": "Tree truncated",
+  "desktop.notes.dragToDetach": "Drop here to unlink",
+  "desktop.notes.resizeLinkTree": "Resize related notes",
   "desktop.notes.pinProject": "Pin project",
   "desktop.notes.unpinProject": "Unpin project",
   "desktop.notes.pinNote": "Pin note",
