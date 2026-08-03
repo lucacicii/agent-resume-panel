@@ -963,7 +963,32 @@ export interface DesktopApi {
     outcome: "completed" | "failed";
     summary: string;
     runId?: string;
-  }): Promise<{ content: string; advanced: boolean; done: boolean }>;
+    defaultProvider?: string;
+    bubble?: boolean;
+  }): Promise<{
+    content: string;
+    advanced: boolean;
+    done: boolean;
+    bubbled?: boolean;
+    nextLeaf?: {
+      leafNoteId: string;
+      leafParentNoteId: string;
+      path: Array<{ noteId: string; title: string; composite: boolean }>;
+      runIdsByNoteId: Record<string, string>;
+    };
+    terminalNoteId?: string;
+  }>;
+  notesExecutableResolveLeaf(args: {
+    noteId: string;
+    defaultProvider?: string;
+    maxDepth?: number;
+  }): Promise<{
+    leafNoteId: string;
+    leafParentNoteId: string;
+    path: Array<{ noteId: string; title: string; composite: boolean }>;
+    runIdsByNoteId: Record<string, string>;
+  }>;
+  notesExecutableIsComposite(args: { noteId: string }): Promise<boolean>;
   notesExecutableListBindings(args: { noteId: string }): Promise<unknown[]>;
   notesExecutableListRuns(args: { noteId: string }): Promise<unknown[]>;
   notesCreate(args: {
@@ -1323,6 +1348,8 @@ const api: DesktopApi = {
   notesExecutableApproveRun: (args) => ipcRenderer.invoke("notes:executableApproveRun", args),
   notesExecutableBindSession: (args) => ipcRenderer.invoke("notes:executableBindSession", args),
   notesExecutableSettleChild: (args) => ipcRenderer.invoke("notes:executableSettleChild", args),
+  notesExecutableResolveLeaf: (args) => ipcRenderer.invoke("notes:executableResolveLeaf", args),
+  notesExecutableIsComposite: (args) => ipcRenderer.invoke("notes:executableIsComposite", args),
   notesExecutableListBindings: (args) => ipcRenderer.invoke("notes:executableListBindings", args),
   notesExecutableListRuns: (args) => ipcRenderer.invoke("notes:executableListRuns", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),

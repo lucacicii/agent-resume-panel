@@ -69,8 +69,11 @@ import {
 } from "./links";
 import {
   applyMaterializedNoteIds,
+  currentExecutableChild,
   defaultChildNoteBody,
+  EXECUTABLE_MAX_NEST_DEPTH,
   formatNativeSessionRef,
+  isCompositeExecutableParsed,
   listUnmaterializedNoteChildren,
   noteChildTitle,
   parseExecutableNote,
@@ -234,6 +237,180 @@ export class NotesStore {
     return { content, ...parseExecutableNote(content) };
   }
 
+  async isCompositeExecutableNote(noteId: string): Promise<boolean> {
+    const content = await this.readNoteContent(noteId);
+    return isCompositeExecutableParsed(parseExecutableNote(content));
+  }
+
+  /**
+   * Find an outer run note that lists `noteId` as a :::note-child step.
+   * Prefer note_links parent; fall back to scanning project notes.
+   */
+  async findExecutableOuterParentNoteId(noteId: string): Promise<string | undefined> {
+    const link = await getParentLink(this.dbPath, noteId);
+    if (link?.parentNoteId) {
+      try {
+        const content = await this.readNoteContent(link.parentNoteId);
+        const parsed = parseExecutableNote(content);
+        if (parsed.noteChildren.some((c) => c.noteId === noteId) && parsed.runs.length > 0) {
+          return link.parentNoteId;
+        }
+      } catch {
+        // continue scan
+      }
+    }
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record?.projectPath) return undefined;
+    const projectNotes = await this.listProjectNotes(record.projectPath).catch(() => []);
+    for (const candidate of projectNotes) {
+      if (candidate.noteId === noteId) continue;
+      try {
+        const content = await this.readNoteContent(candidate.noteId);
+        const parsed = parseExecutableNote(content);
+        if (
+          parsed.runs.length > 0 &&
+          parsed.noteChildren.some((c) => c.noteId === noteId)
+        ) {
+          return candidate.noteId;
+        }
+      } catch {
+        // skip unreadable
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * From a run-holder note (already executing or approvable), dive through composite
+   * children until a leaf step is reached. Approves nested runs as needed.
+   */
+  async resolveExecutableLeaf(
+    startNoteId: string,
+    options?: { defaultProvider?: string; maxDepth?: number }
+  ): Promise<{
+    leafNoteId: string;
+    leafParentNoteId: string;
+    path: Array<{ noteId: string; title: string; composite: boolean }>;
+    runIdsByNoteId: Record<string, string>;
+  }> {
+    const maxDepth = options?.maxDepth ?? EXECUTABLE_MAX_NEST_DEPTH;
+    const path: Array<{ noteId: string; title: string; composite: boolean }> = [];
+    const runIdsByNoteId: Record<string, string> = {};
+    const ancestors = new Set<string>();
+    let noteId = startNoteId;
+    let depth = 0;
+
+    while (depth <= maxDepth) {
+      if (ancestors.has(noteId)) {
+        throw new Error(`Executable nest cycle detected at note ${noteId}.`);
+      }
+      ancestors.add(noteId);
+
+      const record = await getNoteById(this.dbPath, noteId);
+      if (!record) {
+        throw new Error(`Note not found: ${noteId}`);
+      }
+
+      const before = await this.readNoteContent(noteId);
+      let content = before;
+      if (record.scope === "project") {
+        content = await this.materializeExecutableChildrenInContent(noteId, content, {
+          defaultProvider: options?.defaultProvider
+        });
+        if (content !== before) {
+          await fs.writeFile(this.absolutePath(record), content, "utf8");
+          await this.refreshNoteFromDisk(record);
+        }
+      }
+
+      let parsed = parseExecutableNote(content);
+      const title = record.title || record.filename.replace(/\.md$/i, "") || noteId;
+      const composite = isCompositeExecutableParsed(parsed);
+
+      if (!composite) {
+        // Leaf: either start note itself is leaf (no children run), or we should not be here
+        // without a parent frame — treat as leaf for CLI.
+        path.push({ noteId, title, composite: false });
+        const parentLink = await getParentLink(this.dbPath, noteId);
+        return {
+          leafNoteId: noteId,
+          leafParentNoteId: parentLink?.parentNoteId || noteId,
+          path,
+          runIdsByNoteId
+        };
+      }
+
+      path.push({ noteId, title, composite: true });
+
+      // Ensure this note's run is executing.
+      const run = parsed.runs[0];
+      if (!run) {
+        throw new Error(`Composite note ${noteId} has no :::run block.`);
+      }
+      if (run.status === "awaiting_approval" || run.status === "draft") {
+        const approved = await this.approveExecutableRun(noteId, {
+          defaultProvider: options?.defaultProvider
+        });
+        runIdsByNoteId[noteId] = approved.runId;
+        content = approved.content;
+        parsed = parseExecutableNote(content);
+      } else if (run.status === "executing") {
+        const runs = await listNoteRunsForSource(this.dbPath, noteId);
+        const active = runs.find((r) => r.status === "executing") || runs[0];
+        if (active?.runId) runIdsByNoteId[noteId] = active.runId;
+      } else if (run.status === "completed" || run.status === "failed") {
+        throw new Error(`Composite note ${noteId} run is already ${run.status}.`);
+      }
+
+      const current = currentExecutableChild(parsed);
+      if (!current?.noteId) {
+        throw new Error(`Composite note ${noteId} has no current note-child step.`);
+      }
+
+      // Keep note_links aligned with note-child chain so nested settle can bubble.
+      try {
+        await this.setNoteParent(current.noteId, noteId);
+      } catch {
+        // Cross-scope or cycle — bubble may fall back to non-linked parents.
+      }
+
+      // Ensure current child is marked running on this parent.
+      if (current.status !== "running") {
+        const updates = new Map<number, { status: "running" | "planned" }>();
+        for (const child of parsed.noteChildren) {
+          if (child.index === current.index) updates.set(child.index, { status: "running" });
+          else if (child.status === "idle" || child.status === "planned") {
+            updates.set(child.index, { status: "planned" });
+          }
+        }
+        content = updateNoteChildBlocks(content, updates);
+        await fs.writeFile(this.absolutePath(record), content, "utf8");
+        await this.refreshNoteFromDisk(record);
+      }
+
+      const childIsComposite = await this.isCompositeExecutableNote(current.noteId);
+      if (childIsComposite) {
+        noteId = current.noteId;
+        depth += 1;
+        continue;
+      }
+
+      // Leaf under this composite (or root flat chain).
+      const leafRecord = await getNoteById(this.dbPath, current.noteId);
+      const leafTitle =
+        leafRecord?.title || leafRecord?.filename.replace(/\.md$/i, "") || current.noteId;
+      path.push({ noteId: current.noteId, title: leafTitle, composite: false });
+      return {
+        leafNoteId: current.noteId,
+        leafParentNoteId: noteId,
+        path,
+        runIdsByNoteId
+      };
+    }
+
+    throw new Error(`Executable nest exceeds max depth ${maxDepth}.`);
+  }
+
   async approveExecutableRun(
     noteId: string,
     options?: { runIndex?: number; defaultProvider?: string }
@@ -360,6 +537,97 @@ export class NotesStore {
       status: args.status || "running"
     });
     return { content };
+  }
+
+  /**
+   * Settle one child, then bubble to outer parent runs when a nested run finishes.
+   * Returns the innermost settle result plus optional next leaf after advance/bubble.
+   */
+  async settleExecutableChildWithBubble(args: {
+    parentNoteId: string;
+    childNoteId: string;
+    outcome: "completed" | "failed";
+    summary: string;
+    runId?: string;
+    defaultProvider?: string;
+  }): Promise<{
+    content: string;
+    advanced: boolean;
+    done: boolean;
+    bubbled: boolean;
+    /** When chain still running, dive to the next CLI leaf. */
+    nextLeaf?: {
+      leafNoteId: string;
+      leafParentNoteId: string;
+      path: Array<{ noteId: string; title: string; composite: boolean }>;
+      runIdsByNoteId: Record<string, string>;
+    };
+    /** Root-most note whose run ended (completed/failed) after bubbling. */
+    terminalNoteId?: string;
+  }> {
+    let parentNoteId = args.parentNoteId;
+    let childNoteId = args.childNoteId;
+    let outcome = args.outcome;
+    let summary = args.summary;
+    let runId = args.runId;
+    let bubbled = false;
+    let last = await this.settleExecutableChild({
+      parentNoteId,
+      childNoteId,
+      outcome,
+      summary,
+      runId
+    });
+
+    while (last.done) {
+      const outerParentId = await this.findExecutableOuterParentNoteId(parentNoteId);
+      if (!outerParentId) {
+        return {
+          ...last,
+          bubbled,
+          terminalNoteId: parentNoteId
+        };
+      }
+      const outerContent = await this.readNoteContent(outerParentId);
+      const outerParsed = parseExecutableNote(outerContent);
+      const asStep = outerParsed.noteChildren.find((c) => c.noteId === parentNoteId);
+      if (!asStep) {
+        return { ...last, bubbled, terminalNoteId: parentNoteId };
+      }
+      // Nested frame finished — settle this composite step on the outer chain.
+      const outerRuns = await listNoteRunsForSource(this.dbPath, outerParentId);
+      const outerRun =
+        outerRuns.find((r) => r.status === "executing") ||
+        outerRuns.find((r) => r.status === "awaiting_approval");
+      bubbled = true;
+      last = await this.settleExecutableChild({
+        parentNoteId: outerParentId,
+        childNoteId: parentNoteId,
+        outcome,
+        summary:
+          outcome === "completed"
+            ? `Nested run completed on ${parentNoteId}.`
+            : `Nested run failed on ${parentNoteId}: ${summary}`,
+        runId: outerRun?.runId
+      });
+      childNoteId = parentNoteId;
+      parentNoteId = outerParentId;
+      runId = outerRun?.runId;
+    }
+
+    if (last.advanced || (!last.done && outcome === "completed")) {
+      // After advance, resolve next leaf from the parent that still has executing run.
+      try {
+        const nextLeaf = await this.resolveExecutableLeaf(parentNoteId, {
+          defaultProvider: args.defaultProvider
+        });
+        return { ...last, bubbled, nextLeaf };
+      } catch {
+        return { ...last, bubbled };
+      }
+    }
+
+    return { ...last, bubbled, terminalNoteId: last.done ? parentNoteId : undefined };
   }
 
   async settleExecutableChild(args: {

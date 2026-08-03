@@ -56,11 +56,8 @@ export function snapshotFromParsed(input: {
       (current.status === "running" || current.status === "planned") &&
       !input.currentSession?.native
   );
-  const canSettle = Boolean(
-    run?.status === "executing" &&
-      current?.noteId &&
-      (current.status === "running" || Boolean(input.currentSession?.native))
-  );
+  // While run is executing, allow settle (Desktop may target nested leaf via execLeaf).
+  const canSettle = Boolean(run?.status === "executing" && current?.noteId);
   return {
     runStatus: run?.status,
     runId: input.runId,
@@ -261,7 +258,9 @@ export function onWorkbenchLaunchSession(
   return () => window.removeEventListener(LAUNCH_EVENT, listener as EventListener);
 }
 
-/** Spawn + bind the current child step (ACP direct or Workbench-mediated CLI). */
+export type ExecutablePathNode = { noteId: string; title: string; composite: boolean };
+
+/** Spawn + bind a leaf step (CLI Workbench session). */
 export async function startExecutableCurrentStep(args: {
   parentNoteId: string;
   parentTitle: string;
@@ -341,6 +340,47 @@ export async function startExecutableCurrentStep(args: {
   return { catalogProvider, sessionId, content: bound.content };
 }
 
+/**
+ * Dive nested composite runs to a leaf, then open CLI for that leaf.
+ * `startNoteId` is any note that currently holds (or will hold) an executing run.
+ */
+export async function startExecutableLeafFromNote(args: {
+  startNoteId: string;
+  rootTitle: string;
+  projectPath: string;
+  defaultProvider?: string;
+}): Promise<{
+  path: ExecutablePathNode[];
+  leafNoteId: string;
+  leafParentNoteId: string;
+  runIdsByNoteId: Record<string, string>;
+  started: { catalogProvider: string; sessionId: string };
+}> {
+  const api = desktopApi();
+  if (typeof api.notesExecutableResolveLeaf !== "function") {
+    throw new Error("Nested executable runs require a rebuilt Desktop (notesExecutableResolveLeaf missing).");
+  }
+  const leaf = await api.notesExecutableResolveLeaf({
+    noteId: args.startNoteId,
+    defaultProvider: args.defaultProvider
+  });
+  const parentRunId = leaf.runIdsByNoteId[leaf.leafParentNoteId];
+  const started = await startExecutableCurrentStep({
+    parentNoteId: leaf.leafParentNoteId,
+    parentTitle: args.rootTitle,
+    childNoteId: leaf.leafNoteId,
+    runId: parentRunId,
+    projectPath: args.projectPath
+  });
+  return {
+    path: leaf.path,
+    leafNoteId: leaf.leafNoteId,
+    leafParentNoteId: leaf.leafParentNoteId,
+    runIdsByNoteId: leaf.runIdsByNoteId,
+    started: { catalogProvider: started.catalogProvider, sessionId: started.sessionId }
+  };
+}
+
 export async function approveExecutableRunAndStart(args: {
   parentNoteId: string;
   parentTitle: string;
@@ -350,6 +390,9 @@ export async function approveExecutableRunAndStart(args: {
   runId: string;
   parentContent: string;
   childNoteIds: string[];
+  path: ExecutablePathNode[];
+  leafNoteId?: string;
+  leafParentNoteId?: string;
   started?: { catalogProvider: string; sessionId: string };
 }> {
   const api = desktopApi();
@@ -357,25 +400,29 @@ export async function approveExecutableRunAndStart(args: {
     noteId: args.parentNoteId,
     defaultProvider: args.defaultProvider
   });
-  const firstChild = approved.childNoteIds[0];
-  if (!firstChild) {
+  if (!approved.childNoteIds.length) {
     return {
       runId: approved.runId,
       parentContent: approved.content,
-      childNoteIds: approved.childNoteIds
+      childNoteIds: approved.childNoteIds,
+      path: []
     };
   }
-  const started = await startExecutableCurrentStep({
-    parentNoteId: args.parentNoteId,
-    parentTitle: args.parentTitle,
-    childNoteId: firstChild,
-    runId: approved.runId,
-    projectPath: args.projectPath
+
+  const leafStart = await startExecutableLeafFromNote({
+    startNoteId: args.parentNoteId,
+    rootTitle: args.parentTitle,
+    projectPath: args.projectPath,
+    defaultProvider: args.defaultProvider
   });
+
   return {
     runId: approved.runId,
     parentContent: approved.content,
     childNoteIds: approved.childNoteIds,
-    started: { catalogProvider: started.catalogProvider, sessionId: started.sessionId }
+    path: leafStart.path,
+    leafNoteId: leafStart.leafNoteId,
+    leafParentNoteId: leafStart.leafParentNoteId,
+    started: leafStart.started
   };
 }

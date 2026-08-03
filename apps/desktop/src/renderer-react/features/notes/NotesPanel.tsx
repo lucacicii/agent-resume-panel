@@ -13,6 +13,8 @@ import {
   approveExecutableRunAndStart,
   snapshotFromParsed,
   startExecutableCurrentStep,
+  startExecutableLeafFromNote,
+  type ExecutablePathNode,
   type ExecutableRunSnapshot,
   type NoteChildLike,
   type RunBlockLike,
@@ -331,6 +333,13 @@ export function NotesPanel(): ReactPortal | null {
   const [currentChildSession, setCurrentChildSession] = useState<SessionBlockLike | null>(null);
   /** Bumps when returning to Notes so exec/session parse re-reads disk. */
   const [execRefreshKey, setExecRefreshKey] = useState(0);
+  const [execPath, setExecPath] = useState<ExecutablePathNode[]>([]);
+  /** Active leaf under possibly nested runs — settle targets this, not just local note-child. */
+  const [execLeaf, setExecLeaf] = useState<{
+    leafNoteId: string;
+    leafParentNoteId: string;
+    runId?: string;
+  } | null>(null);
   const saveTimer = useRef<number | null>(null);
   const contentRef = useRef(content);
   const selectedRef = useRef<Note | null>(selected);
@@ -587,6 +596,20 @@ export function NotesPanel(): ReactPortal | null {
     if (selectedId) {
       try {
         await reloadSelectedContent(selectedId);
+        // Restore nested leaf target after tab switch so settle still hits the right step.
+        if (typeof desktopApi().notesExecutableResolveLeaf === "function") {
+          try {
+            const leaf = await desktopApi().notesExecutableResolveLeaf({ noteId: selectedId });
+            setExecPath(leaf.path);
+            setExecLeaf({
+              leafNoteId: leaf.leafNoteId,
+              leafParentNoteId: leaf.leafParentNoteId,
+              runId: leaf.runIdsByNoteId[leaf.leafParentNoteId]
+            });
+          } catch {
+            // Not mid-run or note is not a run holder.
+          }
+        }
       } catch {
         // Keep list refresh even if one note read fails.
       }
@@ -613,12 +636,23 @@ export function NotesPanel(): ReactPortal | null {
         projectPath: note.projectPath
       });
       setActiveRunId(result.runId);
+      setExecPath(result.path || []);
+      if (result.leafNoteId && result.leafParentNoteId) {
+        setExecLeaf({
+          leafNoteId: result.leafNoteId,
+          leafParentNoteId: result.leafParentNoteId,
+          runId: result.runId
+        });
+      }
       setContent(result.parentContent);
       await reloadSelectedContent(note.noteId);
+      const leafTitle = result.path?.filter((p) => !p.composite).at(-1)?.title;
       const step = 1;
       const total = result.childNoteIds.length || 1;
       setStatus({
-        text: t("desktop.notes.execApproved", step, total),
+        text: leafTitle
+          ? `${t("desktop.notes.execApproved", step, total)} · ${leafTitle}`
+          : t("desktop.notes.execApproved", step, total),
         kind: "ok"
       });
     } catch (error) {
@@ -631,24 +665,45 @@ export function NotesPanel(): ReactPortal | null {
   const startCurrentStep = useCallback(async () => {
     const note = selectedRef.current;
     const snap = execSnapshot;
-    if (!note || !snap?.currentChildNoteId || !note.projectPath) return;
+    if (!note || !note.projectPath) return;
     if (execBusy) return;
     setExecBusy(true);
     setStatus({ text: t("desktop.notes.execStarting") });
     try {
       await save();
-      await startExecutableCurrentStep({
-        parentNoteId: note.noteId,
-        parentTitle: titleFor(note),
-        childNoteId: snap.currentChildNoteId,
-        runId: activeRunId || snap.runId,
-        projectPath: note.projectPath
-      });
-      await reloadSelectedContent(note.noteId);
-      setStatus({
-        text: t("desktop.notes.execStepStarted", snap.currentChildIndex + 1, snap.childCount || 1),
-        kind: "ok"
-      });
+      // Nested: dive from this note (or its run) to a leaf, then CLI.
+      if (typeof desktopApi().notesExecutableResolveLeaf === "function") {
+        const leafStart = await startExecutableLeafFromNote({
+          startNoteId: note.noteId,
+          rootTitle: titleFor(note),
+          projectPath: note.projectPath
+        });
+        setExecPath(leafStart.path);
+        setExecLeaf({
+          leafNoteId: leafStart.leafNoteId,
+          leafParentNoteId: leafStart.leafParentNoteId,
+          runId: leafStart.runIdsByNoteId[leafStart.leafParentNoteId]
+        });
+        await reloadSelectedContent(note.noteId);
+        const leafTitle = leafStart.path.filter((p) => !p.composite).at(-1)?.title || leafStart.leafNoteId;
+        setStatus({
+          text: t("desktop.notes.execStepStarted", snap?.currentChildIndex != null ? snap.currentChildIndex + 1 : 1, snap?.childCount || 1) + ` · ${leafTitle}`,
+          kind: "ok"
+        });
+      } else if (snap?.currentChildNoteId) {
+        await startExecutableCurrentStep({
+          parentNoteId: note.noteId,
+          parentTitle: titleFor(note),
+          childNoteId: snap.currentChildNoteId,
+          runId: activeRunId || snap.runId,
+          projectPath: note.projectPath
+        });
+        await reloadSelectedContent(note.noteId);
+        setStatus({
+          text: t("desktop.notes.execStepStarted", snap.currentChildIndex + 1, snap.childCount || 1),
+          kind: "ok"
+        });
+      }
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
@@ -659,7 +714,10 @@ export function NotesPanel(): ReactPortal | null {
   const settleCurrentStep = useCallback(async (outcome: "completed" | "failed") => {
     const note = selectedRef.current;
     const snap = execSnapshot;
-    if (!note || !snap?.currentChildNoteId) return;
+    const leaf = execLeaf;
+    const parentNoteId = leaf?.leafParentNoteId || note?.noteId;
+    const childNoteId = leaf?.leafNoteId || snap?.currentChildNoteId;
+    if (!note || !parentNoteId || !childNoteId) return;
     if (typeof desktopApi().notesExecutableSettleChild !== "function") return;
     if (execBusy) return;
     setExecBusy(true);
@@ -668,46 +726,71 @@ export function NotesPanel(): ReactPortal | null {
       await save();
       const summary =
         outcome === "completed"
-          ? `Step ${snap.currentChildIndex + 1} completed.`
-          : `Step ${snap.currentChildIndex + 1} failed.`;
+          ? `Step completed (${childNoteId.slice(0, 8)}).`
+          : `Step failed (${childNoteId.slice(0, 8)}).`;
       const result = await desktopApi().notesExecutableSettleChild({
-        parentNoteId: note.noteId,
-        childNoteId: snap.currentChildNoteId,
+        parentNoteId,
+        childNoteId,
         outcome,
         summary,
-        runId: activeRunId || snap.runId
+        runId: leaf?.runId || activeRunId || snap?.runId,
+        bubble: true
       });
       setContent(result.content);
       await reloadSelectedContent(note.noteId);
       if (outcome === "failed") {
         setStatus({ text: t("desktop.notes.execStepFailed"), kind: "error" });
-      } else if (result.done) {
+        setExecLeaf(null);
+        setExecPath([]);
+      } else if (result.done && !result.nextLeaf) {
         setStatus({ text: t("desktop.notes.execRunDone"), kind: "ok" });
+        setExecPath([]);
+        setExecLeaf(null);
       } else {
         setStatus({ text: t("desktop.notes.execStepDone"), kind: "ok" });
-        // Auto-start next step session when advanced.
-        if (result.advanced && note.projectPath) {
-          const nextParsed = await desktopApi().notesExecutableParse({ noteId: note.noteId });
-          const nextChild = (nextParsed.noteChildren as NoteChildLike[]).find((c) => c.status === "running");
-          if (nextChild?.noteId) {
-            setStatus({ text: t("desktop.notes.execStarting") });
-            await startExecutableCurrentStep({
-              parentNoteId: note.noteId,
-              parentTitle: titleFor(note),
-              childNoteId: nextChild.noteId,
-              runId: activeRunId || snap.runId,
-              projectPath: note.projectPath
-            });
-            await reloadSelectedContent(note.noteId);
-            setStatus({
-              text: t(
-                "desktop.notes.execStepStarted",
-                (typeof nextChild.index === "number" ? nextChild.index : snap.currentChildIndex) + 1,
-                snap.childCount || 1
-              ),
-              kind: "ok"
-            });
-          }
+        // Auto-start next leaf (may dive into nested composite).
+        const nextLeaf = result.nextLeaf;
+        if (nextLeaf && note.projectPath) {
+          setStatus({ text: t("desktop.notes.execStarting") });
+          setExecPath(nextLeaf.path);
+          const parentRunId = nextLeaf.runIdsByNoteId[nextLeaf.leafParentNoteId];
+          setExecLeaf({
+            leafNoteId: nextLeaf.leafNoteId,
+            leafParentNoteId: nextLeaf.leafParentNoteId,
+            runId: parentRunId
+          });
+          await startExecutableCurrentStep({
+            parentNoteId: nextLeaf.leafParentNoteId,
+            parentTitle: titleFor(note),
+            childNoteId: nextLeaf.leafNoteId,
+            runId: parentRunId || activeRunId || snap?.runId,
+            projectPath: note.projectPath
+          });
+          await reloadSelectedContent(note.noteId);
+          const leafTitle =
+            nextLeaf.path.filter((p) => !p.composite).at(-1)?.title || nextLeaf.leafNoteId;
+          setStatus({
+            text: t("desktop.notes.execStepStarted", (snap?.currentChildIndex ?? 0) + 1, snap?.childCount || 1) + ` · ${leafTitle}`,
+            kind: "ok"
+          });
+        } else if (result.advanced && note.projectPath && typeof desktopApi().notesExecutableResolveLeaf === "function") {
+          const leafStart = await startExecutableLeafFromNote({
+            startNoteId: note.noteId,
+            rootTitle: titleFor(note),
+            projectPath: note.projectPath
+          });
+          setExecPath(leafStart.path);
+          setExecLeaf({
+            leafNoteId: leafStart.leafNoteId,
+            leafParentNoteId: leafStart.leafParentNoteId,
+            runId: leafStart.runIdsByNoteId[leafStart.leafParentNoteId]
+          });
+          await reloadSelectedContent(note.noteId);
+          const leafTitle = leafStart.path.filter((p) => !p.composite).at(-1)?.title || leafStart.leafNoteId;
+          setStatus({
+            text: t("desktop.notes.execStepStarted", (snap?.currentChildIndex ?? 0) + 1, snap?.childCount || 1) + ` · ${leafTitle}`,
+            kind: "ok"
+          });
         }
       }
     } catch (error) {
@@ -715,7 +798,7 @@ export function NotesPanel(): ReactPortal | null {
     } finally {
       setExecBusy(false);
     }
-  }, [activeRunId, execBusy, execSnapshot, reloadSelectedContent, save, t]);
+  }, [activeRunId, execBusy, execLeaf, execSnapshot, reloadSelectedContent, save, t]);
 
   const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
@@ -1537,6 +1620,11 @@ export function NotesPanel(): ReactPortal | null {
                   {execSnapshot.childCount > 0
                     ? ` · ${Math.min(execSnapshot.currentChildIndex + 1, execSnapshot.childCount)}/${execSnapshot.childCount}`
                     : ""}
+                  {execPath.length > 1
+                    ? ` · ${execPath.map((p) => p.title).join(" › ")}`
+                    : execLeaf
+                      ? ` · leaf ${execLeaf.leafNoteId.slice(0, 8)}`
+                      : ""}
                 </span>
                 <div className="notes-exec-bar-actions">
                   {execSnapshot.canApprove ? (

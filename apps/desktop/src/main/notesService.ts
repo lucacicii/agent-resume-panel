@@ -143,9 +143,34 @@ export async function notesExecutableSettleChild(args: {
   outcome: "completed" | "failed";
   summary: string;
   runId?: string;
+  defaultProvider?: string;
+  bubble?: boolean;
 }) {
   const store = await getNotesStore();
-  return store.settleExecutableChild(args);
+  if (args.bubble === false) {
+    return store.settleExecutableChild(args);
+  }
+  return store.settleExecutableChildWithBubble({
+    parentNoteId: args.parentNoteId,
+    childNoteId: args.childNoteId,
+    outcome: args.outcome,
+    summary: args.summary,
+    runId: args.runId,
+    defaultProvider: args.defaultProvider
+  });
+}
+
+export async function notesExecutableResolveLeaf(
+  noteId: string,
+  args?: { defaultProvider?: string; maxDepth?: number }
+) {
+  const store = await getNotesStore();
+  return store.resolveExecutableLeaf(noteId, args);
+}
+
+export async function notesExecutableIsComposite(noteId: string): Promise<boolean> {
+  const store = await getNotesStore();
+  return store.isCompositeExecutableNote(noteId);
 }
 
 export async function notesExecutableListBindings(noteId: string): Promise<NoteSessionBinding[]> {

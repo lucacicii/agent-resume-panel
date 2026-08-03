@@ -136,6 +136,8 @@ import {
   notesExecutableApproveRun,
   notesExecutableBindSession,
   notesExecutableSettleChild,
+  notesExecutableResolveLeaf,
+  notesExecutableIsComposite,
   notesExecutableListBindings,
   notesExecutableListRuns,
   settingsOpenPanelHome
@@ -1716,12 +1718,28 @@ function registerIpc(): void {
         outcome: "completed" | "failed";
         summary: string;
         runId?: string;
+        defaultProvider?: string;
+        bubble?: boolean;
       }
     ) => {
       const result = await notesExecutableSettleChild(args);
       scheduleNotesIndex();
       return result;
     }
+  );
+  ipcMain.handle(
+    "notes:executableResolveLeaf",
+    async (_event, args: { noteId: string; defaultProvider?: string; maxDepth?: number }) => {
+      const result = await notesExecutableResolveLeaf(args.noteId, {
+        defaultProvider: args.defaultProvider,
+        maxDepth: args.maxDepth
+      });
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle("notes:executableIsComposite", async (_event, args: { noteId: string }) =>
+    notesExecutableIsComposite(args.noteId)
   );
   ipcMain.handle("notes:executableListBindings", async (_event, args: { noteId: string }) =>
     notesExecutableListBindings(args.noteId)

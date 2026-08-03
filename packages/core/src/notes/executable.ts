@@ -468,3 +468,27 @@ export function getPrimaryRun(markdown: string): RunBlock | undefined {
 export function noteChildTitle(block: NoteChildBlock): string {
   return normalizedText(block.text) || `Task ${block.index + 1}`;
 }
+
+/** Max nested run depth (root run = depth 0). */
+export const EXECUTABLE_MAX_NEST_DEPTH = 5;
+
+/**
+ * Composite = has a run block and at least one note-child (optionally not yet materialized).
+ * Leaf steps are non-composite notes that execute via :::session / CLI.
+ */
+export function isCompositeExecutableParsed(parsed: ParsedExecutableNote): boolean {
+  return parsed.runs.length > 0 && parsed.noteChildren.length > 0;
+}
+
+/** Current serial step: prefer running, else planned, else first idle with note id. */
+export function currentExecutableChild(
+  parsed: ParsedExecutableNote
+): NoteChildBlock | undefined {
+  const children = parsed.noteChildren;
+  return (
+    children.find((c) => c.status === "running") ||
+    children.find((c) => c.status === "planned") ||
+    children.find((c) => c.status === "idle" && c.noteId) ||
+    children[0]
+  );
+}
