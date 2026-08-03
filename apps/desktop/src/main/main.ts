@@ -132,6 +132,12 @@ import {
   notesReveal,
   notesSetParent,
   notesWrite,
+  notesExecutableParse,
+  notesExecutableApproveRun,
+  notesExecutableBindSession,
+  notesExecutableSettleChild,
+  notesExecutableListBindings,
+  notesExecutableListRuns,
   settingsOpenPanelHome
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
@@ -1668,6 +1674,61 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
+  ipcMain.handle("notes:executableParse", async (_event, args: { noteId: string }) =>
+    notesExecutableParse(args.noteId)
+  );
+  ipcMain.handle(
+    "notes:executableApproveRun",
+    async (_event, args: { noteId: string; runIndex?: number; defaultProvider?: string }) => {
+      const result = await notesExecutableApproveRun(args.noteId, {
+        runIndex: args.runIndex,
+        defaultProvider: args.defaultProvider
+      });
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:executableBindSession",
+    async (
+      _event,
+      args: {
+        noteId: string;
+        provider: string;
+        agentSessionId: string;
+        runId?: string;
+        role?: string;
+        status?: string;
+      }
+    ) => {
+      const result = await notesExecutableBindSession(args);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:executableSettleChild",
+    async (
+      _event,
+      args: {
+        parentNoteId: string;
+        childNoteId: string;
+        outcome: "completed" | "failed";
+        summary: string;
+        runId?: string;
+      }
+    ) => {
+      const result = await notesExecutableSettleChild(args);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle("notes:executableListBindings", async (_event, args: { noteId: string }) =>
+    notesExecutableListBindings(args.noteId)
+  );
+  ipcMain.handle("notes:executableListRuns", async (_event, args: { noteId: string }) =>
+    notesExecutableListRuns(args.noteId)
+  );
   ipcMain.handle(
     "notes:create",
     async (

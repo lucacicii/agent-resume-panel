@@ -9,6 +9,15 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { NoteLinkTree } from "./NoteLinkTree";
+import {
+  approveExecutableRunAndStart,
+  snapshotFromParsed,
+  startExecutableCurrentStep,
+  type ExecutableRunSnapshot,
+  type NoteChildLike,
+  type RunBlockLike,
+  type SessionBlockLike
+} from "./executableRunActions";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type GtdTask = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListGtd"]>>[number];
@@ -317,9 +326,16 @@ export function NotesPanel(): ReactPortal | null {
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [execBusy, setExecBusy] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | undefined>(undefined);
+  const [currentChildSession, setCurrentChildSession] = useState<SessionBlockLike | null>(null);
+  /** Bumps when returning to Notes so exec/session parse re-reads disk. */
+  const [execRefreshKey, setExecRefreshKey] = useState(0);
   const saveTimer = useRef<number | null>(null);
   const contentRef = useRef(content);
   const selectedRef = useRef<Note | null>(selected);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const editorRef = useRef<CodeEditorHandle>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const previewSearchRef = useRef<PreviewSearchSession | null>(null);
@@ -336,15 +352,133 @@ export function NotesPanel(): ReactPortal | null {
   findQueryRef.current = findQuery;
   contentRef.current = content;
   selectedRef.current = selected;
-  const gtdSlashCommands = useMemo(() => GTD_STATUSES.map((gtdStatus) => {
-    const opener = ":::gtd " + gtdStatus;
-    return {
-      label: t("desktop.notes.slashGtdTask"),
-      tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
-      insert: opener + "\n\n:::",
-      cursorOffset: opener.length + 1
+  const noteSlashCommands = useMemo(() => {
+    const gtdCommands = GTD_STATUSES.map((gtdStatus) => {
+      const opener = ":::gtd " + gtdStatus;
+      return {
+        label: t("desktop.notes.slashGtdTask"),
+        tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
+        insert: opener + "\n\n:::",
+        cursorOffset: opener.length + 1
+      };
+    });
+
+    const noteChildOpener = ":::note-child idle";
+    const sessionOpener = ":::session codex idle";
+    const runApproveOpener = ":::run awaiting_approval";
+    const runDraftOpener = ":::run draft";
+    const resultOpener = ":::result completed";
+
+    const executableCommands = [
+      {
+        label: t("desktop.notes.slashNoteChild"),
+        detail: t("desktop.notes.slashNoteChildDetail"),
+        tag: { label: "@child/idle", toneClassName: "is-next" },
+        insert: noteChildOpener + "\n\n:::",
+        cursorOffset: noteChildOpener.length + 1
+      },
+      {
+        label: t("desktop.notes.slashSession"),
+        detail: t("desktop.notes.slashSessionDetail"),
+        tag: { label: "@session/codex/idle", toneClassName: "is-inbox" },
+        insert: sessionOpener + "\n:::",
+        cursorOffset: sessionOpener.length + 1
+      },
+      {
+        label: t("desktop.notes.slashRunApprove"),
+        detail: t("desktop.notes.slashRunApproveDetail"),
+        tag: { label: "@run/awaiting_approval", toneClassName: "is-waiting" },
+        insert: runApproveOpener + "\n\n:::",
+        cursorOffset: runApproveOpener.length + 1
+      },
+      {
+        label: t("desktop.notes.slashRunDraft"),
+        detail: t("desktop.notes.slashRunDraftDetail"),
+        tag: { label: "@run/draft", toneClassName: "is-someday" },
+        insert: runDraftOpener + "\n\n:::",
+        cursorOffset: runDraftOpener.length + 1
+      },
+      {
+        label: t("desktop.notes.slashResult"),
+        detail: t("desktop.notes.slashResultDetail"),
+        tag: { label: "@result/completed", toneClassName: "is-done" },
+        insert: resultOpener + "\n\n:::",
+        cursorOffset: resultOpener.length + 1
+      }
+    ];
+
+    return [...executableCommands, ...gtdCommands];
+  }, [t]);
+
+  const execSnapshot = useMemo((): ExecutableRunSnapshot | null => {
+    if (!selected || selected.scope !== "project") return null;
+    // Lightweight parse without importing core executable parser in renderer bundle path:
+    // reuse IPC when needed; for toolbar responsiveness, regex mirror of block headers.
+    const runs: RunBlockLike[] = [];
+    const noteChildren: NoteChildLike[] = [];
+    const runRe = /^:::run\s+([a-z_]+)\s*$/gm;
+    const childRe = /^:::note-child\s+([a-z_]+)(?:\s+note=([A-Za-z0-9._-]+))?(?:\s+status=([a-z_]+))?\s*$/gm;
+    let match: RegExpExecArray | null;
+    while ((match = runRe.exec(content))) {
+      runs.push({ status: match[1], text: "" });
+    }
+    let childIndex = 0;
+    while ((match = childRe.exec(content))) {
+      const statusToken = match[1];
+      const noteId = match[2];
+      const statusOverride = match[3];
+      const status = statusOverride || (["idle", "planned", "running", "done", "failed"].includes(statusToken) ? statusToken : "idle");
+      noteChildren.push({
+        index: childIndex,
+        noteId,
+        status,
+        text: ""
+      });
+      childIndex += 1;
+    }
+    if (!runs.length && !noteChildren.length) return null;
+    return snapshotFromParsed({
+      runs,
+      noteChildren,
+      currentSession: currentChildSession,
+      runId: activeRunId
+    });
+  }, [activeRunId, content, currentChildSession, selected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const snap = execSnapshot;
+    if (!snap?.currentChildNoteId || !selected || typeof desktopApi().notesExecutableParse !== "function") {
+      setCurrentChildSession(null);
+      return;
+    }
+    void desktopApi()
+      .notesExecutableParse({ noteId: snap.currentChildNoteId })
+      .then((parsed) => {
+        if (cancelled) return;
+        const session = parsed.sessions[0] as SessionBlockLike | undefined;
+        setCurrentChildSession(session || null);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentChildSession(null);
+      });
+    if (typeof desktopApi().notesExecutableListRuns === "function") {
+      void desktopApi()
+        .notesExecutableListRuns({ noteId: selected.noteId })
+        .then((runs) => {
+          if (cancelled || !Array.isArray(runs) || !runs.length) return;
+          const list = runs as Array<{ runId?: string; status?: string }>;
+          const executing = list.find((row) => row.status === "executing");
+          const awaiting = list.find((row) => row.status === "awaiting_approval");
+          const pick = executing || awaiting || list[0];
+          if (pick?.runId) setActiveRunId(pick.runId);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
     };
-  }), [t]);
+  }, [activeRunId, execRefreshKey, execSnapshot?.currentChildNoteId, execSnapshot?.runStatus, selected?.noteId]);
 
   const refreshLinkMeta = useCallback(async () => {
     const api = desktopApi();
@@ -406,14 +540,182 @@ export function NotesPanel(): ReactPortal | null {
     if (!note) return;
     try {
       const updated = await desktopApi().notesWrite({ noteId: note.noteId, content: contentRef.current });
+      const nextContent = typeof updated.content === "string" ? updated.content : contentRef.current;
+      if (typeof updated.content === "string" && updated.content !== contentRef.current) {
+        setContent(updated.content);
+      }
       setNotes((current) => current.map((item) => item.noteId === note.noteId
-        ? { ...item, ...updated, contentPreview: contentRef.current.slice(0, 300) }
+        ? { ...item, ...updated, contentPreview: nextContent.slice(0, 300) }
         : item));
+      if (updated.materialized) {
+        await refreshLinkMeta();
+        const listed = await desktopApi().notesList();
+        if (Array.isArray(listed)) {
+          setNotes(listed as Note[]);
+        }
+      }
       if (typeof desktopApi().notesListGtd === "function") {
         setGtdTasks(await desktopApi().notesListGtd());
       }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-  }, []);
+  }, [refreshLinkMeta]);
+
+  const reloadSelectedContent = useCallback(async (noteId: string) => {
+    const result = await desktopApi().notesRead({ noteId });
+    if (selectedRef.current?.noteId === noteId) {
+      setSelected(result.record);
+      setContent(result.content);
+      contentRef.current = result.content;
+      setTitle(titleFor(result.record));
+    }
+    setNotes((current) => current.map((item) => item.noteId === noteId ? { ...item, ...result.record } : item));
+    await refreshLinkMeta();
+  }, [refreshLinkMeta]);
+
+  /**
+   * When returning to Notes (tab / window focus / session sync), re-read disk so
+   * executable-run toolbar and child session bind state match reality.
+   * Drops pending autosave so a stale buffer cannot overwrite fresher on-disk state.
+   */
+  const refreshFromDiskOnActivate = useCallback(async () => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    await load();
+    const selectedId = selectedRef.current?.noteId;
+    if (selectedId) {
+      try {
+        await reloadSelectedContent(selectedId);
+      } catch {
+        // Keep list refresh even if one note read fails.
+      }
+    }
+    setCurrentChildSession(null);
+    setExecRefreshKey((value) => value + 1);
+  }, [load, reloadSelectedContent]);
+
+  const approveAndRun = useCallback(async () => {
+    const note = selectedRef.current;
+    if (!note) return;
+    if (note.scope !== "project" || !note.projectPath) {
+      setStatus({ text: t("desktop.notes.execNoProject"), kind: "error" });
+      return;
+    }
+    if (execBusy) return;
+    setExecBusy(true);
+    setStatus({ text: t("desktop.notes.execApproving") });
+    try {
+      await save();
+      const result = await approveExecutableRunAndStart({
+        parentNoteId: note.noteId,
+        parentTitle: titleFor(note),
+        projectPath: note.projectPath
+      });
+      setActiveRunId(result.runId);
+      setContent(result.parentContent);
+      await reloadSelectedContent(note.noteId);
+      const step = 1;
+      const total = result.childNoteIds.length || 1;
+      setStatus({
+        text: t("desktop.notes.execApproved", step, total),
+        kind: "ok"
+      });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+    }
+  }, [execBusy, reloadSelectedContent, save, t]);
+
+  const startCurrentStep = useCallback(async () => {
+    const note = selectedRef.current;
+    const snap = execSnapshot;
+    if (!note || !snap?.currentChildNoteId || !note.projectPath) return;
+    if (execBusy) return;
+    setExecBusy(true);
+    setStatus({ text: t("desktop.notes.execStarting") });
+    try {
+      await save();
+      await startExecutableCurrentStep({
+        parentNoteId: note.noteId,
+        parentTitle: titleFor(note),
+        childNoteId: snap.currentChildNoteId,
+        runId: activeRunId || snap.runId,
+        projectPath: note.projectPath
+      });
+      await reloadSelectedContent(note.noteId);
+      setStatus({
+        text: t("desktop.notes.execStepStarted", snap.currentChildIndex + 1, snap.childCount || 1),
+        kind: "ok"
+      });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+    }
+  }, [activeRunId, execBusy, execSnapshot, reloadSelectedContent, save, t]);
+
+  const settleCurrentStep = useCallback(async (outcome: "completed" | "failed") => {
+    const note = selectedRef.current;
+    const snap = execSnapshot;
+    if (!note || !snap?.currentChildNoteId) return;
+    if (typeof desktopApi().notesExecutableSettleChild !== "function") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    setStatus({ text: t("desktop.notes.execSettling") });
+    try {
+      await save();
+      const summary =
+        outcome === "completed"
+          ? `Step ${snap.currentChildIndex + 1} completed.`
+          : `Step ${snap.currentChildIndex + 1} failed.`;
+      const result = await desktopApi().notesExecutableSettleChild({
+        parentNoteId: note.noteId,
+        childNoteId: snap.currentChildNoteId,
+        outcome,
+        summary,
+        runId: activeRunId || snap.runId
+      });
+      setContent(result.content);
+      await reloadSelectedContent(note.noteId);
+      if (outcome === "failed") {
+        setStatus({ text: t("desktop.notes.execStepFailed"), kind: "error" });
+      } else if (result.done) {
+        setStatus({ text: t("desktop.notes.execRunDone"), kind: "ok" });
+      } else {
+        setStatus({ text: t("desktop.notes.execStepDone"), kind: "ok" });
+        // Auto-start next step session when advanced.
+        if (result.advanced && note.projectPath) {
+          const nextParsed = await desktopApi().notesExecutableParse({ noteId: note.noteId });
+          const nextChild = (nextParsed.noteChildren as NoteChildLike[]).find((c) => c.status === "running");
+          if (nextChild?.noteId) {
+            setStatus({ text: t("desktop.notes.execStarting") });
+            await startExecutableCurrentStep({
+              parentNoteId: note.noteId,
+              parentTitle: titleFor(note),
+              childNoteId: nextChild.noteId,
+              runId: activeRunId || snap.runId,
+              projectPath: note.projectPath
+            });
+            await reloadSelectedContent(note.noteId);
+            setStatus({
+              text: t(
+                "desktop.notes.execStepStarted",
+                (typeof nextChild.index === "number" ? nextChild.index : snap.currentChildIndex) + 1,
+                snap.childCount || 1
+              ),
+              kind: "ok"
+            });
+          }
+        }
+      }
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+    }
+  }, [activeRunId, execBusy, execSnapshot, reloadSelectedContent, save, t]);
 
   const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
@@ -430,6 +732,8 @@ export function NotesPanel(): ReactPortal | null {
       setView("edit");
       setFindOpen(false);
       setFindQuery("");
+      setActiveRunId(undefined);
+      setCurrentChildSession(null);
 
       const asTreeRoot = options?.asTreeRoot !== false && !options?.treeRootId;
       if (result.record.scope === "project") {
@@ -469,7 +773,7 @@ export function NotesPanel(): ReactPortal | null {
     const onTab = (event: Event) => {
       const show = (event as CustomEvent<string>).detail === "notes";
       setActive(show);
-      if (show) void load();
+      if (show) void refreshFromDiskOnActivate();
     };
     const onOpen = (event: Event) => {
       const noteId = (event as CustomEvent<string>).detail;
@@ -480,16 +784,44 @@ export function NotesPanel(): ReactPortal | null {
             ? { kind: "session", provider: result.record.provider, sessionId: result.record.agentSessionId }
             : { kind: "library" });
         await open(result.record, { asTreeRoot: true });
+        setExecRefreshKey((value) => value + 1);
       }).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
+    };
+    const onWindowFocus = () => {
+      if (activeRef.current) void refreshFromDiskOnActivate();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && activeRef.current) {
+        void refreshFromDiskOnActivate();
+      }
+    };
+    const onSessionsSynced = () => {
+      // Session catalog moved — re-parse child session/native without stomping an in-progress edit.
+      if (!activeRef.current) return;
+      setCurrentChildSession(null);
+      setExecRefreshKey((value) => value + 1);
+      const selectedId = selectedRef.current?.noteId;
+      if (selectedId && selectedRef.current?.scope === "project") {
+        void reloadSelectedContent(selectedId).catch(() => undefined);
+      }
     };
     window.addEventListener("agent-resume:tab-change", onTab);
     window.addEventListener("agent-resume:open-note", onOpen);
+    window.addEventListener("focus", onWindowFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const stopSessions =
+      typeof desktopApi().onSessionsSynced === "function"
+        ? desktopApi().onSessionsSynced(() => onSessionsSynced())
+        : undefined;
     return () => {
       window.removeEventListener("agent-resume:tab-change", onTab);
       window.removeEventListener("agent-resume:open-note", onOpen);
+      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopSessions?.();
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-  }, [load, open]);
+  }, [open, refreshFromDiskOnActivate, reloadSelectedContent]);
 
   useEffect(() => {
     if (!treeRootId) return;
@@ -1198,6 +1530,38 @@ export function NotesPanel(): ReactPortal | null {
               </>
             ) : null}
             <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
+            {execSnapshot && (execSnapshot.canApprove || execSnapshot.canStartStep || execSnapshot.canSettle || execSnapshot.runStatus) ? (
+              <div className="notes-exec-bar" role="toolbar" aria-label={t("desktop.notes.execBarHint", execSnapshot.runStatus || "idle")}>
+                <span className={`notes-exec-bar-status is-${execSnapshot.runStatus || "idle"}`}>
+                  {t("desktop.notes.execBarHint", execSnapshot.runStatus || "idle")}
+                  {execSnapshot.childCount > 0
+                    ? ` · ${Math.min(execSnapshot.currentChildIndex + 1, execSnapshot.childCount)}/${execSnapshot.childCount}`
+                    : ""}
+                </span>
+                <div className="notes-exec-bar-actions">
+                  {execSnapshot.canApprove ? (
+                    <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void approveAndRun()}>
+                      {t("desktop.notes.execApproveRun")}
+                    </button>
+                  ) : null}
+                  {execSnapshot.canStartStep ? (
+                    <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void startCurrentStep()}>
+                      {t("desktop.notes.execStartStep")}
+                    </button>
+                  ) : null}
+                  {execSnapshot.canSettle ? (
+                    <>
+                      <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void settleCurrentStep("completed")}>
+                        {t("desktop.notes.execMarkDone")}
+                      </button>
+                      <button type="button" className="tool-btn ghost-btn" disabled={execBusy} onClick={() => void settleCurrentStep("failed")}>
+                        {t("desktop.notes.execMarkFailed")}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="notes-editor-body">
             {findOpen ? (
               <div className="notes-find-bar app-inline-search" role="search">
@@ -1267,7 +1631,7 @@ export function NotesPanel(): ReactPortal | null {
                 </button>
               </div>
             ) : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={gtdSlashCommands} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={noteSlashCommands} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
             </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
           <Status kind={status.kind}>{status.text}</Status>

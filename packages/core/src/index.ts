@@ -96,6 +96,41 @@ export {
   deleteNoteGtdTask
 } from "./notes/gtd";
 export type { NoteGtdTask } from "./notes/gtd";
+export {
+  parseExecutableNote,
+  formatNoteChildBlock,
+  formatSessionBlock,
+  formatRunBlock,
+  formatResultBlock,
+  defaultChildNoteBody,
+  updateNoteChildBlocks,
+  updateSessionBlocks,
+  updateRunBlocks,
+  appendResultBlock,
+  applyMaterializedNoteIds,
+  listUnmaterializedNoteChildren,
+  parseNativeSessionRef,
+  formatNativeSessionRef,
+  getPrimaryRun,
+  noteChildTitle,
+  NOTE_CHILD_STATUSES,
+  SESSION_BLOCK_STATUSES,
+  RUN_BLOCK_STATUSES,
+  RESULT_BLOCK_STATUSES
+} from "./notes/executable";
+export type {
+  NoteChildBlock,
+  SessionBlock,
+  RunBlock,
+  ResultBlock,
+  ExecutableBlock,
+  ParsedExecutableNote,
+  NoteChildStatus,
+  SessionBlockStatus,
+  RunBlockStatus,
+  ResultBlockStatus
+} from "./notes/executable";
+export type { NoteSessionBinding, NoteRunRow } from "./notes/executableBindings";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,

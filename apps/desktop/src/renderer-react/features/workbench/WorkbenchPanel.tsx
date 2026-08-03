@@ -53,6 +53,12 @@ import {
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
+import {
+  emitWorkbenchSessionLaunched,
+  onWorkbenchLaunchSession,
+  waitForCatalogSession,
+  type LaunchSessionRequest
+} from "../notes/executableRunActions";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -190,6 +196,8 @@ type PendingWorkbenchSession = {
   title: string;
   createdAt: number;
   knownSessionKeys: string[];
+  /** When set, resolve Notes executable-run launch waiter after catalog binds. */
+  notesRequestId?: string;
 };
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
@@ -2112,16 +2120,26 @@ export function WorkbenchPanel(): ReactPortal | null {
 
     for (const pending of [...pendingSessions].sort((a, b) => a.createdAt - b.createdAt)) {
       const known = new Set(pending.knownSessionKeys);
-      const candidate = sessions
+      // Notes executable launches: match same project first; prefer provider, but allow
+      // any new CLI session in that project (catalog indexing can lag / rename paths).
+      const candidates = sessions
         .filter((session) => {
           const key = sessionKey(session);
-          return session.provider === pending.provider
-            && projectPathKey(session.projectPath) === projectPathKey(pending.projectPath)
-            && session.updatedAt >= pending.createdAt - 5_000
-            && !known.has(key)
-            && !claimed.has(key);
+          if (known.has(key) || claimed.has(key)) return false;
+          if (session.provider === "chat") return false;
+          if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath)) return false;
+          // Wider window for notes-driven launches (CLI agents can take a while to register).
+          const windowMs = pending.notesRequestId ? 180_000 : 15_000;
+          if (session.updatedAt < pending.createdAt - windowMs) return false;
+          return true;
         })
-        .sort((a, b) => Math.abs(a.updatedAt - pending.createdAt) - Math.abs(b.updatedAt - pending.createdAt))[0];
+        .sort((a, b) => {
+          const aProv = a.provider === pending.provider ? 0 : 1;
+          const bProv = b.provider === pending.provider ? 0 : 1;
+          if (aProv !== bProv) return aProv - bProv;
+          return Math.abs(a.updatedAt - pending.createdAt) - Math.abs(b.updatedAt - pending.createdAt);
+        });
+      const candidate = candidates[0];
       if (!candidate) continue;
       const key = sessionKey(candidate);
       claimed.add(key);
@@ -2135,6 +2153,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
     terminalsRef.current = bindSessions(terminalsRef.current);
     setTerminals(bindSessions);
+    for (const pending of pendingSessions) {
+      const sessionKeyValue = assignments.get(pending.terminalKey);
+      if (!sessionKeyValue || !pending.notesRequestId) continue;
+      const colon = sessionKeyValue.indexOf(":");
+      const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
+      const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
+      emitWorkbenchSessionLaunched({
+        requestId: pending.notesRequestId,
+        ok: true,
+        catalogProvider,
+        sessionId
+      });
+    }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
   }, [pendingSessions, sessions, terminals]);
 
@@ -2585,19 +2616,150 @@ export function WorkbenchPanel(): ReactPortal | null {
     return key;
   }, [selectedProject, setActivePane]);
 
-  const addPendingSession = useCallback((terminalKey: string, provider: AgentProvider, projectPath: string, title: string) => {
-    const pending = {
+  const addPendingSession = useCallback((
+    terminalKey: string,
+    provider: AgentProvider,
+    projectPath: string,
+    title: string,
+    notesRequestId?: string
+  ) => {
+    const pending: PendingWorkbenchSession = {
       key: `pending:${terminalKey}`,
       terminalKey,
       provider,
       projectPath,
       title,
       createdAt: Date.now(),
-      knownSessionKeys: sessions.map(sessionKey)
+      knownSessionKeys: sessions.map(sessionKey),
+      notesRequestId
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
   }, [sessions]);
+
+  // Must sit after addTerminal / addPendingSession / selectProject (TDZ if deps are read earlier).
+  // Dedupe re-dispatched launch events (Notes sends a follow-up frame for remount races).
+  const handledLaunchRequestIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    return onWorkbenchLaunchSession((request: LaunchSessionRequest) => {
+      if (handledLaunchRequestIdsRef.current.has(request.requestId)) return;
+      handledLaunchRequestIdsRef.current.add(request.requestId);
+      // Keep set bounded.
+      if (handledLaunchRequestIdsRef.current.size > 40) {
+        const first = handledLaunchRequestIdsRef.current.values().next().value;
+        if (first) handledLaunchRequestIdsRef.current.delete(first);
+      }
+
+      void (async () => {
+        try {
+          const cwd = request.cwd?.trim();
+          if (!cwd) {
+            emitWorkbenchSessionLaunched({
+              requestId: request.requestId,
+              ok: false,
+              error: "Working directory is required."
+            });
+            return;
+          }
+          selectProject(cwd);
+          setActive(true);
+
+          // Notes executable runs only launch CLI sessions (ACP is ignored).
+          if (request.channel === "acp") {
+            emitWorkbenchSessionLaunched({
+              requestId: request.requestId,
+              ok: false,
+              error: "Executable note runs use CLI sessions only (ACP is disabled)."
+            });
+            return;
+          }
+
+          const knownKeys = new Set(sessions.map(sessionKey));
+          const startedAt = Date.now();
+
+          const result = await desktopApi().workbenchNewSession({
+            cwd,
+            provider: request.provider as AgentProvider
+          });
+          if (result.mode === "xterm" && result.command) {
+            const title = request.title || t("desktop.workbench.newSessionTitle", basename(cwd));
+            const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
+            addPendingSession(
+              terminalKey,
+              request.provider as AgentProvider,
+              cwd,
+              title,
+              request.requestId
+            );
+            // Do not only wait for pending-session assignment (can miss path/provider).
+            // Actively poll catalog and resolve Notes as soon as a session appears.
+            void loadSessions();
+            const found = await waitForCatalogSession({
+              cwd,
+              provider: request.provider,
+              knownKeys,
+              notBeforeMs: startedAt - 30_000,
+              timeoutMs: 120_000
+            });
+            if (found) {
+              emitWorkbenchSessionLaunched({
+                requestId: request.requestId,
+                ok: true,
+                catalogProvider: found.catalogProvider,
+                sessionId: found.sessionId
+              });
+              // Attach catalog key onto the terminal pane when possible.
+              setTerminals((current) =>
+                current.map((pane) =>
+                  pane.key === terminalKey
+                    ? { ...pane, sessionKey: `${found.catalogProvider}:${found.sessionId}` }
+                    : pane
+                )
+              );
+              setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== terminalKey));
+              return;
+            }
+            emitWorkbenchSessionLaunched({
+              requestId: request.requestId,
+              ok: false,
+              error:
+                "Terminal opened, but catalog has no new session to bind yet. Wait for session sync, then click Start session."
+            });
+            return;
+          }
+
+          // External terminal: open system shell, then poll catalog for a new matching session.
+          const found = await waitForCatalogSession({
+            cwd,
+            provider: request.provider,
+            knownKeys,
+            notBeforeMs: startedAt - 30_000,
+            timeoutMs: 120_000
+          });
+          if (found) {
+            emitWorkbenchSessionLaunched({
+              requestId: request.requestId,
+              ok: true,
+              catalogProvider: found.catalogProvider,
+              sessionId: found.sessionId
+            });
+            return;
+          }
+          emitWorkbenchSessionLaunched({
+            requestId: request.requestId,
+            ok: false,
+            error: "Opened external terminal, but no new catalog session was detected to bind."
+          });
+        } catch (error) {
+          emitWorkbenchSessionLaunched({
+            requestId: request.requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      })();
+    });
+  }, [addPendingSession, addTerminal, loadSessions, selectProject, sessions, t]);
 
   const refreshTerminalGit = useCallback(async (key: string) => {
     const pane = terminalsRef.current.find((item) => item.key === key);

@@ -67,6 +67,28 @@ import {
   type NoteSubtree,
   type NoteTreeNode
 } from "./links";
+import {
+  applyMaterializedNoteIds,
+  defaultChildNoteBody,
+  formatNativeSessionRef,
+  listUnmaterializedNoteChildren,
+  noteChildTitle,
+  parseExecutableNote,
+  updateNoteChildBlocks,
+  updateRunBlocks,
+  updateSessionBlocks,
+  appendResultBlock,
+  type RunBlockStatus,
+  type SessionBlockStatus
+} from "./executable";
+import {
+  listNoteRunsForSource,
+  listNoteSessionBindings,
+  upsertNoteRun,
+  upsertNoteSessionBinding,
+  type NoteRunRow,
+  type NoteSessionBinding
+} from "./executableBindings";
 
 export interface ImportNotesResult {
   imported: number;
@@ -152,18 +174,330 @@ export class NotesStore {
     return readNoteFile(this.absolutePath(record));
   }
 
-  async writeNoteContent(noteId: string, content: string): Promise<NoteRecord> {
+  async writeNoteContent(
+    noteId: string,
+    content: string
+  ): Promise<NoteRecord & { content?: string; materialized?: boolean }> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) {
       throw new Error("Note not found.");
     }
-    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    let nextContent = content;
+    let materialized = false;
+    if (record.scope === "project") {
+      const before = content;
+      nextContent = await this.materializeExecutableChildrenInContent(noteId, content, {
+        defaultProvider: "codex"
+      });
+      materialized = nextContent !== before;
+    }
+    await fs.writeFile(this.absolutePath(record), nextContent, "utf8");
     await this.refreshNoteFromDisk(record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) {
       throw new Error("Note not found after write.");
     }
-    return updated;
+    return { ...updated, content: nextContent, materialized };
+  }
+
+  /**
+   * Materialize `:::note-child` blocks without `note=` into linked project notes.
+   * Each child gets a title heading + empty `:::session` block.
+   * Returns updated parent markdown (may be unchanged).
+   */
+  async materializeExecutableChildrenInContent(
+    parentNoteId: string,
+    content: string,
+    options?: { defaultProvider?: string }
+  ): Promise<string> {
+    const pending = listUnmaterializedNoteChildren(content);
+    if (pending.length === 0) {
+      return content;
+    }
+    const parent = await getNoteById(this.dbPath, parentNoteId);
+    if (!parent || parent.scope !== "project" || !parent.projectPath) {
+      return content;
+    }
+    const provider = options?.defaultProvider?.trim() || "codex";
+    const materializations: Array<{ index: number; noteId: string }> = [];
+    for (const block of pending) {
+      const title = noteChildTitle(block);
+      const body = defaultChildNoteBody(title, provider);
+      const child = await this.createLinkedChildNote(parentNoteId, body);
+      materializations.push({ index: block.index, noteId: child.noteId });
+    }
+    return applyMaterializedNoteIds(content, materializations);
+  }
+
+  async parseExecutable(noteId: string) {
+    const content = await this.readNoteContent(noteId);
+    return { content, ...parseExecutableNote(content) };
+  }
+
+  async approveExecutableRun(
+    noteId: string,
+    options?: { runIndex?: number; defaultProvider?: string }
+  ): Promise<{ content: string; runId: string; childNoteIds: string[] }> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    let content = await this.readNoteContent(noteId);
+    if (record.scope === "project") {
+      content = await this.materializeExecutableChildrenInContent(noteId, content, {
+        defaultProvider: options?.defaultProvider
+      });
+    }
+    const parsed = parseExecutableNote(content);
+    const runIndex = options?.runIndex ?? 0;
+    const run = parsed.runs[runIndex];
+    if (!run) {
+      throw new Error("No :::run block found on this note.");
+    }
+    if (run.status !== "awaiting_approval" && run.status !== "draft") {
+      throw new Error(`Run is not approvable (status=${run.status}).`);
+    }
+    if (parsed.noteChildren.length === 0) {
+      throw new Error("No :::note-child blocks to execute.");
+    }
+    const stillPending = parsed.noteChildren.filter((c) => !c.noteId);
+    if (stillPending.length > 0) {
+      throw new Error("Some note-child blocks could not be materialized (project notes only).");
+    }
+
+    const runId = newNoteId();
+    content = updateRunBlocks(
+      content,
+      new Map([[runIndex, { status: "executing" as RunBlockStatus }]])
+    );
+
+    // Mark first child running; remaining planned (serial).
+    const childUpdates = new Map<
+      number,
+      { status: "running" | "planned"; noteId?: string }
+    >();
+    for (const child of parseExecutableNote(content).noteChildren) {
+      childUpdates.set(child.index, {
+        status: child.index === 0 ? "running" : "planned",
+        noteId: child.noteId
+      });
+    }
+    content = updateNoteChildBlocks(content, childUpdates);
+
+    // Mark first child's session planned (spawn is Desktop's job; native id may arrive later).
+    const firstChildId = parseExecutableNote(content).noteChildren[0]?.noteId;
+    if (firstChildId) {
+      const childContent = await this.readNoteContent(firstChildId);
+      const childParsed = parseExecutableNote(childContent);
+      if (childParsed.sessions[0]) {
+        const nextChild = updateSessionBlocks(
+          childContent,
+          new Map([[0, { status: "planned" as SessionBlockStatus }]])
+        );
+        await fs.writeFile(
+          this.absolutePath((await getNoteById(this.dbPath, firstChildId))!),
+          nextChild,
+          "utf8"
+        );
+        await this.refreshNoteFromDisk((await getNoteById(this.dbPath, firstChildId))!);
+      }
+    }
+
+    await upsertNoteRun(this.dbPath, {
+      runId,
+      sourceNoteId: noteId,
+      status: "executing",
+      currentChildIndex: 0
+    });
+
+    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    await this.refreshNoteFromDisk(record);
+
+    const childNoteIds = parseExecutableNote(content)
+      .noteChildren.map((c) => c.noteId)
+      .filter((id): id is string => Boolean(id));
+
+    return { content, runId, childNoteIds };
+  }
+
+  async bindExecutableSession(args: {
+    noteId: string;
+    provider: string;
+    agentSessionId: string;
+    runId?: string;
+    role?: string;
+    status?: string;
+  }): Promise<{ content: string }> {
+    const record = await getNoteById(this.dbPath, args.noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    let content = await this.readNoteContent(args.noteId);
+    const parsed = parseExecutableNote(content);
+    if (parsed.sessions[0]) {
+      content = updateSessionBlocks(
+        content,
+        new Map([
+          [
+            0,
+            {
+              provider: args.provider,
+              status: "running" as SessionBlockStatus,
+              native: formatNativeSessionRef(args.provider, args.agentSessionId)
+            }
+          ]
+        ])
+      );
+      await fs.writeFile(this.absolutePath(record), content, "utf8");
+      await this.refreshNoteFromDisk(record);
+    }
+    await upsertNoteSessionBinding(this.dbPath, {
+      noteId: args.noteId,
+      provider: args.provider,
+      agentSessionId: args.agentSessionId,
+      runId: args.runId,
+      role: args.role,
+      status: args.status || "running"
+    });
+    return { content };
+  }
+
+  async settleExecutableChild(args: {
+    parentNoteId: string;
+    childNoteId: string;
+    outcome: "completed" | "failed";
+    summary: string;
+    runId?: string;
+  }): Promise<{ content: string; advanced: boolean; done: boolean }> {
+    const parent = await getNoteById(this.dbPath, args.parentNoteId);
+    if (!parent) {
+      throw new Error("Parent note not found.");
+    }
+    let parentContent = await this.readNoteContent(args.parentNoteId);
+    const children = parseExecutableNote(parentContent).noteChildren;
+    const childIndex = children.findIndex((c) => c.noteId === args.childNoteId);
+    if (childIndex < 0) {
+      throw new Error("Child note is not part of this parent note-child chain.");
+    }
+
+    const childRecord = await getNoteById(this.dbPath, args.childNoteId);
+    if (childRecord) {
+      let childContent = await this.readNoteContent(args.childNoteId);
+      const childSessions = parseExecutableNote(childContent).sessions;
+      if (childSessions[0]) {
+        childContent = updateSessionBlocks(
+          childContent,
+          new Map([
+            [
+              0,
+              {
+                status: (args.outcome === "completed" ? "settled" : "failed") as SessionBlockStatus
+              }
+            ]
+          ])
+        );
+      }
+      childContent = appendResultBlock(childContent, {
+        status: args.outcome === "completed" ? "completed" : "failed",
+        text: args.summary
+      });
+      await fs.writeFile(this.absolutePath(childRecord), childContent, "utf8");
+      await this.refreshNoteFromDisk(childRecord);
+    }
+
+    parentContent = updateNoteChildBlocks(
+      parentContent,
+      new Map([
+        [
+          childIndex,
+          { status: args.outcome === "completed" ? "done" : "failed" }
+        ]
+      ])
+    );
+
+    const nextIndex = childIndex + 1;
+    const refreshedChildren = parseExecutableNote(parentContent).noteChildren;
+    let advanced = false;
+    let done = false;
+
+    if (args.outcome === "failed") {
+      parentContent = updateRunBlocks(
+        parentContent,
+        new Map([[0, { status: "failed" as RunBlockStatus }]])
+      );
+      parentContent = appendResultBlock(parentContent, {
+        status: "failed",
+        text: `Step ${childIndex + 1} failed: ${args.summary}`
+      });
+      done = true;
+      if (args.runId) {
+        await upsertNoteRun(this.dbPath, {
+          runId: args.runId,
+          sourceNoteId: args.parentNoteId,
+          status: "failed",
+          currentChildIndex: childIndex
+        });
+      }
+    } else if (nextIndex >= refreshedChildren.length) {
+      parentContent = updateRunBlocks(
+        parentContent,
+        new Map([[0, { status: "completed" as RunBlockStatus }]])
+      );
+      parentContent = appendResultBlock(parentContent, {
+        status: "completed",
+        text: `All ${refreshedChildren.length} child steps completed.`
+      });
+      done = true;
+      if (args.runId) {
+        await upsertNoteRun(this.dbPath, {
+          runId: args.runId,
+          sourceNoteId: args.parentNoteId,
+          status: "completed",
+          currentChildIndex: childIndex
+        });
+      }
+    } else {
+      parentContent = updateNoteChildBlocks(
+        parentContent,
+        new Map([[nextIndex, { status: "running" }]])
+      );
+      advanced = true;
+      const nextChildId = refreshedChildren[nextIndex]?.noteId;
+      if (nextChildId) {
+        const nextRecord = await getNoteById(this.dbPath, nextChildId);
+        if (nextRecord) {
+          let nextContent = await this.readNoteContent(nextChildId);
+          if (parseExecutableNote(nextContent).sessions[0]) {
+            nextContent = updateSessionBlocks(
+              nextContent,
+              new Map([[0, { status: "planned" as SessionBlockStatus }]])
+            );
+            await fs.writeFile(this.absolutePath(nextRecord), nextContent, "utf8");
+            await this.refreshNoteFromDisk(nextRecord);
+          }
+        }
+      }
+      if (args.runId) {
+        await upsertNoteRun(this.dbPath, {
+          runId: args.runId,
+          sourceNoteId: args.parentNoteId,
+          status: "executing",
+          currentChildIndex: nextIndex
+        });
+      }
+    }
+
+    await fs.writeFile(this.absolutePath(parent), parentContent, "utf8");
+    await this.refreshNoteFromDisk(parent);
+    return { content: parentContent, advanced, done };
+  }
+
+  async listExecutableBindings(noteId: string): Promise<NoteSessionBinding[]> {
+    return listNoteSessionBindings(this.dbPath, noteId);
+  }
+
+  async listExecutableRuns(noteId: string): Promise<NoteRunRow[]> {
+    return listNoteRunsForSource(this.dbPath, noteId);
   }
 
   async createSessionNote(

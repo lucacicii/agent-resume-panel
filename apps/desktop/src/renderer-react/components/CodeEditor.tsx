@@ -513,16 +513,33 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     };
 
     const updateSlashMenu = (instance: EditorView) => {
-      const available = commands.current;
       const selection = instance.state.selection.main;
-      if (!available.length || selection.from !== selection.to) {
+      if (!commands.current.length || selection.from !== selection.to) {
         hideSlashMenu();
         return;
       }
       const line = instance.state.doc.lineAt(selection.head);
       const beforeCursor = instance.state.sliceDoc(line.from, selection.head);
-      const match = beforeCursor.match(/\/\w*$/);
+      const match = beforeCursor.match(/\/([\w-]*)$/);
       if (!match) {
+        hideSlashMenu();
+        return;
+      }
+      const query = (match[1] || "").toLocaleLowerCase();
+      const available = query
+        ? commands.current.filter((command) => {
+            const haystack = [
+              command.label,
+              command.detail || "",
+              command.tag?.label || "",
+              command.insert
+            ]
+              .join(" ")
+              .toLocaleLowerCase();
+            return haystack.includes(query);
+          })
+        : [...commands.current];
+      if (!available.length) {
         hideSlashMenu();
         return;
       }

@@ -16,4 +16,27 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("note-gtd-card");
     expect(html).toContain(":::gtd later");
   });
+
+  it("renders executable note-child / session / run cards", () => {
+    const md = [
+      ":::note-child idle note=abc",
+      "Child task",
+      ":::",
+      "",
+      ":::session codex planned",
+      ":::",
+      "",
+      ":::run awaiting_approval",
+      "Go",
+      ":::"
+    ].join("\n");
+    const html = renderMarkdown(md);
+    expect(html).toContain("note-child-card");
+    expect(html).toContain("@child/idle");
+    expect(html).toContain("note-session-card");
+    expect(html).toContain("@session/codex/planned");
+    expect(html).toContain("note-run-card");
+    expect(html).toContain("@run/awaiting_approval");
+    expect(html).not.toContain(":::note-child");
+  });
 });

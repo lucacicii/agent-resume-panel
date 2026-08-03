@@ -16,6 +16,8 @@ import {
   type NoteLink,
   type NoteOwner,
   type NoteRecord,
+  type NoteRunRow,
+  type NoteSessionBinding,
   type NoteSubtree
 } from "@agent-resume/core";
 import { desktopT } from "./i18nService";
@@ -102,9 +104,58 @@ export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRe
   return { record, content };
 }
 
-export async function notesWrite(noteId: string, content: string): Promise<NoteRecord> {
+export async function notesWrite(
+  noteId: string,
+  content: string
+): Promise<NoteRecord & { content?: string; materialized?: boolean }> {
   const store = await getNotesStore();
   return store.writeNoteContent(noteId, content);
+}
+
+export async function notesExecutableParse(noteId: string) {
+  const store = await getNotesStore();
+  return store.parseExecutable(noteId);
+}
+
+export async function notesExecutableApproveRun(
+  noteId: string,
+  args?: { runIndex?: number; defaultProvider?: string }
+) {
+  const store = await getNotesStore();
+  return store.approveExecutableRun(noteId, args);
+}
+
+export async function notesExecutableBindSession(args: {
+  noteId: string;
+  provider: string;
+  agentSessionId: string;
+  runId?: string;
+  role?: string;
+  status?: string;
+}) {
+  const store = await getNotesStore();
+  return store.bindExecutableSession(args);
+}
+
+export async function notesExecutableSettleChild(args: {
+  parentNoteId: string;
+  childNoteId: string;
+  outcome: "completed" | "failed";
+  summary: string;
+  runId?: string;
+}) {
+  const store = await getNotesStore();
+  return store.settleExecutableChild(args);
+}
+
+export async function notesExecutableListBindings(noteId: string): Promise<NoteSessionBinding[]> {
+  const store = await getNotesStore();
+  return store.listExecutableBindings(noteId);
+}
+
+export async function notesExecutableListRuns(noteId: string): Promise<NoteRunRow[]> {
+  const store = await getNotesStore();
+  return store.listExecutableRuns(noteId);
 }
 
 export async function notesCreate(args: {

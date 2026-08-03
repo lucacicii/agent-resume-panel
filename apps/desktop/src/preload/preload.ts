@@ -934,7 +934,38 @@ export interface DesktopApi {
     noteId: string;
     filename: string;
     updatedAtMs: number;
+    content?: string;
+    materialized?: boolean;
   }>;
+  notesExecutableParse(args: { noteId: string }): Promise<{
+    content: string;
+    noteChildren: unknown[];
+    sessions: unknown[];
+    runs: unknown[];
+    results: unknown[];
+  }>;
+  notesExecutableApproveRun(args: {
+    noteId: string;
+    runIndex?: number;
+    defaultProvider?: string;
+  }): Promise<{ content: string; runId: string; childNoteIds: string[] }>;
+  notesExecutableBindSession(args: {
+    noteId: string;
+    provider: string;
+    agentSessionId: string;
+    runId?: string;
+    role?: string;
+    status?: string;
+  }): Promise<{ content: string }>;
+  notesExecutableSettleChild(args: {
+    parentNoteId: string;
+    childNoteId: string;
+    outcome: "completed" | "failed";
+    summary: string;
+    runId?: string;
+  }): Promise<{ content: string; advanced: boolean; done: boolean }>;
+  notesExecutableListBindings(args: { noteId: string }): Promise<unknown[]>;
+  notesExecutableListRuns(args: { noteId: string }): Promise<unknown[]>;
   notesCreate(args: {
     scope: "library" | "project" | "session";
     projectPath?: string;
@@ -1288,6 +1319,12 @@ const api: DesktopApi = {
   notesListGtd: (args) => ipcRenderer.invoke("notes:listGtd", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
+  notesExecutableParse: (args) => ipcRenderer.invoke("notes:executableParse", args),
+  notesExecutableApproveRun: (args) => ipcRenderer.invoke("notes:executableApproveRun", args),
+  notesExecutableBindSession: (args) => ipcRenderer.invoke("notes:executableBindSession", args),
+  notesExecutableSettleChild: (args) => ipcRenderer.invoke("notes:executableSettleChild", args),
+  notesExecutableListBindings: (args) => ipcRenderer.invoke("notes:executableListBindings", args),
+  notesExecutableListRuns: (args) => ipcRenderer.invoke("notes:executableListRuns", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
   notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
