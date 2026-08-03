@@ -27,6 +27,8 @@ export type NoteLinkTreeProps = {
   treeRootId?: string;
   detachLabel?: string;
   renameAriaLabel?: string;
+  /** Context menu on a node; omit to disable. Receives noteId + screen coords. */
+  onContextMenu?: (noteId: string, clientX: number, clientY: number) => void;
 };
 
 type DragState = {
@@ -75,7 +77,8 @@ export function NoteLinkTree({
   onRename,
   treeRootId,
   detachLabel,
-  renameAriaLabel
+  renameAriaLabel,
+  onContextMenu
 }: NoteLinkTreeProps): JSX.Element {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -408,6 +411,12 @@ export function NoteLinkTree({
                   onDoubleClick={(event) => onNodeDoubleClick(event, node)}
                   onKeyDown={(event) => onKeyActivate(event, node.noteId)}
                   onPointerDown={(event) => onNodePointerDown(event, node)}
+                  onContextMenu={(event) => {
+                    if (!onContextMenu || renameRef.current) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onContextMenu(node.noteId, event.clientX, event.clientY);
+                  }}
                   onMouseEnter={() => setHoveredId(node.noteId)}
                   onMouseLeave={() => setHoveredId((current) => (current === node.noteId ? null : current))}
                   style={canDrag ? { cursor: drag?.moved ? "grabbing" : "grab" } : undefined}

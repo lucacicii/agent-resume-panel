@@ -199,6 +199,7 @@ export {
   setSessionSummaryInCatalog,
   hideSessionsInCatalog,
   unhideAllSessionsInCatalog,
+  unhideSessionInCatalog,
   purgeRetiredAlmaCatalog
 } from "./catalog/mutations";
 export {
@@ -506,7 +507,7 @@ export {
   listLegacySessionNotes,
   listLegacyProjectNotes
 } from "./notes/catalogNotes";
-export { NotesStore, type ImportNotesResult } from "./notes/store";
+export { NotesStore, type ImportNotesResult, type ExecutableNoteProbe } from "./notes/store";
 export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
 export {
   listAllNoteLinks,

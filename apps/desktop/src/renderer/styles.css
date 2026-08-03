@@ -8925,6 +8925,16 @@ textarea.wb-editor-host {
   font-weight: var(--font-weight-semibold);
 }
 
+.notes-context-menu-label,
+.context-menu-label {
+  padding: 4px 10px 2px;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .wb-gtd-context-tags {
   display: flex;
   flex-wrap: wrap;

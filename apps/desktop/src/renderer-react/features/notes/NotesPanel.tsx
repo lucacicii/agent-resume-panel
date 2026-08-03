@@ -10,10 +10,18 @@ import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { NoteLinkTree } from "./NoteLinkTree";
 import {
+  appendExecutableStep,
   approveExecutableRunAndStart,
+  probeExecutableNote,
+  resumeNoteSession,
+  setExecutableChildStatus,
+  setExecutableRunStatus,
+  setExecutableSessionStatus,
   snapshotFromParsed,
   startExecutableCurrentStep,
   startExecutableLeafFromNote,
+  startNoteSession,
+  type ExecutableNoteProbe,
   type ExecutablePathNode,
   type ExecutableRunSnapshot,
   type NoteChildLike,
@@ -54,7 +62,9 @@ type CatalogProject = {
   pathMissing: boolean;
   sessionCount: number;
 };
-type ContextMenu = { kind: "project"; projectPath: string; projectId?: string; x: number; y: number } | { kind: "note"; note: Note; x: number; y: number };
+type ContextMenu =
+  | { kind: "project"; projectPath: string; projectId?: string; x: number; y: number }
+  | { kind: "note"; note: Note; x: number; y: number; execProbe?: ExecutableNoteProbe | null };
 type RenameDialog = { kind: "project"; projectPath: string; projectId?: string; title: string } | { kind: "note"; note: Note; title: string };
 type ParentPicker = { child: Note; query: string };
 
@@ -800,6 +810,107 @@ export function NotesPanel(): ReactPortal | null {
     }
   }, [activeRunId, execBusy, execLeaf, execSnapshot, reloadSelectedContent, save, t]);
 
+  /** Open the shared note context menu (list or tree) and async-probe exec state. */
+  const openNoteContextMenu = useCallback(
+    async (noteId: string, clientX: number, clientY: number) => {
+      const existing = notes.find((item) => item.noteId === noteId);
+      let note: Note | undefined = existing;
+      if (!note) {
+        try {
+          const result = await desktopApi().notesRead({ noteId });
+          note = result.record;
+        } catch {
+          return;
+        }
+      }
+      setContextMenu({ kind: "note", note, x: clientX, y: clientY, execProbe: null });
+      probeExecutableNote(noteId).then((execProbe) => {
+        setContextMenu((current) =>
+          current && current.kind === "note" && current.note.noteId === noteId
+            ? { ...current, execProbe }
+            : current
+        );
+      }).catch(() => {
+        setContextMenu((current) =>
+          current && current.kind === "note" && current.note.noteId === noteId
+            ? { ...current, execProbe: null }
+            : current
+        );
+      });
+    },
+    [notes]
+  );
+
+  const refreshAfterExecChange = useCallback(async (noteId: string, newContent: string) => {
+    await load();
+    if (selectedRef.current?.noteId === noteId) {
+      setContent(newContent);
+      contentRef.current = newContent;
+    }
+    if (selectedRef.current?.noteId === noteId) {
+      await reloadSelectedContent(noteId);
+    }
+    if (treeRootId) {
+      await loadSubtree(treeRootId);
+    }
+    setActiveRunId(undefined);
+    setExecLeaf(null);
+    setExecPath([]);
+    setCurrentChildSession(null);
+    setExecRefreshKey((value) => value + 1);
+  }, [load, loadSubtree, reloadSelectedContent, treeRootId]);
+
+  const execRunAction = useCallback(async (status: "awaiting_approval" | "executing") => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    try {
+      const result = await setExecutableRunStatus(menu.note.noteId, status);
+      await refreshAfterExecChange(menu.note.noteId, result.content);
+      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
+
+  const execChildAction = useCallback(async (status: "done" | "failed" | "planned" | "running") => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    try {
+      const result = await setExecutableChildStatus(menu.note.noteId, status);
+      await refreshAfterExecChange(result.parentNoteId, result.content);
+      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
+
+  const execSessionAction = useCallback(async (status: "idle" | "planned") => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    try {
+      const result = await setExecutableSessionStatus(menu.note.noteId, status);
+      await refreshAfterExecChange(menu.note.noteId, result.content);
+      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
+
   const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
@@ -837,6 +948,78 @@ export function NotesPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   }, [loadSubtree, save]);
+
+  const execAppendStepAction = useCallback(async () => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    try {
+      const result = await appendExecutableStep(menu.note.noteId);
+      await refreshAfterExecChange(menu.note.noteId, result.content);
+      const created = await desktopApi().notesRead({ noteId: result.childNoteId });
+      await open(created.record, { asTreeRoot: false, treeRootId: treeRootId || undefined });
+      setStatus({ text: t("desktop.notes.execStepAppended"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, open, refreshAfterExecChange, t, treeRootId]);
+
+  const execResumeSessionAction = useCallback(async () => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    setExecBusy(true);
+    try {
+      let provider = "";
+      let sessionId = "";
+      if (menu.note.scope === "session" && menu.note.provider && menu.note.agentSessionId) {
+        provider = menu.note.provider;
+        sessionId = menu.note.agentSessionId;
+      } else if (menu.execProbe?.sessionNativeRef) {
+        provider = menu.execProbe.sessionNativeRef.provider;
+        sessionId = menu.execProbe.sessionNativeRef.sessionId;
+      }
+      if (!provider || !sessionId) {
+        throw new Error(t("desktop.notes.execSessionNoTarget"));
+      }
+      await resumeNoteSession({ provider, sessionId });
+      setStatus({ text: t("desktop.notes.execSessionResumed"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, t]);
+
+  const execNewSessionAction = useCallback(async () => {
+    const menu = contextMenu;
+    if (!menu || menu.kind !== "note") return;
+    if (execBusy) return;
+    if (menu.note.scope !== "project" || !menu.note.projectPath) {
+      setStatus({ text: t("desktop.notes.execNoProject"), kind: "error" });
+      setContextMenu(null);
+      return;
+    }
+    setExecBusy(true);
+    try {
+      const result = await startNoteSession({
+        noteId: menu.note.noteId,
+        projectPath: menu.note.projectPath
+      });
+      await refreshAfterExecChange(menu.note.noteId, result.content);
+      setStatus({ text: t("desktop.notes.execSessionStarted"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setExecBusy(false);
+      setContextMenu(null);
+    }
+  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
 
   const openTreeNode = useCallback(async (noteId: string) => {
     const existing = notes.find((item) => item.noteId === noteId);
@@ -1563,7 +1746,7 @@ export function NotesPanel(): ReactPortal | null {
             </div> : null}
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "note", note, x: event.clientX, y: event.clientY }); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
           </> : <>
             <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtd")} placeholder={t("desktop.notes.searchGtd")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
             <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdListMeta", visibleGtdTasks.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
@@ -1600,6 +1783,7 @@ export function NotesPanel(): ReactPortal | null {
                     onSelect={(noteId) => void openTreeNode(noteId)}
                     onReparent={(childNoteId, parentNoteId) => applyParentLink(childNoteId, parentNoteId)}
                     onRename={(noteId, newTitle) => renameTreeNode(noteId, newTitle)}
+                    onContextMenu={(noteId, clientX, clientY) => void openNoteContextMenu(noteId, clientX, clientY)}
                     truncatedHint={t("desktop.notes.linkTreeTruncated")}
                     detachLabel={t("desktop.notes.dragToDetach")}
                     renameAriaLabel={t("desktop.common.rename")}
@@ -1750,6 +1934,43 @@ export function NotesPanel(): ReactPortal | null {
           }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          {contextMenu.note.scope === "session" ? (
+            <>
+              <div className="context-menu-separator" role="separator" />
+              <div className="context-menu-label" role="presentation">{t("desktop.notes.execMenuTitle")}</div>
+              <button type="button" role="menuitem" onClick={() => { void execResumeSessionAction(); }}>{t("desktop.notes.execResumeSession")}</button>
+            </>
+          ) : null}
+          {contextMenu.note.scope === "project" && contextMenu.execProbe ? (
+            <>
+              <div className="context-menu-separator" role="separator" />
+              <div className="context-menu-label" role="presentation">{t("desktop.notes.execMenuTitle")}</div>
+              {contextMenu.execProbe.asStep ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => { void execChildAction("done"); }}>{t("desktop.notes.execStepMarkDone")}</button>
+                  <button type="button" role="menuitem" onClick={() => { void execChildAction("failed"); }}>{t("desktop.notes.execStepMarkFailed")}</button>
+                  <button type="button" role="menuitem" onClick={() => { void execChildAction("planned"); }}>{t("desktop.notes.execStepReset")}</button>
+                  <button type="button" role="menuitem" onClick={() => { void execChildAction("running"); }}>{t("desktop.notes.execStepRunning")}</button>
+                </>
+              ) : contextMenu.execProbe.hasRun ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => { void execRunAction("awaiting_approval"); }}>{t("desktop.notes.execRunReset")}</button>
+                  <button type="button" role="menuitem" onClick={() => { void execRunAction("executing"); }}>{t("desktop.notes.execRunExecute")}</button>
+                </>
+              ) : null}
+              {contextMenu.execProbe.hasSession ? (
+                <button type="button" role="menuitem" onClick={() => { void execSessionAction("idle"); }}>{t("desktop.notes.execSessionReset")}</button>
+              ) : null}
+              {contextMenu.execProbe.hasSession && contextMenu.execProbe.sessionProvider !== "chat" ? (
+                contextMenu.execProbe.sessionNativeRef ? (
+                  <button type="button" role="menuitem" onClick={() => { void execResumeSessionAction(); }}>{t("desktop.notes.execResumeSession")}</button>
+                ) : (
+                  <button type="button" role="menuitem" onClick={() => { void execNewSessionAction(); }}>{t("desktop.notes.execNewSession")}</button>
+                )
+              ) : null}
+              <button type="button" role="menuitem" onClick={() => { void execAppendStepAction(); }}>{t("desktop.notes.execAppendStep")}</button>
+            </>
+          ) : null}
           {contextMenu.note.scope === "project" ? <>
             <div className="context-menu-separator" role="separator" />
             <button type="button" role="menuitem" onClick={() => { void createLinkedChild(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.newLinkedChild")}</button>

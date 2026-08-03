@@ -127,6 +127,22 @@ export async function unhideAllSessionsInCatalog(dbPath: string): Promise<number
   return Number(rows[0]?.changes) || 0;
 }
 
+export async function unhideSessionInCatalog(
+  dbPath: string,
+  provider: AgentProvider,
+  sessionId: string
+): Promise<boolean> {
+  const rows = await runSqliteJson<{ changes: number }>(
+    dbPath,
+    `UPDATE sessions SET hidden = 0
+     WHERE provider = '${escapeSqlLiteral(provider)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
+       AND hidden = 1;
+     SELECT changes() AS changes;`
+  );
+  return Number(rows[0]?.changes) > 0;
+}
+
 export async function setUserTitleInCatalog(
   dbPath: string,
   provider: AgentProvider,

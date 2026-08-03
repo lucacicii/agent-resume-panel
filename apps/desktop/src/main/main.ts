@@ -36,6 +36,7 @@ import {
   listSessions,
   listSessionsInRange,
   unhideAllSessionsInCatalog,
+  unhideSessionInCatalog,
   unhideAllProjectsInCatalog,
   loadProjectAliasesMap,
   loadSessionPreview,
@@ -140,6 +141,11 @@ import {
   notesExecutableIsComposite,
   notesExecutableListBindings,
   notesExecutableListRuns,
+  notesExecutableProbe,
+  notesExecutableSetRunStatus,
+  notesExecutableSetChildStatus,
+  notesExecutableSetSessionStatus,
+  notesExecutableAppendStep,
   settingsOpenPanelHome
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
@@ -1746,6 +1752,106 @@ function registerIpc(): void {
   );
   ipcMain.handle("notes:executableListRuns", async (_event, args: { noteId: string }) =>
     notesExecutableListRuns(args.noteId)
+  );
+  ipcMain.handle("notes:executableProbe", async (_event, args: { noteId: string }) =>
+    notesExecutableProbe(args.noteId)
+  );
+  ipcMain.handle(
+    "notes:executableSetRunStatus",
+    async (
+      _event,
+      args: {
+        noteId: string;
+        status: "draft" | "awaiting_approval" | "executing" | "completed" | "partial" | "failed";
+      }
+    ) => {
+      const result = await notesExecutableSetRunStatus(args.noteId, args.status);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:executableSetChildStatus",
+    async (
+      _event,
+      args: { childNoteId: string; status: "idle" | "planned" | "running" | "done" | "failed" }
+    ) => {
+      const result = await notesExecutableSetChildStatus(args.childNoteId, args.status);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:executableSetSessionStatus",
+    async (
+      _event,
+      args: { noteId: string; status: "idle" | "planned" | "running" | "settled" | "failed" }
+    ) => {
+      const result = await notesExecutableSetSessionStatus(args.noteId, args.status);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:executableAppendStep",
+    async (_event, args: { parentNoteId: string; text?: string }) => {
+      const result = await notesExecutableAppendStep(args.parentNoteId, args.text);
+      scheduleNotesIndex();
+      return result;
+    }
+  );
+  ipcMain.handle(
+    "notes:resumeSession",
+    async (_event, args: { provider: AgentProvider; sessionId: string }) => {
+      const resume = async (): Promise<{
+        ok: boolean;
+        error?: string;
+        command?: string;
+        cwd?: string;
+        mode?: string;
+        external?: boolean;
+      }> => {
+        try {
+          const result = await resumeCatalogSession(args.provider, args.sessionId);
+          // xterm mode only returns command/cwd — Workbench must open the terminal.
+          if (!result.external && result.command) {
+            const payload = {
+              provider: args.provider,
+              id: args.sessionId,
+              command: result.command,
+              cwd: result.cwd,
+              title: result.session?.title || args.sessionId,
+              projectPath: result.session?.projectPath || result.cwd,
+              mode: result.mode
+            };
+            broadcastToRenderers("workbench:resumeFromAgent", payload);
+          }
+          return {
+            ok: true,
+            command: result.command,
+            cwd: result.cwd,
+            mode: result.mode,
+            external: result.external === true
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      };
+
+      const first = await resume();
+      if (first.ok || first.error?.includes("not found")) {
+        // The session may be hidden — restore visibility and retry before failing.
+        const paths = await loadPanelDbPaths(await loadSettings());
+        const restored = await unhideSessionInCatalog(paths.catalogDb, args.provider, args.sessionId);
+        if (restored) {
+          return resume();
+        }
+      }
+      return first;
+    }
   );
   ipcMain.handle(
     "notes:create",

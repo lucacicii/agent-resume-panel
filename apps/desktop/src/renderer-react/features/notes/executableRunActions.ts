@@ -260,6 +260,60 @@ export function onWorkbenchLaunchSession(
 
 export type ExecutablePathNode = { noteId: string; title: string; composite: boolean };
 
+export type ExecutableNoteProbe = {
+  runCount: number;
+  runStatus?: string;
+  hasRun: boolean;
+  hasSession: boolean;
+  sessionStatus?: string;
+  sessionProvider?: string;
+  sessionNativeRef?: { provider: string; sessionId: string } | undefined;
+  asStep?: {
+    parentNoteId: string;
+    childStatus: string;
+    parentRunStatus?: string;
+  };
+};
+
+/** Probe a note's executable role (run-holder / step / leaf session) for menu rendering. */
+export async function probeExecutableNote(noteId: string): Promise<ExecutableNoteProbe | null> {
+  const api = desktopApi();
+  if (typeof api.notesExecutableProbe !== "function") return null;
+  return api.notesExecutableProbe({ noteId });
+}
+
+export async function setExecutableRunStatus(
+  noteId: string,
+  status: "draft" | "awaiting_approval" | "executing" | "completed" | "partial" | "failed"
+): Promise<{ content: string }> {
+  const api = desktopApi();
+  return api.notesExecutableSetRunStatus({ noteId, status });
+}
+
+export async function setExecutableChildStatus(
+  childNoteId: string,
+  status: "idle" | "planned" | "running" | "done" | "failed"
+): Promise<{ content: string; parentNoteId: string }> {
+  const api = desktopApi();
+  return api.notesExecutableSetChildStatus({ childNoteId, status });
+}
+
+export async function setExecutableSessionStatus(
+  noteId: string,
+  status: "idle" | "planned" | "running" | "settled" | "failed"
+): Promise<{ content: string }> {
+  const api = desktopApi();
+  return api.notesExecutableSetSessionStatus({ noteId, status });
+}
+
+export async function appendExecutableStep(
+  parentNoteId: string,
+  text?: string
+): Promise<{ content: string; childNoteId: string }> {
+  const api = desktopApi();
+  return api.notesExecutableAppendStep({ parentNoteId, text });
+}
+
 /** Spawn + bind a leaf step (CLI Workbench session). */
 export async function startExecutableCurrentStep(args: {
   parentNoteId: string;
@@ -425,4 +479,98 @@ export async function approveExecutableRunAndStart(args: {
     leafParentNoteId: leafStart.leafParentNoteId,
     started: leafStart.started
   };
+}
+
+/**
+ * Resume an existing catalog session from a note. Main process resolves the
+ * resume command and broadcasts workbench:resumeFromAgent so Workbench opens
+ * the terminal/ACP view without relying on its sessions list being loaded.
+ */
+export async function resumeNoteSession(args: {
+  provider: string;
+  sessionId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const api = desktopApi();
+  if (typeof api.notesResumeSession !== "function") {
+    throw new Error("Session resume requires a rebuilt Desktop (notesResumeSession missing).");
+  }
+  const result = await api.notesResumeSession({ provider: args.provider, sessionId: args.sessionId });
+  if (!result.ok) {
+    throw new Error(result.error || "Failed to resume session.");
+  }
+  return { ok: true };
+}
+
+/**
+ * Start a brand-new CLI session for a note's :::session block and bind it back
+ * as the native ref. Only valid for project notes without an existing native.
+ */
+export async function startNoteSession(args: {
+  noteId: string;
+  projectPath: string;
+}): Promise<{ catalogProvider: string; sessionId: string; content: string }> {
+  const api = desktopApi();
+  const parsed = await api.notesExecutableParse({ noteId: args.noteId });
+  const session = (parsed.sessions[0] || null) as SessionBlockLike | null;
+  const provider = (session?.provider || "codex").trim() || "codex";
+  const childRead = await api.notesRead({ noteId: args.noteId });
+  const title = childRead.record.title || childRead.record.filename.replace(/\.md$/i, "") || args.noteId;
+  const prompt = buildStepPrompt({
+    parentTitle: title,
+    childTitle: title,
+    childBody: childRead.content,
+    sessionText: session?.text
+  });
+  const cwd = args.projectPath.trim();
+  if (!cwd) {
+    throw new Error("Project path is required to start a session.");
+  }
+
+  const knownKeys = new Set<string>();
+  const startedAt = Date.now();
+  try {
+    for (const item of await api.listSessions()) {
+      knownKeys.add(`${item.provider}:${item.id}`);
+    }
+  } catch {
+    // Optional snapshot.
+  }
+
+  const launched = await requestWorkbenchSessionLaunch({
+    channel: "cli",
+    provider,
+    cwd,
+    title,
+    initialPrompt: prompt
+  });
+
+  let catalogProvider = launched.catalogProvider;
+  let sessionId = launched.sessionId;
+
+  if (!launched.ok || !sessionId || !catalogProvider) {
+    const found = await waitForCatalogSession({
+      cwd,
+      provider,
+      knownKeys,
+      notBeforeMs: startedAt - 30_000,
+      timeoutMs: 60_000
+    });
+    if (!found) {
+      throw new Error(
+        launched.error ||
+          "Workbench terminal may be open, but no catalog session was found to bind. Wait for session sync, then retry."
+      );
+    }
+    catalogProvider = found.catalogProvider;
+    sessionId = found.sessionId;
+  }
+
+  const bound = await api.notesExecutableBindSession({
+    noteId: args.noteId,
+    provider: catalogProvider as AgentProvider | string as string,
+    agentSessionId: sessionId,
+    status: "running"
+  });
+
+  return { catalogProvider, sessionId, content: bound.content };
 }

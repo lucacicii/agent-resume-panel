@@ -68,19 +68,22 @@ import {
   type NoteTreeNode
 } from "./links";
 import {
+  appendResultBlock,
   applyMaterializedNoteIds,
   currentExecutableChild,
   defaultChildNoteBody,
   EXECUTABLE_MAX_NEST_DEPTH,
   formatNativeSessionRef,
+  formatNoteChildBlock,
   isCompositeExecutableParsed,
   listUnmaterializedNoteChildren,
   noteChildTitle,
   parseExecutableNote,
+  parseNativeSessionRef,
   updateNoteChildBlocks,
   updateRunBlocks,
   updateSessionBlocks,
-  appendResultBlock,
+  type NoteChildStatus,
   type RunBlockStatus,
   type SessionBlockStatus
 } from "./executable";
@@ -98,6 +101,21 @@ export interface ImportNotesResult {
   skipped: number;
   errors: string[];
   records: NoteRecord[];
+}
+
+export interface ExecutableNoteProbe {
+  runCount: number;
+  runStatus?: RunBlockStatus;
+  hasRun: boolean;
+  hasSession: boolean;
+  sessionStatus?: SessionBlockStatus;
+  sessionProvider?: string;
+  sessionNativeRef?: { provider: string; sessionId: string } | undefined;
+  asStep?: {
+    parentNoteId: string;
+    childStatus: NoteChildStatus;
+    parentRunStatus?: RunBlockStatus;
+  };
 }
 
 export type { NoteLink, NoteSubtree, NoteTreeNode };
@@ -758,6 +776,201 @@ export class NotesStore {
     await fs.writeFile(this.absolutePath(parent), parentContent, "utf8");
     await this.refreshNoteFromDisk(parent);
     return { content: parentContent, advanced, done };
+  }
+
+  /**
+   * Lightweight role probe for a note, used to render executable-state
+   * context-menu actions without mutating anything.
+   */
+  async probeExecutableNote(noteId: string): Promise<ExecutableNoteProbe> {
+    const content = await this.readNoteContent(noteId);
+    const parsed = parseExecutableNote(content);
+    const run = parsed.runs[0];
+    const session = parsed.sessions[0];
+    let asStep: {
+      parentNoteId: string;
+      childStatus: NoteChildStatus;
+      parentRunStatus?: RunBlockStatus;
+    } | undefined;
+
+    const parentNoteId = await this.findExecutableOuterParentNoteId(noteId);
+    if (parentNoteId) {
+      try {
+        const parentParsed = parseExecutableNote(await this.readNoteContent(parentNoteId));
+        const step = parentParsed.noteChildren.find((c) => c.noteId === noteId);
+        if (step) {
+          asStep = {
+            parentNoteId,
+            childStatus: step.status,
+            parentRunStatus: parentParsed.runs[0]?.status
+          };
+        }
+      } catch {
+        asStep = undefined;
+      }
+    }
+
+    return {
+      runCount: parsed.runs.length,
+      runStatus: run?.status,
+      hasRun: parsed.runs.length > 0,
+      hasSession: parsed.sessions.length > 0,
+      sessionStatus: session?.status,
+      sessionProvider: session?.provider,
+      sessionNativeRef: session?.native ? parseNativeSessionRef(session.native) ?? undefined : undefined,
+      asStep
+    };
+  }
+
+  /**
+   * Manually rewrite a run block status (error correction) and keep the
+   * note_runs index roughly aligned so the renderer can restore runId.
+   */
+  async setExecutableRunStatus(
+    noteId: string,
+    status: RunBlockStatus
+  ): Promise<{ content: string }> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    let content = await this.readNoteContent(noteId);
+    const parsed = parseExecutableNote(content);
+    if (parsed.runs.length === 0) {
+      throw new Error("No :::run block found on this note.");
+    }
+    content = updateRunBlocks(content, new Map([[0, { status }]]));
+    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    await this.refreshNoteFromDisk(record);
+
+    const runs = await listNoteRunsForSource(this.dbPath, noteId);
+    const active = runs.find((r) => r.status === "executing" || r.status === "awaiting_approval");
+    if (active) {
+      await upsertNoteRun(this.dbPath, {
+        runId: active.runId,
+        sourceNoteId: noteId,
+        status,
+        currentChildIndex: active.currentChildIndex
+      });
+    }
+    return { content };
+  }
+
+  /**
+   * Manually rewrite the note-child step status on the outer run-holder and
+   * cascade to the child's session block. Does NOT touch the parent run status
+   * — caller keeps control of run progression when correcting by hand.
+   */
+  async setExecutableChildStatus(
+    childNoteId: string,
+    status: NoteChildStatus
+  ): Promise<{ content: string; parentNoteId: string }> {
+    const parentNoteId = await this.findExecutableOuterParentNoteId(childNoteId);
+    if (!parentNoteId) {
+      throw new Error("Note is not a step of any executable run.");
+    }
+    const parent = await getNoteById(this.dbPath, parentNoteId);
+    if (!parent) {
+      throw new Error("Parent note not found.");
+    }
+    let parentContent = await this.readNoteContent(parentNoteId);
+    const children = parseExecutableNote(parentContent).noteChildren;
+    const childIndex = children.findIndex((c) => c.noteId === childNoteId);
+    if (childIndex < 0) {
+      throw new Error("Child note is not part of this parent note-child chain.");
+    }
+
+    const childRecord = await getNoteById(this.dbPath, childNoteId);
+    if (childRecord) {
+      let childContent = await this.readNoteContent(childNoteId);
+      if (parseExecutableNote(childContent).sessions[0]) {
+        const sessionStatus: SessionBlockStatus =
+          status === "done" ? "settled" : status === "failed" ? "failed" : "planned";
+        childContent = updateSessionBlocks(
+          childContent,
+          new Map([[0, { status: sessionStatus }]])
+        );
+      }
+      if (status === "done" || status === "failed") {
+        childContent = appendResultBlock(childContent, {
+          status: status === "done" ? "completed" : "failed",
+          text: status === "done" ? "Step marked done manually." : "Step marked failed manually."
+        });
+      }
+      await fs.writeFile(this.absolutePath(childRecord), childContent, "utf8");
+      await this.refreshNoteFromDisk(childRecord);
+    }
+
+    parentContent = updateNoteChildBlocks(
+      parentContent,
+      new Map([[childIndex, { status }]])
+    );
+    await fs.writeFile(this.absolutePath(parent), parentContent, "utf8");
+    await this.refreshNoteFromDisk(parent);
+
+    const runs = await listNoteRunsForSource(this.dbPath, parentNoteId);
+    const active = runs.find((r) => r.status === "executing" || r.status === "awaiting_approval");
+    if (active) {
+      await upsertNoteRun(this.dbPath, {
+        runId: active.runId,
+        sourceNoteId: parentNoteId,
+        status: active.status,
+        currentChildIndex: childIndex
+      });
+    }
+    return { content: parentContent, parentNoteId };
+  }
+
+  /** Manually rewrite the session block status on a leaf (error correction). */
+  async setExecutableSessionStatus(
+    noteId: string,
+    status: SessionBlockStatus
+  ): Promise<{ content: string }> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    let content = await this.readNoteContent(noteId);
+    const parsed = parseExecutableNote(content);
+    if (parsed.sessions.length === 0) {
+      throw new Error("No :::session block found on this note.");
+    }
+    content = updateSessionBlocks(content, new Map([[0, { status }]]));
+    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    await this.refreshNoteFromDisk(record);
+    return { content };
+  }
+
+  /**
+   * Append a new note-child step to a run-holder note and materialize its
+   * linked child note so the new step can be executed without hand-editing md.
+   */
+  async appendExecutableStep(
+    parentNoteId: string,
+    text?: string
+  ): Promise<{ content: string; childNoteId: string }> {
+    const parent = await getNoteById(this.dbPath, parentNoteId);
+    if (!parent) {
+      throw new Error("Parent note not found.");
+    }
+    if (parent.scope !== "project" || !parent.projectPath) {
+      throw new Error("Executable steps can only be added to project notes.");
+    }
+    const title = (text || "").trim() || "New step";
+    const child = await this.createLinkedChildNote(
+      parentNoteId,
+      defaultChildNoteBody(title, "codex")
+    );
+    const block = formatNoteChildBlock({
+      status: "planned",
+      text: title,
+      noteId: child.noteId
+    });
+    const content = (await this.readNoteContent(parentNoteId)).trimEnd();
+    const next = content ? `${content}\n\n${block}\n` : `${block}\n`;
+    await fs.writeFile(this.absolutePath(parent), next, "utf8");
+    await this.refreshNoteFromDisk(parent);
+    return { content: next, childNoteId: child.noteId };
   }
 
   async listExecutableBindings(noteId: string): Promise<NoteSessionBinding[]> {

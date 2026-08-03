@@ -991,6 +991,38 @@ export interface DesktopApi {
   notesExecutableIsComposite(args: { noteId: string }): Promise<boolean>;
   notesExecutableListBindings(args: { noteId: string }): Promise<unknown[]>;
   notesExecutableListRuns(args: { noteId: string }): Promise<unknown[]>;
+  notesExecutableProbe(args: { noteId: string }): Promise<{
+    runCount: number;
+    runStatus?: string;
+    hasRun: boolean;
+    hasSession: boolean;
+    sessionStatus?: string;
+    asStep?: {
+      parentNoteId: string;
+      childStatus: string;
+      parentRunStatus?: string;
+    };
+  }>;
+  notesExecutableSetRunStatus(args: {
+    noteId: string;
+    status: "draft" | "awaiting_approval" | "executing" | "completed" | "partial" | "failed";
+  }): Promise<{ content: string }>;
+  notesExecutableSetChildStatus(args: {
+    childNoteId: string;
+    status: "idle" | "planned" | "running" | "done" | "failed";
+  }): Promise<{ content: string; parentNoteId: string }>;
+  notesExecutableSetSessionStatus(args: {
+    noteId: string;
+    status: "idle" | "planned" | "running" | "settled" | "failed";
+  }): Promise<{ content: string }>;
+  notesExecutableAppendStep(args: {
+    parentNoteId: string;
+    text?: string;
+  }): Promise<{ content: string; childNoteId: string }>;
+  notesResumeSession(args: {
+    provider: string;
+    sessionId: string;
+  }): Promise<{ ok: boolean; error?: string; command?: string; cwd?: string; mode?: string; external?: boolean }>;
   notesCreate(args: {
     scope: "library" | "project" | "session";
     projectPath?: string;
@@ -1352,6 +1384,12 @@ const api: DesktopApi = {
   notesExecutableIsComposite: (args) => ipcRenderer.invoke("notes:executableIsComposite", args),
   notesExecutableListBindings: (args) => ipcRenderer.invoke("notes:executableListBindings", args),
   notesExecutableListRuns: (args) => ipcRenderer.invoke("notes:executableListRuns", args),
+  notesExecutableProbe: (args) => ipcRenderer.invoke("notes:executableProbe", args),
+  notesExecutableSetRunStatus: (args) => ipcRenderer.invoke("notes:executableSetRunStatus", args),
+  notesExecutableSetChildStatus: (args) => ipcRenderer.invoke("notes:executableSetChildStatus", args),
+  notesExecutableSetSessionStatus: (args) => ipcRenderer.invoke("notes:executableSetSessionStatus", args),
+  notesExecutableAppendStep: (args) => ipcRenderer.invoke("notes:executableAppendStep", args),
+  notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
   notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),

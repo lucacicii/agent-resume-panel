@@ -10,6 +10,7 @@ import {
   notesRoot,
   parseNoteGtdTasks,
   type AgentProvider,
+  type ExecutableNoteProbe,
   type GtdStatus,
   type ImportNotesResult,
   type NoteGtdTask,
@@ -181,6 +182,43 @@ export async function notesExecutableListBindings(noteId: string): Promise<NoteS
 export async function notesExecutableListRuns(noteId: string): Promise<NoteRunRow[]> {
   const store = await getNotesStore();
   return store.listExecutableRuns(noteId);
+}
+
+export async function notesExecutableProbe(noteId: string): Promise<ExecutableNoteProbe> {
+  const store = await getNotesStore();
+  return store.probeExecutableNote(noteId);
+}
+
+export async function notesExecutableSetRunStatus(
+  noteId: string,
+  status: "draft" | "awaiting_approval" | "executing" | "completed" | "partial" | "failed"
+) {
+  const store = await getNotesStore();
+  return store.setExecutableRunStatus(noteId, status);
+}
+
+export async function notesExecutableSetChildStatus(
+  childNoteId: string,
+  status: "idle" | "planned" | "running" | "done" | "failed"
+) {
+  const store = await getNotesStore();
+  return store.setExecutableChildStatus(childNoteId, status);
+}
+
+export async function notesExecutableSetSessionStatus(
+  noteId: string,
+  status: "idle" | "planned" | "running" | "settled" | "failed"
+) {
+  const store = await getNotesStore();
+  return store.setExecutableSessionStatus(noteId, status);
+}
+
+export async function notesExecutableAppendStep(
+  parentNoteId: string,
+  text?: string
+): Promise<{ content: string; childNoteId: string }> {
+  const store = await getNotesStore();
+  return store.appendExecutableStep(parentNoteId, text);
 }
 
 export async function notesCreate(args: {
