@@ -6,7 +6,7 @@ export {
   MCP_SERVER_VERSION
 } from "./server";
 export type { AgentMcpContext } from "./server";
-export type { NoteToolContext } from "./tools";
+export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./tools";
 export {
   reportSearchSchema,
   reportReadSchema,
@@ -24,13 +24,23 @@ export {
   noteWriteSchema,
   noteAppendSchema,
   noteDeleteSchema,
+  noteTreeReadSchema,
+  noteSetParentSchema,
+  noteMoveSchema,
+  noteRenameSchema,
   handleNoteSearch,
   handleNoteList,
   handleNoteCreate,
   handleNoteRead,
   handleNoteWrite,
   handleNoteAppend,
-  handleNoteDelete
+  handleNoteDelete,
+  handleNoteTreeRead,
+  handleNoteSetParent,
+  handleNoteMove,
+  handleNoteRename,
+  noteResponse,
+  runNoteTool
 } from "./tools";
 export {
   sessionSearchSchema,

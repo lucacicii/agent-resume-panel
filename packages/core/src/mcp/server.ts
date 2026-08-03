@@ -8,16 +8,25 @@ import {
   handleNoteCreate,
   handleNoteDelete,
   handleNoteList,
+  handleNoteMove,
+  handleNoteRename,
   handleNoteRead,
   handleNoteSearch,
+  handleNoteSetParent,
+  handleNoteTreeRead,
   handleNoteWrite,
   noteAppendSchema,
   noteCreateSchema,
   noteDeleteSchema,
   noteListSchema,
+  noteMoveSchema,
+  noteRenameSchema,
   noteReadSchema,
   noteSearchSchema,
+  noteSetParentSchema,
+  noteTreeReadSchema,
   noteWriteSchema,
+  runNoteTool,
   type NoteToolContext
 } from "./tools";
 import {
@@ -54,7 +63,7 @@ import {
 } from "./sessionTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
-export const MCP_SERVER_VERSION = "0.2.0";
+export const MCP_SERVER_VERSION = "0.3.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -78,7 +87,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. Do not overwrite, delete, or change a user note unless the user explicitly asks."
+      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks."
     }
   );
 
@@ -86,11 +95,11 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_list",
     {
       description:
-        "List all indexed notes with optional scope filtering and pagination. Use this instead of note_search when the user asks to enumerate every note.",
+        "List indexed notes with owner filters, root/parent filters, relationship summaries, and pagination. Use this instead of note_search when the user asks to enumerate notes.",
       inputSchema: noteListSchema
     },
-    async (args: { scope?: string; limit?: number; cursor?: number }) => {
-      return handleNoteList(args, ctx);
+    async (args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number }) => {
+      return runNoteTool(() => handleNoteList(args, ctx));
     }
   );
 
@@ -98,11 +107,11 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_search",
     {
       description:
-        "Search notes by keyword. Matches titles, full content, filenames, note paths, and project paths. Use limit up to 200 for list-all requests; values above 200 are clamped.",
+        "Search notes by keyword across metadata, indexed content, paths, and session identity. Supports owner filters and returns relationship-aware summaries.",
       inputSchema: noteSearchSchema
     },
-    async (args: { query: string; scope?: string; limit?: number }) => {
-      return handleNoteSearch(args, ctx);
+    async (args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; limit?: number }) => {
+      return runNoteTool(() => handleNoteSearch(args, ctx));
     }
   );
 
@@ -110,18 +119,19 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_create",
     {
       description:
-        "Create a new note. Choose scope (library, project, or session), provide a title, and optional markdown body. Returns the created note details including noteId.",
+        "Create a new note. Choose an owner scope and title, or provide parentNoteId to create a linked Project Note child with the owner inferred from its parent.",
       inputSchema: noteCreateSchema
     },
     async (args: {
-      scope: "library" | "project" | "session";
+      scope?: "library" | "project" | "session";
       title: string;
       body?: string;
+      parentNoteId?: string;
       projectPath?: string;
       provider?: string;
       sessionId?: string;
     }) => {
-      return handleNoteCreate(args, ctx);
+      return runNoteTool(() => handleNoteCreate(args, ctx));
     }
   );
 
@@ -129,11 +139,11 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_read",
     {
       description:
-        "Read the full markdown content of a note by noteId. Returns the note metadata and its content.",
+        "Read a note by noteId. Returns relationship-aware metadata, managed frontmatter, Markdown body, raw content, and truncation information.",
       inputSchema: noteReadSchema
     },
     async (args: { noteId: string; maxLength?: number }) => {
-      return handleNoteRead(args, ctx);
+      return runNoteTool(() => handleNoteRead(args, ctx));
     }
   );
 
@@ -141,11 +151,11 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_write",
     {
       description:
-        "Overwrite the entire content of an existing note. The content should include the title heading. Use note_append if you only want to add content.",
+        "Replace a note's Markdown body or complete document while preserving catalog-owned frontmatter and note identity.",
       inputSchema: noteWriteSchema
     },
     async (args: { noteId: string; content: string }) => {
-      return handleNoteWrite(args, ctx);
+      return runNoteTool(() => handleNoteWrite(args, ctx));
     }
   );
 
@@ -153,11 +163,11 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_append",
     {
       description:
-        "Append markdown content to the end of an existing note. Does not modify existing content.",
+        "Append Markdown to a note body while preserving catalog-owned frontmatter and existing content.",
       inputSchema: noteAppendSchema
     },
     async (args: { noteId: string; content: string }) => {
-      return handleNoteAppend(args, ctx);
+      return runNoteTool(() => handleNoteAppend(args, ctx));
     }
   );
 
@@ -169,8 +179,44 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       inputSchema: noteDeleteSchema
     },
     async (args: { noteId: string }) => {
-      return handleNoteDelete(args, ctx);
+      return runNoteTool(() => handleNoteDelete(args, ctx));
     }
+  );
+
+  server.registerTool(
+    "note_tree_read",
+    {
+      description: "Read the linked Project Note tree containing a note. The root is resolved automatically and output is bounded by maxNodes.",
+      inputSchema: noteTreeReadSchema
+    },
+    async (args: { noteId: string; maxNodes?: number }) => runNoteTool(() => handleNoteTreeRead(args, ctx))
+  );
+
+  server.registerTool(
+    "note_set_parent",
+    {
+      description: "Set or clear a Project Note parent link. Cycles and non-Project Notes are rejected.",
+      inputSchema: noteSetParentSchema
+    },
+    async (args: { noteId: string; parentNoteId: string | null }) => runNoteTool(() => handleNoteSetParent(args, ctx))
+  );
+
+  server.registerTool(
+    "note_move",
+    {
+      description: "Move a note to a different owner scope. Moving out of project scope detaches the note and its direct children from the association tree.",
+      inputSchema: noteMoveSchema
+    },
+    async (args: { noteId: string; scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string }) => runNoteTool(() => handleNoteMove(args, ctx))
+  );
+
+  server.registerTool(
+    "note_rename",
+    {
+      description: "Rename a note file while preserving and rewriting its asset directory and relative asset references.",
+      inputSchema: noteRenameSchema
+    },
+    async (args: { noteId: string; filename: string }) => runNoteTool(() => handleNoteRename(args, ctx))
   );
 
   server.registerTool(
@@ -179,7 +225,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       description: "List GTD tasks stored in Markdown notes. Tasks are :::gtd blocks with inbox, next, waiting, someday, reference, or done status. Read-only.",
       inputSchema: noteGtdListSchema
     },
-    async (args: { query?: string; status?: string; noteId?: string; limit?: number }) => handleNoteGtdList(args, ctx)
+    async (args: { query?: string; status?: string; noteId?: string; limit?: number }) => runNoteTool(() => handleNoteGtdList(args, ctx))
   );
 
   server.registerTool(
@@ -188,7 +234,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       description: "Append one :::gtd task block to an existing note. Provide task text; status defaults to next.",
       inputSchema: noteGtdCreateSchema
     },
-    async (args: { noteId: string; text: string; status?: import("../gtd/types").GtdStatus }) => handleNoteGtdCreate(args, ctx)
+    async (args: { noteId: string; text: string; status?: import("../gtd/types").GtdStatus }) => runNoteTool(() => handleNoteGtdCreate(args, ctx))
   );
 
   server.registerTool(
@@ -197,7 +243,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       description: "Update one GTD task in an existing note. Identify it by its current :::gtd block text. If list results show repeated text, pass the occurrence selected by the user.",
       inputSchema: noteGtdUpdateSchema
     },
-    async (args: { noteId: string; taskText: string; occurrence?: number; text?: string; status?: import("../gtd/types").GtdStatus }) => handleNoteGtdUpdate(args, ctx)
+    async (args: { noteId: string; taskText: string; occurrence?: number; text?: string; status?: import("../gtd/types").GtdStatus }) => runNoteTool(() => handleNoteGtdUpdate(args, ctx))
   );
 
   server.registerTool(
@@ -206,7 +252,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       description: "Delete one GTD task from an existing note. Identify it by :::gtd block text. If repeated, ask the user to choose an occurrence before deleting.",
       inputSchema: noteGtdDeleteSchema
     },
-    async (args: { noteId: string; taskText: string; occurrence?: number }) => handleNoteGtdDelete(args, ctx)
+    async (args: { noteId: string; taskText: string; occurrence?: number }) => runNoteTool(() => handleNoteGtdDelete(args, ctx))
   );
 
   const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };

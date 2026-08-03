@@ -117,7 +117,10 @@ function citationLabel(citation: AgentCitation, t: Translate): string {
     create: t("desktop.agent.toolCreate"),
     write: t("desktop.agent.toolWrite"),
     append: t("desktop.agent.toolAppend"),
-    delete: t("desktop.agent.toolDelete")
+    delete: t("desktop.agent.toolDelete"),
+    rename: t("desktop.agent.toolWrite"),
+    move: t("desktop.agent.toolWrite"),
+    link: t("desktop.agent.toolWrite")
   };
   const source = isNote(citation)
     ? t("desktop.agent.noteLevel")

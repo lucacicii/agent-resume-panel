@@ -89,8 +89,10 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
   return [
     buildMetaAgentSystemPrompt(outputLanguage),
     "When the user asks to create, find, or manage notes, use the available tools to perform the action directly.",
-    "For note creation, ask the user for any missing required information (title, scope) before calling note_create.",
-    "For note search, call note_search with the user's keywords (e.g. project or folder name). Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
+    "For note creation, ask the user for any missing required information (title and owner scope, unless a parentNoteId is known) before calling note_create. Use parentNoteId when the user asks to create a child under a Project Note.",
+    "For note search or enumeration, use note_search or note_list with owner filters when the project, provider, or session is known. Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
+    "For linked Project Notes, use note_tree_read to inspect the tree, note_set_parent to reparent or detach, note_move to change owner, and note_rename for filenames. Never put a library or session note into the association tree.",
+    "note_write and note_append preserve managed frontmatter; send Markdown body content or a complete Markdown document without trying to replace noteId or owner metadata.",
     "For GTD tasks inside notes, use note_gtd_list, note_gtd_create, note_gtd_update, or note_gtd_delete instead of overwriting full notes. A GTD task is a :::gtd status block; use status done to complete a task. If repeated task text requires an occurrence, ask the user to choose before a write or delete.",
     "Memory tools (report_search, report_read, report_list) are read-only. They supplement the Report Sources already in the prompt — they do not replace them.",
     "When Report Sources already cite a reportId, call report_read to expand the full digest instead of report_search.",

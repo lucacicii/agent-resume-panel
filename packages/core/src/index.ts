@@ -680,7 +680,7 @@ export {
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION
 } from "./mcp/server";
-export type { NoteToolContext } from "./mcp/tools";
+export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {
   handleSessionSearch,

@@ -8,7 +8,7 @@ import {
   type NoteGtdTask
 } from "../notes/gtd";
 import { isGtdStatus, type GtdStatus } from "../gtd/types";
-import type { NoteToolContext } from "./tools";
+import { noteResponse, summarizeNote, type NoteToolContext } from "./tools";
 
 const statusSchema = z.enum(["inbox", "next", "waiting", "someday", "reference", "done"]);
 
@@ -45,6 +45,7 @@ interface GtdSummary extends NoteGtdTask {
   scope: string;
   relMdPath: string;
   projectPath?: string;
+  note?: Record<string, unknown>;
 }
 
 function summary(record: NoteRecord, task: NoteGtdTask): GtdSummary {
@@ -54,7 +55,8 @@ function summary(record: NoteRecord, task: NoteGtdTask): GtdSummary {
     title: record.title || record.filename,
     scope: record.scope,
     relMdPath: record.relMdPath,
-    projectPath: record.projectPath
+    projectPath: record.projectPath,
+    note: summarizeNote(record)
   };
 }
 
@@ -65,7 +67,13 @@ async function loadRecord(ctx: NoteToolContext, noteId: string): Promise<NoteRec
 }
 
 function result(label: string, value: unknown): { content: Array<{ type: "text"; text: string }> } {
-  return { content: [{ type: "text", text: `${label}\n${JSON.stringify(value, null, 2)}` }] };
+  if (Array.isArray(value)) {
+    return noteResponse(label, { items: value });
+  }
+  return noteResponse(label, {
+    ...(value && typeof value === "object" ? value : { value }),
+    data: value
+  });
 }
 
 export async function handleNoteGtdList(

@@ -10,7 +10,7 @@ import {
 
 const DEFAULT_MAX_ITERATIONS = 5;
 
-export type NoteOperation = "search" | "read" | "create" | "write" | "append" | "delete";
+export type NoteOperation = "search" | "read" | "create" | "write" | "append" | "delete" | "rename" | "move" | "link";
 export type SessionOperation = "search" | "list" | "read";
 
 export interface TouchedNote {
@@ -65,7 +65,7 @@ export interface ToolLoopResult {
 
 function toolImpact(toolName: string): AgentToolImpact {
   if (["note_delete", "note_gtd_delete"].includes(toolName)) return "delete";
-  if (["note_create", "note_write", "note_append", "note_gtd_create", "note_gtd_update", "session_set_gtd"].includes(toolName)) return "write";
+  if (["note_create", "note_write", "note_append", "note_gtd_create", "note_gtd_update", "note_set_parent", "note_move", "note_rename", "session_set_gtd"].includes(toolName)) return "write";
   if (toolName === "session_resume") return "launch";
   return "read";
 }
@@ -114,7 +114,11 @@ const NOTE_TOOL_OPERATIONS: Record<string, NoteOperation> = {
   note_gtd_list: "search",
   note_gtd_create: "append",
   note_gtd_update: "write",
-  note_gtd_delete: "delete"
+  note_gtd_delete: "delete",
+  note_tree_read: "read",
+  note_set_parent: "link",
+  note_move: "move",
+  note_rename: "rename"
 };
 
 const SESSION_TOOL_OPERATIONS: Record<string, SessionOperation> = {
@@ -140,15 +144,18 @@ function extractTouchedNotes(toolName: string, text: string): TouchedNote[] {
 
   const candidates = extractJsonObjects(text);
   const notes: TouchedNote[] = [];
+  const seen = new Map<string, TouchedNote>();
 
-  for (const obj of candidates) {
-    const arrays = Array.isArray(obj) ? obj : [obj];
-    for (const item of arrays) {
-      const noteId = typeof item?.noteId === "string" ? item.noteId : undefined;
-      if (!noteId) {
-        continue;
-      }
-      notes.push({
+  function visit(value: unknown): void {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    const noteId = typeof item.noteId === "string" ? item.noteId : undefined;
+    if (noteId) {
+      const next: TouchedNote = {
         noteId,
         title: typeof item.title === "string" ? item.title : undefined,
         scope: typeof item.scope === "string" ? item.scope : undefined,
@@ -156,9 +163,25 @@ function extractTouchedNotes(toolName: string, text: string): TouchedNote[] {
         projectPath: typeof item.projectPath === "string" ? item.projectPath : undefined,
         contentPreview: typeof item.contentPreview === "string" ? item.contentPreview : undefined,
         operation
-      });
+      };
+      const existing = seen.get(noteId);
+      if (existing) {
+        Object.assign(existing, {
+          title: next.title || existing.title,
+          scope: next.scope || existing.scope,
+          relMdPath: next.relMdPath || existing.relMdPath,
+          projectPath: next.projectPath || existing.projectPath,
+          contentPreview: next.contentPreview || existing.contentPreview
+        });
+      } else {
+        seen.set(noteId, next);
+        notes.push(next);
+      }
     }
+    for (const child of Object.values(item)) visit(child);
   }
+
+  for (const obj of candidates) visit(obj);
 
   return notes;
 }

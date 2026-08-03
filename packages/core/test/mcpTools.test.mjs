@@ -79,6 +79,12 @@ async function connectClient(server) {
   return client;
 }
 
+function parseToolJson(result) {
+  const text = result.content?.[0]?.text || "";
+  const start = text.search(/[\[{]/);
+  return start >= 0 ? JSON.parse(text.slice(start)) : undefined;
+}
+
 test("MCP server exposes all note, report, and session tools", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
@@ -96,8 +102,12 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_gtd_list",
       "note_gtd_update",
       "note_list",
+      "note_move",
       "note_read",
+      "note_rename",
       "note_search",
+      "note_set_parent",
+      "note_tree_read",
       "note_write",
       "report_list",
       "report_read",
@@ -507,6 +517,124 @@ test("note_delete removes the note", async () => {
 
     const after = await store.getNote(record.noteId);
     assert.equal(after, undefined);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note MCP creates and reads linked Project Note trees", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const rootResult = await client.callTool({
+      name: "note_create",
+      arguments: { scope: "project", projectPath: "/tmp/mcp-tree", title: "Root", body: "Root body" }
+    });
+    const root = parseToolJson(rootResult).note;
+    const childResult = await client.callTool({
+      name: "note_create",
+      arguments: { parentNoteId: root.noteId, title: "Child", body: "Child body" }
+    });
+    const child = parseToolJson(childResult).note;
+    assert.equal(child.owner.scope, "project");
+    assert.equal(child.link.parentNoteId, root.noteId);
+
+    const list = parseToolJson(await client.callTool({
+      name: "note_list",
+      arguments: { rootOnly: true, scope: "project" }
+    }));
+    assert.deepEqual(list.items.map((item) => item.noteId), [root.noteId]);
+
+    const tree = parseToolJson(await client.callTool({
+      name: "note_tree_read",
+      arguments: { noteId: child.noteId }
+    }));
+    assert.equal(tree.rootNoteId, root.noteId);
+    assert.equal(tree.currentNoteId, child.noteId);
+    assert.equal(tree.tree.children[0].noteId, child.noteId);
+    assert.equal(tree.nodeCount, 2);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note MCP reparenting enforces Project Note tree invariants", async () => {
+  const { ctx, store } = await setupTestContext();
+  const a = await store.createProjectNote("/tmp/mcp-links", "# A");
+  const b = await store.createProjectNote("/tmp/mcp-links", "# B");
+  const library = await store.createLibraryNote("# Library");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const linked = await client.callTool({
+      name: "note_set_parent",
+      arguments: { noteId: b.noteId, parentNoteId: a.noteId }
+    });
+    assert.equal(parseToolJson(linked).parentNoteId, a.noteId);
+
+    const cycle = await client.callTool({
+      name: "note_set_parent",
+      arguments: { noteId: a.noteId, parentNoteId: b.noteId }
+    });
+    assert.equal(cycle.isError, true);
+    assert.match(cycle.content[0].text, /cycle/i);
+
+    const invalid = await client.callTool({
+      name: "note_set_parent",
+      arguments: { noteId: library.noteId, parentNoteId: a.noteId }
+    });
+    assert.equal(invalid.isError, true);
+    assert.match(invalid.content[0].text, /project note/i);
+
+    const detached = await client.callTool({
+      name: "note_set_parent",
+      arguments: { noteId: b.noteId, parentNoteId: null }
+    });
+    assert.equal(parseToolJson(detached).parentNoteId, null);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note MCP preserves frontmatter through write/append and detaches on cross-scope move", async () => {
+  const { ctx, store } = await setupTestContext();
+  const root = await store.createProjectNote("/tmp/mcp-move", "# Root\n\nroot");
+  const child = await store.createLinkedChildNote(root.noteId, "# Child\n\nold");
+  const original = await store.readNoteContent(child.noteId);
+  const idLine = original.match(/^id: .*$/m)?.[0];
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    await client.callTool({ name: "note_write", arguments: { noteId: child.noteId, content: "# Updated\n\nnew body" } });
+    await client.callTool({ name: "note_append", arguments: { noteId: child.noteId, content: "appended" } });
+    const afterWrite = await store.readNoteContent(child.noteId);
+    assert.ok(idLine && afterWrite.includes(idLine));
+    assert.ok(afterWrite.includes("Updated"));
+    assert.ok(afterWrite.includes("appended"));
+
+    const moved = await client.callTool({
+      name: "note_move",
+      arguments: { noteId: child.noteId, scope: "library" }
+    });
+    assert.equal(parseToolJson(moved).detachedFromTree, true);
+    const roots = parseToolJson(await client.callTool({
+      name: "note_list",
+      arguments: { rootOnly: true }
+    }));
+    assert.ok(roots.items.some((item) => item.noteId === child.noteId));
+
+    const renamed = await client.callTool({
+      name: "note_rename",
+      arguments: { noteId: child.noteId, filename: "renamed-child.md" }
+    });
+    assert.equal(parseToolJson(renamed).note.filename, "renamed-child.md");
   } finally {
     await client.close();
     await server.close();
