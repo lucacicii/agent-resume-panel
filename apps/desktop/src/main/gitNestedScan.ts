@@ -49,17 +49,27 @@ export interface TerminalGitInfoResult {
   nestedRepos: NestedGitRepoWithBranch[];
 }
 
+export interface GitRemoteBranch {
+  remote: string;
+  name: string;
+  fullName: string;
+}
+
 export interface TerminalGitBranchesRepoResult {
   root: string;
   displayPath: string;
   current: string | null;
   branches: string[];
+  localBranches: string[];
+  remoteBranches: GitRemoteBranch[];
 }
 
 export interface TerminalGitBranchesResult {
   mode: TerminalGitMode;
   current?: string | null;
   branches?: string[];
+  localBranches?: string[];
+  remoteBranches?: GitRemoteBranch[];
   repoRoot?: string | null;
   repos?: TerminalGitBranchesRepoResult[];
 }
@@ -248,25 +258,34 @@ export async function queryGitInfoWithNested(
 
 async function listGitBranchesForRepo(
   repoRoot: string
-): Promise<{ current: string | null; branches: string[] }> {
+): Promise<{
+  current: string | null;
+  branches: string[];
+  localBranches: string[];
+  remoteBranches: GitRemoteBranch[];
+}> {
   try {
-    const { stdout } = await execFileAsync("git", ["-C", repoRoot, "branch", "--list"], {
-      timeout: 5000,
-      maxBuffer: 1024 * 1024
-    });
-    const branches: string[] = [];
-    let current: string | null = null;
-    for (const line of stdout.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith("* ")) {
-        current = trimmed.slice(2).trim();
-        branches.push(current);
-      } else {
-        branches.push(trimmed);
-      }
-    }
-    return { current, branches };
+    const [{ stdout: localOutput }, { stdout: remoteOutput }, current] = await Promise.all([
+      execFileAsync("git", ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/heads"], {
+        timeout: 5000,
+        maxBuffer: 1024 * 1024
+      }),
+      execFileAsync("git", ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)%09%(symref)", "refs/remotes/origin"], {
+        timeout: 5000,
+        maxBuffer: 1024 * 1024
+      }),
+      queryGitBranch(repoRoot)
+    ]);
+    const localBranches = localOutput.split("\n").map((line) => line.trim()).filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    const remoteBranches = remoteOutput.split("\n").flatMap((line): GitRemoteBranch[] => {
+      const [fullName = "", symbolicTarget = ""] = line.split("\t");
+      const trimmed = fullName.trim();
+      if (!trimmed.startsWith("origin/") || symbolicTarget.trim() || trimmed === "origin/HEAD") return [];
+      const name = trimmed.slice("origin/".length);
+      return name ? [{ remote: "origin", name, fullName: trimmed }] : [];
+    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    return { current, branches: localBranches, localBranches, remoteBranches };
   } catch (error) {
     throw new Error(formatExecError(error));
   }
@@ -279,7 +298,7 @@ export async function listGitBranchesWithNested(
   const info = await queryGitInfoWithNested(rawCwd, nestedScan);
 
   if (info.mode === "none") {
-    return { mode: "none", current: null, branches: [], repoRoot: null, repos: [] };
+    return { mode: "none", current: null, branches: [], localBranches: [], remoteBranches: [], repoRoot: null, repos: [] };
   }
 
   if (info.mode === "direct" && info.repoRoot) {
@@ -288,6 +307,8 @@ export async function listGitBranchesWithNested(
       mode: "direct",
       current: listed.current,
       branches: listed.branches,
+      localBranches: listed.localBranches,
+      remoteBranches: listed.remoteBranches,
       repoRoot: info.repoRoot
     };
   }
@@ -300,14 +321,18 @@ export async function listGitBranchesWithNested(
         root: repo.root,
         displayPath: repo.displayPath,
         current: listed.current,
-        branches: listed.branches
+        branches: listed.branches,
+        localBranches: listed.localBranches,
+        remoteBranches: listed.remoteBranches
       });
     } catch {
       repos.push({
         root: repo.root,
         displayPath: repo.displayPath,
         current: repo.branch,
-        branches: []
+        branches: [],
+        localBranches: [],
+        remoteBranches: []
       });
     }
   }
@@ -315,12 +340,45 @@ export async function listGitBranchesWithNested(
   return { mode: "nested", repos };
 }
 
-export async function checkoutGitBranch(repoRoot: string, branch: string): Promise<void> {
+async function gitRefExists(repoRoot: string, ref: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["-C", repoRoot, "show-ref", "--verify", "--quiet", ref], {
+      timeout: 5000,
+      maxBuffer: 4096
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function checkoutGitBranch(repoRoot: string, branch: string, remote?: string): Promise<void> {
   if (!isValidGitBranchRef(branch)) {
     throw new Error(`无效的分支名: ${branch}`);
   }
+  if (remote && !isValidGitBranchRef(remote)) {
+    throw new Error(`无效的远程仓库名: ${remote}`);
+  }
+  const localBranch = branch.trim();
   try {
-    await execFileAsync("git", ["-C", repoRoot, "checkout", branch.trim()], {
+    if (!remote) {
+      await execFileAsync("git", ["-C", repoRoot, "checkout", localBranch], {
+        timeout: 15000,
+        maxBuffer: 1024 * 1024
+      });
+      return;
+    }
+
+    const remoteName = remote.trim();
+    const remoteRef = `${remoteName}/${localBranch}`;
+    if (!(await gitRefExists(repoRoot, `refs/remotes/${remoteRef}`))) {
+      throw new Error(`远程分支不存在: ${remoteRef}`);
+    }
+    const hasLocalBranch = await gitRefExists(repoRoot, `refs/heads/${localBranch}`);
+    const checkoutArgs = hasLocalBranch
+      ? ["-C", repoRoot, "checkout", localBranch]
+      : ["-C", repoRoot, "checkout", "--track", "-b", localBranch, remoteRef];
+    await execFileAsync("git", checkoutArgs, {
       timeout: 15000,
       maxBuffer: 1024 * 1024
     });

@@ -68,6 +68,7 @@ type TerminalGitInfo = Awaited<ReturnType<DesktopApi["terminalGitInfo"]>>;
 type TerminalGitBranches = Awaited<ReturnType<DesktopApi["terminalGitBranches"]>>;
 type GitChange = GitStatusResult["staged"][number];
 type GitLog = Awaited<ReturnType<DesktopApi["terminalGitLog"]>>;
+type GitLogCommit = GitLog["commits"][number];
 type GitShow = Awaited<ReturnType<DesktopApi["terminalGitShow"]>>;
 type GitGraphLayout = GitLog["layout"];
 type GitGraphRow = GitGraphLayout["rows"][number];
@@ -250,6 +251,12 @@ type WorkbenchContextMenu = {
   projectId?: string;
   session?: AgentSession;
   editorLabel?: string;
+};
+type GitLogContextMenu = {
+  x: number;
+  y: number;
+  commit: GitLogCommit;
+  branchName: string | null;
 };
 type WorkbenchNewSessionTarget =
   | { channel: "cli"; provider: AgentProvider }
@@ -733,6 +740,7 @@ function GitChangesPanel({
   ];
   const allEntries = uniqueGitChanges(sections.flatMap((section) => section.entries));
   const hasEntries = sections.some((section) => section.entries.length > 0);
+  const hasSelectedEntries = allEntries.some((change) => selected.has(gitChangeKey(change)));
   const tracking = trackingForRoot(git, gitRoot);
   const trackingLabel = tracking?.branch
     ? tracking.upstream
@@ -800,13 +808,17 @@ function GitChangesPanel({
       <div className="wb-git-commit-actions">
         <button
           type="button"
-          className="wb-git-action-btn wb-git-commit-auto-btn"
-          disabled={commitBusy || !gitRoot}
+          className={`wb-git-action-btn wb-git-commit-auto-btn${commitBusy ? " is-loading" : ""}`}
+          disabled={commitBusy || !gitRoot || !hasSelectedEntries}
+          aria-busy={commitBusy}
           aria-label={labels.autoGenerate}
           title={labels.autoGenerate}
           onClick={onSuggestCommit}
         >
-          {commitBusy ? <ThemeIcon name="loader" className="spin" size={16} /> : <ThemeIcon name="sparkles" size={16} />}
+          {commitBusy ? <>
+            <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} />
+            <span className="wb-git-cyber-loading" aria-hidden="true" />
+          </> : <ThemeIcon name="sparkles" size={16} />}
         </button>
         <button
           type="button"
@@ -1282,8 +1294,29 @@ function GitGraphPortals({ gitLog, gitShow }: { gitLog: GitLog | null; gitShow: 
   if (!gitLog || gitShow) return null;
   return <>{hosts.map((host, index) => {
     const row = gitLog.layout.rows[index];
-    return row ? createPortal(<span className="react-git-graph-gutter wb-git-log-graph-gutter" key={gitLog.commits[index]?.hash || index}><GitGraphSvg row={row} layout={gitLog.layout} />{row.laneLabel && row.commitColumn != null ? <span className={`wb-git-graph-lane-label wb-git-graph-lane-label-${row.laneLabelColorIndex ?? row.colorIndex ?? 0}`} style={{ left: `${graphColumnX(gitLog.layout, row.commitColumn) + 16}px` }}>{row.laneLabel}</span> : null}</span>, host) : null;
+    return row ? createPortal(<span className="react-git-graph-gutter wb-git-log-graph-gutter" key={gitLog.commits[index]?.hash || index}><GitGraphSvg row={row} layout={gitLog.layout} /></span>, host) : null;
   })}</>;
+}
+
+function gitCommitBranchNames(commit: GitLogCommit): string[] {
+  return [...new Set([...(commit.refs.heads || []), ...(commit.refs.remotes || [])])];
+}
+
+function GitCommitBranches({ commit }: { commit: GitLogCommit }): React.JSX.Element | null {
+  const branches = gitCommitBranchNames(commit);
+  if (!branches.length) return null;
+  const localBranches = new Set(commit.refs.heads || []);
+  return <span className="wb-git-log-branches" aria-label={branches.join(", ")}>
+    {branches.map((branch) => <span
+      className={`wb-git-log-decoration-pill${localBranches.has(branch) ? " is-local" : " is-remote"}${commit.refs.isHead && commit.refs.primaryLabel === branch ? " is-head" : ""}`}
+      data-branch-name={branch}
+      title={branch}
+      key={branch}
+    >
+      <ThemeIcon name="git-branch" size={10} aria-hidden="true" />
+      <span>{branch}</span>
+    </span>)}
+  </span>;
 }
 
 function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Element | null {
@@ -1334,15 +1367,20 @@ function GitBranchSelector({
   repoRoot: string;
   value: string;
   ariaLabel: string;
-  onChange: (branch: string) => void;
-}): ReactPortal | null {
+  onChange: (selection: { branch: string; remote?: string }) => void;
+}): React.JSX.Element | null {
+  const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [branches, setBranches] = useState<TerminalGitBranches | null>(null);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const requestRef = useRef(0);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
+    if (!visible) setOpen(false);
   }, [visible]);
 
   useEffect(() => {
@@ -1368,19 +1406,91 @@ function GitBranchSelector({
       if (requestRef.current === requestId) setLoading(false);
     });
     return () => { requestRef.current += 1; };
-  }, [repoRoot, visible]);
+  }, [repoRoot, value, visible]);
 
-  const directBranches = branches?.mode === "direct" ? branches.branches || [] : [];
-  if (!host || !visible || !repoRoot || branches?.mode !== "direct" || !directBranches.length) return null;
-  return createPortal(<select
-    className="react-git-branch-select wb-git-repo-select"
-    value={value}
-    aria-label={ariaLabel}
-    disabled={loading}
-    onChange={(event) => onChange(event.target.value)}
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".react-git-branch-control")) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (!host || !visible || !repoRoot) return null;
+  const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
+  const remoteBranches = branches?.mode === "direct" ? branches.remoteBranches || [] : [];
+  const openMenu = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPosition({
+        top: Math.min(rect.bottom + 4, window.innerHeight - 16),
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 268))
+      });
+    }
+    setOpen((current) => !current);
+  };
+  const selectBranch = (selection: { branch: string; remote?: string }) => {
+    setOpen(false);
+    onChange(selection);
+  };
+  const trigger = <button
+    ref={buttonRef}
+    type="button"
+    className="react-git-branch-control react-git-branch-trigger"
+    aria-label={`${ariaLabel}: ${value || "-"}`}
+    aria-haspopup="menu"
+    aria-expanded={open}
+    onClick={openMenu}
   >
-    {directBranches.map((branch) => <option value={branch} key={branch}>{branch}</option>)}
-  </select>, host);
+    <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
+    <span>{value || "-"}</span>
+    <ThemeIcon name="chevron-down" size={11} aria-hidden="true" />
+  </button>;
+  const menu = open ? createPortal(<div
+    className="react-git-branch-control react-git-branch-popover wb-git-branch-popover"
+    style={menuPosition || undefined}
+    role="menu"
+    aria-label={ariaLabel}
+  >
+    <div className="wb-git-branch-list">
+      {loading && !branches ? <p className="wb-git-branch-empty muted" role="status">{t("desktop.common.loading")}</p> : <>
+        <div className="wb-git-branch-repo-group">
+          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitLocalBranches")}</div>
+          {localBranches.length ? localBranches.map((branch) => <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={branch === value}
+            className={`wb-git-branch-item${branch === value ? " active" : ""}`}
+            key={branch}
+            onClick={() => selectBranch({ branch })}
+          >{branch}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoLocalBranches")}</p>}
+        </div>
+        <div className="wb-git-branch-repo-group">
+          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitRemoteBranches")}</div>
+          {remoteBranches.length ? remoteBranches.map((branch) => <button
+            type="button"
+            role="menuitem"
+            className="wb-git-branch-item"
+            title={branch.fullName}
+            key={branch.fullName}
+            onClick={() => selectBranch({ branch: branch.name, remote: branch.remote })}
+          >{branch.fullName}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoRemoteBranches")}</p>}
+        </div>
+      </>}
+    </div>
+  </div>, document.body) : null;
+  return <>{createPortal(trigger, host)}{menu}</>;
 }
 
 function BranchGraphNavigation({
@@ -2053,6 +2163,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
+  const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
@@ -2266,6 +2377,22 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!gitLogContextMenu) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-log-context-menu")) setGitLogContextMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setGitLogContextMenu(null);
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [gitLogContextMenu]);
 
   useEffect(() => {
     if (!newSessionPicker) return;
@@ -4377,13 +4504,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure(action === "push" ? "desktop.workbench.gitPushFailed" : "desktop.workbench.gitPullFailed", error); }
   };
 
-  const checkoutGitPanelBranch = async (branch: string) => {
-    if (!gitRoot || !branch) return;
+  const checkoutGitPanelBranch = async (selection: { branch: string; remote?: string }) => {
+    if (!gitRoot || !selection.branch) return;
     try {
-      await desktopApi().terminalGitCheckout({ cwd: gitRoot, branch, repoRoot: gitRoot });
+      await desktopApi().terminalGitCheckout({ cwd: gitRoot, ...selection, repoRoot: gitRoot });
       await refreshGit();
       currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-      notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", branch);
+      const displayBranch = selection.remote ? `${selection.remote}/${selection.branch}` : selection.branch;
+      notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", displayBranch);
     } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
   };
 
@@ -4415,11 +4543,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   const canCommit = Boolean(gitRoot && commitMessage.trim() && selectedCommitPaths.length && !commitBusy);
 
   const suggestCommit = async () => {
-    if (!gitRoot) return;
+    if (!gitRoot || !selectedCommitPaths.length) return;
     try {
       setCommitBusy(true);
       setCommitSuggestion(null);
-      const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot });
+      const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths: selectedCommitPaths });
       setCommitMessage(result.message);
       setCommitSuggestion(result);
     } catch (error) { notifyGitFailure("desktop.workbench.gitCommitGenerateFailed", error); }
@@ -4517,12 +4645,31 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.gitShowLoadFailed", error); }
   };
 
+  const openGitLogContextMenu = (event: React.MouseEvent, commit: GitLogCommit) => {
+    event.preventDefault();
+    const branchTarget = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-branch-name]")
+      : null;
+    setGitLogContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      commit,
+      branchName: branchTarget?.dataset.branchName || gitCommitBranchNames(commit)[0] || null
+    });
+  };
+
+  const copyGitLogValue = (value: string) => {
+    desktopApi().clipboardWriteText?.(value);
+    setGitLogContextMenu(null);
+  };
+
   const closeGitHistory = () => {
     const returnToExplorer = gitHistoryContext?.kind === "file";
     gitLogRequestRef.current += 1;
     setGitHistoryContext(null);
     setGitLog(null);
     setGitShow(null);
+    setGitLogContextMenu(null);
     setGitLogLoading(false);
     setGitLogError("");
     if (returnToExplorer) setSide("files");
@@ -5092,7 +5239,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
                     <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
                   </>
-                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><ThemeIcon name="circle" size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>
+                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)} onContextMenu={(event) => openGitLogContextMenu(event, commit)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><ThemeIcon name="circle" size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><GitCommitBranches commit={commit} /><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>
                       : <p className="muted wb-git-empty">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryEmpty" : "desktop.workbench.gitLogEmpty")}</p>}
             </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
               {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
@@ -5104,6 +5251,18 @@ export function WorkbenchPanel(): ReactPortal | null {
       </main>
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
+    {gitLogContextMenu ? <div
+      className="wb-context-menu wb-git-log-context-menu"
+      role="menu"
+      style={{
+        left: Math.max(8, Math.min(gitLogContextMenu.x, window.innerWidth - 220)),
+        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 96 : 56)))
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button type="button" role="menuitem" onClick={() => copyGitLogValue(gitLogContextMenu.commit.hash)}>{t("desktop.workbench.gitCopyCommitHash")}</button>
+      {gitLogContextMenu.branchName ? <button type="button" role="menuitem" title={gitLogContextMenu.branchName} onClick={() => copyGitLogValue(gitLogContextMenu.branchName!)}>{t("desktop.workbench.gitCopyBranchName")}</button> : null}
+    </div> : null}
     {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
       <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>
       {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
@@ -5283,7 +5442,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
-    <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(branch) => void checkoutGitPanelBranch(branch)} />
+    <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     <Status kind={status.kind}>{status.text}</Status>
   </section>

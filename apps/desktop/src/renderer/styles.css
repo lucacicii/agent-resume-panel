@@ -5594,7 +5594,8 @@ code {
   order: 0;
 }
 
-#react-workbench .react-git-repo-select {
+#react-workbench .react-git-repo-select,
+#react-workbench .react-git-branch-trigger {
   order: 1;
   max-width: 150px;
 }
@@ -6061,6 +6062,48 @@ code {
   color: var(--text);
 }
 
+.react-git-branch-trigger {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  appearance: none;
+  padding: 3px 6px;
+  border: 1px solid var(--color-separator, var(--border));
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-control-bg, var(--bg));
+  color: var(--color-label-primary, var(--text));
+  font-family: var(--font-family-mono, Menlo, Monaco, "Courier New", monospace);
+  font-size: var(--font-size-caption, 11px);
+  cursor: pointer;
+}
+
+.react-git-branch-trigger span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.react-git-branch-trigger:hover,
+.react-git-branch-trigger:focus-visible,
+.react-git-branch-trigger[aria-expanded="true"] {
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+.react-git-branch-trigger:focus-visible {
+  outline: 2px solid var(--color-focus-ring, var(--accent));
+  outline-offset: 1px;
+}
+
+.react-git-branch-popover {
+  min-width: 240px;
+}
+
 .wb-git-actions {
   display: flex;
   align-items: center;
@@ -6309,7 +6352,7 @@ code {
   border: none;
   background: transparent;
   text-align: left;
-  padding: 6px 10px 6px 2px;
+  padding: 3px 10px 3px 2px;
   cursor: pointer;
   color: var(--text);
   display: flex;
@@ -6327,20 +6370,53 @@ code {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  gap: 1px;
+}
+
+.wb-git-log-branches {
+  display: flex;
+  align-items: center;
   gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.wb-git-log-branches::-webkit-scrollbar {
+  display: none;
 }
 
 .wb-git-log-decoration-pill {
   display: inline-flex;
   align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
   padding: 1px 5px;
-  border-radius: var(--radius-full);
-  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
-  color: var(--muted);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+  background: var(--color-control-bg);
+  color: var(--color-label-secondary);
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  line-height: 1.15;
   white-space: nowrap;
+}
+
+.wb-git-log-decoration-pill.is-local {
+  border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-separator));
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-control-bg));
+  color: var(--color-accent);
+}
+
+.wb-git-log-decoration-pill.is-head {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.wb-git-log-decoration-pill.is-remote {
+  background: var(--color-fill-secondary);
 }
 
 .wb-git-log-subject {
@@ -7038,6 +7114,10 @@ code {
 
 .wb-git-commit-auto-btn {
   margin-right: auto;
+}
+
+.wb-git-cyber-loading {
+  display: none;
 }
 
 .wb-git-commit-actions .wb-git-action-btn.primary {
@@ -12402,6 +12482,53 @@ body::before {
 [data-visual-theme="cyberpunk"] .active [data-theme-icon] { transform: skewX(-10deg) scale(1.08); }
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] button:hover [data-theme-icon] { animation: cyber-glitch-hit 180ms steps(2,end) both; }
 
+[data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading {
+  position: relative;
+  overflow: hidden;
+  opacity: 1;
+  border-color: rgba(0,240,255,.72);
+  background: rgba(0,240,255,.10);
+  box-shadow: inset 0 0 8px rgba(0,240,255,.18), 0 0 10px rgba(255,43,214,.18);
+}
+[data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading .wb-git-default-loading {
+  display: none;
+}
+[data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 10px;
+  border-block: 1px solid rgba(0,240,255,.82);
+  background: linear-gradient(90deg, rgba(0,240,255,.16), rgba(255,43,214,.30));
+  box-shadow: 0 0 7px rgba(0,240,255,.48);
+}
+[data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading::before {
+  content: "";
+  position: absolute;
+  inset: 4px 1px auto;
+  height: 1px;
+  background: var(--cyber-hazard);
+  box-shadow: 0 0 5px rgba(255,212,0,.9);
+}
+[data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading::after {
+  content: "";
+  position: absolute;
+  inset: -2px auto -2px -5px;
+  width: 5px;
+  background: linear-gradient(90deg, transparent, var(--cyber-cyan), #fff, var(--cyber-magenta), transparent);
+  filter: drop-shadow(0 0 4px rgba(0,240,255,.9));
+  animation: wb-git-cyber-scan 760ms linear infinite;
+}
+
+@keyframes wb-git-cyber-scan {
+  to { transform: translateX(25px); }
+}
+
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading::after {
+  left: 5px;
+  animation: none;
+}
+
 [data-visual-theme="cyberpunk"] .theme-preview-cyberpunk .theme-preview-art {
   height: 62px;
   color: #eaffff;
@@ -12431,6 +12558,7 @@ body::before {
   [data-visual-theme="cyberpunk"] *,
   [data-visual-theme="cyberpunk"] *::before,
   [data-visual-theme="cyberpunk"] *::after { animation: none !important; transition-duration: 0ms !important; }
+  [data-visual-theme="cyberpunk"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading::after { left: 5px; }
 }
 
 /* --------------------------------------------------------------------------

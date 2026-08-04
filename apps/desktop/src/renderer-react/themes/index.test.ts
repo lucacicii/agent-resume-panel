@@ -48,6 +48,14 @@ describe("built-in visual theme manifests", () => {
     expect(styles).toContain('[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cyber-chrome-breath-line');
   });
 
+  it("keeps Git commit generation visible as a Cyberpunk scan in full and reduced motion", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
+    expect(styles).toContain('.wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading');
+    expect(styles).toContain('@keyframes wb-git-cyber-scan');
+    expect(styles).toContain('[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading::after');
+    expect(styles).toMatch(/prefers-reduced-motion:[\s\S]*?wb-git-commit-auto-btn\.is-loading \.wb-git-cyber-loading::after/);
+  });
+
   it("styles every visible scrollbar for Cyberpunk and DOS while leaving Classic native", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
     expect(styles).toContain('GLOBAL THEME-AWARE SCROLLBARS');

@@ -97,6 +97,10 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_append",
       "note_create",
       "note_delete",
+      "note_executable_append_result",
+      "note_executable_configure",
+      "note_executable_inspect",
+      "note_executable_validate_tree",
       "note_gtd_create",
       "note_gtd_delete",
       "note_gtd_list",
@@ -119,6 +123,190 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "session_search",
       "session_set_gtd"
     ]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("executable MCP tools deterministically configure and validate a note tree", async () => {
+  const { ctx } = await setupTestContext();
+  const root = await ctx.notesStore.createProjectNote("/tmp/executable-project", "# Root\n\nJira evidence.\n");
+  const child = await ctx.notesStore.createLinkedChildNote(root.noteId, "# Child\n\nTask evidence.\n");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const childInspect = parseToolJson(await client.callTool({
+      name: "note_executable_inspect",
+      arguments: { noteId: child.noteId }
+    }));
+    const childConfigured = parseToolJson(await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: child.noteId,
+        expectedContentHash: childInspect.contentHash,
+        mode: "leaf",
+        session: {
+          provider: "codex",
+          prompt: "Implement the Jira task.\n:::\nPreserve this line."
+        }
+      }
+    }));
+    assert.equal(childConfigured.changed, true);
+    const childContent = await ctx.notesStore.readNoteContent(child.noteId);
+    assert.match(childContent, /agent-resume-executable:start/);
+    assert.match(childContent, /:::session codex idle/);
+    assert.match(childContent, /\\:::/);
+    assert.equal((childContent.match(/:::session/g) || []).length, 1);
+
+    const rootInspect = parseToolJson(await client.callTool({
+      name: "note_executable_inspect",
+      arguments: { noteId: root.noteId }
+    }));
+    const configured = parseToolJson(await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: root.noteId,
+        expectedContentHash: rootInspect.contentHash,
+        mode: "composite",
+        run: { status: "awaiting_approval", text: "Execute Jira children in order." },
+        children: [{ noteId: child.noteId, text: "JIRA-2 Child task" }]
+      }
+    }));
+    assert.equal(configured.changed, true);
+    assert.equal(configured.parsed.noteChildren[0].noteId, child.noteId);
+    assert.equal(configured.parsed.runs[0].status, "awaiting_approval");
+
+    const repeated = parseToolJson(await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: root.noteId,
+        expectedContentHash: configured.contentHash,
+        mode: "composite",
+        run: { status: "awaiting_approval", text: "Execute Jira children in order." },
+        children: [{ noteId: child.noteId, text: "JIRA-2 Child task" }]
+      }
+    }));
+    assert.equal(repeated.changed, false);
+
+    const validation = parseToolJson(await client.callTool({
+      name: "note_executable_validate_tree",
+      arguments: { rootNoteId: root.noteId }
+    }));
+    assert.equal(validation.valid, true);
+    assert.deepEqual(validation.counts, {
+      nodes: 2,
+      composite: 1,
+      leaf: 1,
+      passive: 0,
+      completed: 0
+    });
+
+    const firstResult = parseToolJson(await client.callTool({
+      name: "note_executable_append_result",
+      arguments: { noteId: child.noteId, status: "completed", text: "Verified.", dedupeKey: "jira:JIRA-2" }
+    }));
+    const duplicateResult = parseToolJson(await client.callTool({
+      name: "note_executable_append_result",
+      arguments: { noteId: child.noteId, status: "completed", text: "Verified again.", dedupeKey: "jira:JIRA-2" }
+    }));
+    assert.equal(firstResult.changed, true);
+    assert.equal(duplicateResult.changed, false);
+    assert.equal(((await ctx.notesStore.readNoteContent(child.noteId)).match(/agent-resume-result:jira:JIRA-2/g) || []).length, 1);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("executable MCP configure preserves active runs and rejects stale hashes", async () => {
+  const { ctx } = await setupTestContext();
+  const root = await ctx.notesStore.createProjectNote("/tmp/executable-active", "# Root\n");
+  const child = await ctx.notesStore.createLinkedChildNote(root.noteId, "# Child\n\n:::session codex running\nWork\n:::\n");
+  await ctx.notesStore.writeNoteContent(root.noteId, `# Root\n\n:::note-child running note=${child.noteId}\nChild\n:::\n\n:::run executing\nRun\n:::\n`);
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+  try {
+    const inspected = parseToolJson(await client.callTool({ name: "note_executable_inspect", arguments: { noteId: root.noteId } }));
+    const preserved = parseToolJson(await client.callTool({
+      name: "note_executable_configure",
+      arguments: { noteId: root.noteId, expectedContentHash: inspected.contentHash, mode: "none" }
+    }));
+    assert.equal(preserved.preservedActive, true);
+    assert.match(await ctx.notesStore.readNoteContent(root.noteId), /:::run executing/);
+
+    const stale = await client.callTool({
+      name: "note_executable_configure",
+      arguments: { noteId: root.noteId, expectedContentHash: "deadbeef", mode: "none" }
+    });
+    assert.equal(stale.isError, true);
+    assert.match(stale.content[0].text, /content conflict/i);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("executable MCP configure retains matching settled state on re-sync", async () => {
+  const { ctx } = await setupTestContext();
+  const root = await ctx.notesStore.createProjectNote("/tmp/executable-resync", "# Root\n");
+  const child = await ctx.notesStore.createLinkedChildNote(root.noteId, "# Child\n");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+  try {
+    await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: child.noteId,
+        mode: "leaf",
+        session: { provider: "codex", prompt: "Initial prompt" }
+      }
+    });
+    await ctx.notesStore.writeValidatedNoteContent(
+      child.noteId,
+      (await ctx.notesStore.readNoteContent(child.noteId))
+        .replace(":::session codex idle", ":::session codex settled native=codex/session-1")
+    );
+    await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: root.noteId,
+        mode: "composite",
+        children: [{ noteId: child.noteId, text: "Child" }]
+      }
+    });
+    await ctx.notesStore.writeValidatedNoteContent(
+      root.noteId,
+      (await ctx.notesStore.readNoteContent(root.noteId))
+        .replace(":::note-child idle", ":::note-child done")
+        .replace(":::run awaiting_approval", ":::run completed")
+    );
+
+    await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: child.noteId,
+        mode: "leaf",
+        session: { provider: "claude", prompt: "Refreshed prompt" }
+      }
+    });
+    await client.callTool({
+      name: "note_executable_configure",
+      arguments: {
+        noteId: root.noteId,
+        mode: "composite",
+        children: [{ noteId: child.noteId, text: "Child refreshed" }]
+      }
+    });
+
+    const childContent = await ctx.notesStore.readNoteContent(child.noteId);
+    const rootContent = await ctx.notesStore.readNoteContent(root.noteId);
+    assert.match(childContent, /:::session codex settled native=codex\/session-1/);
+    assert.match(childContent, /Refreshed prompt/);
+    assert.match(rootContent, /:::note-child done/);
+    assert.match(rootContent, /:::run completed/);
+    assert.match(rootContent, /Child refreshed/);
   } finally {
     await client.close();
     await server.close();

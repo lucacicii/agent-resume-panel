@@ -61,9 +61,19 @@ import {
   sessionSearchSchema,
   sessionSetGtdSchema
 } from "./sessionTools";
+import {
+  handleNoteExecutableAppendResult,
+  handleNoteExecutableConfigure,
+  handleNoteExecutableInspect,
+  handleNoteExecutableValidateTree,
+  noteExecutableAppendResultSchema,
+  noteExecutableConfigureSchema,
+  noteExecutableInspectSchema,
+  noteExecutableValidateTreeSchema
+} from "./executableTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
-export const MCP_SERVER_VERSION = "0.3.0";
+export const MCP_SERVER_VERSION = "0.4.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -87,7 +97,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks."
+      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Never hand-author :::run, :::note-child, :::session, or :::result directives when executable tools are available; use note_executable_configure and note_executable_append_result."
     }
   );
 
@@ -217,6 +227,52 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       inputSchema: noteRenameSchema
     },
     async (args: { noteId: string; filename: string }) => runNoteTool(() => handleNoteRename(args, ctx))
+  );
+
+  server.registerTool(
+    "note_executable_inspect",
+    {
+      description: "Inspect executable Markdown state, role, content hash, run history, and session bindings for one Note.",
+      inputSchema: noteExecutableInspectSchema
+    },
+    async (args: { noteId: string }) => runNoteTool(() => handleNoteExecutableInspect(args, ctx))
+  );
+
+  server.registerTool(
+    "note_executable_configure",
+    {
+      description: "Deterministically and atomically inject or remove the MCP-managed :::run, :::note-child, and :::session directives for a Project Note. Use this instead of writing executable Markdown manually.",
+      inputSchema: noteExecutableConfigureSchema
+    },
+    async (args: {
+      noteId: string;
+      expectedContentHash?: string;
+      mode: "composite" | "leaf" | "none";
+      preserveActive?: boolean;
+      run?: { status: "draft" | "awaiting_approval"; text?: string };
+      children?: Array<{ noteId: string; status?: "idle" | "planned"; text: string }>;
+      session?: { provider: string; status?: "idle" | "planned"; prompt: string };
+    }) => runNoteTool(() => handleNoteExecutableConfigure(args, ctx))
+  );
+
+  server.registerTool(
+    "note_executable_append_result",
+    {
+      description: "Append a validated :::result directive to a Project Note, optionally idempotent by dedupeKey.",
+      inputSchema: noteExecutableAppendResultSchema
+    },
+    async (args: { noteId: string; status: "completed" | "failed" | "partial" | "blocked"; text: string; dedupeKey?: string }) =>
+      runNoteTool(() => handleNoteExecutableAppendResult(args, ctx))
+  );
+
+  server.registerTool(
+    "note_executable_validate_tree",
+    {
+      description: "Validate a linked executable Project Note tree, including scopes, bindings, parent links, roles, and nesting limits.",
+      inputSchema: noteExecutableValidateTreeSchema
+    },
+    async (args: { rootNoteId: string; maxNodes?: number; maxDepth?: number }) =>
+      runNoteTool(() => handleNoteExecutableValidateTree(args, ctx))
   );
 
   server.registerTool(

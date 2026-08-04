@@ -29,6 +29,7 @@ const GIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 export interface GitCommitRefs {
   heads: string[];
+  remotes: string[];
   tags: string[];
   isHead: boolean;
   primaryLabel: string | null;
@@ -178,7 +179,7 @@ function normalizeGitDecorations(raw: string): string {
 function parseGitRefs(decorations: string): GitCommitRefs {
   const normalized = normalizeGitDecorations(decorations);
   if (!normalized) {
-    return { heads: [], tags: [], isHead: false, primaryLabel: null };
+    return { heads: [], remotes: [], tags: [], isHead: false, primaryLabel: null };
   }
 
   const heads: string[] = [];
@@ -200,18 +201,29 @@ function parseGitRefs(decorations: string): GitCommitRefs {
       }
     }
 
-    if (/^tag:\s*/i.test(part)) {
-      const tagName = part.replace(/^tag:\s*/i, "").trim();
+    const remotePointerMatch = part.match(/^(refs\/remotes\/\S+)\s*->\s*(refs\/remotes\/\S+)$/);
+    if (remotePointerMatch) {
+      for (const ref of remotePointerMatch.slice(1)) {
+        const remoteName = ref.slice("refs/remotes/".length);
+        if (remoteName && !remotes.includes(remoteName)) remotes.push(remoteName);
+      }
+      continue;
+    }
+
+    if (/^tag:\s*/i.test(part) || part.startsWith("refs/tags/")) {
+      const tagName = part.replace(/^tag:\s*/i, "").replace(/^refs\/tags\//, "").trim();
       if (tagName && !tags.includes(tagName)) tags.push(tagName);
       continue;
     }
 
-    if (/^[a-zA-Z0-9_.-]+\//.test(part)) {
-      if (!remotes.includes(part)) remotes.push(part);
+    if (part.startsWith("refs/remotes/")) {
+      const remoteName = part.slice("refs/remotes/".length);
+      if (remoteName && !remotes.includes(remoteName)) remotes.push(remoteName);
       continue;
     }
 
-    if (!heads.includes(part)) heads.push(part);
+    const headName = part.replace(/^refs\/heads\//, "");
+    if (headName && !heads.includes(headName)) heads.push(headName);
   }
 
   let primaryLabel: string | null = null;
@@ -223,7 +235,7 @@ function parseGitRefs(decorations: string): GitCommitRefs {
     primaryLabel = slash >= 0 ? remote.slice(slash + 1) : remote;
   }
 
-  return { heads, tags, isHead, primaryLabel };
+  return { heads, remotes, tags, isHead, primaryLabel };
 }
 
 function parseParentsField(raw: string): string[] {
@@ -282,6 +294,7 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
       [
         "log",
         "--all",
+        "--decorate=full",
         "--topo-order",
         `-n${n}`,
         "--date=unix",
@@ -326,6 +339,7 @@ export async function queryGitFileLog(
         "log",
         "--branches",
         "--remotes",
+        "--decorate=full",
         "--follow",
         "--topo-order",
         `-n${n}`,
@@ -420,29 +434,34 @@ async function queryGitCommitFileDiffSides(
   };
 }
 
-async function collectGitCommitContext(repoRoot: string): Promise<{ statusText: string; diffText: string }> {
-  const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1"], 10000);
-  let diffText = "";
-  try {
-    diffText = await gitExec(repoRoot, ["diff", "--cached"], 15000);
-  } catch {
-    diffText = "";
+export async function collectGitCommitContext(
+  repoRoot: string,
+  rawPaths: string[]
+): Promise<{ statusText: string; diffText: string }> {
+  const paths = normalizeCommitPaths(rawPaths);
+  if (!paths.length) {
+    throw new Error("请选择要生成提交信息的文件");
   }
-  if (!diffText.trim()) {
-    try {
-      diffText = await gitExec(repoRoot, ["diff"], 15000);
-    } catch {
-      diffText = "";
-    }
-  }
+
+  const pathspec = ["--", ...paths];
+  const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1", ...pathspec], 10000);
+  const [stagedDiff, unstagedDiff] = await Promise.all([
+    gitExec(repoRoot, ["diff", "--cached", ...pathspec], 15000).catch(() => ""),
+    gitExec(repoRoot, ["diff", ...pathspec], 15000).catch(() => "")
+  ]);
+  const diffText = [
+    stagedDiff.trim() ? `[staged changes]\n${stagedDiff.trim()}` : "",
+    unstagedDiff.trim() ? `[unstaged changes]\n${unstagedDiff.trim()}` : ""
+  ].filter(Boolean).join("\n\n");
   return { statusText, diffText };
 }
 
 async function suggestCommitMessage(
   repoRoot: string,
+  paths: string[],
   systemLocale?: string
 ): Promise<{ message: string; source: "llm" | "heuristic"; fallbackReason?: "unconfigured" | "request-failed" }> {
-  const { statusText, diffText } = await collectGitCommitContext(repoRoot);
+  const { statusText, diffText } = await collectGitCommitContext(repoRoot, paths);
   if (!statusText.trim()) {
     throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
   }
@@ -457,12 +476,12 @@ async function suggestCommitMessage(
     return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "unconfigured" };
   }
 
-  const paths = await preparePanelDatabasesFromSettings();
-  await ensureExtensionCatalogSchema(paths.catalogDb);
+  const databasePaths = await preparePanelDatabasesFromSettings();
+  await ensureExtensionCatalogSchema(databasePaths.catalogDb);
 
   try {
     const result = await suggestCommitMessageFromGitContext(llm, statusText, diffText, commitPrompt);
-    await recordLlmUsage(paths.desktopDb, {
+    await recordLlmUsage(databasePaths.desktopDb, {
       kind: "chat",
       source: "git-commit",
       jobKey: `git-commit:${repoRoot}`,
@@ -473,7 +492,7 @@ async function suggestCommitMessage(
     });
     return { message: result.message, source: "llm" };
   } catch (error) {
-    await recordLlmUsage(paths.desktopDb, {
+    await recordLlmUsage(databasePaths.desktopDb, {
       kind: "chat",
       source: "git-commit",
       jobKey: `git-commit:${repoRoot}`,
@@ -485,9 +504,9 @@ async function suggestCommitMessage(
 }
 
 export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
-  safeHandle("terminal:gitSuggestCommit", async (_event, args: { repoRoot: string }) => {
+  safeHandle("terminal:gitSuggestCommit", async (_event, args: { repoRoot: string; paths: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
-    return suggestCommitMessage(repoRoot, getSystemLocale());
+    return suggestCommitMessage(repoRoot, args.paths, getSystemLocale());
   });
 
   safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string; paths?: string[] }) => {

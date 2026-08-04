@@ -223,6 +223,25 @@ export class NotesStore {
     return { ...updated, content: nextContent, materialized };
   }
 
+  /** Write already-validated note content with an atomic rename and no materialization. */
+  async writeValidatedNoteContent(noteId: string, content: string): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) throw new Error("Note not found.");
+    const target = this.absolutePath(record);
+    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fs.writeFile(temporary, content, "utf8");
+      await fs.rename(temporary, target);
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => {});
+      throw error;
+    }
+    await this.refreshNoteFromDisk(record);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) throw new Error("Note disappeared after write.");
+    return updated;
+  }
+
   /**
    * Materialize `:::note-child` blocks without `note=` into linked project notes.
    * Each child gets a title heading + empty `:::session` block.

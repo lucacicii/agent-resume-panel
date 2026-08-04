@@ -437,7 +437,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
   safeHandle(
     "terminal:gitCheckout",
-    async (_event, args: { cwd: string; branch: string; repoRoot?: string }) => {
+    async (_event, args: { cwd: string; branch: string; remote?: string; repoRoot?: string }) => {
       const cwd = resolveCwd(args.cwd);
       const info = await queryGitInfoWithNested(cwd);
       if (info.mode === "none") {
@@ -447,7 +447,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         throw new Error("请指定要切换分支的仓库");
       }
       const targetRoot = args.repoRoot?.trim() ? resolveCwd(args.repoRoot) : info.repoRoot || cwd;
-      await checkoutGitBranch(targetRoot, args.branch);
+      await checkoutGitBranch(targetRoot, args.branch, args.remote);
       const refreshed = await queryGitInfoWithNested(targetRoot);
       return { branch: refreshed.branch, repoRoot: targetRoot };
     }

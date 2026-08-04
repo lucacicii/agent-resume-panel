@@ -45,6 +45,9 @@ export type RunBlockStatus = (typeof RUN_BLOCK_STATUSES)[number];
 export const RESULT_BLOCK_STATUSES = ["completed", "failed", "partial", "blocked"] as const;
 export type ResultBlockStatus = (typeof RESULT_BLOCK_STATUSES)[number];
 
+export const EXECUTABLE_MANAGED_START = "<!-- agent-resume-executable:start -->";
+export const EXECUTABLE_MANAGED_END = "<!-- agent-resume-executable:end -->";
+
 export interface NoteChildBlock {
   kind: "note-child";
   /** Document order (0-based among note-child blocks). */
@@ -311,7 +314,7 @@ export function formatNoteChildBlock(input: {
   text: string;
   noteId?: string;
 }): string {
-  const text = input.text.trim();
+  const text = sanitizeExecutableBlockText(input.text);
   const open = input.noteId
     ? `:::note-child ${input.status} note=${input.noteId}`
     : `:::note-child ${input.status}`;
@@ -328,19 +331,139 @@ export function formatSessionBlock(input: {
   const open = input.native
     ? `:::session ${provider} ${input.status} native=${input.native}`
     : `:::session ${provider} ${input.status}`;
-  const body = (input.text ?? "").trim();
+  const body = sanitizeExecutableBlockText(input.text ?? "");
   // Keep empty bodies as open + close on consecutive lines so sibling blocks are not swallowed.
   return body ? `${open}\n${body}\n:::` : `${open}\n:::`;
 }
 
 export function formatRunBlock(input: { status: RunBlockStatus; text?: string }): string {
-  const body = (input.text ?? "").trim();
+  const body = sanitizeExecutableBlockText(input.text ?? "");
   return body ? `:::run ${input.status}\n${body}\n:::` : `:::run ${input.status}\n:::`;
 }
 
 export function formatResultBlock(input: { status: ResultBlockStatus; text: string }): string {
-  const text = input.text.trim();
+  const text = sanitizeExecutableBlockText(input.text);
   return `:::result ${input.status}\n${text}\n:::`;
+}
+
+/** Prevent untrusted directive bodies from closing their own block. */
+export function sanitizeExecutableBlockText(value: string): string {
+  return String(value || "")
+    .replace(/^(\s{0,3}):::\s*$/gm, "$1\\:::")
+    .trim();
+}
+
+export function executableContentHash(markdown: string): string {
+  // FNV-1a is sufficient for optimistic concurrency and keeps this module browser-safe.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < markdown.length; index += 1) {
+    hash ^= markdown.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export interface ExecutableManagedConfiguration {
+  mode: "composite" | "leaf" | "none";
+  run?: { status: "draft" | "awaiting_approval"; text?: string };
+  children?: Array<{ noteId: string; status?: "idle" | "planned"; text: string }>;
+  session?: { provider: string; status?: "idle" | "planned"; prompt: string };
+}
+
+export interface ExecutableManagedUpdate {
+  content: string;
+  changed: boolean;
+  preservedActive: boolean;
+}
+
+function managedRegion(markdown: string): { start: number; end: number } | undefined {
+  const start = markdown.indexOf(EXECUTABLE_MANAGED_START);
+  if (start < 0) return undefined;
+  const endMarker = markdown.indexOf(EXECUTABLE_MANAGED_END, start + EXECUTABLE_MANAGED_START.length);
+  if (endMarker < 0) throw new Error("Executable managed region is missing its end marker.");
+  return { start, end: endMarker + EXECUTABLE_MANAGED_END.length };
+}
+
+function removeLegacyExecutionDirectives(markdown: string): string {
+  const parsed = parseExecutableNote(markdown);
+  const blocks = [...parsed.noteChildren, ...parsed.sessions, ...parsed.runs]
+    .sort((left, right) => right.blockStart - left.blockStart);
+  let next = markdown;
+  for (const block of blocks) {
+    next = `${next.slice(0, block.blockStart)}${next.slice(block.blockEnd)}`;
+  }
+  return next.replace(/\n{3,}/g, "\n\n").trimEnd();
+}
+
+function formatManagedConfiguration(
+  configuration: ExecutableManagedConfiguration,
+  existing: ParsedExecutableNote
+): string {
+  if (configuration.mode === "none") return "";
+  const blocks: string[] = [];
+  if (configuration.mode === "composite") {
+    const children = configuration.children || [];
+    if (!children.length) throw new Error("Composite executable notes require at least one child.");
+    if (configuration.session) throw new Error("Composite executable notes cannot define a session.");
+    const existingIds = existing.noteChildren.map((child) => child.noteId || "");
+    const nextIds = children.map((child) => child.noteId);
+    const sameChildren = existingIds.length === nextIds.length &&
+      existingIds.every((noteId, index) => noteId === nextIds[index]);
+    for (const [index, child] of children.entries()) {
+      blocks.push(formatNoteChildBlock({
+        noteId: child.noteId,
+        status: sameChildren ? existing.noteChildren[index]?.status || "idle" : child.status || "idle",
+        text: sanitizeExecutableBlockText(child.text)
+      }));
+    }
+    blocks.push(formatRunBlock({
+      status: sameChildren
+        ? existing.runs[0]?.status || configuration.run?.status || "awaiting_approval"
+        : configuration.run?.status || "awaiting_approval",
+      text: sanitizeExecutableBlockText(configuration.run?.text || "")
+    }));
+  } else {
+    if (!configuration.session) throw new Error("Leaf executable notes require a session.");
+    if (configuration.children?.length || configuration.run) {
+      throw new Error("Leaf executable notes cannot define run or child blocks.");
+    }
+    const prior = existing.sessions.length === 1 ? existing.sessions[0] : undefined;
+    blocks.push(formatSessionBlock({
+      provider: prior?.provider || configuration.session.provider,
+      status: prior?.status || configuration.session.status || "idle",
+      native: prior?.native,
+      text: sanitizeExecutableBlockText(configuration.session.prompt)
+    }));
+  }
+  return [EXECUTABLE_MANAGED_START, "## 自动执行", "", blocks.join("\n\n"), EXECUTABLE_MANAGED_END].join("\n");
+}
+
+/**
+ * Deterministically replace the MCP-owned executable region. Existing executing
+ * flows are immutable by default, including legacy notes without managed markers.
+ */
+export function configureExecutableManagedSection(
+  markdown: string,
+  configuration: ExecutableManagedConfiguration,
+  preserveActive = true
+): ExecutableManagedUpdate {
+  const parsed = parseExecutableNote(markdown);
+  if (preserveActive && parsed.runs.some((run) => run.status === "executing")) {
+    return { content: markdown, changed: false, preservedActive: true };
+  }
+
+  const region = managedRegion(markdown);
+  const formatted = formatManagedConfiguration(configuration, parsed);
+  let next: string;
+  if (region) {
+    next = `${markdown.slice(0, region.start)}${formatted}${markdown.slice(region.end)}`;
+  } else {
+    const base = removeLegacyExecutionDirectives(markdown);
+    next = formatted ? `${base}${base ? "\n\n" : ""}${formatted}\n` : `${base}\n`;
+  }
+  next = next.replace(/\n{3,}/g, "\n\n");
+  if (!next.endsWith("\n")) next += "\n";
+  return { content: next, changed: next !== markdown, preservedActive: false };
 }
 
 /** Default child note body: H1 title + empty session block. */

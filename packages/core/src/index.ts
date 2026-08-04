@@ -723,6 +723,12 @@ export {
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {
+  handleNoteExecutableInspect,
+  handleNoteExecutableConfigure,
+  handleNoteExecutableAppendResult,
+  handleNoteExecutableValidateTree
+} from "./mcp/executableTools";
+export {
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,

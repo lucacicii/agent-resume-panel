@@ -351,20 +351,25 @@ export interface DesktopApi {
     mode: "none" | "direct" | "nested";
     current?: string | null;
     branches?: string[];
+    localBranches?: string[];
+    remoteBranches?: Array<{ remote: string; name: string; fullName: string }>;
     repoRoot?: string | null;
     repos?: Array<{
       root: string;
       displayPath: string;
       current: string | null;
       branches: string[];
+      localBranches: string[];
+      remoteBranches: Array<{ remote: string; name: string; fullName: string }>;
     }>;
   }>;
   terminalGitCheckout(args: {
     cwd: string;
     branch: string;
+    remote?: string;
     repoRoot?: string;
   }): Promise<{ branch: string | null; repoRoot?: string | null }>;
-  terminalGitSuggestCommit(args: { repoRoot: string }): Promise<{
+  terminalGitSuggestCommit(args: { repoRoot: string; paths: string[] }): Promise<{
     message: string;
     source: "llm" | "heuristic";
     fallbackReason?: "unconfigured" | "request-failed";
@@ -387,6 +392,7 @@ export interface DesktopApi {
       decorations: string;
       refs: {
         heads: string[];
+        remotes: string[];
         tags: string[];
         isHead: boolean;
         primaryLabel: string | null;
@@ -432,6 +438,7 @@ export interface DesktopApi {
       decorations: string;
       refs: {
         heads: string[];
+        remotes: string[];
         tags: string[];
         isHead: boolean;
         primaryLabel: string | null;

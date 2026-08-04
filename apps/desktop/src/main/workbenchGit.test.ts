@@ -9,7 +9,7 @@ vi.mock("electron", () => ({
   ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }
 }));
 
-import { queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
+import { collectGitCommitContext, queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
 
 const roots: string[] = [];
 
@@ -67,6 +67,9 @@ describe("queryGitFileLog", () => {
     expect(result.repoRoot).toBe(fs.realpathSync(repo));
     expect(result.repoPath).toBe("new.txt");
     expect(hashes).toEqual(new Set([oldHash, renameHash, featureHash, mainHash, remoteHash]));
+    expect(result.commits.find((commit) => commit.hash === featureHash)?.refs.heads).toContain("feature");
+    expect(result.commits.find((commit) => commit.hash === mainHash)?.refs.heads).toContain("main");
+    expect(result.commits.find((commit) => commit.hash === remoteHash)?.refs.remotes).toContain("origin/remote-only");
     expect(result.layout.rows).toHaveLength(result.commits.length);
   });
 
@@ -95,6 +98,35 @@ describe("queryGitFileLog", () => {
 
     await expect(queryGitFileLog(repo, repo)).rejects.toThrow("不是文件");
     await expect(queryGitFileLog(repo, outsideFile)).rejects.toThrow("路径超出允许范围");
+  });
+});
+
+describe("collectGitCommitContext", () => {
+  it("collects staged and unstaged diffs only for selected paths", async () => {
+    const repo = createRepo();
+    commitFile(repo, "selected-staged.txt", "staged base\n", "add staged fixture");
+    commitFile(repo, "selected-unstaged.txt", "unstaged base\n", "add unstaged fixture");
+    commitFile(repo, "not-selected.txt", "ignored base\n", "add ignored fixture");
+    fs.writeFileSync(path.join(repo, "selected-staged.txt"), "selected staged marker\n");
+    fs.writeFileSync(path.join(repo, "selected-unstaged.txt"), "selected unstaged marker\n");
+    fs.writeFileSync(path.join(repo, "not-selected.txt"), "unselected marker\n");
+    git(repo, "add", "--", "selected-staged.txt");
+
+    const context = await collectGitCommitContext(repo, ["selected-staged.txt", "selected-unstaged.txt"]);
+
+    expect(context.statusText).toContain("selected-staged.txt");
+    expect(context.statusText).toContain("selected-unstaged.txt");
+    expect(context.statusText).not.toContain("not-selected.txt");
+    expect(context.diffText).toContain("[staged changes]");
+    expect(context.diffText).toContain("selected staged marker");
+    expect(context.diffText).toContain("[unstaged changes]");
+    expect(context.diffText).toContain("selected unstaged marker");
+    expect(context.diffText).not.toContain("unselected marker");
+  });
+
+  it("rejects an empty selected path list", async () => {
+    const repo = createRepo();
+    await expect(collectGitCommitContext(repo, [])).rejects.toThrow("请选择要生成提交信息的文件");
   });
 });
 
