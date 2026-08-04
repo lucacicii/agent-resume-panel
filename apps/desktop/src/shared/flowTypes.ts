@@ -7,6 +7,7 @@ export interface FlowNode {
   nodeId: string;
   flowId: string;
   noteId: string;
+  externalKey?: string;
   title: string;
   provider: string;
   bindingMode: FlowSessionBindingMode;
@@ -34,6 +35,8 @@ export interface FlowWorkflow {
   projectPath: string;
   name: string;
   rootNoteId: string;
+  sourceKind?: string;
+  sourceKey?: string;
   status: FlowRunStatus;
   revision: number;
   createdAtMs: number;
@@ -62,7 +65,6 @@ export interface FlowRunNode {
   nodeId: string;
   status: FlowNodeStatus;
   attempt: number;
-  resultBaseline: number;
   provider?: string;
   sessionId?: string;
   resultStatus?: FlowResultStatus;
@@ -84,6 +86,7 @@ export interface FlowRun {
 export interface FlowGraphNodeInput {
   nodeId?: string;
   noteId?: string;
+  externalKey?: string;
   title: string;
   provider: string;
   bindingMode: FlowSessionBindingMode;

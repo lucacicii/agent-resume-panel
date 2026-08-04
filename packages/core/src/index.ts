@@ -44,7 +44,6 @@ export type {
   DesktopVisualThemeId,
   DesktopThemeEffects,
   WorkbenchSettings,
-  NotesSettings,
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
@@ -97,44 +96,9 @@ export {
   deleteNoteGtdTask
 } from "./notes/gtd";
 export type { NoteGtdTask } from "./notes/gtd";
-export {
-  parseExecutableNote,
-  formatNoteChildBlock,
-  formatSessionBlock,
-  formatRunBlock,
-  formatResultBlock,
-  defaultChildNoteBody,
-  updateNoteChildBlocks,
-  updateSessionBlocks,
-  updateRunBlocks,
-  appendResultBlock,
-  applyMaterializedNoteIds,
-  listUnmaterializedNoteChildren,
-  parseNativeSessionRef,
-  formatNativeSessionRef,
-  getPrimaryRun,
-  noteChildTitle,
-  isCompositeExecutableParsed,
-  currentExecutableChild,
-  EXECUTABLE_MAX_NEST_DEPTH,
-  NOTE_CHILD_STATUSES,
-  SESSION_BLOCK_STATUSES,
-  RUN_BLOCK_STATUSES,
-  RESULT_BLOCK_STATUSES
-} from "./notes/executable";
-export type {
-  NoteChildBlock,
-  SessionBlock,
-  RunBlock,
-  ResultBlock,
-  ExecutableBlock,
-  ParsedExecutableNote,
-  NoteChildStatus,
-  SessionBlockStatus,
-  RunBlockStatus,
-  ResultBlockStatus
-} from "./notes/executable";
-export type { NoteSessionBinding, NoteRunRow } from "./notes/executableBindings";
+export * from "./flow/types";
+export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
+export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -508,7 +472,7 @@ export {
   listLegacySessionNotes,
   listLegacyProjectNotes
 } from "./notes/catalogNotes";
-export { NotesStore, type ImportNotesResult, type ExecutableNoteProbe } from "./notes/store";
+export { NotesStore, type ImportNotesResult } from "./notes/store";
 export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
 export {
   listAllNoteLinks,
@@ -723,12 +687,6 @@ export {
 } from "./mcp/server";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
-export {
-  handleNoteExecutableInspect,
-  handleNoteExecutableConfigure,
-  handleNoteExecutableAppendResult,
-  handleNoteExecutableValidateTree
-} from "./mcp/executableTools";
 export {
   handleSessionSearch,
   handleSessionList,

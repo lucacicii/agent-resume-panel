@@ -58,7 +58,7 @@ import {
   onWorkbenchLaunchSession,
   waitForCatalogSession,
   type LaunchSessionRequest
-} from "../notes/executableRunActions";
+} from "./sessionLaunchBridge";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -199,8 +199,8 @@ type PendingWorkbenchSession = {
   title: string;
   createdAt: number;
   knownSessionKeys: string[];
-  /** When set, resolve Notes executable-run launch waiter after catalog binds. */
-  notesRequestId?: string;
+  /** When set, resolve Flow-run launch waiter after catalog binds. */
+  flowRequestId?: string;
 };
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
@@ -2308,7 +2308,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
     for (const pending of [...pendingSessions].sort((a, b) => a.createdAt - b.createdAt)) {
       const known = new Set(pending.knownSessionKeys);
-      // Notes executable launches: match same project first; prefer provider, but allow
+      // Flow launches: match same project first; prefer provider, but allow
       // any new CLI session in that project (catalog indexing can lag / rename paths).
       const candidates = sessions
         .filter((session) => {
@@ -2316,8 +2316,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           if (known.has(key) || claimed.has(key)) return false;
           if (session.provider === "chat") return false;
           if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath)) return false;
-          // Wider window for notes-driven launches (CLI agents can take a while to register).
-          const windowMs = pending.notesRequestId ? 180_000 : 15_000;
+          // Wider window for Flow-driven launches (CLI agents can take a while to register).
+          const windowMs = pending.flowRequestId ? 180_000 : 15_000;
           if (session.updatedAt < pending.createdAt - windowMs) return false;
           return true;
         })
@@ -2343,12 +2343,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals(bindSessions);
     for (const pending of pendingSessions) {
       const sessionKeyValue = assignments.get(pending.terminalKey);
-      if (!sessionKeyValue || !pending.notesRequestId) continue;
+      if (!sessionKeyValue || !pending.flowRequestId) continue;
       const colon = sessionKeyValue.indexOf(":");
       const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
       const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
       emitWorkbenchSessionLaunched({
-        requestId: pending.notesRequestId,
+        requestId: pending.flowRequestId,
         ok: true,
         catalogProvider,
         sessionId
@@ -2826,7 +2826,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     provider: AgentProvider,
     projectPath: string,
     title: string,
-    notesRequestId?: string
+    flowRequestId?: string
   ) => {
     const pending: PendingWorkbenchSession = {
       key: `pending:${terminalKey}`,
@@ -2836,7 +2836,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       title,
       createdAt: Date.now(),
       knownSessionKeys: sessions.map(sessionKey),
-      notesRequestId
+      flowRequestId
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
@@ -2869,12 +2869,12 @@ export function WorkbenchPanel(): ReactPortal | null {
           selectProject(cwd);
           setActive(true);
 
-          // Notes executable runs only launch CLI sessions (ACP is ignored).
+          // Flow runs only launch CLI sessions (ACP is ignored).
           if (request.channel === "acp") {
             emitWorkbenchSessionLaunched({
               requestId: request.requestId,
               ok: false,
-              error: "Executable note runs use CLI sessions only (ACP is disabled)."
+              error: "Flow nodes use CLI sessions only (ACP is disabled)."
             });
             return;
           }

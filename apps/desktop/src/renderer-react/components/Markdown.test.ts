@@ -17,13 +17,14 @@ describe("renderMarkdown", () => {
     expect(html).toContain(":::gtd later");
   });
 
-  it("renders executable note-child / session / run cards", () => {
+  it("leaves legacy executable directives as inert Markdown", () => {
     const md = [
       ":::note-child idle note=abc",
       "Child task",
       ":::",
       "",
       ":::session codex planned",
+      "Session prompt",
       ":::",
       "",
       ":::run awaiting_approval",
@@ -31,12 +32,11 @@ describe("renderMarkdown", () => {
       ":::"
     ].join("\n");
     const html = renderMarkdown(md);
-    expect(html).toContain("note-child-card");
-    expect(html).toContain("@child/idle");
-    expect(html).toContain("note-session-card");
-    expect(html).toContain("@session/codex/planned");
-    expect(html).toContain("note-run-card");
-    expect(html).toContain("@run/awaiting_approval");
-    expect(html).not.toContain(":::note-child");
+    expect(html).not.toContain("note-exec-card");
+    expect(html).not.toContain("note-child-card");
+    expect(html).toContain(":::note-child idle note=abc");
+    expect(html).toContain("Child task");
+    expect(html).toContain(":::session codex planned");
+    expect(html).toContain(":::run awaiting_approval");
   });
 });

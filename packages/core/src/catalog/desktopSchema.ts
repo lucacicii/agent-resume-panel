@@ -7,6 +7,11 @@ ALTER TABLE sync_state ADD COLUMN warning TEXT;
 
 export const DESKTOP_AGENT_TRACE_MIGRATION_SQL = `
 ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
+ALTER TABLE flow_workflows ADD COLUMN source_kind TEXT;
+ALTER TABLE flow_workflows ADD COLUMN source_key TEXT;
+ALTER TABLE flow_nodes ADD COLUMN external_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_workflows_source ON flow_workflows(source_kind, source_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_nodes_external ON flow_nodes(flow_id, external_key);
 `;
 
 export const DESKTOP_ONLY_SCHEMA_SQL = `
@@ -175,17 +180,19 @@ CREATE TABLE IF NOT EXISTS flow_workflows (
   project_path TEXT NOT NULL,
   name TEXT NOT NULL,
   root_note_id TEXT NOT NULL,
+  source_kind TEXT,
+  source_key TEXT,
   status TEXT NOT NULL DEFAULT 'idle',
   revision INTEGER NOT NULL DEFAULT 1,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_flow_workflows_project ON flow_workflows(project_id, updated_at_ms DESC);
-
 CREATE TABLE IF NOT EXISTS flow_nodes (
   node_id TEXT PRIMARY KEY,
   flow_id TEXT NOT NULL,
   note_id TEXT NOT NULL,
+  external_key TEXT,
   title TEXT NOT NULL,
   provider TEXT NOT NULL,
   binding_mode TEXT NOT NULL DEFAULT 'new-yolo',
@@ -200,7 +207,6 @@ CREATE TABLE IF NOT EXISTS flow_nodes (
 );
 CREATE INDEX IF NOT EXISTS idx_flow_nodes_flow ON flow_nodes(flow_id, priority, position_y, created_at_ms);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_nodes_note ON flow_nodes(note_id);
-
 CREATE TABLE IF NOT EXISTS flow_edges (
   edge_id TEXT PRIMARY KEY,
   flow_id TEXT NOT NULL,
@@ -236,7 +242,6 @@ CREATE TABLE IF NOT EXISTS flow_run_nodes (
   node_id TEXT NOT NULL,
   status TEXT NOT NULL,
   attempt INTEGER NOT NULL DEFAULT 1,
-  result_baseline INTEGER NOT NULL DEFAULT 0,
   provider TEXT,
   session_id TEXT,
   result_status TEXT,

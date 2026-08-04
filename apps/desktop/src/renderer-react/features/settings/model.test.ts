@@ -7,8 +7,6 @@ import {
   modelsDraftFromSettings,
   modelsPatch,
   normalizeOutputLanguage,
-  notesDraftFromSettings,
-  notesPatch,
   reportDraftFromSettings,
   reportPatch,
   sessionsDraftFromSettings,
@@ -246,21 +244,5 @@ describe("settings model", () => {
     expect(reset.agentHomes).toBeUndefined();
   });
 
-  it("reads and patches the Notes default session provider independently", () => {
-    expect(notesDraftFromSettings(settings).notesDefaultSessionProvider).toBe("codex");
-    expect(notesDraftFromSettings({ ...settings, notes: { defaultSessionProvider: "grok" } }).notesDefaultSessionProvider).toBe("grok");
-    expect(notesDraftFromSettings({ ...settings, notes: { defaultSessionProvider: "chat" } }).notesDefaultSessionProvider).toBe("codex");
 
-    const patch = notesPatch(settings, { ...notesDraftFromSettings(settings), notesDefaultSessionProvider: "claude" });
-    expect(patch.notes?.defaultSessionProvider).toBe("claude");
-
-    const invalid = notesPatch(settings, { ...notesDraftFromSettings(settings), notesDefaultSessionProvider: "chat" as never });
-    expect(invalid.notes?.defaultSessionProvider).toBe("codex");
-
-    const preserved = notesPatch(
-      { ...settings, notes: { defaultSessionProvider: "pi" } },
-      notesDraftFromSettings({ ...settings, notes: { defaultSessionProvider: "pi" } })
-    );
-    expect(preserved.notes?.defaultSessionProvider).toBe("pi");
-  });
 });

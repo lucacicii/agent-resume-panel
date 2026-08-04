@@ -72,46 +72,6 @@ const messages = {
   "desktop.notes.gtdListMeta": "{0} GTD tasks",
   "desktop.notes.noGtdTasks": "No GTD tasks found",
   "desktop.notes.slashGtdTask": "GTD task",
-  "desktop.notes.slashNoteChild": "Child note step",
-  "desktop.notes.slashNoteChildDetail": "Add a serial note-child block (auto-materializes on save)",
-  "desktop.notes.slashSession": "Execution session",
-  "desktop.notes.slashSessionDetail": "Declare a catalog session binding (default codex)",
-  "desktop.notes.slashRunApprove": "Run (await approval)",
-  "desktop.notes.slashRunApproveDetail": "Serial run of note-child chain; requires approval",
-  "desktop.notes.slashRunDraft": "Run (draft)",
-  "desktop.notes.slashRunDraftDetail": "Draft run block; not ready to approve yet",
-  "desktop.notes.slashResult": "Result block",
-  "desktop.notes.slashResultDetail": "Append an execution result summary",
-  "desktop.notes.execApproveRun": "Approve & run",
-  "desktop.notes.execStartStep": "Start session",
-  "desktop.notes.execMarkDone": "Mark step done",
-  "desktop.notes.execMarkFailed": "Mark step failed",
-  "desktop.notes.execApproving": "Approving…",
-  "desktop.notes.execStarting": "Starting…",
-  "desktop.notes.execSettling": "Settling…",
-  "desktop.notes.execApproved": "Approved {0}/{1}",
-  "desktop.notes.execStepStarted": "Started {0}/{1}",
-  "desktop.notes.execStepDone": "Step done",
-  "desktop.notes.execRunDone": "All done",
-  "desktop.notes.execStepFailed": "Failed",
-  "desktop.notes.execNoProject": "Project only",
-  "desktop.notes.execBarHint": "Executable run: {0}",
-  "desktop.notes.execMenuTitle": "Executable state",
-  "desktop.notes.execStepMarkDone": "Mark step done",
-  "desktop.notes.execStepMarkFailed": "Mark step failed",
-  "desktop.notes.execStepReset": "Reset step to planned",
-  "desktop.notes.execStepRunning": "Set step running",
-  "desktop.notes.execRunReset": "Reset run to awaiting approval",
-  "desktop.notes.execRunExecute": "Set run executing",
-  "desktop.notes.execSessionReset": "Reset session to idle",
-  "desktop.notes.execAppendStep": "Append new step",
-  "desktop.notes.execStateUpdated": "Executable state updated",
-  "desktop.notes.execStepAppended": "Step appended",
-  "desktop.notes.execResumeSession": "Resume session",
-  "desktop.notes.execNewSession": "New session",
-  "desktop.notes.execSessionResumed": "Session resumed",
-  "desktop.notes.execSessionStarted": "Session started",
-  "desktop.notes.execSessionNoTarget": "No catalog session to resume for this note.",
   "desktop.notes.linkTree": "Related notes",
   "desktop.notes.newLinkedChild": "New linked child note",
   "desktop.notes.setAsLinkedChild": "Set as child of…",
@@ -204,18 +164,7 @@ function installBridge() {
     notesCopyPath: async () => ({ path: "/notes/renderer.md" }),
     notesReveal: async () => ({ ok: true }),
     notesOpenFolder: async () => ({ ok: true }),
-    notesExecutableProbe: async ({ noteId }: { noteId: string }) => ({
-      runCount: noteId === "note-2" ? 1 : 0,
-      runStatus: "awaiting_approval",
-      hasRun: noteId === "note-2",
-      hasSession: noteId === "note-1",
-      sessionStatus: "idle",
-      asStep: undefined
-    }),
-    notesExecutableSetRunStatus: async () => ({ content: "# Renderer" }),
-    notesExecutableSetChildStatus: async () => ({ content: "# Renderer", parentNoteId: "note-2" }),
-    notesExecutableSetSessionStatus: async () => ({ content: "# Renderer" }),
-    notesExecutableAppendStep: async () => ({ content: "# Renderer", childNoteId: "note-4" })
+
   } as unknown as typeof window.agentResume;
   return { notesWrite, notesCreate, listSessions };
 }
@@ -332,128 +281,5 @@ describe("NotesPanel", () => {
     expect(screen.getByText("0 / 0").classList.contains("is-empty")).toBe(true);
   });
 
-  it("shows executable state actions in the note context menu and dispatches state fixes", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    const setRun = vi.spyOn(window.agentResume, "notesExecutableSetRunStatus");
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    const title = await screen.findByText("Executable state");
-    expect(title).toBeTruthy();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Set run executing" }));
-    await waitFor(() => expect(setRun).toHaveBeenCalledWith({ noteId: "note-2", status: "executing" }));
-  });
 
-  it("shows step actions for a note that is a child step of a run", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async ({ noteId }) => ({
-      runCount: 0,
-      runStatus: undefined,
-      hasRun: false,
-      hasSession: true,
-      sessionStatus: "running",
-      asStep: { parentNoteId: "note-2", childStatus: "running", parentRunStatus: "executing" }
-    }));
-    const setChild = vi.spyOn(window.agentResume, "notesExecutableSetChildStatus");
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark step done" }));
-    await waitFor(() => expect(setChild).toHaveBeenCalledWith({ childNoteId: "note-2", status: "done" }));
-  });
-
-  it("appends a new executable step from the note context menu", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    const append = vi.spyOn(window.agentResume, "notesExecutableAppendStep");
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Append new step" }));
-    await waitFor(() => expect(append).toHaveBeenCalledWith({ parentNoteId: "note-2" }));
-  });
-
-  it("shows only New session for a project note with a session and no native", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async () => ({
-      runCount: 0, runStatus: undefined, hasRun: false, hasSession: true,
-      sessionStatus: "idle", sessionProvider: "codex", sessionNativeRef: undefined, asStep: undefined
-    }));
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    expect(await screen.findByRole("menuitem", { name: "New session" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Resume session" })).toBeNull();
-  });
-
-  it("shows New session for a project note without a session block", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async () => ({
-      runCount: 0, runStatus: undefined, hasRun: false, hasSession: false,
-      sessionStatus: undefined, sessionProvider: undefined, sessionNativeRef: undefined, asStep: undefined
-    }));
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    expect(await screen.findByRole("menuitem", { name: "New session" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Resume session" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Reset session to idle" })).toBeNull();
-  });
-
-  it("shows only Resume session for a project note with a native session", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async () => ({
-      runCount: 0, runStatus: undefined, hasRun: false, hasSession: true,
-      sessionStatus: "running", sessionProvider: "codex",
-      sessionNativeRef: { provider: "codex", sessionId: "s-1" }, asStep: undefined
-    }));
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    expect(await screen.findByRole("menuitem", { name: "Resume session" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "New session" })).toBeNull();
-  });
-
-  it("shows Resume session for a session-scope note", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesList").mockImplementation(async () => [
-      libraryNote,
-      projectNote,
-      { noteId: "note-5", scope: "session", provider: "codex", agentSessionId: "sess-5", filename: "session.md", relDir: "sessions/codex", relMdPath: "notes/sessions/codex/session.md", title: "Session note", contentPreview: "session", createdAtMs: 5, updatedAtMs: 5 }
-    ]);
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Session note/ });
-    fireEvent.contextMenu(note);
-    expect(await screen.findByRole("menuitem", { name: "Resume session" })).toBeTruthy();
-  });
-
-  it("hides session actions for a chat/ACP provider", async () => {
-    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    installBridge();
-    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async () => ({
-      runCount: 0, runStatus: undefined, hasRun: false, hasSession: true,
-      sessionStatus: "running", sessionProvider: "chat",
-      sessionNativeRef: { provider: "chat", sessionId: "c-1" }, asStep: undefined
-    }));
-    render(<I18nProvider><NotesPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    const note = await screen.findByRole("button", { name: /Project note/ });
-    fireEvent.contextMenu(note);
-    expect(await screen.findByRole("menuitem", { name: "Append new step" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Resume session" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "New session" })).toBeNull();
-  });
 });

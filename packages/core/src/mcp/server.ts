@@ -62,15 +62,15 @@ import {
   sessionSetGtdSchema
 } from "./sessionTools";
 import {
-  handleNoteExecutableAppendResult,
-  handleNoteExecutableConfigure,
-  handleNoteExecutableInspect,
-  handleNoteExecutableValidateTree,
-  noteExecutableAppendResultSchema,
-  noteExecutableConfigureSchema,
-  noteExecutableInspectSchema,
-  noteExecutableValidateTreeSchema
-} from "./executableTools";
+  flowNodeCompleteSchema,
+  flowReadSchema,
+  flowSyncSchema,
+  flowValidateSchema,
+  handleFlowNodeComplete,
+  handleFlowRead,
+  handleFlowSync,
+  handleFlowValidate
+} from "./flowTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.4.0";
@@ -97,7 +97,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Never hand-author :::run, :::note-child, :::session, or :::result directives when executable tools are available; use note_executable_configure and note_executable_append_result."
+      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Flow is the only workflow execution surface. Use flow_sync to create or update sourced workflows and flow_node_complete only for the exact run/node/attempt supplied by an active Flow prompt."
     }
   );
 
@@ -230,49 +230,39 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   );
 
   server.registerTool(
-    "note_executable_inspect",
+    "flow_sync",
     {
-      description: "Inspect executable Markdown state, role, content hash, run history, and session bindings for one Note.",
-      inputSchema: noteExecutableInspectSchema
+      description: "Idempotently create or update a sourced Flow definition. The root and every node Note must belong to the same Project Note subtree.",
+      inputSchema: flowSyncSchema
     },
-    async (args: { noteId: string }) => runNoteTool(() => handleNoteExecutableInspect(args, ctx))
+    async (args: import("../flow/types").FlowSyncInput) => runNoteTool(() => handleFlowSync(args, ctx))
   );
 
   server.registerTool(
-    "note_executable_configure",
+    "flow_read",
     {
-      description: "Deterministically and atomically inject or remove the MCP-managed :::run, :::note-child, and :::session directives for a Project Note. Use this instead of writing executable Markdown manually.",
-      inputSchema: noteExecutableConfigureSchema
+      description: "Read a Flow by flowId or stable sourceKind/sourceKey, optionally including its latest run.",
+      inputSchema: flowReadSchema
     },
-    async (args: {
-      noteId: string;
-      expectedContentHash?: string;
-      mode: "composite" | "leaf" | "none";
-      preserveActive?: boolean;
-      run?: { status: "draft" | "awaiting_approval"; text?: string };
-      children?: Array<{ noteId: string; status?: "idle" | "planned"; text: string }>;
-      session?: { provider: string; status?: "idle" | "planned"; prompt: string };
-    }) => runNoteTool(() => handleNoteExecutableConfigure(args, ctx))
+    async (args: { flowId?: string; sourceKind?: string; sourceKey?: string; includeRun?: boolean }) => runNoteTool(() => handleFlowRead(args, ctx))
   );
 
   server.registerTool(
-    "note_executable_append_result",
+    "flow_validate",
     {
-      description: "Append a validated :::result directive to a Project Note, optionally idempotent by dedupeKey.",
-      inputSchema: noteExecutableAppendResultSchema
+      description: "Validate a Flow DAG and verify that every node Note belongs to the root Project Note subtree.",
+      inputSchema: flowValidateSchema
     },
-    async (args: { noteId: string; status: "completed" | "failed" | "partial" | "blocked"; text: string; dedupeKey?: string }) =>
-      runNoteTool(() => handleNoteExecutableAppendResult(args, ctx))
+    async (args: { flowId?: string; sourceKind?: string; sourceKey?: string }) => runNoteTool(() => handleFlowValidate(args, ctx))
   );
 
   server.registerTool(
-    "note_executable_validate_tree",
+    "flow_node_complete",
     {
-      description: "Validate a linked executable Project Note tree, including scopes, bindings, parent links, roles, and nesting limits.",
-      inputSchema: noteExecutableValidateTreeSchema
+      description: "Complete the exact running Flow node attempt, write its result to the node/root Note status regions, and make the next dependency-ready node available.",
+      inputSchema: flowNodeCompleteSchema
     },
-    async (args: { rootNoteId: string; maxNodes?: number; maxDepth?: number }) =>
-      runNoteTool(() => handleNoteExecutableValidateTree(args, ctx))
+    async (args: import("../flow/types").FlowCompletionInput) => runNoteTool(() => handleFlowNodeComplete(args, ctx))
   );
 
   server.registerTool(

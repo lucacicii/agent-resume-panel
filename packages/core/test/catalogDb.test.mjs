@@ -7,6 +7,7 @@ import {
   desktopDbPath,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
+  runSqlite,
   runSqliteJson
 } from "../dist/index.js";
 
@@ -66,6 +67,58 @@ test("desktop schema creates report and agent tables in panelHome/.desktop/deskt
 
     const indexes = await runSqliteJson(desktopDb, "PRAGMA index_list(agent_messages);");
     assert.ok(indexes.some((index) => index.name === "idx_agent_messages_thread"));
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("desktop schema upgrades legacy Flow tables before creating sourced Flow indexes", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-flow-schema-"));
+  const desktopDb = desktopDbPath(panelHome);
+  try {
+    await fs.mkdir(path.dirname(desktopDb), { recursive: true });
+    await runSqlite(desktopDb, `
+      CREATE TABLE flow_workflows (
+        flow_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        root_note_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'idle',
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+      CREATE TABLE flow_nodes (
+        node_id TEXT PRIMARY KEY,
+        flow_id TEXT NOT NULL,
+        note_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        binding_mode TEXT NOT NULL DEFAULT 'new-yolo',
+        session_provider TEXT,
+        session_id TEXT,
+        status TEXT NOT NULL DEFAULT 'idle',
+        position_x REAL NOT NULL DEFAULT 0,
+        position_y REAL NOT NULL DEFAULT 0,
+        priority INTEGER NOT NULL DEFAULT 0,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+    `);
+
+    await ensureDesktopDbSchema(desktopDb);
+
+    const workflowColumns = await runSqliteJson(desktopDb, "PRAGMA table_info(flow_workflows);");
+    const nodeColumns = await runSqliteJson(desktopDb, "PRAGMA table_info(flow_nodes);");
+    assert.ok(workflowColumns.some((column) => column.name === "source_kind"));
+    assert.ok(workflowColumns.some((column) => column.name === "source_key"));
+    assert.ok(nodeColumns.some((column) => column.name === "external_key"));
+
+    const workflowIndexes = await runSqliteJson(desktopDb, "PRAGMA index_list(flow_workflows);");
+    const nodeIndexes = await runSqliteJson(desktopDb, "PRAGMA index_list(flow_nodes);");
+    assert.ok(workflowIndexes.some((index) => index.name === "idx_flow_workflows_source"));
+    assert.ok(nodeIndexes.some((index) => index.name === "idx_flow_nodes_external"));
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

@@ -6,7 +6,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
-import type { ReportDraft, StorageDraft, WorkbenchDraft, NotesDraft } from "./model";
+import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -519,12 +519,10 @@ export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: Stora
   </>;
 }
 
-export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
-  const update = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
-  const notesProviders = ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"] as const;
-  return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><SelectRow title={t("desktop.settings.notesDefaultProvider")} description={t("desktop.settings.notesDefaultProviderDesc")} value={draft.notesDefaultSessionProvider} onChange={(value) => update("notesDefaultSessionProvider", value as NotesDraft["notesDefaultSessionProvider"])}>{notesProviders.map((provider) => <option key={provider} value={provider}>{provider}</option>)}</SelectRow><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-  </>;
+export function NotesPane({ t }: { t: Translate }) {
+  return (
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+  );
 }
 
 function formatNumber(value: number | null | undefined): string {

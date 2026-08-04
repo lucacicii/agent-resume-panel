@@ -9,25 +9,6 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { NoteLinkTree } from "./NoteLinkTree";
-import {
-  appendExecutableStep,
-  approveExecutableRunAndStart,
-  probeExecutableNote,
-  resumeNoteSession,
-  setExecutableChildStatus,
-  setExecutableRunStatus,
-  setExecutableSessionStatus,
-  snapshotFromParsed,
-  startExecutableCurrentStep,
-  startExecutableLeafFromNote,
-  startNoteSession,
-  type ExecutableNoteProbe,
-  type ExecutablePathNode,
-  type ExecutableRunSnapshot,
-  type NoteChildLike,
-  type RunBlockLike,
-  type SessionBlockLike
-} from "./executableRunActions";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type GtdTask = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListGtd"]>>[number];
@@ -64,7 +45,7 @@ type CatalogProject = {
 };
 type ContextMenu =
   | { kind: "project"; projectPath: string; projectId?: string; x: number; y: number }
-  | { kind: "note"; note: Note; x: number; y: number; execProbe?: ExecutableNoteProbe | null };
+  | { kind: "note"; note: Note; x: number; y: number };
 type RenameDialog = { kind: "project"; projectPath: string; projectId?: string; title: string } | { kind: "note"; note: Note; title: string };
 type ParentPicker = { child: Note; query: string };
 
@@ -338,18 +319,6 @@ export function NotesPanel(): ReactPortal | null {
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
-  const [execBusy, setExecBusy] = useState(false);
-  const [activeRunId, setActiveRunId] = useState<string | undefined>(undefined);
-  const [currentChildSession, setCurrentChildSession] = useState<SessionBlockLike | null>(null);
-  /** Bumps when returning to Notes so exec/session parse re-reads disk. */
-  const [execRefreshKey, setExecRefreshKey] = useState(0);
-  const [execPath, setExecPath] = useState<ExecutablePathNode[]>([]);
-  /** Active leaf under possibly nested runs — settle targets this, not just local note-child. */
-  const [execLeaf, setExecLeaf] = useState<{
-    leafNoteId: string;
-    leafParentNoteId: string;
-    runId?: string;
-  } | null>(null);
   const saveTimer = useRef<number | null>(null);
   const contentRef = useRef(content);
   const selectedRef = useRef<Note | null>(selected);
@@ -371,133 +340,15 @@ export function NotesPanel(): ReactPortal | null {
   findQueryRef.current = findQuery;
   contentRef.current = content;
   selectedRef.current = selected;
-  const noteSlashCommands = useMemo(() => {
-    const gtdCommands = GTD_STATUSES.map((gtdStatus) => {
-      const opener = ":::gtd " + gtdStatus;
-      return {
-        label: t("desktop.notes.slashGtdTask"),
-        tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
-        insert: opener + "\n\n:::",
-        cursorOffset: opener.length + 1
-      };
-    });
-
-    const noteChildOpener = ":::note-child idle";
-    const sessionOpener = ":::session codex idle";
-    const runApproveOpener = ":::run awaiting_approval";
-    const runDraftOpener = ":::run draft";
-    const resultOpener = ":::result completed";
-
-    const executableCommands = [
-      {
-        label: t("desktop.notes.slashNoteChild"),
-        detail: t("desktop.notes.slashNoteChildDetail"),
-        tag: { label: "@child/idle", toneClassName: "is-next" },
-        insert: noteChildOpener + "\n\n:::",
-        cursorOffset: noteChildOpener.length + 1
-      },
-      {
-        label: t("desktop.notes.slashSession"),
-        detail: t("desktop.notes.slashSessionDetail"),
-        tag: { label: "@session/codex/idle", toneClassName: "is-inbox" },
-        insert: sessionOpener + "\n:::",
-        cursorOffset: sessionOpener.length + 1
-      },
-      {
-        label: t("desktop.notes.slashRunApprove"),
-        detail: t("desktop.notes.slashRunApproveDetail"),
-        tag: { label: "@run/awaiting_approval", toneClassName: "is-waiting" },
-        insert: runApproveOpener + "\n\n:::",
-        cursorOffset: runApproveOpener.length + 1
-      },
-      {
-        label: t("desktop.notes.slashRunDraft"),
-        detail: t("desktop.notes.slashRunDraftDetail"),
-        tag: { label: "@run/draft", toneClassName: "is-someday" },
-        insert: runDraftOpener + "\n\n:::",
-        cursorOffset: runDraftOpener.length + 1
-      },
-      {
-        label: t("desktop.notes.slashResult"),
-        detail: t("desktop.notes.slashResultDetail"),
-        tag: { label: "@result/completed", toneClassName: "is-done" },
-        insert: resultOpener + "\n\n:::",
-        cursorOffset: resultOpener.length + 1
-      }
-    ];
-
-    return [...executableCommands, ...gtdCommands];
-  }, [t]);
-
-  const execSnapshot = useMemo((): ExecutableRunSnapshot | null => {
-    if (!selected || selected.scope !== "project") return null;
-    // Lightweight parse without importing core executable parser in renderer bundle path:
-    // reuse IPC when needed; for toolbar responsiveness, regex mirror of block headers.
-    const runs: RunBlockLike[] = [];
-    const noteChildren: NoteChildLike[] = [];
-    const runRe = /^:::run\s+([a-z_]+)\s*$/gm;
-    const childRe = /^:::note-child\s+([a-z_]+)(?:\s+note=([A-Za-z0-9._-]+))?(?:\s+status=([a-z_]+))?\s*$/gm;
-    let match: RegExpExecArray | null;
-    while ((match = runRe.exec(content))) {
-      runs.push({ status: match[1], text: "" });
-    }
-    let childIndex = 0;
-    while ((match = childRe.exec(content))) {
-      const statusToken = match[1];
-      const noteId = match[2];
-      const statusOverride = match[3];
-      const status = statusOverride || (["idle", "planned", "running", "done", "failed"].includes(statusToken) ? statusToken : "idle");
-      noteChildren.push({
-        index: childIndex,
-        noteId,
-        status,
-        text: ""
-      });
-      childIndex += 1;
-    }
-    if (!runs.length && !noteChildren.length) return null;
-    return snapshotFromParsed({
-      runs,
-      noteChildren,
-      currentSession: currentChildSession,
-      runId: activeRunId
-    });
-  }, [activeRunId, content, currentChildSession, selected]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const snap = execSnapshot;
-    if (!snap?.currentChildNoteId || !selected || typeof desktopApi().notesExecutableParse !== "function") {
-      setCurrentChildSession(null);
-      return;
-    }
-    void desktopApi()
-      .notesExecutableParse({ noteId: snap.currentChildNoteId })
-      .then((parsed) => {
-        if (cancelled) return;
-        const session = parsed.sessions[0] as SessionBlockLike | undefined;
-        setCurrentChildSession(session || null);
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentChildSession(null);
-      });
-    if (typeof desktopApi().notesExecutableListRuns === "function") {
-      void desktopApi()
-        .notesExecutableListRuns({ noteId: selected.noteId })
-        .then((runs) => {
-          if (cancelled || !Array.isArray(runs) || !runs.length) return;
-          const list = runs as Array<{ runId?: string; status?: string }>;
-          const executing = list.find((row) => row.status === "executing");
-          const awaiting = list.find((row) => row.status === "awaiting_approval");
-          const pick = executing || awaiting || list[0];
-          if (pick?.runId) setActiveRunId(pick.runId);
-        })
-        .catch(() => undefined);
-    }
-    return () => {
-      cancelled = true;
+  const noteSlashCommands = useMemo(() => GTD_STATUSES.map((gtdStatus) => {
+    const opener = ":::gtd " + gtdStatus;
+    return {
+      label: t("desktop.notes.slashGtdTask"),
+      tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
+      insert: opener + "\n\n:::",
+      cursorOffset: opener.length + 1
     };
-  }, [activeRunId, execRefreshKey, execSnapshot?.currentChildNoteId, execSnapshot?.runStatus, selected?.noteId]);
+  }), [t]);
 
   const refreshLinkMeta = useCallback(async () => {
     const api = desktopApi();
@@ -566,13 +417,6 @@ export function NotesPanel(): ReactPortal | null {
       setNotes((current) => current.map((item) => item.noteId === note.noteId
         ? { ...item, ...updated, contentPreview: nextContent.slice(0, 300) }
         : item));
-      if (updated.materialized) {
-        await refreshLinkMeta();
-        const listed = await desktopApi().notesList();
-        if (Array.isArray(listed)) {
-          setNotes(listed as Note[]);
-        }
-      }
       if (typeof desktopApi().notesListGtd === "function") {
         setGtdTasks(await desktopApi().notesListGtd());
       }
@@ -591,11 +435,7 @@ export function NotesPanel(): ReactPortal | null {
     await refreshLinkMeta();
   }, [refreshLinkMeta]);
 
-  /**
-   * When returning to Notes (tab / window focus / session sync), re-read disk so
-   * executable-run toolbar and child session bind state match reality.
-   * Drops pending autosave so a stale buffer cannot overwrite fresher on-disk state.
-   */
+  /** Re-read disk when returning to Notes and discard any pending stale autosave. */
   const refreshFromDiskOnActivate = useCallback(async () => {
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
@@ -606,211 +446,13 @@ export function NotesPanel(): ReactPortal | null {
     if (selectedId) {
       try {
         await reloadSelectedContent(selectedId);
-        // Restore nested leaf target after tab switch so settle still hits the right step.
-        if (typeof desktopApi().notesExecutableResolveLeaf === "function") {
-          try {
-            const leaf = await desktopApi().notesExecutableResolveLeaf({ noteId: selectedId });
-            setExecPath(leaf.path);
-            setExecLeaf({
-              leafNoteId: leaf.leafNoteId,
-              leafParentNoteId: leaf.leafParentNoteId,
-              runId: leaf.runIdsByNoteId[leaf.leafParentNoteId]
-            });
-          } catch {
-            // Not mid-run or note is not a run holder.
-          }
-        }
       } catch {
         // Keep list refresh even if one note read fails.
       }
     }
-    setCurrentChildSession(null);
-    setExecRefreshKey((value) => value + 1);
   }, [load, reloadSelectedContent]);
 
-  const approveAndRun = useCallback(async () => {
-    const note = selectedRef.current;
-    if (!note) return;
-    if (note.scope !== "project" || !note.projectPath) {
-      setStatus({ text: t("desktop.notes.execNoProject"), kind: "error" });
-      return;
-    }
-    if (execBusy) return;
-    setExecBusy(true);
-    setStatus({ text: t("desktop.notes.execApproving") });
-    try {
-      await save();
-      const result = await approveExecutableRunAndStart({
-        parentNoteId: note.noteId,
-        parentTitle: titleFor(note),
-        projectPath: note.projectPath
-      });
-      setActiveRunId(result.runId);
-      setExecPath(result.path || []);
-      if (result.leafNoteId && result.leafParentNoteId) {
-        setExecLeaf({
-          leafNoteId: result.leafNoteId,
-          leafParentNoteId: result.leafParentNoteId,
-          runId: result.runId
-        });
-      }
-      setContent(result.parentContent);
-      await reloadSelectedContent(note.noteId);
-      const leafTitle = result.path?.filter((p) => !p.composite).at(-1)?.title;
-      const step = 1;
-      const total = result.childNoteIds.length || 1;
-      setStatus({
-        text: leafTitle
-          ? `${t("desktop.notes.execApproved", step, total)} · ${leafTitle}`
-          : t("desktop.notes.execApproved", step, total),
-        kind: "ok"
-      });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-    }
-  }, [execBusy, reloadSelectedContent, save, t]);
-
-  const startCurrentStep = useCallback(async () => {
-    const note = selectedRef.current;
-    const snap = execSnapshot;
-    if (!note || !note.projectPath) return;
-    if (execBusy) return;
-    setExecBusy(true);
-    setStatus({ text: t("desktop.notes.execStarting") });
-    try {
-      await save();
-      // Nested: dive from this note (or its run) to a leaf, then CLI.
-      if (typeof desktopApi().notesExecutableResolveLeaf === "function") {
-        const leafStart = await startExecutableLeafFromNote({
-          startNoteId: note.noteId,
-          rootTitle: titleFor(note),
-          projectPath: note.projectPath
-        });
-        setExecPath(leafStart.path);
-        setExecLeaf({
-          leafNoteId: leafStart.leafNoteId,
-          leafParentNoteId: leafStart.leafParentNoteId,
-          runId: leafStart.runIdsByNoteId[leafStart.leafParentNoteId]
-        });
-        await reloadSelectedContent(note.noteId);
-        const leafTitle = leafStart.path.filter((p) => !p.composite).at(-1)?.title || leafStart.leafNoteId;
-        setStatus({
-          text: t("desktop.notes.execStepStarted", snap?.currentChildIndex != null ? snap.currentChildIndex + 1 : 1, snap?.childCount || 1) + ` · ${leafTitle}`,
-          kind: "ok"
-        });
-      } else if (snap?.currentChildNoteId) {
-        await startExecutableCurrentStep({
-          parentNoteId: note.noteId,
-          parentTitle: titleFor(note),
-          childNoteId: snap.currentChildNoteId,
-          runId: activeRunId || snap.runId,
-          projectPath: note.projectPath
-        });
-        await reloadSelectedContent(note.noteId);
-        setStatus({
-          text: t("desktop.notes.execStepStarted", snap.currentChildIndex + 1, snap.childCount || 1),
-          kind: "ok"
-        });
-      }
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-    }
-  }, [activeRunId, execBusy, execSnapshot, reloadSelectedContent, save, t]);
-
-  const settleCurrentStep = useCallback(async (outcome: "completed" | "failed") => {
-    const note = selectedRef.current;
-    const snap = execSnapshot;
-    const leaf = execLeaf;
-    const parentNoteId = leaf?.leafParentNoteId || note?.noteId;
-    const childNoteId = leaf?.leafNoteId || snap?.currentChildNoteId;
-    if (!note || !parentNoteId || !childNoteId) return;
-    if (typeof desktopApi().notesExecutableSettleChild !== "function") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    setStatus({ text: t("desktop.notes.execSettling") });
-    try {
-      await save();
-      const summary =
-        outcome === "completed"
-          ? `Step completed (${childNoteId.slice(0, 8)}).`
-          : `Step failed (${childNoteId.slice(0, 8)}).`;
-      const result = await desktopApi().notesExecutableSettleChild({
-        parentNoteId,
-        childNoteId,
-        outcome,
-        summary,
-        runId: leaf?.runId || activeRunId || snap?.runId,
-        bubble: true
-      });
-      setContent(result.content);
-      await reloadSelectedContent(note.noteId);
-      if (outcome === "failed") {
-        setStatus({ text: t("desktop.notes.execStepFailed"), kind: "error" });
-        setExecLeaf(null);
-        setExecPath([]);
-      } else if (result.done && !result.nextLeaf) {
-        setStatus({ text: t("desktop.notes.execRunDone"), kind: "ok" });
-        setExecPath([]);
-        setExecLeaf(null);
-      } else {
-        setStatus({ text: t("desktop.notes.execStepDone"), kind: "ok" });
-        // Auto-start next leaf (may dive into nested composite).
-        const nextLeaf = result.nextLeaf;
-        if (nextLeaf && note.projectPath) {
-          setStatus({ text: t("desktop.notes.execStarting") });
-          setExecPath(nextLeaf.path);
-          const parentRunId = nextLeaf.runIdsByNoteId[nextLeaf.leafParentNoteId];
-          setExecLeaf({
-            leafNoteId: nextLeaf.leafNoteId,
-            leafParentNoteId: nextLeaf.leafParentNoteId,
-            runId: parentRunId
-          });
-          await startExecutableCurrentStep({
-            parentNoteId: nextLeaf.leafParentNoteId,
-            parentTitle: titleFor(note),
-            childNoteId: nextLeaf.leafNoteId,
-            runId: parentRunId || activeRunId || snap?.runId,
-            projectPath: note.projectPath
-          });
-          await reloadSelectedContent(note.noteId);
-          const leafTitle =
-            nextLeaf.path.filter((p) => !p.composite).at(-1)?.title || nextLeaf.leafNoteId;
-          setStatus({
-            text: t("desktop.notes.execStepStarted", (snap?.currentChildIndex ?? 0) + 1, snap?.childCount || 1) + ` · ${leafTitle}`,
-            kind: "ok"
-          });
-        } else if (result.advanced && note.projectPath && typeof desktopApi().notesExecutableResolveLeaf === "function") {
-          const leafStart = await startExecutableLeafFromNote({
-            startNoteId: note.noteId,
-            rootTitle: titleFor(note),
-            projectPath: note.projectPath
-          });
-          setExecPath(leafStart.path);
-          setExecLeaf({
-            leafNoteId: leafStart.leafNoteId,
-            leafParentNoteId: leafStart.leafParentNoteId,
-            runId: leafStart.runIdsByNoteId[leafStart.leafParentNoteId]
-          });
-          await reloadSelectedContent(note.noteId);
-          const leafTitle = leafStart.path.filter((p) => !p.composite).at(-1)?.title || leafStart.leafNoteId;
-          setStatus({
-            text: t("desktop.notes.execStepStarted", (snap?.currentChildIndex ?? 0) + 1, snap?.childCount || 1) + ` · ${leafTitle}`,
-            kind: "ok"
-          });
-        }
-      }
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-    }
-  }, [activeRunId, execBusy, execLeaf, execSnapshot, reloadSelectedContent, save, t]);
-
-  /** Open the shared note context menu (list or tree) and async-probe exec state. */
+  /** Open the shared note context menu from either the note list or link tree. */
   const openNoteContextMenu = useCallback(
     async (noteId: string, clientX: number, clientY: number) => {
       const existing = notes.find((item) => item.noteId === noteId);
@@ -823,93 +465,10 @@ export function NotesPanel(): ReactPortal | null {
           return;
         }
       }
-      setContextMenu({ kind: "note", note, x: clientX, y: clientY, execProbe: null });
-      probeExecutableNote(noteId).then((execProbe) => {
-        setContextMenu((current) =>
-          current && current.kind === "note" && current.note.noteId === noteId
-            ? { ...current, execProbe }
-            : current
-        );
-      }).catch(() => {
-        setContextMenu((current) =>
-          current && current.kind === "note" && current.note.noteId === noteId
-            ? { ...current, execProbe: null }
-            : current
-        );
-      });
+      setContextMenu({ kind: "note", note, x: clientX, y: clientY });
     },
     [notes]
   );
-
-  const refreshAfterExecChange = useCallback(async (noteId: string, newContent: string) => {
-    await load();
-    if (selectedRef.current?.noteId === noteId) {
-      setContent(newContent);
-      contentRef.current = newContent;
-    }
-    if (selectedRef.current?.noteId === noteId) {
-      await reloadSelectedContent(noteId);
-    }
-    if (treeRootId) {
-      await loadSubtree(treeRootId);
-    }
-    setActiveRunId(undefined);
-    setExecLeaf(null);
-    setExecPath([]);
-    setCurrentChildSession(null);
-    setExecRefreshKey((value) => value + 1);
-  }, [load, loadSubtree, reloadSelectedContent, treeRootId]);
-
-  const execRunAction = useCallback(async (status: "awaiting_approval" | "executing") => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    try {
-      const result = await setExecutableRunStatus(menu.note.noteId, status);
-      await refreshAfterExecChange(menu.note.noteId, result.content);
-      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
-
-  const execChildAction = useCallback(async (status: "done" | "failed" | "planned" | "running") => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    try {
-      const result = await setExecutableChildStatus(menu.note.noteId, status);
-      await refreshAfterExecChange(result.parentNoteId, result.content);
-      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
-
-  const execSessionAction = useCallback(async (status: "idle" | "planned") => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    try {
-      const result = await setExecutableSessionStatus(menu.note.noteId, status);
-      await refreshAfterExecChange(menu.note.noteId, result.content);
-      setStatus({ text: t("desktop.notes.execStateUpdated"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
 
   const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
@@ -926,8 +485,6 @@ export function NotesPanel(): ReactPortal | null {
       setView("edit");
       setFindOpen(false);
       setFindQuery("");
-      setActiveRunId(undefined);
-      setCurrentChildSession(null);
 
       const asTreeRoot = options?.asTreeRoot !== false && !options?.treeRootId;
       if (result.record.scope === "project") {
@@ -948,78 +505,6 @@ export function NotesPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   }, [loadSubtree, save]);
-
-  const execAppendStepAction = useCallback(async () => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    try {
-      const result = await appendExecutableStep(menu.note.noteId);
-      await refreshAfterExecChange(menu.note.noteId, result.content);
-      const created = await desktopApi().notesRead({ noteId: result.childNoteId });
-      await open(created.record, { asTreeRoot: false, treeRootId: treeRootId || undefined });
-      setStatus({ text: t("desktop.notes.execStepAppended"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, open, refreshAfterExecChange, t, treeRootId]);
-
-  const execResumeSessionAction = useCallback(async () => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    setExecBusy(true);
-    try {
-      let provider = "";
-      let sessionId = "";
-      if (menu.note.scope === "session" && menu.note.provider && menu.note.agentSessionId) {
-        provider = menu.note.provider;
-        sessionId = menu.note.agentSessionId;
-      } else if (menu.execProbe?.sessionNativeRef) {
-        provider = menu.execProbe.sessionNativeRef.provider;
-        sessionId = menu.execProbe.sessionNativeRef.sessionId;
-      }
-      if (!provider || !sessionId) {
-        throw new Error(t("desktop.notes.execSessionNoTarget"));
-      }
-      await resumeNoteSession({ provider, sessionId });
-      setStatus({ text: t("desktop.notes.execSessionResumed"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, t]);
-
-  const execNewSessionAction = useCallback(async () => {
-    const menu = contextMenu;
-    if (!menu || menu.kind !== "note") return;
-    if (execBusy) return;
-    if (menu.note.scope !== "project" || !menu.note.projectPath) {
-      setStatus({ text: t("desktop.notes.execNoProject"), kind: "error" });
-      setContextMenu(null);
-      return;
-    }
-    setExecBusy(true);
-    try {
-      const result = await startNoteSession({
-        noteId: menu.note.noteId,
-        projectPath: menu.note.projectPath
-      });
-      await refreshAfterExecChange(menu.note.noteId, result.content);
-      setStatus({ text: t("desktop.notes.execSessionStarted"), kind: "ok" });
-    } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setExecBusy(false);
-      setContextMenu(null);
-    }
-  }, [contextMenu, execBusy, refreshAfterExecChange, t]);
 
   const openTreeNode = useCallback(async (noteId: string) => {
     const existing = notes.find((item) => item.noteId === noteId);
@@ -1050,7 +535,6 @@ export function NotesPanel(): ReactPortal | null {
             ? { kind: "session", provider: result.record.provider, sessionId: result.record.agentSessionId }
             : { kind: "library" });
         await open(result.record, { asTreeRoot: true });
-        setExecRefreshKey((value) => value + 1);
       }).catch((error) => setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }));
     };
     const onWindowFocus = () => {
@@ -1062,14 +546,9 @@ export function NotesPanel(): ReactPortal | null {
       }
     };
     const onSessionsSynced = () => {
-      // Session catalog moved — re-parse child session/native without stomping an in-progress edit.
       if (!activeRef.current) return;
-      setCurrentChildSession(null);
-      setExecRefreshKey((value) => value + 1);
       const selectedId = selectedRef.current?.noteId;
-      if (selectedId && selectedRef.current?.scope === "project") {
-        void reloadSelectedContent(selectedId).catch(() => undefined);
-      }
+      if (selectedId) void reloadSelectedContent(selectedId).catch(() => undefined);
     };
     window.addEventListener("agent-resume:tab-change", onTab);
     window.addEventListener("agent-resume:open-note", onOpen);
@@ -1803,43 +1282,6 @@ export function NotesPanel(): ReactPortal | null {
               </>
             ) : null}
             <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
-            {execSnapshot && (execSnapshot.canApprove || execSnapshot.canStartStep || execSnapshot.canSettle || execSnapshot.runStatus) ? (
-              <div className="notes-exec-bar" role="toolbar" aria-label={t("desktop.notes.execBarHint", execSnapshot.runStatus || "idle")}>
-                <span className={`notes-exec-bar-status is-${execSnapshot.runStatus || "idle"}`}>
-                  {t("desktop.notes.execBarHint", execSnapshot.runStatus || "idle")}
-                  {execSnapshot.childCount > 0
-                    ? ` · ${Math.min(execSnapshot.currentChildIndex + 1, execSnapshot.childCount)}/${execSnapshot.childCount}`
-                    : ""}
-                  {execPath.length > 1
-                    ? ` · ${execPath.map((p) => p.title).join(" › ")}`
-                    : execLeaf
-                      ? ` · leaf ${execLeaf.leafNoteId.slice(0, 8)}`
-                      : ""}
-                </span>
-                <div className="notes-exec-bar-actions">
-                  {execSnapshot.canApprove ? (
-                    <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void approveAndRun()}>
-                      {t("desktop.notes.execApproveRun")}
-                    </button>
-                  ) : null}
-                  {execSnapshot.canStartStep ? (
-                    <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void startCurrentStep()}>
-                      {t("desktop.notes.execStartStep")}
-                    </button>
-                  ) : null}
-                  {execSnapshot.canSettle ? (
-                    <>
-                      <button type="button" className="tool-btn" disabled={execBusy} onClick={() => void settleCurrentStep("completed")}>
-                        {t("desktop.notes.execMarkDone")}
-                      </button>
-                      <button type="button" className="tool-btn ghost-btn" disabled={execBusy} onClick={() => void settleCurrentStep("failed")}>
-                        {t("desktop.notes.execMarkFailed")}
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
             <div className="notes-editor-body">
             {findOpen ? (
               <div className="notes-find-bar app-inline-search" role="search">
@@ -1940,43 +1382,6 @@ export function NotesPanel(): ReactPortal | null {
           }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
-          {contextMenu.note.scope === "session" ? (
-            <>
-              <div className="context-menu-separator" role="separator" />
-              <div className="context-menu-label" role="presentation">{t("desktop.notes.execMenuTitle")}</div>
-              <button type="button" role="menuitem" onClick={() => { void execResumeSessionAction(); }}>{t("desktop.notes.execResumeSession")}</button>
-            </>
-          ) : null}
-          {contextMenu.note.scope === "project" && contextMenu.execProbe ? (
-            <>
-              <div className="context-menu-separator" role="separator" />
-              <div className="context-menu-label" role="presentation">{t("desktop.notes.execMenuTitle")}</div>
-              {contextMenu.execProbe.asStep ? (
-                <>
-                  <button type="button" role="menuitem" onClick={() => { void execChildAction("done"); }}>{t("desktop.notes.execStepMarkDone")}</button>
-                  <button type="button" role="menuitem" onClick={() => { void execChildAction("failed"); }}>{t("desktop.notes.execStepMarkFailed")}</button>
-                  <button type="button" role="menuitem" onClick={() => { void execChildAction("planned"); }}>{t("desktop.notes.execStepReset")}</button>
-                  <button type="button" role="menuitem" onClick={() => { void execChildAction("running"); }}>{t("desktop.notes.execStepRunning")}</button>
-                </>
-              ) : contextMenu.execProbe.hasRun ? (
-                <>
-                  <button type="button" role="menuitem" onClick={() => { void execRunAction("awaiting_approval"); }}>{t("desktop.notes.execRunReset")}</button>
-                  <button type="button" role="menuitem" onClick={() => { void execRunAction("executing"); }}>{t("desktop.notes.execRunExecute")}</button>
-                </>
-              ) : null}
-              {contextMenu.execProbe.hasSession ? (
-                <button type="button" role="menuitem" onClick={() => { void execSessionAction("idle"); }}>{t("desktop.notes.execSessionReset")}</button>
-              ) : null}
-              {contextMenu.execProbe.sessionProvider !== "chat" ? (
-                contextMenu.execProbe.sessionNativeRef ? (
-                  <button type="button" role="menuitem" onClick={() => { void execResumeSessionAction(); }}>{t("desktop.notes.execResumeSession")}</button>
-                ) : (
-                  <button type="button" role="menuitem" onClick={() => { void execNewSessionAction(); }}>{t("desktop.notes.execNewSession")}</button>
-                )
-              ) : null}
-              <button type="button" role="menuitem" onClick={() => { void execAppendStepAction(); }}>{t("desktop.notes.execAppendStep")}</button>
-            </>
-          ) : null}
           {contextMenu.note.scope === "project" ? <>
             <div className="context-menu-separator" role="separator" />
             <button type="button" role="menuitem" onClick={() => { void createLinkedChild(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.newLinkedChild")}</button>

@@ -68,8 +68,6 @@ const messages = {
   "desktop.settings.schedulerOff": "scheduler off",
   "desktop.settings.notesGroup": "Notes",
   "desktop.settings.notesFootnote": "Notes are Markdown files.",
-  "desktop.settings.notesDefaultProvider": "Default session provider",
-  "desktop.settings.notesDefaultProviderDesc": "Agent for Notes executable sessions.",
   "desktop.settings.appData": "App data",
   "desktop.settings.appDataFootnote": "catalog.db lives under Panel home.",
   "desktop.settings.panelHome": "Panel home",
@@ -235,21 +233,7 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelectorAll('[data-testid^="settings-api-key-reveal-"]')).toHaveLength(3);
   });
 
-  it("renders the Notes default session provider select without an ask-every-time option", async () => {
-    const { host, saveSettings } = renderWindowSettings("notes");
-    await waitFor(() => expect(host.textContent).toContain("Default session provider"));
-    const select = host.querySelector("select.settings-row-control") as HTMLSelectElement;
-    expect(select).not.toBeNull();
-    const options = Array.from(select.querySelectorAll("option")).map((option) => option.value);
-    expect(options).toEqual(["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"]);
-    expect(options).not.toContain("");
 
-    fireEvent.change(select, { target: { value: "grok" } });
-    await waitFor(() => expect(saveSettings).toHaveBeenCalled());
-    const last = saveSettings.mock.calls.at(-1) as unknown[];
-    const patched = last[0] as { notes?: { defaultSessionProvider?: string } };
-    expect(patched.notes?.defaultSessionProvider).toBe("grok");
-  });
 
   it("keeps the Data Paths pane free of the Notes provider select", async () => {
     const { host } = renderWindowSettings("storage");

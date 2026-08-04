@@ -93,29 +93,6 @@ CREATE TABLE IF NOT EXISTS note_links (
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
-CREATE TABLE IF NOT EXISTS note_session_bindings (
-  note_id TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'execute',
-  run_id TEXT,
-  status TEXT NOT NULL DEFAULT 'linked',
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (note_id, provider, agent_session_id)
-);
-CREATE INDEX IF NOT EXISTS idx_note_session_bindings_session
-  ON note_session_bindings(provider, agent_session_id);
-CREATE INDEX IF NOT EXISTS idx_note_session_bindings_run ON note_session_bindings(run_id);
-CREATE TABLE IF NOT EXISTS note_runs (
-  run_id TEXT PRIMARY KEY,
-  source_note_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  current_child_index INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_note_runs_source ON note_runs(source_note_id, created_at_ms DESC);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -123,6 +100,8 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
 `;
 
 export const EXTENSION_MIGRATION_SQL = `
+DROP TABLE IF EXISTS note_session_bindings;
+DROP TABLE IF EXISTS note_runs;
 ALTER TABLE sessions ADD COLUMN transcript_kind TEXT;
 ALTER TABLE sessions ADD COLUMN transcript_refs TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary TEXT;
@@ -182,29 +161,6 @@ CREATE TABLE IF NOT EXISTS note_links (
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
-CREATE TABLE IF NOT EXISTS note_session_bindings (
-  note_id TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'execute',
-  run_id TEXT,
-  status TEXT NOT NULL DEFAULT 'linked',
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (note_id, provider, agent_session_id)
-);
-CREATE INDEX IF NOT EXISTS idx_note_session_bindings_session
-  ON note_session_bindings(provider, agent_session_id);
-CREATE INDEX IF NOT EXISTS idx_note_session_bindings_run ON note_session_bindings(run_id);
-CREATE TABLE IF NOT EXISTS note_runs (
-  run_id TEXT PRIMARY KEY,
-  source_note_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  current_child_index INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_note_runs_source ON note_runs(source_note_id, created_at_ms DESC);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
