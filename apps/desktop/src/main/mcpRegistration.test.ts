@@ -11,6 +11,7 @@ import {
   migrateTomlAgentResumeSection,
   parseMcpJsonConfig,
   readMcpJsonConfig,
+  resolveExecutableOnPath,
   resolveExternalMcpCliPath
 } from "./mcpRegistration";
 
@@ -37,6 +38,18 @@ describe("desktop external MCP registration", () => {
       args: launch.args,
       env: launch.env
     });
+  });
+
+  it("resolves an executable from the inherited PATH even when the shell PATH is minimal", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-executable-"));
+    const executable = path.join(directory, "codex-test");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      expect(await resolveExecutableOnPath("codex-test", directory)).toBe(executable);
+      expect(await resolveExecutableOnPath("missing-codex", directory)).toBeUndefined();
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("resolves the monorepo MCP CLI for unpackaged Desktop", () => {

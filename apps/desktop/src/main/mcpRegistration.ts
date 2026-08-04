@@ -63,18 +63,53 @@ async function exists(target: string | undefined): Promise<boolean> {
   }
 }
 
-async function executableOnPath(command: string | undefined): Promise<boolean> {
-  if (!command) return false;
-  const paths = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
-  for (const dir of paths) {
+const USER_EXECUTABLE_DIRS = [
+  path.join(homedir(), ".local", "bin"),
+  path.join(homedir(), ".volta", "bin"),
+  path.join(homedir(), ".npm-global", "bin"),
+  path.join(homedir(), ".cargo", "bin"),
+  "/opt/homebrew/bin",
+  "/usr/local/bin"
+];
+
+/**
+ * Finder-launched Electron apps do not load the user's shell startup files,
+ * so PATH often omits ~/.local/bin (where the standalone Codex CLI is commonly
+ * installed). Search the inherited PATH plus stable user/system bin folders.
+ */
+export async function resolveExecutableOnPath(
+  command: string | undefined,
+  inheritedPath = process.env.PATH
+): Promise<string | undefined> {
+  if (!command?.trim()) return undefined;
+  const requested = command.trim();
+  if (path.isAbsolute(requested)) {
     try {
-      await access(path.join(dir, command), constants.X_OK);
-      return true;
+      await access(requested, constants.X_OK);
+      return requested;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const directories = [...new Set([
+    ...(inheritedPath || "").split(path.delimiter).filter(Boolean),
+    ...USER_EXECUTABLE_DIRS
+  ])];
+  for (const dir of directories) {
+    const candidate = path.join(dir, requested);
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
     } catch {
       // keep looking
     }
   }
-  return false;
+  return undefined;
+}
+
+async function executableOnPath(command: string | undefined): Promise<boolean> {
+  return Boolean(await resolveExecutableOnPath(command));
 }
 
 async function configContainsRegistration(configPath: string | undefined): Promise<boolean> {
@@ -272,18 +307,23 @@ async function removeJsonClient(definition: McpClientDefinition): Promise<void> 
 }
 
 async function registerCliClient(definition: McpClientDefinition, launch: McpLaunchConfig, replace: boolean): Promise<void> {
-  if (!definition.executable) throw new Error("MCP client executable is unavailable.");
+  const executable = await resolveExecutableOnPath(definition.executable);
+  if (!executable) {
+    throw new Error(
+      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+    );
+  }
   if (replace) {
     const removeArgs = definition.id === "claude"
       ? ["mcp", "remove", "--scope", "user", EXTERNAL_MCP_SERVICE_ID]
       : ["mcp", "remove", EXTERNAL_MCP_SERVICE_ID];
-    await run(definition.executable, removeArgs).catch(() => {});
+    await run(executable, removeArgs).catch(() => {});
   }
   const envArgs = Object.entries(launch.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
   const args = definition.id === "claude"
     ? ["mcp", "add", "--scope", "user", ...envArgs, EXTERNAL_MCP_SERVICE_ID, "--", launch.command, ...launch.args]
     : ["mcp", "add", ...envArgs, EXTERNAL_MCP_SERVICE_ID, "--", launch.command, ...launch.args];
-  await run(definition.executable, args);
+  await run(executable, args);
 }
 
 export async function registerMcpClient(
@@ -295,8 +335,10 @@ export async function registerMcpClient(
   if (definition.mode !== "automatic") {
     throw new Error(`${definition.label} requires manual MCP configuration.`);
   }
-  if ((definition.id === "codex" || definition.id === "claude") && !(await executableOnPath(definition.executable))) {
-    throw new Error(`${definition.label} was not found on this Mac.`);
+  if ((definition.id === "codex" || definition.id === "claude") && !(await resolveExecutableOnPath(definition.executable))) {
+    throw new Error(
+      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+    );
   }
   if (definition.id === "codex" || definition.id === "claude") {
     await registerCliClient(definition, launch, replace);
@@ -309,13 +351,16 @@ export async function removeMcpClient(id: McpClientId): Promise<void> {
   const definition = definitionFor(id);
   if (definition.mode !== "automatic") return;
   if (definition.id === "codex" || definition.id === "claude") {
-    if (!definition.executable || !(await executableOnPath(definition.executable))) {
-      throw new Error(`${definition.label} executable was not found.`);
+    const executable = await resolveExecutableOnPath(definition.executable);
+    if (!executable) {
+      throw new Error(
+        `${definition.label} executable was not found. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+      );
     }
     const args = definition.id === "claude"
       ? ["mcp", "remove", "--scope", "user", EXTERNAL_MCP_SERVICE_ID]
       : ["mcp", "remove", EXTERNAL_MCP_SERVICE_ID];
-    await run(definition.executable, args);
+    await run(executable, args);
     return;
   }
   await removeJsonClient(definition);
