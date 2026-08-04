@@ -271,7 +271,7 @@ export const noteListSchema = {
 export const noteCreateSchema = {
   scope: z.enum(["library", "project", "session"]).optional().describe("Where to create the note; optional when parentNoteId is provided."),
   title: z.string().min(1).max(200).describe("Note title — used as the first heading."),
-  body: z.string().max(20000).optional().describe("Markdown body content excluding the title heading."),
+  body: z.string().max(200_000).optional().describe("Markdown body content excluding the title heading."),
   parentNoteId: z.string().min(1).optional().describe("Create as a linked child of this Project Note; owner is inferred from the parent."),
   projectPath: z.string().optional().describe("Required for project scope; ignored only when parentNoteId supplies the owner."),
   provider: providerSchema.optional().describe("Required for session scope."),
@@ -280,17 +280,17 @@ export const noteCreateSchema = {
 
 export const noteReadSchema = {
   noteId: z.string().min(1).describe("The noteId of the note to read."),
-  maxLength: z.number().int().min(100).max(20000).optional().describe("Maximum characters of raw Markdown content to return. Defaults to 5000.")
+  maxLength: z.number().int().min(100).max(200_000).optional().describe("Maximum characters of raw Markdown content to return. Defaults to 5000.")
 };
 
 export const noteWriteSchema = {
   noteId: z.string().min(1).describe("The noteId of the note to overwrite."),
-  content: z.string().min(1).max(20000).describe("Markdown body or complete Markdown document. Managed frontmatter is preserved from the existing note.")
+  content: z.string().min(1).max(200_000).describe("Markdown body or complete Markdown document. Managed frontmatter is preserved from the existing note.")
 };
 
 export const noteAppendSchema = {
   noteId: z.string().min(1).describe("The noteId of the note to append to."),
-  content: z.string().min(1).max(10000).describe("Markdown content to append to the body of the note.")
+  content: z.string().min(1).max(200_000).describe("Markdown content to append to the body of the note.")
 };
 
 export const noteDeleteSchema = {
