@@ -10,6 +10,7 @@ import { ReportPanel } from "./features/report/ReportPanel";
 import { AgentPanel } from "./features/agent/AgentPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
+import { FlowPanel } from "./features/flow/FlowPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
@@ -142,6 +143,7 @@ function MainRendererRuntime(): React.JSX.Element {
       <AgentPanel />
       <WorkbenchPanel />
       <NotesPanel />
+      <FlowPanel />
       <SessionsSheet />
       <Notifications />
     </>

@@ -1771,7 +1771,11 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
 
     terminal.loadAddon(new ImageAddon({
       storageLimit: 64,
-      enableSizeReports: true
+      enableSizeReports: true,
+      // SIXEL's decoder instantiates embedded WebAssembly, which is intentionally
+      // blocked by the Desktop renderer CSP (`script-src 'self'`). Keep iTerm
+      // image protocol support without weakening CSP via unsafe-eval.
+      sixelSupport: false
     }));
 
     const searchAddon = new SearchAddon();
@@ -3455,6 +3459,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     cwd: string;
     title?: string;
     projectPath?: string;
+    initialPrompt?: string;
   }) => {
     const key = `${detail.provider}:${detail.id}`;
     const existing = terminalsRef.current.find((pane) => pane.sessionKey === key);
@@ -3462,11 +3467,16 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(existing.projectPath);
       setActivePane(existing.key, existing.projectPath);
       setActiveSessionKey(key);
+      if (detail.initialPrompt && existing.ptyId) {
+        window.setTimeout(() => {
+          void desktopApi().terminalInput({ id: existing.ptyId!, data: `${detail.initialPrompt}\r` });
+        }, 250);
+      }
       return;
     }
     const projectPath = detail.projectPath || detail.cwd;
     selectProject(projectPath);
-    addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key);
+    addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
     setActiveSessionKey(key);
   }, [addTerminal, selectProject, setActivePane]);
 
@@ -3479,6 +3489,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         cwd: string;
         title?: string;
         projectPath?: string;
+        initialPrompt?: string;
       }>).detail;
       if (!detail?.command || !detail?.cwd) return;
       openResumeFromAgent(detail);

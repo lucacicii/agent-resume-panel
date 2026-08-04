@@ -86,6 +86,7 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
+import { registerFlowIpc } from "./flow/flowIpc";
 import {
   createExternalMcpLaunchConfig,
   listMcpClients,
@@ -1816,7 +1817,7 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "notes:resumeSession",
-    async (_event, args: { provider: AgentProvider; sessionId: string }) => {
+    async (_event, args: { provider: AgentProvider; sessionId: string; initialPrompt?: string }) => {
       const resume = async (): Promise<{
         ok: boolean;
         error?: string;
@@ -1836,7 +1837,8 @@ function registerIpc(): void {
               cwd: result.cwd,
               title: result.session?.title || args.sessionId,
               projectPath: result.session?.projectPath || result.cwd,
-              mode: result.mode
+              mode: result.mode,
+              initialPrompt: args.initialPrompt?.trim() || undefined
             };
             broadcastToRenderers("workbench:resumeFromAgent", payload);
           }
@@ -2091,6 +2093,7 @@ app.whenReady().then(async () => {
   registerWorkbenchWatcherIpc(() => mainWindow);
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
+  registerFlowIpc();
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();

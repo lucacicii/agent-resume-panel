@@ -2,7 +2,7 @@ import { ThemeIcon } from "./ThemeIcon";
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 
-type PrimaryTab = "report" | "agent" | "workbench" | "notes";
+type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow";
 
 interface UpdateState {
   available: boolean;
@@ -13,7 +13,8 @@ const tabs: Array<{ id: PrimaryTab; key: string; fallback: string }> = [
   { id: "report", key: "desktop.tabs.report", fallback: "Report" },
   { id: "agent", key: "desktop.tabs.agent", fallback: "Agent" },
   { id: "workbench", key: "desktop.tabs.workbench", fallback: "Workbench" },
-  { id: "notes", key: "desktop.tabs.notes", fallback: "Notes" }
+  { id: "notes", key: "desktop.tabs.notes", fallback: "Notes" },
+  { id: "flow", key: "desktop.tabs.flow", fallback: "Flow" }
 ];
 
 function eventDetail<T>(event: Event): T | undefined {

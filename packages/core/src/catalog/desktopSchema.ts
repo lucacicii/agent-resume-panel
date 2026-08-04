@@ -169,6 +169,94 @@ CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(crea
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
 
+CREATE TABLE IF NOT EXISTS flow_workflows (
+  flow_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  project_path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  root_note_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'idle',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_flow_workflows_project ON flow_workflows(project_id, updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS flow_nodes (
+  node_id TEXT PRIMARY KEY,
+  flow_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  binding_mode TEXT NOT NULL DEFAULT 'new-yolo',
+  session_provider TEXT,
+  session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'idle',
+  position_x REAL NOT NULL DEFAULT 0,
+  position_y REAL NOT NULL DEFAULT 0,
+  priority INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_flow_nodes_flow ON flow_nodes(flow_id, priority, position_y, created_at_ms);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_nodes_note ON flow_nodes(note_id);
+
+CREATE TABLE IF NOT EXISTS flow_edges (
+  edge_id TEXT PRIMARY KEY,
+  flow_id TEXT NOT NULL,
+  source_node_id TEXT NOT NULL,
+  target_node_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_edges_pair ON flow_edges(flow_id, source_node_id, target_node_id);
+
+CREATE TABLE IF NOT EXISTS flow_templates (
+  template_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  definition_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_flow_templates_updated ON flow_templates(updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS flow_runs (
+  run_id TEXT PRIMARY KEY,
+  flow_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  definition_json TEXT NOT NULL,
+  started_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_flow_runs_flow ON flow_runs(flow_id, started_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS flow_run_nodes (
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempt INTEGER NOT NULL DEFAULT 1,
+  result_baseline INTEGER NOT NULL DEFAULT 0,
+  provider TEXT,
+  session_id TEXT,
+  result_status TEXT,
+  result_text TEXT,
+  started_at_ms INTEGER,
+  finished_at_ms INTEGER,
+  PRIMARY KEY (run_id, node_id)
+);
+CREATE INDEX IF NOT EXISTS idx_flow_run_nodes_status ON flow_run_nodes(run_id, status);
+
+CREATE TABLE IF NOT EXISTS flow_run_events (
+  event_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  node_id TEXT,
+  status TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_flow_run_events_run ON flow_run_events(run_id, created_at_ms);
+
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
