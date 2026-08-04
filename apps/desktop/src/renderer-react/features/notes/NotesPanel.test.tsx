@@ -393,6 +393,22 @@ describe("NotesPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Resume session" })).toBeNull();
   });
 
+  it("shows New session for a project note without a session block", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    vi.spyOn(window.agentResume, "notesExecutableProbe").mockImplementation(async () => ({
+      runCount: 0, runStatus: undefined, hasRun: false, hasSession: false,
+      sessionStatus: undefined, sessionProvider: undefined, sessionNativeRef: undefined, asStep: undefined
+    }));
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    const note = await screen.findByRole("button", { name: /Project note/ });
+    fireEvent.contextMenu(note);
+    expect(await screen.findByRole("menuitem", { name: "New session" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Resume session" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reset session to idle" })).toBeNull();
+  });
+
   it("shows only Resume session for a project note with a native session", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
     installBridge();

@@ -78,8 +78,8 @@ type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"
 
 /** Local porcelain status poll while Workbench is active. */
 const GIT_STATUS_POLL_MS = 4000;
-/** Remote fetch cadence while Workbench is active (VS Code-like). */
-const GIT_AUTO_FETCH_MS = 180_000;
+/** Remote fetch cadence while Workbench is active. */
+const GIT_AUTO_FETCH_MS = 5_000;
 /** Cap nested monorepo fetch fan-out per sweep. */
 const GIT_AUTO_FETCH_MAX_ROOTS = 8;
 type GitTreeNode = {
@@ -1321,6 +1321,66 @@ function GitRepositorySelector({
   return host ? createPortal(<select className="react-git-repo-select wb-git-repo-select" value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)}>
     {repositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}
   </select>, host) : null;
+}
+
+function GitBranchSelector({
+  visible,
+  repoRoot,
+  value,
+  ariaLabel,
+  onChange
+}: {
+  visible: boolean;
+  repoRoot: string;
+  value: string;
+  ariaLabel: string;
+  onChange: (branch: string) => void;
+}): ReactPortal | null {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const [branches, setBranches] = useState<TerminalGitBranches | null>(null);
+  const [loading, setLoading] = useState(false);
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
+  }, [visible]);
+
+  useEffect(() => {
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    if (!visible || !repoRoot) {
+      setBranches(null);
+      setLoading(false);
+      return;
+    }
+    const api = desktopApi();
+    if (typeof api.terminalGitBranches !== "function") {
+      setBranches(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    void api.terminalGitBranches({ cwd: repoRoot }).then((result) => {
+      if (requestRef.current === requestId) setBranches(result);
+    }).catch(() => {
+      if (requestRef.current === requestId) setBranches(null);
+    }).finally(() => {
+      if (requestRef.current === requestId) setLoading(false);
+    });
+    return () => { requestRef.current += 1; };
+  }, [repoRoot, visible]);
+
+  const directBranches = branches?.mode === "direct" ? branches.branches || [] : [];
+  if (!host || !visible || !repoRoot || branches?.mode !== "direct" || !directBranches.length) return null;
+  return createPortal(<select
+    className="react-git-branch-select wb-git-repo-select"
+    value={value}
+    aria-label={ariaLabel}
+    disabled={loading}
+    onChange={(event) => onChange(event.target.value)}
+  >
+    {directBranches.map((branch) => <option value={branch} key={branch}>{branch}</option>)}
+  </select>, host);
 }
 
 function BranchGraphNavigation({
@@ -4317,6 +4377,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure(action === "push" ? "desktop.workbench.gitPushFailed" : "desktop.workbench.gitPullFailed", error); }
   };
 
+  const checkoutGitPanelBranch = async (branch: string) => {
+    if (!gitRoot || !branch) return;
+    try {
+      await desktopApi().terminalGitCheckout({ cwd: gitRoot, branch, repoRoot: gitRoot });
+      await refreshGit();
+      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
+      notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", branch);
+    } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
+  };
+
   const toggleGitSelectionKeys = useCallback((keys: string[], checked: boolean) => {
     setSelectedGitPaths((previous) => {
       const next = new Set(previous);
@@ -5213,6 +5283,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
+    <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(branch) => void checkoutGitPanelBranch(branch)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     <Status kind={status.kind}>{status.text}</Status>
   </section>

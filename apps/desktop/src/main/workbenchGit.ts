@@ -15,6 +15,7 @@ import * as path from "node:path";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
 import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+import { parseGitStatusPorcelainV1Z, stagedRepoPaths } from "./workbenchGitStatus";
 import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
 
 export type { GitGraphLayout } from "./gitGraphLayout";
@@ -130,24 +131,6 @@ function normalizeCommitPaths(raw?: string[]): string[] {
     out.push(normalized);
   }
   return out;
-}
-
-function parseStagedRepoPaths(statusPorcelain: string): string[] {
-  const paths: string[] = [];
-  const seen = new Set<string>();
-  for (const line of statusPorcelain.split("\n")) {
-    if (!line.trim() || line.startsWith("?? ") || line.length < 4) continue;
-    const indexStatus = line[0];
-    if (indexStatus === " " || indexStatus === "?") continue;
-    let filePath = line.slice(3).trim();
-    // Rename/copy lines look like "R  old -> new" — prefer the destination path.
-    const arrow = filePath.indexOf(" -> ");
-    if (arrow >= 0) filePath = filePath.slice(arrow + 4).trim();
-    if (!filePath || seen.has(filePath)) continue;
-    seen.add(filePath);
-    paths.push(filePath);
-  }
-  return paths;
 }
 
 async function resolveRepoRoot(raw: string): Promise<string> {
@@ -514,11 +497,11 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     if (!paths.length) {
       throw new Error("请选择要提交的文件");
     }
-    const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1"], 10000);
-    if (!statusText.trim()) {
+    const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1", "-z"], 10000);
+    if (!statusText) {
       throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
     }
-    const previouslyStaged = parseStagedRepoPaths(statusText);
+    const previouslyStaged = stagedRepoPaths(parseGitStatusPorcelainV1Z(statusText));
     const selected = new Set(paths);
     const toUnstage = previouslyStaged.filter((path) => !selected.has(path));
     try {

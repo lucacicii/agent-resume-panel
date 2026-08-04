@@ -82,6 +82,29 @@ test("probeExecutableNote parses session native ref", async () => {
   });
 });
 
+test("bindExecutableSession appends a session block when the note has none", async () => {
+  await withStore(async (store) => {
+    const note = await store.createProjectNote("/tmp/fix-bind-missing", "# Standalone task\n\nDo it.\n");
+
+    const result = await store.bindExecutableSession({
+      noteId: note.noteId,
+      provider: "codex",
+      agentSessionId: "sess-new"
+    });
+
+    assert.match(result.content, /Do it\.\n\n:::session codex running native=codex\/sess-new\n:::\n$/);
+    const parsed = parseExecutableNote(result.content);
+    assert.equal(parsed.sessions.length, 1);
+    assert.equal(parsed.sessions[0].provider, "codex");
+    assert.equal(parsed.sessions[0].status, "running");
+    assert.equal(parsed.sessions[0].native, "codex/sess-new");
+
+    const bindings = await store.listExecutableBindings(note.noteId);
+    assert.equal(bindings.length, 1);
+    assert.equal(bindings[0].agentSessionId, "sess-new");
+  });
+});
+
 test("setExecutableRunStatus rewrites run block and syncs note_runs", async () => {
   await withStore(async (store) => {
     const project = "/tmp/fix-run";

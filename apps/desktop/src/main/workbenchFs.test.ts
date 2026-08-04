@@ -60,6 +60,20 @@ describe("discardGitChange", () => {
     expect(git(repo, "status", "--porcelain")).toBe("");
   });
 
+  it("removes an untracked directory reported with a trailing slash", async () => {
+    const repo = createRepo();
+    const directory = path.join(repo, ".claude");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "settings.json"), "{}\n");
+
+    expect(git(repo, "status", "--porcelain")).toContain("?? .claude/");
+
+    await discardGitChange(repo, ".claude/");
+
+    expect(fs.existsSync(directory)).toBe(false);
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
+
   it("rejects paths outside the selected repository", async () => {
     const repo = createRepo();
     await expect(discardGitChange(repo, "../outside.txt")).rejects.toThrow("无效的文件路径");

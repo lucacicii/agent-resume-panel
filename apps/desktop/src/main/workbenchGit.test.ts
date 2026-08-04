@@ -3,12 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ipcMain } from "electron";
 
 vi.mock("electron", () => ({
   ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }
 }));
 
-import { queryGitFileLog } from "./workbenchGit";
+import { queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
 
 const roots: string[] = [];
 
@@ -94,5 +95,33 @@ describe("queryGitFileLog", () => {
 
     await expect(queryGitFileLog(repo, repo)).rejects.toThrow("不是文件");
     await expect(queryGitFileLog(repo, outsideFile)).rejects.toThrow("路径超出允许范围");
+  });
+});
+
+describe("terminal:gitCommit", () => {
+  it("commits a selected Unicode path and leaves unselected changes out of the commit", async () => {
+    const repo = createRepo();
+    const unicodePath = "public/files/授信额度申请批量导入.xlsx";
+    const unselectedPath = "keep-out.txt";
+    commitFile(repo, unicodePath, "base\n", "initial Unicode file");
+    commitFile(repo, unselectedPath, "base\n", "initial unselected file");
+    fs.writeFileSync(path.join(repo, unicodePath), "changed\n");
+    fs.writeFileSync(path.join(repo, unselectedPath), "changed\n");
+    git(repo, "add", "--", unselectedPath);
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    await handler({} as never, {
+      repoRoot: repo,
+      message: "fix: support Unicode Git paths",
+      paths: [unicodePath]
+    });
+
+    expect(git(repo, "show", "--format=", "--name-only", "-z", "HEAD").split("\0").filter(Boolean)).toEqual([unicodePath]);
+    expect(git(repo, "diff", "--cached", "--name-only", "--", unselectedPath)).toBe("");
+    expect(git(repo, "diff", "--name-only", "--", unselectedPath)).toBe(unselectedPath);
   });
 });

@@ -1967,7 +1967,7 @@ export function NotesPanel(): ReactPortal | null {
               {contextMenu.execProbe.hasSession ? (
                 <button type="button" role="menuitem" onClick={() => { void execSessionAction("idle"); }}>{t("desktop.notes.execSessionReset")}</button>
               ) : null}
-              {contextMenu.execProbe.hasSession && contextMenu.execProbe.sessionProvider !== "chat" ? (
+              {contextMenu.execProbe.sessionProvider !== "chat" ? (
                 contextMenu.execProbe.sessionNativeRef ? (
                   <button type="button" role="menuitem" onClick={() => { void execResumeSessionAction(); }}>{t("desktop.notes.execResumeSession")}</button>
                 ) : (

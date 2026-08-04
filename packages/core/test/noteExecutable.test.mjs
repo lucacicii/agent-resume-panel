@@ -59,6 +59,14 @@ describe("parseExecutableNote", () => {
     });
   });
 
+  it("normalizes legacy session done status to settled", () => {
+    const md = ":::session codex done native=codex/sess-done\n:::";
+    const parsed = parseExecutableNote(md);
+    assert.equal(parsed.sessions.length, 1);
+    assert.equal(parsed.sessions[0].status, "settled");
+    assert.equal(parsed.sessions[0].native, "codex/sess-done");
+  });
+
   it("ignores blocks inside fenced code", () => {
     const md = ["```md", ":::run executing", "nope", ":::", "```", "", ":::run draft", "yes", ":::"].join(
       "\n"

@@ -1078,9 +1078,10 @@ describe("WorkbenchPanel", () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
+    const gitFilePath = "public/files/授信额度申请批量导入.xlsx";
     const gitFile = {
-      path: "src/app.ts",
-      repoPath: "src/app.ts",
+      path: gitFilePath,
+      repoPath: gitFilePath,
       repoRoot: "/work/app",
       status: "M",
       staged: false,
@@ -1155,7 +1156,8 @@ describe("WorkbenchPanel", () => {
     expect(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Commit"]')).toBeNull();
     const messageField = await screen.findByRole("textbox", { name: "Commit changes" });
     expect(document.querySelector(".wb-git-commit-composer")).not.toBeNull();
-    expect(screen.getByRole("checkbox", { name: "src/app.ts" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: gitFilePath }).getAttribute("aria-checked")).toBe("true");
+    expect(await screen.findByText("授信额度申请批量导入.xlsx")).toBeTruthy();
 
     fireEvent.change(messageField, { target: { value: "draft before standalone push" } });
     fireEvent.click(gitActions.querySelector<HTMLButtonElement>('button[aria-label="Push"]')!);
@@ -1168,7 +1170,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
       repoRoot: "/work/app",
       message: "feat: add toasts",
-      paths: ["src/app.ts"]
+      paths: [gitFilePath]
     }));
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit and push completed.", kind: "ok" }));
     expect(notificationMocks.notifyDesktop).toHaveBeenCalledTimes(1);
@@ -1180,7 +1182,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
       repoRoot: "/work/app",
       message: "fix: normal commit",
-      paths: ["src/app.ts"]
+      paths: [gitFilePath]
     }));
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" }));
     expect(notificationMocks.notifyDesktop).toHaveBeenCalledTimes(1);
@@ -1231,11 +1233,17 @@ describe("WorkbenchPanel", () => {
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
       fireEvent.click(await screen.findByTitle("/work/app"));
       await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
+      await waitFor(() => expect(terminalGitFetch.mock.calls.length).toBeGreaterThanOrEqual(1));
       const afterActivate = terminalGitStatus.mock.calls.length;
+      const fetchesAfterActivate = terminalGitFetch.mock.calls.length;
       await act(async () => {
         await vi.advanceTimersByTimeAsync(4000);
       });
       await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(afterActivate));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      await waitFor(() => expect(terminalGitFetch.mock.calls.length).toBeGreaterThan(fetchesAfterActivate));
       expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
       // Git side panel closed — tracking is stored but not rendered.
       expect(screen.queryByText("develop · no upstream")).toBeNull();

@@ -75,6 +75,7 @@ import {
   EXECUTABLE_MAX_NEST_DEPTH,
   formatNativeSessionRef,
   formatNoteChildBlock,
+  formatSessionBlock,
   isCompositeExecutableParsed,
   listUnmaterializedNoteChildren,
   noteChildTitle,
@@ -530,6 +531,7 @@ export class NotesStore {
     }
     let content = await this.readNoteContent(args.noteId);
     const parsed = parseExecutableNote(content);
+    const native = formatNativeSessionRef(args.provider, args.agentSessionId);
     if (parsed.sessions[0]) {
       content = updateSessionBlocks(
         content,
@@ -539,14 +541,25 @@ export class NotesStore {
             {
               provider: args.provider,
               status: "running" as SessionBlockStatus,
-              native: formatNativeSessionRef(args.provider, args.agentSessionId)
+              native
             }
           ]
         ])
       );
-      await fs.writeFile(this.absolutePath(record), content, "utf8");
-      await this.refreshNoteFromDisk(record);
+    } else {
+      const separator = content.length === 0 || content.endsWith("\n\n")
+        ? ""
+        : content.endsWith("\n")
+          ? "\n"
+          : "\n\n";
+      content = `${content}${separator}${formatSessionBlock({
+        provider: args.provider,
+        status: "running",
+        native
+      })}\n`;
     }
+    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    await this.refreshNoteFromDisk(record);
     await upsertNoteSessionBinding(this.dbPath, {
       noteId: args.noteId,
       provider: args.provider,

@@ -14,6 +14,7 @@ import {
 } from "./gitNestedScan";
 import { parseLeftRightCount, type GitRepoTracking } from "./gitTracking";
 import { safeHandle } from "./ipcUtils";
+import { parseGitStatusPorcelainV1Z } from "./workbenchGitStatus";
 import {
   createWorkbenchFile,
   inspectWorkbenchFile,
@@ -117,7 +118,10 @@ function resolvePathWithinRoot(raw: string, rootPath: string): string {
 
 /** Git pathspecs accepted from the renderer must remain relative to the selected repository. */
 function normalizeRepoRelativePath(raw: string): string {
-  const normalized = raw.trim().replace(/\\/g, "/");
+  // Porcelain status represents an untracked directory with a trailing slash
+  // (for example `.claude/`). Git pathspecs accept either form, but the empty
+  // final segment must not be rejected as traversal input.
+  const normalized = raw.trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (
     !normalized
     || normalized.includes("\0")
@@ -159,23 +163,8 @@ function parseGitStatusPorcelain(stdout: string): { staged: GitFileChange[]; uns
     unstaged: flags.unstaged
   });
 
-  for (const line of stdout.split("\n")) {
-    if (!line.trim()) continue;
-    let filePath = "";
-
-    if (line.startsWith("?? ")) {
-      filePath = line.slice(3).trim();
-      if (!filePath) continue;
-      unstaged.push(makeChange(filePath, "?", { staged: false, unstaged: true }));
-      unstagedPaths.add(filePath);
-      continue;
-    }
-
-    if (line.length < 4) continue;
-    const indexStatus = line[0];
-    const worktreeStatus = line[1];
-    filePath = line.slice(3).trim();
-    if (!filePath) continue;
+  for (const entry of parseGitStatusPorcelainV1Z(stdout)) {
+    const { indexStatus, worktreeStatus, path: filePath } = entry;
 
     const isStaged = indexStatus !== " " && indexStatus !== "?";
     const isUnstaged = worktreeStatus !== " " || indexStatus === "?";
@@ -217,7 +206,7 @@ function prefixGitChanges(
 }
 
 async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitFileChange[]; unstaged: GitFileChange[] }> {
-  const { stdout } = await execFileAsync("git", ["-C", repoRoot, "status", "--porcelain=v1"], {
+  const { stdout } = await execFileAsync("git", ["-C", repoRoot, "status", "--porcelain=v1", "-z"], {
     timeout: 10000,
     maxBuffer: 1024 * 1024
   });

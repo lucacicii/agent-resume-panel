@@ -120,6 +120,12 @@ function isSessionBlockStatus(value: string): value is SessionBlockStatus {
   return (SESSION_BLOCK_STATUSES as readonly string[]).includes(value);
 }
 
+/** Accept the legacy note/session completion token while keeping the canonical model stable. */
+function normalizeSessionBlockStatus(value: string): SessionBlockStatus | undefined {
+  if (value === "done") return "settled";
+  return isSessionBlockStatus(value) ? value : undefined;
+}
+
 function isRunBlockStatus(value: string): value is RunBlockStatus {
   return (RUN_BLOCK_STATUSES as readonly string[]).includes(value);
 }
@@ -250,9 +256,9 @@ export function parseExecutableNote(markdown: string): ParsedExecutableNote {
 
     if (raw.kind === "session") {
       const provider = raw.openArgs[0]?.trim();
-      const status = raw.openArgs[1];
+      const status = normalizeSessionBlockStatus(raw.openArgs[1]);
       const native = raw.openArgs[2] || undefined;
-      if (!provider || !isSessionBlockStatus(status)) continue;
+      if (!provider || !status) continue;
       sessions.push({
         kind: "session",
         index: sessions.length,
