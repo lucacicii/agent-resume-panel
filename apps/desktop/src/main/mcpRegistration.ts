@@ -306,7 +306,12 @@ async function removeJsonClient(definition: McpClientDefinition): Promise<void> 
   await writeJsonAtomically(definition.configPath, { ...config, [rootKey]: servers });
 }
 
-async function registerCliClient(definition: McpClientDefinition, launch: McpLaunchConfig, replace: boolean): Promise<void> {
+async function registerCliClient(
+  id: Extract<McpClientId, "codex" | "claude">,
+  definition: McpClientDefinition,
+  launch: McpLaunchConfig,
+  replace: boolean
+): Promise<void> {
   const executable = await resolveExecutableOnPath(definition.executable);
   if (!executable) {
     throw new Error(
@@ -319,11 +324,35 @@ async function registerCliClient(definition: McpClientDefinition, launch: McpLau
       : ["mcp", "remove", EXTERNAL_MCP_SERVICE_ID];
     await run(executable, removeArgs).catch(() => {});
   }
+  await run(executable, buildCliRegistrationArgs(id, launch));
+}
+
+/**
+ * Codex accepts --env before the server name. Claude Code defines -e/--env as
+ * a variadic option after <name>; placing it first makes it consume
+ * `agent-resume` as another environment value. Keep the client-specific order.
+ */
+export function buildCliRegistrationArgs(
+  id: Extract<McpClientId, "codex" | "claude">,
+  launch: McpLaunchConfig
+): string[] {
+  if (id === "claude") {
+    const envArgs = Object.entries(launch.env).flatMap(([key, value]) => ["-e", `${key}=${value}`]);
+    return [
+      "mcp",
+      "add",
+      "--scope",
+      "user",
+      EXTERNAL_MCP_SERVICE_ID,
+      ...envArgs,
+      "--",
+      launch.command,
+      ...launch.args
+    ];
+  }
+
   const envArgs = Object.entries(launch.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
-  const args = definition.id === "claude"
-    ? ["mcp", "add", "--scope", "user", ...envArgs, EXTERNAL_MCP_SERVICE_ID, "--", launch.command, ...launch.args]
-    : ["mcp", "add", ...envArgs, EXTERNAL_MCP_SERVICE_ID, "--", launch.command, ...launch.args];
-  await run(executable, args);
+  return ["mcp", "add", ...envArgs, EXTERNAL_MCP_SERVICE_ID, "--", launch.command, ...launch.args];
 }
 
 export async function registerMcpClient(
@@ -341,7 +370,7 @@ export async function registerMcpClient(
     );
   }
   if (definition.id === "codex" || definition.id === "claude") {
-    await registerCliClient(definition, launch, replace);
+    await registerCliClient(definition.id, definition, launch, replace);
   } else {
     await registerJsonClient(definition, launch, replace);
   }

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   EXTERNAL_MCP_SERVICE_ID,
+  buildCliRegistrationArgs,
   createExternalMcpLaunchConfig,
   isLegacyAgentResumeLaunch,
   manualMcpConfig,
@@ -38,6 +39,35 @@ describe("desktop external MCP registration", () => {
       args: launch.args,
       env: launch.env
     });
+  });
+
+  it("orders Claude environment flags after the MCP server name", () => {
+    const launch = createExternalMcpLaunchConfig({
+      executablePath: "/Applications/Agent Resume.app/Contents/MacOS/Agent Resume",
+      cliPath: "/app/mcp/cli.js",
+      panelHome: "/Users/test/.agent-resume-panel"
+    });
+
+    expect(buildCliRegistrationArgs("claude", launch)).toEqual([
+      "mcp",
+      "add",
+      "--scope",
+      "user",
+      "agent-resume",
+      "-e",
+      "ELECTRON_RUN_AS_NODE=1",
+      "-e",
+      "AGENT_RESUME_PANEL_HOME=/Users/test/.agent-resume-panel",
+      "--",
+      launch.command,
+      ...launch.args
+    ]);
+    expect(buildCliRegistrationArgs("codex", launch).slice(0, 4)).toEqual([
+      "mcp",
+      "add",
+      "--env",
+      "ELECTRON_RUN_AS_NODE=1"
+    ]);
   });
 
   it("resolves an executable from the inherited PATH even when the shell PATH is minimal", async () => {
