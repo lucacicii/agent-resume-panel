@@ -1038,7 +1038,7 @@ export interface DesktopApi {
       sessionId?: string;
     };
   }): Promise<{ noteId: string; filename: string; scope: string }>;
-  notesDelete(args: { noteId: string }): Promise<{ ok: boolean }>;
+  notesDelete(args: { noteId: string }): Promise<{ ok: boolean; deletedNoteIds: string[] }>;
   notesRename(args: { noteId: string; filename: string }): Promise<{ noteId: string; filename: string }>;
   notesImport(owner: {
     scope: "library" | "project" | "session";

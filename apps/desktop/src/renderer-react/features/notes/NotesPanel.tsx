@@ -1592,14 +1592,20 @@ export function NotesPanel(): ReactPortal | null {
   };
 
   const remove = async (note = selected) => {
-    if (!note || !window.confirm(t("desktop.notes.deleteConfirm", titleFor(note)))) return;
+    if (!note) return;
+    const childCount = childCounts[note.noteId] ?? 0;
+    const message = childCount > 0
+      ? t("desktop.notes.deleteWithChildren", titleFor(note), childCount)
+      : t("desktop.notes.deleteConfirm", titleFor(note));
+    if (!window.confirm(message)) return;
     try {
-      await desktopApi().notesDelete({ noteId: note.noteId });
-      setPinnedNotes((current) => { const next = new Set(current); next.delete(note.noteId); savePinned(PINNED_NOTES_KEY, next); return next; });
-      if (selected?.noteId === note.noteId) {
+      const { deletedNoteIds } = await desktopApi().notesDelete({ noteId: note.noteId });
+      const deleted = new Set(deletedNoteIds);
+      setPinnedNotes((current) => { const next = new Set(current); for (const id of deletedNoteIds) next.delete(id); savePinned(PINNED_NOTES_KEY, next); return next; });
+      if (selected && deleted.has(selected.noteId)) {
         setSelected(null);
         setContent("");
-        if (treeRootId === note.noteId) {
+        if (treeRootId && deleted.has(treeRootId)) {
           setTreeRootId(null);
           setSubtree(null);
         } else if (treeRootId) {

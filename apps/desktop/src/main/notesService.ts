@@ -277,10 +277,14 @@ export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteR
   return store.moveNote(noteId, owner);
 }
 
-export async function notesDelete(noteId: string): Promise<{ ok: boolean }> {
+export async function notesDelete(noteId: string): Promise<{ ok: boolean; deletedNoteIds: string[] }> {
   const store = await getNotesStore();
-  await store.deleteNote(noteId);
-  return { ok: true };
+  const descendants = await store.collectNoteDescendantIds(noteId);
+  const deletedNoteIds = [...descendants, noteId];
+  for (const id of deletedNoteIds) {
+    await store.deleteNote(id);
+  }
+  return { ok: true, deletedNoteIds };
 }
 
 export async function notesRename(noteId: string, filename: string): Promise<NoteRecord> {
