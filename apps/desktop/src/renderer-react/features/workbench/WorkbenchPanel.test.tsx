@@ -307,7 +307,7 @@ describe("WorkbenchPanel", () => {
     // Default project context menu includes newSession (pin is optional / settings-driven).
     await screen.findByRole("menuitem", { name: "New Session" });
     fireEvent.click(screen.getByRole("menuitem", { name: "New Session" }));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "codex" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "codex", executionMode: "standard" }));
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Fix renderer/ }));
     await screen.findByRole("menuitem", { name: "Preview" });
@@ -975,7 +975,7 @@ describe("WorkbenchPanel", () => {
     const menu = await screen.findByRole("menu", { name: "Default agent" });
     expect(newSessionButton.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "claude" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "claude", executionMode: "standard" }));
     expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull();
 
     fireEvent.click(newSessionButton);
@@ -2117,5 +2117,88 @@ describe("WorkbenchPanel", () => {
     expect(localStorage.getItem("workbench-selected-project")).toBe("/work/other");
     expect(onTabRequest).toHaveBeenCalledWith(expect.objectContaining({ detail: "workbench" }));
     window.removeEventListener("agent-resume:tab-request", onTabRequest);
+  });
+
+  it("launches note tasks with note-yolo mode, noteId, and initial prompt", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let catalogSessions = [
+      { provider: "codex", id: "session-1", title: "Existing", projectPath: "/work/app", updatedAt: 1 }
+    ];
+    const workbenchNewSession = vi.fn(async () => {
+      catalogSessions = [
+        ...catalogSessions,
+        { provider: "codex", id: "session-note", title: "Note task", projectPath: "/work/app", updatedAt: Date.now() }
+      ];
+      return {
+        mode: "xterm" as const,
+        command: "codex --cd '/work/app' --dangerously-bypass-approvals-and-sandbox",
+        cwd: "/work/app"
+      };
+    });
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const listSessions = vi.fn(async () => catalogSessions);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", terminalMode: "external-system" } }),
+      listSessions,
+      workbenchNewSession,
+      terminalSpawn: async () => ({ id: 42 }),
+      terminalInput,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(screen.getByTitle("/work/app")).toBeTruthy());
+
+    const launched = new Promise<{ requestId: string; ok: boolean; catalogProvider?: string; sessionId?: string }>((resolve) => {
+      window.addEventListener("agent-resume:workbench-session-launched", ((event: Event) => {
+        resolve((event as CustomEvent).detail);
+      }) as EventListener, { once: true });
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-launch-session", {
+        detail: {
+          requestId: "notes-run-test-1",
+          channel: "cli",
+          provider: "codex",
+          cwd: "/work/app",
+          title: "Leaf note task",
+          noteId: "note-leaf-1",
+          initialPrompt: 'Call note_read with noteId "note-leaf-1"',
+          executionMode: "note-yolo"
+        }
+      }));
+    });
+
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "codex",
+      executionMode: "note-yolo",
+      noteId: "note-leaf-1",
+      initialPrompt: 'Call note_read with noteId "note-leaf-1"'
+    }));
+
+    const result = await launched;
+    expect(result).toMatchObject({
+      requestId: "notes-run-test-1",
+      ok: true,
+      catalogProvider: "codex",
+      sessionId: "session-note"
+    });
   });
 });

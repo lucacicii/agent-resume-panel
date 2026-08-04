@@ -60,22 +60,28 @@ describe("executableRunActions", () => {
   });
 
   it("builds step prompt from session text or child body", () => {
-    expect(
-      buildStepPrompt({
-        parentTitle: "Parent",
-        childTitle: "Child",
-        childBody: "# Child\n\nbody",
-        sessionText: "Do the thing"
-      })
-    ).toBe("Do the thing");
+    const withSession = buildStepPrompt({
+      noteId: "note-child",
+      parentTitle: "Parent",
+      childTitle: "Child",
+      childBody: "# Child\n\nbody",
+      sessionText: "Do the thing"
+    });
+    expect(withSession).toContain("Do the thing");
+    expect(withSession).toContain('Agent Resume Note with ID "note-child"');
+    expect(withSession).toContain('note_read with noteId "note-child"');
+    expect(withSession).toContain("note_executable_append_result");
 
     const fallback = buildStepPrompt({
+      noteId: "note-fallback",
       parentTitle: "Parent",
       childTitle: "Child",
       childBody: "# Child\n\nImplement API\n\n:::session codex idle\n:::\n"
     });
     expect(fallback).toContain("Implement API");
-    expect(fallback).toContain('note "Parent"');
+    expect(fallback).toContain('Agent Resume Note with ID "note-fallback"');
+    expect(fallback).toContain('parent note "Parent"');
+    expect(fallback).toContain('note_read with noteId "note-fallback"');
     expect(fallback).not.toContain(":::session");
   });
 

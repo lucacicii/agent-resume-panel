@@ -186,7 +186,10 @@ export interface DesktopApi {
   workbenchNewSession(args: {
     cwd: string;
     provider: string;
+    executionMode: "standard" | "note-yolo";
     useSystemTerminalOnly?: boolean;
+    noteId?: string;
+    initialPrompt?: string;
   }): Promise<{ mode: string; command?: string; cwd: string }>;
   /** ACP visual chat (Workbench). */
   acpListSessions(args?: { projectPath?: string }): Promise<

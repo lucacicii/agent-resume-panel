@@ -632,6 +632,7 @@ export {
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,
   projectEditorLabel,

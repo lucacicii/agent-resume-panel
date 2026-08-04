@@ -1181,19 +1181,33 @@ function registerIpc(): void {
     "workbench:newSession",
     async (
       _event,
-      args: { cwd: string; provider: AgentProvider; useSystemTerminalOnly?: boolean }
+      args: {
+        cwd: string;
+        provider: AgentProvider;
+        executionMode: "standard" | "note-yolo";
+        useSystemTerminalOnly?: boolean;
+        noteId?: string;
+        initialPrompt?: string;
+      }
     ) => {
-      const settings = await loadSettings();
       const cwd = expandHome(args.cwd?.trim() || "");
       if (!cwd) {
         throw new Error("Working directory is required.");
       }
+      if (args.executionMode === "note-yolo") {
+        if (!args.noteId?.trim()) throw new Error("Note ID is required for Note execution.");
+        if (!args.initialPrompt?.trim()) throw new Error("Initial prompt is required for Note execution.");
+        const command = buildNewSessionCommand(args.provider, cwd, "yolo");
+        return { mode: "xterm", command, cwd };
+      }
+
+      const settings = await loadSettings();
       const mode = resolveWorkbenchTerminalMode(settings);
       if (args.useSystemTerminalOnly || mode === "external-system") {
         await openProjectInSystemTerminal(cwd);
         return { mode: "external-system", cwd };
       }
-      const command = buildNewSessionCommand(args.provider, cwd);
+      const command = buildNewSessionCommand(args.provider, cwd, "standard");
       return { mode, command, cwd };
     }
   );

@@ -183,6 +183,8 @@ type TerminalPane = {
   projectPath: string;
   cwd: string;
   command?: string;
+  noteId?: string;
+  initialPrompt?: string;
   ptyId?: number;
   branch?: string | null;
   repoRoot?: string | null;
@@ -1657,7 +1659,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1666,6 +1668,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   rendererMode: TerminalRendererMode;
   onPty: (key: string, id: number, terminal: Terminal) => void;
   onInput: (key: string) => void;
+  onInitialPromptSubmitted: (key: string) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -1676,6 +1679,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const rendererRef = useRef<{ dispose: () => void } | null>(null);
   const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
   const ptyId = useRef<number | null>(null);
+  const initialPromptRef = useRef(pane.initialPrompt);
   const [ready, setReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1868,6 +1872,15 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         // Re-fit after attach in case layout settled during spawn.
         scheduleFit();
         resizePty(terminal.cols, terminal.rows);
+        if (initialPromptRef.current) {
+          window.setTimeout(() => {
+            const initialPrompt = initialPromptRef.current;
+            if (!alive || ptyId.current !== id || !initialPrompt) return;
+            void desktopApi().terminalInput({ id, data: `${initialPrompt}\r` })
+              .then(() => onInitialPromptSubmitted(pane.key))
+              .catch(() => undefined);
+          }, 600);
+        }
       })
       .catch((error: unknown) => {
         if (!alive) return;
@@ -1897,7 +1910,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       if (currentPtyId !== null) void desktopApi().terminalDestroy({ id: currentPtyId });
       terminal.dispose();
     };
-  }, [onInput, onPty, pane.command, pane.cwd, pane.key]);
+  }, [onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {
@@ -2793,10 +2806,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     command?: string,
     projectPath = selectedProject || cwd,
     openedSessionKey?: string,
-    group: Exclude<WorkbenchPaneGroup, "code"> = openedSessionKey ? "session" : "terminal"
+    group: Exclude<WorkbenchPaneGroup, "code"> = openedSessionKey ? "session" : "terminal",
+    launch?: { noteId?: string; initialPrompt?: string }
   ): string => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
-    const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey };
+    const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey, ...launch };
     terminalsRef.current = [...terminalsRef.current, pane];
     setTerminals((current) => [...current, pane]);
     setActivePane(key, projectPath);
@@ -2866,11 +2880,22 @@ export function WorkbenchPanel(): ReactPortal | null {
 
           const result = await desktopApi().workbenchNewSession({
             cwd,
-            provider: request.provider as AgentProvider
+            provider: request.provider as AgentProvider,
+            executionMode: request.executionMode,
+            noteId: request.noteId,
+            initialPrompt: request.initialPrompt
           });
           if (result.mode === "xterm" && result.command) {
             const title = request.title || t("desktop.workbench.newSessionTitle", basename(cwd));
-            const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
+            const terminalKey = addTerminal(
+              title,
+              result.cwd,
+              result.command,
+              cwd,
+              undefined,
+              "session",
+              { noteId: request.noteId, initialPrompt: request.initialPrompt }
+            );
             addPendingSession(
               terminalKey,
               request.provider as AgentProvider,
@@ -2915,27 +2940,10 @@ export function WorkbenchPanel(): ReactPortal | null {
             return;
           }
 
-          // External terminal: open system shell, then poll catalog for a new matching session.
-          const found = await waitForCatalogSession({
-            cwd,
-            provider: request.provider,
-            knownKeys,
-            notBeforeMs: startedAt - 30_000,
-            timeoutMs: 120_000
-          });
-          if (found) {
-            emitWorkbenchSessionLaunched({
-              requestId: request.requestId,
-              ok: true,
-              catalogProvider: found.catalogProvider,
-              sessionId: found.sessionId
-            });
-            return;
-          }
           emitWorkbenchSessionLaunched({
             requestId: request.requestId,
             ok: false,
-            error: "Opened external terminal, but no new catalog session was detected to bind."
+            error: "Note execution requires an internal Workbench terminal."
           });
         } catch (error) {
           emitWorkbenchSessionLaunched({
@@ -2984,6 +2992,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals((current) => current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane));
     void refreshTerminalGit(key);
   }, [refreshTerminalGit]);
+
+  const onInitialPromptSubmitted = useCallback((key: string) => {
+    setTerminals((current) => {
+      const next = current.map((pane) => pane.key === key ? { ...pane, initialPrompt: undefined } : pane);
+      terminalsRef.current = next;
+      return next;
+    });
+  }, []);
 
   const nextPaneAfterClose = useCallback((
     projectPath: string,
@@ -3179,7 +3195,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         addAcpChat(record);
         await loadSessions();
       } else {
-        const result = await desktopApi().workbenchNewSession({ cwd, provider: target.provider as AgentProvider });
+        const result = await desktopApi().workbenchNewSession({
+          cwd,
+          provider: target.provider as AgentProvider,
+          executionMode: "standard"
+        });
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
           const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
@@ -5073,7 +5093,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input

@@ -74,23 +74,26 @@ export function snapshotFromParsed(input: {
 }
 
 export function buildStepPrompt(input: {
+  noteId: string;
   parentTitle: string;
   childTitle: string;
   childBody: string;
   sessionText?: string;
 }): string {
   const sessionText = input.sessionText?.trim();
-  if (sessionText) return sessionText;
   const body = input.childBody
     .replace(/^---[\s\S]*?---\s*/m, "")
     .replace(/^#\s+.+\n+/, "")
     .replace(/:::session[\s\S]*?:::/g, "")
     .trim();
+  const task = sessionText || body;
   const parts = [
-    `You are executing a step from note "${input.parentTitle}".`,
+    `You are executing the Agent Resume Note with ID "${input.noteId}" from parent note "${input.parentTitle}".`,
+    `Before doing any work, call the Agent Resume MCP tool note_read with noteId "${input.noteId}" and use the latest Note content as the source of truth.`,
     `## Task: ${input.childTitle}`,
-    body ? body : undefined,
-    "Follow repository instructions (AGENTS.md). Do not modify Java code."
+    task ? task : undefined,
+    "Follow repository instructions (AGENTS.md). Do not modify Java code.",
+    `When the task is complete, write the outcome back to Note "${input.noteId}" with the Agent Resume MCP executable result capability (note_executable_append_result), using the appropriate completed, failed, partial, or blocked status.`
   ].filter(Boolean);
   return parts.join("\n\n");
 }
@@ -101,7 +104,9 @@ export type LaunchSessionRequest = {
   provider: string;
   cwd: string;
   title?: string;
-  initialPrompt?: string;
+  noteId: string;
+  initialPrompt: string;
+  executionMode: "note-yolo";
 };
 
 export type LaunchSessionResult = {
@@ -330,6 +335,7 @@ export async function startExecutableCurrentStep(args: {
   const childTitle =
     childRead.record.title || childRead.record.filename.replace(/\.md$/i, "") || args.childNoteId;
   const prompt = buildStepPrompt({
+    noteId: args.childNoteId,
     parentTitle: args.parentTitle,
     childTitle,
     childBody: childRead.content,
@@ -358,7 +364,9 @@ export async function startExecutableCurrentStep(args: {
     provider,
     cwd,
     title: childTitle,
-    initialPrompt: prompt
+    noteId: args.childNoteId,
+    initialPrompt: prompt,
+    executionMode: "note-yolo"
   });
 
   let catalogProvider = launched.catalogProvider;
@@ -516,6 +524,7 @@ export async function startNoteSession(args: {
   const childRead = await api.notesRead({ noteId: args.noteId });
   const title = childRead.record.title || childRead.record.filename.replace(/\.md$/i, "") || args.noteId;
   const prompt = buildStepPrompt({
+    noteId: args.noteId,
     parentTitle: title,
     childTitle: title,
     childBody: childRead.content,
@@ -541,7 +550,9 @@ export async function startNoteSession(args: {
     provider,
     cwd,
     title,
-    initialPrompt: prompt
+    noteId: args.noteId,
+    initialPrompt: prompt,
+    executionMode: "note-yolo"
   });
 
   let catalogProvider = launched.catalogProvider;

@@ -26,7 +26,35 @@ export function buildResumeCommand(session: AgentSession): string {
   return `claude --resume ${shellQuote(session.id)}`;
 }
 
-export function buildNewSessionCommand(provider: AgentProvider, projectPath: string): string {
+export type NewSessionExecutionMode = "standard" | "yolo";
+
+export function buildNewSessionCommand(
+  provider: AgentProvider,
+  projectPath: string,
+  mode: NewSessionExecutionMode
+): string {
+  if (mode === "yolo") {
+    if (provider === "codex") {
+      return `codex --cd ${shellQuote(projectPath)} --dangerously-bypass-approvals-and-sandbox`;
+    }
+    if (provider === "claude") {
+      return "claude --dangerously-skip-permissions";
+    }
+    if (provider === "agy") {
+      return "agy --dangerously-skip-permissions";
+    }
+    if (provider === "grok") {
+      return `grok --cwd ${shellQuote(projectPath)} --permission-mode bypassPermissions --sandbox off`;
+    }
+    if (provider === "opencode") {
+      return `opencode ${shellQuote(projectPath)} --auto`;
+    }
+    if (provider === "cursor") {
+      return `cursor-agent --workspace ${shellQuote(projectPath)} --yolo --sandbox disabled --approve-mcps`;
+    }
+    throw new Error(`YOLO mode is not supported for provider: ${provider}.`);
+  }
+
   if (provider === "codex") {
     return `codex --cd ${shellQuote(projectPath)}`;
   }
