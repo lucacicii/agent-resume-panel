@@ -61,6 +61,15 @@ export interface DesktopSettings {
   alwaysAllowAgentNonDestructiveOperations?: boolean;
 }
 
+/**
+ * Desktop-only Notes preferences. Independent of Workbench's new-session config:
+ * Notes always resolves a concrete provider (no "ask every time" option).
+ */
+export interface NotesSettings {
+  /** Default agent provider used for Notes executable sessions. Default codex. */
+  defaultSessionProvider?: AgentProvider;
+}
+
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
 /** Built-in embedded xterm color presets (desktop Workbench). */
 export type WorkbenchTerminalThemeId =
@@ -351,6 +360,8 @@ export interface PanelSettings {
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
   workbench?: WorkbenchSettings;
+  /** Desktop-only Notes preferences (default executable session provider). */
+  notes?: NotesSettings;
   /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
   acp?: AcpSettings;
   ghosttyExecutable?: string;

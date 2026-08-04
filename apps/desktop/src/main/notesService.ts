@@ -29,6 +29,23 @@ let notesStoreKey = "";
 
 export type DesktopNoteRecord = NoteRecord;
 
+const NOTES_CLI_PROVIDERS = new Set<string>([
+  "codex",
+  "claude",
+  "agy",
+  "grok",
+  "opencode",
+  "pi",
+  "cursor"
+]);
+
+/** Resolve the Notes default session provider (independent of Workbench). */
+async function notesDefaultProvider(): Promise<string> {
+  const settings = await loadSettings();
+  const provider = settings.notes?.defaultSessionProvider;
+  return provider && NOTES_CLI_PROVIDERS.has(provider) ? provider : "codex";
+}
+
 async function getNotesStore(): Promise<NotesStore> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
@@ -110,7 +127,7 @@ export async function notesWrite(
   content: string
 ): Promise<NoteRecord & { content?: string; materialized?: boolean }> {
   const store = await getNotesStore();
-  return store.writeNoteContent(noteId, content);
+  return store.writeNoteContent(noteId, content, { defaultProvider: await notesDefaultProvider() });
 }
 
 export async function notesExecutableParse(noteId: string) {
@@ -123,7 +140,10 @@ export async function notesExecutableApproveRun(
   args?: { runIndex?: number; defaultProvider?: string }
 ) {
   const store = await getNotesStore();
-  return store.approveExecutableRun(noteId, args);
+  return store.approveExecutableRun(noteId, {
+    runIndex: args?.runIndex,
+    defaultProvider: args?.defaultProvider || (await notesDefaultProvider())
+  });
 }
 
 export async function notesExecutableBindSession(args: {
@@ -157,7 +177,7 @@ export async function notesExecutableSettleChild(args: {
     outcome: args.outcome,
     summary: args.summary,
     runId: args.runId,
-    defaultProvider: args.defaultProvider
+    defaultProvider: args.defaultProvider || (await notesDefaultProvider())
   });
 }
 
@@ -166,7 +186,10 @@ export async function notesExecutableResolveLeaf(
   args?: { defaultProvider?: string; maxDepth?: number }
 ) {
   const store = await getNotesStore();
-  return store.resolveExecutableLeaf(noteId, args);
+  return store.resolveExecutableLeaf(noteId, {
+    defaultProvider: args?.defaultProvider || (await notesDefaultProvider()),
+    maxDepth: args?.maxDepth
+  });
 }
 
 export async function notesExecutableIsComposite(noteId: string): Promise<boolean> {
@@ -218,7 +241,9 @@ export async function notesExecutableAppendStep(
   text?: string
 ): Promise<{ content: string; childNoteId: string }> {
   const store = await getNotesStore();
-  return store.appendExecutableStep(parentNoteId, text);
+  return store.appendExecutableStep(parentNoteId, text, {
+    defaultProvider: await notesDefaultProvider()
+  });
 }
 
 export async function notesCreate(args: {

@@ -197,7 +197,8 @@ export class NotesStore {
 
   async writeNoteContent(
     noteId: string,
-    content: string
+    content: string,
+    options?: { defaultProvider?: string }
   ): Promise<NoteRecord & { content?: string; materialized?: boolean }> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) {
@@ -208,7 +209,7 @@ export class NotesStore {
     if (record.scope === "project") {
       const before = content;
       nextContent = await this.materializeExecutableChildrenInContent(noteId, content, {
-        defaultProvider: "codex"
+        defaultProvider: options?.defaultProvider
       });
       materialized = nextContent !== before;
     }
@@ -947,7 +948,8 @@ export class NotesStore {
    */
   async appendExecutableStep(
     parentNoteId: string,
-    text?: string
+    text?: string,
+    options?: { defaultProvider?: string }
   ): Promise<{ content: string; childNoteId: string }> {
     const parent = await getNoteById(this.dbPath, parentNoteId);
     if (!parent) {
@@ -959,7 +961,7 @@ export class NotesStore {
     const title = (text || "").trim() || "New step";
     const child = await this.createLinkedChildNote(
       parentNoteId,
-      defaultChildNoteBody(title, "codex")
+      defaultChildNoteBody(title, options?.defaultProvider?.trim() || "codex")
     );
     const block = formatNoteChildBlock({
       status: "planned",

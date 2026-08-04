@@ -15,6 +15,8 @@ const messages = {
   "desktop.settings.paneSessionsDesc": "Sessions desc",
   "desktop.settings.paneWorkbench": "Workbench",
   "desktop.settings.paneWorkbenchDesc": "Workbench desc",
+  "desktop.settings.paneNotes": "Notes",
+  "desktop.settings.paneNotesDesc": "Notes desc",
   "desktop.settings.paneReport": "Report",
   "desktop.settings.paneReportDesc": "Report desc",
   "desktop.settings.paneStorage": "Storage",
@@ -63,7 +65,16 @@ const messages = {
   "desktop.settings.saving": "Saving…",
   "desktop.settings.saved": "Saved {0}",
   "desktop.settings.schedulerOn": "scheduler on",
-  "desktop.settings.schedulerOff": "scheduler off"
+  "desktop.settings.schedulerOff": "scheduler off",
+  "desktop.settings.notesGroup": "Notes",
+  "desktop.settings.notesFootnote": "Notes are Markdown files.",
+  "desktop.settings.notesDefaultProvider": "Default session provider",
+  "desktop.settings.notesDefaultProviderDesc": "Agent for Notes executable sessions.",
+  "desktop.settings.appData": "App data",
+  "desktop.settings.appDataFootnote": "catalog.db lives under Panel home.",
+  "desktop.settings.panelHome": "Panel home",
+  "desktop.settings.panelHomeFootnote": "Reveal uses saved path.",
+  "desktop.common.revealInFinder": "Reveal"
 };
 
 function renderWindowSettings(initialPane = "general") {
@@ -222,5 +233,27 @@ describe("SettingsPanel (window)", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
 
     expect(host.querySelectorAll('[data-testid^="settings-api-key-reveal-"]')).toHaveLength(3);
+  });
+
+  it("renders the Notes default session provider select without an ask-every-time option", async () => {
+    const { host, saveSettings } = renderWindowSettings("notes");
+    await waitFor(() => expect(host.textContent).toContain("Default session provider"));
+    const select = host.querySelector("select.settings-row-control") as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    const options = Array.from(select.querySelectorAll("option")).map((option) => option.value);
+    expect(options).toEqual(["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"]);
+    expect(options).not.toContain("");
+
+    fireEvent.change(select, { target: { value: "grok" } });
+    await waitFor(() => expect(saveSettings).toHaveBeenCalled());
+    const last = saveSettings.mock.calls.at(-1) as unknown[];
+    const patched = last[0] as { notes?: { defaultSessionProvider?: string } };
+    expect(patched.notes?.defaultSessionProvider).toBe("grok");
+  });
+
+  it("keeps the Data Paths pane free of the Notes provider select", async () => {
+    const { host } = renderWindowSettings("storage");
+    await waitFor(() => expect(host.textContent).toContain("Panel home"));
+    expect(host.querySelector("select.settings-row-control")).toBeNull();
   });
 });

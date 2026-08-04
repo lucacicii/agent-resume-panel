@@ -6,7 +6,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
-import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import type { ReportDraft, StorageDraft, WorkbenchDraft, NotesDraft } from "./model";
 import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -515,8 +515,15 @@ export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: Stora
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{home}/notes</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
     <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div> : null}</section>
+  </>;
+}
+
+export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
+  const update = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
+  const notesProviders = ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"] as const;
+  return <>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><SelectRow title={t("desktop.settings.notesDefaultProvider")} description={t("desktop.settings.notesDefaultProviderDesc")} value={draft.notesDefaultSessionProvider} onChange={(value) => update("notesDefaultSessionProvider", value as NotesDraft["notesDefaultSessionProvider"])}>{notesProviders.map((provider) => <option key={provider} value={provider}>{provider}</option>)}</SelectRow><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
   </>;
 }
 

@@ -44,6 +44,7 @@ export type {
   DesktopVisualThemeId,
   DesktopThemeEffects,
   WorkbenchSettings,
+  NotesSettings,
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,

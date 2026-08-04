@@ -163,6 +163,22 @@ export interface StorageDraft {
   cursorIdeUserDataHome: string;
 }
 
+/** Desktop-only Notes preferences. Independent of Workbench's new-session config. */
+export interface NotesDraft {
+  /** Default agent provider for Notes executable sessions. No "ask every time" option. */
+  notesDefaultSessionProvider: "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "cursor";
+}
+
+const NOTES_CLI_PROVIDERS = new Set<string>([
+  "codex",
+  "claude",
+  "agy",
+  "grok",
+  "opencode",
+  "pi",
+  "cursor"
+]);
+
 const UI_LANGUAGES = new Set<UiLanguageValue>(["auto", "en", "zh-cn", "ja"]);
 
 export function normalizeOutputLanguage(value: string | undefined): UiLanguageValue {
@@ -510,6 +526,15 @@ export function storageDraftFromSettings(settings: PanelSettings): StorageDraft 
   };
 }
 
+export function notesDraftFromSettings(settings: PanelSettings): NotesDraft {
+  const provider = settings.notes?.defaultSessionProvider;
+  return {
+    notesDefaultSessionProvider: provider && NOTES_CLI_PROVIDERS.has(provider)
+      ? provider as NotesDraft["notesDefaultSessionProvider"]
+      : "codex"
+  };
+}
+
 export function storagePatch(settings: PanelSettings, draft: StorageDraft): Partial<PanelSettings> {
   const agentHomes = Object.fromEntries(Object.entries(AGENT_HOME_DEFAULTS).flatMap(([key, fallback]) => {
     const value = draft[key as keyof typeof AGENT_HOME_DEFAULTS].trim();
@@ -521,5 +546,16 @@ export function storagePatch(settings: PanelSettings, draft: StorageDraft): Part
     agentHomes: Object.keys(agentHomes).length || cursorIdeUserDataHome
       ? { ...agentHomes, ...(cursorIdeUserDataHome ? { cursorIdeUserDataHome } : {}) }
       : undefined
+  };
+}
+
+export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<PanelSettings> {
+  return {
+    notes: {
+      ...settings.notes,
+      defaultSessionProvider: NOTES_CLI_PROVIDERS.has(draft.notesDefaultSessionProvider)
+        ? draft.notesDefaultSessionProvider
+        : "codex"
+    }
   };
 }

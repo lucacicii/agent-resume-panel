@@ -138,9 +138,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
   const base = structuredClone(DEFAULT_SETTINGS);
   if (!partial || typeof partial !== "object") {
     return base;
-  }
-
-  const chatLlm =
+  }  const chatLlm =
     partial.chatLlm || base.chatLlm
       ? {
           ...(base.chatLlm || {}),
@@ -220,10 +218,46 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     // Desktop ACP (permissions, launch overrides, experimental vendor UI).
     // Must merge or Workbench ACP toggles never persist across save/reload.
     acp: mergeAcpSettings(base.acp, partial.acp),
+    // Desktop Notes preferences (default executable session provider).
+    notes: mergeNotesSettings(base.notes, partial.notes),
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
     ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
   };
+}
+
+const NOTES_CLI_PROVIDERS = new Set<string>([
+  "codex",
+  "claude",
+  "agy",
+  "grok",
+  "opencode",
+  "pi",
+  "cursor"
+]);
+
+function mergeNotesSettings(
+  base: PanelSettings["notes"] | undefined,
+  partial: PanelSettings["notes"] | undefined
+): PanelSettings["notes"] | undefined {
+  if (!base && !partial) return undefined;
+  const provider = partial?.defaultSessionProvider;
+  const resolved =
+    provider !== undefined
+      ? NOTES_CLI_PROVIDERS.has(provider)
+        ? provider
+        : base?.defaultSessionProvider
+      : base?.defaultSessionProvider;
+  const merged: PanelSettings["notes"] = {
+    ...(base || {}),
+    ...(partial || {})
+  };
+  if (resolved !== undefined) {
+    merged.defaultSessionProvider = resolved;
+  } else {
+    delete merged.defaultSessionProvider;
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 function mergeAcpSettings(
