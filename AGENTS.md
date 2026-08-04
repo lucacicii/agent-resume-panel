@@ -11,6 +11,17 @@ Read [`.agents/extended/product-independence.md`](.agents/extended/product-indep
 - Never commit API keys, publish tokens (`OVSX_PAT`, Marketplace tokens), or `.env` files.
 - Do not alter existing user changes outside the requested task.
 
+## Engineering Principles
+
+- Do not target backward compatibility. Remove deprecated code paths directly instead of preserving them through compatibility layers, fallback mechanisms, or migration schemes.
+- Use the simplest implementation that fully satisfies the current requirements. Avoid abstractions, configuration options, and indirection without demonstrated need.
+- Build incrementally and in layers. First deliver the smallest end-to-end version that works, then add functionality gradually on top of a stable product. Do not replace a usable product with immature complexity.
+- Keep components modular, with clear boundaries between responsibilities and concerns.
+- Prefer mature, well-maintained libraries when they reduce overall complexity or improve reliability. Do not reimplement common functionality without a clear reason.
+- Before implementing functionality or adding a dependency, evaluate the capabilities of existing project dependencies. Consult their documentation and type definitions rather than assuming they cannot meet the requirement.
+- Make architectural decisions for long-term evolution. Avoid short-term solutions that are expected to require replacement later.
+- Before designing a solution, research how mature products solve similar problems. Prefer proven patterns and conventions over designing a new approach from scratch.
+
 ## Task Routing
 
 Read [`.agents/menus-index.md`](.agents/menus-index.md) before locating feature code only when the request names a product area or user-visible feature without a file path or searchable identifier. Then read only the mapped file in `.agents/menus/`.
