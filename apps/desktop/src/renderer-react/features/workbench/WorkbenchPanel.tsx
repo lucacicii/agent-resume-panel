@@ -201,6 +201,9 @@ type PendingWorkbenchSession = {
   knownSessionKeys: string[];
   /** When set, resolve Flow-run launch waiter after catalog binds. */
   flowRequestId?: string;
+  flowId?: string;
+  flowNodeId?: string;
+  noteId?: string;
 };
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
@@ -2313,12 +2316,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       const candidates = sessions
         .filter((session) => {
           const key = sessionKey(session);
-          if (known.has(key) || claimed.has(key)) return false;
           if (session.provider === "chat") return false;
-          if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath)) return false;
+          const noteMatch = Boolean(pending.noteId && session.title?.includes(pending.noteId));
+          if ((known.has(key) || claimed.has(key)) && !noteMatch) return false;
+          if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath) && !noteMatch) return false;
           // Wider window for Flow-driven launches (CLI agents can take a while to register).
           const windowMs = pending.flowRequestId ? 180_000 : 15_000;
-          if (session.updatedAt < pending.createdAt - windowMs) return false;
+          if (session.updatedAt < pending.createdAt - windowMs && !noteMatch) return false;
           return true;
         })
         .sort((a, b) => {
@@ -2347,11 +2351,27 @@ export function WorkbenchPanel(): ReactPortal | null {
       const colon = sessionKeyValue.indexOf(":");
       const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
       const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
-      emitWorkbenchSessionLaunched({
-        requestId: pending.flowRequestId,
-        ok: true,
-        catalogProvider,
-        sessionId
+      const binding = pending.flowId && pending.flowNodeId
+        ? desktopApi().flowBindSession({
+            flowId: pending.flowId,
+            nodeId: pending.flowNodeId,
+            provider: catalogProvider,
+            sessionId
+          })
+        : Promise.resolve();
+      void binding.then(() => {
+        emitWorkbenchSessionLaunched({
+          requestId: pending.flowRequestId!,
+          ok: true,
+          catalogProvider,
+          sessionId
+        });
+      }).catch((error) => {
+        emitWorkbenchSessionLaunched({
+          requestId: pending.flowRequestId!,
+          ok: false,
+          error: statusError(error)
+        });
       });
     }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
@@ -2826,7 +2846,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     provider: AgentProvider,
     projectPath: string,
     title: string,
-    flowRequestId?: string
+    flow?: { requestId: string; flowId?: string; nodeId?: string; noteId?: string }
   ) => {
     const pending: PendingWorkbenchSession = {
       key: `pending:${terminalKey}`,
@@ -2836,7 +2856,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       title,
       createdAt: Date.now(),
       knownSessionKeys: sessions.map(sessionKey),
-      flowRequestId
+      flowRequestId: flow?.requestId,
+      flowId: flow?.flowId,
+      flowNodeId: flow?.nodeId,
+      noteId: flow?.noteId
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
@@ -2905,7 +2928,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               request.provider as AgentProvider,
               cwd,
               title,
-              request.requestId
+              { requestId: request.requestId, flowId: request.flowId, nodeId: request.flowNodeId, noteId: request.noteId }
             );
             // Do not only wait for pending-session assignment (can miss path/provider).
             // Actively poll catalog and resolve Notes as soon as a session appears.
@@ -2913,6 +2936,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             const found = await waitForCatalogSession({
               cwd,
               provider: request.provider,
+              noteId: request.noteId,
               knownKeys,
               notBeforeMs: startedAt - 30_000,
               timeoutMs: 120_000

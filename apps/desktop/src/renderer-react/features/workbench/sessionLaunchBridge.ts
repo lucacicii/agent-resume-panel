@@ -9,6 +9,9 @@ export type LaunchSessionRequest = {
   noteId: string;
   initialPrompt: string;
   executionMode: "note-yolo";
+  /** Flow identity allows Workbench to persist a late catalog match even after the launch waiter expires. */
+  flowId?: string;
+  flowNodeId?: string;
 };
 
 export type LaunchSessionResult = {
@@ -35,12 +38,13 @@ function sessionKeyOf(provider: string, id: string): string {
 export async function findRecentCatalogSession(args: {
   cwd: string;
   provider?: string;
+  noteId?: string;
   knownKeys?: Set<string>;
   notBeforeMs?: number;
 }): Promise<{ catalogProvider: string; sessionId: string } | null> {
   const api = desktopApi();
   if (typeof api.listSessions !== "function") return null;
-  let list: Array<{ provider: string; id: string; projectPath: string; updatedAt: number }> = [];
+  let list: Array<{ provider: string; id: string; title: string; projectPath: string; updatedAt: number }> = [];
   try {
     list = await api.listSessions();
   } catch {
@@ -50,14 +54,19 @@ export async function findRecentCatalogSession(args: {
   const known = args.knownKeys || new Set<string>();
   const notBefore = args.notBeforeMs ?? Date.now() - 120_000;
   const providerWanted = args.provider?.trim().toLowerCase();
+  const noteId = args.noteId?.trim();
 
   const candidates = list
     .filter((session) => {
       if (session.provider === "chat") return false;
       const key = sessionKeyOf(session.provider, session.id);
-      if (known.has(key)) return false;
-      if (projectPathKey(session.projectPath) !== cwdKey) return false;
-      if (session.updatedAt < notBefore) return false;
+      // The Flow prompt contains the Note ID in the catalog title. This lets us
+      // recover a session that was indexed before the waiter started or after
+      // a delayed sync, without binding an unrelated old session.
+      const noteMatch = Boolean(noteId && session.title?.includes(noteId));
+      if (known.has(key) && !noteMatch) return false;
+      if (projectPathKey(session.projectPath) !== cwdKey && !noteMatch) return false;
+      if (session.updatedAt < notBefore && !noteMatch) return false;
       return true;
     })
     .sort((a, b) => {
@@ -75,6 +84,7 @@ export async function findRecentCatalogSession(args: {
 export async function waitForCatalogSession(args: {
   cwd: string;
   provider?: string;
+  noteId?: string;
   knownKeys?: Set<string>;
   notBeforeMs?: number;
   timeoutMs?: number;
@@ -88,6 +98,7 @@ export async function waitForCatalogSession(args: {
     const found = await findRecentCatalogSession({
       cwd: args.cwd,
       provider: args.provider,
+      noteId: args.noteId,
       knownKeys: args.knownKeys,
       notBeforeMs: args.notBeforeMs
     });
@@ -97,6 +108,7 @@ export async function waitForCatalogSession(args: {
   return findRecentCatalogSession({
     cwd: args.cwd,
     provider: args.provider,
+    noteId: args.noteId,
     knownKeys: args.knownKeys,
     notBeforeMs: args.notBeforeMs
   });
