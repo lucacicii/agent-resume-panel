@@ -21,9 +21,13 @@ const messages = {
   "desktop.standaloneNote.loadFailed": "Could not open note.",
   "desktop.standaloneNote.loadError": "Could not open note: {0}",
   "desktop.standaloneNote.saving": "Saving…",
+  "desktop.standaloneNote.deleting": "Deleting…",
   "desktop.standaloneNote.saved": "Saved",
   "desktop.standaloneNote.unsaved": "Unsaved changes",
-  "desktop.standaloneNote.saveFailed": "Save failed: {0}"
+  "desktop.standaloneNote.saveFailed": "Save failed: {0}",
+  "desktop.standaloneNote.deleteFailed": "Delete failed: {0}",
+  "desktop.notes.deleteNote": "Delete note",
+  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed."
 };
 
 const record = {
@@ -49,6 +53,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     updatedAtMs: Date.now(),
     content
   }));
+  const notesDelete = vi.fn(async () => ({ ok: true, deletedNoteIds: [record.noteId] }));
   const standaloneNoteSetAlwaysOnTop = vi.fn(async ({ pinned }: { pinned: boolean }) => ({ pinned }));
   const standaloneNoteClose = vi.fn(async () => ({ ok: true }));
   const standaloneNoteCloseReady = vi.fn(async ({ ok }: { ok: boolean }) => ({ ok }));
@@ -57,6 +62,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     onLocaleChanged: () => () => undefined,
     notesRead: async () => ({ record, content: "# Standalone note\n" }),
     notesWrite,
+    notesDelete,
     standaloneNoteGetState: async () => ({ noteId: "note-1", pinned: false }),
     standaloneNoteSetAlwaysOnTop,
     standaloneNoteClose,
@@ -64,7 +70,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     onStandaloneNoteCloseRequested: closeRequested,
     ...overrides
   } as unknown as typeof window.agentResume;
-  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady };
+  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady };
 }
 
 afterEach(() => {
@@ -82,6 +88,31 @@ describe("StandaloneNoteWindow", () => {
     expect((editor as HTMLTextAreaElement).value).toBe("# Standalone note\n");
     fireEvent.click(screen.getByRole("button", { name: "Keep note above all apps" }));
     await waitFor(() => expect(standaloneNoteSetAlwaysOnTop).toHaveBeenCalledWith({ pinned: true }));
+  });
+
+  it("confirms deletion, removes the Library note, and closes the window", async () => {
+    const { notesDelete, standaloneNoteClose } = installBridge();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+
+    expect(confirm).toHaveBeenCalledWith("Delete note \"Standalone note\"? Its assets folder will also be removed.");
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
+    await waitFor(() => expect(standaloneNoteClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not delete when the confirmation is cancelled", async () => {
+    const { notesDelete, standaloneNoteClose } = installBridge();
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+
+    expect(notesDelete).not.toHaveBeenCalled();
+    expect(standaloneNoteClose).not.toHaveBeenCalled();
   });
 
   it("debounces edits and flushes them before closing", async () => {

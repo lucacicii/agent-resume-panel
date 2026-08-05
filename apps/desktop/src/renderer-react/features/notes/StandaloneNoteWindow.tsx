@@ -18,6 +18,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const editorRef = useRef<CodeEditorHandle>(null);
   const contentRef = useRef(content);
@@ -145,6 +146,25 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
     }, 800);
   };
 
+  const title = record?.title || record?.filename || t("desktop.standaloneNote.title");
+
+  const deleteNote = useCallback(async () => {
+    if (!record || deleting) return;
+    if (!window.confirm(t("desktop.notes.deleteConfirm", title))) return;
+    setDeleting(true);
+    clearSaveTimer();
+    try {
+      const pendingSave = saveInFlightRef.current;
+      if (pendingSave) await pendingSave;
+      const result = await desktopApi().notesDelete({ noteId });
+      if (!result.ok) throw new Error("Note deletion failed.");
+      await desktopApi().standaloneNoteClose();
+    } catch (deleteError) {
+      setDeleting(false);
+      setError(t("desktop.standaloneNote.deleteFailed", errorMessage(deleteError)));
+    }
+  }, [clearSaveTimer, deleting, noteId, record, t, title]);
+
   const togglePinned = async () => {
     try {
       const result = await desktopApi().standaloneNoteSetAlwaysOnTop({ pinned: !pinned });
@@ -155,7 +175,6 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
     }
   };
 
-  const title = record?.title || record?.filename || t("desktop.standaloneNote.title");
   return (
     <section className="standalone-note-window" aria-label={t("desktop.standaloneNote.editor")}>
       <header className="standalone-note-window-head">
@@ -166,10 +185,21 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
         <div className="standalone-note-window-actions">
           <button
             type="button"
+            className="standalone-note-window-button standalone-note-window-delete"
+            aria-label={t("desktop.notes.deleteNote")}
+            title={t("desktop.notes.deleteNote")}
+            disabled={!record || loading || deleting}
+            onClick={() => void deleteNote()}
+          >
+            <ThemeIcon name="trash" size={15} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             className={`standalone-note-window-button${pinned ? " is-active" : ""}`}
             aria-label={t(pinned ? "desktop.standaloneNote.unpin" : "desktop.standaloneNote.pin")}
             aria-pressed={pinned}
             title={t(pinned ? "desktop.standaloneNote.unpin" : "desktop.standaloneNote.pin")}
+            disabled={deleting}
             onClick={() => void togglePinned()}
           >
             <ThemeIcon name="pin" size={15} aria-hidden="true" />
@@ -179,6 +209,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
             className="standalone-note-window-button"
             aria-label={t("desktop.standaloneNote.close")}
             title={t("desktop.standaloneNote.close")}
+            disabled={deleting}
             onClick={() => void close()}
           >
             <ThemeIcon name="close" size={15} aria-hidden="true" />
@@ -204,11 +235,13 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
           />
           <footer className="standalone-note-window-foot">
             <span className={error ? "is-error" : undefined} role={error ? "alert" : "status"} aria-live="polite">
-              {error || (saving
-                ? t("desktop.standaloneNote.saving")
-                : dirty
-                  ? t("desktop.standaloneNote.unsaved")
-                  : t("desktop.standaloneNote.saved"))}
+              {error || (deleting
+                ? t("desktop.standaloneNote.deleting")
+                : saving
+                  ? t("desktop.standaloneNote.saving")
+                  : dirty
+                    ? t("desktop.standaloneNote.unsaved")
+                    : t("desktop.standaloneNote.saved"))}
             </span>
           </footer>
         </>

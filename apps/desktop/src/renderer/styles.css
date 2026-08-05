@@ -11756,6 +11756,20 @@ html[data-window-mode="standalone-note"] #react-flow {
   color: var(--color-accent);
 }
 
+.standalone-note-window-delete {
+  color: var(--color-destructive);
+}
+
+.standalone-note-window-delete:hover,
+.standalone-note-window-delete:focus-visible {
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
+}
+
+.standalone-note-window-delete:disabled {
+  color: var(--color-label-secondary);
+}
+
 .standalone-note-window-editor {
   flex: 1 1 auto;
   min-height: 0;
