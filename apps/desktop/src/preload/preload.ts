@@ -1461,3 +1461,5 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);
+  notifyRendererReady(): void;
+  notifyRendererReady: () => ipcRenderer.send("main:rendererReady"),

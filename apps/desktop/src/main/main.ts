@@ -2438,3 +2438,29 @@ app.on("window-all-closed", () => {
   }
 });
 }
+let mainWindowReadyToShow = false;
+let mainWindowRendererReady = false;
+
+function showMainWindowIfReady(): void {
+  if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  mainWindow.show();
+}
+  mainWindowReadyToShow = false;
+  mainWindowRendererReady = false;
+    // Keep the main window hidden until Chromium has painted the first frame.
+    // Otherwise maximize() exposes the small default window and its native
+    // white background while the renderer is still loading.
+    show: false,
+  mainWindow.once("ready-to-show", () => {
+    mainWindowReadyToShow = true;
+    showMainWindowIfReady();
+  });
+    mainWindowReadyToShow = false;
+    mainWindowRendererReady = false;
+  ipcMain.on("main:rendererReady", (event) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    mainWindowRendererReady = true;
+    showMainWindowIfReady();
+  });
+

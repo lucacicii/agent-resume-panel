@@ -217,3 +217,12 @@ if (host) {
     );
   }
 }
+function MainRendererReadySignal(): null {
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.agentResume.notifyRendererReady(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return null;
+}
+
+      <MainRendererReadySignal />
