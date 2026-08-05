@@ -6,8 +6,8 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
-import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
-import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
+import type { NotesDraft, ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 type BackupProgress = { operation: "export" | "import"; phase: "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete"; percent: number };
@@ -519,9 +519,43 @@ export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: Stora
   </>;
 }
 
-export function NotesPane({ t }: { t: Translate }) {
+export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
+  const updateShortcut = (value: string) => {
+    const next = { ...draft, newStandaloneNoteShortcut: value };
+    setDraft(next);
+    scheduleSave(next);
+  };
   return (
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+    <>
+      <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+      <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.standaloneNoteGroup")}</h3><div className="settings-group-body">
+        <p className="settings-footnote">{t("desktop.settings.standaloneNoteShortcutDesc")}</p>
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.standaloneNoteShortcut")}</span><input
+          value={formatShortcutForDisplay(draft.newStandaloneNoteShortcut)}
+          placeholder="⌘D"
+          readOnly
+          aria-label={t("desktop.settings.standaloneNoteShortcut")}
+          onKeyDown={(event) => {
+            if (event.key === "Tab" || event.key === "Escape") return;
+            event.preventDefault();
+            if (event.repeat || ["Meta", "Control", "Alt", "Shift"].includes(event.key)) return;
+            const modifiers: string[] = [];
+            if (event.metaKey || event.ctrlKey) modifiers.push("CommandOrControl");
+            if (event.altKey) modifiers.push("Alt");
+            if (event.shiftKey) modifiers.push("Shift");
+            if (!modifiers.length) return;
+            const code = event.code || "";
+            const key = /^Key([A-Z])$/.exec(code)?.[1]
+              || /^Digit([0-9])$/.exec(code)?.[1]
+              || (/^F([1-9]|1[0-9]|2[0-4])$/.test(code) ? code : "")
+              || (event.key.length === 1 ? event.key.toUpperCase() : "");
+            if (!key) return;
+            updateShortcut([...modifiers, key].join("+"));
+          }}
+        /></label>
+        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateShortcut("CommandOrControl+D")}>{t("desktop.settings.standaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateShortcut("")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
+      </div></section>
+    </>
   );
 }
 

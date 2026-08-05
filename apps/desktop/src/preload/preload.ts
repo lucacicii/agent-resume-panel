@@ -64,6 +64,11 @@ export interface DesktopApi {
   }): Promise<TestModelConnectionResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
+  standaloneNoteGetState(): Promise<{ noteId: string; pinned: boolean }>;
+  standaloneNoteSetAlwaysOnTop(args: { pinned: boolean }): Promise<{ pinned: boolean }>;
+  standaloneNoteClose(): Promise<{ ok: boolean }>;
+  standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
+  onStandaloneNoteCloseRequested(callback: () => void): () => void;
   onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
   onSettingsChanged(
     callback: (payload: {
@@ -998,6 +1003,7 @@ export interface DesktopApi {
     projectPath?: string;
     provider?: string;
     sessionId?: string;
+    body?: string;
   }): Promise<{ noteId: string; filename: string }>;
   notesMove(args: {
     noteId: string;
@@ -1121,6 +1127,15 @@ const api: DesktopApi = {
   testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
+  standaloneNoteGetState: () => ipcRenderer.invoke("standalone-note:getState"),
+  standaloneNoteSetAlwaysOnTop: (args) => ipcRenderer.invoke("standalone-note:setAlwaysOnTop", args),
+  standaloneNoteClose: () => ipcRenderer.invoke("standalone-note:close"),
+  standaloneNoteCloseReady: (args) => ipcRenderer.invoke("standalone-note:closeReady", args),
+  onStandaloneNoteCloseRequested: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("standalone-note:requestClose", handler);
+    return () => ipcRenderer.removeListener("standalone-note:requestClose", handler);
+  },
   onSettingsNavigate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
     ipcRenderer.on("settings:navigate", handler);

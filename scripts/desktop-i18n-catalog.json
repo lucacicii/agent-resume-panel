@@ -1109,7 +1109,12 @@
       "desktop.settings.editorThemeDesc": "Code editor highlighting can follow the application or use a fixed appearance.",
       "desktop.settings.editorThemeFollowApp": "Follow application",
       "desktop.settings.editorThemeLight": "Light",
-      "desktop.settings.editorThemeDark": "Dark"
+      "desktop.settings.editorThemeDark": "Dark",
+      "desktop.settings.standaloneNoteGroup": "Standalone notes",
+      "desktop.settings.standaloneNoteShortcut": "Global shortcut",
+      "desktop.settings.standaloneNoteShortcutDesc": "Press the shortcut from any app to create a new Library Note window.",
+      "desktop.settings.standaloneNoteShortcutDisable": "Disable shortcut",
+      "desktop.settings.standaloneNoteShortcutReset": "Reset to ⌘D"
     },
     "usage": {
       "desktop.usage.scope": "Range",
@@ -1304,7 +1309,24 @@
       "desktop.flow.retryNode": "Retry node",
       "desktop.flow.skipNode": "Skip node",
       "desktop.flow.deleteConfirm": "Delete Flow \"{0}\"? Notes and sessions will be kept."
-    }
+    },
+    "standaloneNote": {
+      "desktop.standaloneNote.title": "Standalone Note",
+      "desktop.standaloneNote.editor": "Standalone note Markdown editor",
+      "desktop.standaloneNote.close": "Close note",
+      "desktop.standaloneNote.pin": "Keep note above all apps",
+      "desktop.standaloneNote.unpin": "Stop keeping note above all apps",
+      "desktop.standaloneNote.loading": "Loading note…",
+      "desktop.standaloneNote.loadFailed": "Could not open note.",
+      "desktop.standaloneNote.loadError": "Could not open note: {0}",
+      "desktop.standaloneNote.saving": "Saving…",
+      "desktop.standaloneNote.saved": "Saved",
+      "desktop.standaloneNote.unsaved": "Unsaved changes",
+      "desktop.standaloneNote.saveFailed": "Save failed: {0}",
+      "desktop.standaloneNote.missingId": "Standalone note ID is missing.",
+      "desktop.standaloneNote.quitSaveFailed": "Could not save one or more standalone notes before quitting."
+    },
+    "desktop.standaloneNote.createFailed": "Could not create note: {0}"
   },
   "zh-cn": {
     "app": {
@@ -2454,7 +2476,12 @@
       "desktop.settings.editorThemeDesc": "代码编辑器高亮可跟随应用，或固定为一种外观。",
       "desktop.settings.editorThemeFollowApp": "跟随应用",
       "desktop.settings.editorThemeLight": "浅色",
-      "desktop.settings.editorThemeDark": "深色"
+      "desktop.settings.editorThemeDark": "深色",
+      "desktop.settings.standaloneNoteGroup": "独立笔记",
+      "desktop.settings.standaloneNoteShortcut": "全局快捷键",
+      "desktop.settings.standaloneNoteShortcutDesc": "在任意 App 中按下快捷键，创建新的 Library 笔记窗口。",
+      "desktop.settings.standaloneNoteShortcutDisable": "禁用快捷键",
+      "desktop.settings.standaloneNoteShortcutReset": "恢复为 ⌘D"
     },
     "usage": {
       "desktop.usage.scope": "范围",
@@ -2652,7 +2679,24 @@
       "desktop.flow.retryNode": "重试节点",
       "desktop.flow.skipNode": "跳过节点",
       "desktop.flow.deleteConfirm": "删除流程“{0}”？Note 和 Session 将会保留。"
-    }
+    },
+    "standaloneNote": {
+      "desktop.standaloneNote.title": "独立笔记",
+      "desktop.standaloneNote.editor": "独立笔记 Markdown 编辑器",
+      "desktop.standaloneNote.close": "关闭笔记",
+      "desktop.standaloneNote.pin": "固定在所有 App 之上",
+      "desktop.standaloneNote.unpin": "取消固定到所有 App 之上",
+      "desktop.standaloneNote.loading": "正在加载笔记…",
+      "desktop.standaloneNote.loadFailed": "无法打开笔记。",
+      "desktop.standaloneNote.loadError": "无法打开笔记：{0}",
+      "desktop.standaloneNote.saving": "正在保存…",
+      "desktop.standaloneNote.saved": "已保存",
+      "desktop.standaloneNote.unsaved": "有未保存的更改",
+      "desktop.standaloneNote.saveFailed": "保存失败：{0}",
+      "desktop.standaloneNote.missingId": "缺少独立笔记 ID。",
+      "desktop.standaloneNote.quitSaveFailed": "退出前无法保存一个或多个独立笔记。"
+    },
+    "desktop.standaloneNote.createFailed": "创建笔记失败：{0}"
   },
   "ja": {
     "app": {
@@ -3833,7 +3877,12 @@
       "desktop.settings.editorThemeDesc": "コードエディターのハイライトはアプリに追従するか固定できます。",
       "desktop.settings.editorThemeFollowApp": "アプリに合わせる",
       "desktop.settings.editorThemeLight": "ライト",
-      "desktop.settings.editorThemeDark": "ダーク"
+      "desktop.settings.editorThemeDark": "ダーク",
+      "desktop.settings.standaloneNoteGroup": "スタンドアロンノート",
+      "desktop.settings.standaloneNoteShortcut": "グローバルショートカット",
+      "desktop.settings.standaloneNoteShortcutDesc": "どのアプリからでもショートカットを押して、新しい Library ノートウィンドウを作成します。",
+      "desktop.settings.standaloneNoteShortcutDisable": "ショートカットを無効化",
+      "desktop.settings.standaloneNoteShortcutReset": "⌘D に戻す"
     },
     "usage": {
       "desktop.usage.scope": "範囲",
@@ -4031,6 +4080,23 @@
       "desktop.flow.retryNode": "ノードを再試行",
       "desktop.flow.skipNode": "ノードをスキップ",
       "desktop.flow.deleteConfirm": "Flow「{0}」を削除しますか？Note と Session は保持されます。"
-    }
+    },
+    "standaloneNote": {
+      "desktop.standaloneNote.title": "スタンドアロンノート",
+      "desktop.standaloneNote.editor": "スタンドアロンノート Markdown エディター",
+      "desktop.standaloneNote.close": "ノートを閉じる",
+      "desktop.standaloneNote.pin": "すべてのアプリの手前に固定",
+      "desktop.standaloneNote.unpin": "手前への固定を解除",
+      "desktop.standaloneNote.loading": "ノートを読み込み中…",
+      "desktop.standaloneNote.loadFailed": "ノートを開けませんでした。",
+      "desktop.standaloneNote.loadError": "ノートを開けませんでした: {0}",
+      "desktop.standaloneNote.saving": "保存中…",
+      "desktop.standaloneNote.saved": "保存済み",
+      "desktop.standaloneNote.unsaved": "未保存の変更",
+      "desktop.standaloneNote.saveFailed": "保存に失敗しました: {0}",
+      "desktop.standaloneNote.missingId": "スタンドアロンノート ID がありません。",
+      "desktop.standaloneNote.quitSaveFailed": "終了前に一部のスタンドアロンノートを保存できませんでした。"
+    },
+    "desktop.standaloneNote.createFailed": "ノートを作成できませんでした: {0}"
   }
 }

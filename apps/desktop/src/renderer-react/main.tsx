@@ -10,6 +10,7 @@ import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { ReportPanel } from "./features/report/ReportPanel";
 import { AgentPanel } from "./features/agent/AgentPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
+import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { FlowPanel } from "./features/flow/FlowPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
@@ -34,12 +35,22 @@ function applyAppearanceState(state: DesktopAppearanceState): void {
   if (dark) dark.disabled = state.appearance !== "dark";
 }
 
-export function getDesktopWindowMode(): "main" | "settings" {
+export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get("mode") === "settings" ? "settings" : "main";
+    if (params.get("mode") === "settings") return "settings";
+    if (params.get("mode") === "standalone-note") return "standalone-note";
+    return "main";
   } catch {
     return "main";
+  }
+}
+
+export function getStandaloneNoteId(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("noteId") || "";
+  } catch {
+    return "";
   }
 }
 
@@ -161,11 +172,28 @@ function SettingsDesktopRuntime(): React.JSX.Element {
   );
 }
 
+function StandaloneNoteMissingId(): React.JSX.Element {
+  const { t } = useI18n();
+  return <div className="renderer-bridge-error" role="alert"><p>{t("desktop.standaloneNote.missingId")}</p></div>;
+}
+
+function StandaloneNoteDesktopRuntime(): React.JSX.Element {
+  const noteId = getStandaloneNoteId();
+  return (
+    <I18nProvider>
+      <SettingsRuntimeBootstrap />
+      {noteId ? <StandaloneNoteWindow noteId={noteId} /> : <StandaloneNoteMissingId />}
+    </I18nProvider>
+  );
+}
+
 // Mode flag before first paint — drives settings-window CSS
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
 if (windowMode === "settings") {
   document.title = "Settings";
+} else if (windowMode === "standalone-note") {
+  document.title = "Standalone Note";
 }
 
 const host = document.getElementById("react-chrome");
@@ -180,7 +208,11 @@ if (host) {
   } else {
     createRoot(host).render(
       <StrictMode>
-        {windowMode === "settings" ? <SettingsDesktopRuntime /> : <MainDesktopRuntime />}
+        {windowMode === "settings"
+          ? <SettingsDesktopRuntime />
+          : windowMode === "standalone-note"
+            ? <StandaloneNoteDesktopRuntime />
+            : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

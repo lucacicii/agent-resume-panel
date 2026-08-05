@@ -194,6 +194,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
         normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme)
       )
     },
+    notes: {
+      ...base.notes,
+      ...(partial.notes || {})
+    },
     workbench: {
       ...base.workbench,
       ...(partial.workbench || {}),

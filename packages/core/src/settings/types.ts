@@ -61,6 +61,12 @@ export interface DesktopSettings {
   alwaysAllowAgentNonDestructiveOperations?: boolean;
 }
 
+/** Notes-specific desktop behavior. */
+export interface NotesSettings {
+  /** Global shortcut used to create a new Library Note window. Empty disables it. */
+  newStandaloneNoteShortcut?: string;
+}
+
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
 /** Built-in embedded xterm color presets (desktop Workbench). */
 export type WorkbenchTerminalThemeId =
@@ -350,6 +356,7 @@ export interface PanelSettings {
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
+  notes?: NotesSettings;
   workbench?: WorkbenchSettings;
   /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
   acp?: AcpSettings;
@@ -430,5 +437,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     themeEffects: "full",
     alwaysAllowAgentWriteOperations: false,
     alwaysAllowAgentNonDestructiveOperations: false
+  },
+  notes: {
+    newStandaloneNoteShortcut: "CommandOrControl+D"
   }
 };

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -89,6 +89,7 @@ import {
   type AgentNoteAuditStatus,
   type DigestProgressEvent,
   type GtdStatus,
+  type NoteRecord,
   type PanelSettings,
   type WorkbenchProjectEditor,
   type AgentSessionSyncResult
@@ -113,7 +114,7 @@ import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
-import { isQuickAccessShortcut } from "./desktopShortcuts";
+import { DEFAULT_STANDALONE_NOTE_SHORTCUT, isQuickAccessShortcut, normalizeGlobalShortcut } from "./desktopShortcuts";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -325,6 +326,23 @@ function applyAppIcon(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+type StandaloneNoteWindowState = {
+  noteId: string;
+  window: BrowserWindow;
+  allowClose: boolean;
+  closeRequest?: {
+    resolve: (closed: boolean) => void;
+    timer: NodeJS.Timeout;
+  };
+  closePromise?: Promise<boolean>;
+};
+const standaloneNoteWindows = new Map<string, StandaloneNoteWindowState>();
+const STANDALONE_NOTE_CLOSE_TIMEOUT_MS = 15_000;
+const STANDALONE_NOTE_WINDOW_SIZE = { width: 560, height: 640 } as const;
+let registeredStandaloneNoteShortcut = "";
+let appQuitInFlight: Promise<void> | null = null;
+let allowAppQuit = false;
+let quitCleanupDone = false;
 let activeAskAbort: AbortController | null = null;
 const activeAskApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>();
 
@@ -342,6 +360,7 @@ const SETTINGS_PANES = [
   "models",
   "sessions",
   "workbench",
+  "notes",
   "report",
   "storage",
   "usage",
@@ -356,7 +375,12 @@ function normalizeSettingsPane(value: unknown): SettingsPaneId {
 }
 
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
-  for (const win of [mainWindow, settingsWindow]) {
+  const windows = [
+    mainWindow,
+    settingsWindow,
+    ...[...standaloneNoteWindows.values()].map((state) => state.window)
+  ];
+  for (const win of windows) {
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, ...args);
     }
@@ -368,6 +392,223 @@ function closeSettingsWindowIfOpen(): void {
     settingsWindow.close();
   }
   settingsWindow = null;
+}
+
+function configuredStandaloneNoteShortcut(settings: PanelSettings): string {
+  const raw = settings.notes?.newStandaloneNoteShortcut;
+  return normalizeGlobalShortcut(raw === undefined ? DEFAULT_STANDALONE_NOTE_SHORTCUT : raw);
+}
+
+function standaloneNoteStateForSender(sender: Electron.WebContents): StandaloneNoteWindowState | undefined {
+  return [...standaloneNoteWindows.values()].find((state) => state.window.webContents === sender);
+}
+
+function settleStandaloneNoteCloseRequest(state: StandaloneNoteWindowState, closed: boolean): void {
+  const request = state.closeRequest;
+  if (!request) return;
+  clearTimeout(request.timer);
+  state.closeRequest = undefined;
+  state.closePromise = undefined;
+  request.resolve(closed);
+}
+
+function requestStandaloneNoteClose(state: StandaloneNoteWindowState): Promise<boolean> {
+  if (state.window.isDestroyed()) return Promise.resolve(true);
+  if (state.closePromise) return state.closePromise;
+  let resolveRequest: (closed: boolean) => void = () => undefined;
+  const promise = new Promise<boolean>((resolve) => {
+    resolveRequest = resolve;
+  });
+  state.closePromise = promise;
+  const timer = setTimeout(() => settleStandaloneNoteCloseRequest(state, false), STANDALONE_NOTE_CLOSE_TIMEOUT_MS);
+  state.closeRequest = { resolve: resolveRequest, timer };
+  try {
+    state.window.webContents.send("standalone-note:requestClose");
+  } catch {
+    settleStandaloneNoteCloseRequest(state, false);
+  }
+  return promise;
+}
+
+function setStandaloneNoteAlwaysOnTop(state: StandaloneNoteWindowState, pinned: boolean): boolean {
+  if (state.window.isDestroyed()) return false;
+  if (process.platform === "darwin") {
+    state.window.setAlwaysOnTop(pinned, "floating");
+    state.window.setVisibleOnAllWorkspaces(pinned, { visibleOnFullScreen: pinned });
+  } else {
+    state.window.setAlwaysOnTop(pinned);
+  }
+  return state.window.isAlwaysOnTop();
+}
+
+function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowState {
+  const icon = loadAppIcon();
+  const win = new BrowserWindow({
+    ...STANDALONE_NOTE_WINDOW_SIZE,
+    minWidth: 420,
+    minHeight: 360,
+    title: record.title || desktopT(undefined, "desktop.standaloneNote.title"),
+    show: false,
+    ...(icon ? { icon } : {}),
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, "..", "preload", "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  if (process.platform !== "darwin") win.setMenuBarVisibility(false);
+
+  const state: StandaloneNoteWindowState = { noteId: record.noteId, window: win, allowClose: false };
+  standaloneNoteWindows.set(record.noteId, state);
+  win.on("close", (event) => {
+    if (state.allowClose || allowAppQuit) return;
+    event.preventDefault();
+    void requestStandaloneNoteClose(state);
+  });
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
+  });
+  win.on("closed", () => {
+    settleStandaloneNoteCloseRequest(state, true);
+    if (standaloneNoteWindows.get(record.noteId) === state) standaloneNoteWindows.delete(record.noteId);
+  });
+  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
+    query: { mode: "standalone-note", noteId: record.noteId }
+  }).catch((error) => {
+    void recordAppError({ source: "standalone-note", message: "Standalone note window failed to load.", error });
+  });
+  return state;
+}
+
+async function openStandaloneNoteWindow(): Promise<void> {
+  try {
+    const record = await notesCreate({
+      scope: "library",
+      body: "# Standalone note\n\n"
+    });
+    scheduleNotesIndex();
+    createStandaloneNoteWindow(record);
+  } catch (error) {
+    let settings: PanelSettings | undefined;
+    try {
+      settings = await loadSettings();
+    } catch {
+      // Use the catalog fallback when settings are unavailable.
+    }
+    try {
+      await dialog.showMessageBox({
+        type: "error",
+        title: desktopT(settings, "desktop.standaloneNote.title"),
+        message: desktopT(settings, "desktop.standaloneNote.createFailed", error instanceof Error ? error.message : String(error)),
+        buttons: ["OK"]
+      });
+    } catch {
+      // The error is also recorded by the global shortcut callback below.
+    }
+    throw error;
+  }
+}
+
+async function closeAllStandaloneNoteWindows(): Promise<boolean> {
+  const states = [...standaloneNoteWindows.values()].filter((state) => !state.window.isDestroyed());
+  const results = await Promise.all(states.map((state) => requestStandaloneNoteClose(state)));
+  return results.every(Boolean);
+}
+
+function applyStandaloneNoteShortcut(value: unknown): void {
+  const next = normalizeGlobalShortcut(value);
+  const previous = registeredStandaloneNoteShortcut;
+  if (next === previous) return;
+  if (previous) globalShortcut.unregister(previous);
+  if (!next) {
+    registeredStandaloneNoteShortcut = "";
+    return;
+  }
+  try {
+    const registered = globalShortcut.register(next, () => {
+      void openStandaloneNoteWindow().catch((error) => {
+        void recordAppError({ source: "standalone-note", message: "Could not create standalone note.", error });
+      });
+    });
+    if (!registered) throw new Error(`Global shortcut is unavailable: ${next}`);
+    registeredStandaloneNoteShortcut = next;
+  } catch (error) {
+    if (previous) {
+      try {
+        if (globalShortcut.register(previous, () => {
+          void openStandaloneNoteWindow().catch((retryError) => {
+            void recordAppError({ source: "standalone-note", message: "Could not create standalone note.", error: retryError });
+          });
+        })) {
+          registeredStandaloneNoteShortcut = previous;
+        }
+      } catch {
+        registeredStandaloneNoteShortcut = "";
+      }
+    }
+    throw error;
+  }
+}
+
+function initializeStandaloneNoteShortcut(settings: PanelSettings): void {
+  try {
+    applyStandaloneNoteShortcut(configuredStandaloneNoteShortcut(settings));
+  } catch (error) {
+    void recordAppError({ source: "standalone-note", message: "Global standalone note shortcut could not be registered.", error });
+  }
+}
+
+function performQuitCleanup(): void {
+  if (quitCleanupDone) return;
+  quitCleanupDone = true;
+  if (registeredStandaloneNoteShortcut) {
+    globalShortcut.unregister(registeredStandaloneNoteShortcut);
+    registeredStandaloneNoteShortcut = "";
+  }
+  disposeWorkbenchWatchers();
+  stopMemoryScheduler();
+  stopNotesIndexer();
+  stopSessionSummaryAuto();
+  stopSessionTranscriptIndexAuto();
+  stopSessionEmbeddingIndexAuto();
+  disposeAllAcpControllers();
+  tryDestroyPtyOnQuit();
+}
+
+async function beginAppQuit(): Promise<void> {
+  if (appQuitInFlight) return appQuitInFlight;
+  appQuitInFlight = (async () => {
+    const closed = await closeAllStandaloneNoteWindows();
+    if (!closed) {
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      let settings: PanelSettings | undefined;
+      try {
+        settings = await loadSettings();
+      } catch {
+        // Use the catalog fallback while the app is shutting down.
+      }
+      const messageBox: Electron.MessageBoxOptions = {
+        type: "error",
+        title: desktopT(settings, "desktop.standaloneNote.title"),
+        message: desktopT(settings, "desktop.standaloneNote.quitSaveFailed"),
+        buttons: ["OK"]
+      };
+      if (owner) await dialog.showMessageBox(owner, messageBox);
+      else await dialog.showMessageBox(messageBox);
+      return;
+    }
+    allowAppQuit = true;
+    app.quit();
+  })().finally(() => {
+    appQuitInFlight = null;
+  });
+  return appQuitInFlight;
 }
 
 function syncSessions(): Promise<AgentSessionSyncResult> {
@@ -936,7 +1177,32 @@ function registerIpc(): void {
     async (_event, settings: PanelSettings, options?: SaveSettingsOptions) => {
       const previous = await loadSettings();
       const prevLocale = buildI18nBundle(previous).locale;
-      const file = await saveSettings(settings);
+      const normalizedShortcut = configuredStandaloneNoteShortcut(settings);
+      const settingsToSave: PanelSettings = {
+        ...settings,
+        notes: {
+          ...settings.notes,
+          newStandaloneNoteShortcut: normalizedShortcut
+        }
+      };
+      const previousShortcut = configuredStandaloneNoteShortcut(previous);
+      const shortcutChanged = normalizedShortcut !== previousShortcut;
+      if (shortcutChanged) {
+        applyStandaloneNoteShortcut(normalizedShortcut);
+      }
+      let file: string;
+      try {
+        file = await saveSettings(settingsToSave);
+      } catch (error) {
+        if (shortcutChanged) {
+          try {
+            applyStandaloneNoteShortcut(previousShortcut);
+          } catch {
+            // Keep the already-registered shortcut when the settings write fails.
+          }
+        }
+        throw error;
+      }
       invalidateNotesStore();
       const schedulerEnabled = await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
@@ -1766,6 +2032,34 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
+  ipcMain.handle("standalone-note:getState", async (event) => {
+    const state = standaloneNoteStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) throw new Error("Standalone note window not found.");
+    return { noteId: state.noteId, pinned: state.window.isAlwaysOnTop() };
+  });
+  ipcMain.handle("standalone-note:setAlwaysOnTop", async (event, args: { pinned?: unknown }) => {
+    const state = standaloneNoteStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) throw new Error("Standalone note window not found.");
+    return { pinned: setStandaloneNoteAlwaysOnTop(state, args?.pinned === true) };
+  });
+  ipcMain.handle("standalone-note:close", async (event) => {
+    const state = standaloneNoteStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    state.allowClose = true;
+    state.window.close();
+    return { ok: true as const };
+  });
+  ipcMain.handle("standalone-note:closeReady", async (event, args: { ok?: unknown }) => {
+    const state = standaloneNoteStateForSender(event.sender);
+    if (!state || !state.closeRequest) return { ok: false as const };
+    if (args?.ok !== true) {
+      settleStandaloneNoteCloseRequest(state, false);
+      return { ok: false as const };
+    }
+    state.allowClose = true;
+    state.window.close();
+    return { ok: true as const };
+  });
   ipcMain.handle(
     "notes:resumeSession",
     async (_event, args: { provider: AgentProvider; sessionId: string; initialPrompt?: string }) => {
@@ -1829,6 +2123,7 @@ function registerIpc(): void {
         projectPath?: string;
         provider?: string;
         sessionId?: string;
+        body?: string;
       }
     ) => {
       const result = await notesCreate(args);
@@ -2087,6 +2382,7 @@ app.whenReady().then(async () => {
     });
   }
   createWindow();
+  initializeStandaloneNoteShortcut(await loadSettings());
   await installApplicationMenu();
   startDesktopNotesIndexer();
   startSessionSummaryAuto();
@@ -2115,15 +2411,15 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on("before-quit", () => {
-  disposeWorkbenchWatchers();
-  stopMemoryScheduler();
-  stopNotesIndexer();
-  stopSessionSummaryAuto();
-  stopSessionTranscriptIndexAuto();
-  stopSessionEmbeddingIndexAuto();
-  disposeAllAcpControllers();
-  tryDestroyPtyOnQuit();
+app.on("before-quit", (event) => {
+  if (!allowAppQuit && standaloneNoteWindows.size > 0) {
+    event.preventDefault();
+    void beginAppQuit().catch((error) => {
+      void recordAppError({ source: "standalone-note", message: "Application quit coordination failed.", error });
+    });
+    return;
+  }
+  performQuitCleanup();
 });
 
 app.on("window-all-closed", () => {

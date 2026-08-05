@@ -40,6 +40,7 @@ export type {
   SessionTranscriptIndexSettings,
   SessionEmbeddingIndexSettings,
   DesktopSettings,
+  NotesSettings,
   DesktopTheme,
   DesktopVisualThemeId,
   DesktopThemeEffects,

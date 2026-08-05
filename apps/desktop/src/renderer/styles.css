@@ -11650,6 +11650,160 @@ html[data-window-mode="settings"] #react-notes,
 html[data-window-mode="settings"] #react-flow {
   display: none;
 }
+
+/* ===== Standalone Library Note window (data-window-mode=standalone-note) ===== */
+html[data-window-mode="standalone-note"],
+html[data-window-mode="standalone-note"] body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-window-bg, var(--panel));
+}
+
+html[data-window-mode="standalone-note"] #react-chrome {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+html[data-window-mode="standalone-note"] main {
+  display: none;
+}
+
+html[data-window-mode="standalone-note"] #react-settings,
+html[data-window-mode="standalone-note"] #react-report,
+html[data-window-mode="standalone-note"] #react-agent,
+html[data-window-mode="standalone-note"] #react-workbench,
+html[data-window-mode="standalone-note"] #react-notes,
+html[data-window-mode="standalone-note"] #react-flow {
+  display: none;
+}
+
+.standalone-note-window {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--color-label-primary);
+  background: var(--color-control-bg);
+}
+
+.standalone-note-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: 8px 10px 8px 78px;
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  -webkit-app-region: drag;
+}
+
+.standalone-note-window-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.standalone-note-window-heading strong,
+.standalone-note-window-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standalone-note-window-heading strong {
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-semibold);
+}
+
+.standalone-note-window-heading span {
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.standalone-note-window-actions {
+  display: inline-flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.standalone-note-window-button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-label-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.standalone-note-window-button:hover,
+.standalone-note-window-button:focus-visible {
+  color: var(--color-label-primary);
+  background: var(--color-fill-secondary);
+}
+
+.standalone-note-window-button.is-active {
+  color: var(--color-accent);
+}
+
+.standalone-note-window-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-control-bg);
+}
+
+.standalone-note-window-editor .cm-editor,
+.standalone-note-window-editor .cm-scroller {
+  height: 100%;
+}
+
+.standalone-note-window-editor .cm-scroller {
+  overflow: auto;
+}
+
+.standalone-note-window-editor .cm-content {
+  min-height: 100%;
+  padding: 12px 14px;
+}
+
+.standalone-note-window-foot {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 12px;
+  border-top: 1px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  background: var(--color-control-bg);
+  font-size: var(--font-size-caption);
+}
+
+.standalone-note-window-foot .is-error,
+.standalone-note-window-state.is-error {
+  color: var(--color-destructive);
+}
+
+.standalone-note-window-state {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-callout);
+  text-align: center;
+}
 /* Desktop Quick Access */
 .quick-access-overlay {
   position: fixed;

@@ -163,6 +163,20 @@ export interface StorageDraft {
   cursorIdeUserDataHome: string;
 }
 
+export interface NotesDraft {
+  newStandaloneNoteShortcut: string;
+}
+
+export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
+  const isMac = /mac/i.test(platform);
+  const parts = value.split("+").filter(Boolean);
+  if (!parts.length) return "";
+  if (isMac) {
+    return parts.map((part) => part === "CommandOrControl" || part === "Command" ? "⌘" : part === "Control" || part === "Ctrl" ? "⌃" : part === "Alt" || part === "Option" ? "⌥" : part === "Shift" ? "⇧" : part).join("");
+  }
+  return parts.map((part) => part === "CommandOrControl" ? "Ctrl" : part === "Option" ? "Alt" : part).join("+");
+}
+
 const UI_LANGUAGES = new Set<UiLanguageValue>(["auto", "en", "zh-cn", "ja"]);
 
 export function normalizeOutputLanguage(value: string | undefined): UiLanguageValue {
@@ -521,5 +535,22 @@ export function storagePatch(settings: PanelSettings, draft: StorageDraft): Part
     agentHomes: Object.keys(agentHomes).length || cursorIdeUserDataHome
       ? { ...agentHomes, ...(cursorIdeUserDataHome ? { cursorIdeUserDataHome } : {}) }
       : undefined
+  };
+}
+
+export function notesDraftFromSettings(settings: PanelSettings): NotesDraft {
+  return {
+    newStandaloneNoteShortcut:
+      settings.notes?.newStandaloneNoteShortcut ??
+      "CommandOrControl+D"
+  };
+}
+
+export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<PanelSettings> {
+  return {
+    notes: {
+      ...settings.notes,
+      newStandaloneNoteShortcut: draft.newStandaloneNoteShortcut.trim()
+    }
   };
 }

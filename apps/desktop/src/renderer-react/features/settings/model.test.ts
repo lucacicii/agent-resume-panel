@@ -7,6 +7,9 @@ import {
   modelsDraftFromSettings,
   modelsPatch,
   normalizeOutputLanguage,
+  notesDraftFromSettings,
+  notesPatch,
+  formatShortcutForDisplay,
   reportDraftFromSettings,
   reportPatch,
   sessionsDraftFromSettings,
@@ -65,6 +68,16 @@ describe("settings model", () => {
     const draft = sessionsDraftFromSettings(settings);
     const patch = sessionsPatch(settings, { ...draft, maxItems: 999_999 });
     expect(patch.sessionSync?.maxItems).toBe(50_000);
+  });
+
+  it("defaults and persists the global standalone note shortcut", () => {
+    const draft = notesDraftFromSettings(settings);
+    expect(draft.newStandaloneNoteShortcut).toBe("CommandOrControl+D");
+    const patch = notesPatch(settings, { newStandaloneNoteShortcut: " CommandOrControl+Shift+D " });
+    expect(patch.notes?.newStandaloneNoteShortcut).toBe("CommandOrControl+Shift+D");
+    expect(notesPatch(settings, { newStandaloneNoteShortcut: "" }).notes?.newStandaloneNoteShortcut).toBe("");
+    expect(formatShortcutForDisplay("CommandOrControl+Shift+D", "MacIntel")).toBe("⌘⇧D");
+    expect(formatShortcutForDisplay("CommandOrControl+Shift+D", "Win32")).toBe("Ctrl+Shift+D");
   });
 
   it("persists session summary auto settings with clamps", () => {

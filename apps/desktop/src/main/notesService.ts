@@ -115,16 +115,17 @@ export async function notesCreate(args: {
   projectPath?: string;
   provider?: string;
   sessionId?: string;
+  body?: string;
 }): Promise<NoteRecord> {
   const store = await getDesktopNotesStore();
   if (args.scope === "library") {
-    return store.createLibraryNote();
+    return store.createLibraryNote(args.body || "");
   }
   if (args.scope === "project") {
     if (!args.projectPath?.trim()) {
       throw new Error("projectPath is required.");
     }
-    return store.createProjectNote(args.projectPath);
+    return store.createProjectNote(args.projectPath, args.body || "");
   }
   if (!args.provider?.trim() || !args.sessionId?.trim()) {
     throw new Error("provider and sessionId are required.");
@@ -133,7 +134,7 @@ export async function notesCreate(args: {
     provider: args.provider as AgentProvider,
     id: args.sessionId,
     projectPath: args.projectPath || ""
-  });
+  }, args.body || "");
 }
 
 export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteRecord> {

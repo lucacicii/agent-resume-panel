@@ -16,6 +16,8 @@ import {
   modelsPatch,
   reportDraftFromSettings,
   reportPatch,
+  notesDraftFromSettings,
+  notesPatch,
   sessionsDraftFromSettings,
   sessionsPatch,
   storageDraftFromSettings,
@@ -24,6 +26,7 @@ import {
   workbenchPatch,
   type GeneralDraft,
   type ModelsDraft,
+  type NotesDraft,
   type ReportDraft,
   type SessionsDraft,
   type StorageDraft,
@@ -34,8 +37,8 @@ type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | 
 type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
 
 type Pane = "general" | "models" | "sessions" | "workbench" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
-type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | ReportDraft | StorageDraft;
-type EditablePane = Exclude<Pane, "notes" | "mcp" | "usage" | "logs" | "backup" | "about">;
+type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft;
+type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about">;
 
 export type SettingsPanelProps = {
   /** Production path is always "window" (auxiliary BrowserWindow). */
@@ -78,6 +81,7 @@ export function SettingsPanel({
   const [workbench, setWorkbench] = useState<WorkbenchDraft | null>(null);
   const [report, setReport] = useState<ReportDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
+  const [notes, setNotes] = useState<NotesDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
   const timer = useRef<number | null>(null);
@@ -92,6 +96,7 @@ export function SettingsPanel({
     setWorkbench(workbenchDraftFromSettings(next));
     setReport(reportDraftFromSettings(next));
     setStorage(storageDraftFromSettings(next));
+    setNotes(notesDraftFromSettings(next));
   }, []);
 
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
@@ -188,13 +193,14 @@ export function SettingsPanel({
         : section === "models" ? modelsPatch(settings, draft as ModelsDraft)
         : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
         : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
+        : section === "notes" ? notesPatch(settings, draft as NotesDraft)
         : section === "report" ? reportPatch(settings, draft as ReportDraft)
         : storagePatch(settings, draft as StorageDraft);
       void save({ ...settings, ...patch }, section);
     }, 450);
   };
 
-  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !report || !storage) return null;
+  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const close = () => {
     if (isWindow) {
@@ -210,7 +216,7 @@ export function SettingsPanel({
     : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} scheduleSave={(draft) => scheduleSave("models", draft)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} scheduleSave={(draft) => scheduleSave("sessions", draft)} t={t} />
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} scheduleSave={(draft) => scheduleSave("workbench", draft)} t={t} />
-    : pane === "notes" ? <NotesPane t={t} />
+    : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} scheduleSave={(draft) => scheduleSave("notes", draft)} t={t} />
     : pane === "report" ? (
       <ReportPane
         draft={report}
