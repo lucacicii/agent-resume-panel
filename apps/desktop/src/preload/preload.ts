@@ -27,6 +27,17 @@ import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
+import type { FloatingSessionNoteTarget } from "../shared/floatingNoteTypes";
+
+let floatingNoteClosePending = false;
+const floatingNoteCloseListeners = new Set<() => void>();
+ipcRenderer.on("floating-note:requestClose", () => {
+  if (!floatingNoteCloseListeners.size) {
+    floatingNoteClosePending = true;
+    return;
+  }
+  for (const listener of floatingNoteCloseListeners) listener();
+});
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
@@ -63,6 +74,10 @@ export interface DesktopApi {
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
   onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
+  openFloatingNoteWindow(target: FloatingSessionNoteTarget): Promise<{ ok: boolean }>;
+  closeFloatingNoteWindow(): Promise<{ ok: boolean }>;
+  onFloatingNoteCloseRequested(callback: () => void): () => void;
+  floatingNoteCloseReady(args: { ok: boolean; error?: string }): Promise<{ ok: boolean }>;
   onSettingsChanged(
     callback: (payload: {
       settings: PanelSettings;
@@ -1094,6 +1109,17 @@ const api: DesktopApi = {
   testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
+  openFloatingNoteWindow: (target) => ipcRenderer.invoke("floating-note:openWindow", target),
+  closeFloatingNoteWindow: () => ipcRenderer.invoke("floating-note:closeWindow"),
+  onFloatingNoteCloseRequested: (callback) => {
+    floatingNoteCloseListeners.add(callback);
+    if (floatingNoteClosePending) {
+      floatingNoteClosePending = false;
+      queueMicrotask(callback);
+    }
+    return () => floatingNoteCloseListeners.delete(callback);
+  },
+  floatingNoteCloseReady: (args) => ipcRenderer.invoke("floating-note:closeReady", args),
   onSettingsNavigate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
     ipcRenderer.on("settings:navigate", handler);

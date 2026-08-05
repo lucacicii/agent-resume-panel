@@ -35,11 +35,8 @@ import { Status, type StatusKind } from "../../components/Status";
 import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
-import {
-  FloatingSessionNote,
-  sessionNoteMatchesTarget,
-  type FloatingSessionNoteTarget
-} from "./FloatingSessionNote";
+import { sessionNoteMatchesTarget } from "./FloatingSessionNote";
+import type { FloatingSessionNoteTarget } from "../../../shared/floatingNoteTypes";
 import {
   WorkbenchDiffView,
   type WorkbenchDiffHunkTarget,
@@ -1842,7 +1839,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
-  const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
   const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
@@ -3244,8 +3240,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const openFloatingNote = useCallback((target: FloatingSessionNoteTarget) => {
-    setFloatingNoteTarget({ ...target });
-  }, []);
+    const api = desktopApi();
+    if (typeof api.openFloatingNoteWindow !== "function") {
+      setStatus({ text: t("desktop.workbench.floatingNoteLoadFailed"), kind: "error" });
+      return;
+    }
+    void api.openFloatingNoteWindow({ ...target }).catch((error) => {
+      setStatus({ text: statusError(error), kind: "error" });
+    });
+  }, [t]);
 
   const openNoteInNotesTab = (noteId: string) => {
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
@@ -5276,7 +5279,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     <Status kind={status.kind}>{status.text}</Status>
-    {floatingNoteTarget ? <FloatingSessionNote target={floatingNoteTarget} onClose={() => setFloatingNoteTarget(null)} /> : null}
   </section>
     <QuickAccess
       open={quickAccessOpen}
