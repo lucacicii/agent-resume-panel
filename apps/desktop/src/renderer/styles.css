@@ -7292,6 +7292,38 @@ code {
   color: var(--color-destructive);
 }
 
+.wb-diff-line-discard-btn {
+  appearance: none;
+  width: 1lh;
+  height: 1lh;
+  margin: 0 calc(-1lh + 1ch) 0 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 4;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-destructive);
+  fill: currentColor;
+  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
+  cursor: pointer;
+  touch-action: none;
+}
+
+.wb-diff-line-discard-btn:hover,
+.wb-diff-line-discard-btn:focus-visible {
+  color: var(--color-window-bg);
+  background: var(--color-destructive);
+}
+
+.wb-diff-line-discard-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
 .wb-diff-code-view {
   flex: 1 1 auto;
   min-height: 0;
@@ -9051,6 +9083,146 @@ textarea.wb-editor-host {
 
 .context-menu-item-danger:hover {
   background: color-mix(in srgb, var(--color-destructive) 12%, transparent) !important;
+}
+
+.wb-floating-note {
+  position: fixed;
+  top: 48px;
+  right: 16px;
+  z-index: 2200;
+  width: min(460px, calc(100vw - 32px));
+  height: min(440px, calc(100vh - 72px));
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-elevated-bg);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-popover);
+}
+
+.wb-floating-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 42px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.wb-floating-note.is-dragging .wb-floating-note-head {
+  cursor: grabbing;
+}
+
+.wb-floating-note-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-floating-note-heading strong {
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.wb-floating-note-heading span {
+  overflow: hidden;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-floating-note-close {
+  appearance: none;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+}
+
+.wb-floating-note-close:hover,
+.wb-floating-note-close:focus-visible {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+}
+
+.wb-floating-note-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-control-bg);
+}
+
+.wb-floating-note-editor .cm-editor,
+.wb-floating-note-editor .cm-scroller {
+  height: 100%;
+}
+
+.wb-floating-note-editor .cm-scroller {
+  overflow: auto;
+}
+
+.wb-floating-note-editor .cm-content {
+  min-height: 100%;
+  padding: 10px 12px;
+}
+
+textarea.wb-floating-note-editor {
+  width: 100%;
+  resize: none;
+  padding: 12px;
+  border: none;
+  outline: none;
+  color: var(--color-label-primary);
+  background: var(--color-control-bg);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+}
+
+.wb-floating-note-foot {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 12px;
+  border-top: 1px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  background: var(--color-control-bg);
+  font-size: var(--font-size-caption);
+}
+
+.wb-floating-note-foot .is-error,
+.wb-floating-note-state.is-error {
+  color: var(--color-destructive);
+}
+
+.wb-floating-note-state {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-callout);
+  text-align: center;
 }
 
 .context-menu-chevron {

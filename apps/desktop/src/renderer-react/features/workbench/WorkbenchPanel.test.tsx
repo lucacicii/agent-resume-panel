@@ -2342,4 +2342,137 @@ describe("WorkbenchPanel", () => {
       sessionId: "session-note"
     });
   });
+
+  it("opens a floating note from an active CLI session tab and creates the session note", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const notesList = vi.fn(async () => []);
+    const notesCreate = vi.fn(async () => ({ noteId: "floating-note", filename: "floating.md" }));
+    const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "floating.md", updatedAtMs: 3, content }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      notesList,
+      notesCreate,
+      notesWrite
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-session.active")).toBeTruthy());
+
+    fireEvent.contextMenu(document.querySelector<HTMLElement>(".wb-terminal-tab.is-session.active")!);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add floating note" }));
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({
+      scope: "session",
+      projectPath: "/work/app",
+      provider: "codex",
+      sessionId: "session-1"
+    }));
+    await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "floating-note", content: "# app · Fix renderer\n\n" }));
+    expect(notesList).toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Floating note" })).toBeTruthy();
+  });
+
+  it("opens the newest linked note from the session list without creating another note", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: { noteId, scope: "session", provider: "codex", agentSessionId: "session-1", projectPath: "/work/app", filename: `${noteId}.md`, relDir: "sessions/codex", relMdPath: `notes/sessions/codex/${noteId}.md`, createdAtMs: 1, updatedAtMs: noteId === "new" ? 20 : 10 },
+      content: noteId === "new" ? "# Newest\n" : "# Older\n"
+    }));
+    const notesCreate = vi.fn(async () => ({ noteId: "unexpected", filename: "unexpected.md" }));
+    const notes = [
+      { noteId: "old", scope: "session", provider: "codex", agentSessionId: "session-1", projectPath: "/work/app", filename: "old.md", relDir: "sessions/codex", relMdPath: "notes/sessions/codex/old.md", createdAtMs: 1, updatedAtMs: 10 },
+      { noteId: "new", scope: "session", provider: "codex", agentSessionId: "session-1", projectPath: "/work/app", filename: "new.md", relDir: "sessions/codex", relMdPath: "notes/sessions/codex/new.md", createdAtMs: 2, updatedAtMs: 20 }
+    ];
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.removeFromPanel": "Remove from panel", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      notesList: async () => notes,
+      notesRead,
+      notesCreate
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open floating note" }));
+    await waitFor(() => expect(notesRead).toHaveBeenCalledWith({ noteId: "new" }));
+    expect(notesCreate).not.toHaveBeenCalled();
+  });
+
+  it("uses chat plus ACP record id for an ACP tab floating note", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const notesCreate = vi.fn(async () => ({ noteId: "acp-note", filename: "acp.md" }));
+    const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "acp.md", updatedAtMs: 3, content }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.acpEmptyTitle": "ACP chat", "desktop.workbench.acpEmptyHint": "Send a message", "desktop.workbench.acpInputPlaceholder": "Message", "desktop.workbench.acpConnecting": "Connecting…", "desktop.workbench.acpReady": "Ready", "desktop.workbench.acpError": "Error", "desktop.workbench.acpAttachImage": "Attach image", "desktop.workbench.acpAttachFile": "Attach file", "desktop.workbench.acpSlashCommands": "Commands", "desktop.workbench.acpPermissionTitle": "Permission request", "desktop.workbench.acpQuestionTitle": "Question", "desktop.workbench.acpQuestionSubmit": "Submit", "desktop.workbench.acpQuestionSkip": "Skip", "desktop.workbench.acpMode": "Mode", "desktop.workbench.acpModel": "Model", "desktop.workbench.acpProvider.claude": "Claude Code"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "record-1", title: "ACP task", projectPath: "/work/app", provider: "claude", acpSessionId: "native-1", createdAt: 1, updatedAt: 1 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "chat", id: "record-1", title: "ACP task", projectPath: "/work/app", acpProvider: "claude", updatedAt: 1 }],
+      notesList: async () => [],
+      notesCreate,
+      notesWrite,
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /ACP task/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-acp.active")).toBeTruthy());
+    fireEvent.contextMenu(document.querySelector<HTMLElement>(".wb-terminal-tab.is-acp.active")!);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add floating note" }));
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({
+      scope: "session",
+      projectPath: "/work/app",
+      provider: "chat",
+      sessionId: "record-1"
+    }));
+  });
 });

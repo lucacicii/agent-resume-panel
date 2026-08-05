@@ -41,14 +41,24 @@ vi.mock("@pierre/diffs", () => ({
 }));
 
 vi.mock("@pierre/diffs/react", () => ({
-  CodeView: forwardRef(({ items, options, onSelectedLinesChange }: {
+  CodeView: forwardRef(({ items, options, onSelectedLinesChange, renderGutterUtility }: {
     items?: ReadonlyArray<{
       id: string;
       version?: number;
       fileDiff?: { testFileName?: string; testCacheKey?: string };
     }>;
-    options?: { diffStyle?: string; overflow?: string };
+    options?: {
+      diffStyle?: string;
+      overflow?: string;
+      enableGutterUtility?: boolean;
+      onLineEnter?: (line: { lineType: string }) => void;
+      onLineLeave?: () => void;
+    };
     onSelectedLinesChange?: (selection: unknown) => void;
+    renderGutterUtility?: (
+      getHoveredLine: () => { lineNumber: number; side: "additions" | "deletions" },
+      item: unknown
+    ) => React.ReactNode;
   }, ref) => {
     useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
     const item = items?.[0];
@@ -61,6 +71,10 @@ vi.mock("@pierre/diffs/react", () => ({
       data-file-name={item?.fileDiff?.testFileName}
       data-cache-key={item?.fileDiff?.testCacheKey}
     >
+      {renderGutterUtility?.(() => ({ lineNumber: 2, side: "additions" }), item)}
+      <button type="button" onClick={() => options?.onLineEnter?.({ lineType: "change-addition" })}>hover changed line</button>
+      <button type="button" onClick={() => options?.onLineEnter?.({ lineType: "context" })}>hover context line</button>
+      <button type="button" onClick={() => options?.onLineLeave?.()}>leave line</button>
       <button type="button" onClick={() => onSelectedLinesChange?.({ id: item?.id, range: { start: 1, end: 1, side: "additions" } })}>select hunk</button>
     </div>;
   })
@@ -134,5 +148,20 @@ describe("WorkbenchDiffView", () => {
     expect(screen.getByTestId("code-view").getAttribute("data-item-id")).toBe("diff:fixture");
     expect(screen.getByTestId("code-view").getAttribute("data-item-version")).not.toBe(firstVersion);
     expect(screen.getByTestId("code-view").getAttribute("data-cache-key")).not.toBe(firstCacheKey);
+  });
+
+  it("shows an IDEA-style gutter rollback action only on changed lines", () => {
+    const onDiscardLine = vi.fn();
+    render(<WorkbenchDiffView diff={diff} appearance="light" onDiscardLine={onDiscardLine} />);
+    const rollback = document.querySelector<HTMLButtonElement>(".wb-diff-line-discard-btn")!;
+    expect(rollback.hidden).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "hover changed line" }));
+    expect(rollback.hidden).toBe(false);
+    fireEvent.click(rollback);
+    expect(onDiscardLine).toHaveBeenCalledWith({ side: "additions", lineNumber: 2 });
+
+    fireEvent.click(screen.getByRole("button", { name: "hover context line" }));
+    expect(rollback.hidden).toBe(true);
   });
 });

@@ -17,9 +17,11 @@ import { safeHandle } from "./ipcUtils";
 import { parseGitStatusPorcelainV1Z } from "./workbenchGitStatus";
 import {
   findGitDiffHunk,
+  findGitDiffLinePatch,
   toGitDiffHunkMetadata,
   type GitDiffHunk,
-  type GitDiffHunkTarget
+  type GitDiffHunkTarget,
+  type GitDiffLineTarget
 } from "./workbenchGitDiff";
 import {
   createWorkbenchFile,
@@ -575,6 +577,33 @@ export async function discardGitHunk(
   await applyGitPatch(repoRoot, hunk.patch, staged);
 }
 
+export async function discardGitLine(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  staged: boolean,
+  target: GitDiffLineTarget
+): Promise<void> {
+  if (!target || !Number.isInteger(target.lineNumber) || target.lineNumber < 1) {
+    throw new Error("无效的 Git 行号");
+  }
+  if (target.side !== "additions" && target.side !== "deletions") {
+    throw new Error("无效的 Git diff 侧");
+  }
+  const requestedRoot = resolveCwd(repoRootRaw);
+  if (!(await isGitRepo(requestedRoot))) {
+    throw new Error("当前目录不是 Git 仓库");
+  }
+  const repoRoot = (await queryGitRoot(requestedRoot)) || requestedRoot;
+  const repoPath = normalizeRepoRelativePath(repoPathRaw);
+  resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
+  const patch = await queryGitDiffPatch(repoRoot, repoPath, staged);
+  const linePatch = findGitDiffLinePatch(patch, target);
+  if (!linePatch) {
+    throw new Error("该行已不是可回退的 Git 改动，请重新打开 diff 后再试");
+  }
+  await applyGitPatch(repoRoot, linePatch, staged);
+}
+
 export function registerWorkbenchFsIpc(): void {
   safeHandle(
     "workbench:listFiles",
@@ -804,6 +833,14 @@ export function registerWorkbenchFsIpc(): void {
     "terminal:gitDiscardHunk",
     async (_event, args: { repoRoot: string; path: string; staged?: boolean; target: GitDiffHunkTarget }) => {
       await discardGitHunk(args.repoRoot, args.path, Boolean(args.staged), args.target);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitDiscardLine",
+    async (_event, args: { repoRoot: string; path: string; staged?: boolean; target: GitDiffLineTarget }) => {
+      await discardGitLine(args.repoRoot, args.path, Boolean(args.staged), args.target);
       return { ok: true };
     }
   );

@@ -23,7 +23,7 @@ import type {
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
-import type { GitDiffHunk, GitDiffHunkTarget } from "../main/workbenchGitDiff";
+import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
@@ -652,6 +652,12 @@ export interface DesktopApi {
     staged?: boolean;
     target: GitDiffHunkTarget;
   }): Promise<{ ok: boolean }>;
+  terminalGitDiscardLine(args: {
+    repoRoot: string;
+    path: string;
+    staged?: boolean;
+    target: GitDiffLineTarget;
+  }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -1207,6 +1213,7 @@ const api: DesktopApi = {
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
   terminalGitDiscardChange: (args) => ipcRenderer.invoke("terminal:gitDiscardChange", args),
   terminalGitDiscardHunk: (args) => ipcRenderer.invoke("terminal:gitDiscardHunk", args),
+  terminalGitDiscardLine: (args) => ipcRenderer.invoke("terminal:gitDiscardLine", args),
   terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),

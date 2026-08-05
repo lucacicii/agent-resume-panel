@@ -36,8 +36,14 @@ import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
 import {
+  FloatingSessionNote,
+  sessionNoteMatchesTarget,
+  type FloatingSessionNoteTarget
+} from "./FloatingSessionNote";
+import {
   WorkbenchDiffView,
   type WorkbenchDiffHunkTarget,
+  type WorkbenchDiffLineTarget,
   type WorkbenchDiffPane
 } from "./WorkbenchDiffView";
 export {
@@ -213,12 +219,14 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "session";
+  kind: "project" | "session" | "session-tab";
   x: number;
   y: number;
   projectPath?: string;
   projectId?: string;
   session?: AgentSession;
+  floatingNoteTarget?: FloatingSessionNoteTarget;
+  hasFloatingNote?: boolean;
   editorLabel?: string;
 };
 type GitLogContextMenu = {
@@ -334,6 +342,44 @@ function basename(value = ""): string {
 
 function sessionKey(session: AgentSession): string {
   return `${session.provider}:${session.id}`;
+}
+
+function sessionNoteTarget(session: AgentSession, projectName?: string): FloatingSessionNoteTarget {
+  return {
+    provider: session.provider,
+    sessionId: session.id,
+    projectPath: session.projectPath || "",
+    projectName: projectName || basename(session.projectPath),
+    sessionTitle: session.title || session.id
+  };
+}
+
+function sessionIdentityFromKey(value: string | undefined): { provider: string; sessionId: string } | null {
+  if (!value) return null;
+  const separator = value.indexOf(":");
+  if (separator <= 0 || separator === value.length - 1) return null;
+  return { provider: value.slice(0, separator), sessionId: value.slice(separator + 1) };
+}
+
+function terminalSessionNoteTarget(pane: TerminalPane, projectName?: string): FloatingSessionNoteTarget | null {
+  const identity = sessionIdentityFromKey(pane.sessionKey);
+  if (!identity) return null;
+  return {
+    ...identity,
+    projectPath: pane.projectPath || "",
+    projectName: projectName || basename(pane.projectPath),
+    sessionTitle: pane.title || identity.sessionId
+  };
+}
+
+function acpSessionNoteTarget(pane: AcpChatPane, projectName?: string): FloatingSessionNoteTarget {
+  return {
+    provider: "chat",
+    sessionId: pane.recordId,
+    projectPath: pane.projectPath || "",
+    projectName: projectName || basename(pane.projectPath),
+    sessionTitle: pane.title || pane.recordId
+  };
 }
 
 function projectPathKey(value = ""): string {
@@ -1796,6 +1842,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
+  const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
   const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
@@ -3162,10 +3209,43 @@ export function WorkbenchPanel(): ReactPortal | null {
     }).catch(() => undefined);
   };
 
+  const refreshFloatingNoteAvailability = useCallback((target: FloatingSessionNoteTarget, menu: WorkbenchContextMenu) => {
+    const api = desktopApi();
+    if (typeof api.notesList !== "function") return;
+    void api.notesList().then((notes) => {
+      const hasFloatingNote = notes.some((note) => sessionNoteMatchesTarget(note, target));
+      setContextMenu((current) => current === menu ? { ...current, hasFloatingNote } : current);
+    }).catch(() => undefined);
+  }, []);
+
   const sessionMenu = (event: React.MouseEvent, session: AgentSession) => {
     event.preventDefault();
-    setContextMenu({ kind: "session", session, x: event.clientX, y: event.clientY });
+    const menu: WorkbenchContextMenu = { kind: "session", session, x: event.clientX, y: event.clientY };
+    setContextMenu(menu);
+    refreshFloatingNoteAvailability(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)), menu);
   };
+
+  const sessionTabMenu = (
+    event: React.MouseEvent,
+    target: FloatingSessionNoteTarget | null,
+    paneKey: string
+  ) => {
+    if (activePane !== paneKey) return;
+    event.preventDefault();
+    if (!target) return;
+    const menu: WorkbenchContextMenu = {
+      kind: "session-tab",
+      floatingNoteTarget: target,
+      x: event.clientX,
+      y: event.clientY
+    };
+    setContextMenu(menu);
+    refreshFloatingNoteAvailability(target, menu);
+  };
+
+  const openFloatingNote = useCallback((target: FloatingSessionNoteTarget) => {
+    setFloatingNoteTarget({ ...target });
+  }, []);
 
   const openNoteInNotesTab = (noteId: string) => {
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
@@ -3346,6 +3426,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return;
     }
+    if (menu.kind === "session-tab") {
+      if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
+      return;
+    }
     const session = menu.session;
     if (!session) return;
     if (action.startsWith("gtd:")) {
@@ -3373,6 +3457,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return;
     }
+    if (action === "floatingNote") openFloatingNote(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)));
     if (action === "note") await openMountedNote({ scope: "session", projectPath: session.projectPath, provider: session.provider, sessionId: session.id });
     if (action === "codex") {
       try { await desktopApi().workbenchOpenCodexApp({ provider: session.provider, id: session.id }); }
@@ -4140,6 +4225,22 @@ export function WorkbenchPanel(): ReactPortal | null {
     await discardGitChanges(changes, directoryPath, true);
   };
 
+  const refreshGitDiffAfterDiscard = async (pane: DiffPane) => {
+    const refreshed = await desktopApi().terminalGitDiffSides({
+      cwd: pane.repoRoot,
+      path: pane.repoPath,
+      staged: pane.source === "staged"
+    });
+    if (!refreshed.hunks.length) {
+      setDiffs((current) => current.filter((item) => item.key !== pane.key));
+      if (activePane === pane.key) setActivePane("");
+    } else {
+      setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
+    }
+    await refreshGit();
+    currentTerminals.forEach((terminal) => void refreshTerminalGit(terminal.key));
+  };
+
   const discardGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
     if (pane.source !== "working-tree" && pane.source !== "staged") return;
     const confirmMessage = pane.source === "staged"
@@ -4153,19 +4254,26 @@ export function WorkbenchPanel(): ReactPortal | null {
         staged: pane.source === "staged",
         target
       });
-      const refreshed = await desktopApi().terminalGitDiffSides({
-        cwd: pane.repoRoot,
+      await refreshGitDiffAfterDiscard(pane);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
+    }
+  };
+
+  const discardGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
+    if (pane.source !== "working-tree" && pane.source !== "staged") return;
+    const confirmMessage = pane.source === "staged"
+      ? t("desktop.workbench.gitDiscardLineStagedConfirm", pane.path)
+      : t("desktop.workbench.gitDiscardLineConfirm", pane.path);
+    if (!window.confirm(confirmMessage)) return;
+    try {
+      await desktopApi().terminalGitDiscardLine({
+        repoRoot: pane.repoRoot,
         path: pane.repoPath,
-        staged: pane.source === "staged"
+        staged: pane.source === "staged",
+        target
       });
-      if (!refreshed.hunks.length) {
-        setDiffs((current) => current.filter((item) => item.key !== pane.key));
-        if (activePane === pane.key) setActivePane("");
-      } else {
-        setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
-      }
-      await refreshGit();
-      currentTerminals.forEach((terminal) => void refreshTerminalGit(terminal.key));
+      await refreshGitDiffAfterDiscard(pane);
     } catch (error) {
       notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
     }
@@ -4481,7 +4589,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
   };
 
-  const contextMenuWidth = contextMenu?.kind === "session" ? 180 : 240;
+  const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 180 : 240;
+  const contextMenuHeight = contextMenu?.kind === "session-tab" ? 64 : 320;
   const contextMenuLeft = contextMenu
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
@@ -4664,8 +4773,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
-        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
-        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
@@ -4825,7 +4934,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -4987,7 +5096,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupAcp")}</span>
       {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
     </div> : null}
-    {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 320)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
         const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -5046,9 +5155,10 @@ export function WorkbenchPanel(): ReactPortal | null {
             {group}
           </Fragment>
         ));
-      })() : <>
+      })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
@@ -5166,6 +5276,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     <Status kind={status.kind}>{status.text}</Status>
+    {floatingNoteTarget ? <FloatingSessionNote target={floatingNoteTarget} onClose={() => setFloatingNoteTarget(null)} /> : null}
   </section>
     <QuickAccess
       open={quickAccessOpen}

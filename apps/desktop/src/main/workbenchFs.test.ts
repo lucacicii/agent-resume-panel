@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
 
-import { discardGitChange, discardGitHunk } from "./workbenchFs";
+import { discardGitChange, discardGitHunk, discardGitLine } from "./workbenchFs";
 import { toGitDiffHunkMetadata } from "./workbenchGitDiff";
 
 const repos: string[] = [];
@@ -127,5 +127,74 @@ describe("discardGitHunk", () => {
     expect(worktreeLines[20]).toBe("staged second");
     expect(indexLines[1]).toBe("line 2");
     expect(indexLines[20]).toBe("staged second");
+  });
+});
+
+describe("discardGitLine", () => {
+  function fixtureContent(first: string, second: string): string {
+    const lines = Array.from({ length: 16 }, (_value, index) => `line ${index + 1}`);
+    lines[3] = first;
+    lines[8] = second;
+    return `${lines.join("\n")}\n`;
+  }
+
+  it("discards only the selected change block inside one working-tree hunk", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 4", "line 9"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add line fixture");
+    fs.writeFileSync(tracked, fixtureContent("working first", "working second"));
+    const patch = git(repo, "diff", "--no-color", "--unified=3", "--", "tracked.txt");
+    expect(toGitDiffHunkMetadata(patch)).toHaveLength(1);
+
+    await discardGitLine(repo, "tracked.txt", false, { side: "additions", lineNumber: 4 });
+
+    const lines = fs.readFileSync(tracked, "utf8").split("\n");
+    expect(lines[3]).toBe("line 4");
+    expect(lines[8]).toBe("working second");
+  });
+
+  it("discards a selected staged change block without changing the worktree", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 4", "line 9"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add staged line fixture");
+    fs.writeFileSync(tracked, fixtureContent("staged first", "staged second"));
+    git(repo, "add", "tracked.txt");
+
+    await discardGitLine(repo, "tracked.txt", true, { side: "deletions", lineNumber: 4 });
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[3]).toBe("staged first");
+    expect(worktreeLines[8]).toBe("staged second");
+    expect(indexLines[3]).toBe("line 4");
+    expect(indexLines[8]).toBe("staged second");
+  });
+
+  it("discards an added line at the start of a file", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, "one\ntwo\n");
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add short fixture");
+    fs.writeFileSync(tracked, "added\none\ntwo\n");
+
+    await discardGitLine(repo, "tracked.txt", false, { side: "additions", lineNumber: 1 });
+
+    expect(fs.readFileSync(tracked, "utf8")).toBe("one\ntwo\n");
+  });
+
+  it("rejects a line that is no longer changed", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, "changed\n");
+
+    await expect(discardGitLine(repo, "tracked.txt", false, {
+      side: "additions",
+      lineNumber: 99
+    })).rejects.toThrow("已不是可回退的 Git 改动");
   });
 });

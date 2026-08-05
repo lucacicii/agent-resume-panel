@@ -28,6 +28,11 @@ export type WorkbenchDiffHunkTarget = {
   newLines: number;
 };
 
+export type WorkbenchDiffLineTarget = {
+  side: "additions" | "deletions";
+  lineNumber: number;
+};
+
 type DiffSearchMatch = {
   side: "old" | "new";
   from: number;
@@ -142,11 +147,13 @@ function toFileContents(name: string, contents: string, cacheKey: string) {
 export function WorkbenchDiffView({
   diff,
   appearance,
-  onDiscardHunk
+  onDiscardHunk,
+  onDiscardLine
 }: {
   diff: WorkbenchDiffPane;
   appearance: CodeMirrorAppearance;
   onDiscardHunk?: (target: WorkbenchDiffHunkTarget) => void;
+  onDiscardLine?: (target: WorkbenchDiffLineTarget) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const codeViewRef = useRef<CodeViewHandle<undefined> | null>(null);
@@ -157,6 +164,7 @@ export function WorkbenchDiffView({
   const [findIndex, setFindIndex] = useState(-1);
   const [themeType, setThemeType] = useState(() => resolveThemeType(appearance));
   const findInputRef = useRef<HTMLInputElement | null>(null);
+  const lineDiscardButtonRef = useRef<HTMLButtonElement | null>(null);
   const itemId = diff.key;
   const itemVersion = useMemo(
     () => diffItemVersion(diff),
@@ -293,11 +301,29 @@ export function WorkbenchDiffView({
   }, [closeFind, findOpen, openFind, runFind]);
 
   const canDiscardHunk = Boolean(onDiscardHunk) && diff.source !== "commit" && diff.source !== "untracked";
+  const canDiscardLine = Boolean(onDiscardLine) && diff.source !== "commit" && diff.source !== "untracked";
   const discardHunk = () => {
     if (!selectedHunk || !onDiscardHunk || !canDiscardHunk) return;
     onDiscardHunk(selectedHunk);
     setSelectedLines(null);
   };
+  const renderLineDiscard = canDiscardLine ? ((getHoveredLine: () => { lineNumber: number; side?: "additions" | "deletions" } | undefined) => <button
+    ref={lineDiscardButtonRef}
+    type="button"
+    className="wb-diff-line-discard-btn"
+    aria-label={t("desktop.workbench.gitDiscardLine")}
+    title={t("desktop.workbench.gitDiscardLine")}
+    hidden
+    onPointerDown={(event) => event.stopPropagation()}
+    onClick={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const hovered = getHoveredLine();
+      if (!hovered?.side || !onDiscardLine) return;
+      lineDiscardButtonRef.current?.setAttribute("hidden", "");
+      onDiscardLine({ side: hovered.side, lineNumber: hovered.lineNumber });
+    }}
+  ><ThemeIcon name="undo" size={12} /></button>) : undefined;
 
   return <div className="wb-diff-view" onCopy={() => {
     const selected = window.getSelection()?.toString();
@@ -345,6 +371,7 @@ export function WorkbenchDiffView({
         items={items}
         selectedLines={activeSelectedLines}
         onSelectedLinesChange={setSelectedLines}
+        renderGutterUtility={renderLineDiscard}
         options={{
           theme: { dark: "pierre-dark", light: "pierre-light" },
           themeType,
@@ -356,7 +383,17 @@ export function WorkbenchDiffView({
           expansionLineCount: 3,
           lineDiffType: "word",
           lineHoverHighlight: "both",
+          enableGutterUtility: canDiscardLine,
           enableLineSelection: true,
+          onLineEnter: (line) => {
+            if (lineDiscardButtonRef.current) {
+              lineDiscardButtonRef.current.hidden = !("lineType" in line)
+                || (line.lineType !== "change-addition" && line.lineType !== "change-deletion");
+            }
+          },
+          onLineLeave: () => {
+            if (lineDiscardButtonRef.current) lineDiscardButtonRef.current.hidden = true;
+          },
           hunkSeparators: "line-info"
         }}
       />
