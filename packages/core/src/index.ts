@@ -213,6 +213,20 @@ export {
 } from "./catalog/projects";
 export type { ProjectRow, ResolveProjectCwdResult } from "./catalog/projects";
 export {
+  listWorkbenchSessionFolders,
+  listWorkbenchSessionFolderAssignments,
+  createWorkbenchSessionFolder,
+  renameWorkbenchSessionFolder,
+  deleteWorkbenchSessionFolder,
+  assignWorkbenchSessionToFolder,
+  removeWorkbenchSessionFromFolder,
+  mergeWorkbenchSessionFolders
+} from "./catalog/workbenchFolders";
+export type {
+  WorkbenchSessionFolder,
+  WorkbenchSessionFolderAssignment
+} from "./catalog/workbenchFolders";
+export {
   loadAllAgentSessions,
   syncAgentSessions,
   sessionSyncOptionsFromSettings

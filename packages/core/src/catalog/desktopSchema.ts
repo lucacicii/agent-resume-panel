@@ -131,6 +131,32 @@ CREATE TABLE IF NOT EXISTS session_transcript_index (
   PRIMARY KEY (provider, agent_session_id)
 );
 
+CREATE TABLE IF NOT EXISTS workbench_session_folders (
+  folder_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  parent_id TEXT,
+  name TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workbench_session_folders_project
+  ON workbench_session_folders(project_id, parent_id, name COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workbench_session_folders_sibling_name
+  ON workbench_session_folders(project_id, COALESCE(parent_id, ''), name COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS workbench_session_folder_items (
+  project_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  folder_id TEXT,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_workbench_session_folder_items_project
+  ON workbench_session_folder_items(project_id, folder_id);
+CREATE INDEX IF NOT EXISTS idx_workbench_session_folder_items_folder
+  ON workbench_session_folder_items(folder_id);
+
 CREATE TABLE IF NOT EXISTS agent_threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

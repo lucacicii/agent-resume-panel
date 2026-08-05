@@ -20,7 +20,9 @@ import type {
   AgentSession,
   GtdStatus,
   PanelSettings,
-  WorkbenchProjectContextMenuAction
+  WorkbenchProjectContextMenuAction,
+  WorkbenchSessionFolder,
+  WorkbenchSessionFolderAssignment
 } from "@agent-resume/core";
 import {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
@@ -212,6 +214,8 @@ type WorkbenchProject = {
   portableKey: string;
   pathMissing: boolean;
   sessions: AgentSession[];
+  folders: WorkbenchSessionFolder[];
+  folderAssignments: WorkbenchSessionFolderAssignment[];
   pendingCount: number;
   label: string;
   active: boolean;
@@ -219,11 +223,14 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "session" | "session-tab";
+  kind: "project" | "folder" | "session" | "session-tab";
   x: number;
   y: number;
   projectPath?: string;
   projectId?: string;
+  folderId?: string;
+  parentId?: string | null;
+  folderName?: string;
   session?: AgentSession;
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
@@ -249,6 +256,24 @@ type WorkbenchRenameDialog = {
   session?: AgentSession;
   title: string;
   autoBusy: boolean;
+  status: string;
+};
+type WorkbenchFolderDialog = {
+  mode: "create" | "rename";
+  projectId: string;
+  parentId?: string | null;
+  folderId?: string;
+  title: string;
+  status: string;
+  busy: boolean;
+};
+type WorkbenchFolderPickerDialog = {
+  projectId: string;
+  projectPath: string;
+  session: AgentSession;
+  folders: WorkbenchSessionFolder[];
+  query: string;
+  busy: boolean;
   status: string;
 };
 type ProjectPickDialog =
@@ -324,6 +349,7 @@ const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
+const UNCLASSIFIED_FOLDER_ID = "__workbench_unclassified__";
 
 function effectiveGtdStatus(
   statuses: Record<string, GtdStatus>,
@@ -342,6 +368,23 @@ function basename(value = ""): string {
 
 function sessionKey(session: AgentSession): string {
   return `${session.provider}:${session.id}`;
+}
+
+function folderAssignmentKey(provider: string, agentSessionId: string): string {
+  return `${provider}:${agentSessionId}`;
+}
+
+function workbenchFolderPath(folder: WorkbenchSessionFolder, folders: WorkbenchSessionFolder[]): string {
+  const byId = new Map(folders.map((item) => [item.folderId, item]));
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  let current: WorkbenchSessionFolder | undefined = folder;
+  while (current && !seen.has(current.folderId)) {
+    seen.add(current.folderId);
+    parts.unshift(current.name);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return parts.join(" / ");
 }
 
 function sessionNoteTarget(session: AgentSession, projectName?: string): FloatingSessionNoteTarget {
@@ -1743,9 +1786,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [active, setActive] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
+  const [workbenchFolderData, setWorkbenchFolderData] = useState<Record<string, {
+    folders: WorkbenchSessionFolder[];
+    assignments: WorkbenchSessionFolderAssignment[];
+  }>>({});
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [gtdStatuses, setGtdStatuses] = useState<Record<string, GtdStatus>>({});
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
   const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(
     () => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "projects"
   );
@@ -1846,6 +1895,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
+  const [folderDialog, setFolderDialog] = useState<WorkbenchFolderDialog | null>(null);
+  const [folderPickerDialog, setFolderPickerDialog] = useState<WorkbenchFolderPickerDialog | null>(null);
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
@@ -1916,6 +1967,18 @@ export function WorkbenchPanel(): ReactPortal | null {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
+      const listFolderData = (projects: CatalogProject[]) => {
+        if (typeof desktopApi().listWorkbenchSessionFolders !== "function") {
+          return Promise.resolve({} as Record<string, {
+            folders: WorkbenchSessionFolder[];
+            assignments: WorkbenchSessionFolderAssignment[];
+          }>);
+        }
+        return Promise.all(projects.map(async (project) => {
+          const result = await desktopApi().listWorkbenchSessionFolders({ projectId: project.projectId });
+          return [project.projectId, result] as const;
+        })).then((entries) => Object.fromEntries(entries));
+      };
       const listGtdStatuses = typeof desktopApi().listSessionGtdStatuses === "function"
         ? desktopApi().listSessionGtdStatuses()
         : Promise.resolve({} as Record<string, GtdStatus>);
@@ -1926,10 +1989,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         listProjects,
         listGtdStatuses
       ]);
+      const nextFolderData = await listFolderData(nextProjects || []);
       setSessions(next);
       setAliases(nextAliases);
       setSettings(nextSettings);
       setCatalogProjects(nextProjects || []);
+      setWorkbenchFolderData(nextFolderData);
       setGtdStatuses(nextGtdStatuses || {});
       setSelectedProject((current) => {
         const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
@@ -2154,6 +2219,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [renameDialog?.kind, renameDialog?.projectPath, renameDialog?.session?.id, renameDialog?.session?.provider]);
 
+  useEffect(() => {
+    if (!folderDialog) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !folderDialog.busy) setFolderDialog(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [folderDialog?.mode, folderDialog?.folderId, folderDialog?.busy]);
+
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
       const sessionsByProjectId = new Map<string, AgentSession[]>();
@@ -2182,6 +2260,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         ];
         const projectPath = project.localPath || project.portableKey;
         const pendingCount = pendingCountByPath.get(projectPathKey(projectPath)) || 0;
+        const folderData = workbenchFolderData[project.projectId] || { folders: [], assignments: [] };
         // Hide catalog rows with no session data (catalog count and joined list both empty).
         if ((project.sessionCount || 0) === 0 && group.length === 0 && pendingCount === 0) return [];
         const path = projectPath;
@@ -2191,6 +2270,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           portableKey: project.portableKey,
           pathMissing: project.pathMissing,
           sessions: group,
+          folders: folderData.folders,
+          folderAssignments: folderData.assignments,
           pendingCount,
           label: project.alias || aliases[path] || aliases[project.projectId] || basename(path),
           active: pendingCount > 0 || group.some((session) => openSessionKeys.has(sessionKey(session))),
@@ -2213,6 +2294,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         portableKey: path,
         pathMissing: false,
         sessions: [],
+        folders: [],
+        folderAssignments: [],
         pendingCount: pending.length,
         label: aliases[path] || basename(path),
         active: true,
@@ -2246,6 +2329,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       portableKey: path,
       pathMissing: false,
       sessions: group.sessions,
+      folders: [],
+      folderAssignments: [],
       pendingCount: group.pendingCount,
       label: aliases[path] || basename(path),
       active: group.pendingCount > 0 || group.sessions.some((session) => openSessionKeys.has(sessionKey(session))),
@@ -2256,7 +2341,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       || a.label.localeCompare(b.label)
       || a.path.localeCompare(b.path)
       || a.id.localeCompare(b.id));
-  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions]);
+  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions, workbenchFolderData]);
 
   const projects = useMemo(() => {
     const query = projectQuery.trim().toLowerCase();
@@ -2270,6 +2355,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     () => allProjects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
     [allProjects, selectedProject]
   );
+  const selectedFolder = useMemo(
+    () => selectedProjectMeta?.folders.find((folder) => folder.folderId === selectedFolderId) || null,
+    [selectedFolderId, selectedProjectMeta]
+  );
 
   const selectedSessions = useMemo(() => {
     if (sidebarView === "gtd") {
@@ -2280,15 +2369,27 @@ export function WorkbenchPanel(): ReactPortal | null {
       });
     }
     if (!selectedProject) return sessions;
+    let projectSessions: AgentSession[];
     if (selectedProjectMeta) {
-      return sessions.filter((session) =>
+      projectSessions = sessions.filter((session) =>
         (session.projectId && session.projectId === selectedProjectMeta.id)
         || session.projectPath === selectedProjectMeta.path
         || session.projectPath === selectedProject
       );
+    } else {
+      projectSessions = sessions.filter((session) => session.projectPath === selectedProject);
     }
-    return sessions.filter((session) => session.projectPath === selectedProject);
-  }, [gtdStatuses, projectQuery, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
+    if (!selectedFolderId || !selectedProjectMeta) return projectSessions;
+    const assignments = new Map(
+      selectedProjectMeta.folderAssignments.map((assignment) => [
+        folderAssignmentKey(assignment.provider, assignment.agentSessionId),
+        assignment.folderId
+      ])
+    );
+    return projectSessions.filter((session) => selectedFolderId === UNCLASSIFIED_FOLDER_ID
+      ? !assignments.has(sessionKey(session))
+      : assignments.get(sessionKey(session)) === selectedFolderId);
+  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
   const gtdStatusCounts = useMemo(() => {
     const query = projectQuery.trim().toLowerCase();
     const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
@@ -2303,7 +2404,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [gtdStatuses, projectQuery, sessions]);
   const selectedSessionScope = sidebarView === "gtd"
     ? t(`desktop.workbench.gtdStatus.${selectedGtdStatus}`)
-    : selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions");
+    : selectedFolderId === UNCLASSIFIED_FOLDER_ID
+      ? t("desktop.workbench.unclassifiedSessions")
+      : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
     return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
@@ -2427,6 +2530,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (current === project) return current;
       return project;
     });
+    setSelectedFolderId(null);
     try {
       if (project) {
         localStorage.setItem(PROJECT_KEY, project);
@@ -2444,6 +2548,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGitLogError("");
     gitLogRequestRef.current += 1;
   };
+
+  const selectProjectFolder = useCallback((project: WorkbenchProject, folderId: string | null) => {
+    selectProject(project.path, { keepSessionKey: true });
+    setSelectedFolderId(folderId);
+  }, [selectProject]);
 
   const focusPendingSession = useCallback((pending: PendingWorkbenchSession) => {
     selectProject(pending.projectPath, { keepSessionKey: true });
@@ -3209,6 +3318,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     }).catch(() => undefined);
   };
 
+  const folderMenu = (event: React.MouseEvent, project: WorkbenchProject, folder: WorkbenchSessionFolder) => {
+    event.preventDefault();
+    setContextMenu({
+      kind: "folder",
+      projectPath: project.path,
+      projectId: project.id,
+      folderId: folder.folderId,
+      parentId: folder.parentId,
+      folderName: folder.name,
+      x: event.clientX,
+      y: event.clientY
+    });
+  };
+
   const refreshFloatingNoteAvailability = useCallback((target: FloatingSessionNoteTarget, menu: WorkbenchContextMenu) => {
     const api = desktopApi();
     if (typeof api.notesList !== "function") return;
@@ -3273,6 +3396,101 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
+  const openCreateFolderDialog = (project: WorkbenchProject, parentId: string | null = null) => {
+    setFolderDialog({
+      mode: "create",
+      projectId: project.id,
+      parentId,
+      title: "",
+      status: "",
+      busy: false
+    });
+  };
+
+  const openRenameFolderDialog = (project: WorkbenchProject, folder: WorkbenchSessionFolder) => {
+    setFolderDialog({
+      mode: "rename",
+      projectId: project.id,
+      folderId: folder.folderId,
+      parentId: folder.parentId,
+      title: folder.name,
+      status: "",
+      busy: false
+    });
+  };
+
+  const openMoveSessionDialog = (session: AgentSession) => {
+    const project = allProjects.find((item) =>
+      (session.projectId && item.id === session.projectId)
+      || item.path === session.projectPath
+    );
+    if (!project || !project.id || project.id === project.path) {
+      setStatus({ text: t("desktop.workbench.folderProjectUnavailable"), kind: "error" });
+      return;
+    }
+    setFolderPickerDialog({
+      projectId: project.id,
+      projectPath: project.path,
+      session,
+      folders: project.folders,
+      query: "",
+      busy: false,
+      status: ""
+    });
+  };
+
+  const applyFolderDialog = async () => {
+    if (!folderDialog) return;
+    const name = folderDialog.title.trim();
+    if (!name) {
+      setFolderDialog((current) => current ? { ...current, status: t("desktop.workbench.folderNameEmpty") } : current);
+      return;
+    }
+    setFolderDialog((current) => current ? { ...current, busy: true, status: "" } : current);
+    try {
+      if (folderDialog.mode === "create") {
+        await desktopApi().createWorkbenchSessionFolder({
+          projectId: folderDialog.projectId,
+          parentId: folderDialog.parentId,
+          name
+        });
+        if (folderDialog.parentId) {
+          setExpandedFolderIds((current) => new Set(current).add(folderDialog.parentId!));
+        }
+      } else if (folderDialog.folderId) {
+        await desktopApi().renameWorkbenchSessionFolder({ folderId: folderDialog.folderId, name });
+      }
+      setFolderDialog(null);
+      await loadSessions();
+    } catch (error) {
+      setFolderDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
+    }
+  };
+
+  const assignFolderFromPicker = async (folderId: string | null) => {
+    if (!folderPickerDialog) return;
+    setFolderPickerDialog((current) => current ? { ...current, busy: true, status: "" } : current);
+    try {
+      if (folderId) {
+        await desktopApi().assignWorkbenchSessionToFolder({
+          projectId: folderPickerDialog.projectId,
+          provider: folderPickerDialog.session.provider,
+          agentSessionId: folderPickerDialog.session.id,
+          folderId
+        });
+      } else {
+        await desktopApi().removeWorkbenchSessionFromFolder({
+          provider: folderPickerDialog.session.provider,
+          agentSessionId: folderPickerDialog.session.id
+        });
+      }
+      setFolderPickerDialog(null);
+      await loadSessions();
+    } catch (error) {
+      setFolderPickerDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
+    }
+  };
+
   const applyRename = async () => {
     if (!renameDialog) return;
     const title = renameDialog.title.trim();
@@ -3311,6 +3529,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (menu.kind === "project" && menu.projectPath) {
       if (action === "pin" || action === "unpin") await togglePinnedProject(menu.projectPath, menu.projectId);
       if (action === "new") await newSessionForProject(menu.projectPath, menu.projectId);
+      if (action === "newFolder" && menu.projectId) {
+        const project = allProjects.find((item) => item.id === menu.projectId);
+        if (project && project.id !== project.path) openCreateFolderDialog(project);
+      }
       if (action === "editor") {
         try {
           let projectPath = menu.projectPath;
@@ -3426,12 +3648,48 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return;
     }
+    if (menu.kind === "folder") {
+      const project = allProjects.find((item) => item.id === menu.projectId);
+      const folder = project?.folders.find((item) => item.folderId === menu.folderId);
+      if (!project || !folder || !menu.folderId) return;
+      if (action === "newFolder") openCreateFolderDialog(project, folder.folderId);
+      if (action === "renameFolder") openRenameFolderDialog(project, folder);
+      if (action === "deleteFolder") {
+        if (!window.confirm(t("desktop.workbench.deleteFolderConfirm", folder.name))) return;
+        try {
+          await desktopApi().deleteWorkbenchSessionFolder({ folderId: folder.folderId });
+          if (selectedFolderId === folder.folderId) {
+            setSelectedFolderId(folder.parentId || UNCLASSIFIED_FOLDER_ID);
+          }
+          await loadSessions();
+        } catch (error) {
+          setStatus({ text: statusError(error), kind: "error" });
+        }
+      }
+      return;
+    }
     if (menu.kind === "session-tab") {
       if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
       return;
     }
     const session = menu.session;
     if (!session) return;
+    if (action === "moveFolder") {
+      openMoveSessionDialog(session);
+      return;
+    }
+    if (action === "removeFolder") {
+      try {
+        await desktopApi().removeWorkbenchSessionFromFolder({
+          provider: session.provider,
+          agentSessionId: session.id
+        });
+        await loadSessions();
+      } catch (error) {
+        setStatus({ text: statusError(error), kind: "error" });
+      }
+      return;
+    }
     if (action.startsWith("gtd:")) {
       const status = action === "gtd:clear"
         ? null
@@ -4589,8 +4847,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
   };
 
-  const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 180 : 240;
-  const contextMenuHeight = contextMenu?.kind === "session-tab" ? 64 : 320;
+  const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
+  const contextMenuHeight = contextMenu?.kind === "session-tab"
+    ? 64
+    : contextMenu?.kind === "session"
+      ? 430
+      : contextMenu?.kind === "folder"
+        ? 160
+        : 320;
   const contextMenuLeft = contextMenu
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
@@ -4769,6 +5033,51 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     : { left: 8, top: 48 };
 
+  const renderProjectFolderRows = (project: WorkbenchProject, parentId: string | null, depth = 0): ReactNode => {
+    const children = project.folders
+      .filter((folder) => (folder.parentId || null) === parentId)
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+    if (!children.length) return null;
+    const assignmentCounts = new Map<string, number>();
+    for (const assignment of project.folderAssignments) {
+      assignmentCounts.set(assignment.folderId, (assignmentCounts.get(assignment.folderId) || 0) + 1);
+    }
+    return children.map((folder) => {
+      const hasChildren = project.folders.some((candidate) => candidate.parentId === folder.folderId);
+      const expanded = expandedFolderIds.has(folder.folderId);
+      return <Fragment key={folder.folderId}>
+      <button
+        type="button"
+        className={`wb-folder-row wb-session-folder-row${selectedProject === project.path && selectedFolderId === folder.folderId ? " active" : ""}`}
+        style={{ paddingLeft: `${18 + depth * 16}px` }}
+        onContextMenu={(event) => folderMenu(event, project, folder)}
+        onClick={() => selectProjectFolder(project, folder.folderId)}
+        title={folder.name}
+        aria-expanded={hasChildren ? expanded : undefined}
+      >
+        <span
+          className={`wb-session-folder-chevron${expanded ? " is-expanded" : ""}${hasChildren ? " has-children" : ""}`}
+          onClick={(event) => {
+            if (!hasChildren) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setExpandedFolderIds((current) => {
+              const next = new Set(current);
+              if (next.has(folder.folderId)) next.delete(folder.folderId);
+              else next.add(folder.folderId);
+              return next;
+            });
+          }}
+        ><ThemeIcon name="chevron-right" size={12} aria-hidden="true" /></span>
+        <ThemeIcon name="folder" size={14} aria-hidden="true" />
+        <span className="wb-folder-row-label">{folder.name}</span>
+        <span className="wb-folder-row-count">{assignmentCounts.get(folder.folderId) || 0}</span>
+      </button>
+      {expanded ? renderProjectFolderRows(project, folder.folderId, depth + 1) : null}
+    </Fragment>;
+    });
+  };
+
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
@@ -4817,7 +5126,15 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-folders">
           {sidebarView === "projects" ? <>
             <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length + pendingSessions.length}</span></button>
-            {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length + project.pendingCount}</span></button>)}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+            {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => {
+              const assignedKeys = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId)));
+              const unclassifiedCount = project.sessions.filter((session) => !assignedKeys.has(sessionKey(session))).length + project.pendingCount;
+              return <Fragment key={project.id}>
+                <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length + project.pendingCount}</span></button>
+                <button type="button" className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}`} onClick={() => selectProjectFolder(project, UNCLASSIFIED_FOLDER_ID)}><ThemeIcon name="folder-open" size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-folder-row-count">{unclassifiedCount}</span></button>
+                {renderProjectFolderRows(project, null)}
+              </Fragment>;
+            })}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
           </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
         </div>
       </aside>
@@ -5112,6 +5429,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (enabled.has("newSession")) {
           group2.push(<button type="button" role="menuitem" key="new" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>);
         }
+        if (contextMenu.projectId) {
+          group2.push(<button type="button" role="menuitem" key="newFolder" onClick={() => void runContextAction("newFolder")}>{t("desktop.workbench.newFolder")}</button>);
+        }
         if (enabled.has("editor") && contextMenu.editorLabel) {
           group2.push(<button type="button" role="menuitem" key="editor" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button>);
         }
@@ -5155,12 +5475,19 @@ export function WorkbenchPanel(): ReactPortal | null {
             {group}
           </Fragment>
         ));
-      })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : <>
+      })() : contextMenu.kind === "folder" ? <>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("newFolder")}>{t("desktop.workbench.newSubfolder")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
+      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("moveFolder")}>{t("desktop.workbench.moveToFolder")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("removeFolder")}>{t("desktop.workbench.removeFromFolder")}</button>
         <div className="context-menu-separator" role="separator" />
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
@@ -5172,6 +5499,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       </>}
     </div> : null}
     {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !renameDialog.autoBusy && setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")}</p>{renameDialog.kind === "session" ? <button type="button" className="wb-rename-auto-btn" disabled={renameDialog.autoBusy} onClick={() => void autoRename()}>{renameDialog.autoBusy ? <ThemeIcon name="loader" className="spin" size={14} /> : null}{t(renameDialog.autoBusy ? "desktop.workbench.autoRenaming" : "desktop.workbench.autoRename")}</button> : null}</div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} disabled={renameDialog.autoBusy} autoComplete="off" spellCheck={false} aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProjectDisplay" : "desktop.workbench.renameSessionTitle")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={renameDialog.autoBusy} onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={renameDialog.autoBusy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
+    {folderDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderDialog.busy && setFolderDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")} onSubmit={(event) => { event.preventDefault(); void applyFolderDialog(); }}><p className="wb-note-created-title">{t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")}</p>{folderDialog.status ? <p className="wb-rename-status muted">{folderDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={folderDialog.title} disabled={folderDialog.busy} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.folderName")} placeholder={t("desktop.workbench.folderName")} onChange={(event) => setFolderDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderDialog.busy} onClick={() => setFolderDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={folderDialog.busy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
+    {folderPickerDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderPickerDialog.busy && setFolderPickerDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToFolder")}><p className="wb-note-created-title">{t("desktop.workbench.moveSessionTitle", folderPickerDialog.session.title || folderPickerDialog.session.id)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveSessionHint")}</p><input type="search" className="wb-rename-input" value={folderPickerDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={folderPickerDialog.busy} onChange={(event) => setFolderPickerDialog((current) => current ? { ...current, query: event.target.value } : current)} />{folderPickerDialog.status ? <p className="wb-rename-status muted">{folderPickerDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox"><button type="button" className="wb-project-pick-item" disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(null)}><span className="wb-project-pick-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-project-pick-path">{folderPickerDialog.projectPath}</span></button>{folderPickerDialog.folders.filter((folder) => workbenchFolderPath(folder, folderPickerDialog.folders).toLowerCase().includes(folderPickerDialog.query.trim().toLowerCase())).map((folder) => <button type="button" className="wb-project-pick-item" key={folder.folderId} disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(folder.folderId)}><span className="wb-project-pick-label">{workbenchFolderPath(folder, folderPickerDialog.folders)}</span><span className="wb-project-pick-path">{folder.name}</span></button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderPickerDialog.busy} onClick={() => setFolderPickerDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "merge"
       ? projectPickDialog.options.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
       : projectPickDialog.options.filter((item) => `${item.absolutePath} ${item.portableKey}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))

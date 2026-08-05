@@ -8961,9 +8961,9 @@ textarea.wb-editor-host {
 }
 
 .wb-context-menu.wb-session-context-menu {
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  width: 210px;
+  min-width: 210px;
+  max-width: 210px;
   box-sizing: border-box;
 }
 
@@ -9920,6 +9920,42 @@ textarea.wb-floating-note-editor {
 .wb-folder-row {
   min-height: 38px;
   padding-block: 6px;
+}
+
+.wb-session-folder-row,
+.wb-session-folder-root {
+  min-height: 30px;
+  padding-block: 5px;
+  font-size: 12px;
+}
+
+.wb-session-folder-root {
+  padding-left: 24px;
+  color: var(--muted);
+}
+
+.wb-session-folder-chevron {
+  display: inline-flex;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0.25;
+}
+
+.wb-session-folder-chevron.has-children {
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.wb-session-folder-chevron.is-expanded svg {
+  transform: rotate(90deg);
+}
+
+.wb-session-folder-chevron svg {
+  transition: transform 120ms ease;
 }
 
 .wb-folder-activity-dot {

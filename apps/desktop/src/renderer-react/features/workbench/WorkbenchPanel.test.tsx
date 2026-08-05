@@ -416,6 +416,53 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
 
+  it("renders nested Workbench folders and filters sessions by the selected folder", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const listWorkbenchSessionFolders = vi.fn(async () => ({
+      folders: [
+        { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
+        { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
+      ],
+      assignments: [
+        { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "campaign", updatedAtMs: 1 }
+      ]
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.unclassifiedSessions": "Unclassified", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.moveToFolder": "Move to folder…", "desktop.workbench.removeFromFolder": "Move to Unclassified", "desktop.workbench.moveSessionTitle": "Move session {0}", "desktop.workbench.moveSessionHint": "Choose a folder", "desktop.workbench.folderProjectUnavailable": "Project unavailable", "desktop.workbench.newFolder": "New folder", "desktop.workbench.newSubfolder": "New subfolder", "desktop.workbench.renameFolder": "Rename folder", "desktop.workbench.deleteFolder": "Delete folder", "desktop.workbench.folderName": "Folder name", "desktop.workbench.folderNameEmpty": "Folder name cannot be empty", "desktop.workbench.deleteFolderConfirm": "Delete folder {0}?"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
+      ],
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
+      listWorkbenchSessionFolders,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await screen.findByTitle("Campaign");
+    expect(screen.queryByText("Phase 1")).toBeNull();
+    const campaignButton = screen.getByTitle("Campaign");
+    fireEvent.click(campaignButton);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Campaign work/ })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Unsorted work/ })).toBeNull();
+    fireEvent.click(campaignButton.querySelector(".wb-session-folder-chevron")!);
+    expect(screen.getByText("Phase 1")).toBeTruthy();
+    expect(listWorkbenchSessionFolders).toHaveBeenCalledWith({ projectId: "project-1" });
+  });
+
   it("opens develop-equivalent project and session context actions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

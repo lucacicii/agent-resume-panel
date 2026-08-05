@@ -7,6 +7,10 @@ import {
   NotesStore,
   runSqlite,
   runSqliteJson,
+  assignWorkbenchSessionToFolder,
+  createWorkbenchSessionFolder,
+  listWorkbenchSessionFolderAssignments,
+  listWorkbenchSessionFolders,
   type PanelSettings
 } from "@agent-resume/core";
 import { exportBackup, importBackup, selectBackupForImport } from "./backupService";
@@ -82,6 +86,34 @@ describe("backupService", () => {
     expect(executionChunks).toEqual([]);
     expect(executionVectors).toEqual([]);
     await expect(fs.access(path.join(targetHome, executionNote.relMdPath))).rejects.toMatchObject({ code: "ENOENT" });
+  }, 30_000);
+
+  it("backs up and restores Workbench session folder trees", async () => {
+    const sourceSettings = await makeSettings();
+    const targetSettings = await makeSettings();
+    const sourcePaths = await preparePanelDatabases(sourceSettings);
+    const targetPaths = await preparePanelDatabases(targetSettings);
+    const campaign = await createWorkbenchSessionFolder(sourcePaths.desktopDb, "project-1", null, "Campaign");
+    const phase = await createWorkbenchSessionFolder(sourcePaths.desktopDb, "project-1", campaign.folderId, "Phase 1");
+    await assignWorkbenchSessionToFolder(sourcePaths.desktopDb, "project-1", "codex", "session-1", phase.folderId);
+
+    const archive = path.join(sourceSettings.panelHome!, "folder-backup.zip");
+    await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: false });
+    const preview = await selectBackupForImport(archive);
+    await importBackup(targetSettings, preview.importToken, "test", {
+      includeCredentials: false,
+      restoreNativeConversations: false,
+      recoveryDir: path.join(targetSettings.panelHome!, "recovery")
+    });
+
+    const folders = await listWorkbenchSessionFolders(targetPaths.desktopDb, "project-1");
+    expect(folders.map((folder) => [folder.name, folder.parentId])).toEqual([
+      ["Campaign", null],
+      ["Phase 1", campaign.folderId]
+    ]);
+    await expect(listWorkbenchSessionFolderAssignments(targetPaths.desktopDb, "project-1")).resolves.toMatchObject([
+      { provider: "codex", agentSessionId: "session-1", folderId: phase.folderId }
+    ]);
   }, 30_000);
 
   it("removes a retired execution note during database preparation", async () => {

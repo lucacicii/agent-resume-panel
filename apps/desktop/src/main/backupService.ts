@@ -209,6 +209,8 @@ const CATALOG_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
 const CATALOG_APPEND_TABLES: Record<string, string[]> = {};
 const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string }> = {
   report_jobs: { keys: ["job_key"], timestamp: "updated_at_ms" },
+  workbench_session_folders: { keys: ["folder_id"], timestamp: "updated_at_ms" },
+  workbench_session_folder_items: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   note_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
   note_vector_index: { keys: ["note_id"], timestamp: "indexed_at_ms" },
   session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },

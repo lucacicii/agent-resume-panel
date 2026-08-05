@@ -49,6 +49,14 @@ import {
   listProjectPathVariants,
   mergeProjectsInCatalog,
   splitProjectPathInCatalog,
+  listWorkbenchSessionFolders,
+  listWorkbenchSessionFolderAssignments,
+  createWorkbenchSessionFolder,
+  renameWorkbenchSessionFolder,
+  deleteWorkbenchSessionFolder,
+  assignWorkbenchSessionToFolder,
+  removeWorkbenchSessionFromFolder,
+  mergeWorkbenchSessionFolders,
 
   openChatGptAppSession,
   openProjectInEditor,
@@ -1200,6 +1208,80 @@ function registerIpc(): void {
     }
   );
 
+  safeHandle(
+    "workbench:listSessionFolders",
+    async (_event, args: { projectId: string }) => {
+      const paths = await loadPanelDbPaths();
+      const projectId = String(args?.projectId || "").trim();
+      return {
+        folders: await listWorkbenchSessionFolders(paths.desktopDb, projectId),
+        assignments: await listWorkbenchSessionFolderAssignments(paths.desktopDb, projectId)
+      };
+    }
+  );
+
+  safeHandle(
+    "workbench:createSessionFolder",
+    async (_event, args: { projectId: string; parentId?: string | null; name: string }) => {
+      const paths = await loadPanelDbPaths();
+      return createWorkbenchSessionFolder(
+        paths.desktopDb,
+        String(args?.projectId || ""),
+        args?.parentId == null ? null : String(args.parentId),
+        String(args?.name || "")
+      );
+    }
+  );
+
+  safeHandle(
+    "workbench:renameSessionFolder",
+    async (_event, args: { folderId: string; name: string }) => {
+      const paths = await loadPanelDbPaths();
+      return renameWorkbenchSessionFolder(
+        paths.desktopDb,
+        String(args?.folderId || ""),
+        String(args?.name || "")
+      );
+    }
+  );
+
+  safeHandle(
+    "workbench:deleteSessionFolder",
+    async (_event, args: { folderId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return deleteWorkbenchSessionFolder(paths.desktopDb, String(args?.folderId || ""));
+    }
+  );
+
+  safeHandle(
+    "workbench:assignSessionToFolder",
+    async (
+      _event,
+      args: { projectId: string; provider: string; agentSessionId: string; folderId: string }
+    ) => {
+      const paths = await loadPanelDbPaths();
+      return assignWorkbenchSessionToFolder(
+        paths.desktopDb,
+        String(args?.projectId || ""),
+        String(args?.provider || ""),
+        String(args?.agentSessionId || ""),
+        String(args?.folderId || "")
+      );
+    }
+  );
+
+  safeHandle(
+    "workbench:removeSessionFromFolder",
+    async (_event, args: { provider: string; agentSessionId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return removeWorkbenchSessionFromFolder(
+        paths.desktopDb,
+        String(args?.provider || ""),
+        String(args?.agentSessionId || "")
+      );
+    }
+  );
+
   ipcMain.handle(
     "report:list",
     async (
@@ -1925,7 +2007,9 @@ function registerIpc(): void {
     "projects:merge",
     async (_event, args: { sourceProjectId: string; targetProjectId: string }) => {
       const paths = await loadPanelDbPaths();
-      return mergeProjectsInCatalog(paths.catalogDb, args.sourceProjectId, args.targetProjectId);
+      const result = await mergeProjectsInCatalog(paths.catalogDb, args.sourceProjectId, args.targetProjectId);
+      await mergeWorkbenchSessionFolders(paths.desktopDb, args.sourceProjectId, args.targetProjectId);
+      return result;
     }
   );
 

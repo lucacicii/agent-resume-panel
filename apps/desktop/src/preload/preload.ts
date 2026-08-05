@@ -19,7 +19,9 @@ import type {
   RunWeeklyDigestResult,
   AgentSessionSyncResult,
   GtdEvidence,
-  GtdStatus
+  GtdStatus,
+  WorkbenchSessionFolder,
+  WorkbenchSessionFolderAssignment
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
@@ -193,6 +195,31 @@ export interface DesktopApi {
     noteId?: string;
     initialPrompt?: string;
   }): Promise<{ mode: string; command?: string; cwd: string }>;
+  listWorkbenchSessionFolders(args: { projectId: string }): Promise<{
+    folders: WorkbenchSessionFolder[];
+    assignments: WorkbenchSessionFolderAssignment[];
+  }>;
+  createWorkbenchSessionFolder(args: {
+    projectId: string;
+    parentId?: string | null;
+    name: string;
+  }): Promise<WorkbenchSessionFolder>;
+  renameWorkbenchSessionFolder(args: { folderId: string; name: string }): Promise<WorkbenchSessionFolder>;
+  deleteWorkbenchSessionFolder(args: { folderId: string }): Promise<{
+    folderId: string;
+    projectId: string;
+    parentId: string | null;
+  }>;
+  assignWorkbenchSessionToFolder(args: {
+    projectId: string;
+    provider: string;
+    agentSessionId: string;
+    folderId: string;
+  }): Promise<WorkbenchSessionFolderAssignment>;
+  removeWorkbenchSessionFromFolder(args: {
+    provider: string;
+    agentSessionId: string;
+  }): Promise<{ ok: true }>;
   /** ACP visual chat (Workbench). */
   acpListSessions(args?: { projectPath?: string }): Promise<
     Array<{
@@ -1157,6 +1184,12 @@ const api: DesktopApi = {
   },
   workbenchOpenCodexApp: (args) => ipcRenderer.invoke("workbench:openCodexApp", args),
   workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
+  listWorkbenchSessionFolders: (args) => ipcRenderer.invoke("workbench:listSessionFolders", args),
+  createWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:createSessionFolder", args),
+  renameWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:renameSessionFolder", args),
+  deleteWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:deleteSessionFolder", args),
+  assignWorkbenchSessionToFolder: (args) => ipcRenderer.invoke("workbench:assignSessionToFolder", args),
+  removeWorkbenchSessionFromFolder: (args) => ipcRenderer.invoke("workbench:removeSessionFromFolder", args),
   acpListSessions: (args) => ipcRenderer.invoke("acp:listSessions", args),
   acpCreateSession: (args) => ipcRenderer.invoke("acp:createSession", args),
   acpGetSession: (args) => ipcRenderer.invoke("acp:getSession", args),
