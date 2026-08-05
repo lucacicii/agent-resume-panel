@@ -438,6 +438,14 @@ function acpListSessionKey(recordId: string): string {
   return `chat:${recordId}`;
 }
 
+function sessionTabTitle(
+  pane: Pick<TerminalPane, "title" | "sessionKey"> | Pick<AcpChatPane, "title" | "recordId">,
+  sessionTitles: ReadonlyMap<string, string>
+): string {
+  const key = "recordId" in pane ? acpListSessionKey(pane.recordId) : pane.sessionKey;
+  return (key ? sessionTitles.get(key)?.trim() : "") || pane.title;
+}
+
 function relativeTime(timestamp: number): string {
   const delta = Math.max(0, Date.now() - timestamp);
   if (delta < 60_000) return "now";
@@ -1961,6 +1969,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return keys;
   }, [acpChats, terminals]);
+  const sessionTitles = useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const session of sessions) {
+      const title = session.title.trim();
+      if (title) titles.set(sessionKey(session), title);
+    }
+    return titles;
+  }, [sessions]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -2015,6 +2031,16 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     if (typeof desktopApi().onSessionsSynced !== "function") return;
     return desktopApi().onSessionsSynced(() => { void loadSessions(); });
+  }, [loadSessions]);
+
+  useEffect(() => {
+    const onSessionsMutated = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: string }>).detail;
+      if (detail?.kind !== "session-title") return;
+      void loadSessions();
+    };
+    window.addEventListener("agent-resume:sessions-mutated", onSessionsMutated);
+    return () => window.removeEventListener("agent-resume:sessions-mutated", onSessionsMutated);
   }, [loadSessions]);
 
   const refreshSessionsAfterAcpConnect = useCallback(() => {
@@ -3507,7 +3533,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (renameDialog.kind === "session" && renameDialog.session) {
         await desktopApi().renameSession({ provider: renameDialog.session.provider, id: renameDialog.session.id, title });
         await loadSessions();
-        window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+        window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
       }
       setRenameDialog(null);
     } catch (error) { setRenameDialog((current) => current ? { ...current, status: statusError(error) } : current); }
@@ -5082,8 +5108,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
-        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
-        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="bot" size={13} aria-hidden="true" />{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
@@ -5260,7 +5286,12 @@ export function WorkbenchPanel(): ReactPortal | null {
               projectPath={pane.projectPath}
               title={pane.title}
               active={active && visible}
-              onTitleChange={(nextTitle) => setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item))}
+              onTitleChange={(nextTitle) => {
+                setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item));
+                setSessions((current) => current.map((item) =>
+                  sessionKey(item) === acpListSessionKey(pane.recordId) ? { ...item, title: nextTitle } : item
+                ));
+              }}
               onSessionReady={refreshSessionsAfterAcpConnect}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>

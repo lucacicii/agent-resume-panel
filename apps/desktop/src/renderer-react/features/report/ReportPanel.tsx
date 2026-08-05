@@ -182,7 +182,7 @@ export function ReportPanel(): ReactPortal | null {
       let text = t("desktop.sessions.renamed", result.title);
       if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
       setPreviewStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
-      window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+      window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
     } catch (error) { setPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
     finally { setPreviewAssist(null); }
   };
