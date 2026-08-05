@@ -110,7 +110,6 @@ import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
-import type { FloatingSessionNoteTarget } from "../shared/floatingNoteTypes";
 import {
   invalidateNotesStore,
   notesCopyPath,
@@ -318,23 +317,6 @@ function applyAppIcon(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
-type FloatingNoteWindowState = {
-  key: string;
-  target: FloatingSessionNoteTarget;
-  window: BrowserWindow;
-  allowClose: boolean;
-  closeRequest?: {
-    resolve: (closed: boolean) => void;
-    timer: NodeJS.Timeout;
-  };
-  closePromise?: Promise<boolean>;
-};
-const floatingNoteWindows = new Map<string, FloatingNoteWindowState>();
-let mainWindowCloseInFlight: Promise<void> | null = null;
-let allowMainWindowClose = false;
-let appQuitInFlight: Promise<void> | null = null;
-let allowAppQuit = false;
-let cleanupStarted = false;
 let activeAskAbort: AbortController | null = null;
 const activeAskApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>();
 
@@ -603,265 +585,12 @@ function registerSettingsShortcuts(win: BrowserWindow): void {
   });
 }
 
-const FLOATING_NOTE_CLOSE_TIMEOUT_MS = 15_000;
-const FLOATING_NOTE_WINDOW_SIZE = {
-  width: 560,
-  height: 640
-} as const;
-
-function floatingNoteWindowKey(target: Pick<FloatingSessionNoteTarget, "provider" | "sessionId">): string {
-  return `${target.provider}\u0000${target.sessionId}`;
-}
-
-function lastPathSegment(value: string): string {
-  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
-function floatingNoteWindowTitle(target: FloatingSessionNoteTarget): string {
-  const project = target.projectName?.trim() || lastPathSegment(target.projectPath);
-  const session = target.sessionTitle.trim() || target.sessionId;
-  return project && session ? `${project} · ${session}` : project || session || "Floating note";
-}
-
-function normalizeFloatingNoteTarget(args: unknown): FloatingSessionNoteTarget {
-  if (!args || typeof args !== "object") {
-    throw new Error("Floating note target is required.");
-  }
-  const input = args as Partial<FloatingSessionNoteTarget>;
-  const provider = typeof input.provider === "string" ? input.provider.trim() : "";
-  const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
-  if (!provider || !sessionId) {
-    throw new Error("Floating note provider and session ID are required.");
-  }
-  const projectPath = typeof input.projectPath === "string" ? input.projectPath.trim() : "";
-  const projectName = typeof input.projectName === "string" ? input.projectName.trim() : undefined;
-  const sessionTitle = typeof input.sessionTitle === "string" ? input.sessionTitle.trim() : "";
-  return {
-    provider,
-    sessionId,
-    projectPath,
-    ...(projectName ? { projectName } : {}),
-    sessionTitle: sessionTitle || sessionId
-  };
-}
-
-function floatingNoteStateForSender(sender: Electron.WebContents): FloatingNoteWindowState | undefined {
-  return [...floatingNoteWindows.values()].find((state) => state.window.webContents === sender);
-}
-
-function settleFloatingNoteCloseRequest(state: FloatingNoteWindowState, closed: boolean): void {
-  const request = state.closeRequest;
-  if (!request) return;
-  clearTimeout(request.timer);
-  state.closeRequest = undefined;
-  state.closePromise = undefined;
-  request.resolve(closed);
-}
-
-function requestFloatingNoteClose(state: FloatingNoteWindowState): Promise<boolean> {
-  if (state.window.isDestroyed()) return Promise.resolve(true);
-  if (state.closePromise) return state.closePromise;
-  let resolveRequest: (closed: boolean) => void = () => undefined;
-  const promise = new Promise<boolean>((resolve) => {
-    resolveRequest = resolve;
-  });
-  state.closePromise = promise;
-  const timer = setTimeout(() => settleFloatingNoteCloseRequest(state, false), FLOATING_NOTE_CLOSE_TIMEOUT_MS);
-  state.closeRequest = { resolve: resolveRequest, timer };
-  try {
-    state.window.webContents.send("floating-note:requestClose");
-  } catch {
-    settleFloatingNoteCloseRequest(state, false);
-  }
-  return promise;
-}
-
-function createFloatingNoteWindow(target: FloatingSessionNoteTarget): FloatingNoteWindowState {
-  const icon = loadAppIcon();
-  const win = new BrowserWindow({
-    ...FLOATING_NOTE_WINDOW_SIZE,
-    minWidth: 420,
-    minHeight: 360,
-    title: floatingNoteWindowTitle(target),
-    show: false,
-    ...(icon ? { icon } : {}),
-    webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
-  if (process.platform !== "darwin") {
-    win.setMenuBarVisibility(false);
-  }
-
-  const state: FloatingNoteWindowState = {
-    key: floatingNoteWindowKey(target),
-    target,
-    window: win,
-    allowClose: false
-  };
-  floatingNoteWindows.set(state.key, state);
-  win.on("close", (event) => {
-    if (state.allowClose || allowAppQuit) return;
-    event.preventDefault();
-    void requestFloatingNoteClose(state);
-  });
-  win.once("ready-to-show", () => {
-    if (!win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
-  });
-  win.on("closed", () => {
-    settleFloatingNoteCloseRequest(state, true);
-    if (floatingNoteWindows.get(state.key) === state) {
-      floatingNoteWindows.delete(state.key);
-    }
-  });
-  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
-    query: {
-      mode: "floating-note",
-      provider: target.provider,
-      sessionId: target.sessionId,
-      projectPath: target.projectPath,
-      projectName: target.projectName || "",
-      sessionTitle: target.sessionTitle
-    }
-  });
-  return state;
-}
-
-function openFloatingNoteWindow(target: FloatingSessionNoteTarget): void {
-  const key = floatingNoteWindowKey(target);
-  const existing = floatingNoteWindows.get(key);
-  if (existing && !existing.window.isDestroyed()) {
-    if (existing.window.isMinimized()) existing.window.restore();
-    existing.window.show();
-    existing.window.focus();
-    return;
-  }
-  if (existing) floatingNoteWindows.delete(key);
-  createFloatingNoteWindow(target);
-}
-
-async function closeAllFloatingNoteWindows(): Promise<boolean> {
-  const states = [...floatingNoteWindows.values()].filter((state) => !state.window.isDestroyed());
-  const results = await Promise.all(states.map((state) => requestFloatingNoteClose(state)));
-  return results.every(Boolean);
-}
-
-async function floatingNoteCloseErrorMessage(): Promise<string> {
-  let settings: PanelSettings | undefined;
-  try {
-    settings = await loadSettings();
-  } catch {
-    // Use the catalog fallback when settings are unavailable during shutdown.
-  }
-  return desktopT(settings, "desktop.workbench.floatingNoteCloseSaveFailed");
-}
-
-async function beginMainWindowClose(): Promise<void> {
-  if (mainWindowCloseInFlight) return mainWindowCloseInFlight;
-  const task = (async () => {
-    const win = mainWindow;
-    if (!win || win.isDestroyed()) return;
-    if (!floatingNoteWindows.size) {
-      allowMainWindowClose = true;
-      win.close();
-      return;
-    }
-    let settings: PanelSettings | undefined;
-    try {
-      settings = await loadSettings();
-    } catch {
-      // The dialog can still use the catalog fallback.
-    }
-    const choice = await dialog.showMessageBox(win, {
-      type: "question",
-      title: desktopT(settings, "desktop.workbench.floatingNoteClosePromptTitle"),
-      message: desktopT(settings, "desktop.workbench.floatingNoteClosePromptMessage"),
-      buttons: [
-        desktopT(settings, "desktop.workbench.floatingNoteCloseAll"),
-        desktopT(settings, "desktop.workbench.floatingNoteKeepOpen"),
-        desktopT(settings, "desktop.workbench.floatingNoteCancel")
-      ],
-      defaultId: 0,
-      cancelId: 2,
-      noLink: true
-    });
-    if (choice.response === 2) return;
-    if (choice.response === 0) {
-      const closed = await closeAllFloatingNoteWindows();
-      if (!closed) {
-        await dialog.showMessageBox(win, {
-          type: "error",
-          title: desktopT(settings, "desktop.workbench.floatingNoteClosePromptTitle"),
-          message: await floatingNoteCloseErrorMessage(),
-          buttons: [desktopT(settings, "desktop.common.confirm")]
-        });
-        return;
-      }
-    }
-    allowMainWindowClose = true;
-    win.close();
-  })();
-  mainWindowCloseInFlight = task;
-  try {
-    await task;
-  } finally {
-    if (mainWindowCloseInFlight === task) mainWindowCloseInFlight = null;
-  }
-}
-
-function performQuitCleanup(): void {
-  if (cleanupStarted) return;
-  cleanupStarted = true;
-  disposeWorkbenchWatchers();
-  stopMemoryScheduler();
-  stopNotesIndexer();
-  stopSessionSummaryAuto();
-  stopSessionTranscriptIndexAuto();
-  stopSessionEmbeddingIndexAuto();
-  disposeAllAcpControllers();
-  tryDestroyPtyOnQuit();
-}
-
-async function beginAppQuit(): Promise<void> {
-  if (appQuitInFlight) return appQuitInFlight;
-  const task = (async () => {
-    const closed = await closeAllFloatingNoteWindows();
-    if (!closed) {
-      const message = await floatingNoteCloseErrorMessage();
-      const options: Electron.MessageBoxOptions = {
-        type: "error",
-        title: message,
-        message,
-        buttons: ["OK"]
-      };
-      if (mainWindow && !mainWindow.isDestroyed()) await dialog.showMessageBox(mainWindow, options);
-      else await dialog.showMessageBox(options);
-      return;
-    }
-    allowAppQuit = true;
-    app.quit();
-  })();
-  appQuitInFlight = task;
-  try {
-    await task;
-  } finally {
-    if (appQuitInFlight === task) appQuitInFlight = null;
-  }
-}
-
 const DEFAULT_WINDOW_SIZE = {
   width: 1120,
   height: 780
 } as const;
 
 function createWindow(): void {
-  allowMainWindowClose = false;
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
     ...DEFAULT_WINDOW_SIZE,
@@ -882,13 +611,6 @@ function createWindow(): void {
   mainWindow.maximize();
   registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
-  mainWindow.on("close", (event) => {
-    if (allowMainWindowClose || allowAppQuit) return;
-    event.preventDefault();
-    void beginMainWindowClose().catch((error) => {
-      void recordAppError({ source: "floating-note", message: "Main window close prompt failed.", error });
-    });
-  });
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
   mainWindow.on("show", () => {
     applyAppIcon();
@@ -1243,40 +965,6 @@ function registerIpc(): void {
     closeSettingsWindowIfOpen();
     return { ok: true as const };
   });
-
-  safeHandle(
-    "floating-note:openWindow",
-    async (event, args?: unknown) => {
-      if (event.sender !== mainWindow?.webContents) {
-        throw new Error("Floating note windows can only be opened from the main window.");
-      }
-      openFloatingNoteWindow(normalizeFloatingNoteTarget(args));
-      return { ok: true as const };
-    }
-  );
-
-  safeHandle("floating-note:closeWindow", async (event) => {
-    const state = floatingNoteStateForSender(event.sender);
-    if (!state || state.window.isDestroyed()) return { ok: false as const };
-    state.allowClose = true;
-    state.window.close();
-    return { ok: true as const };
-  });
-
-  safeHandle(
-    "floating-note:closeReady",
-    async (event, args?: { ok?: unknown }) => {
-      const state = floatingNoteStateForSender(event.sender);
-      if (!state || !state.closeRequest) return { ok: false as const };
-      if (args?.ok !== true) {
-        settleFloatingNoteCloseRequest(state, false);
-        return { ok: false as const };
-      }
-      state.allowClose = true;
-      state.window.close();
-      return { ok: true as const };
-    }
-  );
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
 
@@ -2343,15 +2031,15 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on("before-quit", (event) => {
-  if (allowAppQuit || !floatingNoteWindows.size) {
-    performQuitCleanup();
-    return;
-  }
-  event.preventDefault();
-  void beginAppQuit().catch((error) => {
-    void recordAppError({ source: "floating-note", message: "Application quit coordination failed.", error });
-  });
+app.on("before-quit", () => {
+  disposeWorkbenchWatchers();
+  stopMemoryScheduler();
+  stopNotesIndexer();
+  stopSessionSummaryAuto();
+  stopSessionTranscriptIndexAuto();
+  stopSessionEmbeddingIndexAuto();
+  disposeAllAcpControllers();
+  tryDestroyPtyOnQuit();
 });
 
 app.on("window-all-closed", () => {

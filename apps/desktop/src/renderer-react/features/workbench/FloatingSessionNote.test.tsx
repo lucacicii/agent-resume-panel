@@ -131,28 +131,6 @@ describe("FloatingSessionNote", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("flushes and acknowledges a native detached-window close request", async () => {
-    const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: `${noteId}.md`, updatedAtMs: 3, content }));
-    let requestClose: (() => void) | undefined;
-    const floatingNoteCloseReady = vi.fn(async () => ({ ok: true }));
-    installBridge({
-      notesList: async () => [note("latest", 20)],
-      notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 20), content: "# Latest\n" }),
-      notesWrite,
-      onFloatingNoteCloseRequested: (callback: () => void) => {
-        requestClose = callback;
-        return () => { requestClose = undefined; };
-      },
-      floatingNoteCloseReady
-    });
-    render(<I18nProvider><FloatingSessionNote target={target} onClose={vi.fn()} /></I18nProvider>);
-    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
-    fireEvent.change(editor, { target: { value: "# Latest\nDraft" } });
-    await act(async () => requestClose?.());
-    await waitFor(() => expect(notesWrite).toHaveBeenLastCalledWith({ noteId: "latest", content: "# Latest\nDraft" }));
-    expect(floatingNoteCloseReady).toHaveBeenCalledWith({ ok: true });
-  });
-
   it("shows load errors and closes with Escape", async () => {
     const onClose = vi.fn();
     installBridge({ notesList: async () => { throw new Error("read failed"); } });

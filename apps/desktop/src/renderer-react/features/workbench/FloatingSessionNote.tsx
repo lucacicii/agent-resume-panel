@@ -3,9 +3,14 @@ import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
-import type { FloatingSessionNoteTarget } from "../../../shared/floatingNoteTypes";
 
-export type { FloatingSessionNoteTarget } from "../../../shared/floatingNoteTypes";
+export interface FloatingSessionNoteTarget {
+  provider: string;
+  sessionId: string;
+  projectPath: string;
+  projectName?: string;
+  sessionTitle: string;
+}
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 
@@ -66,12 +71,10 @@ function clampFloatingNotePosition(
 
 export function FloatingSessionNote({
   target,
-  onClose,
-  draggable = true
+  onClose
 }: {
   target: FloatingSessionNoteTarget;
   onClose: () => void;
-  draggable?: boolean;
 }): React.JSX.Element {
   const { t } = useI18n();
   const displayTitle = sessionNoteTitle(target);
@@ -96,7 +99,6 @@ export function FloatingSessionNote({
   const dirtyRef = useRef(dirty);
   const saveTimerRef = useRef<number | null>(null);
   const saveInFlightRef = useRef<Promise<boolean> | null>(null);
-  const loadPromiseRef = useRef<Promise<void> | null>(null);
   const loadSequenceRef = useRef(0);
   const closingRef = useRef(false);
 
@@ -143,10 +145,6 @@ export function FloatingSessionNote({
 
   const flushSave = useCallback(async (): Promise<boolean> => {
     clearSaveTimer();
-    const pendingLoad = loadPromiseRef.current;
-    if (pendingLoad) {
-      await pendingLoad.catch(() => undefined);
-    }
     if (!noteIdRef.current) return true;
     while (dirtyRef.current) {
       const saved = await persistOnce();
@@ -222,15 +220,10 @@ export function FloatingSessionNote({
       }
     };
 
-    const loadPromise = load();
-    loadPromiseRef.current = loadPromise;
-    void loadPromise.finally(() => {
-      if (loadPromiseRef.current === loadPromise) loadPromiseRef.current = null;
-    });
+    void load();
     return () => {
       clearSaveTimer();
       loadSequenceRef.current += 1;
-      if (loadPromiseRef.current === loadPromise) loadPromiseRef.current = null;
     };
   }, [clearSaveTimer, t, target.provider, target.projectPath, target.sessionId, target.sessionTitle]);
 
@@ -244,18 +237,6 @@ export function FloatingSessionNote({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [close]);
-
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onFloatingNoteCloseRequested !== "function" || typeof api.floatingNoteCloseReady !== "function") {
-      return undefined;
-    }
-    return api.onFloatingNoteCloseRequested(() => {
-      void flushSave().then((saved) => api.floatingNoteCloseReady({ ok: saved })).catch(() => {
-        void api.floatingNoteCloseReady({ ok: false });
-      });
-    });
-  }, [flushSave]);
 
   useEffect(() => () => {
     clearSaveTimer();
@@ -275,7 +256,6 @@ export function FloatingSessionNote({
   };
 
   const onHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!draggable) return;
     if (event.button > 0 || (event.target instanceof Element && event.target.closest("button"))) return;
     const note = noteRef.current;
     if (!note) return;

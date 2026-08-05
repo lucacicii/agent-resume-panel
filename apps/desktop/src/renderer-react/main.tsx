@@ -12,11 +12,8 @@ import { NotesPanel } from "./features/notes/NotesPanel";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { FlowPanel } from "./features/flow/FlowPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
-import { FloatingSessionNote } from "./features/workbench/FloatingSessionNote";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
-import { desktopApi } from "./bridge";
-import type { FloatingSessionNoteTarget } from "../shared/floatingNoteTypes";
 
 export function applyTheme(settings: Parameters<typeof appearanceStateFromSettings>[0]): DesktopAppearanceState {
   const state = appearanceStateFromSettings(settings);
@@ -36,35 +33,12 @@ function applyAppearanceState(state: DesktopAppearanceState): void {
   if (dark) dark.disabled = state.appearance !== "dark";
 }
 
-export function getDesktopWindowMode(): "main" | "settings" | "floating-note" {
+export function getDesktopWindowMode(): "main" | "settings" {
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "settings") return "settings";
-    if (params.get("mode") === "floating-note") return "floating-note";
-    return "main";
+    return params.get("mode") === "settings" ? "settings" : "main";
   } catch {
     return "main";
-  }
-}
-
-export function getFloatingSessionNoteTarget(search = window.location.search): FloatingSessionNoteTarget | null {
-  try {
-    const params = new URLSearchParams(search);
-    const provider = params.get("provider")?.trim() || "";
-    const sessionId = params.get("sessionId")?.trim() || "";
-    if (!provider || !sessionId) return null;
-    const projectPath = params.get("projectPath")?.trim() || "";
-    const projectName = params.get("projectName")?.trim() || undefined;
-    const sessionTitle = params.get("sessionTitle")?.trim() || sessionId;
-    return {
-      provider,
-      sessionId,
-      projectPath,
-      ...(projectName ? { projectName } : {}),
-      sessionTitle
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -186,30 +160,11 @@ function SettingsDesktopRuntime(): React.JSX.Element {
   );
 }
 
-function FloatingNoteDesktopRuntime({ target }: { target: FloatingSessionNoteTarget }): React.JSX.Element {
-  return (
-    <I18nProvider>
-      <FloatingSessionNote
-        target={target}
-        draggable={false}
-        onClose={() => {
-          void desktopApi().closeFloatingNoteWindow();
-        }}
-      />
-    </I18nProvider>
-  );
-}
-
 // Mode flag before first paint — drives settings-window CSS
 const windowMode = getDesktopWindowMode();
-const floatingNoteTarget = windowMode === "floating-note" ? getFloatingSessionNoteTarget() : null;
 document.documentElement.dataset.windowMode = windowMode;
 if (windowMode === "settings") {
   document.title = "Settings";
-} else if (windowMode === "floating-note" && floatingNoteTarget) {
-  const project = floatingNoteTarget.projectName || floatingNoteTarget.projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || "";
-  const session = floatingNoteTarget.sessionTitle || floatingNoteTarget.sessionId;
-  document.title = project && session ? `${project} · ${session}` : project || session || "Floating note";
 }
 
 const host = document.getElementById("react-chrome");
@@ -224,13 +179,7 @@ if (host) {
   } else {
     createRoot(host).render(
       <StrictMode>
-        {windowMode === "settings"
-          ? <SettingsDesktopRuntime />
-          : windowMode === "floating-note"
-            ? floatingNoteTarget
-              ? <FloatingNoteDesktopRuntime target={floatingNoteTarget} />
-              : <div className="renderer-bridge-error" role="alert"><h1>Agent Resume Desktop</h1><p>Invalid floating note target.</p></div>
-            : <MainDesktopRuntime />}
+        {windowMode === "settings" ? <SettingsDesktopRuntime /> : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

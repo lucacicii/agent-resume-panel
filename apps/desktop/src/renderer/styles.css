@@ -11614,46 +11614,6 @@ html[data-window-mode="settings"] #react-notes,
 html[data-window-mode="settings"] #react-flow {
   display: none;
 }
-
-/* ===== Detached floating note window (data-window-mode=floating-note) ===== */
-html[data-window-mode="floating-note"],
-html[data-window-mode="floating-note"] body {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
-  background: var(--color-window-bg, var(--panel));
-}
-
-html[data-window-mode="floating-note"] #react-chrome {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-html[data-window-mode="floating-note"] main {
-  display: none;
-}
-
-html[data-window-mode="floating-note"] .wb-floating-note {
-  position: relative;
-  inset: auto;
-  z-index: auto;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-html[data-window-mode="floating-note"] .wb-floating-note-head {
-  cursor: default;
-}
-
-html[data-window-mode="floating-note"] .wb-floating-note.is-dragging .wb-floating-note-head {
-  cursor: default;
-}
 /* Desktop Quick Access */
 .quick-access-overlay {
   position: fixed;
