@@ -622,6 +622,7 @@ export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";
 export {
   openProjectInSystemTerminal,
+  openCommandInSystemTerminal,
   openSessionInSystemTerminal
 } from "./terminal/systemTerminal";
 export type { SystemTerminalSettings, SystemTerminalLaunchMode } from "./terminal/systemTerminal";

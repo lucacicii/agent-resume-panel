@@ -66,6 +66,20 @@ const messages = {
   "desktop.settings.saved": "Saved {0}",
   "desktop.settings.schedulerOn": "scheduler on",
   "desktop.settings.schedulerOff": "scheduler off",
+  "desktop.settings.newSessionGroup": "New Session",
+  "desktop.settings.defaultAgent": "Default agent",
+  "desktop.settings.defaultAgentDesc": "CLI or ACP target",
+  "desktop.settings.newSessionYolo": "Launch CLI sessions in YOLO mode",
+  "desktop.settings.newSessionYoloDesc": "Use provider-specific YOLO flags",
+  "desktop.settings.newSessionGroupCli": "CLI",
+  "desktop.settings.newSessionGroupAcp": "ACP",
+  "desktop.settings.newSessionTarget.askEveryTime": "Ask every time",
+  "desktop.settings.acpAutoApprove": "ACP permissions",
+  "desktop.settings.acpAutoApproveDesc": "ACP permission policy",
+  "desktop.settings.acpAutoApproveAsk": "Ask each time",
+  "desktop.settings.acpAutoApproveAllowAll": "Allow all",
+  "desktop.settings.acpExperimentalGrokVendorUi": "Experimental Grok UI",
+  "desktop.settings.acpExperimentalGrokVendorUiDesc": "Experimental",
   "desktop.settings.notesGroup": "Notes",
   "desktop.settings.notesFootnote": "Notes are Markdown files.",
   "desktop.settings.appData": "App data",
@@ -175,6 +189,25 @@ describe("SettingsPanel (window)", () => {
       },
       { timeout: 2000 }
     );
+  });
+
+  it("renders and saves the Workbench CLI YOLO switch", async () => {
+    const { host, saveSettings } = renderWindowSettings("workbench");
+    await waitFor(() => expect(host.textContent).toContain("Launch CLI sessions in YOLO mode"));
+
+    const title = [...host.querySelectorAll<HTMLElement>(".settings-row-title")]
+      .find((element) => element.textContent === "Launch CLI sessions in YOLO mode");
+    expect(title).not.toBeUndefined();
+    const row = title?.closest("label");
+    const toggle = row?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(toggle).not.toBeNull();
+
+    fireEvent.click(toggle!);
+    await waitFor(() => {
+      const last = saveSettings.mock.calls.at(-1);
+      expect(last?.[1]).toMatchObject({ section: "workbench" });
+      expect((last?.[0] as { workbench?: { newSessionYolo?: boolean } }).workbench?.newSessionYolo).toBe(true);
+    }, { timeout: 2000 });
   });
 
   it("tests each model group with current form values without saving", async () => {

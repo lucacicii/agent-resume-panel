@@ -202,6 +202,8 @@ export interface WorkbenchSettings {
    * When unset, falls back to `cli:{defaultNewSessionProvider || "codex"}`.
    */
   defaultNewSessionTarget?: WorkbenchNewSessionTarget;
+  /** Launch normal CLI Workbench sessions with provider-specific YOLO flags. Default false. */
+  newSessionYolo?: boolean;
   /** Workbench ⌘T / Ctrl+T shortcut action. Default newTerminal. */
   cmdTAction?: WorkbenchCmdTAction;
   /** Editor used by the workbench project context menu. Default auto. */
@@ -417,6 +419,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   workbench: {
     projectEditor: "auto",
+    newSessionYolo: false,
     terminalTheme: "follow-app",
     editorTheme: "follow-app",
     terminalRenderer: "webgl",

@@ -16,36 +16,57 @@ export async function openProjectInSystemTerminal(projectPath: string): Promise<
   await launchSystemTerminal(cwd, shell, `cd ${shellQuote(cwd)} && exec ${shell} -l`);
 }
 
-export async function openSessionInSystemTerminal(
-  session: AgentSession,
+export async function openCommandInSystemTerminal(
+  projectPath: string,
+  commandText: string,
   settings: SystemTerminalSettings = {},
   clipboard?: { writeText: (text: string) => Promise<void> }
 ): Promise<{ copied?: boolean; message?: string }> {
+  const command = commandText.trim();
+  if (!command) throw new Error("Command is required.");
+
   const launchMode = settings.externalLaunchMode || "executeCommand";
   const autoPasteDelayMs = settings.externalAutoPasteDelayMs ?? 900;
   const shell = process.env.SHELL || "/bin/zsh";
-  const cwd = expandHome(session.projectPath);
-  const resumeCommand = buildResumeCommand(session);
-  const command = `cd ${shellQuote(cwd)} && ${resumeCommand}`;
+  const cwd = expandHome(projectPath);
+  const commandWithCwd = `cd ${shellQuote(cwd)} && ${command}`;
 
   if (launchMode === "executeCommand") {
-    await launchSystemTerminal(cwd, shell, command);
+    await launchSystemTerminal(cwd, shell, commandWithCwd);
     return {};
   }
 
   if (clipboard) {
-    await clipboard.writeText(resumeCommand);
+    await clipboard.writeText(command);
   }
   await launchSystemTerminal(cwd, shell, `cd ${shellQuote(cwd)} && exec ${shell} -l`);
 
   if (launchMode === "copyCommand") {
-    return { copied: true, message: "Resume command copied; paste into the terminal and press Enter." };
+    return { copied: true, message: "Command copied; paste into the terminal and press Enter." };
   }
 
   if (process.platform === "darwin") {
     await pasteIntoMacTerminal("Terminal", autoPasteDelayMs);
   }
   return {};
+}
+
+export async function openSessionInSystemTerminal(
+  session: AgentSession,
+  settings: SystemTerminalSettings = {},
+  clipboard?: { writeText: (text: string) => Promise<void> }
+): Promise<{ copied?: boolean; message?: string }> {
+  const cwd = expandHome(session.projectPath);
+  const resumeCommand = buildResumeCommand(session);
+  const result = await openCommandInSystemTerminal(
+    cwd,
+    resumeCommand,
+    settings,
+    clipboard
+  );
+  return result.copied
+    ? { ...result, message: "Resume command copied; paste into the terminal and press Enter." }
+    : result;
 }
 
 async function launchSystemTerminal(cwd: string, shell: string, command: string): Promise<void> {

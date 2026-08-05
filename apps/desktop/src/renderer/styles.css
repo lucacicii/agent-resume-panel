@@ -9142,6 +9142,12 @@ textarea.wb-editor-host {
   white-space: nowrap;
 }
 
+.wb-floating-note-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
 .wb-floating-note-close {
   appearance: none;
   flex: 0 0 28px;
@@ -9161,6 +9167,20 @@ textarea.wb-editor-host {
 .wb-floating-note-close:focus-visible {
   background: var(--color-fill-secondary);
   color: var(--color-label-primary);
+}
+
+.wb-floating-note-delete {
+  color: var(--color-destructive);
+}
+
+.wb-floating-note-delete:hover,
+.wb-floating-note-delete:focus-visible {
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
+  color: var(--color-destructive);
+}
+
+.wb-floating-note-delete:disabled {
+  color: var(--color-label-secondary);
 }
 
 .wb-floating-note-editor {

@@ -87,6 +87,7 @@ export function FloatingSessionNote({
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [position, setPosition] = useState<FloatingNotePosition | null>(null);
@@ -170,6 +171,7 @@ export function FloatingSessionNote({
     setLoading(true);
     setCreating(false);
     setSaving(false);
+    setDeleting(false);
     setDirty(false);
     dirtyRef.current = false;
     setError("");
@@ -255,6 +257,24 @@ export function FloatingSessionNote({
     }, 800);
   };
 
+  const deleteNote = useCallback(async () => {
+    const currentNoteId = noteIdRef.current;
+    if (!currentNoteId || loading || creating || deleting) return;
+    if (!window.confirm(t("desktop.notes.deleteConfirm", displayTitle))) return;
+    setDeleting(true);
+    clearSaveTimer();
+    try {
+      const pendingSave = saveInFlightRef.current;
+      if (pendingSave) await pendingSave;
+      const result = await desktopApi().notesDelete({ noteId: currentNoteId });
+      if (!result.ok) throw new Error("Note deletion failed.");
+      onClose();
+    } catch (deleteError) {
+      setDeleting(false);
+      setError(t("desktop.workbench.floatingNoteDeleteFailed", errorMessage(deleteError)));
+    }
+  }, [clearSaveTimer, creating, deleting, displayTitle, loading, onClose, t]);
+
   const onHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button > 0 || (event.target instanceof Element && event.target.closest("button"))) return;
     const note = noteRef.current;
@@ -319,15 +339,28 @@ export function FloatingSessionNote({
         <strong title={projectName}>{projectName}</strong>
         <span title={displayTitle}>{sessionTitle}</span>
       </div>
-      <button
-        type="button"
-        className="wb-floating-note-close"
-        aria-label={t("desktop.workbench.floatingNoteClose")}
-        title={t("desktop.workbench.floatingNoteClose")}
-        onClick={() => void close()}
-      >
-        <ThemeIcon name="close" size={15} aria-hidden="true" />
-      </button>
+      <div className="wb-floating-note-actions">
+        <button
+          type="button"
+          className="wb-floating-note-close wb-floating-note-delete"
+          aria-label={t("desktop.notes.deleteNote")}
+          title={t("desktop.notes.deleteNote")}
+          disabled={!noteId || loading || creating || deleting}
+          onClick={() => void deleteNote()}
+        >
+          <ThemeIcon name="trash" size={15} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="wb-floating-note-close"
+          aria-label={t("desktop.workbench.floatingNoteClose")}
+          title={t("desktop.workbench.floatingNoteClose")}
+          disabled={deleting}
+          onClick={() => void close()}
+        >
+          <ThemeIcon name="close" size={15} aria-hidden="true" />
+        </button>
+      </div>
     </header>
     {loading ? <div className="wb-floating-note-state" role="status" aria-live="polite">
       <ThemeIcon name="loader" size={15} className="spin" aria-hidden="true" />
@@ -345,11 +378,13 @@ export function FloatingSessionNote({
       />
       <footer className="wb-floating-note-foot">
         <span className={error ? "is-error" : undefined} role={error ? "alert" : "status"} aria-live="polite">
-          {error || (saving
-            ? t("desktop.workbench.floatingNoteSaving")
-            : dirty
-              ? t("desktop.workbench.floatingNoteUnsaved")
-              : t("desktop.workbench.floatingNoteSaved"))}
+          {error || (deleting
+            ? t("desktop.workbench.floatingNoteDeleting")
+            : saving
+              ? t("desktop.workbench.floatingNoteSaving")
+              : dirty
+                ? t("desktop.workbench.floatingNoteUnsaved")
+                : t("desktop.workbench.floatingNoteSaved"))}
         </span>
       </footer>
     </> : <div className="wb-floating-note-state is-error" role="alert">

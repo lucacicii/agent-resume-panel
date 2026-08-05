@@ -60,7 +60,7 @@ import {
 
   openChatGptAppSession,
   openProjectInEditor,
-  openProjectInSystemTerminal,
+  openCommandInSystemTerminal,
   openSessionInSystemTerminal,
   previewBackfillReportDigests,
   renameSessionAction,
@@ -1494,11 +1494,23 @@ function registerIpc(): void {
 
       const settings = await loadSettings();
       const mode = resolveWorkbenchTerminalMode(settings);
+      const executionMode = settings.workbench?.newSessionYolo === true ? "yolo" : "standard";
+      const command = buildNewSessionCommand(args.provider, cwd, executionMode);
       if (args.useSystemTerminalOnly || mode === "external-system") {
-        await openProjectInSystemTerminal(cwd);
-        return { mode: "external-system", cwd };
+        const launch = await openCommandInSystemTerminal(
+          cwd,
+          command,
+          systemTerminalSettings(settings),
+          { writeText: (text) => Promise.resolve(clipboard.writeText(text)) }
+        );
+        return {
+          mode: "external-system",
+          external: true,
+          command,
+          cwd,
+          copied: launch.copied
+        };
       }
-      const command = buildNewSessionCommand(args.provider, cwd, "standard");
       return { mode, command, cwd };
     }
   );

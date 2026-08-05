@@ -17,12 +17,16 @@ const messages = {
   "desktop.workbench.floatingNoteEditor": "Floating note editor",
   "desktop.workbench.floatingNoteLoading": "Loading floating note…",
   "desktop.workbench.floatingNoteCreating": "Creating floating note…",
+  "desktop.workbench.floatingNoteDeleting": "Deleting…",
   "desktop.workbench.floatingNoteSaving": "Saving…",
   "desktop.workbench.floatingNoteSaved": "Saved",
   "desktop.workbench.floatingNoteUnsaved": "Unsaved changes",
   "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.",
   "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}",
-  "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
+  "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}",
+  "desktop.workbench.floatingNoteDeleteFailed": "Delete failed: {0}",
+  "desktop.notes.deleteNote": "Delete note",
+  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed."
 };
 
 const target = {
@@ -66,6 +70,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     notesList: async () => [],
     notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 1), content: "# Existing\n" }),
     notesWrite: vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: `${noteId}.md`, updatedAtMs: Date.now(), content })),
+    notesDelete: vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] })),
     notesCreate: vi.fn(async () => ({ noteId: "created-note", filename: "created.md" })),
     ...overrides
   } as unknown as typeof window.agentResume;
@@ -129,6 +134,43 @@ describe("FloatingSessionNote", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
     await waitFor(() => expect(notesWrite).toHaveBeenLastCalledWith({ noteId: "created-note", content: "# Fix renderer\nDraft" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirms deletion, removes the linked session note, and closes the panel", async () => {
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    const onClose = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    installBridge({
+      notesList: async () => [note("latest", 20)],
+      notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 20), content: "# Latest\n" }),
+      notesDelete
+    });
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Floating note editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+
+    expect(confirm).toHaveBeenCalledWith("Delete note \"app · Fix renderer\"? Its assets folder will also be removed.");
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "latest" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not delete the linked session note when confirmation is cancelled", async () => {
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    const onClose = vi.fn();
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    installBridge({
+      notesList: async () => [note("latest", 20)],
+      notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 20), content: "# Latest\n" }),
+      notesDelete
+    });
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Floating note editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete note" }));
+
+    expect(notesDelete).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("shows load errors and closes with Escape", async () => {

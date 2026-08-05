@@ -103,6 +103,7 @@ export interface WorkbenchDraft {
   defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "cursor";
   /** Single-list Default Agent: CLI and ACP-prefixed options */
   defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
+  newSessionYolo: boolean;
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
   terminalTheme: WorkbenchTerminalThemeId;
@@ -404,6 +405,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     scratchDir: workbench?.scratchDir || "",
     defaultProvider: defaultProvider,
     defaultNewSessionTarget: target,
+    newSessionYolo: workbench?.newSessionYolo === true,
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
@@ -452,6 +454,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       scratchDir: draft.scratchDir.trim() || undefined,
       defaultNewSessionProvider: safeCli,
       defaultNewSessionTarget: target,
+      newSessionYolo: draft.newSessionYolo === true,
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),

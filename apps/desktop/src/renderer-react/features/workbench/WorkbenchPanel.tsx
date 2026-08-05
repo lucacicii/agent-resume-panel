@@ -3024,6 +3024,16 @@ export function WorkbenchPanel(): ReactPortal | null {
           provider: target.provider as AgentProvider,
           executionMode: "standard"
         });
+        if (result.external || result.mode === "external-system") {
+          setStatus({
+            text: result.copied
+              ? t("desktop.workbench.externalCommandCopied")
+              : result.command || t("desktop.workbench.externalTerminalHint"),
+            kind: "ok"
+          });
+          await loadSessions();
+          return;
+        }
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
           const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");

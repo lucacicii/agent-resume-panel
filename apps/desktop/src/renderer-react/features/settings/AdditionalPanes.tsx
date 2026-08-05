@@ -67,6 +67,12 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
           ))}
         </optgroup>
       </SelectRow>
+      <ToggleRow
+        title={t("desktop.settings.newSessionYolo")}
+        description={t("desktop.settings.newSessionYoloDesc")}
+        checked={draft.newSessionYolo}
+        onChange={(value) => update("newSessionYolo", value)}
+      />
       <SelectRow
         title={t("desktop.settings.acpAutoApprove")}
         description={t("desktop.settings.acpAutoApproveDesc")}

@@ -170,6 +170,20 @@ describe("settings model", () => {
     expect(patch.acp?.autoApprovePermissions).toBe("ask");
   });
 
+  it("defaults and persists the Workbench CLI YOLO preference", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    expect(draft.newSessionYolo).toBe(false);
+
+    const patch = workbenchPatch(settings, { ...draft, newSessionYolo: true });
+    expect(patch.workbench?.newSessionYolo).toBe(true);
+
+    const loadedDraft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { newSessionYolo: true }
+    });
+    expect(loadedDraft.newSessionYolo).toBe(true);
+  });
+
   it("preserves an explicit empty Workbench new-session target", () => {
     const draft = workbenchDraftFromSettings({
       ...settings,

@@ -200,7 +200,13 @@ export interface DesktopApi {
     useSystemTerminalOnly?: boolean;
     noteId?: string;
     initialPrompt?: string;
-  }): Promise<{ mode: string; command?: string; cwd: string }>;
+  }): Promise<{
+    mode: string;
+    command?: string;
+    cwd: string;
+    external?: boolean;
+    copied?: boolean;
+  }>;
   listWorkbenchSessionFolders(args: { projectId: string }): Promise<{
     folders: WorkbenchSessionFolder[];
     assignments: WorkbenchSessionFolderAssignment[];
