@@ -2,6 +2,7 @@ import React, { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
+import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
 import { useI18n } from "./i18n";
 import { SessionsSheet } from "./features/SessionsSheet";
@@ -67,7 +68,6 @@ function MainRuntimeBootstrap(): null {
     void window.agentResume.getSettings().then((settings) => {
       if (active) applyTheme(settings);
     }).catch(() => undefined);
-    void window.agentResume.syncSessions().catch(() => undefined);
     const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
       ? window.agentResume.onSettingsChanged((detail) => {
           for (const ev of settingsChangedToCustomEvents(detail)) {
@@ -123,6 +123,7 @@ function SettingsRuntimeBootstrap(): null {
 function MainDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
+      <StartupMask />
       <MainRuntimeBootstrap />
       <MainRendererRuntime />
     </I18nProvider>
