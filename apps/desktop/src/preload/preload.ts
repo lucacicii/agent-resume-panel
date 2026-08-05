@@ -78,6 +78,7 @@ export interface DesktopApi {
     }) => void
   ): () => void;
   syncSessions(): Promise<AgentSessionSyncResult>;
+  notifyRendererReady(): void;
   onSessionsSynced(callback: (result: AgentSessionSyncResult) => void): () => void;
   onSessionsSyncFailed(callback: (message: string) => void): () => void;
   countSessions(): Promise<{ total: number; visible: number; hidden: number }>;
@@ -1150,6 +1151,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("settings:changed", handler);
   },
   syncSessions: () => ipcRenderer.invoke("sessions:sync"),
+  notifyRendererReady: () => ipcRenderer.send("main:rendererReady"),
   countSessions: () => ipcRenderer.invoke("sessions:count"),
   unhideAllSessions: () => ipcRenderer.invoke("sessions:unhideAll"),
   onSessionsSynced: (callback) => {
@@ -1461,5 +1463,3 @@ const api: DesktopApi = {
 };
 
 contextBridge.exposeInMainWorld("agentResume", api);
-  notifyRendererReady(): void;
-  notifyRendererReady: () => ipcRenderer.send("main:rendererReady"),

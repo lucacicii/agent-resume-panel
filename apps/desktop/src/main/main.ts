@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -325,7 +325,15 @@ function applyAppIcon(): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let mainWindowReadyToShow = false;
+let mainWindowRendererReady = false;
 let settingsWindow: BrowserWindow | null = null;
+
+function showMainWindowIfReady(): void {
+  if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  mainWindow.show();
+}
 type StandaloneNoteWindowState = {
   noteId: string;
   window: BrowserWindow;
@@ -840,12 +848,18 @@ const DEFAULT_WINDOW_SIZE = {
 } as const;
 
 function createWindow(): void {
+  mainWindowReadyToShow = false;
+  mainWindowRendererReady = false;
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
     ...DEFAULT_WINDOW_SIZE,
     minWidth: 860,
     minHeight: 600,
     title: "Agent Resume Desktop",
+    // Keep the main window hidden until Chromium and the renderer have painted the initial loading shell.
+    show: false,
+    // Match the system fallback surface in case the native window is exposed before the renderer paint.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#f5f5f7",
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -857,7 +871,14 @@ function createWindow(): void {
     }
   });
 
-  mainWindow.maximize();
+  // BrowserWindow#maximize() implicitly shows hidden macOS windows. Size it to the
+  // display work area instead, so the first visible frame is already full-sized.
+  const display = screen.getDisplayMatching(mainWindow.getBounds());
+  mainWindow.setBounds(display.workArea);
+  mainWindow.once("ready-to-show", () => {
+    mainWindowReadyToShow = true;
+    showMainWindowIfReady();
+  });
   registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
@@ -873,6 +894,8 @@ function createWindow(): void {
     workbenchActive = false;
     // Invariant: settings never outlives main
     closeSettingsWindowIfOpen();
+    mainWindowReadyToShow = false;
+    mainWindowRendererReady = false;
     mainWindow = null;
   });
 }
@@ -983,6 +1006,12 @@ async function installApplicationMenu(): Promise<void> {
 }
 
 function registerIpc(): void {
+  ipcMain.on("main:rendererReady", (event) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    mainWindowRendererReady = true;
+    showMainWindowIfReady();
+  });
+
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
     if (event.sender === mainWindow?.webContents) {
       workbenchActive = active === true;
@@ -2405,8 +2434,10 @@ app.whenReady().then(async () => {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
     }
-    mainWindow.show();
-    mainWindow.focus();
+    showMainWindowIfReady();
+    if (mainWindow.isVisible()) {
+      mainWindow.focus();
+    }
     void refreshMemorySchedulerFromSettings();
   });
 });
@@ -2438,29 +2469,3 @@ app.on("window-all-closed", () => {
   }
 });
 }
-let mainWindowReadyToShow = false;
-let mainWindowRendererReady = false;
-
-function showMainWindowIfReady(): void {
-  if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
-  mainWindow.show();
-}
-  mainWindowReadyToShow = false;
-  mainWindowRendererReady = false;
-    // Keep the main window hidden until Chromium has painted the first frame.
-    // Otherwise maximize() exposes the small default window and its native
-    // white background while the renderer is still loading.
-    show: false,
-  mainWindow.once("ready-to-show", () => {
-    mainWindowReadyToShow = true;
-    showMainWindowIfReady();
-  });
-    mainWindowReadyToShow = false;
-    mainWindowRendererReady = false;
-  ipcMain.on("main:rendererReady", (event) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    mainWindowRendererReady = true;
-    showMainWindowIfReady();
-  });
-

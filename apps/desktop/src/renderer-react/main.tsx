@@ -131,9 +131,18 @@ function SettingsRuntimeBootstrap(): null {
   return null;
 }
 
+function MainRendererReadySignal(): null {
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.agentResume.notifyRendererReady(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return null;
+}
+
 function MainDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
+      <MainRendererReadySignal />
       <StartupMask />
       <MainRuntimeBootstrap />
       <MainRendererRuntime />
@@ -217,12 +226,3 @@ if (host) {
     );
   }
 }
-function MainRendererReadySignal(): null {
-  useEffect(() => {
-    const timer = window.setTimeout(() => window.agentResume.notifyRendererReady(), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-  return null;
-}
-
-      <MainRendererReadySignal />
