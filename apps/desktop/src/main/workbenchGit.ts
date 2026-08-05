@@ -17,6 +17,7 @@ import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
 import { parseGitStatusPorcelainV1Z, stagedRepoPaths } from "./workbenchGitStatus";
 import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
+import { toGitDiffHunkMetadata, type GitDiffHunk } from "./workbenchGitDiff";
 
 export type { GitGraphLayout } from "./gitGraphLayout";
 
@@ -66,6 +67,7 @@ export interface GitCommitFileDiffSidesResult {
   newLabel: string;
   oldText: string;
   newText: string;
+  hunks: GitDiffHunk[];
 }
 
 export interface GitFileLogResult {
@@ -425,12 +427,24 @@ async function queryGitCommitFileDiffSides(
     gitShowCommitFile(repoRoot, `${commit}^`, path),
     gitShowCommitFile(repoRoot, commit, path)
   ]);
+  let patch = "";
+  try {
+    patch = await gitExec(repoRoot, ["diff", "--no-ext-diff", "--no-color", "--unified=3", `${commit}^`, commit, "--", path], 15000, 2 * 1024 * 1024);
+  } catch (error) {
+    // Root commits do not have a parent; --root produces the same file patch.
+    if (oldFile === null) {
+      patch = await gitExec(repoRoot, ["diff", "--root", "--no-ext-diff", "--no-color", "--unified=3", commit, "--", path], 15000, 2 * 1024 * 1024);
+    } else {
+      throw error;
+    }
+  }
 
   return {
     oldLabel: oldFile === null ? "(empty)" : `${shortHash}^`,
     newLabel: newFile === null ? "(deleted)" : shortHash,
     oldText: oldFile ?? "",
-    newText: newFile ?? ""
+    newText: newFile ?? "",
+    hunks: toGitDiffHunkMetadata(patch)
   };
 }
 

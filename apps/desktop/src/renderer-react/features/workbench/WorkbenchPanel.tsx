@@ -15,9 +15,6 @@ import {
   Utf8Base64,
   writeTerminalSelection
 } from "./terminalClipboard";
-import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
-import { MergeView } from "@codemirror/merge";
-import { Decoration, drawSelection, EditorView, type DecorationSet } from "@codemirror/view";
 import type {
   AgentProvider,
   AgentSession,
@@ -31,13 +28,23 @@ import {
 } from "../settings/model";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
-import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "../../components/codeMirrorThemes";
+import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
+import {
+  WorkbenchDiffView,
+  type WorkbenchDiffHunkTarget,
+  type WorkbenchDiffPane
+} from "./WorkbenchDiffView";
+export {
+  advanceDiffSearchMatchIndex,
+  collectDiffSearchMatches,
+  findDiffSearchMatchIndex
+} from "./WorkbenchDiffView";
 import {
   WorkbenchFileExplorer,
   type WorkbenchFileExplorerHandle
@@ -123,58 +130,15 @@ function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection
   };
 }
 
-type DiffPane = {
-  key: string;
+type DiffPane = WorkbenchDiffPane & {
   projectPath: string;
+};
+type ActiveGitDiff = {
   repoRoot: string;
-  path: string;
-  oldLabel: string;
-  newLabel: string;
-  oldText: string;
-  newText: string;
-};
-type DiffSearchMatch = {
-  side: "old" | "new";
-  from: number;
-  to: number;
-};
-type DiffSearchHandle = {
-  find: (query: string, direction: "forward" | "backward", reset?: boolean) => CodeEditorSearchResult;
-  prefillFromSelection: () => { query: string; result: CodeEditorSearchResult } | null;
-  clear: () => void;
+  repoPath: string;
+  staged: boolean;
 };
 type WorkbenchPaneGroup = "session" | "terminal" | "code";
-
-const DIFF_COLLAPSE_UNCHANGED = { margin: 3, minSize: 8 } as const;
-const setDiffSearchDecorations = StateEffect.define<DecorationSet>();
-const diffSearchDecorations = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update: (decorations, transaction) => {
-    for (const effect of transaction.effects) {
-      if (effect.is(setDiffSearchDecorations)) return effect.value;
-    }
-    return decorations.map(transaction.changes);
-  },
-  provide: (field) => EditorView.decorations.from(field)
-});
-
-const diffSearchSelectionTheme = EditorView.theme({
-  ".cm-selectionBackground": {
-    backgroundColor: "color-mix(in srgb, var(--color-accent) 42%, var(--color-window-bg))",
-    boxShadow: "inset 0 -2px 0 var(--color-accent)"
-  }
-});
-
-function readOnlyDiffExtensions(themeCompartment: Compartment, appearance: CodeMirrorAppearance) {
-  return [
-    EditorState.readOnly.of(true),
-    EditorView.editable.of(false),
-    themeCompartment.of(codeMirrorThemeExtensions(appearance)),
-    drawSelection(),
-    diffSearchDecorations,
-    diffSearchSelectionTheme
-  ];
-}
 type TerminalPane = {
   key: string;
   title: string;
@@ -494,6 +458,42 @@ function gitChangeFilePath(change: Pick<GitChange, "repoRoot" | "repoPath">): st
   return `${repoRoot}/${repoPath}`;
 }
 
+function normalizeWorkbenchPath(value: string): string {
+  const normalized = value.replaceAll("\\", "/");
+  const prefix = normalized.startsWith("/") ? "/" : "";
+  const parts = normalized.split("/");
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (stack.length && stack.at(-1) !== "..") stack.pop();
+      else if (!prefix) stack.push(part);
+      continue;
+    }
+    stack.push(part);
+  }
+  return `${prefix}${stack.join("/")}` || prefix || ".";
+}
+
+function isWorkbenchPathWithin(value: string, root: string): boolean {
+  const candidate = normalizeWorkbenchPath(value);
+  const targetRoot = normalizeWorkbenchPath(root);
+  return candidate === targetRoot || candidate.startsWith(`${targetRoot}/`);
+}
+
+export function workbenchActiveFilePath(
+  projectPath: string | null,
+  editorPath: string | undefined,
+  diff: Pick<WorkbenchDiffPane, "path" | "repoRoot" | "repoPath"> | undefined
+): string | undefined {
+  if (editorPath) return editorPath;
+  if (!diff) return undefined;
+  const repoFilePath = normalizeWorkbenchPath(gitChangeFilePath(diff));
+  if (!projectPath || isWorkbenchPathWithin(repoFilePath, projectPath)) return repoFilePath;
+  const displayFilePath = normalizeWorkbenchPath(`${projectPath}/${diff.path}`);
+  return isWorkbenchPathWithin(displayFilePath, projectPath) ? displayFilePath : repoFilePath;
+}
+
 function collectNodeChanges(node: GitTreeNode): GitChange[] {
   if (!node.isDirectory) return node.change ? [node.change] : [];
   return node.children.flatMap(collectNodeChanges);
@@ -552,8 +552,10 @@ function GitTreeCheckbox({
 function GitChangeTree({
   nodes,
   depth,
+  staged,
   expanded,
   selected,
+  activeDiff,
   discarding,
   onToggleDir,
   onToggleKeys,
@@ -565,8 +567,10 @@ function GitChangeTree({
 }: {
   nodes: GitTreeNode[];
   depth: number;
+  staged: boolean;
   expanded: Set<string>;
   selected: Set<string>;
+  activeDiff?: ActiveGitDiff;
   discarding: Set<string>;
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
@@ -603,15 +607,19 @@ function GitChangeTree({
             {directoryDiscarding ? <ThemeIcon name="loader" size={13} className="spin" /> : <ThemeIcon name="undo" size={13} />}
           </button>
         </div>
-        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} expanded={expanded} selected={selected} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} onDiscardDirectory={onDiscardDirectory} discardLabel={discardLabel} /></div> : null}
+        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} staged={staged} expanded={expanded} selected={selected} activeDiff={activeDiff} discarding={discarding} onToggleDir={onToggleDir} onToggleKeys={onToggleKeys} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} onDiscardDirectory={onDiscardDirectory} discardLabel={discardLabel} /></div> : null}
       </div>;
     }
     if (!node.change) return null;
     const key = gitChangeKey(node.change);
+    const active = activeDiff?.staged === staged
+      && activeDiff.repoRoot === node.change.repoRoot
+      && activeDiff.repoPath === node.change.repoPath;
     return <div
-      className="wb-file-tree-row wb-git-tree-file"
+      className={`wb-file-tree-row wb-git-tree-file${active ? " is-selected" : ""}`}
       key={node.path}
       style={{ paddingLeft: `${8 + depth * 14}px` }}
+      aria-selected={active}
       onContextMenu={(event) => onContextMenu(event, node.change!)}
     >
       <GitTreeCheckbox state={selected.has(key)} ariaLabel={node.change.path} onChange={(checked) => onToggleKeys([key], checked)} />
@@ -646,6 +654,7 @@ function GitChangesPanel({
   visible,
   git,
   gitRoot,
+  activeDiff,
   expanded,
   selected,
   discarding,
@@ -669,6 +678,7 @@ function GitChangesPanel({
   visible: boolean;
   git: GitStatusResult | null;
   gitRoot: string;
+  activeDiff?: ActiveGitDiff;
   expanded: Set<string>;
   selected: Set<string>;
   discarding: Set<string>;
@@ -777,8 +787,10 @@ function GitChangesPanel({
             <GitChangeTree
               nodes={buildGitChangeTree(section.entries)}
               depth={0}
+              staged={section.staged}
               expanded={expanded}
               selected={selected}
+              activeDiff={activeDiff}
               discarding={discarding}
               onToggleDir={onToggleDir}
               onToggleKeys={onToggleKeys}
@@ -862,405 +874,6 @@ function GitChangesPanel({
       <button type="button" role="menuitem" onClick={() => { onCopyPath(contextMenu.change); setContextMenu(null); }}>{labels.copyPath}</button>
     </div>, document.body) : null}
   </>, host);
-}
-
-export function collectDiffSearchMatches(oldText: string, newText: string, query: string): DiffSearchMatch[] {
-  const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return [];
-  const matches: DiffSearchMatch[] = [];
-  for (const [side, text] of [["old", oldText], ["new", newText]] as const) {
-    const haystack = text.toLocaleLowerCase();
-    let from = 0;
-    while (from <= haystack.length - needle.length) {
-      const match = haystack.indexOf(needle, from);
-      if (match < 0) break;
-      matches.push({ side, from: match, to: match + needle.length });
-      from = match + Math.max(1, needle.length);
-    }
-  }
-  return matches;
-}
-
-export function findDiffSearchMatchIndex(
-  matches: DiffSearchMatch[],
-  side: DiffSearchMatch["side"],
-  from: number,
-  to: number
-): number {
-  return matches.findIndex((match) => match.side === side && match.from === from && match.to === to);
-}
-
-export function advanceDiffSearchMatchIndex(
-  currentIndex: number,
-  matchCount: number,
-  direction: "forward" | "backward"
-): number {
-  if (matchCount <= 0) return -1;
-  return direction === "forward"
-    ? (currentIndex + 1 + matchCount) % matchCount
-    : (currentIndex - 1 + matchCount) % matchCount;
-}
-
-function MergeDiffView({
-  oldText,
-  newText,
-  onHandle,
-  appearance
-}: {
-  oldText: string;
-  newText: string;
-  onHandle: (handle: DiffSearchHandle | null) => void;
-  appearance: CodeMirrorAppearance;
-}): React.JSX.Element {
-  const host = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<MergeView | null>(null);
-  const appearanceRef = useRef<CodeMirrorAppearance>(appearance);
-  const themeCompartmentsRef = useRef({ a: new Compartment(), b: new Compartment() });
-
-  useEffect(() => {
-    if (!host.current) return;
-    const themeCompartments = themeCompartmentsRef.current;
-    const view = new MergeView({
-      a: { doc: oldText, extensions: readOnlyDiffExtensions(themeCompartments.a, appearanceRef.current) },
-      b: { doc: newText, extensions: readOnlyDiffExtensions(themeCompartments.b, appearanceRef.current) },
-      parent: host.current,
-      highlightChanges: true,
-      gutter: true,
-      revertControls: undefined,
-      collapseUnchanged: DIFF_COLLAPSE_UNCHANGED
-    });
-    viewRef.current = view;
-    const applyTheme = () => {
-      view.a.dispatch({ effects: themeCompartments.a.reconfigure(codeMirrorThemeExtensions(appearanceRef.current)) });
-      view.b.dispatch({ effects: themeCompartments.b.reconfigure(codeMirrorThemeExtensions(appearanceRef.current)) });
-    };
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onMedia = () => {
-      if (appearanceRef.current === "follow-app") applyTheme();
-    };
-    window.addEventListener("agent-resume:appearance-change", applyTheme);
-    media.addEventListener("change", onMedia);
-    const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-visual-theme"] });
-
-    let lastQuery = "";
-    let activeMatchIndex = -1;
-    let searchExpanded = false;
-    const setSearchExpanded = (expanded: boolean) => {
-      if (expanded === searchExpanded) return;
-      searchExpanded = expanded;
-      view.reconfigure({ collapseUnchanged: expanded ? undefined : DIFF_COLLAPSE_UNCHANGED });
-    };
-    const applyMatches = (matches: DiffSearchMatch[]) => {
-      setSearchExpanded(matches.length > 0);
-      for (const [side, editor] of [["old", view.a], ["new", view.b]] as const) {
-        const ranges = matches
-          .map((match, index) => match.side === side
-            ? Decoration.mark({
-              class: index === activeMatchIndex
-                ? "cm-diff-search-match cm-diff-search-match-current"
-                : "cm-diff-search-match"
-            }).range(match.from, match.to)
-            : null)
-          .filter((range): range is NonNullable<typeof range> => range !== null);
-        editor.dispatch({ effects: setDiffSearchDecorations.of(Decoration.set(ranges)) });
-      }
-    };
-    const selectActiveMatch = (matches: DiffSearchMatch[]) => {
-      const match = matches[activeMatchIndex];
-      if (!match) return { current: 0, total: matches.length };
-      applyMatches(matches);
-      for (const [side, editor] of [["old", view.a], ["new", view.b]] as const) {
-        if (side === match.side) {
-          editor.dispatch({
-            selection: { anchor: match.from, head: match.to },
-            effects: EditorView.scrollIntoView(match.from, { y: "center" })
-          });
-          editor.contentDOM.blur();
-        } else {
-          const head = editor.state.selection.main.head;
-          editor.dispatch({ selection: { anchor: head } });
-        }
-      }
-      return { current: activeMatchIndex + 1, total: matches.length };
-    };
-    const selectionText = (editor: EditorView) => {
-      const { from, to } = editor.state.selection.main;
-      return from === to ? null : { from, to, text: editor.state.sliceDoc(from, to) };
-    };
-    const domSelectionText = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !host.current) return null;
-      if (!host.current.contains(selection.anchorNode) || !host.current.contains(selection.focusNode)) return null;
-      return selection.toString() || null;
-    };
-    const prefillFromEditorSelection = (side: DiffSearchMatch["side"], selection: NonNullable<ReturnType<typeof selectionText>>) => {
-      const query = selection.text.trim();
-      if (!query) return null;
-      const leadingWhitespace = selection.text.length - selection.text.trimStart().length;
-      const matches = collectDiffSearchMatches(oldText, newText, query);
-      const selectedFrom = selection.from + leadingWhitespace;
-      activeMatchIndex = findDiffSearchMatchIndex(matches, side, selectedFrom, selectedFrom + query.length);
-      lastQuery = query.toLocaleLowerCase();
-      if (activeMatchIndex < 0 && matches.length) activeMatchIndex = 0;
-      const result = selectActiveMatch(matches);
-      return { query, result };
-    };
-    const copySelection = (event: ClipboardEvent) => {
-      const focusedEditor = view.a.hasFocus ? view.a : view.b.hasFocus ? view.b : null;
-      const text = focusedEditor ? selectionText(focusedEditor)?.text : domSelectionText();
-      if (!text) return;
-      desktopApi().clipboardWriteText?.(text);
-      event.clipboardData?.setData("text/plain", text);
-      event.preventDefault();
-    };
-    for (const editor of [view.a, view.b]) editor.contentDOM.addEventListener("copy", copySelection);
-    const handle: DiffSearchHandle = {
-      find: (query, direction, reset = false) => {
-        const normalizedQuery = query.trim().toLocaleLowerCase();
-        const matches = collectDiffSearchMatches(oldText, newText, query);
-        if (!matches.length) {
-          lastQuery = normalizedQuery;
-          activeMatchIndex = -1;
-          applyMatches([]);
-          return { current: 0, total: 0 };
-        }
-        if (reset || normalizedQuery !== lastQuery) {
-          lastQuery = normalizedQuery;
-          activeMatchIndex = direction === "forward" ? -1 : matches.length;
-        }
-        activeMatchIndex = advanceDiffSearchMatchIndex(activeMatchIndex, matches.length, direction);
-        return selectActiveMatch(matches);
-      },
-      prefillFromSelection: () => {
-        const focused = view.a.hasFocus ? { side: "old" as const, editor: view.a }
-          : view.b.hasFocus ? { side: "new" as const, editor: view.b }
-          : null;
-        const focusedSelection = focused && selectionText(focused.editor);
-        if (focused && focusedSelection) return prefillFromEditorSelection(focused.side, focusedSelection);
-
-        const domText = domSelectionText();
-        if (domText) {
-          const query = domText.trim();
-          if (!query) return null;
-          lastQuery = query.toLocaleLowerCase();
-          const matches = collectDiffSearchMatches(oldText, newText, query);
-          activeMatchIndex = matches.length ? 0 : -1;
-          const result = selectActiveMatch(matches);
-          if (!matches.length) applyMatches([]);
-          return { query, result };
-        }
-
-        const selected = [
-          { side: "old" as const, editor: view.a },
-          { side: "new" as const, editor: view.b }
-        ].map((candidate) => {
-          const selection = selectionText(candidate.editor);
-          return selection ? { ...candidate, selection } : null;
-        }).find((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
-        if (!selected) return null;
-        return prefillFromEditorSelection(selected.side, selected.selection);
-      },
-      clear: () => {
-        applyMatches([]);
-        for (const editor of [view.a, view.b]) {
-          const head = editor.state.selection.main.head;
-          editor.dispatch({ selection: { anchor: head } });
-        }
-        lastQuery = "";
-        activeMatchIndex = -1;
-      }
-    };
-    onHandle(handle);
-    return () => {
-      window.removeEventListener("agent-resume:appearance-change", applyTheme);
-      media.removeEventListener("change", onMedia);
-      observer.disconnect();
-      for (const editor of [view.a, view.b]) editor.contentDOM.removeEventListener("copy", copySelection);
-      onHandle(null);
-      view.destroy();
-      if (viewRef.current === view) viewRef.current = null;
-    };
-  }, [newText, oldText, onHandle]);
-
-  useEffect(() => {
-    appearanceRef.current = appearance;
-    const view = viewRef.current;
-    if (!view) return;
-    const themeCompartments = themeCompartmentsRef.current;
-    view.a.dispatch({ effects: themeCompartments.a.reconfigure(codeMirrorThemeExtensions(appearance)) });
-    view.b.dispatch({ effects: themeCompartments.b.reconfigure(codeMirrorThemeExtensions(appearance)) });
-  }, [appearance]);
-
-  return <div className="react-git-diff-merge" ref={host} />;
-}
-
-function GitDiffMergePanel({ diff, appearance }: { diff: DiffPane | undefined; appearance: CodeMirrorAppearance }): React.JSX.Element | null {
-  const [contentHost, setContentHost] = useState<HTMLElement | null>(null);
-  const [paneHost, setPaneHost] = useState<HTMLElement | null>(null);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findQuery, setFindQuery] = useState("");
-  const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
-  const findInputRef = useRef<HTMLInputElement | null>(null);
-  const searchHandleRef = useRef<DiffSearchHandle | null>(null);
-  const setSearchHandle = useCallback((handle: DiffSearchHandle | null) => {
-    searchHandleRef.current = handle;
-  }, []);
-  const { t } = useI18n();
-
-  useEffect(() => {
-    if (!diff) {
-      setContentHost(null);
-      setPaneHost(null);
-      return;
-    }
-    setContentHost(document.querySelector<HTMLElement>("#react-workbench .wb-git-diff-pane .wb-diff-content"));
-    setPaneHost(document.querySelector<HTMLElement>("#react-workbench .wb-git-diff-pane"));
-  }, [diff?.key]);
-
-  useEffect(() => {
-    setFindOpen(false);
-    setFindQuery("");
-    setFindResult(null);
-  }, [diff?.key]);
-
-  const runFind = useCallback((direction: "forward" | "backward", query = findQuery, reset = false) => {
-    const value = query.trim();
-    if (!value) {
-      searchHandleRef.current?.clear();
-      setFindResult(null);
-      return { current: 0, total: 0 };
-    }
-    const result = searchHandleRef.current?.find(value, direction, reset) ?? { current: 0, total: 0 };
-    setFindResult(result);
-    window.requestAnimationFrame(() => findInputRef.current?.focus());
-    return result;
-  }, [findQuery]);
-
-  const updateFindQuery = useCallback((value: string) => {
-    setFindQuery(value);
-    void runFind("forward", value, true);
-  }, [runFind]);
-
-  const focusFindInput = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      findInputRef.current?.focus();
-      findInputRef.current?.select();
-    });
-  }, []);
-
-  const openFind = useCallback((readSelection: boolean) => {
-    const selected = readSelection ? searchHandleRef.current?.prefillFromSelection() : null;
-    if (selected) {
-      setFindQuery(selected.query);
-      setFindResult(selected.result);
-    }
-    setFindOpen(true);
-    focusFindInput();
-  }, [focusFindInput]);
-
-  const closeFind = useCallback(() => {
-    setFindOpen(false);
-    setFindQuery("");
-    setFindResult(null);
-    searchHandleRef.current?.clear();
-  }, []);
-
-  useEffect(() => {
-    if (!diff) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
-      if (isFind) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        openFind(!(event.target instanceof HTMLInputElement));
-        return;
-      }
-      if (!findOpen) return;
-      if (event.key === "Enter" && !event.isComposing) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        const findInput = findInputRef.current;
-        const query = findInput && event.target === findInput ? findInput.value : findQuery;
-        void runFind(event.shiftKey ? "backward" : "forward", query);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        closeFind();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [closeFind, diff, findOpen, openFind, runFind]);
-
-  useEffect(() => {
-    if (!findOpen) return;
-    window.requestAnimationFrame(() => {
-      findInputRef.current?.focus();
-      findInputRef.current?.select();
-    });
-  }, [findOpen]);
-
-  if (!diff || !contentHost) return null;
-  return <>
-    {createPortal(<MergeDiffView oldText={diff.oldText} newText={diff.newText} onHandle={setSearchHandle} appearance={appearance} />, contentHost)}
-    {findOpen && paneHost ? createPortal(
-      <div className="wb-diff-find-bar app-inline-search" role="search">
-        <ThemeIcon name="search" size={14} aria-hidden="true" />
-        <input
-          ref={findInputRef}
-          className="wb-diff-find-input app-inline-search-input"
-          type="text"
-          value={findQuery}
-          placeholder={t("desktop.common.search")}
-          aria-label={t("desktop.common.search")}
-          autoComplete="off"
-          spellCheck={false}
-          enterKeyHint="search"
-          onChange={(event) => {
-            updateFindQuery(event.target.value);
-          }}
-          onPaste={(event) => {
-            const value = event.clipboardData?.getData("text/plain") || desktopApi().clipboardReadText?.() || "";
-            if (!value) return;
-            event.preventDefault();
-            updateFindQuery(value);
-          }}
-          onKeyDown={(event) => {
-            const isPaste = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "v";
-            if (isPaste) {
-              const value = desktopApi().clipboardReadText?.() || "";
-              if (!value) return;
-              event.preventDefault();
-              event.stopPropagation();
-              updateFindQuery(value);
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              closeFind();
-            }
-          }}
-        />
-        <span className={`wb-diff-find-count app-inline-search-meta${findResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
-          {findQuery.trim() && findResult ? t("desktop.common.findCount", findResult.current, findResult.total) : ""}
-        </span>
-        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => void runFind("backward")}>
-          <ThemeIcon name="arrow-up" size={14} />
-        </button>
-        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => void runFind("forward")}>
-          <ThemeIcon name="arrow-down" size={14} />
-        </button>
-        <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}>
-          <ThemeIcon name="close" size={14} />
-        </button>
-      </div>,
-      paneHost
-    ) : null}
-  </>;
 }
 
 function graphColumnX(layout: GitGraphLayout, column: number): number {
@@ -2674,6 +2287,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
+  const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
   const branchStatusTerminal = activeTerminal
@@ -4439,7 +4053,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (diffs.some((item) => item.key === key)) { setActivePane(key); return; }
     try {
       const result = await desktopApi().terminalGitDiffSides({ cwd: change.repoRoot, path: change.repoPath, staged });
-      setDiffs((current) => [...current, { key, projectPath: selectedProject, repoRoot: change.repoRoot, path: change.path, ...result }]);
+      const source = staged ? "staged" : change.status === "?" ? "untracked" : "working-tree";
+      setDiffs((current) => [...current, {
+        key,
+        projectPath: selectedProject,
+        repoRoot: change.repoRoot,
+        repoPath: change.repoPath,
+        path: change.path,
+        source,
+        ...result
+      }]);
       setActivePane(key);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
@@ -4517,6 +4140,37 @@ export function WorkbenchPanel(): ReactPortal | null {
     await discardGitChanges(changes, directoryPath, true);
   };
 
+  const discardGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
+    if (pane.source !== "working-tree" && pane.source !== "staged") return;
+    const confirmMessage = pane.source === "staged"
+      ? t("desktop.workbench.gitDiscardHunkStagedConfirm", pane.path)
+      : t("desktop.workbench.gitDiscardHunkConfirm", pane.path);
+    if (!window.confirm(confirmMessage)) return;
+    try {
+      await desktopApi().terminalGitDiscardHunk({
+        repoRoot: pane.repoRoot,
+        path: pane.repoPath,
+        staged: pane.source === "staged",
+        target
+      });
+      const refreshed = await desktopApi().terminalGitDiffSides({
+        cwd: pane.repoRoot,
+        path: pane.repoPath,
+        staged: pane.source === "staged"
+      });
+      if (!refreshed.hunks.length) {
+        setDiffs((current) => current.filter((item) => item.key !== pane.key));
+        if (activePane === pane.key) setActivePane("");
+      } else {
+        setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
+      }
+      await refreshGit();
+      currentTerminals.forEach((terminal) => void refreshTerminalGit(terminal.key));
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitDiscardFailed", error);
+    }
+  };
+
   const openGitShowFileDiff = async (hash: string, path: string) => {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
@@ -4524,7 +4178,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       const result = await desktopApi().terminalGitShowFileDiffSides({ repoRoot, hash, path });
       if (!selectedProject) return;
       const key = `logdiff:${repoRoot}:${hash}:${path}`;
-      setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, { key, projectPath: selectedProject, repoRoot, path, ...result }]);
+      setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, {
+        key,
+        projectPath: selectedProject,
+        repoRoot,
+        repoPath: path,
+        path,
+        source: "commit",
+        ...result
+      }]);
       setActivePane(key);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
@@ -5163,7 +4825,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><div className="wb-diff-content"><pre className="wb-git-diff-host">{currentDiff.oldText || ""}</pre><pre className="wb-git-diff-host">{currentDiff.newText || ""}</pre></div></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -5176,7 +4838,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onSessionReady={refreshSessionsAfterAcpConnect}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentEditor?.path} onOpenFile={(path) => void openFile(path)} onShowGitHistory={(path) => void loadGitFileHistory(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onShowGitHistory={(path) => void loadGitFileHistory(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
             <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
             <div className="wb-search-pane">
               <div className="wb-search-form" role="search">
@@ -5442,6 +5104,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       visible={side === "git" && !gitHistoryContext}
       git={git}
       gitRoot={gitRoot}
+      activeDiff={currentDiff && currentDiff.source !== "commit" ? {
+        repoRoot: currentDiff.repoRoot,
+        repoPath: currentDiff.repoPath,
+        staged: currentDiff.source === "staged"
+      } : undefined}
       expanded={gitExpandedDirs}
       selected={selectedGitPaths}
       discarding={discardingGitPaths}
@@ -5493,7 +5160,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         discard: t("desktop.workbench.gitDiscard")
       }}
     />
-    <GitDiffMergePanel diff={active ? currentDiff : undefined} appearance={editorAppearance} />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />

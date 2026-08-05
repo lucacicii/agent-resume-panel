@@ -1,5 +1,5 @@
 import { shell } from "electron";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -15,6 +15,12 @@ import {
 import { parseLeftRightCount, type GitRepoTracking } from "./gitTracking";
 import { safeHandle } from "./ipcUtils";
 import { parseGitStatusPorcelainV1Z } from "./workbenchGitStatus";
+import {
+  findGitDiffHunk,
+  toGitDiffHunkMetadata,
+  type GitDiffHunk,
+  type GitDiffHunkTarget
+} from "./workbenchGitDiff";
 import {
   createWorkbenchFile,
   inspectWorkbenchFile,
@@ -80,6 +86,7 @@ export interface GitDiffSidesResult {
   newLabel: string;
   oldText: string;
   newText: string;
+  hunks: GitDiffHunk[];
 }
 
 function formatExecError(error: unknown): string {
@@ -401,6 +408,7 @@ async function queryGitDiffSides(
   }
   const absPath = path.resolve(root, relPath);
   resolvePathWithinRoot(absPath, root);
+  const patch = await queryGitDiffPatch(root, relPath, staged);
 
   const headText = await gitShowAtRef(root, "HEAD", relPath);
   let oldText = headText;
@@ -432,7 +440,22 @@ async function queryGitDiffSides(
     }
   }
 
-  return { oldLabel, newLabel, oldText, newText };
+  return { oldLabel, newLabel, oldText, newText, hunks: toGitDiffHunkMetadata(patch) };
+}
+
+async function queryGitDiffPatch(repoRoot: string, repoPath: string, staged: boolean): Promise<string> {
+  const args = ["-C", repoRoot, "diff", "--no-ext-diff", "--no-color", "--unified=3"];
+  if (staged) args.push("--cached");
+  args.push("--", repoPath);
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      timeout: 15000,
+      maxBuffer: 2 * 1024 * 1024
+    });
+    return String(stdout);
+  } catch (error) {
+    throw new Error(formatExecError(error));
+  }
 }
 
 async function repoHasHeadPath(repoRoot: string, repoPath: string): Promise<boolean> {
@@ -495,6 +518,61 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
   } catch (error) {
     throw new Error(formatExecError(error));
   }
+}
+
+function applyGitPatch(repoRoot: string, patch: string, staged: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = ["-C", repoRoot, "apply", "--reverse", "--whitespace=nowarn"];
+    if (staged) args.push("--cached");
+    const child = spawn("git", args, { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      if (error) reject(error); else resolve();
+    };
+    child.stderr.on("data", (chunk: Buffer | string) => { stderr += String(chunk); });
+    child.once("error", (error) => finish(new Error(formatExecError(error))));
+    child.once("close", (code) => {
+      if (code === 0) finish();
+      else finish(new Error(stderr.trim() || `git apply 失败（退出码 ${code ?? "unknown"}）`));
+    });
+    timeout = setTimeout(() => {
+      child.kill();
+      finish(new Error("应用 Git hunk 超时"));
+    }, 30000);
+    child.stdin.end(patch);
+  });
+}
+
+export async function discardGitHunk(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  staged: boolean,
+  target: GitDiffHunkTarget
+): Promise<void> {
+  if (!target || ![target.oldStart, target.oldLines, target.newStart, target.newLines].every(Number.isInteger)) {
+    throw new Error("无效的 Git hunk");
+  }
+  if (target.oldStart < 0 || target.oldLines < 0 || target.newStart < 0 || target.newLines < 0) {
+    throw new Error("无效的 Git hunk");
+  }
+  const requestedRoot = resolveCwd(repoRootRaw);
+  if (!(await isGitRepo(requestedRoot))) {
+    throw new Error("当前目录不是 Git 仓库");
+  }
+  const repoRoot = (await queryGitRoot(requestedRoot)) || requestedRoot;
+  const repoPath = normalizeRepoRelativePath(repoPathRaw);
+  resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
+  const patch = await queryGitDiffPatch(repoRoot, repoPath, staged);
+  const hunk = findGitDiffHunk(patch, target);
+  if (!hunk) {
+    throw new Error("文件内容已变化，请重新打开 diff 后再试");
+  }
+  await applyGitPatch(repoRoot, hunk.patch, staged);
 }
 
 export function registerWorkbenchFsIpc(): void {
@@ -718,6 +796,14 @@ export function registerWorkbenchFsIpc(): void {
     "terminal:gitDiscardChange",
     async (_event, args: { repoRoot: string; path: string }) => {
       await discardGitChange(args.repoRoot, args.path);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitDiscardHunk",
+    async (_event, args: { repoRoot: string; path: string; staged?: boolean; target: GitDiffHunkTarget }) => {
+      await discardGitHunk(args.repoRoot, args.path, Boolean(args.staged), args.target);
       return { ok: true };
     }
   );

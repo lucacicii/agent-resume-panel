@@ -1,0 +1,138 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { forwardRef, useImperativeHandle } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkbenchDiffView } from "./WorkbenchDiffView";
+
+vi.stubGlobal("matchMedia", () => ({
+  matches: false,
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn()
+}));
+
+vi.mock("../../i18n", () => ({
+  useI18n: () => ({
+    t: (key: string, ...args: unknown[]) => args.length ? `${key}:${args.join(",")}` : key
+  })
+}));
+
+vi.mock("../../components/ThemeIcon", () => ({
+  ThemeIcon: ({ name }: { name: string }) => <span data-icon={name} />
+}));
+
+vi.mock("../../bridge", () => ({
+  desktopApi: () => ({
+    clipboardWriteText: vi.fn(),
+    clipboardReadText: vi.fn(() => "")
+  })
+}));
+
+vi.mock("@pierre/diffs", () => ({
+  parseDiffFromFile: vi.fn((oldFile: { name: string; cacheKey: string } | null, newFile: { name: string; cacheKey: string } | null) => ({
+    testFileName: newFile?.name || oldFile?.name,
+    testCacheKey: newFile?.cacheKey || oldFile?.cacheKey,
+    hunks: [{
+      additionStart: 1,
+      additionCount: 2,
+      deletionStart: 1,
+      deletionCount: 2,
+      hunkSpecs: "@@ -1,2 +1,2 @@"
+    }]
+  }))
+}));
+
+vi.mock("@pierre/diffs/react", () => ({
+  CodeView: forwardRef(({ items, options, onSelectedLinesChange }: {
+    items?: ReadonlyArray<{
+      id: string;
+      version?: number;
+      fileDiff?: { testFileName?: string; testCacheKey?: string };
+    }>;
+    options?: { diffStyle?: string; overflow?: string };
+    onSelectedLinesChange?: (selection: unknown) => void;
+  }, ref) => {
+    useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
+    const item = items?.[0];
+    return <div
+      data-testid="code-view"
+      data-mode={options?.diffStyle}
+      data-overflow={options?.overflow}
+      data-item-id={item?.id}
+      data-item-version={item?.version}
+      data-file-name={item?.fileDiff?.testFileName}
+      data-cache-key={item?.fileDiff?.testCacheKey}
+    >
+      <button type="button" onClick={() => onSelectedLinesChange?.({ id: item?.id, range: { start: 1, end: 1, side: "additions" } })}>select hunk</button>
+    </div>;
+  })
+}));
+
+describe("WorkbenchDiffView", () => {
+  afterEach(() => cleanup());
+
+  const diff = {
+    key: "diff:fixture",
+    path: "src/example.ts",
+    repoRoot: "/repo",
+    repoPath: "src/example.ts",
+    source: "working-tree" as const,
+    oldLabel: "HEAD",
+    newLabel: "Working Tree",
+    oldText: "const value = 1;\n",
+    newText: "const value = 2;\n"
+  };
+
+  it("switches between split and unified rendering", () => {
+    render(<WorkbenchDiffView diff={diff} appearance="light" />);
+    expect(screen.getByTestId("code-view").getAttribute("data-mode")).toBe("split");
+    expect(screen.getByTestId("code-view").getAttribute("data-overflow")).toBe("scroll");
+    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.diffUnified" }));
+    expect(screen.getByTestId("code-view").getAttribute("data-mode")).toBe("unified");
+  });
+
+  it("exposes the selected hunk to the discard callback", () => {
+    const onDiscardHunk = vi.fn();
+    render(<WorkbenchDiffView diff={diff} appearance="light" onDiscardHunk={onDiscardHunk} />);
+    fireEvent.click(screen.getByRole("button", { name: "select hunk" }));
+    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.gitDiscardHunk" }));
+    expect(onDiscardHunk).toHaveBeenCalledWith({
+      oldStart: 1,
+      oldLines: 2,
+      newStart: 1,
+      newLines: 2
+    });
+  });
+
+  it("publishes a fresh CodeView item when the active diff changes", () => {
+    const { rerender } = render(<WorkbenchDiffView diff={diff} appearance="light" />);
+    const first = screen.getByTestId("code-view");
+    const firstVersion = first.getAttribute("data-item-version");
+    const firstCacheKey = first.getAttribute("data-cache-key");
+    expect(first.getAttribute("data-item-id")).toBe("diff:fixture");
+    expect(first.getAttribute("data-file-name")).toBe("src/example.ts");
+
+    rerender(<WorkbenchDiffView diff={{
+      ...diff,
+      key: "diff:second",
+      path: "src/second.ts",
+      newText: "const second = true;\n"
+    }} appearance="light" />);
+
+    const second = screen.getByTestId("code-view");
+    expect(second.getAttribute("data-item-id")).toBe("diff:second");
+    expect(second.getAttribute("data-file-name")).toBe("src/second.ts");
+    expect(second.getAttribute("data-item-version")).not.toBe(firstVersion);
+    expect(second.getAttribute("data-cache-key")).not.toBe(firstCacheKey);
+  });
+
+  it("bumps the CodeView item version when the same diff is refreshed", () => {
+    const { rerender } = render(<WorkbenchDiffView diff={diff} appearance="light" />);
+    const firstVersion = screen.getByTestId("code-view").getAttribute("data-item-version");
+    const firstCacheKey = screen.getByTestId("code-view").getAttribute("data-cache-key");
+
+    rerender(<WorkbenchDiffView diff={{ ...diff, newText: "const value = 3;\n" }} appearance="light" />);
+
+    expect(screen.getByTestId("code-view").getAttribute("data-item-id")).toBe("diff:fixture");
+    expect(screen.getByTestId("code-view").getAttribute("data-item-version")).not.toBe(firstVersion);
+    expect(screen.getByTestId("code-view").getAttribute("data-cache-key")).not.toBe(firstCacheKey);
+  });
+});

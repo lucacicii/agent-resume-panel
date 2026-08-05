@@ -23,6 +23,7 @@ import type {
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
+import type { GitDiffHunk, GitDiffHunkTarget } from "../main/workbenchGitDiff";
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
@@ -487,7 +488,7 @@ export interface DesktopApi {
     repoRoot: string;
     hash: string;
     path: string;
-  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string }>;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -643,8 +644,14 @@ export interface DesktopApi {
     cwd: string;
     path: string;
     staged?: boolean;
-  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string }>;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
   terminalGitDiscardChange(args: { repoRoot: string; path: string }): Promise<{ ok: boolean }>;
+  terminalGitDiscardHunk(args: {
+    repoRoot: string;
+    path: string;
+    staged?: boolean;
+    target: GitDiffHunkTarget;
+  }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -1199,6 +1206,7 @@ const api: DesktopApi = {
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
   terminalGitDiscardChange: (args) => ipcRenderer.invoke("terminal:gitDiscardChange", args),
+  terminalGitDiscardHunk: (args) => ipcRenderer.invoke("terminal:gitDiscardHunk", args),
   terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),

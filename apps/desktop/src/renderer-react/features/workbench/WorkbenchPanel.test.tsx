@@ -6,7 +6,8 @@ import {
   WorkbenchPanel,
   advanceDiffSearchMatchIndex,
   collectDiffSearchMatches,
-  findDiffSearchMatchIndex
+  findDiffSearchMatchIndex,
+  workbenchActiveFilePath
 } from "./WorkbenchPanel";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
@@ -75,6 +76,17 @@ vi.mock("../../components/CodeEditor", () => ({
       getSelectedText: () => ""
     }));
     return <textarea value={value} placeholder={ariaLabel} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />;
+  })
+}));
+
+vi.mock("@pierre/diffs", () => ({
+  parseDiffFromFile: vi.fn(() => ({ hunks: [] }))
+}));
+
+vi.mock("@pierre/diffs/react", () => ({
+  CodeView: forwardRef((_: { options?: Record<string, unknown> }, ref) => {
+    useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
+    return <div data-testid="workbench-code-view" />;
   })
 }));
 
@@ -234,6 +246,135 @@ describe("WorkbenchPanel", () => {
     expect(advanceDiffSearchMatchIndex(3, 3, "backward")).toBe(2);
     expect(advanceDiffSearchMatchIndex(0, 3, "backward")).toBe(2);
     expect(advanceDiffSearchMatchIndex(0, 0, "forward")).toBe(-1);
+  });
+
+  it("uses the active Git diff file path for Explorer selection", () => {
+    expect(workbenchActiveFilePath("/work/app", undefined, {
+      path: "packages/desktop/src/one.ts",
+      repoRoot: "/work/app/",
+      repoPath: "/src/one.ts"
+    })).toBe("/work/app/src/one.ts");
+    expect(workbenchActiveFilePath("/work/app/apps/desktop", undefined, {
+      path: "apps/desktop/src/one.ts",
+      repoRoot: "/work/app",
+      repoPath: "apps/desktop/src/one.ts"
+    })).toBe("/work/app/apps/desktop/src/one.ts");
+    expect(workbenchActiveFilePath("/work/app", "/work/app/src/editor.ts", {
+      path: "src/diff.ts",
+      repoRoot: "/work/app",
+      repoPath: "src/diff.ts"
+    })).toBe("/work/app/src/editor.ts");
+  });
+
+  it("synchronizes the active Git diff with both file trees", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const first = {
+      path: "src/one.ts",
+      repoPath: "src/one.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const second = {
+      path: "src/two.ts",
+      repoPath: "src/two.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalGitDiffSides = vi.fn(async ({ path }: { cwd: string; path: string; staged: boolean }) => ({
+      oldLabel: "HEAD",
+      newLabel: "Working Tree",
+      oldText: `old ${path}`,
+      newText: `new ${path}`,
+      hunks: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [first, second],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiffSides,
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [{ name: "src", path: "/work/app/src", isDirectory: true }]
+          : dirPath === "/work/app/src"
+            ? [
+                { name: "one.ts", path: "/work/app/src/one.ts", isDirectory: false },
+                { name: "two.ts", path: "/work/app/src/two.ts", isDirectory: false }
+              ]
+            : []
+      })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+
+    const firstGitFile = await screen.findByTitle("src/one.ts");
+    fireEvent.click(firstGitFile);
+    await waitFor(() => expect(terminalGitDiffSides).toHaveBeenCalledWith({ cwd: "/work/app", path: "src/one.ts", staged: false }));
+    await waitFor(() => expect(document.querySelector(".wb-diff-title")?.textContent).toBe("src/one.ts"));
+
+    fireEvent.click(await screen.findByTitle("src/two.ts"));
+    await waitFor(() => expect(terminalGitDiffSides).toHaveBeenCalledWith({ cwd: "/work/app", path: "src/two.ts", staged: false }));
+    await waitFor(() => expect(document.querySelector(".wb-diff-title")?.textContent).toBe("src/two.ts"));
+    expect(screen.getByTitle("src/one.ts").closest(".wb-git-tree-file")?.classList.contains("is-selected")).toBe(false);
+    expect(screen.getByTitle("src/two.ts").closest(".wb-git-tree-file")?.classList.contains("is-selected")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    const explorerTree = await waitFor(() => {
+      const tree = document.querySelector<HTMLElement>(".wb-explorer-file-tree");
+      if (!tree) throw new Error("Explorer tree not mounted");
+      return tree;
+    });
+    const selectedExplorerFile = await within(explorerTree).findByText("two.ts");
+    await waitFor(() => expect(selectedExplorerFile.closest("[role=treeitem]")?.getAttribute("aria-selected")).toBe("true"));
   });
 
   it("loads project sessions and restores the selected session through the desktop bridge", async () => {

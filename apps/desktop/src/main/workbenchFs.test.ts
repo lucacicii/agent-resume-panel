@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
 
-import { discardGitChange } from "./workbenchFs";
+import { discardGitChange, discardGitHunk } from "./workbenchFs";
+import { toGitDiffHunkMetadata } from "./workbenchGitDiff";
 
 const repos: string[] = [];
 
@@ -77,5 +78,54 @@ describe("discardGitChange", () => {
   it("rejects paths outside the selected repository", async () => {
     const repo = createRepo();
     await expect(discardGitChange(repo, "../outside.txt")).rejects.toThrow("无效的文件路径");
+  });
+});
+
+describe("discardGitHunk", () => {
+  function fixtureContent(first: string, second: string): string {
+    const lines = Array.from({ length: 24 }, (_value, index) => `line ${index + 1}`);
+    lines[1] = first;
+    lines[20] = second;
+    return `${lines.join("\n")}\n`;
+  }
+
+  it("discards only the selected working-tree hunk", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 2", "line 21"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add long fixture");
+    fs.writeFileSync(tracked, fixtureContent("working first", "working second"));
+    const patch = git(repo, "diff", "--no-color", "--unified=3", "--", "tracked.txt");
+    const hunks = toGitDiffHunkMetadata(patch);
+    expect(hunks.length).toBeGreaterThanOrEqual(2);
+
+    await discardGitHunk(repo, "tracked.txt", false, hunks[0]);
+
+    const lines = fs.readFileSync(tracked, "utf8").split("\n");
+    expect(lines[1]).toBe("line 2");
+    expect(lines[20]).toBe("working second");
+  });
+
+  it("discards only the selected staged hunk from the index", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 2", "line 21"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add long fixture");
+    fs.writeFileSync(tracked, fixtureContent("staged first", "staged second"));
+    git(repo, "add", "tracked.txt");
+    const patch = git(repo, "diff", "--cached", "--no-color", "--unified=3", "--", "tracked.txt");
+    const hunks = toGitDiffHunkMetadata(patch);
+    expect(hunks.length).toBeGreaterThanOrEqual(2);
+
+    await discardGitHunk(repo, "tracked.txt", true, hunks[0]);
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[1]).toBe("staged first");
+    expect(worktreeLines[20]).toBe("staged second");
+    expect(indexLines[1]).toBe("line 2");
+    expect(indexLines[20]).toBe("staged second");
   });
 });
