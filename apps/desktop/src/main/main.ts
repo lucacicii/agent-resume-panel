@@ -114,7 +114,12 @@ import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
-import { DEFAULT_STANDALONE_NOTE_SHORTCUT, isQuickAccessShortcut, normalizeGlobalShortcut } from "./desktopShortcuts";
+import {
+  DEFAULT_STANDALONE_NOTE_SHORTCUT,
+  isQuickAccessShortcut,
+  normalizeGlobalShortcut,
+  workbenchArrowDirectionFromInput
+} from "./desktopShortcuts";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -820,6 +825,17 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
         win.webContents.send("workbench:cmdShiftF");
       }
       return;
+    }
+
+    if (workbenchActive) {
+      const direction = workbenchArrowDirectionFromInput(input);
+      if (direction) {
+        event.preventDefault();
+        if (!win.isDestroyed()) {
+          win.webContents.send("workbench:cmdArrow", direction);
+        }
+        return;
+      }
     }
 
     if (workbenchActive && isWorkbenchCmdWInput(input)) {

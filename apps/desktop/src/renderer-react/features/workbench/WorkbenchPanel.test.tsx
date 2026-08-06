@@ -222,6 +222,40 @@ afterEach(() => {
   localStorage.removeItem("workbench-quick-access-project");
 });
 
+const ARROW_TEST_MESSAGES: Record<string, string> = {
+  "desktop.notes.filterProjects": "Filter projects",
+  "desktop.notes.projectFilter": "Project filter",
+  "desktop.common.search": "Search",
+  "desktop.common.all": "All",
+  "desktop.common.active": "Active",
+  "desktop.common.pinned": "Pinned",
+  "desktop.common.refresh": "Refresh",
+  "desktop.common.loading": "Loading…",
+  "desktop.workbench.sidebarView": "Workbench sidebar view",
+  "desktop.workbench.projectsView": "Project view",
+  "desktop.workbench.gtdView": "GTD view",
+  "desktop.workbench.filterGtdSessions": "Filter GTD sessions",
+  "desktop.workbench.filterProjects": "Filter projects",
+  "desktop.workbench.allSessions": "All sessions",
+  "desktop.workbench.noSessionsInProject": "No sessions",
+  "desktop.workbench.noProjects": "No projects",
+  "desktop.workbench.sidePanelExplorer": "Explorer",
+  "desktop.workbench.sidePanelGit": "Git",
+  "desktop.workbench.sidePanelNoChanges": "No changes",
+  "desktop.workbench.sidePanelStaged": "Staged",
+  "desktop.workbench.sidePanelChanges": "Changes",
+  "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+  "desktop.workbench.sidePanelNoRoot": "No root",
+  "desktop.workbench.newTerminal": "New terminal",
+  "desktop.workbench.newSession": "New session",
+  "desktop.workbench.selectSessionHint": "Select a session",
+  "desktop.workbench.selectProjectHint": "Select a project",
+  "desktop.workbench.externalTerminalHint": "Opened externally",
+  "desktop.workbench.terminalLabel": "Terminal {0}",
+  "desktop.workbench.closeTerminal": "Close terminal",
+  "desktop.workbench.terminalTabs": "Terminal tabs"
+};
+
 describe("WorkbenchPanel", () => {
   it("collects case-insensitive matches across both Git diff sides", () => {
     expect(collectDiffSearchMatches("const Value = 1;\nvalue++;", "const Value = 2;\nreturn value;", " VALUE ")).toEqual([
@@ -2611,5 +2645,176 @@ describe("WorkbenchPanel", () => {
       provider: "chat",
       sessionId: "record-1"
     }));
+  });
+
+  it("switches between session, terminal, and code groups with Cmd+Arrow", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onWorkbenchCmdArrow: ((direction: "left" | "right" | "up" | "down") => void) | undefined;
+    let spawnSeq = 0;
+    const terminalGitDiffSides = vi.fn(async () => ({
+      oldLabel: "HEAD",
+      newLabel: "Working Tree",
+      oldText: "old",
+      newText: "new",
+      hunks: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdArrow: (callback: (direction: "left" | "right" | "up" | "down") => void) => {
+        onWorkbenchCmdArrow = callback;
+        return () => undefined;
+      },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({
+        mode: "xterm",
+        command: `codex resume ${id}`,
+        cwd: "/work/app"
+      }),
+      terminalSpawn: async () => ({ id: ++spawnSeq }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [{
+          path: "src/a.ts",
+          repoPath: "src/a.ts",
+          repoRoot: "/work/app",
+          status: "M",
+          staged: false,
+          unstaged: true
+        }],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiffSides,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
+      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
+    await waitFor(() => expect(tabByLabel("Session A")).toBeTruthy());
+    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+
+    act(() => onWorkbenchCmdArrow?.("left"));
+    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
+    act(() => onWorkbenchCmdArrow?.("right"));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    fireEvent.click(await screen.findByTitle("src/a.ts"));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
+
+    act(() => onWorkbenchCmdArrow?.("up"));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+    act(() => onWorkbenchCmdArrow?.("down"));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-terminal.active")?.textContent).toContain("Terminal 1"));
+    act(() => onWorkbenchCmdArrow?.("down"));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
+    act(() => onWorkbenchCmdArrow?.("up"));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-terminal.active")?.textContent).toContain("Terminal 1"));
+    act(() => onWorkbenchCmdArrow?.("up"));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+    act(() => onWorkbenchCmdArrow?.("up"));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
+  });
+
+  it("focuses the session TUI after arrow navigation, including delayed PTY spawn", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onWorkbenchCmdArrow: ((direction: "left" | "right" | "up" | "down") => void) | undefined;
+    let spawnSeq = 0;
+    const spawnResolvers = new Map<string, (result: { id: number }) => void>();
+    const terminalSpawn = vi.fn(({ command }: { command: string }) => new Promise<{ id: number }>((resolve) => {
+      spawnResolvers.set(command, resolve);
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdArrow: (callback: (direction: "left" | "right" | "up" | "down") => void) => {
+        onWorkbenchCmdArrow = callback;
+        return () => undefined;
+      },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({
+        mode: "xterm",
+        command: `codex resume ${id}`,
+        cwd: "/work/app"
+      }),
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({
+        isRepo: false,
+        root: null,
+        staged: [],
+        unstaged: [],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
+      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await act(async () => spawnResolvers.get("codex resume session-a")!({ id: ++spawnSeq }));
+    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBe(0));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(2));
+    expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true);
+
+    act(() => onWorkbenchCmdArrow?.("left"));
+    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
+    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(0));
+
+    act(() => onWorkbenchCmdArrow?.("right"));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+    expect(xtermMocks.instances[1]?.focusCalls).toBe(0);
+
+    await act(async () => spawnResolvers.get("codex resume session-b")!({ id: ++spawnSeq }));
+    await waitFor(() => expect(xtermMocks.instances[1]?.focusCalls).toBeGreaterThan(0));
   });
 });

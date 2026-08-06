@@ -75,6 +75,7 @@ import {
   type LaunchSessionRequest
 } from "./sessionLaunchBridge";
 import { storedWidth } from "../../storage";
+import type { WorkbenchArrowDirection } from "../../../shared/workbenchShortcuts";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -1919,6 +1920,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const editorReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
   const paneHistoryRef = useRef<Record<string, string[]>>({});
+  const focusPaneAfterPtyRef = useRef("");
   const openingSessionKeysRef = useRef(new Set<string>());
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -2461,6 +2463,23 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
+  const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
+    {
+      group: "session",
+      keys: [
+        ...currentSessionTerminals.map((pane) => pane.key),
+        ...currentAcpChats.map((pane) => pane.key)
+      ]
+    },
+    { group: "terminal", keys: currentShellTerminals.map((pane) => pane.key) },
+    {
+      group: "code",
+      keys: [
+        ...currentEditors.map((pane) => pane.key),
+        ...currentDiffs.map((pane) => pane.key)
+      ]
+    }
+  ];
   /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
   const branchStatusTerminal = activeTerminal
     || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
@@ -2539,6 +2558,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
     if (paneKey !== activePane && activePane.startsWith("editor:")) closeEditorFind();
+    if (paneKey !== activePane) focusPaneAfterPtyRef.current = "";
     const projectKey = paneProjectKey(projectPath);
     if (paneKey) {
       const previous = paneHistoryRef.current[projectKey] || [];
@@ -2546,6 +2566,66 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
   }, [activePane, closeEditorFind, selectedProject]);
+
+  const navigateToWorkbenchPane = useCallback((paneKey: string) => {
+    if (!paneKey) return;
+    if (focusPaneAfterPtyRef.current && focusPaneAfterPtyRef.current !== paneKey) {
+      focusPaneAfterPtyRef.current = "";
+    }
+    setActivePane(paneKey, selectedProject);
+    window.requestAnimationFrame(() => {
+      const terminalPane = terminalsRef.current.find((pane) => pane.key === paneKey);
+      if (terminalPane?.ptyId != null) {
+        terminalRefs.current.get(terminalPane.ptyId)?.focus();
+        return;
+      }
+      if (terminalPane) {
+        focusPaneAfterPtyRef.current = paneKey;
+        return;
+      }
+      if (paneKey.startsWith("acp:")) {
+        document.querySelector<HTMLTextAreaElement>(".wb-acp-chat:not([hidden]) .wb-acp-compose-input textarea")?.focus();
+        return;
+      }
+      if (paneKey.startsWith("editor:")) {
+        editorRef.current?.focus();
+      }
+    });
+  }, [selectedProject, setActivePane]);
+
+  const navigateWorkbenchPanes = useCallback((direction: WorkbenchArrowDirection) => {
+    const currentGroupIndex = workbenchPaneGroups.findIndex((group) => group.keys.includes(activePane));
+    const nonEmptyGroups = workbenchPaneGroups.filter((group) => group.keys.length > 0);
+    let nextPaneKey = "";
+
+    if (direction === "left" || direction === "right") {
+      const currentGroup = currentGroupIndex >= 0 ? workbenchPaneGroups[currentGroupIndex] : null;
+      if (!currentGroup || !currentGroup.keys.length) return;
+      const currentIndex = currentGroup.keys.indexOf(activePane);
+      const offset = direction === "left" ? -1 : 1;
+      const nextIndex = (currentIndex + offset + currentGroup.keys.length) % currentGroup.keys.length;
+      nextPaneKey = currentGroup.keys[nextIndex];
+    } else if (nonEmptyGroups.length) {
+      if (currentGroupIndex < 0) {
+        nextPaneKey = direction === "down"
+          ? nonEmptyGroups[0].keys[0]
+          : nonEmptyGroups[nonEmptyGroups.length - 1].keys[0];
+      } else {
+        const offset = direction === "down" ? 1 : -1;
+        let candidateIndex = (currentGroupIndex + offset + workbenchPaneGroups.length) % workbenchPaneGroups.length;
+        while (candidateIndex !== currentGroupIndex && !workbenchPaneGroups[candidateIndex].keys.length) {
+          candidateIndex = (candidateIndex + offset + workbenchPaneGroups.length) % workbenchPaneGroups.length;
+        }
+        const targetGroup = workbenchPaneGroups[candidateIndex];
+        if (targetGroup.keys.length) {
+          const history = paneHistoryRef.current[paneProjectKey(selectedProject)] || [];
+          nextPaneKey = history.find((key) => targetGroup.keys.includes(key)) || targetGroup.keys[0];
+        }
+      }
+    }
+
+    if (nextPaneKey) navigateToWorkbenchPane(nextPaneKey);
+  }, [activePane, navigateToWorkbenchPane, selectedProject, workbenchPaneGroups]);
 
   const selectProject = (project: string | null, options?: { keepSessionKey?: boolean; keepSide?: boolean }) => {
     setSelectedProject((current) => {
@@ -2810,6 +2890,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const onPty = useCallback((key: string, id: number, terminal: Terminal) => {
     terminalRefs.current.set(id, terminal);
     setTerminals((current) => current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane));
+    if (focusPaneAfterPtyRef.current === key) {
+      focusPaneAfterPtyRef.current = "";
+      window.requestAnimationFrame(() => terminal.focus());
+    }
     void refreshTerminalGit(key);
   }, [refreshTerminalGit]);
 
@@ -3107,6 +3191,16 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
     if (active) closeActivePane();
   }), [active, closeActivePane]);
+
+  useEffect(() => {
+    const unsubscribe =
+      typeof desktopApi().onWorkbenchCmdArrow === "function"
+        ? desktopApi().onWorkbenchCmdArrow((direction) => {
+            if (active) navigateWorkbenchPanes(direction);
+          })
+        : () => undefined;
+    return unsubscribe;
+  }, [active, navigateWorkbenchPanes]);
 
   /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */
   useEffect(() => {

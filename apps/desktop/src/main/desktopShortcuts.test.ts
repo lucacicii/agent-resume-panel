@@ -4,6 +4,7 @@ import {
   isQuickAccessShortcut,
   isValidGlobalShortcut,
   normalizeGlobalShortcut,
+  workbenchArrowDirectionFromInput,
   type DesktopShortcutInput
 } from "./desktopShortcuts";
 
@@ -38,5 +39,23 @@ describe("global standalone note shortcut", () => {
     expect(normalizeGlobalShortcut("")).toBe("");
     expect(normalizeGlobalShortcut(undefined)).toBe("");
     expect(normalizeGlobalShortcut("not-an-accelerator")).toBe(DEFAULT_STANDALONE_NOTE_SHORTCUT);
+  });
+});
+
+describe("desktop Workbench arrow shortcuts", () => {
+  it("matches Cmd/Ctrl+Arrow in each direction", () => {
+    expect(workbenchArrowDirectionFromInput(input({ key: "ArrowLeft", code: "ArrowLeft" }))).toBe("left");
+    expect(workbenchArrowDirectionFromInput(input({ key: "ArrowRight", code: "ArrowRight" }))).toBe("right");
+    expect(workbenchArrowDirectionFromInput(input({ key: "ArrowUp", code: "ArrowUp" }))).toBe("up");
+    expect(workbenchArrowDirectionFromInput(input({ key: "ArrowDown", code: "ArrowDown" }))).toBe("down");
+    expect(workbenchArrowDirectionFromInput(input({ meta: false, control: true, key: "ArrowDown", code: "ArrowDown" }))).toBe("down");
+  });
+
+  it("rejects invalid arrow shortcut combinations", () => {
+    expect(workbenchArrowDirectionFromInput(input({ shift: true, key: "ArrowLeft", code: "ArrowLeft" }))).toBeNull();
+    expect(workbenchArrowDirectionFromInput(input({ alt: true, key: "ArrowLeft", code: "ArrowLeft" }))).toBeNull();
+    expect(workbenchArrowDirectionFromInput(input({ type: "keyUp", key: "ArrowLeft", code: "ArrowLeft" }))).toBeNull();
+    expect(workbenchArrowDirectionFromInput(input({ meta: false, control: false, key: "ArrowLeft", code: "ArrowLeft" }))).toBeNull();
+    expect(workbenchArrowDirectionFromInput(input({ key: "Enter", code: "Enter" }))).toBeNull();
   });
 });

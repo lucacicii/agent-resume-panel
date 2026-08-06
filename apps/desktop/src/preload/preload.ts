@@ -29,6 +29,7 @@ import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
+import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
@@ -703,6 +704,7 @@ export interface DesktopApi {
   setWorkbenchActive(active: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
+  onWorkbenchCmdArrow(callback: (direction: WorkbenchArrowDirection) => void): () => void;
   /** Quick Open (⌘P / Ctrl+P). */
   onWorkbenchCmdP(callback: () => void): () => void;
   /** Command Palette (⌘⇧P / Ctrl+Shift+P). */
@@ -1309,6 +1311,11 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdW", handler);
     return () => ipcRenderer.removeListener("workbench:cmdW", handler);
+  },
+  onWorkbenchCmdArrow: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, direction: WorkbenchArrowDirection) => callback(direction);
+    ipcRenderer.on("workbench:cmdArrow", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdArrow", handler);
   },
   onWorkbenchCmdP: (callback) => {
     const handler = () => callback();

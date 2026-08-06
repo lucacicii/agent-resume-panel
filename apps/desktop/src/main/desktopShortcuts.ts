@@ -1,3 +1,5 @@
+import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
+
 export interface DesktopShortcutInput {
   type: string;
   key?: string;
@@ -82,4 +84,15 @@ export function isQuickAccessShortcut(input: DesktopShortcutInput, commandMode: 
   if (!(input.control || input.meta) || input.alt || input.shift !== commandMode) return false;
   const key = input.key?.toLowerCase();
   return key === "p" || input.code === "KeyP";
+}
+
+export function workbenchArrowDirectionFromInput(input: DesktopShortcutInput): WorkbenchArrowDirection | null {
+  if (input.type !== "keyDown") return null;
+  if (!(input.control || input.meta) || input.alt || input.shift) return null;
+  const key = (input.key || input.code || "").toLowerCase();
+  if (key === "arrowleft") return "left";
+  if (key === "arrowright") return "right";
+  if (key === "arrowup") return "up";
+  if (key === "arrowdown") return "down";
+  return null;
 }
