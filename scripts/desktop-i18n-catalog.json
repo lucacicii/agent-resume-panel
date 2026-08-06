@@ -80,7 +80,9 @@
       "desktop.kanban.allProjects": "All projects",
       "desktop.kanban.noProjects": "No projects yet",
       "desktop.kanban.addNote": "Add {0} note",
-      "desktop.kanban.noteView": "View"
+      "desktop.kanban.noteView": "View",
+      "desktop.kanban.resumeSession": "Run",
+      "desktop.kanban.resumeFailed": "Resume failed"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -1443,7 +1445,9 @@
       "desktop.kanban.allProjects": "全部项目",
       "desktop.kanban.noProjects": "暂无项目",
       "desktop.kanban.addNote": "添加 {0} 笔记",
-      "desktop.kanban.noteView": "视图"
+      "desktop.kanban.noteView": "视图",
+      "desktop.kanban.resumeSession": "执行",
+      "desktop.kanban.resumeFailed": "恢复失败"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -2847,7 +2851,9 @@
       "desktop.kanban.allProjects": "すべてのプロジェクト",
       "desktop.kanban.noProjects": "プロジェクトがありません",
       "desktop.kanban.addNote": "{0} ノートを追加",
-      "desktop.kanban.noteView": "表示"
+      "desktop.kanban.noteView": "表示",
+      "desktop.kanban.resumeSession": "実行",
+      "desktop.kanban.resumeFailed": "再開に失敗しました"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",

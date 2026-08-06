@@ -2582,12 +2582,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
   }, [activePane, closeEditorFind, selectedProject]);
 
-  const navigateToWorkbenchPane = useCallback((paneKey: string) => {
+  const focusWorkbenchPane = useCallback((paneKey: string) => {
     if (!paneKey) return;
     if (focusPaneAfterPtyRef.current && focusPaneAfterPtyRef.current !== paneKey) {
       focusPaneAfterPtyRef.current = "";
     }
-    setActivePane(paneKey, selectedProject);
     window.requestAnimationFrame(() => {
       const terminalPane = terminalsRef.current.find((pane) => pane.key === paneKey);
       if (terminalPane?.ptyId != null) {
@@ -2606,7 +2605,13 @@ export function WorkbenchPanel(): ReactPortal | null {
         editorRef.current?.focus();
       }
     });
-  }, [selectedProject, setActivePane]);
+  }, []);
+
+  const navigateToWorkbenchPane = useCallback((paneKey: string) => {
+    if (!paneKey) return;
+    setActivePane(paneKey, selectedProject);
+    focusWorkbenchPane(paneKey);
+  }, [focusWorkbenchPane, selectedProject, setActivePane]);
 
   const navigateWorkbenchPanes = useCallback((direction: WorkbenchArrowDirection) => {
     const currentGroupIndex = workbenchPaneGroups.findIndex((group) => group.keys.includes(activePane));
@@ -3402,6 +3407,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(existing.projectPath);
       setActivePane(existing.key, existing.projectPath);
       setActiveSessionKey(key);
+      focusWorkbenchPane(existing.key);
       if (detail.initialPrompt && existing.ptyId) {
         window.setTimeout(() => {
           void desktopApi().terminalInput({ id: existing.ptyId!, data: `${detail.initialPrompt}\r` });
@@ -3411,9 +3417,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     const projectPath = detail.projectPath || detail.cwd;
     selectProject(projectPath);
-    addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
+    const paneKey = addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
     setActiveSessionKey(key);
-  }, [addTerminal, selectProject, setActivePane]);
+    focusWorkbenchPane(paneKey);
+  }, [addTerminal, focusWorkbenchPane, selectProject, setActivePane]);
 
   useEffect(() => {
     const onWindowResume = (event: Event) => {

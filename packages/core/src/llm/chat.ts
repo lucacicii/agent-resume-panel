@@ -134,6 +134,11 @@ export async function chatCompletionDetailed(
 
   const content = payload.choices?.[0]?.message?.content?.trim();
   if (!content) {
+    if (payload.choices?.[0]?.finish_reason === "length") {
+      throw new Error(
+        "LLM returned an empty response: the output token limit was reached before any text was produced (common with reasoning models). Increase max_tokens or disable thinking mode."
+      );
+    }
     throw new Error("LLM returned an empty response.");
   }
 

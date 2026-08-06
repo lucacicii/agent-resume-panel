@@ -5,6 +5,7 @@ import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { KanbanCardModal } from "./KanbanCardModal";
+import { isNoteSessionResumable } from "./noteSessionResume";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
@@ -326,6 +327,22 @@ export function KanbanPanel(): ReactPortal | null {
     }
   }, [load, setError, t]);
 
+  const resumeNoteSession = useCallback(async (note: Note) => {
+    if (!note.provider || !note.agentSessionId) return;
+    try {
+      const result = await desktopApi().notesResumeSession({ provider: note.provider, sessionId: note.agentSessionId });
+      if (result.ok === false) {
+        setStatus({ text: result.error || t("desktop.kanban.resumeFailed"), kind: "error" });
+        return;
+      }
+      // xterm: main already broadcast workbench:resumeFromAgent → tab switch + TUI focus in WorkbenchPanel.
+      // external-system/cursor: the external terminal/app is opening; nothing to focus here.
+      setStatus({ text: t("desktop.agent.resumeStarted", note.provider, note.agentSessionId), kind: "ok" });
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError, t]);
+
   const archiveAllDone = useCallback(async () => {
     const done = cards.filter((card) => card.status === "done");
     if (!done.length) return;
@@ -550,6 +567,18 @@ export function KanbanPanel(): ReactPortal | null {
                     >
                       <ThemeIcon name="archive" size={13} aria-hidden="true" />
                     </button>
+                    {card.kind === "note" && isNoteSessionResumable(card.note) && (
+                      <button
+                        type="button"
+                        className="kanban-card-run"
+                        onClick={(event) => { event.stopPropagation(); void resumeNoteSession(card.note); }}
+                        onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}
+                        title={t("desktop.kanban.resumeSession")}
+                        aria-label={t("desktop.kanban.resumeSession")}
+                      >
+                        <ThemeIcon name="play" size={13} aria-hidden="true" />
+                      </button>
+                    )}
                     <p className="kanban-card-title">{titleOf(card)}</p>
                     <div className="kanban-card-meta">
                       <span className="kanban-card-tag">{card.kind === "session" ? card.session.provider : t(`desktop.kanban.scope.${card.note.scope}`)}</span>

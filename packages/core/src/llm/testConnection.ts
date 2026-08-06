@@ -37,7 +37,10 @@ export async function testChatLlmConnection(config: LlmRuntimeConfig | undefined
       { role: "system", content: "Reply with exactly: OK" },
       { role: "user", content: "ping" }
     ],
-    16
+    // Generous budget: reasoning models (DeepSeek, Qwen, …) spend tokens on
+    // thinking before emitting content; 16 tokens gets eaten entirely and
+    // surfaces as an "empty response" even though the connection is fine.
+    256
   );
   return `Connected to ${endpoint} (${config.model}): ${reply}`;
 }

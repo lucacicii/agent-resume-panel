@@ -14248,6 +14248,14 @@ body::before {
 }
 .kanban-card:hover .kanban-card-archive, .kanban-card:focus-within .kanban-card-archive { opacity: 1; }
 .kanban-card-archive:hover { color: var(--color-destructive); background: var(--color-fill-tertiary); }
+.kanban-card-run {
+  position: absolute; top: 5px; right: 26px;
+  appearance: none; border: 0; background: transparent; color: var(--color-label-tertiary);
+  cursor: pointer; padding: 3px; border-radius: var(--radius-sm); display: flex; align-items: center;
+  opacity: 0; transition: opacity 0.12s;
+}
+.kanban-card:hover .kanban-card-run, .kanban-card:focus-within .kanban-card-run { opacity: 1; }
+.kanban-card-run:hover { color: var(--color-accent); background: var(--color-fill-tertiary); }
 .flow-inspector-form { display: grid; gap: 4px; }
 .flow-inspector-form small, .flow-yolo-hint { color: var(--color-label-secondary); font-size: 10px; line-height: 1.4; }
 .flow-yolo-hint { padding: 8px; border-radius: var(--radius-md); background: var(--color-fill-primary); }

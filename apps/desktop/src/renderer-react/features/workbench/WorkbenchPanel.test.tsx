@@ -3010,4 +3010,60 @@ describe("WorkbenchPanel", () => {
     await act(async () => spawnResolvers.get("codex resume session-b")!({ id: ++spawnSeq }));
     await waitFor(() => expect(xtermMocks.instances[1]?.focusCalls).toBeGreaterThan(0));
   });
+
+  it("focuses the TUI after agent resume, including delayed PTY spawn", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let spawnSeq = 0;
+    const spawnResolvers = new Map<string, (result: { id: number }) => void>();
+    const terminalSpawn = vi.fn(({ command }: { command: string }) => new Promise<{ id: number }>((resolve) => {
+      spawnResolvers.set(command, resolve);
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdArrow: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({
+        isRepo: false,
+        root: null,
+        staged: [],
+        unstaged: [],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const resume = (id: string) => window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
+      detail: { provider: "codex", id, command: `codex resume ${id}`, cwd: "/work/app", title: `Session ${id}` }
+    }));
+
+    // New pane: focus is deferred until the PTY spawn resolves.
+    await act(async () => resume("session-c"));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    expect(xtermMocks.instances[0]?.focusCalls).toBe(0);
+    await act(async () => spawnResolvers.get("codex resume session-c")!({ id: ++spawnSeq }));
+    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(0));
+
+    // Existing pane: a second resume focuses the already-open terminal immediately.
+    const before = xtermMocks.instances[0]!.focusCalls;
+    await act(async () => resume("session-c"));
+    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(before));
+  });
 });

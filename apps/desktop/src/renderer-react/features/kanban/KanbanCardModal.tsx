@@ -6,6 +6,7 @@ import { Sheet } from "../../components/Sheet";
 import { Status, type StatusKind } from "../../components/Status";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
+import { isNoteSessionResumable } from "./noteSessionResume";
 import { useI18n } from "../../i18n";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
@@ -114,6 +115,22 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
     onClose();
   }, [note, onClose]);
 
+  const resumeNoteSession = useCallback(async (note: Note) => {
+    if (!note.provider || !note.agentSessionId) return;
+    try {
+      const result = await desktopApi().notesResumeSession({ provider: note.provider, sessionId: note.agentSessionId });
+      if (result.ok === false) {
+        setStatus({ text: result.error || t("desktop.kanban.resumeFailed"), kind: "error" });
+        return;
+      }
+      // Close only for the in-workbench xterm resume (mirrors session branch); external opens don't switch tabs.
+      if (!result.external && result.command) onClose();
+      setStatus({ text: t("desktop.agent.resumeStarted", note.provider, note.agentSessionId), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [onClose, t]);
+
   const summarize = useCallback(async () => {
     if (!session) return;
     setAssist("summary");
@@ -191,6 +208,12 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
         )}
         className="kanban-note-view-segmented"
       />
+      {isNoteSessionResumable(note) ? (
+        <button type="button" className="tool-btn" onClick={() => void resumeNoteSession(note)}>
+          <ThemeIcon name="play" size={14} aria-hidden="true" />
+          {t("desktop.kanban.resumeSession")}
+        </button>
+      ) : null}
       {dirty ? (
         <button type="button" className="tool-btn" onClick={() => void saveNote()}>
           {t("desktop.common.save")}

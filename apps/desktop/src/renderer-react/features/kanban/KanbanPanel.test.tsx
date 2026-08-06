@@ -15,6 +15,8 @@ vi.mock("../../components/CodeEditor", () => ({
 type TestNote = {
   noteId: string;
   scope: "library" | "project" | "session";
+  provider?: string;
+  agentSessionId?: string;
   projectPath?: string;
   filename: string;
   relDir: string;
@@ -64,6 +66,12 @@ function renderKanban(options: {
   const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note, noteId, gtdStatus: status || undefined }));
   const notesCreate = vi.fn(async () => ({ noteId: "created-kanban", filename: "2026-08-06-01.md" }));
   const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "plan.md", content, updatedAtMs: Date.now() }));
+  const notesResumeSession = vi.fn(async ({ provider, sessionId }: { provider: string; sessionId: string }) => ({
+    ok: true,
+    command: `codex resume ${sessionId}`,
+    cwd: "/work/agent-resume-panel",
+    mode: "xterm"
+  }));
   const notes = options.notes ?? (options.doneNote
     ? [note, { ...note, noteId: "note-done", title: "Finished task", gtdStatus: "done" as const }]
     : [note]);
@@ -94,6 +102,8 @@ function renderKanban(options: {
         "desktop.kanban.projects": "Projects",
         "desktop.kanban.allProjects": "All projects",
         "desktop.kanban.noProjects": "No projects yet",
+        "desktop.kanban.resumeSession": "Run",
+        "desktop.kanban.resumeFailed": "Resume failed",
         "desktop.notes.filterProjects": "Filter projects…",
         "desktop.common.showSidebar": "Show sidebar",
         "desktop.common.hideSidebar": "Hide sidebar",
@@ -152,6 +162,7 @@ function renderKanban(options: {
     setSessionGtdStatus,
     notesSetGtdStatus,
     notesCreate,
+    notesResumeSession,
     notesRead: async ({ noteId }: { noteId: string }) => ({ noteId, filename: "plan.md", content: "# Hello\nWorld", updatedAtMs: Date.now() }),
     notesWrite,
     notesClipboardHasImage: async () => false,
@@ -171,7 +182,7 @@ function renderKanban(options: {
       <KanbanPanel />
     </I18nProvider>
   );
-  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite };
+  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite, notesResumeSession };
 }
 
 function activate() {
@@ -384,5 +395,61 @@ describe("KanbanPanel", () => {
     await waitFor(() => expect(within(dialog).getByText("hello world")).toBeTruthy());
     // The modal shows only the current session's detail, not the session list.
     expect(within(dialog).queryByText(/Other project task/)).toBeNull();
+  });
+
+  const sessionNote: TestNote = {
+    noteId: "note-session",
+    scope: "session" as const,
+    provider: "codex",
+    agentSessionId: "session-1",
+    filename: "bound.md",
+    relDir: "",
+    relMdPath: "bound.md",
+    title: "Bound note",
+    createdAtMs: Date.now(),
+    updatedAtMs: Date.now(),
+    gtdStatus: "next" as const
+  };
+
+  it("shows a Run button on a session-bound note card and resumes its session", async () => {
+    const { notesResumeSession } = renderKanban({ notes: [sessionNote], sessions: [] });
+    activate();
+    const card = await screen.findByRole("button", { name: /Bound note/ });
+    const runBtn = within(card).getByRole("button", { name: "Run" });
+    fireEvent.click(runBtn);
+    await waitFor(() => expect(notesResumeSession).toHaveBeenCalledWith({ provider: "codex", sessionId: "session-1" }));
+    // The card Run button must not open the note modal.
+    expect(document.querySelector(".sheet-modal-panel")).toBeNull();
+  });
+
+  it("does not open the note modal when pressing Enter on the Run button", async () => {
+    const { notesResumeSession } = renderKanban({ notes: [sessionNote], sessions: [] });
+    activate();
+    const card = await screen.findByRole("button", { name: /Bound note/ });
+    const runBtn = within(card).getByRole("button", { name: "Run" });
+    fireEvent.keyDown(runBtn, { key: "Enter" });
+    expect(document.querySelector(".sheet-modal-panel")).toBeNull();
+    fireEvent.click(runBtn);
+    await waitFor(() => expect(notesResumeSession).toHaveBeenCalledWith({ provider: "codex", sessionId: "session-1" }));
+  });
+
+  it("hides the Run button for non-session notes and chat/cursor-ide-bound notes", async () => {
+    const chatNote = { ...sessionNote, noteId: "note-chat", provider: "chat" as const, title: "Chat note" };
+    const cursorNote = { ...sessionNote, noteId: "note-cursor", provider: "cursor-ide" as const, title: "Cursor note" };
+    renderKanban({ notes: [note, projectNote, chatNote, cursorNote], sessions: [] });
+    activate();
+    await screen.findByRole("button", { name: /Quarterly plan/ });
+    expect(screen.queryAllByRole("button", { name: "Run" })).toHaveLength(0);
+  });
+
+  it("runs a bound note from the detail modal and closes it on xterm resume", async () => {
+    const { notesResumeSession } = renderKanban({ notes: [sessionNote], sessions: [] });
+    activate();
+    fireEvent.click(await screen.findByRole("button", { name: /Bound note/ }));
+    const dialog = await screen.findByRole("dialog", { name: /Bound note/ });
+    const runBtn = within(dialog).getByRole("button", { name: "Run" });
+    fireEvent.click(runBtn);
+    await waitFor(() => expect(notesResumeSession).toHaveBeenCalledWith({ provider: "codex", sessionId: "session-1" }));
+    await waitFor(() => expect(document.querySelector(".sheet-modal-panel")).toBeNull());
   });
 });
