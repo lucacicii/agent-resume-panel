@@ -463,6 +463,46 @@ textarea:focus-visible,
   width: min(920px, 100%);
 }
 
+/* Centered modal variant (e.g. Kanban card detail). */
+.sheet-modal {
+  justify-content: center;
+  align-items: center;
+}
+
+.sheet-modal-panel {
+  width: min(900px, 94vw);
+  height: auto;
+  max-height: min(86vh, 100%);
+  border-left: 1px solid var(--color-separator);
+  border: 1px solid var(--color-separator);
+  border-radius: 12px;
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.32);
+  animation: modal-in var(--duration-normal) var(--ease-out);
+}
+
+@keyframes modal-in {
+  from {
+    transform: translateY(10px) scale(0.99);
+    opacity: 0.5;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Kanban detail modal: editor/preview fill the remaining height. */
+.sheet-body.kanban-detail-body > .kanban-note-editor,
+.sheet-body.kanban-detail-body > .kanban-note-preview,
+.sheet-body.kanban-detail-body > .kanban-session-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sheet-body.kanban-detail-body > .kanban-note-editor { display: flex; flex-direction: column; }
+
 @keyframes sheet-in {
   from {
     transform: translateX(12px);
@@ -14137,6 +14177,25 @@ body::before {
   cursor: pointer; padding: 2px; border-radius: var(--radius-sm); display: flex; align-items: center;
 }
 .kanban-archive-all:hover { color: var(--color-destructive); background: var(--color-fill-tertiary); }
+.kanban-column-add-note {
+  appearance: none;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+}
+.kanban-column-add-note:hover,
+.kanban-column-add-note:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-fill-tertiary);
+}
 .kanban-card { position: relative; }
 .kanban-card-archive {
   position: absolute; top: 5px; right: 5px;

@@ -47,15 +47,16 @@
       "desktop.common.yearSuffix": "{0}",
       "desktop.common.oneMinute": "1 min",
       "desktop.common.intervalSeconds": "{0}s",
-      "desktop.common.delete": "Delete"
+      "desktop.common.delete": "Delete",
+      "desktop.common.preview": "Preview",
+      "desktop.common.saved": "Saved"
     },
     "tabs": {
       "desktop.tabs.report": "Report",
       "desktop.tabs.agent": "Agent",
       "desktop.tabs.workbench": "Workbench",
       "desktop.tabs.notes": "Notes",
-      "desktop.tabs.flow": "Flow"
-      ,
+      "desktop.tabs.flow": "Flow",
       "desktop.tabs.kanban": "Kanban"
     },
     "kanban": {
@@ -77,7 +78,9 @@
       "desktop.kanban.archiveAllConfirm": "Archive {0} completed items? Their GTD status will be cleared; sessions and notes are kept.",
       "desktop.kanban.projects": "Projects",
       "desktop.kanban.allProjects": "All projects",
-      "desktop.kanban.noProjects": "No projects yet"
+      "desktop.kanban.noProjects": "No projects yet",
+      "desktop.kanban.addNote": "Add {0} note",
+      "desktop.kanban.noteView": "View"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -1407,15 +1410,16 @@
       "desktop.common.yearSuffix": "{0} 年",
       "desktop.common.oneMinute": "1 分钟",
       "desktop.common.intervalSeconds": "{0}s",
-      "desktop.common.delete": "删除"
+      "desktop.common.delete": "删除",
+      "desktop.common.preview": "预览",
+      "desktop.common.saved": "已保存"
     },
     "tabs": {
       "desktop.tabs.report": "报告",
       "desktop.tabs.agent": "Agent",
       "desktop.tabs.workbench": "工作台",
       "desktop.tabs.notes": "笔记",
-      "desktop.tabs.flow": "流程"
-      ,
+      "desktop.tabs.flow": "流程",
       "desktop.tabs.kanban": "看板"
     },
     "kanban": {
@@ -1437,7 +1441,9 @@
       "desktop.kanban.archiveAllConfirm": "归档 {0} 个已完成项？将清除其 GTD 状态；会话和笔记保留。",
       "desktop.kanban.projects": "项目",
       "desktop.kanban.allProjects": "全部项目",
-      "desktop.kanban.noProjects": "暂无项目"
+      "desktop.kanban.noProjects": "暂无项目",
+      "desktop.kanban.addNote": "添加 {0} 笔记",
+      "desktop.kanban.noteView": "视图"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -2808,15 +2814,16 @@
       "desktop.common.yearSuffix": "{0} 年",
       "desktop.common.oneMinute": "1 分",
       "desktop.common.intervalSeconds": "{0}s",
-      "desktop.common.delete": "削除"
+      "desktop.common.delete": "削除",
+      "desktop.common.preview": "プレビュー",
+      "desktop.common.saved": "保存しました"
     },
     "tabs": {
       "desktop.tabs.report": "Report",
       "desktop.tabs.agent": "Agent",
       "desktop.tabs.workbench": "ワークベンチ",
       "desktop.tabs.notes": "ノート",
-      "desktop.tabs.flow": "フロー"
-      ,
+      "desktop.tabs.flow": "フロー",
       "desktop.tabs.kanban": "カンバン"
     },
     "kanban": {
@@ -2838,7 +2845,9 @@
       "desktop.kanban.archiveAllConfirm": "完了済み {0} 件をアーカイブしますか？GTD ステータスが削除されます（セッションとノートは保持されます）。",
       "desktop.kanban.projects": "プロジェクト",
       "desktop.kanban.allProjects": "すべてのプロジェクト",
-      "desktop.kanban.noProjects": "プロジェクトがありません"
+      "desktop.kanban.noProjects": "プロジェクトがありません",
+      "desktop.kanban.addNote": "{0} ノートを追加",
+      "desktop.kanban.noteView": "表示"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",

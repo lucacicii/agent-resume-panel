@@ -7,12 +7,14 @@ interface SheetProps {
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  /** Render as a centered modal instead of a right-side drawer. */
+  modal?: boolean;
   actions?: ReactNode;
   bodyClassName?: string;
   dismissible?: boolean;
 }
 
-export function Sheet({ open, title, children, onClose, wide = false, actions, bodyClassName, dismissible = true }: SheetProps): ReactNode {
+export function Sheet({ open, title, children, onClose, wide = false, modal = false, actions, bodyClassName, dismissible = true }: SheetProps): ReactNode {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -24,9 +26,9 @@ export function Sheet({ open, title, children, onClose, wide = false, actions, b
 
   if (!open) return null;
   return (
-    <div className="sheet" role="presentation">
+    <div className={`sheet${modal ? " sheet-modal" : ""}`} role="presentation">
       <button type="button" className="sheet-backdrop" aria-label={`Dismiss ${title}`} onClick={onClose} disabled={!dismissible} />
-      <aside className={`sheet-panel${wide ? " sheet-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <aside className={`sheet-panel${wide ? " sheet-wide" : ""}${modal ? " sheet-modal-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-head">
           <h3>{title}</h3>
           <div className="sheet-actions">

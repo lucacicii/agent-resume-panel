@@ -4,11 +4,12 @@ import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
-import { NotePreviewSheet } from "./NotePreviewSheet";
+import { KanbanCardModal } from "./KanbanCardModal";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
+import { FloatingSessionNote, type FloatingNoteTarget } from "../workbench/FloatingSessionNote";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type Session = AgentSession;
@@ -115,7 +116,8 @@ export function KanbanPanel(): ReactPortal | null {
     try { return localStorage.getItem("kanban-done-collapsed") !== "0"; } catch { return true; }
   });
   const [projects, setProjects] = useState<CatalogProject[]>([]);
-  const [previewNote, setPreviewNote] = useState<Note | null>(null);
+  const [detail, setDetail] = useState<{ kind: "note"; note: Note } | { kind: "session"; session: Session } | null>(null);
+  const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingNoteTarget | null>(null);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     try { return localStorage.getItem(SELECTED_PROJECT_KEY) || ""; } catch { return ""; }
@@ -148,6 +150,20 @@ export function KanbanPanel(): ReactPortal | null {
       return next;
     });
   }, []);
+
+  const addNoteTarget = useCallback((statusValue: GtdStatus): FloatingNoteTarget => {
+    const project = projects.find((item) => item.projectId === selectedProjectId);
+    if (project) {
+      const path = projectPathOf(project);
+      return {
+        kind: "project",
+        projectPath: path,
+        projectName: aliases[path] || project.alias || basename(path),
+        initialGtdStatus: statusValue
+      };
+    }
+    return { kind: "library", initialGtdStatus: statusValue };
+  }, [aliases, projects, selectedProjectId]);
 
   const setError = useCallback((error: unknown) => {
     setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
@@ -289,9 +305,9 @@ export function KanbanPanel(): ReactPortal | null {
 
   const openCard = useCallback((card: KanbanCard) => {
     if (card.kind === "note") {
-      setPreviewNote(card.note);
+      setDetail({ kind: "note", note: card.note });
     } else {
-      window.dispatchEvent(new CustomEvent("agent-resume:sessions-preview", { detail: card.session }));
+      setDetail({ kind: "session", session: card.session });
     }
   }, []);
 
@@ -481,6 +497,17 @@ export function KanbanPanel(): ReactPortal | null {
                     <span className={`kanban-status-dot is-${statusValue}`} aria-hidden="true" />
                     <span className="kanban-column-title">{t(`desktop.workbench.gtdStatus.${statusValue}`)}</span>
                     <span className="kanban-column-count">{column.length}</span>
+                    {source === "notes" ? (
+                      <button
+                        type="button"
+                        className="kanban-column-add-note"
+                        onClick={() => setFloatingNoteTarget(addNoteTarget(statusValue))}
+                        title={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
+                        aria-label={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
+                      >
+                        <ThemeIcon name="file-plus" size={13} aria-hidden="true" />
+                      </button>
+                    ) : null}
                   </>
                 )}
                 {isDone && column.length > 0 && (
@@ -554,7 +581,20 @@ export function KanbanPanel(): ReactPortal | null {
          <Status kind={status.kind}>{status.text}</Status>
         )}
       </div>
-      <NotePreviewSheet note={previewNote} onClose={() => setPreviewNote(null)} />
+      <KanbanCardModal
+        note={detail?.kind === "note" ? detail.note : null}
+        session={detail?.kind === "session" ? detail.session : null}
+        onClose={() => setDetail(null)}
+      />
+      {floatingNoteTarget ? (
+        <FloatingSessionNote
+          target={floatingNoteTarget}
+          onClose={() => {
+            setFloatingNoteTarget(null);
+            void load();
+          }}
+        />
+      ) : null}
     </section>,
     host
   );

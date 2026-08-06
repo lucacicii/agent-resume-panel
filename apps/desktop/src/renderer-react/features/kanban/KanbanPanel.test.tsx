@@ -1,8 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession, GtdStatus } from "@agent-resume/core";
 import { I18nProvider } from "../../i18n";
 import { KanbanPanel } from "./KanbanPanel";
+
+vi.mock("../../components/CodeEditor", () => ({
+  CodeEditor: forwardRef(({ value, onChange, ariaLabel }: { value: string; onChange: (value: string) => void; ariaLabel: string }, ref) => {
+    useImperativeHandle(ref, () => ({ focus: vi.fn() }));
+    return <textarea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />;
+  })
+}));
 
 type TestNote = {
   noteId: string;
@@ -48,12 +56,14 @@ const GTD_LABELS = {
 
 function renderKanban(options: {
   doneNote?: boolean;
- sessions?: AgentSession[];
+  sessions?: AgentSession[];
   notes?: TestNote[];
- statuses?: Record<string, "inbox" | "next" | "waiting" | "someday" | "reference" | "done">;
+  statuses?: Record<string, "inbox" | "next" | "waiting" | "someday" | "reference" | "done">;
 } = {}) {
   const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
-  const notesSetGtdStatus = vi.fn(async () => ({ record: note }));
+  const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note, noteId, gtdStatus: status || undefined }));
+  const notesCreate = vi.fn(async () => ({ noteId: "created-kanban", filename: "2026-08-06-01.md" }));
+  const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "plan.md", content, updatedAtMs: Date.now() }));
   const notes = options.notes ?? (options.doneNote
     ? [note, { ...note, noteId: "note-done", title: "Finished task", gtdStatus: "done" as const }]
     : [note]);
@@ -77,6 +87,7 @@ function renderKanban(options: {
         "desktop.kanban.source.sessions": "Sessions",
         "desktop.kanban.source.notes": "Notes",
         "desktop.kanban.sourceFilter": "Source",
+        "desktop.kanban.addNote": "Add {0} note",
         "desktop.kanban.scope.library": "Library",
         "desktop.kanban.scope.project": "Project",
         "desktop.kanban.scope.session": "Session",
@@ -91,7 +102,42 @@ function renderKanban(options: {
         "desktop.common.justNow": "Just now",
         "desktop.common.minutesAgo": "{0} min ago",
         "desktop.common.hoursAgo": "{0} h ago",
-        "desktop.common.daysAgo": "{0} d ago"
+        "desktop.common.daysAgo": "{0} d ago",
+        "desktop.notes.librarySection": "Library",
+        "desktop.workbench.floatingNote": "Floating note",
+        "desktop.workbench.floatingNoteClose": "Close floating note",
+        "desktop.workbench.floatingNoteEditor": "Floating note editor",
+        "desktop.workbench.floatingNoteLoading": "Loading floating note…",
+        "desktop.workbench.floatingNoteCreating": "Creating floating note…",
+        "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}",
+        "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}",
+        "desktop.workbench.floatingNoteDeleteFailed": "Delete failed: {0}",
+        "desktop.workbench.floatingNoteDeleting": "Deleting…",
+        "desktop.workbench.floatingNoteSaving": "Saving…",
+        "desktop.workbench.floatingNoteSaved": "Saved",
+        "desktop.workbench.floatingNoteUnsaved": "Unsaved changes",
+        "desktop.notes.deleteNote": "Delete note",
+        "desktop.notes.deleteConfirm": "Delete note \"{0}\"?",
+        "desktop.workbench.setGtdStatus": "Set GTD status",
+        "desktop.workbench.clearGtdStatus": "Clear GTD status",
+        "desktop.workbench.gtdStatusSaveFailed": "Could not save GTD status: {0}",
+        "desktop.common.edit": "Edit",
+        "desktop.common.preview": "Preview",
+        "desktop.common.save": "Save",
+        "desktop.common.saved": "Saved",
+        "desktop.common.loadingPreview": "Loading preview",
+        "desktop.notes.editorPlaceholder": "Edit markdown…",
+        "desktop.agent.openInNotes": "Open in Notes",
+        "desktop.agent.resumeSession": "Resume",
+        "desktop.agent.resumeStarted": "Resume started: {0} {1}",
+        "desktop.kanban.noteView": "View",
+        "desktop.sessions.summarizing": "Summarizing…",
+        "desktop.sessions.renaming": "Renaming…",
+        "desktop.sessions.summaryGenerated": "Summary generated",
+        "desktop.sessions.renamed": "Renamed to {0}",
+        "desktop.sessions.renamedNativeError": " (native: {0})",
+        "desktop.sessions.noMessages": "No messages",
+        "desktop.sessions.truncated": "(truncated)"
       }
     }),
     onLocaleChanged: () => () => undefined,
@@ -105,6 +151,18 @@ function renderKanban(options: {
     listProjectAliases: async () => ({ "/work/agent-resume-panel": "Agent Resume" }),
     setSessionGtdStatus,
     notesSetGtdStatus,
+    notesCreate,
+    notesRead: async ({ noteId }: { noteId: string }) => ({ noteId, filename: "plan.md", content: "# Hello\nWorld", updatedAtMs: Date.now() }),
+    notesWrite,
+    notesClipboardHasImage: async () => false,
+    notesPasteImage: async () => null,
+    previewSession: async () => ({
+      session: { ...session, sessionSummary: "A short summary" },
+      preview: { title: session.title, messages: [{ role: "user", text: "hello world" }] }
+    }),
+    summarizeSession: async () => ({ summary: "A short summary" }),
+    autoRenameSession: async () => ({ title: "Renamed session", nativeRenamed: true, nativeError: null }),
+    workbenchOpenSession: async () => ({ external: true }),
     onSessionsSynced: () => () => undefined
   } as unknown as typeof window.agentResume;
 
@@ -113,7 +171,7 @@ function renderKanban(options: {
       <KanbanPanel />
     </I18nProvider>
   );
-  return { setSessionGtdStatus, notesSetGtdStatus };
+  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite };
 }
 
 function activate() {
@@ -126,11 +184,15 @@ const dataTransfer = { setData: () => undefined, effectAllowed: "" };
 
 describe("KanbanPanel", () => {
   beforeEach(() => {
+    localStorage.clear();
     const host = document.createElement("div");
     host.id = "react-kanban";
     document.body.appendChild(host);
   });
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    document.querySelectorAll("#react-kanban").forEach((node) => node.remove());
+  });
 
   it("groups sessions and notes into their GTD status columns", async () => {
     renderKanban();
@@ -258,5 +320,69 @@ describe("KanbanPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agent Resume" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /Quarterly plan/ })).toBeNull());
     expect(screen.queryByRole("button", { name: /Design doc/ })).toBeTruthy();
+  });
+
+  it("shows a per-column plus only in Notes filter and creates a project note", async () => {
+    const { notesCreate } = renderKanban();
+    activate();
+    await screen.findByRole("button", { name: /Quarterly plan/ });
+
+    expect(document.querySelector(".kanban-column-add-note")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    await waitFor(() => expect(document.querySelectorAll(".kanban-column-add-note")).toHaveLength(5));
+    expect(document.querySelector(".kanban-column.is-done .kanban-column-add-note")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agent Resume" }));
+    const nextPlus = document.querySelector<HTMLButtonElement>(".kanban-column.is-next .kanban-column-add-note");
+    expect(nextPlus).toBeTruthy();
+    fireEvent.click(nextPlus!);
+
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith(expect.objectContaining({
+      scope: "project",
+      projectPath: "/work/agent-resume-panel"
+    })));
+  });
+
+  it("creates a library note from Notes filter when no project is selected", async () => {
+    const { notesCreate } = renderKanban();
+    activate();
+    await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    const inboxPlus = document.querySelector<HTMLButtonElement>(".kanban-column.is-inbox .kanban-column-add-note");
+    expect(inboxPlus).toBeTruthy();
+    fireEvent.click(inboxPlus!);
+
+    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith(expect.objectContaining({ scope: "library" })));
+  });
+
+  it("opens a note in a centered modal and saves edits", async () => {
+    const { notesWrite } = renderKanban();
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+    expect(document.querySelector(".sheet-modal-panel")).toBeTruthy();
+    await waitFor(() => expect(within(dialog).getByText(/Hello/)).toBeTruthy());
+
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Edit" }));
+    const editor = await within(dialog).findByRole("textbox", { name: "Edit markdown…" });
+    fireEvent.change(editor, { target: { value: "# Edited\n" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "note-1", content: "# Edited\n" }));
+  });
+
+  it("opens a session in a centered modal showing only the clicked session's detail", async () => {
+    renderKanban({ sessions: [session, sessionB] });
+    activate();
+    const sessionCard = await screen.findByRole("button", { name: /Ship Kanban/ });
+    fireEvent.click(sessionCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Ship Kanban/ });
+    expect(document.querySelector(".sheet-modal-panel")).toBeTruthy();
+    await waitFor(() => expect(within(dialog).getByText("hello world")).toBeTruthy());
+    // The modal shows only the current session's detail, not the session list.
+    expect(within(dialog).queryByText(/Other project task/)).toBeNull();
   });
 });

@@ -13,6 +13,11 @@ export interface FloatingSessionNoteTarget {
   sessionTitle: string;
 }
 
+export type FloatingNoteTarget =
+  | FloatingSessionNoteTarget
+  | { kind: "project"; projectPath: string; projectName?: string; initialGtdStatus: GtdStatus }
+  | { kind: "library"; initialGtdStatus: GtdStatus };
+
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 
 export function sessionNoteMatchesTarget(note: Note, target: FloatingSessionNoteTarget): boolean {
@@ -34,8 +39,42 @@ export function initialSessionNoteContent(target: Pick<FloatingSessionNoteTarget
   return `# ${title}\n\n`;
 }
 
+export function localDateString(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function initialFloatingNoteContent(): string {
+  return `# ${localDateString()}\n\n`;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function basename(value: string): string {
+  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
+function isSessionTarget(target: FloatingNoteTarget): target is FloatingSessionNoteTarget {
+  return !("kind" in target);
+}
+
+function floatingNoteOwnerLabel(target: FloatingNoteTarget, t: (key: string) => string): string {
+  if (isSessionTarget(target)) {
+    return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
+  }
+  if (target.kind === "project") {
+    return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
+  }
+  return t("desktop.notes.librarySection");
+}
+
+function floatingNoteTitle(target: FloatingNoteTarget, t: (key: string) => string): string {
+  if (isSessionTarget(target)) return sessionNoteTitle(target);
+  return `${floatingNoteOwnerLabel(target, t)} · ${localDateString()}`;
 }
 
 function latestSessionNote(notes: Note[], target: FloatingSessionNoteTarget): Note | undefined {
@@ -74,15 +113,15 @@ export function FloatingSessionNote({
   target,
   onClose
 }: {
-  target: FloatingSessionNoteTarget;
+  target: FloatingNoteTarget;
   onClose: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const displayTitle = sessionNoteTitle(target);
-  const projectName = target.projectName?.trim()
-    || target.projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
-    || target.projectPath;
-  const sessionTitle = target.sessionTitle.trim() || target.sessionId;
+  const displayTitle = floatingNoteTitle(target, t);
+  const ownerLabel = floatingNoteOwnerLabel(target, t);
+  const secondaryLabel = isSessionTarget(target)
+    ? target.sessionTitle.trim() || target.sessionId
+    : localDateString();
   const [content, setContent] = useState("");
   const [noteId, setNoteId] = useState("");
   const [gtdStatus, setGtdStatus] = useState<GtdStatus | undefined>(undefined);
@@ -186,38 +225,61 @@ export function FloatingSessionNote({
 
     const load = async () => {
       try {
-        const existing = latestSessionNote(await desktopApi().notesList(), target);
-        if (existing) {
-          const result = await desktopApi().notesRead({ noteId: existing.noteId });
+        if (isSessionTarget(target)) {
+          const existing = latestSessionNote(await desktopApi().notesList(), target);
+          if (existing) {
+            const result = await desktopApi().notesRead({ noteId: existing.noteId });
+            if (loadSequenceRef.current !== sequence) return;
+            setNoteId(result.record.noteId);
+            noteIdRef.current = result.record.noteId;
+            setGtdStatus(result.record.gtdStatus);
+            setContent(result.content);
+            contentRef.current = result.content;
+            setLoading(false);
+            window.requestAnimationFrame(() => editorRef.current?.focus());
+            return;
+          }
+
+          setCreating(true);
+          const initial = initialSessionNoteContent(target);
+          const created = await desktopApi().notesCreate({
+            scope: "session",
+            projectPath: target.projectPath,
+            provider: target.provider,
+            sessionId: target.sessionId
+          });
           if (loadSequenceRef.current !== sequence) return;
-          setNoteId(result.record.noteId);
-          noteIdRef.current = result.record.noteId;
-          setGtdStatus(result.record.gtdStatus);
-          setContent(result.content);
-          contentRef.current = result.content;
+          setNoteId(created.noteId);
+          noteIdRef.current = created.noteId;
+          setGtdStatus("inbox");
+          setContent(initial);
+          contentRef.current = initial;
+          await desktopApi().notesWrite({ noteId: created.noteId, content: initial });
+          const inboxRecord = await desktopApi().notesSetGtdStatus({ noteId: created.noteId, status: "inbox" });
+          if (loadSequenceRef.current !== sequence) return;
+          setGtdStatus(inboxRecord.gtdStatus);
+          setCreating(false);
           setLoading(false);
           window.requestAnimationFrame(() => editorRef.current?.focus());
           return;
         }
 
         setCreating(true);
-        const initial = initialSessionNoteContent(target);
+        const initial = initialFloatingNoteContent();
         const created = await desktopApi().notesCreate({
-          scope: "session",
-          projectPath: target.projectPath,
-          provider: target.provider,
-          sessionId: target.sessionId
+          scope: target.kind,
+          projectPath: target.kind === "project" ? target.projectPath : undefined,
+          body: initial
         });
         if (loadSequenceRef.current !== sequence) return;
         setNoteId(created.noteId);
         noteIdRef.current = created.noteId;
-        setGtdStatus("inbox");
+        setGtdStatus(target.initialGtdStatus);
         setContent(initial);
         contentRef.current = initial;
-        await desktopApi().notesWrite({ noteId: created.noteId, content: initial });
-        const inboxRecord = await desktopApi().notesSetGtdStatus({ noteId: created.noteId, status: "inbox" });
+        const updated = await desktopApi().notesSetGtdStatus({ noteId: created.noteId, status: target.initialGtdStatus });
         if (loadSequenceRef.current !== sequence) return;
-        setGtdStatus(inboxRecord.gtdStatus);
+        setGtdStatus(updated.gtdStatus);
         setCreating(false);
         setLoading(false);
         window.requestAnimationFrame(() => editorRef.current?.focus());
@@ -234,7 +296,7 @@ export function FloatingSessionNote({
       clearSaveTimer();
       loadSequenceRef.current += 1;
     };
-  }, [clearSaveTimer, t, target.provider, target.projectPath, target.sessionId, target.sessionTitle]);
+  }, [clearSaveTimer, t, target]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -355,8 +417,8 @@ export function FloatingSessionNote({
   >
     <header className="wb-floating-note-head" onPointerDown={onHeaderPointerDown}>
       <div className="wb-floating-note-heading">
-        <strong title={projectName}>{projectName}</strong>
-        <span title={displayTitle}>{sessionTitle}</span>
+        <strong title={ownerLabel}>{ownerLabel}</strong>
+        <span title={displayTitle}>{secondaryLabel}</span>
       </div>
       <div className="wb-floating-note-actions">
         <select
