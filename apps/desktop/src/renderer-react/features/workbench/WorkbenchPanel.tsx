@@ -389,6 +389,16 @@ function workbenchFolderPath(folder: WorkbenchSessionFolder, folders: WorkbenchS
   return parts.join(" / ");
 }
 
+function sessionBelongsToProject(session: AgentSession | null, project: WorkbenchProject): boolean {
+  return Boolean(
+    session
+    && (
+      (session.projectId && project.id === session.projectId)
+      || (session.projectPath && project.path === session.projectPath)
+    )
+  );
+}
+
 function sessionNoteTarget(session: AgentSession, projectName?: string): FloatingSessionNoteTarget {
   return {
     provider: session.provider,
@@ -1903,8 +1913,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [folderDialog, setFolderDialog] = useState<WorkbenchFolderDialog | null>(null);
   const [folderPickerDialog, setFolderPickerDialog] = useState<WorkbenchFolderPickerDialog | null>(null);
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
+  const [draggedSessionKey, setDraggedSessionKey] = useState<string | null>(null);
+  const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
+  const draggedSessionRef = useRef<AgentSession | null>(null);
+  const folderExpandTimerRef = useRef(0);
   const gitRefreshTimers = useRef(new Map<string, number>());
   const gitStatusInFlightRef = useRef(false);
   const gitFetchInFlightRef = useRef(false);
@@ -1944,6 +1958,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => () => window.clearTimeout(folderExpandTimerRef.current), []);
 
   useEffect(() => {
     if (!pendingExplorerReveal || side !== "files") return;
@@ -5159,6 +5174,79 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     : { left: 8, top: 48 };
 
+  const startFolderExpand = (folderId: string, hasChildren: boolean, expanded: boolean) => {
+    window.clearTimeout(folderExpandTimerRef.current);
+    if (!hasChildren || expanded) return;
+    folderExpandTimerRef.current = window.setTimeout(() => {
+      setExpandedFolderIds((current) => {
+        if (current.has(folderId)) return current;
+        const next = new Set(current);
+        next.add(folderId);
+        return next;
+      });
+    }, 600);
+  };
+
+  const clearWorkbenchDrag = () => {
+    window.clearTimeout(folderExpandTimerRef.current);
+    draggedSessionRef.current = null;
+    setDraggedSessionKey(null);
+    setDragTargetKey(null);
+  };
+
+  const assignDraggedSessionToFolder = async (project: WorkbenchProject, folderId: string | null) => {
+    const session = draggedSessionRef.current;
+    if (!session) return;
+    if (!sessionBelongsToProject(session, project)) return;
+    clearWorkbenchDrag();
+    try {
+      if (folderId) {
+        await desktopApi().assignWorkbenchSessionToFolder({
+          projectId: project.id,
+          provider: session.provider,
+          agentSessionId: session.id,
+          folderId
+        });
+      } else {
+        await desktopApi().removeWorkbenchSessionFromFolder({
+          provider: session.provider,
+          agentSessionId: session.id
+        });
+      }
+      await loadSessions();
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  };
+
+  const handleFolderDragOver = (
+    event: React.DragEvent,
+    project: WorkbenchProject,
+    folderId: string | null,
+    hasChildren = false,
+    expanded = false
+  ) => {
+    const session = draggedSessionRef.current;
+    if (!session) return;
+    if (!sessionBelongsToProject(session, project)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragTargetKey(`${project.id}:${folderId || UNCLASSIFIED_FOLDER_ID}`);
+    if (folderId && hasChildren && !expanded) startFolderExpand(folderId, true, false);
+  };
+
+  const handleFolderDragLeave = (event: React.DragEvent, project: WorkbenchProject, folderId: string | null) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+    window.clearTimeout(folderExpandTimerRef.current);
+    setDragTargetKey((current) => current === `${project.id}:${folderId || UNCLASSIFIED_FOLDER_ID}` ? null : current);
+  };
+
+  const handleFolderDrop = (event: React.DragEvent, project: WorkbenchProject, folderId: string | null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void assignDraggedSessionToFolder(project, folderId);
+  };
+
   const renderProjectFolderRows = (project: WorkbenchProject, parentId: string | null, depth = 0): ReactNode => {
     const children = project.folders
       .filter((folder) => (folder.parentId || null) === parentId)
@@ -5174,9 +5262,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       return <Fragment key={folder.folderId}>
       <button
         type="button"
-        className={`wb-folder-row wb-session-folder-row${selectedProject === project.path && selectedFolderId === folder.folderId ? " active" : ""}`}
+        className={`wb-folder-row wb-session-folder-row${selectedProject === project.path && selectedFolderId === folder.folderId ? " active" : ""}${dragTargetKey === `${project.id}:${folder.folderId}` ? " is-drop-target" : ""}`}
         style={{ paddingLeft: `${18 + depth * 16}px` }}
         onContextMenu={(event) => folderMenu(event, project, folder)}
+        onDragOver={(event) => handleFolderDragOver(event, project, folder.folderId, hasChildren, expanded)}
+        onDragLeave={(event) => handleFolderDragLeave(event, project, folder.folderId)}
+        onDrop={(event) => handleFolderDrop(event, project, folder.folderId)}
         onClick={() => selectProjectFolder(project, folder.folderId)}
         title={folder.name}
         aria-expanded={hasChildren ? expanded : undefined}
@@ -5257,7 +5348,14 @@ export function WorkbenchPanel(): ReactPortal | null {
               const unclassifiedCount = project.sessions.filter((session) => !assignedKeys.has(sessionKey(session))).length + project.pendingCount;
               return <Fragment key={project.id}>
                 <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length + project.pendingCount}</span></button>
-                <button type="button" className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}`} onClick={() => selectProjectFolder(project, UNCLASSIFIED_FOLDER_ID)}><ThemeIcon name="folder-open" size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-folder-row-count">{unclassifiedCount}</span></button>
+                <button
+                  type="button"
+                  className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}${dragTargetKey === `${project.id}:${UNCLASSIFIED_FOLDER_ID}` ? " is-drop-target" : ""}`}
+                  onDragOver={(event) => handleFolderDragOver(event, project, null)}
+                  onDragLeave={(event) => handleFolderDragLeave(event, project, null)}
+                  onDrop={(event) => handleFolderDrop(event, project, null)}
+                  onClick={() => selectProjectFolder(project, UNCLASSIFIED_FOLDER_ID)}
+                ><ThemeIcon name="folder-open" size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-folder-row-count">{unclassifiedCount}</span></button>
                 {renderProjectFolderRows(project, null)}
               </Fragment>;
             })}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
@@ -5304,7 +5402,26 @@ export function WorkbenchPanel(): ReactPortal | null {
             const isOpen = openSessionKeys.has(sessionKey(session));
             const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
             const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
-            return <button type="button" className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}`} onContextMenu={(event) => sessionMenu(event, session)} onClick={() => void openSession(session)} title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+            return <button
+              type="button"
+              draggable
+              className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}${draggedSessionKey === sessionKey(session) ? " is-drag-source" : ""}`}
+              onDragStart={(event) => {
+                clearWorkbenchDrag();
+                draggedSessionRef.current = session;
+                setDraggedSessionKey(sessionKey(session));
+                event.dataTransfer.setData("text/plain", session.title || session.id);
+                event.dataTransfer.setData("application/x-agent-resume-workbench-session", JSON.stringify({
+                  provider: session.provider,
+                  agentSessionId: session.id
+                }));
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={clearWorkbenchDrag}
+              onContextMenu={(event) => sessionMenu(event, session)}
+              onClick={() => void openSession(session)}
+              title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
+            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>

@@ -365,7 +365,7 @@ describe("KanbanPanel", () => {
     expect(document.querySelector(".sheet-modal-panel")).toBeTruthy();
     await waitFor(() => expect(within(dialog).getByText(/Hello/)).toBeTruthy());
 
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Edit" }));
+    fireEvent.click(within(dialog).getAllByRole("tab").find((tab) => tab.querySelector('[data-theme-icon="pencil"]'))!);
     const editor = await within(dialog).findByRole("textbox", { name: "Edit markdown…" });
     fireEvent.change(editor, { target: { value: "# Edited\n" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));

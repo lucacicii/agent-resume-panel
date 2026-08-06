@@ -4,6 +4,7 @@ import { CodeEditor } from "../../components/CodeEditor";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Sheet } from "../../components/Sheet";
 import { Status, type StatusKind } from "../../components/Status";
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { useI18n } from "../../i18n";
 
@@ -183,7 +184,11 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
         options={["preview", "edit"]}
         onChange={setNoteView}
         aria-label={t("desktop.kanban.noteView")}
-        getLabel={(value) => t(value === "edit" ? "desktop.common.edit" : "desktop.common.preview")}
+        getLabel={(value) => (
+          <span title={t(value === "edit" ? "desktop.common.edit" : "desktop.common.preview")}>
+            <ThemeIcon name={value === "edit" ? "pencil" : "eye"} size={14} aria-hidden="true" />
+          </span>
+        )}
         className="kanban-note-view-segmented"
       />
       {dirty ? (
