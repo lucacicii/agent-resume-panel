@@ -6,20 +6,39 @@ import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
+type Project = Awaited<ReturnType<ReturnType<typeof desktopApi>["listProjects"]>>[number];
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function basename(value: string): string {
+  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
+function projectPathFor(project: Project): string {
+  return project.localPath || project.portableKey;
+}
+
+function projectMatchesNote(project: Project, noteProjectPath: string): boolean {
+  const path = projectPathFor(project);
+  return noteProjectPath === path
+    || noteProjectPath === project.localPath
+    || noteProjectPath === project.portableKey
+    || (!!project.localPath && noteProjectPath.endsWith(project.portableKey.replace(/^~\//, "")));
+}
+
 export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.Element {
   const { t } = useI18n();
   const [record, setRecord] = useState<Note | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [error, setError] = useState("");
   const editorRef = useRef<CodeEditorHandle>(null);
   const contentRef = useRef(content);
@@ -91,13 +110,18 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   useEffect(() => {
     let active = true;
     setLoading(true);
+    const projectRequest = typeof desktopApi().listProjects === "function"
+      ? desktopApi().listProjects().catch(() => [])
+      : Promise.resolve([] as Project[]);
     void Promise.all([
       desktopApi().notesRead({ noteId }),
-      desktopApi().standaloneNoteGetState()
-    ]).then(([result, state]) => {
+      desktopApi().standaloneNoteGetState(),
+      projectRequest
+    ]).then(([result, state, nextProjects]) => {
       if (!active) return;
       if (state.noteId !== noteId) throw new Error("Standalone note identity mismatch.");
       setRecord(result.record);
+      setProjects(nextProjects || []);
       setContent(result.content);
       contentRef.current = result.content;
       setPinned(state.pinned);
@@ -187,6 +211,38 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
     }
   };
 
+  const currentProjectPath = record?.scope === "project" ? record.projectPath : undefined;
+  const matchedProject = currentProjectPath
+    ? projects.find((project) => projectMatchesNote(project, currentProjectPath))
+    : undefined;
+  const projectSelectValue = matchedProject ? projectPathFor(matchedProject) : currentProjectPath || "";
+  const projectOptions = projects.map((project) => {
+    const value = projectPathFor(project);
+    return { value, label: project.alias || basename(value) };
+  });
+  if (!matchedProject && currentProjectPath) {
+    projectOptions.unshift({ value: currentProjectPath, label: basename(currentProjectPath) });
+  }
+
+  const updateProject = async (projectPath: string) => {
+    if (!record || deleting || projectPath === projectSelectValue) return;
+    try {
+      setMoving(true);
+      if (!(await flushSave())) return;
+      await desktopApi().notesMove({
+        noteId: record.noteId,
+        owner: projectPath ? { scope: "project", projectPath } : { scope: "library" }
+      });
+      const moved = await desktopApi().notesRead({ noteId: record.noteId });
+      setRecord(moved.record);
+      setError("");
+    } catch (moveError) {
+      setError(errorMessage(moveError));
+    } finally {
+      setMoving(false);
+    }
+  };
+
   return (
     <section className="standalone-note-window" aria-label={t("desktop.standaloneNote.editor")}>
       <header className="standalone-note-window-head">
@@ -195,17 +251,6 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
           <span>{record?.relMdPath || t("desktop.standaloneNote.title")}</span>
         </div>
         <div className="standalone-note-window-actions">
-          <select
-            className="standalone-note-window-status"
-            aria-label={t("desktop.notes.gtdStatusLabel")}
-            title={t("desktop.notes.gtdStatusLabel")}
-            value={record?.gtdStatus ?? ""}
-            disabled={!record || loading || deleting}
-            onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
-          >
-            <option value="">{t("desktop.notes.clearGtdStatus")}</option>
-            {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
-          </select>
           <button
             type="button"
             className="standalone-note-window-button standalone-note-window-delete"
@@ -246,6 +291,30 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
         </div>
       ) : record ? (
         <>
+          <div className="standalone-note-window-meta">
+            <select
+              className="standalone-note-window-project"
+              aria-label={t("desktop.notes.projectLabel")}
+              title={t("desktop.notes.projectLabel")}
+              value={projectSelectValue}
+              disabled={!record || loading || deleting || moving}
+              onChange={(event) => void updateProject(event.target.value)}
+            >
+              <option value="">{t("desktop.notes.targetLibrary")}</option>
+              {projectOptions.map((project) => <option value={project.value} key={project.value}>{project.label}</option>)}
+            </select>
+            <select
+              className="standalone-note-window-status"
+              aria-label={t("desktop.notes.gtdStatusLabel")}
+              title={t("desktop.notes.gtdStatusLabel")}
+              value={record?.gtdStatus ?? ""}
+              disabled={!record || loading || deleting}
+              onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
+            >
+              <option value="">{t("desktop.notes.clearGtdStatus")}</option>
+              {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
+            </select>
+          </div>
           <CodeEditor
             ref={editorRef}
             className="standalone-note-window-editor"

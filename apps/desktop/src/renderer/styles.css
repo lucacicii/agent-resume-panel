@@ -9191,8 +9191,8 @@ textarea.wb-editor-host {
 }
 
 .wb-floating-note-status,
-.standalone-note-window-status {
-  max-width: 112px;
+.standalone-note-window-status,
+.standalone-note-window-project {
   height: 28px;
   padding: 0 7px;
   border: 1px solid var(--color-separator);
@@ -9203,8 +9203,18 @@ textarea.wb-editor-host {
   font-size: var(--font-size-caption);
 }
 
+.wb-floating-note-status,
+.standalone-note-window-status {
+  max-width: 112px;
+}
+
+.standalone-note-window-project {
+  max-width: 170px;
+}
+
 .wb-floating-note-status:focus-visible,
-.standalone-note-window-status:focus-visible {
+.standalone-note-window-status:focus-visible,
+.standalone-note-window-project:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
@@ -11780,6 +11790,17 @@ html[data-window-mode="standalone-note"] #react-kanban {
 
 .standalone-note-window-delete:disabled {
   color: var(--color-label-secondary);
+}
+
+.standalone-note-window-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  -webkit-app-region: no-drag;
 }
 
 .standalone-note-window-editor {
