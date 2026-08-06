@@ -180,6 +180,32 @@ export function SessionsSheet(): React.JSX.Element {
     }
   };
 
+  const resumeSession = useCallback(async () => {
+    if (!previewState) return;
+    const { provider, id, title, projectPath } = previewState.session;
+    if (!provider || !id) return;
+    try {
+      const result = await desktopApi().workbenchOpenSession({ provider, id });
+      if (!result.external && result.command) {
+        close();
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
+          detail: {
+            provider,
+            id,
+            command: result.command,
+            cwd: result.cwd,
+            title: title || id,
+            projectPath: projectPath || result.cwd
+          }
+        }));
+      }
+      setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [previewState, close, t]);
+
   const meta = useMemo(() => {
     const interval = t("desktop.common.oneMinute");
     const synced = lastSyncedAt ? t("desktop.sessions.lastSynced", formatTime(lastSyncedAt, locale)) : "";
@@ -237,6 +263,9 @@ export function SessionsSheet(): React.JSX.Element {
                 </button>
                 <button type="button" className="tool-btn" onClick={() => void autoRename()} disabled={assist !== null}>
                   {assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}
+                </button>
+                <button type="button" className="tool-btn" onClick={() => void resumeSession()}>
+                  {t("desktop.agent.resumeSession")}
                 </button>
               </div>
             </div>

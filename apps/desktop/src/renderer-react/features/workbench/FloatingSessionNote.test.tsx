@@ -139,7 +139,8 @@ describe("FloatingSessionNote", () => {
   it("creates the session note with a title and flushes pending content on close", async () => {
     const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
     const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "created.md", updatedAtMs: 2, content }));
-    installBridge({ notesCreate, notesWrite });
+    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note(noteId, 2), gtdStatus: status || undefined }));
+    installBridge({ notesCreate, notesWrite, notesSetGtdStatus });
     const onClose = vi.fn();
     render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
 
@@ -150,6 +151,7 @@ describe("FloatingSessionNote", () => {
       sessionId: "session-1"
     }));
     expect(notesWrite).toHaveBeenCalledWith({ noteId: "created-note", content: initialSessionNoteContent(target) });
+    await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "created-note", status: "inbox" }));
     const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
     fireEvent.change(editor, { target: { value: "# Fix renderer\nDraft" } });
     fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));

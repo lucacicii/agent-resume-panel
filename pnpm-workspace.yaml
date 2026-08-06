@@ -9,6 +9,6 @@ allowBuilds:
   "@vscode/vsce-sign": true
   electron: true
   esbuild: true
-  inotify: set this to true or false
+  inotify: false
   keytar: true
   node-pty: true

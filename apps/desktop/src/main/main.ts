@@ -496,10 +496,11 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
 
 async function openStandaloneNoteWindow(): Promise<void> {
   try {
-    const record = await notesCreate({
+    const created = await notesCreate({
       scope: "library",
       body: "# Standalone note\n\n"
     });
+    const record = await notesSetGtdStatus(created.noteId, "inbox");
     scheduleNotesIndex();
     createStandaloneNoteWindow(record);
   } catch (error) {

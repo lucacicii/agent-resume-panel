@@ -74,6 +74,7 @@ import {
   waitForCatalogSession,
   type LaunchSessionRequest
 } from "./sessionLaunchBridge";
+import { storedWidth } from "../../storage";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -460,11 +461,6 @@ function storageString(key: string): string {
 
 function storageBoolean(key: string): boolean {
   return storageString(key) === "true";
-}
-
-function storedWidth(key: string, fallback: number, min: number, max: number): number {
-  const value = Number(storageString(key));
-  return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
 }
 
 function loadPinnedProjects(): Set<string> {

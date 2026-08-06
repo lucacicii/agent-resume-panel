@@ -211,11 +211,13 @@ export function FloatingSessionNote({
         if (loadSequenceRef.current !== sequence) return;
         setNoteId(created.noteId);
         noteIdRef.current = created.noteId;
-        setGtdStatus(undefined);
+        setGtdStatus("inbox");
         setContent(initial);
         contentRef.current = initial;
         await desktopApi().notesWrite({ noteId: created.noteId, content: initial });
+        const inboxRecord = await desktopApi().notesSetGtdStatus({ noteId: created.noteId, status: "inbox" });
         if (loadSequenceRef.current !== sequence) return;
+        setGtdStatus(inboxRecord.gtdStatus);
         setCreating(false);
         setLoading(false);
         window.requestAnimationFrame(() => editorRef.current?.focus());

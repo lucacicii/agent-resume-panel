@@ -9,6 +9,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
+import { storedWidth } from "../../storage";
 import { NoteLinkTree } from "./NoteLinkTree";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
@@ -74,11 +75,6 @@ function activeSession(session: AgentSession): boolean {
 
 function storageString(key: string): string {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
-}
-
-function storedWidth(key: string, fallback: number, min: number, max: number): number {
-  const value = Number(storageString(key));
-  return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
 }
 
 function loadPinned(key: string): Set<string> {

@@ -74,7 +74,10 @@
       "desktop.kanban.archive": "Archive",
       "desktop.kanban.archiveAll": "Archive all completed",
       "desktop.kanban.archived": "Archived",
-      "desktop.kanban.archiveAllConfirm": "Archive {0} completed items? Their GTD status will be cleared; sessions and notes are kept."
+      "desktop.kanban.archiveAllConfirm": "Archive {0} completed items? Their GTD status will be cleared; sessions and notes are kept.",
+      "desktop.kanban.projects": "Projects",
+      "desktop.kanban.allProjects": "All projects",
+      "desktop.kanban.noProjects": "No projects yet"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -1431,7 +1434,10 @@
       "desktop.kanban.archive": "归档",
       "desktop.kanban.archiveAll": "归档全部已完成",
       "desktop.kanban.archived": "已归档",
-      "desktop.kanban.archiveAllConfirm": "归档 {0} 个已完成项？将清除其 GTD 状态；会话和笔记保留。"
+      "desktop.kanban.archiveAllConfirm": "归档 {0} 个已完成项？将清除其 GTD 状态；会话和笔记保留。",
+      "desktop.kanban.projects": "项目",
+      "desktop.kanban.allProjects": "全部项目",
+      "desktop.kanban.noProjects": "暂无项目"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -2829,7 +2835,10 @@
       "desktop.kanban.archive": "アーカイブ",
       "desktop.kanban.archiveAll": "完了をすべてアーカイブ",
       "desktop.kanban.archived": "アーカイブしました",
-      "desktop.kanban.archiveAllConfirm": "完了済み {0} 件をアーカイブしますか？GTD ステータスが削除されます（セッションとノートは保持されます）。"
+      "desktop.kanban.archiveAllConfirm": "完了済み {0} 件をアーカイブしますか？GTD ステータスが削除されます（セッションとノートは保持されます）。",
+      "desktop.kanban.projects": "プロジェクト",
+      "desktop.kanban.allProjects": "すべてのプロジェクト",
+      "desktop.kanban.noProjects": "プロジェクトがありません"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
