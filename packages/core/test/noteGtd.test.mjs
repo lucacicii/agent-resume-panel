@@ -1,52 +1,47 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
-  appendNoteGtdTask,
-  deleteNoteGtdTask,
-  parseNoteGtdTasks,
-  updateNoteGtdTask
+  clearNoteGtdStatus,
+  getNoteGtdStatus,
+  NotesStore,
+  setNoteGtdStatus
 } from "../dist/index.js";
 
-test("note GTD parser only recognizes complete :::gtd blocks", () => {
-  const tasks = parseNoteGtdTasks([
-    "# Plan",
-    "- [ ] Legacy task @GTD/next",
-    ":::gtd next",
-    "Build the task view",
-    ":::",
-    ":::gtd done",
-    "Review release",
-    ":::",
-    ":::gtd later",
-    "Ignored status",
-    ":::",
-    "~~~md",
-    ":::gtd waiting",
-    "Example only",
-    ":::",
-    "~~~"
-  ].join("\n"));
-  assert.deepEqual(tasks.map((task) => ({ text: task.text, status: task.status, line: task.line })), [
-    { text: "Build the task view", status: "next", line: 3 },
-    { text: "Review release", status: "done", line: 6 }
-  ]);
-});
+test("note GTD status is catalog metadata and never rewrites Markdown", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-note-gtd-"));
+  const catalogDb = path.join(panelHome, "catalog.db");
+  const store = new NotesStore(catalogDb, panelHome);
+  await store.initialize();
 
-test("note GTD mutations preserve surrounding Markdown and reject ambiguous tasks", () => {
-  const markdown = "# Plan\n\n:::gtd next\nDuplicate\n:::\n\n:::gtd waiting\nDuplicate\n:::\n\nParagraph.\n";
-  assert.throws(() => updateNoteGtdTask(markdown, { taskText: "Duplicate", status: "done" }), /Multiple GTD tasks/);
-  const updated = updateNoteGtdTask(markdown, { taskText: "Duplicate", occurrence: 2, text: "Wait for review", status: "done" });
-  assert.ok(updated.includes(":::gtd done\nWait for review\n:::"));
-  assert.ok(updated.includes("Paragraph."));
-  const appended = appendNoteGtdTask(updated, { text: "File release", status: "next" });
-  assert.ok(appended.includes(":::gtd next\nFile release\n:::"));
-  const deleted = deleteNoteGtdTask(appended, { taskText: "File release" });
-  assert.ok(!deleted.includes("File release"));
-  assert.ok(deleted.includes("Paragraph."));
-});
+  try {
+    const record = await store.createLibraryNote(
+      "# Plan\n\n:::gtd next\nLegacy directive\n:::\n\nKeep this paragraph.\n"
+    );
+    const before = await store.readNoteContent(record.noteId);
 
-test("status updates retain multi-line GTD task content", () => {
-  const markdown = ":::gtd next\nFirst line\n\nSecond line\n:::\n";
-  const updated = updateNoteGtdTask(markdown, { taskText: "First line Second line", status: "waiting" });
-  assert.equal(updated, ":::gtd waiting\nFirst line\n\nSecond line\n:::\n");
+    await setNoteGtdStatus(catalogDb, record.noteId, "next");
+    assert.equal(await getNoteGtdStatus(catalogDb, record.noteId), "next");
+    assert.equal((await store.getNote(record.noteId)).gtdStatus, "next");
+    assert.equal(await store.readNoteContent(record.noteId), before);
+
+    await store.writeNoteContent(record.noteId, `${before}\nEdited without touching status.\n`);
+    assert.equal((await store.getNote(record.noteId)).gtdStatus, "next");
+
+    const renamed = await store.renameNote(record.noteId, "renamed.md");
+    assert.equal(renamed.gtdStatus, "next");
+    const moved = await store.moveNote(record.noteId, { scope: "project", projectPath: path.join(panelHome, "project") });
+    assert.equal(moved.gtdStatus, "next");
+    assert.equal(await getNoteGtdStatus(catalogDb, record.noteId), "next");
+    assert.match(await store.readNoteContent(record.noteId), /:::gtd next\nLegacy directive\n:::/);
+
+    await clearNoteGtdStatus(catalogDb, record.noteId);
+    assert.equal(await getNoteGtdStatus(catalogDb, record.noteId), undefined);
+    assert.equal((await store.getNote(record.noteId)).gtdStatus, undefined);
+    assert.match(await store.readNoteContent(record.noteId), /:::gtd next\nLegacy directive\n:::/);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
 });

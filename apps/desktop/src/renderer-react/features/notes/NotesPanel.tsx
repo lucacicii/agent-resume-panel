@@ -7,11 +7,11 @@ import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "
 import { renderMarkdown } from "../../components/Markdown";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
+import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { NoteLinkTree } from "./NoteLinkTree";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
-type GtdTask = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListGtd"]>>[number];
 type NoteTreeNode = {
   noteId: string;
   title: string;
@@ -56,8 +56,6 @@ const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "notes-list-pane-width";
 const LINK_TREE_HEIGHT_KEY = "notes-link-tree-height";
 const SIDEBAR_VIEW_KEY = "notes-sidebar-view";
-const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
-
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
 }
@@ -279,7 +277,6 @@ export function NotesPanel(): ReactPortal | null {
   const { t } = useI18n();
   const [active, setActive] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [gtdTasks, setGtdTasks] = useState<GtdTask[]>([]);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Note | null>(null);
@@ -340,16 +337,6 @@ export function NotesPanel(): ReactPortal | null {
   findQueryRef.current = findQuery;
   contentRef.current = content;
   selectedRef.current = selected;
-  const noteSlashCommands = useMemo(() => GTD_STATUSES.map((gtdStatus) => {
-    const opener = ":::gtd " + gtdStatus;
-    return {
-      label: t("desktop.notes.slashGtdTask"),
-      tag: { label: "@GTD/" + gtdStatus, toneClassName: "is-" + gtdStatus },
-      insert: opener + "\n\n:::",
-      cursorOffset: opener.length + 1
-    };
-  }), [t]);
-
   const refreshLinkMeta = useCallback(async () => {
     const api = desktopApi();
     if (typeof api.notesListLinkedChildIds !== "function") {
@@ -384,18 +371,13 @@ export function NotesPanel(): ReactPortal | null {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
-      const listGtd = typeof desktopApi().notesListGtd === "function"
-        ? desktopApi().notesListGtd()
-        : Promise.resolve([] as GtdTask[]);
-      const [nextNotes, nextSessions, nextAliases, nextProjects, nextGtdTasks] = await Promise.all([
+      const [nextNotes, nextSessions, nextAliases, nextProjects] = await Promise.all([
         desktopApi().notesList(),
         desktopApi().listSessions(),
         desktopApi().listProjectAliases(),
-        listProjects,
-        listGtd
+        listProjects
       ]);
       setNotes(nextNotes);
-      setGtdTasks(nextGtdTasks || []);
       setSessions(nextSessions);
       setAliases(nextAliases);
       setCatalogProjects(nextProjects || []);
@@ -417,9 +399,6 @@ export function NotesPanel(): ReactPortal | null {
       setNotes((current) => current.map((item) => item.noteId === note.noteId
         ? { ...item, ...updated, contentPreview: nextContent.slice(0, 300) }
         : item));
-      if (typeof desktopApi().notesListGtd === "function") {
-        setGtdTasks(await desktopApi().notesListGtd());
-      }
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   }, [refreshLinkMeta]);
 
@@ -852,18 +831,22 @@ export function NotesPanel(): ReactPortal | null {
 
   const gtdStatusCounts = useMemo(() => {
     const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
-    for (const task of gtdTasks) counts.set(task.status, (counts.get(task.status) || 0) + 1);
+    for (const note of notes) {
+      if (note.gtdStatus) counts.set(note.gtdStatus, (counts.get(note.gtdStatus) || 0) + 1);
+    }
     return counts;
-  }, [gtdTasks]);
+  }, [notes]);
 
-  const visibleGtdTasks = useMemo(() => {
+  const visibleGtdNotes = useMemo(() => {
     const query = gtdQuery.trim().toLocaleLowerCase();
-    return gtdTasks.filter((task) => {
-      const matchesStatus = selectedGtdStatus === "all" || task.status === selectedGtdStatus;
-      const searchable = `${task.text} ${task.noteTitle} ${task.relMdPath} ${task.projectPath || ""} ${task.status}`.toLocaleLowerCase();
-      return matchesStatus && (!query || searchable.includes(query));
-    });
-  }, [gtdQuery, gtdTasks, selectedGtdStatus]);
+    return notes
+      .filter((note) => {
+        const matchesStatus = selectedGtdStatus === "all" || note.gtdStatus === selectedGtdStatus;
+        const searchable = `${titleFor(note)} ${note.filename} ${note.relMdPath} ${note.projectPath || ""} ${note.contentPreview || ""} ${note.gtdStatus || ""}`.toLocaleLowerCase();
+        return note.gtdStatus && matchesStatus && (!query || searchable.includes(query));
+      })
+      .sort((left, right) => Number(right.gtdStatus === "done") - Number(left.gtdStatus === "done") || right.updatedAtMs - left.updatedAtMs || titleFor(left).localeCompare(titleFor(right)));
+  }, [gtdQuery, notes, selectedGtdStatus]);
 
   const targetProjects = useMemo(() => projects.filter((project) => `${project.label} ${project.path}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [projects, targetQuery]);
   const targetSessions = useMemo(() => folderSessions.filter((session) => `${session.title} ${session.id} ${session.provider}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [folderSessions, targetQuery]);
@@ -918,13 +901,21 @@ export function NotesPanel(): ReactPortal | null {
     try { localStorage.setItem(SIDEBAR_VIEW_KEY, next); } catch { /* persistence is optional */ }
   };
 
-  const openGtdTask = (task: GtdTask) => {
-    const note = notes.find((item) => item.noteId === task.noteId);
-    if (!note) return;
+  const openGtdNote = (note: Note) => {
     selectSidebarView("notes");
-    void open(note).then(() => {
-      window.requestAnimationFrame(() => editorRef.current?.find(task.text));
-    });
+    void open(note);
+  };
+
+  const setNoteGtdStatus = async (note: Note, status: GtdStatus | null) => {
+    try {
+      const updated = await desktopApi().notesSetGtdStatus({ noteId: note.noteId, status });
+      setNotes((current) => current.map((item) => item.noteId === note.noteId ? { ...item, ...updated } : item));
+      setSelected((current) => current?.noteId === note.noteId ? { ...current, ...updated } : current);
+      setContextMenu(null);
+      setStatus({ text: "" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
   };
 
   const togglePinnedProject = async (projectPath: string, projectId?: string) => {
@@ -1193,7 +1184,7 @@ export function NotesPanel(): ReactPortal | null {
             <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.sessionsSection")}</div>{folderSessions.map((session) => <button type="button" key={sessionKey(session)} className={`notes-folder-row${folder.kind === "session" && folder.provider === session.provider && folder.sessionId === session.id ? " active" : ""}`} onClick={() => selectFolder({ kind: "session", provider: session.provider, sessionId: session.id })}><span className="notes-folder-row-text"><span className="notes-folder-row-label">{session.title || session.id}</span><span className="notes-folder-row-desc">{session.provider}</span></span></button>)}</section>
           </div>
           </> : <div className="notes-gtd-folders">
-            <button type="button" className={`notes-folder-row${selectedGtdStatus === "all" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("all")}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{gtdTasks.length}</span></button>
+            <button type="button" className={`notes-folder-row${selectedGtdStatus === "all" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("all")}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.gtdStatus).length}</span></button>
             {GTD_STATUSES.filter((status) => status !== "done").map((gtdStatus) => <button type="button" className={`notes-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="notes-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="notes-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}
             <div className="wb-gtd-completed-group"><button type="button" className="notes-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`notes-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div>
           </div>}
@@ -1231,11 +1222,11 @@ export function NotesPanel(): ReactPortal | null {
             </div> : null}
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
           </> : <>
-            <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtd")} placeholder={t("desktop.notes.searchGtd")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
-            <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdListMeta", visibleGtdTasks.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-            <div className="notes-list notes-gtd-list">{visibleGtdTasks.length ? visibleGtdTasks.map((task) => <button type="button" key={`${task.noteId}:${task.line}`} className={`notes-list-item notes-gtd-list-item is-${task.status}${task.status === "done" ? " is-completed" : ""}`} onClick={() => openGtdTask(task)}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap"><span className={`wb-gtd-status-dot is-${task.status}`} aria-hidden="true" /><span className="notes-list-item-title">{task.text}</span></span></span><span className="notes-list-item-preview">{task.noteTitle} · {task.relMdPath}</span></button>) : <p className="muted notes-list-empty">{t("desktop.notes.noGtdTasks")}</p>}</div>
+            <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtdNotes")} placeholder={t("desktop.notes.searchGtdNotes")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
+            <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdNotesListMeta", visibleGtdNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
+            <div className="notes-list notes-gtd-list">{visibleGtdNotes.length ? visibleGtdNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item notes-gtd-list-item is-${note.gtdStatus}${note.gtdStatus === "done" ? " is-completed" : ""}`} onClick={() => openGtdNote(note)}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap"><span className={`wb-gtd-status-dot is-${note.gtdStatus}`} aria-hidden="true" /><span className="notes-list-item-title">{titleFor(note)}</span></span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.relMdPath} · {t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)}</span></button>) : <p className="muted notes-list-empty">{t("desktop.notes.noGtdNotes")}</p>}</div>
           </>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
@@ -1351,13 +1342,13 @@ export function NotesPanel(): ReactPortal | null {
                 </button>
               </div>
             ) : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} slashCommands={noteSlashCommands} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
             </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
           <Status kind={status.kind}>{status.text}</Status>
         </main>
       </div>
-      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 260)) }} onContextMenu={(event) => event.preventDefault()}>
+      {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - (contextMenu.kind === "note" ? 520 : 260))) }} onContextMenu={(event) => event.preventDefault()}>
         {contextMenu.kind === "project" ? <>
           <button type="button" role="menuitem" onClick={() => { void togglePinnedProject(contextMenu.projectPath, contextMenu.projectId); setContextMenu(null); }}>{t(
             (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -1382,6 +1373,10 @@ export function NotesPanel(): ReactPortal | null {
           }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          <div className="context-menu-separator" role="separator" />
+          <div className="notes-context-menu-label">{t("desktop.notes.gtdStatusLabel")}</div>
+          {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitem" key={gtdStatus} className={contextMenu.note.gtdStatus === gtdStatus ? "is-active" : ""} onClick={() => void setNoteGtdStatus(contextMenu.note, gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" />{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+          {contextMenu.note.gtdStatus ? <button type="button" role="menuitem" onClick={() => void setNoteGtdStatus(contextMenu.note, null)}>{t("desktop.notes.clearGtdStatus")}</button> : null}
           {contextMenu.note.scope === "project" ? <>
             <div className="context-menu-separator" role="separator" />
             <button type="button" role="menuitem" onClick={() => { void createLinkedChild(contextMenu.note); setContextMenu(null); }}>{t("desktop.notes.newLinkedChild")}</button>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
+import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
@@ -175,6 +176,17 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
     }
   };
 
+  const updateGtdStatus = async (status: GtdStatus | null) => {
+    if (!record || deleting) return;
+    try {
+      const updated = await desktopApi().notesSetGtdStatus({ noteId: record.noteId, status });
+      setRecord(updated);
+      setError("");
+    } catch (statusError) {
+      setError(errorMessage(statusError));
+    }
+  };
+
   return (
     <section className="standalone-note-window" aria-label={t("desktop.standaloneNote.editor")}>
       <header className="standalone-note-window-head">
@@ -183,6 +195,17 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
           <span>{record?.relMdPath || t("desktop.standaloneNote.title")}</span>
         </div>
         <div className="standalone-note-window-actions">
+          <select
+            className="standalone-note-window-status"
+            aria-label={t("desktop.notes.gtdStatusLabel")}
+            title={t("desktop.notes.gtdStatusLabel")}
+            value={record?.gtdStatus ?? ""}
+            disabled={!record || loading || deleting}
+            onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
+          >
+            <option value="">{t("desktop.notes.clearGtdStatus")}</option>
+            {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
+          </select>
           <button
             type="button"
             className="standalone-note-window-button standalone-note-window-delete"

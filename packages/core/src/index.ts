@@ -91,12 +91,11 @@ export {
 } from "./settings/newSessionTarget";
 export type { ParsedWorkbenchNewSessionTarget } from "./settings/newSessionTarget";
 export {
-  parseNoteGtdTasks,
-  appendNoteGtdTask,
-  updateNoteGtdTask,
-  deleteNoteGtdTask
+  loadNoteGtdMap,
+  getNoteGtdStatus,
+  setNoteGtdStatus,
+  clearNoteGtdStatus
 } from "./notes/gtd";
-export type { NoteGtdTask } from "./notes/gtd";
 export * from "./flow/types";
 export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
 export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";

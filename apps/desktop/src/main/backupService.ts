@@ -203,6 +203,7 @@ const CATALOG_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   projects: { keys: ["project_id"], timestamp: "updated_at_ms" },
   project_local_paths: { keys: ["project_id", "machine_id"], timestamp: "updated_at_ms" },
   session_gtd: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
+  note_gtd: { keys: ["note_id"], timestamp: "updated_at_ms" },
   session_notes: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   project_notes: { keys: ["project_path"], timestamp: "updated_at_ms" }
 };

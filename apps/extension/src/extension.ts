@@ -67,7 +67,8 @@ import {
   openProjectNoteCommand,
   openSessionNoteCommand,
   renameNoteCommand,
-  revealNoteInOsCommand
+  revealNoteInOsCommand,
+  setNoteGtdStatusCommand
 } from "./notes/noteCommands";
 import { ensureCatalogSchema } from "./catalog/db";
 import { NotesStore } from "./notes/notesStore";
@@ -370,6 +371,12 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       void openNoteCommand(notesStore, notesTree, node);
+    }),
+    ...menuCommand("agentResume.setNoteGtdStatus", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void setNoteGtdStatusCommand(notesStore, notesTree, node, () => refreshNotesUi(tree, true));
     }),
     ...menuCommand("agentResume.deleteNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {

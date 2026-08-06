@@ -64,6 +64,7 @@
     "onCommand:agentResume.refreshGtd",
     "onCommand:agentResume.refreshNotes",
     "onCommand:agentResume.setSessionGtdStatus",
+    "onCommand:agentResume.setNoteGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
     "onCommand:agentResume.openReport",
@@ -832,6 +833,11 @@
       {
         "command": "agentResume.deleteProjectNote",
         "title": "Delete Project Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setNoteGtdStatus",
+        "title": "Set Note GTD Status…",
         "category": "Agent Resume"
       },
       {

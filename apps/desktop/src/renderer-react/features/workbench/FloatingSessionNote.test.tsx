@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle } from "react";
+import type { GtdStatus } from "@agent-resume/core";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -26,7 +27,16 @@ const messages = {
   "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}",
   "desktop.workbench.floatingNoteDeleteFailed": "Delete failed: {0}",
   "desktop.notes.deleteNote": "Delete note",
-  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed."
+  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed.",
+  "desktop.workbench.setGtdStatus": "Set GTD status",
+  "desktop.workbench.clearGtdStatus": "Clear GTD status",
+  "desktop.workbench.gtdStatusSaveFailed": "Could not save GTD status: {0}",
+  "desktop.workbench.gtdStatus.inbox": "Inbox",
+  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.waiting": "Waiting",
+  "desktop.workbench.gtdStatus.someday": "Someday",
+  "desktop.workbench.gtdStatus.reference": "Reference",
+  "desktop.workbench.gtdStatus.done": "Done"
 };
 
 const target = {
@@ -70,6 +80,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     notesList: async () => [],
     notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 1), content: "# Existing\n" }),
     notesWrite: vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: `${noteId}.md`, updatedAtMs: Date.now(), content })),
+    notesSetGtdStatus: vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...note(noteId, Date.now()), gtdStatus: status || undefined })),
     notesDelete: vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] })),
     notesCreate: vi.fn(async () => ({ noteId: "created-note", filename: "created.md" })),
     ...overrides
@@ -113,6 +124,16 @@ describe("FloatingSessionNote", () => {
     expect(notesWrite).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(notesWrite).toHaveBeenCalledWith({ noteId: "latest", content: "# Latest\nChanged" });
+  });
+
+  it("sets the floating note GTD status through catalog metadata", async () => {
+    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note(noteId, 30), gtdStatus: status || undefined }));
+    installBridge({ notesSetGtdStatus });
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={vi.fn()} /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Floating note editor" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Set GTD status" }), { target: { value: "waiting" } });
+    await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "created-note", status: "waiting" }));
   });
 
   it("creates the session note with a title and flushes pending content on close", async () => {

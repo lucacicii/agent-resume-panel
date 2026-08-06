@@ -101,15 +101,12 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_append",
       "note_create",
       "note_delete",
-      "note_gtd_create",
-      "note_gtd_delete",
-      "note_gtd_list",
-      "note_gtd_update",
       "note_list",
       "note_move",
       "note_read",
       "note_rename",
       "note_search",
+      "note_set_gtd",
       "note_set_parent",
       "note_tree_read",
       "note_write",
@@ -209,39 +206,43 @@ test("note_list pages every note without requiring a search query", async () => 
   }
 });
 
-test("MCP GTD tools manage :::gtd blocks without rewriting unrelated content", async () => {
+test("MCP note_set_gtd stores note metadata without rewriting Markdown", async () => {
   const { ctx } = await setupTestContext();
-  const record = await ctx.notesStore.createLibraryNote("# Plan\n\nKeep this paragraph.\n");
+  const record = await ctx.notesStore.createLibraryNote(
+    "# Plan\n\n:::gtd next\nLegacy directive\n:::\n\nKeep this paragraph.\n"
+  );
+  const before = await ctx.notesStore.readNoteContent(record.noteId);
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const created = await client.callTool({
-      name: "note_gtd_create",
-      arguments: { noteId: record.noteId, text: "Ship Notes GTD" }
-    });
-    assert.notEqual(created.isError, true);
-    assert.ok(created.content[0].text.includes('"status": "next"'));
-
-    const listed = await client.callTool({ name: "note_gtd_list", arguments: { query: "Ship Notes" } });
-    assert.ok(listed.content[0].text.includes("Ship Notes GTD"));
-
     const updated = await client.callTool({
-      name: "note_gtd_update",
-      arguments: { noteId: record.noteId, taskText: "Ship Notes GTD", status: "done" }
+      name: "note_set_gtd",
+      arguments: { noteId: record.noteId, status: "waiting" }
     });
     assert.notEqual(updated.isError, true);
+    const updatedNote = parseToolJson(updated);
+    assert.equal(updatedNote.gtdStatus, "waiting");
+    assert.equal(updatedNote.note.gtdStatus, "waiting");
+    assert.equal(await ctx.notesStore.readNoteContent(record.noteId), before);
 
-    const content = await ctx.notesStore.readNoteContent(record.noteId);
-    assert.ok(content.includes("Keep this paragraph."));
-    assert.ok(content.includes(":::gtd done\nShip Notes GTD\n:::"));
-
-    const deleted = await client.callTool({
-      name: "note_gtd_delete",
-      arguments: { noteId: record.noteId, taskText: "Ship Notes GTD" }
+    const listed = await client.callTool({
+      name: "note_list",
+      arguments: { gtdStatus: "waiting" }
     });
-    assert.notEqual(deleted.isError, true);
-    assert.ok(!(await ctx.notesStore.readNoteContent(record.noteId)).includes("Ship Notes GTD"));
+    const page = parseToolJson(listed);
+    assert.equal(page.total, 1);
+    assert.equal(page.items[0].noteId, record.noteId);
+    assert.equal(page.items[0].gtdStatus, "waiting");
+
+    const cleared = await client.callTool({
+      name: "note_set_gtd",
+      arguments: { noteId: record.noteId, status: null }
+    });
+    assert.notEqual(cleared.isError, true);
+    assert.equal(parseToolJson(cleared).gtdStatus, null);
+    assert.equal((await ctx.notesStore.getNote(record.noteId)).gtdStatus, undefined);
+    assert.equal(await ctx.notesStore.readNoteContent(record.noteId), before);
   } finally {
     await client.close();
     await server.close();

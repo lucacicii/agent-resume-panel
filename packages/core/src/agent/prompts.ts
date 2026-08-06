@@ -93,7 +93,7 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
     "For note search or enumeration, use note_search or note_list with owner filters when the project, provider, or session is known. Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
     "For linked Project Notes, use note_tree_read to inspect the tree, note_set_parent to reparent or detach, note_move to change owner, and note_rename for filenames. Never put a library or session note into the association tree.",
     "note_write and note_append preserve managed frontmatter; send Markdown body content or a complete Markdown document without trying to replace noteId or owner metadata.",
-    "For GTD tasks inside notes, use note_gtd_list, note_gtd_create, note_gtd_update, or note_gtd_delete instead of overwriting full notes. A GTD task is a :::gtd status block; use status done to complete a task. If repeated task text requires an occurrence, ask the user to choose before a write or delete.",
+    "For GTD status on Markdown notes, use note_list or note_search with gtdStatus to find notes, and note_set_gtd to set a status or clear it with null. Note GTD status is catalog metadata and never requires writing a :::gtd block or changing note content.",
     "Memory tools (report_search, report_read, report_list) are read-only. They supplement the Report Sources already in the prompt — they do not replace them.",
     "When Report Sources already cite a reportId, call report_read to expand the full digest instead of report_search.",
     "Use report_list to enumerate digests in a period (e.g. recent weekly reports). Use report_search only when sources are insufficient or the user requests a new search.",

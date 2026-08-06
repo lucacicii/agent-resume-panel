@@ -41,7 +41,7 @@ vi.mock("../../components/CodeEditor", () => ({
   })
 }));
 
-const libraryNote = { noteId: "note-1", scope: "library", filename: "renderer.md", relDir: "library", relMdPath: "notes/library/renderer.md", title: "Renderer plan", contentPreview: "Move the Desktop renderer", createdAtMs: 1, updatedAtMs: 2 };
+const libraryNote = { noteId: "note-1", scope: "library", filename: "renderer.md", relDir: "library", relMdPath: "notes/library/renderer.md", title: "Renderer plan", contentPreview: "Move the Desktop renderer", gtdStatus: "next" as const, createdAtMs: 1, updatedAtMs: 2 };
 const projectNote = { noteId: "note-2", scope: "project", projectPath: "/work/panel", filename: "project.md", relDir: "projects/panel", relMdPath: "notes/projects/panel/project.md", title: "Project note", contentPreview: "Project specific work", createdAtMs: 2, updatedAtMs: 3 };
 
 const messages = {
@@ -68,10 +68,11 @@ const messages = {
   "desktop.notes.findInNote": "Find in note",
   "desktop.notes.copyPath": "Copy path",
   "desktop.notes.sidebarView": "Notes sidebar view",
-  "desktop.notes.searchGtd": "Search GTD tasks",
-  "desktop.notes.gtdListMeta": "{0} GTD tasks",
-  "desktop.notes.noGtdTasks": "No GTD tasks found",
-  "desktop.notes.slashGtdTask": "GTD task",
+  "desktop.notes.searchGtdNotes": "Search GTD notes",
+  "desktop.notes.gtdNotesListMeta": "{0} GTD notes",
+  "desktop.notes.noGtdNotes": "No GTD notes found",
+  "desktop.notes.gtdStatusLabel": "Note GTD status",
+  "desktop.notes.clearGtdStatus": "Clear GTD status",
   "desktop.notes.linkTree": "Related notes",
   "desktop.notes.newLinkedChild": "New linked child note",
   "desktop.notes.setAsLinkedChild": "Set as child of…",
@@ -125,6 +126,7 @@ afterEach(() => {
 
 function installBridge() {
   const notesWrite = vi.fn(async () => ({ noteId: "note-1", filename: "renderer.md", updatedAtMs: 3 }));
+  const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...libraryNote, noteId, gtdStatus: status || undefined }));
   const notesCreate = vi.fn(async () => ({ noteId: "note-3", filename: "new-note.md" }));
   const listSessions = vi.fn(async () => [{ provider: "codex" as const, id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }]);
   window.agentResume = {
@@ -148,12 +150,12 @@ function installBridge() {
     notesResolveLinkRoot: async ({ noteId }: { noteId: string }) => ({ rootNoteId: noteId }),
     notesCreateLinkedChild: async () => ({ noteId: "note-4", filename: "child.md" }),
     notesSetParent: async () => ({ ok: true }),
-    notesListGtd: async () => [{ text: "Ship GTD", status: "next", line: 3, occurrence: 1, noteId: "note-1", noteTitle: "Renderer plan", scope: "library", relMdPath: "notes/library/renderer.md", updatedAtMs: 2 }],
     listSessions,
     listProjectAliases: async () => ({ "/work/panel": "Panel" }),
     setProjectAlias: async () => ({ ok: true }),
     notesRead: async ({ noteId }: { noteId: string }) => ({ record: noteId === "note-3" ? { ...libraryNote, noteId, filename: "new-note.md", title: "New note" } : noteId === "note-2" ? projectNote : libraryNote, content: "# Renderer\nInitial initial" }),
     notesWrite,
+    notesSetGtdStatus,
     notesCreate,
     notesMove: async () => ({ noteId: "note-2", filename: "project.md", scope: "library" }),
     notesRename: async () => ({ noteId: "note-1", filename: "renamed.md" }),
@@ -246,15 +248,15 @@ describe("NotesPanel", () => {
     expect(JSON.parse(localStorage.getItem("pinned-notes") || "[]")).toEqual(["note-2"]);
   });
 
-  it("searches GTD tasks and opens their source note", async () => {
+  it("searches GTD notes and opens their source note", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
     installBridge();
     render(<I18nProvider><NotesPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
     fireEvent.click(await screen.findByRole("tab", { name: "GTD" }));
-    expect(await screen.findByText("Ship GTD")).toBeTruthy();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search GTD tasks" }), { target: { value: "Ship" } });
-    fireEvent.click(screen.getByRole("button", { name: /Ship GTD/ }));
+    expect(await screen.findByText("Renderer plan")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search GTD notes" }), { target: { value: "Renderer" } });
+    fireEvent.click(screen.getByRole("button", { name: /Renderer plan/ }));
     expect(await screen.findByText("Renderer plan")).toBeTruthy();
   });
 

@@ -23,6 +23,7 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.deleteSessionNote", key: "menu.session.deleteNote" },
   { base: "agentResume.openProjectNote", key: "menu.project.openNote" },
   { base: "agentResume.deleteProjectNote", key: "menu.project.deleteNote" },
+  { base: "agentResume.setNoteGtdStatus", key: "menu.notes.setGtdStatus" },
   { base: "agentResume.openNote", key: "menu.notes.open" },
   { base: "agentResume.renameNote", key: "menu.notes.rename" },
   { base: "agentResume.deleteNote", key: "menu.notes.delete" },

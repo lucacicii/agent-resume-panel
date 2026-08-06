@@ -6,7 +6,8 @@ import { AcpSessionRecord } from "../acp/types";
 import { NoteRecord } from "../catalog/notes";
 import { AgentSession } from "../history/types";
 import { t } from "../i18n";
-import { GtdTreeProvider } from "../gtd/gtdTree";
+import { GtdTreeProvider, gtdStatusLabel } from "../gtd/gtdTree";
+import { GTD_STATUSES, type GtdStatus } from "../catalog/gtd";
 import { SessionTreeProvider } from "../tree/sessionTree";
 import { noteAssetsDirName } from "./noteNaming";
 import { NoteOwner } from "./notesPaths";
@@ -378,6 +379,47 @@ async function resolveNoteOwnerForCommand(
     sessionId: picked.session.id,
     projectPath: picked.session.projectPath
   };
+}
+
+export async function setNoteGtdStatusCommand(
+  notesStore: NotesStore,
+  notesTree: NotesTreeProvider,
+  node: unknown,
+  onChanged?: () => void
+): Promise<void> {
+  const record = notesTree.getNoteFromNode(node);
+  if (!record) {
+    return;
+  }
+  const picked = await vscode.window.showQuickPick<
+    { label: string; description?: string; status?: GtdStatus }
+  >(
+    [
+      ...GTD_STATUSES.map((status) => ({
+        label: gtdStatusLabel(status),
+        description: record.gtdStatus === status ? t("dialog.setGtdStatusCurrent") : undefined,
+        status
+      })),
+      { label: t("menu.notes.clearGtdStatus") }
+    ],
+    {
+      title: t("dialog.setGtdStatusTitle"),
+      placeHolder: t("dialog.setGtdStatusPlaceholder")
+    }
+  );
+  if (!picked) {
+    return;
+  }
+
+  const updated = picked.status
+    ? await notesStore.setNoteGtdStatus(record.noteId, picked.status)
+    : await notesStore.clearNoteGtdStatus(record.noteId);
+  onChanged?.();
+  vscode.window.showInformationMessage(
+    picked.status
+      ? t("notification.gtdStatusSet", gtdStatusLabel(updated.gtdStatus!))
+      : t("notification.gtdStatusCleared")
+  );
 }
 
 export async function moveNoteCommand(

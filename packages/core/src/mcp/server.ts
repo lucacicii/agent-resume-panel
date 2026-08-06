@@ -12,6 +12,7 @@ import {
   handleNoteRename,
   handleNoteRead,
   handleNoteSearch,
+  handleNoteSetGtd,
   handleNoteSetParent,
   handleNoteTreeRead,
   handleNoteWrite,
@@ -23,22 +24,13 @@ import {
   noteRenameSchema,
   noteReadSchema,
   noteSearchSchema,
+  noteSetGtdSchema,
   noteSetParentSchema,
   noteTreeReadSchema,
   noteWriteSchema,
   runNoteTool,
   type NoteToolContext
 } from "./tools";
-import {
-  handleNoteGtdCreate,
-  handleNoteGtdDelete,
-  handleNoteGtdList,
-  handleNoteGtdUpdate,
-  noteGtdCreateSchema,
-  noteGtdDeleteSchema,
-  noteGtdListSchema,
-  noteGtdUpdateSchema
-} from "./gtdTools";
 import {
   handleReportList,
   handleReportRead,
@@ -108,7 +100,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         "List indexed notes with owner filters, root/parent filters, relationship summaries, and pagination. Use this instead of note_search when the user asks to enumerate notes.",
       inputSchema: noteListSchema
     },
-    async (args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number }) => {
+    async (args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number }) => {
       return runNoteTool(() => handleNoteList(args, ctx));
     }
   );
@@ -120,7 +112,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         "Search notes by keyword across metadata, indexed content, paths, and session identity. Supports owner filters and returns relationship-aware summaries.",
       inputSchema: noteSearchSchema
     },
-    async (args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; limit?: number }) => {
+    async (args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number }) => {
       return runNoteTool(() => handleNoteSearch(args, ctx));
     }
   );
@@ -266,39 +258,12 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   );
 
   server.registerTool(
-    "note_gtd_list",
+    "note_set_gtd",
     {
-      description: "List GTD tasks stored in Markdown notes. Tasks are :::gtd blocks with inbox, next, waiting, someday, reference, or done status. Read-only.",
-      inputSchema: noteGtdListSchema
+      description: "Set or clear the catalog GTD status for one Markdown note. This changes catalog metadata and does not modify note content.",
+      inputSchema: noteSetGtdSchema
     },
-    async (args: { query?: string; status?: string; noteId?: string; limit?: number }) => runNoteTool(() => handleNoteGtdList(args, ctx))
-  );
-
-  server.registerTool(
-    "note_gtd_create",
-    {
-      description: "Append one :::gtd task block to an existing note. Provide task text; status defaults to next.",
-      inputSchema: noteGtdCreateSchema
-    },
-    async (args: { noteId: string; text: string; status?: import("../gtd/types").GtdStatus }) => runNoteTool(() => handleNoteGtdCreate(args, ctx))
-  );
-
-  server.registerTool(
-    "note_gtd_update",
-    {
-      description: "Update one GTD task in an existing note. Identify it by its current :::gtd block text. If list results show repeated text, pass the occurrence selected by the user.",
-      inputSchema: noteGtdUpdateSchema
-    },
-    async (args: { noteId: string; taskText: string; occurrence?: number; text?: string; status?: import("../gtd/types").GtdStatus }) => runNoteTool(() => handleNoteGtdUpdate(args, ctx))
-  );
-
-  server.registerTool(
-    "note_gtd_delete",
-    {
-      description: "Delete one GTD task from an existing note. Identify it by :::gtd block text. If repeated, ask the user to choose an occurrence before deleting.",
-      inputSchema: noteGtdDeleteSchema
-    },
-    async (args: { noteId: string; taskText: string; occurrence?: number }) => runNoteTool(() => handleNoteGtdDelete(args, ctx))
+    async (args: { noteId: string; status: import("../gtd/types").GtdStatus | null }) => runNoteTool(() => handleNoteSetGtd(args, ctx))
   );
 
   const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };

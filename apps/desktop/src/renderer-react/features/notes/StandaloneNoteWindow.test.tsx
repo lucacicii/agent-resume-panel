@@ -27,7 +27,15 @@ const messages = {
   "desktop.standaloneNote.saveFailed": "Save failed: {0}",
   "desktop.standaloneNote.deleteFailed": "Delete failed: {0}",
   "desktop.notes.deleteNote": "Delete note",
-  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed."
+  "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed.",
+  "desktop.notes.gtdStatusLabel": "Note GTD status",
+  "desktop.notes.clearGtdStatus": "Clear GTD status",
+  "desktop.workbench.gtdStatus.inbox": "Inbox",
+  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.waiting": "Waiting",
+  "desktop.workbench.gtdStatus.someday": "Someday",
+  "desktop.workbench.gtdStatus.reference": "Reference",
+  "desktop.workbench.gtdStatus.done": "Done"
 };
 
 const record = {
@@ -54,6 +62,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     content
   }));
   const notesDelete = vi.fn(async () => ({ ok: true, deletedNoteIds: [record.noteId] }));
+  const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...record, noteId, gtdStatus: status || undefined }));
   const standaloneNoteSetAlwaysOnTop = vi.fn(async ({ pinned }: { pinned: boolean }) => ({ pinned }));
   const standaloneNoteClose = vi.fn(async () => ({ ok: true }));
   const standaloneNoteCloseReady = vi.fn(async ({ ok }: { ok: boolean }) => ({ ok }));
@@ -63,6 +72,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     notesRead: async () => ({ record, content: "# Standalone note\n" }),
     notesWrite,
     notesDelete,
+    notesSetGtdStatus,
     standaloneNoteGetState: async () => ({ noteId: "note-1", pinned: false }),
     standaloneNoteSetAlwaysOnTop,
     standaloneNoteClose,
@@ -70,7 +80,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     onStandaloneNoteCloseRequested: closeRequested,
     ...overrides
   } as unknown as typeof window.agentResume;
-  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady };
+  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, notesSetGtdStatus, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady };
 }
 
 afterEach(() => {
@@ -88,6 +98,15 @@ describe("StandaloneNoteWindow", () => {
     expect((editor as HTMLTextAreaElement).value).toBe("# Standalone note\n");
     fireEvent.click(screen.getByRole("button", { name: "Keep note above all apps" }));
     await waitFor(() => expect(standaloneNoteSetAlwaysOnTop).toHaveBeenCalledWith({ pinned: true }));
+  });
+
+  it("sets the note GTD status through catalog metadata", async () => {
+    const { notesSetGtdStatus } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Note GTD status" }), { target: { value: "next" } });
+    await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "note-1", status: "next" }));
   });
 
   it("confirms deletion, removes the Library note, and closes the window", async () => {
@@ -121,8 +140,7 @@ describe("StandaloneNoteWindow", () => {
     const editor = await screen.findByRole("textbox", { name: "Standalone note editor" });
 
     fireEvent.change(editor, { target: { value: "# Standalone note\nDraft" } });
-    await new Promise((resolve) => window.setTimeout(resolve, 850));
-    expect(notesWrite).toHaveBeenCalledWith({ noteId: "note-1", content: "# Standalone note\nDraft" });
+    await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "note-1", content: "# Standalone note\nDraft" }), { timeout: 2_000 });
 
     fireEvent.change(editor, { target: { value: "# Standalone note\nFinal" } });
     fireEvent.keyDown(window, { key: "Escape" });

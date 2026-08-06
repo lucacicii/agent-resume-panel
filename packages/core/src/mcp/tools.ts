@@ -16,6 +16,7 @@ import { planNoteSearchDeterministically } from "../notes/queryPlan";
 import { searchNotesByEmbedding } from "../notes/search";
 import type { NoteOwner } from "../notes/paths";
 import { normalizeProjectPath } from "../pathUtils";
+import { isGtdStatus, type GtdStatus } from "../gtd/types";
 
 export interface NoteToolContext {
   notesStore: NotesStore;
@@ -152,6 +153,7 @@ export function summarizeNote(
     provider: record.provider,
     agentSessionId: record.agentSessionId,
     projectPath: record.projectPath,
+    gtdStatus: record.gtdStatus,
     createdAtMs: record.createdAtMs,
     updatedAtMs: record.updatedAtMs,
     link: {
@@ -189,19 +191,20 @@ function noteMatchesQuery(note: NoteRecord, queryLower: string): boolean {
 
 function matchesOwnerFilters(
   note: NoteRecord,
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string }
+  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string }
 ): boolean {
   if (args.scope && args.scope !== "all" && note.scope !== args.scope) return false;
   if (args.projectPath && note.projectPath !== normalizeProjectPath(args.projectPath)) return false;
   if (args.provider && note.provider !== args.provider) return false;
   if (args.sessionId && note.agentSessionId !== args.sessionId) return false;
+  if (args.gtdStatus && note.gtdStatus !== args.gtdStatus) return false;
   return true;
 }
 
 function fallbackNoteSearch(
   notes: NoteRecord[],
   query: string,
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string },
+  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string },
   limit: number,
   index: NoteRelationshipIndex
 ): { summary: Record<string, unknown>[]; totalMatches: number } {
@@ -251,7 +254,8 @@ const ownerFilters = {
   scope: z.enum(["library", "project", "session", "all"]).optional().describe("Filter by note scope. Defaults to 'all'."),
   projectPath: z.string().optional().describe("Filter by normalized project path."),
   provider: providerSchema.optional().describe("Filter session notes by provider."),
-  sessionId: z.string().optional().describe("Filter session notes by agent session ID.")
+  sessionId: z.string().optional().describe("Filter session notes by agent session ID."),
+  gtdStatus: z.enum(["inbox", "next", "waiting", "someday", "reference", "done"]).optional().describe("Filter notes by catalog GTD status.")
 };
 
 export const noteSearchSchema = {
@@ -307,6 +311,11 @@ export const noteSetParentSchema = {
   parentNoteId: z.string().min(1).nullable().describe("New parent Project Note ID, or null to make the note a root.")
 };
 
+export const noteSetGtdSchema = {
+  noteId: z.string().min(1).describe("The noteId whose catalog GTD status should change."),
+  status: z.enum(["inbox", "next", "waiting", "someday", "reference", "done"]).nullable().describe("New GTD status, or null to clear the status.")
+};
+
 export const noteMoveSchema = {
   noteId: z.string().min(1).describe("The noteId to move."),
   scope: z.enum(["library", "project", "session"]).describe("Destination owner scope."),
@@ -323,7 +332,7 @@ export const noteRenameSchema = {
 // --- Handlers ---
 
 export async function handleNoteSearch(
-  args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; limit?: number },
+  args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   const store = ctx.notesStore;
@@ -371,7 +380,7 @@ export async function handleNoteSearch(
 }
 
 export async function handleNoteList(
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number },
+  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   await ctx.notesStore.reload();
@@ -528,6 +537,26 @@ export async function handleNoteTreeRead(
     tree,
     edges: subtree.edges
   });
+}
+
+export async function handleNoteSetGtd(
+  args: { noteId: string; status: GtdStatus | null },
+  ctx: NoteToolContext
+): Promise<NoteMcpResult> {
+  const store = ctx.notesStore;
+  const before = await store.getNote(args.noteId);
+  if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  if (args.status !== null && !isGtdStatus(args.status)) {
+    throw new Error(`Invalid GTD status: ${String(args.status)}`);
+  }
+  const updated = args.status === null
+    ? await store.clearNoteGtdStatus(args.noteId)
+    : await store.setNoteGtdStatus(args.noteId, args.status);
+  const index = await loadRelationshipIndex(ctx);
+  return noteResponse(
+    args.status === null ? "Note GTD status cleared." : "Note GTD status updated.",
+    { note: summarizeNote(updated, index), noteId: args.noteId, gtdStatus: updated.gtdStatus ?? null }
+  );
 }
 
 export async function handleNoteSetParent(

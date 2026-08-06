@@ -130,7 +130,6 @@ import {
   notesImport,
   notesList,
   notesListChildCounts,
-  notesListGtd,
   notesListLinkedChildIds,
   notesListLinks,
   notesListRootNotes,
@@ -141,6 +140,7 @@ import {
   notesRename,
   notesResolveLinkRoot,
   notesReveal,
+  notesSetGtdStatus,
   notesSetParent,
   notesWrite,
   settingsOpenPanelHome
@@ -2062,10 +2062,18 @@ function registerIpc(): void {
   ipcMain.handle("notes:resolveLinkRoot", async (_event, args: { noteId: string }) =>
     notesResolveLinkRoot(args.noteId)
   );
-  ipcMain.handle("notes:listGtd", async (_event, args?: { query?: unknown; status?: unknown }) => {
-    const query = typeof args?.query === "string" ? args.query : undefined;
-    const status = typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined;
-    return notesListGtd({ query, status });
+  ipcMain.handle("notes:setGtdStatus", async (_event, args: { noteId: string; status?: unknown }) => {
+    const status = args?.status === null
+      ? null
+      : typeof args?.status === "string" && isGtdStatus(args.status)
+        ? args.status
+        : undefined;
+    if (status === undefined) {
+      throw new Error("Invalid note GTD status.");
+    }
+    const result = await notesSetGtdStatus(args.noteId, status);
+    scheduleNotesIndex();
+    return result;
   });
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
   ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) => {

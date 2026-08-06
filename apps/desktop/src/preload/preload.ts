@@ -914,6 +914,7 @@ export interface DesktopApi {
       relMdPath: string;
       title?: string;
       contentPreview?: string;
+      gtdStatus?: GtdStatus;
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
@@ -931,6 +932,7 @@ export interface DesktopApi {
       relMdPath: string;
       title?: string;
       contentPreview?: string;
+      gtdStatus?: GtdStatus;
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
@@ -961,20 +963,22 @@ export interface DesktopApi {
     edges: Array<{ parentNoteId: string; childNoteId: string }>;
   }>;
   notesResolveLinkRoot(args: { noteId: string }): Promise<{ rootNoteId: string }>;
-  notesListGtd(args?: { query?: string; status?: GtdStatus }): Promise<
-    Array<{
-      text: string;
-      status: GtdStatus;
-      line: number;
-      occurrence: number;
-      noteId: string;
-      noteTitle: string;
-      scope: string;
-      relMdPath: string;
-      projectPath?: string;
-      updatedAtMs: number;
-    }>
-  >;
+  notesSetGtdStatus(args: { noteId: string; status: GtdStatus | null }): Promise<{
+    noteId: string;
+    scope: string;
+    provider?: string;
+    agentSessionId?: string;
+    projectPath?: string;
+    filename: string;
+    relDir: string;
+    relMdPath: string;
+    title?: string;
+    contentPreview?: string;
+    gtdStatus?: GtdStatus;
+    createdAtMs: number;
+    updatedAtMs: number;
+    fsMtimeMs?: number;
+  }>;
   notesRead(args: { noteId: string }): Promise<{
     record: {
       noteId: string;
@@ -987,6 +991,7 @@ export interface DesktopApi {
       relMdPath: string;
       title?: string;
       contentPreview?: string;
+      gtdStatus?: GtdStatus;
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
@@ -1395,7 +1400,7 @@ const api: DesktopApi = {
   notesCreateLinkedChild: (args) => ipcRenderer.invoke("notes:createLinkedChild", args),
   notesGetSubtree: (args) => ipcRenderer.invoke("notes:getSubtree", args),
   notesResolveLinkRoot: (args) => ipcRenderer.invoke("notes:resolveLinkRoot", args),
-  notesListGtd: (args) => ipcRenderer.invoke("notes:listGtd", args),
+  notesSetGtdStatus: (args) => ipcRenderer.invoke("notes:setGtdStatus", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),

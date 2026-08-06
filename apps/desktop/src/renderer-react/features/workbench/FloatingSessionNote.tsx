@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
+import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 
@@ -84,6 +85,7 @@ export function FloatingSessionNote({
   const sessionTitle = target.sessionTitle.trim() || target.sessionId;
   const [content, setContent] = useState("");
   const [noteId, setNoteId] = useState("");
+  const [gtdStatus, setGtdStatus] = useState<GtdStatus | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -179,6 +181,7 @@ export function FloatingSessionNote({
     contentRef.current = "";
     setNoteId("");
     noteIdRef.current = "";
+    setGtdStatus(undefined);
     closingRef.current = false;
 
     const load = async () => {
@@ -189,6 +192,7 @@ export function FloatingSessionNote({
           if (loadSequenceRef.current !== sequence) return;
           setNoteId(result.record.noteId);
           noteIdRef.current = result.record.noteId;
+          setGtdStatus(result.record.gtdStatus);
           setContent(result.content);
           contentRef.current = result.content;
           setLoading(false);
@@ -207,6 +211,7 @@ export function FloatingSessionNote({
         if (loadSequenceRef.current !== sequence) return;
         setNoteId(created.noteId);
         noteIdRef.current = created.noteId;
+        setGtdStatus(undefined);
         setContent(initial);
         contentRef.current = initial;
         await desktopApi().notesWrite({ noteId: created.noteId, content: initial });
@@ -244,6 +249,18 @@ export function FloatingSessionNote({
     clearSaveTimer();
   }, [clearSaveTimer]);
 
+  const updateGtdStatus = async (status: GtdStatus | null) => {
+    const currentNoteId = noteIdRef.current;
+    if (!currentNoteId || loading || creating || deleting) return;
+    try {
+      const updated = await desktopApi().notesSetGtdStatus({ noteId: currentNoteId, status });
+      setGtdStatus(updated.gtdStatus);
+      setError("");
+    } catch (statusError) {
+      setError(t("desktop.workbench.gtdStatusSaveFailed", errorMessage(statusError)));
+    }
+  };
+
   const updateContent = (nextContent: string) => {
     setContent(nextContent);
     contentRef.current = nextContent;
@@ -276,7 +293,7 @@ export function FloatingSessionNote({
   }, [clearSaveTimer, creating, deleting, displayTitle, loading, onClose, t]);
 
   const onHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button > 0 || (event.target instanceof Element && event.target.closest("button"))) return;
+    if (event.button > 0 || (event.target instanceof Element && event.target.closest("button,select"))) return;
     const note = noteRef.current;
     if (!note) return;
     const rect = note.getBoundingClientRect();
@@ -340,6 +357,17 @@ export function FloatingSessionNote({
         <span title={displayTitle}>{sessionTitle}</span>
       </div>
       <div className="wb-floating-note-actions">
+        <select
+          className="wb-floating-note-status"
+          aria-label={t("desktop.workbench.setGtdStatus")}
+          title={t("desktop.workbench.setGtdStatus")}
+          value={gtdStatus ?? ""}
+          disabled={!noteId || loading || creating || deleting}
+          onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
+        >
+          <option value="">{t("desktop.workbench.clearGtdStatus")}</option>
+          {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
+        </select>
         <button
           type="button"
           className="wb-floating-note-close wb-floating-note-delete"

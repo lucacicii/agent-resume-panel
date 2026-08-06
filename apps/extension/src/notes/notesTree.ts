@@ -4,6 +4,7 @@ import { AgentSession } from "../history/types";
 import { t } from "../i18n";
 import { relativeTime } from "../util/relativeTime";
 import { NotesStore } from "./notesStore";
+import { gtdStatusLabel } from "../gtd/gtdTree";
 
 export type NotesTreeNode =
   | { kind: "libraryRoot"; notes: NoteRecord[] }
@@ -127,7 +128,10 @@ export class NotesTreeProvider implements vscode.TreeDataProvider<NotesTreeNode>
       }
       case "note": {
         const item = new vscode.TreeItem(element.note.filename, vscode.TreeItemCollapsibleState.None);
-        item.description = relativeTime(element.note.updatedAtMs);
+        item.description = [
+          element.note.gtdStatus ? gtdStatusLabel(element.note.gtdStatus) : undefined,
+          relativeTime(element.note.updatedAtMs)
+        ].filter(Boolean).join(" · ");
         item.iconPath = new vscode.ThemeIcon("markdown");
         item.contextValue = "agentResume.notes.note";
         item.id = `agentResume.notes.note:${element.note.noteId}`;

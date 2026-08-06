@@ -3,6 +3,11 @@ import * as path from "node:path";
 import { ensureExtensionCatalogSchema } from "../catalog/db";
 import type { AgentProvider, AgentSession } from "../catalog/types";
 import { sessionGtdKey } from "../gtd/store";
+import {
+  clearNoteGtdStatus as clearCatalogNoteGtdStatus,
+  setNoteGtdStatus as setCatalogNoteGtdStatus
+} from "./gtd";
+import type { GtdStatus } from "../gtd/types";
 import { resolvePanelHome } from "../panelHome";
 import { normalizeProjectPath } from "../pathUtils";
 import {
@@ -137,6 +142,34 @@ export class NotesStore {
 
   async getNote(noteId: string): Promise<NoteRecord | undefined> {
     return getNoteById(this.dbPath, noteId);
+  }
+
+  async setNoteGtdStatus(noteId: string, status: GtdStatus): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    await setCatalogNoteGtdStatus(this.dbPath, noteId, status);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) {
+      throw new Error("Note not found after setting GTD status.");
+    }
+    this.cachedNotes = this.cachedNotes.map((note) => note.noteId === noteId ? updated : note);
+    return updated;
+  }
+
+  async clearNoteGtdStatus(noteId: string): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    await clearCatalogNoteGtdStatus(this.dbPath, noteId);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) {
+      throw new Error("Note not found after clearing GTD status.");
+    }
+    this.cachedNotes = this.cachedNotes.map((note) => note.noteId === noteId ? updated : note);
+    return updated;
   }
 
   absolutePath(record: NoteRecord): string {
@@ -483,6 +516,7 @@ export class NotesStore {
       relMdPath: path.join("notes", ownerRelDir(newOwner), newFilename),
       title: extractTitle(body),
       contentPreview: contentPreview(body),
+      gtdStatus: record.gtdStatus,
       createdAtMs: record.createdAtMs,
       updatedAtMs: mtime,
       fsMtimeMs: mtime

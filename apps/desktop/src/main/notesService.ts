@@ -8,11 +8,9 @@ import {
   noteAssetsDirName,
   NotesStore,
   notesRoot,
-  parseNoteGtdTasks,
   type AgentProvider,
   type GtdStatus,
   type ImportNotesResult,
-  type NoteGtdTask,
   type NoteLink,
   type NoteOwner,
   type NoteRecord,
@@ -46,50 +44,11 @@ export async function notesList(): Promise<DesktopNoteRecord[]> {
   return store.getAllNotes();
 }
 
-export interface DesktopNoteGtdTask extends NoteGtdTask {
-  noteId: string;
-  noteTitle: string;
-  scope: string;
-  relMdPath: string;
-  projectPath?: string;
-  updatedAtMs: number;
-}
-
-export async function notesListGtd(args?: {
-  query?: string;
-  status?: GtdStatus;
-}): Promise<DesktopNoteGtdTask[]> {
+export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null): Promise<NoteRecord> {
   const store = await getDesktopNotesStore();
-  await store.reload();
-  const query = args?.query?.trim().toLocaleLowerCase() || "";
-  const tasks: DesktopNoteGtdTask[] = [];
-
-  for (const record of store.getAllNotes()) {
-    try {
-      const content = await store.readNoteContent(record.noteId);
-      for (const task of parseNoteGtdTasks(content)) {
-        const searchable = `${task.text} ${record.title || record.filename} ${record.relMdPath} ${record.projectPath || ""} ${task.status}`.toLocaleLowerCase();
-        if ((args?.status == null || task.status === args.status) && (!query || searchable.includes(query))) {
-          tasks.push({
-            ...task,
-            noteId: record.noteId,
-            noteTitle: record.title || record.filename,
-            scope: record.scope,
-            relMdPath: record.relMdPath,
-            projectPath: record.projectPath,
-            updatedAtMs: record.updatedAtMs
-          });
-        }
-      }
-    } catch {
-      // Keep a damaged or externally removed note from hiding valid tasks elsewhere.
-    }
-  }
-
-  return tasks.sort((left, right) => Number(left.status === "done") - Number(right.status === "done")
-    || right.updatedAtMs - left.updatedAtMs
-    || left.noteTitle.localeCompare(right.noteTitle)
-    || left.line - right.line);
+  return status === null
+    ? store.clearNoteGtdStatus(noteId)
+    : store.setNoteGtdStatus(noteId, status);
 }
 
 export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
