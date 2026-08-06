@@ -16,6 +16,7 @@ export interface ModelsTestDraft {
   llmModel?: string;
   llmApiKey?: string;
   llmLang?: string;
+  llmDisableThinking?: boolean;
   chatBaseUrl?: string;
   chatModel?: string;
   chatApiKey?: string;
@@ -48,6 +49,7 @@ export function applyModelsDraft(settings: PanelSettings, draft: ModelsTestDraft
       baseUrl: trim(draft.llmBaseUrl),
       model: trim(draft.llmModel),
       apiKey: llmApiKey,
+      disableThinking: typeof draft.llmDisableThinking === "boolean" ? draft.llmDisableThinking : settings.llm?.disableThinking,
       outputLanguage:
         typeof draft.llmLang === "string" && draft.llmLang.trim()
           ? (draft.llmLang.trim() as PanelSettings["llm"]["outputLanguage"])

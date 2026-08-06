@@ -309,7 +309,7 @@ export async function runDailyDigest(
       sourceItems: lines,
       finalSystemPrompt: buildDailySystemPrompt(language),
       buildFinalUserPrompt: (items) => buildDailyUserPrompt(dateLabel, items, language),
-      maxTokens: 2000,
+      maxTokens: 8000,
       onProgress,
       progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
       reduceMessage: (round) => pt("desktop.report.reduceProgress", round)

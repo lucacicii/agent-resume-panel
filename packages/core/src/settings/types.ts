@@ -15,6 +15,12 @@ export interface LlmSettings {
   maxContextChars?: number;
   /** Timeout for one tool-LLM request; defaults to five minutes. */
   requestTimeoutMs?: number;
+  /**
+   * Send `thinking: { type: "disabled" }` on chat completions. Reasoning models
+   * (DeepSeek V3.x/4, Qwen, GLM, …) otherwise burn the whole max_tokens budget on
+   * thinking and return an empty response on deterministic batch tasks (digests, GTD).
+   */
+  disableThinking?: boolean;
 }
 
 /**
@@ -25,6 +31,7 @@ export interface ChatLlmSettings {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  disableThinking?: boolean;
 }
 
 export interface EmbeddingSettings {
@@ -374,7 +381,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     model: "gpt-4o-mini",
     outputLanguage: "auto",
     maxContextChars: 120_000,
-    requestTimeoutMs: 300_000
+    requestTimeoutMs: 300_000,
+    disableThinking: false
   },
   embedding: {
     model: "text-embedding-3-small"

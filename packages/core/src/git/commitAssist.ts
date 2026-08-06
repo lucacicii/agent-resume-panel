@@ -89,7 +89,7 @@ export async function suggestCommitMessageFromGitContext(
       { role: "system", content: buildCommitMessageSystemPrompt(lang, options) },
       { role: "user", content: buildCommitMessageUserPrompt(status, diff, lang) }
     ],
-    500
+    4000
   );
   const message = normalizeSuggestedCommitMessage(result.content, options);
   if (!message) {

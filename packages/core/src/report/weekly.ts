@@ -135,7 +135,7 @@ export async function runWeeklyDigest(
       sourceItems: lines,
       finalSystemPrompt: buildWeeklySystemPrompt(language),
       buildFinalUserPrompt: (items) => buildWeeklyUserPrompt(period.label, rangeHint, items, language),
-      maxTokens: 2500,
+      maxTokens: 8000,
       onProgress,
       progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
       reduceMessage: (round) => pt("desktop.report.reduceProgress", round)

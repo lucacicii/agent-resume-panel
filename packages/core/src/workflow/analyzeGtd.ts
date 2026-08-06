@@ -331,7 +331,10 @@ export async function analyzeReportForGtd(input: {
       { role: "system", content: system },
       { role: "user", content: user }
     ],
-    2500
+    // Generous budget: reasoning models spend tokens on thinking before
+    // emitting the JSON answer; 2500 could be consumed entirely by reasoning
+    // and surface as "LLM returned an empty response".
+    8000
   );
   try {
     await recordLlmUsage(input.desktopDb, {

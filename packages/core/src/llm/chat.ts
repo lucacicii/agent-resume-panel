@@ -12,6 +12,7 @@ interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
       content?: string | null;
+      reasoning_content?: string;
       tool_calls?: Array<{
         id: string;
         type: "function";
@@ -44,6 +45,15 @@ function llmRequestTimeoutMs(config: LlmRuntimeConfig): number {
   return Number.isFinite(configuredTimeout) && configuredTimeout > 0
     ? Math.max(1_000, Math.floor(configuredTimeout))
     : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * DeepSeek / Qwen / GLM reasoning models emit `reasoning_content` before content and can
+ * consume the whole max_tokens budget on thinking, yielding an empty response on
+ * deterministic batch tasks. Opt-in `thinking: { type: "disabled" }` turns that off.
+ */
+function thinkingBodyField(config: LlmRuntimeConfig): Record<string, unknown> {
+  return config.disableThinking ? { thinking: { type: "disabled" } } : {};
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -110,7 +120,8 @@ export async function chatCompletionDetailed(
         model: config.model,
         messages,
         max_tokens: maxTokens,
-        temperature: 0.2
+        temperature: 0.2,
+        ...thinkingBodyField(config)
       }),
       signal: llmRequestSignal(timeoutMs, signal)
     });
@@ -132,11 +143,16 @@ export async function chatCompletionDetailed(
     throw new Error(`${message} (endpoint: ${url})`);
   }
 
-  const content = payload.choices?.[0]?.message?.content?.trim();
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content?.trim();
   if (!content) {
-    if (payload.choices?.[0]?.finish_reason === "length") {
+    if (choice?.finish_reason === "length" || choice?.message?.reasoning_content) {
+      const details = payload.usage as
+        | { completion_tokens_details?: { reasoning_tokens?: number } }
+        | undefined;
+      const reasoningTokens = details?.completion_tokens_details?.reasoning_tokens;
       throw new Error(
-        "LLM returned an empty response: the output token limit was reached before any text was produced (common with reasoning models). Increase max_tokens or disable thinking mode."
+        `LLM returned an empty response: ${reasoningTokens ? `${reasoningTokens} of ${maxTokens} output tokens went to reasoning` : "the output token limit was reached before any text was produced"} (finish_reason=${choice?.finish_reason ?? "unknown"}, model=${payload.model || config.model}). Increase max_tokens or disable thinking mode.`
       );
     }
     throw new Error("LLM returned an empty response.");
@@ -174,7 +190,8 @@ export async function chatCompletionWithTools(
         messages,
         max_tokens: maxTokens,
         temperature: 0.2,
-        tools
+        tools,
+        ...thinkingBodyField(config)
       }),
       signal: llmRequestSignal(timeoutMs, signal)
     });
@@ -216,8 +233,10 @@ export interface ChatStreamCallbacks {
 
 interface StreamChunkPayload {
   choices?: Array<{
+    finish_reason?: string;
     delta?: {
       content?: string;
+      reasoning_content?: string;
     };
   }>;
   model?: string;
@@ -251,7 +270,8 @@ export async function chatCompletionStream(
         messages,
         max_tokens: maxTokens,
         temperature: 0.2,
-        stream: true
+        stream: true,
+        ...thinkingBodyField(config)
       }),
       signal: llmRequestSignal(timeoutMs, signal)
     });
@@ -271,6 +291,8 @@ export async function chatCompletionStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let sawReasoning = false;
+  let finishReason: string | undefined;
   let model: string | undefined;
   let usage: TokenUsage | undefined;
 
@@ -315,7 +337,14 @@ export async function chatCompletionStream(
         usage = parseOpenAiUsage(payload.usage);
       }
 
-      const delta = payload.choices?.[0]?.delta?.content;
+      const choice = payload.choices?.[0];
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+      if (choice?.delta?.reasoning_content) {
+        sawReasoning = true;
+      }
+      const delta = choice?.delta?.content;
       if (delta) {
         content += delta;
         if (callbacks?.onChunk) {
@@ -328,6 +357,11 @@ export async function chatCompletionStream(
   const durationMs = Date.now() - started;
   const trimmed = content.trim();
   if (!trimmed) {
+    if (finishReason === "length" || sawReasoning) {
+      throw new Error(
+        "LLM returned an empty response: the output token limit was reached before any text was produced (common with reasoning models). Increase max_tokens or disable thinking mode."
+      );
+    }
     throw new Error("LLM returned an empty response.");
   }
 

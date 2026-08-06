@@ -37,6 +37,8 @@ export interface LlmRuntimeConfig {
   outputLanguage?: string;
   /** Maximum time to wait for one chat completion request. */
   requestTimeoutMs?: number;
+  /** Send `thinking: { type: "disabled" }` to disable reasoning (DeepSeek/Qwen/GLM). */
+  disableThinking?: boolean;
 }
 
 export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 300_000;

@@ -28,7 +28,8 @@ export function llmConfigFromSettings(
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
     outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: settings.llm.requestTimeoutMs
+    requestTimeoutMs: settings.llm.requestTimeoutMs,
+    disableThinking: settings.llm.disableThinking
   };
 }
 
@@ -54,7 +55,8 @@ export function chatLlmConfigFromSettings(
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
     outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: settings.llm.requestTimeoutMs
+    requestTimeoutMs: settings.llm.requestTimeoutMs,
+    disableThinking: chat?.disableThinking
   };
 }
 

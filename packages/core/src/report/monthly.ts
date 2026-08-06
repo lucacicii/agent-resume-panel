@@ -146,7 +146,7 @@ export async function runMonthlyDigest(
       sourceItems: lines,
       finalSystemPrompt: buildMonthlySystemPrompt(language),
       buildFinalUserPrompt: (items) => buildMonthlyUserPrompt(period.label, rangeHint, items, language),
-      maxTokens: 3000,
+      maxTokens: 8000,
       onProgress,
       progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
       reduceMessage: (round) => pt("desktop.report.reduceProgress", round)

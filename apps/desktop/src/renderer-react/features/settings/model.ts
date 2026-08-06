@@ -59,6 +59,7 @@ export interface ModelsDraft {
   llmModel: string;
   llmApiKey: string;
   llmLang: UiLanguageValue;
+  llmDisableThinking: boolean;
   chatBaseUrl: string;
   chatModel: string;
   chatApiKey: string;
@@ -208,6 +209,7 @@ export function modelsDraftFromSettings(settings: PanelSettings): ModelsDraft {
     llmModel: toolModel,
     llmApiKey: toolKey,
     llmLang: normalizeOutputLanguage(settings.llm?.outputLanguage),
+    llmDisableThinking: Boolean(settings.llm?.disableThinking),
     chatBaseUrl: settings.chatLlm?.baseUrl?.trim() || toolBase,
     chatModel: settings.chatLlm?.model?.trim() || toolModel,
     chatApiKey: settings.chatLlm?.apiKey?.trim() || toolKey,
@@ -274,7 +276,8 @@ export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partia
       baseUrl: draft.llmBaseUrl.trim(),
       model: draft.llmModel.trim(),
       apiKey: draft.llmApiKey,
-      outputLanguage: draft.llmLang
+      outputLanguage: draft.llmLang,
+      disableThinking: draft.llmDisableThinking
     },
     chatLlm: {
       ...settings.chatLlm,

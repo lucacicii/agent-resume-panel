@@ -544,7 +544,7 @@ export function getSettingSections(): SettingSection[] {
           label: t("settings.fieldHandoffMaxBriefTokensLabel"),
           description: t("settings.fieldHandoffMaxBriefTokensDescription"),
           type: "number",
-          default: 2500,
+          default: 4000,
           minimum: 500,
           maximum: 8000
         }

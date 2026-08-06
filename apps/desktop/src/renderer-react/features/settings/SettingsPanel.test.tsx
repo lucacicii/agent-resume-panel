@@ -59,6 +59,8 @@ const messages = {
   "desktop.settings.outputLanguage": "Output language",
   "desktop.settings.fieldOutputLanguageDescription": "Output lang desc",
   "desktop.settings.fieldOutputLanguageOptionAuto": "Auto",
+  "desktop.settings.disableThinking": "Disable Thinking",
+  "desktop.settings.disableThinkingDesc": "Send thinking:disabled for reasoning models.",
   "desktop.settings.testConnection": "Test Connection",
   "desktop.settings.testConnectionHint": "Uses the values currently in the form above (Save is not required).",
   "desktop.settings.testConnectionTesting": "Testing…",

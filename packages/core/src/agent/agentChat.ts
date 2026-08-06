@@ -205,7 +205,7 @@ async function runAskWithoutTools(
     result = await chatCompletionStream(
       llm,
       messages,
-      2000,
+      4000,
       {
         onChunk: async (delta) => {
           options.onStream?.({ phase: "chunk", delta });
@@ -290,7 +290,7 @@ async function runAskWithTools(
       llm,
       messages,
       mcpClient,
-      maxTokens: 2000,
+      maxTokens: 4000,
       signal: options.signal,
       uiText: pt,
       onProgress: (message, iteration) => {

@@ -55,7 +55,7 @@ export async function resolveNoteSearchPlan(options: {
   ];
 
   try {
-    const result = await chatCompletionDetailed(llm, messages, 220);
+    const result = await chatCompletionDetailed(llm, messages, 4000);
     try {
       await recordLlmUsage(options.desktopDb, {
         kind: "chat",

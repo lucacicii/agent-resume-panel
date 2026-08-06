@@ -174,7 +174,7 @@ export async function runHierarchicalDigest(
     const system = intermediateSystemPrompt(options.outputLanguage);
     const user = intermediateUserPrompt(options.level, options.periodLabel, items);
     try {
-      return await call(system, user, Math.min(options.maxTokens, 1800), stage);
+      return await call(system, user, Math.min(options.maxTokens, 8000), stage);
     } catch (error) {
       if (!contextLengthError(error)) throw error;
       if (items.length > 1) {
