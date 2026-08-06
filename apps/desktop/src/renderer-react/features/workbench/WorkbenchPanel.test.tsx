@@ -728,6 +728,50 @@ describe("WorkbenchPanel", () => {
     window.removeEventListener("agent-resume:sessions-preview", onPreview);
   });
 
+  it("auto renames a session from its context menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: null
+    }));
+    const listSessions = vi.fn(async () => [
+      { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }
+    ]);
+    const onMutated = vi.fn();
+    window.addEventListener("agent-resume:sessions-mutated", onMutated);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.autoRename": "Auto rename", "desktop.workbench.autoRenaming": "Auto renaming…", "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      autoRenameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+    await waitFor(() => expect(listSessions.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+    window.removeEventListener("agent-resume:sessions-mutated", onMutated);
+  });
+
   it("mount note opens the first project root note without creating when roots exist", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

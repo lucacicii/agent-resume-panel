@@ -1169,7 +1169,6 @@
   "desktop.workbench.folderName": "Folder name",
   "desktop.workbench.folderNameEmpty": "Folder name cannot be empty",
   "desktop.workbench.folderProjectUnavailable": "This session is not attached to a local project.",
-  "desktop.workbench.generatingTitle": "Generating title from conversation…",
   "desktop.workbench.gitBranchesLoaded": "Loaded Git branches.",
   "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
   "desktop.workbench.gitCommit": "Commit",
@@ -1337,8 +1336,6 @@
   "desktop.workbench.renameFolder": "Rename folder",
   "desktop.workbench.renameProject": "Rename project",
   "desktop.workbench.renameProjectDisplay": "Project display name",
-  "desktop.workbench.renameSession": "Rename Session",
-  "desktop.workbench.renameSessionTitle": "Session title",
   "desktop.workbench.resizeProjects": "Resize project sidebar",
   "desktop.workbench.resizeSessions": "Resize session list",
   "desktop.workbench.resizeSidePanel": "Resize side panel",
@@ -1415,8 +1412,6 @@
   "desktop.workbench.terminalSearchPlaceholder": "Find in terminal",
   "desktop.workbench.terminalSearchPrev": "Previous match",
   "desktop.workbench.terminalTabs": "Terminal tabs",
-  "desktop.workbench.titleEmpty": "Title cannot be empty",
-  "desktop.workbench.titleSuggested": "Suggested title filled; edit and confirm",
   "desktop.workbench.unclassifiedSessions": "Unclassified",
   "desktop.workbench.unpinProject": "Unpin project"
 }

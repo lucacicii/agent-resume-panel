@@ -1169,7 +1169,6 @@
   "desktop.workbench.folderName": "目录名称",
   "desktop.workbench.folderNameEmpty": "目录名称不能为空",
   "desktop.workbench.folderProjectUnavailable": "此 session 未关联到本地项目。",
-  "desktop.workbench.generatingTitle": "正在根据对话内容生成标题…",
   "desktop.workbench.gitBranchesLoaded": "已加载 Git 分支。",
   "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
   "desktop.workbench.gitCommit": "提交",
@@ -1337,8 +1336,6 @@
   "desktop.workbench.renameFolder": "重命名目录",
   "desktop.workbench.renameProject": "重命名项目",
   "desktop.workbench.renameProjectDisplay": "项目显示名",
-  "desktop.workbench.renameSession": "重命名 Session",
-  "desktop.workbench.renameSessionTitle": "Session 标题",
   "desktop.workbench.resizeProjects": "调整项目侧栏宽度",
   "desktop.workbench.resizeSessions": "调整 Session 列表宽度",
   "desktop.workbench.resizeSidePanel": "调整侧栏宽度",
@@ -1415,8 +1412,6 @@
   "desktop.workbench.terminalSearchPlaceholder": "在终端中查找",
   "desktop.workbench.terminalSearchPrev": "上一个匹配",
   "desktop.workbench.terminalTabs": "终端标签",
-  "desktop.workbench.titleEmpty": "标题不能为空",
-  "desktop.workbench.titleSuggested": "已填入建议标题，可编辑后点确定保存",
   "desktop.workbench.unclassifiedSessions": "未分类",
   "desktop.workbench.unpinProject": "取消置顶"
 }

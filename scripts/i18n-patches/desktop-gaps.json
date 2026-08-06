@@ -2081,11 +2081,6 @@
       "zh": "筛选项目…"
     },
     {
-      "key": "desktop.workbench.generatingTitle",
-      "en": "Generating title from conversation…",
-      "zh": "正在根据对话内容生成标题…"
-    },
-    {
       "key": "desktop.workbench.gitCommitAutoGenerate",
       "en": "Auto generate",
       "zh": "自动生成"
@@ -2326,16 +2321,6 @@
       "zh": "项目显示名"
     },
     {
-      "key": "desktop.workbench.renameSession",
-      "en": "Rename Session",
-      "zh": "重命名 Session"
-    },
-    {
-      "key": "desktop.workbench.renameSessionTitle",
-      "en": "Session title",
-      "zh": "Session 标题"
-    },
-    {
       "key": "desktop.workbench.resizeProjects",
       "en": "Resize project sidebar",
       "zh": "调整项目侧栏宽度"
@@ -2479,16 +2464,6 @@
       "key": "desktop.workbench.terminalTabs",
       "en": "Terminal tabs",
       "zh": "终端标签"
-    },
-    {
-      "key": "desktop.workbench.titleEmpty",
-      "en": "Title cannot be empty",
-      "zh": "标题不能为空"
-    },
-    {
-      "key": "desktop.workbench.titleSuggested",
-      "en": "Suggested title filled; edit and confirm",
-      "zh": "已填入建议标题，可编辑后点确定保存"
     },
     {
       "key": "desktop.workbench.unpinProject",

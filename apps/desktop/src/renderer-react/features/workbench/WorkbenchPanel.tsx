@@ -252,12 +252,9 @@ type WorkbenchNewSessionPicker = {
   projectId?: string;
 };
 type WorkbenchRenameDialog = {
-  kind: "project" | "session";
-  projectPath?: string;
+  projectPath: string;
   projectId?: string;
-  session?: AgentSession;
   title: string;
-  autoBusy: boolean;
   status: string;
 };
 type WorkbenchFolderDialog = {
@@ -2248,7 +2245,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     if (!renameDialog) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !renameDialog.autoBusy) setRenameDialog(null);
+      if (event.key === "Escape") setRenameDialog(null);
     };
     window.addEventListener("keydown", onKeyDown);
     window.requestAnimationFrame(() => {
@@ -2256,7 +2253,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       renameInputRef.current?.select();
     });
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [renameDialog?.kind, renameDialog?.projectPath, renameDialog?.session?.id, renameDialog?.session?.provider]);
+  }, [renameDialog?.projectPath, renameDialog?.projectId]);
 
   useEffect(() => {
     if (!folderDialog) return;
@@ -3643,31 +3640,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!renameDialog) return;
     const title = renameDialog.title.trim();
     if (!title) {
-      setRenameDialog((current) => current ? { ...current, status: t(current.kind === "project" ? "desktop.workbench.nameEmpty" : "desktop.workbench.titleEmpty") } : current);
+      setRenameDialog((current) => current ? { ...current, status: t("desktop.workbench.nameEmpty") } : current);
       return;
     }
     try {
-      if (renameDialog.kind === "project" && renameDialog.projectPath) {
-        const base = basename(renameDialog.projectPath);
-        await desktopApi().setProjectAlias({ projectPath: renameDialog.projectPath, alias: title === base ? "" : title });
-        setAliases(await desktopApi().listProjectAliases());
-      }
-      if (renameDialog.kind === "session" && renameDialog.session) {
-        await desktopApi().renameSession({ provider: renameDialog.session.provider, id: renameDialog.session.id, title });
-        await loadSessions();
-        window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
-      }
+      const base = basename(renameDialog.projectPath);
+      await desktopApi().setProjectAlias({ projectPath: renameDialog.projectPath, alias: title === base ? "" : title });
+      setAliases(await desktopApi().listProjectAliases());
       setRenameDialog(null);
     } catch (error) { setRenameDialog((current) => current ? { ...current, status: statusError(error) } : current); }
-  };
-
-  const autoRename = async () => {
-    if (!renameDialog?.session) return;
-    setRenameDialog((current) => current ? { ...current, autoBusy: true, status: t("desktop.workbench.generatingTitle") } : current);
-    try {
-      const result = await desktopApi().autoRenameSession({ provider: renameDialog.session.provider, id: renameDialog.session.id, persist: false });
-      setRenameDialog((current) => current ? { ...current, title: result.title, autoBusy: false, status: t("desktop.workbench.titleSuggested") } : current);
-    } catch (error) { setRenameDialog((current) => current ? { ...current, autoBusy: false, status: statusError(error) } : current); }
   };
 
   const runContextAction = async (action: string) => {
@@ -3697,11 +3678,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       if (action === "note") await openMountedNote({ scope: "project", projectPath: menu.projectPath });
       if (action === "rename") setRenameDialog({
-        kind: "project",
         projectPath: menu.projectPath,
         projectId: menu.projectId,
         title: aliases[menu.projectPath] || basename(menu.projectPath),
-        autoBusy: false,
         status: ""
       });
       if (action === "setLocalPath" && menu.projectId && typeof desktopApi().pickProjectLocalPath === "function") {
@@ -3870,7 +3849,17 @@ export function WorkbenchPanel(): ReactPortal | null {
       catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     }
     if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:sessions-preview", { detail: session }));
-    if (action === "rename") setRenameDialog({ kind: "session", session, title: session.title || "", autoBusy: false, status: "" });
+    if (action === "autoRename") {
+      setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
+      try {
+        const result = await desktopApi().autoRenameSession({ provider: session.provider, id: session.id, persist: true });
+        await loadSessions();
+        let text = t("desktop.sessions.renamed", result.title);
+        if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
+        setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
+        window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
+      } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    }
     if (action === "remove" && window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id))) {
       try {
         await desktopApi().hideSession({ provider: session.provider, id: session.id });
@@ -5740,7 +5729,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("rename")}>{t("desktop.common.rename")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("autoRename")}>{t("desktop.workbench.autoRename")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("moveFolder")}>{t("desktop.workbench.moveToFolder")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("removeFolder")}>{t("desktop.workbench.removeFromFolder")}</button>
         <div className="context-menu-separator" role="separator" />
@@ -5753,7 +5742,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>
       </>}
     </div> : null}
-    {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !renameDialog.autoBusy && setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t(renameDialog.kind === "project" ? "desktop.workbench.renameProject" : "desktop.workbench.renameSession")}</p>{renameDialog.kind === "session" ? <button type="button" className="wb-rename-auto-btn" disabled={renameDialog.autoBusy} onClick={() => void autoRename()}>{renameDialog.autoBusy ? <ThemeIcon name="loader" className="spin" size={14} /> : null}{t(renameDialog.autoBusy ? "desktop.workbench.autoRenaming" : "desktop.workbench.autoRename")}</button> : null}</div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} disabled={renameDialog.autoBusy} autoComplete="off" spellCheck={false} aria-label={t(renameDialog.kind === "project" ? "desktop.workbench.renameProjectDisplay" : "desktop.workbench.renameSessionTitle")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={renameDialog.autoBusy} onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={renameDialog.autoBusy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
+    {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.renameProject")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.renameProject")}</p></div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.renameProjectDisplay")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
     {folderDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderDialog.busy && setFolderDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")} onSubmit={(event) => { event.preventDefault(); void applyFolderDialog(); }}><p className="wb-note-created-title">{t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")}</p>{folderDialog.status ? <p className="wb-rename-status muted">{folderDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={folderDialog.title} disabled={folderDialog.busy} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.folderName")} placeholder={t("desktop.workbench.folderName")} onChange={(event) => setFolderDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderDialog.busy} onClick={() => setFolderDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={folderDialog.busy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
     {folderPickerDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderPickerDialog.busy && setFolderPickerDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToFolder")}><p className="wb-note-created-title">{t("desktop.workbench.moveSessionTitle", folderPickerDialog.session.title || folderPickerDialog.session.id)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveSessionHint")}</p><input type="search" className="wb-rename-input" value={folderPickerDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={folderPickerDialog.busy} onChange={(event) => setFolderPickerDialog((current) => current ? { ...current, query: event.target.value } : current)} />{folderPickerDialog.status ? <p className="wb-rename-status muted">{folderPickerDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox"><button type="button" className="wb-project-pick-item" disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(null)}><span className="wb-project-pick-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-project-pick-path">{folderPickerDialog.projectPath}</span></button>{folderPickerDialog.folders.filter((folder) => workbenchFolderPath(folder, folderPickerDialog.folders).toLowerCase().includes(folderPickerDialog.query.trim().toLowerCase())).map((folder) => <button type="button" className="wb-project-pick-item" key={folder.folderId} disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(folder.folderId)}><span className="wb-project-pick-label">{workbenchFolderPath(folder, folderPickerDialog.folders)}</span><span className="wb-project-pick-path">{folder.name}</span></button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderPickerDialog.busy} onClick={() => setFolderPickerDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "merge"

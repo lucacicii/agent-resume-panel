@@ -10,7 +10,14 @@ const aliasesPath = join(root, "scripts", "desktop-settings-i18n-aliases.json");
 const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
-const obsoleteDesktopKeys = new Set(["desktop.workbench.sidePanelBack"]);
+const obsoleteDesktopKeys = new Set([
+  "desktop.workbench.sidePanelBack",
+  "desktop.workbench.renameSession",
+  "desktop.workbench.renameSessionTitle",
+  "desktop.workbench.generatingTitle",
+  "desktop.workbench.titleSuggested",
+  "desktop.workbench.titleEmpty"
+]);
 
 function normalizePlaceholders(value) {
   const names = [];
