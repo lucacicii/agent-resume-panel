@@ -55,6 +55,26 @@
       "desktop.tabs.workbench": "Workbench",
       "desktop.tabs.notes": "Notes",
       "desktop.tabs.flow": "Flow"
+      ,
+      "desktop.tabs.kanban": "Kanban"
+    },
+    "kanban": {
+      "desktop.kanban.title": "Kanban",
+      "desktop.kanban.itemCount": "{0} items",
+      "desktop.kanban.sourceFilter": "Source filter",
+      "desktop.kanban.source.all": "All",
+      "desktop.kanban.source.sessions": "Sessions",
+      "desktop.kanban.source.notes": "Notes",
+      "desktop.kanban.scope.library": "Library",
+      "desktop.kanban.scope.project": "Project",
+      "desktop.kanban.scope.session": "Session",
+      "desktop.kanban.moved": "Moved",
+      "desktop.kanban.emptyColumn": "Drop a card here",
+      "desktop.kanban.empty": "No GTD items yet. Assign a GTD status to a session or note to see it here.",
+      "desktop.kanban.archive": "Archive",
+      "desktop.kanban.archiveAll": "Archive all completed",
+      "desktop.kanban.archived": "Archived",
+      "desktop.kanban.archiveAllConfirm": "Archive {0} completed items? Their GTD status will be cleared; sessions and notes are kept."
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -1392,6 +1412,26 @@
       "desktop.tabs.workbench": "工作台",
       "desktop.tabs.notes": "笔记",
       "desktop.tabs.flow": "流程"
+      ,
+      "desktop.tabs.kanban": "看板"
+    },
+    "kanban": {
+      "desktop.kanban.title": "看板",
+      "desktop.kanban.itemCount": "{0} 项",
+      "desktop.kanban.sourceFilter": "来源筛选",
+      "desktop.kanban.source.all": "全部",
+      "desktop.kanban.source.sessions": "会话",
+      "desktop.kanban.source.notes": "笔记",
+      "desktop.kanban.scope.library": "库",
+      "desktop.kanban.scope.project": "项目",
+      "desktop.kanban.scope.session": "会话",
+      "desktop.kanban.moved": "已移动",
+      "desktop.kanban.emptyColumn": "拖动卡片到此处",
+      "desktop.kanban.empty": "暂无 GTD 项。为会话或笔记设置 GTD 状态即可在此查看。",
+      "desktop.kanban.archive": "归档",
+      "desktop.kanban.archiveAll": "归档全部已完成",
+      "desktop.kanban.archived": "已归档",
+      "desktop.kanban.archiveAllConfirm": "归档 {0} 个已完成项？将清除其 GTD 状态；会话和笔记保留。"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -2770,6 +2810,26 @@
       "desktop.tabs.workbench": "ワークベンチ",
       "desktop.tabs.notes": "ノート",
       "desktop.tabs.flow": "フロー"
+      ,
+      "desktop.tabs.kanban": "カンバン"
+    },
+    "kanban": {
+      "desktop.kanban.title": "カンバン",
+      "desktop.kanban.itemCount": "{0} 件",
+      "desktop.kanban.sourceFilter": "ソース絞り込み",
+      "desktop.kanban.source.all": "すべて",
+      "desktop.kanban.source.sessions": "セッション",
+      "desktop.kanban.source.notes": "ノート",
+      "desktop.kanban.scope.library": "ライブラリ",
+      "desktop.kanban.scope.project": "プロジェクト",
+      "desktop.kanban.scope.session": "セッション",
+      "desktop.kanban.moved": "移動しました",
+      "desktop.kanban.emptyColumn": "カードをドロップ",
+      "desktop.kanban.empty": "GTD アイテムがありません。セッションやノートに GTD ステータスを設定するとここに表示されます。",
+      "desktop.kanban.archive": "アーカイブ",
+      "desktop.kanban.archiveAll": "完了をすべてアーカイブ",
+      "desktop.kanban.archived": "アーカイブしました",
+      "desktop.kanban.archiveAllConfirm": "完了済み {0} 件をアーカイブしますか？GTD ステータスが削除されます（セッションとノートは保持されます）。"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",

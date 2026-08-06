@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import {
-  Activity, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check,
+  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
   Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
@@ -15,7 +15,7 @@ import {
 
 /** Semantic icon registry. A missing built-in icon is a compile-time error. */
 const ICONS = {
-  activity: Activity, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
+  activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
   "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bot: Bot, check: Check,
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,

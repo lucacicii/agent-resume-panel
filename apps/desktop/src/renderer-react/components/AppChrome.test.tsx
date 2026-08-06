@@ -13,6 +13,7 @@ function renderChrome(openSettingsWindow = vi.fn(async () => undefined)) {
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.flow": "Flow",
+        "desktop.tabs.kanban": "Kanban",
         "desktop.top.sessionsRefTitle": "Sessions",
         "desktop.top.settingsTitle": "Settings",
         "desktop.top.settingsUpdateAvailable": "Update {0} is available"
@@ -47,12 +48,12 @@ describe("AppChrome", () => {
     );
   });
 
-  it("places Flow immediately after Notes in primary navigation", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Flow" });
-    const labels = [...document.querySelectorAll(".primary-tabs .tab")].map((item) => item.textContent);
-    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow"]);
-  });
+    it("places Flow immediately after Notes in primary navigation", async () => {
+      renderChrome();
+      await screen.findByRole("button", { name: "Flow" });
+      const labels = [...document.querySelectorAll(".primary-tabs .tab")].map((item) => item.textContent);
+      expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow", "Kanban"]);
+    });
 
   it("opens settings window without changing primary tab", async () => {
     const { openSettingsWindow } = renderChrome();
