@@ -1340,6 +1340,7 @@
   "desktop.workbench.renameFolder": "フォルダー名を変更",
   "desktop.workbench.renameProject": "プロジェクトの名前を変更",
   "desktop.workbench.renameProjectDisplay": "プロジェクトの表示名",
+  "desktop.workbench.resizeCommitInput": "コミット入力欄の高さを調整",
   "desktop.workbench.resizeProjects": "プロジェクトサイドバーの幅を調整",
   "desktop.workbench.resizeSessions": "Session 一覧の幅を調整",
   "desktop.workbench.resizeSidePanel": "サイドパネルの幅を調整",

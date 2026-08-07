@@ -753,6 +753,9 @@ function trackingForRoot(git: GitStatusResult | null, gitRoot: string): GitRepoT
   return git.tracking[0] || null;
 }
 
+const COMMIT_INPUT_MIN_HEIGHT = 96;
+const COMMIT_INPUT_MAX_HEIGHT = 190;
+
 function GitChangesPanel({
   visible,
   git,
@@ -806,6 +809,7 @@ function GitChangesPanel({
     noChanges: string;
     unavailable: string;
     messageLabel: string;
+    resizeInput: string;
     autoGenerate: string;
     commit: string;
     commitAndPush: string;
@@ -821,6 +825,9 @@ function GitChangesPanel({
   const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ change: GitChange; x: number; y: number } | null>(null);
+  const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [commitInputHeight, setCommitInputHeight] = useState<number | null>(null);
+  const [commitInputResizing, setCommitInputResizing] = useState(false);
 
   useEffect(() => {
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-panel") : null);
@@ -845,6 +852,28 @@ function GitChangesPanel({
   useEffect(() => {
     setContextMenu(null);
   }, [visible, gitRoot]);
+
+  const beginCommitInputResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = commitInputHeight ?? commitInputRef.current?.offsetHeight ?? COMMIT_INPUT_MIN_HEIGHT;
+    setCommitInputResizing(true);
+    document.body.classList.add("is-pane-resizing");
+    document.body.classList.add("is-pane-resizing-row");
+    const move = (next: PointerEvent) => {
+      const height = Math.round(Math.min(COMMIT_INPUT_MAX_HEIGHT, Math.max(COMMIT_INPUT_MIN_HEIGHT, startHeight + startY - next.clientY)));
+      setCommitInputHeight(height);
+    };
+    const end = () => {
+      setCommitInputResizing(false);
+      document.body.classList.remove("is-pane-resizing");
+      document.body.classList.remove("is-pane-resizing-row");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end, { once: true });
+  };
 
   if (!visible || !host) return null;
   if (!git?.isRepo && !git?.nestedRepos?.length) {
@@ -917,12 +946,21 @@ function GitChangesPanel({
     </div>
     <div className="wb-git-commit-composer">
       {suggestionText ? <p className={`wb-git-commit-suggestion${commitSuggestion?.source === "llm" ? " is-ai" : ""}`}>{suggestionText}</p> : null}
+      <div
+        className={`pane-resizer is-horizontal wb-git-commit-resizer${commitInputResizing ? " is-dragging" : ""}`}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={labels.resizeInput}
+        onPointerDown={beginCommitInputResize}
+      />
       <textarea
+        ref={commitInputRef}
         className="wb-git-commit-input"
         value={commitMessage}
         disabled={commitBusy || !gitRoot}
         placeholder={labels.messageLabel}
         aria-label={labels.messageLabel}
+        style={commitInputHeight ? { height: commitInputHeight } : undefined}
         onChange={(event) => onCommitMessageChange(event.target.value)}
       />
       <div className="wb-git-commit-actions">
@@ -5942,6 +5980,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         noChanges: t("desktop.workbench.sidePanelNoChanges"),
         unavailable: selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
         messageLabel: t("desktop.workbench.gitCommitDialogTitle"),
+        resizeInput: t("desktop.workbench.resizeCommitInput"),
         autoGenerate: t("desktop.workbench.gitCommitAutoGenerate"),
         commit: t("desktop.workbench.gitCommit"),
         commitAndPush: t("desktop.workbench.gitCommitAndPush"),

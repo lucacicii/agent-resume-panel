@@ -1340,6 +1340,7 @@
   "desktop.workbench.renameFolder": "重命名目录",
   "desktop.workbench.renameProject": "重命名项目",
   "desktop.workbench.renameProjectDisplay": "项目显示名",
+  "desktop.workbench.resizeCommitInput": "调整提交信息输入框高度",
   "desktop.workbench.resizeProjects": "调整项目侧栏宽度",
   "desktop.workbench.resizeSessions": "调整 Session 列表宽度",
   "desktop.workbench.resizeSidePanel": "调整侧栏宽度",

@@ -7121,8 +7121,7 @@ code {
 .wb-git-commit-composer .wb-git-commit-input {
   width: 100%;
   min-height: 72px;
-  max-height: 140px;
-  resize: vertical;
+  max-height: 190px;
   box-sizing: border-box;
   margin: 0;
 }
@@ -9570,7 +9569,6 @@ textarea.wb-floating-note-editor {
   font-size: 13px;
   font-family: Menlo, Monaco, "Courier New", monospace;
   line-height: 1.45;
-  resize: vertical;
   min-height: 96px;
 }
 

@@ -1340,6 +1340,7 @@
   "desktop.workbench.renameFolder": "Rename folder",
   "desktop.workbench.renameProject": "Rename project",
   "desktop.workbench.renameProjectDisplay": "Project display name",
+  "desktop.workbench.resizeCommitInput": "Resize commit input",
   "desktop.workbench.resizeProjects": "Resize project sidebar",
   "desktop.workbench.resizeSessions": "Resize session list",
   "desktop.workbench.resizeSidePanel": "Resize side panel",
