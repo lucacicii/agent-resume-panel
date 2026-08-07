@@ -120,6 +120,7 @@ import {
   normalizeGlobalShortcut,
   workbenchArrowDirectionFromInput
 } from "./desktopShortcuts";
+import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -503,7 +504,7 @@ async function openStandaloneNoteWindow(): Promise<void> {
   try {
     const created = await notesCreate({
       scope: "library",
-      body: "# Standalone note\n\n"
+      body: STANDALONE_NOTE_INITIAL_CONTENT
     });
     const record = await notesSetGtdStatus(created.noteId, "inbox");
     scheduleNotesIndex();

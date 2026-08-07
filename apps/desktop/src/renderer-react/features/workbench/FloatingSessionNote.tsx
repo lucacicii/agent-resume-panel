@@ -137,6 +137,7 @@ export function FloatingSessionNote({
   const noteRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<FloatingNoteDrag | null>(null);
   const contentRef = useRef(content);
+  const initialContentRef = useRef("");
   const noteIdRef = useRef(noteId);
   const dirtyRef = useRef(dirty);
   const saveTimerRef = useRef<number | null>(null);
@@ -198,16 +199,33 @@ export function FloatingSessionNote({
   const close = useCallback(async () => {
     if (closingRef.current) return;
     closingRef.current = true;
+    const currentNoteId = noteIdRef.current;
+    if (currentNoteId && (contentRef.current || "").trim() === (initialContentRef.current || "").trim()) {
+      clearSaveTimer();
+      try {
+        const result = await desktopApi().notesDelete({ noteId: currentNoteId });
+        if (!result.ok) throw new Error("Note deletion failed.");
+        onClose();
+        return;
+      } catch (deleteError) {
+        closingRef.current = false;
+        setError(t("desktop.workbench.floatingNoteDeleteFailed", errorMessage(deleteError)));
+        return;
+      }
+    }
     const saved = await flushSave();
     if (saved) {
       onClose();
       return;
     }
     closingRef.current = false;
-  }, [flushSave, onClose]);
+  }, [clearSaveTimer, flushSave, onClose, t]);
 
   useEffect(() => {
     const sequence = ++loadSequenceRef.current;
+    initialContentRef.current = isSessionTarget(target)
+      ? initialSessionNoteContent(target)
+      : initialFloatingNoteContent();
     clearSaveTimer();
     setLoading(true);
     setCreating(false);
@@ -248,7 +266,10 @@ export function FloatingSessionNote({
             provider: target.provider,
             sessionId: target.sessionId
           });
-          if (loadSequenceRef.current !== sequence) return;
+          if (loadSequenceRef.current !== sequence) {
+            void desktopApi().notesDelete({ noteId: created.noteId }).catch(() => undefined);
+            return;
+          }
           setNoteId(created.noteId);
           noteIdRef.current = created.noteId;
           setGtdStatus("inbox");
@@ -271,7 +292,10 @@ export function FloatingSessionNote({
           projectPath: target.kind === "project" ? target.projectPath : undefined,
           body: initial
         });
-        if (loadSequenceRef.current !== sequence) return;
+        if (loadSequenceRef.current !== sequence) {
+          void desktopApi().notesDelete({ noteId: created.noteId }).catch(() => undefined);
+          return;
+        }
         setNoteId(created.noteId);
         noteIdRef.current = created.noteId;
         setGtdStatus(target.initialGtdStatus);

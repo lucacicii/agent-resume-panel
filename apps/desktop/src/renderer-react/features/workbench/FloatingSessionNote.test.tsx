@@ -159,6 +159,76 @@ describe("FloatingSessionNote", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("discards a note whose creation completes after the panel closed", async () => {
+    let resolveCreate: (value: { noteId: string; filename: string }) => void = () => undefined;
+    const notesCreate = vi.fn(() => new Promise<{ noteId: string; filename: string }>((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    installBridge({ notesCreate, notesDelete });
+    const onClose = vi.fn();
+    const { unmount } = render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => { resolveCreate({ noteId: "late-note", filename: "late.md" }); });
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "late-note" }));
+  });
+
+  it("discards a newly created note when closed without any input", async () => {
+    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
+    const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "created.md", updatedAtMs: 2, content }));
+    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note(noteId, 2), gtdStatus: status || undefined }));
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    installBridge({ notesCreate, notesWrite, notesSetGtdStatus, notesDelete });
+    const onClose = vi.fn();
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
+    expect((editor as HTMLTextAreaElement).value).toBe(initialSessionNoteContent(target));
+    fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
+
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "created-note" }));
+    expect(notesWrite).not.toHaveBeenCalledWith({ noteId: "created-note", content: "# Fix renderer\nDraft" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an existing note with content when closed without edits", async () => {
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    installBridge({
+      notesList: async () => [note("latest", 20)],
+      notesRead: async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 20), content: "# Latest\n" }),
+      notesDelete
+    });
+    const onClose = vi.fn();
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
+    expect((editor as HTMLTextAreaElement).value).toBe("# Latest\n");
+    fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(notesDelete).not.toHaveBeenCalled();
+  });
+
+  it("discards an untouched project floating note when closed", async () => {
+    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
+    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus }) => ({ ...note(noteId, 2), gtdStatus: status }));
+    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+    installBridge({ notesCreate, notesSetGtdStatus, notesDelete });
+    const onClose = vi.fn();
+    render(<I18nProvider><FloatingSessionNote target={{ kind: "project", projectPath: "/work/app", projectName: "app", initialGtdStatus: "next" }} onClose={onClose} /></I18nProvider>);
+
+    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
+    expect((editor as HTMLTextAreaElement).value).toBe(initialFloatingNoteContent());
+    fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
+
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "created-note" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("creates a project note with the target GTD status", async () => {
     const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
     const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus }) => ({ ...note(noteId, 2), gtdStatus: status }));

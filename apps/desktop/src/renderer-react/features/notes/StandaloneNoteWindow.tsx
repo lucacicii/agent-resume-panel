@@ -5,6 +5,7 @@ import { desktopApi } from "../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "./noteProject";
+import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../shared/standaloneNote";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 
@@ -80,6 +81,19 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   const close = useCallback(async () => {
     if (closingRef.current) return;
     closingRef.current = true;
+    if ((contentRef.current || "").trim() === STANDALONE_NOTE_INITIAL_CONTENT.trim()) {
+      clearSaveTimer();
+      try {
+        const result = await desktopApi().notesDelete({ noteId });
+        if (!result.ok) throw new Error("Note deletion failed.");
+        await desktopApi().standaloneNoteClose();
+        return;
+      } catch (closeError) {
+        setError(t("desktop.standaloneNote.deleteFailed", errorMessage(closeError)));
+        closingRef.current = false;
+        return;
+      }
+    }
     try {
       if (await flushSave()) {
         await desktopApi().standaloneNoteClose();
@@ -89,7 +103,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
       setError(t("desktop.standaloneNote.saveFailed", errorMessage(closeError)));
     }
     closingRef.current = false;
-  }, [flushSave, t]);
+  }, [clearSaveTimer, flushSave, noteId, t]);
 
   useEffect(() => {
     let active = true;
@@ -125,11 +139,22 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   useEffect(() => {
     const api = desktopApi();
     return api.onStandaloneNoteCloseRequested(() => {
-      void flushSave().then((ok) => api.standaloneNoteCloseReady({ ok })).catch(() => {
-        void api.standaloneNoteCloseReady({ ok: false });
-      });
+      void (async () => {
+        try {
+          if ((contentRef.current || "").trim() === STANDALONE_NOTE_INITIAL_CONTENT.trim()) {
+            const result = await desktopApi().notesDelete({ noteId });
+            if (!result.ok) throw new Error("Note deletion failed.");
+            api.standaloneNoteCloseReady({ ok: true });
+            return;
+          }
+          const ok = await flushSave();
+          api.standaloneNoteCloseReady({ ok });
+        } catch {
+          void api.standaloneNoteCloseReady({ ok: false });
+        }
+      })();
     });
-  }, [flushSave]);
+  }, [flushSave, noteId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

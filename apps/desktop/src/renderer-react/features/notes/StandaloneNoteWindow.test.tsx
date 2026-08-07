@@ -241,6 +241,42 @@ describe("StandaloneNoteWindow", () => {
     expect(notesWrite).toHaveBeenLastCalledWith({ noteId: "note-1", content: "# Standalone note\nFinal" });
   });
 
+  it("discards an untouched standalone note when closed", async () => {
+    const { notesDelete, standaloneNoteClose } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+
+    const editor = await screen.findByRole("textbox", { name: "Standalone note editor" });
+    expect((editor as HTMLTextAreaElement).value.trim()).toBe("# Standalone note");
+    fireEvent.click(screen.getByRole("button", { name: "Close note" }));
+
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
+    await waitFor(() => expect(standaloneNoteClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("discards an untouched standalone note on a native close request", async () => {
+    const { getCloseCallback, notesDelete, standaloneNoteCloseReady } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+
+    const handler = getCloseCallback();
+    expect(handler).toBeTypeOf("function");
+    await act(async () => { handler?.(); });
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
+    await waitFor(() => expect(standaloneNoteCloseReady).toHaveBeenCalledWith({ ok: true }));
+  });
+
+  it("keeps a standalone note with content when closed", async () => {
+    const { notesDelete, standaloneNoteClose } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+
+    const editor = await screen.findByRole("textbox", { name: "Standalone note editor" });
+    fireEvent.change(editor, { target: { value: "# Standalone note\nDraft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Close note" }));
+
+    await waitFor(() => expect(standaloneNoteClose).toHaveBeenCalledTimes(1));
+    expect(notesDelete).not.toHaveBeenCalled();
+  });
+
   it("answers native close requests only after the pending save succeeds", async () => {
     const { getCloseCallback, notesWrite, standaloneNoteCloseReady } = installBridge();
     render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
