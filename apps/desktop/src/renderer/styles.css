@@ -6241,6 +6241,8 @@ code {
   overflow: auto;
   padding: 4px 0;
   overflow-x: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .wb-git-log-graph-list {
@@ -6428,6 +6430,12 @@ code {
   background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
 }
 
+.wb-git-log-graph-row.is-selected,
+.wb-git-log-graph-row.is-selected:hover,
+.wb-git-log-graph-row.is-selected:focus-visible {
+  background: var(--color-fill-primary);
+}
+
 .wb-git-log-graph-content {
   min-width: 0;
   flex: 1 1 auto;
@@ -6531,6 +6539,49 @@ code {
   gap: 4px;
 }
 
+.wb-git-log-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wb-git-log-detail-title-row .wb-git-log-detail-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.wb-git-log-detail-close {
+  appearance: none;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.wb-git-log-detail-close:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.wb-git-log-detail-close svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .wb-git-log-detail-subject {
   font-size: 13px;
   font-weight: 600;
@@ -6588,6 +6639,30 @@ code {
   text-align: center;
   font-weight: 700;
   color: var(--muted);
+}
+
+/* File history dual area: the commit graph list stays visible above the
+   selected commit detail, matching IDE-style history panels. */
+.wb-git-log-history-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.wb-git-log-history-list {
+  flex: 1 1 45%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wb-git-log-history-detail {
+  flex: 0 1 auto;
+  max-height: 55%;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--color-separator);
 }
 
 .wb-side-pane-title {

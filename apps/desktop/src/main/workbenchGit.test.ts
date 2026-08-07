@@ -9,7 +9,7 @@ vi.mock("electron", () => ({
   ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }
 }));
 
-import { collectGitCommitContext, queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
+import { collectGitCommitContext, queryGitCommitFileDiffSides, queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
 
 const roots: string[] = [];
 
@@ -71,6 +71,13 @@ describe("queryGitFileLog", () => {
     expect(result.commits.find((commit) => commit.hash === mainHash)?.refs.heads).toContain("main");
     expect(result.commits.find((commit) => commit.hash === remoteHash)?.refs.remotes).toContain("origin/remote-only");
     expect(result.layout.rows).toHaveLength(result.commits.length);
+    // Rename-aware per-commit path: the original name before the rename, the
+    // new name from the rename commit onward.
+    expect(result.commits.find((commit) => commit.hash === oldHash)?.pathAtCommit).toBe("old.txt");
+    expect(result.commits.find((commit) => commit.hash === renameHash)?.pathAtCommit).toBe("new.txt");
+    expect(result.commits.find((commit) => commit.hash === featureHash)?.pathAtCommit).toBe("new.txt");
+    expect(result.commits.find((commit) => commit.hash === mainHash)?.pathAtCommit).toBe("new.txt");
+    expect(result.commits.find((commit) => commit.hash === remoteHash)?.pathAtCommit).toBe("new.txt");
   });
 
   it("resolves the nearest nested repository and returns an empty history for an untracked file", async () => {
@@ -88,6 +95,23 @@ describe("queryGitFileLog", () => {
     expect(result.commits).toEqual([]);
   });
 
+  it("includes commits reachable only through tags once --all is used", async () => {
+    const repo = createRepo();
+    commitFile(repo, "tracked.txt", "base\n", "initial");
+    git(repo, "checkout", "-b", "tag-only");
+    const taggedHash = commitFile(repo, "tracked.txt", "tagged\n", "tagged change");
+    git(repo, "tag", "v1.0");
+    git(repo, "checkout", "main");
+    git(repo, "branch", "-D", "tag-only");
+
+    const result = await queryGitFileLog(repo, path.join(repo, "tracked.txt"), 150);
+    const hashes = new Set(result.commits.map((commit) => commit.hash));
+
+    // Reachable only via the tag: --branches/--remotes would omit it, --all includes it.
+    expect(hashes).toContain(taggedHash);
+    expect(result.commits.find((commit) => commit.hash === taggedHash)?.refs.tags).toContain("v1.0");
+  });
+
   it("rejects directories and paths outside the selected project", async () => {
     const repo = createRepo();
     commitFile(repo, "tracked.txt", "tracked\n", "initial");
@@ -98,6 +122,62 @@ describe("queryGitFileLog", () => {
 
     await expect(queryGitFileLog(repo, repo)).rejects.toThrow("不是文件");
     await expect(queryGitFileLog(repo, outsideFile)).rejects.toThrow("路径超出允许范围");
+  });
+});
+
+describe("queryGitCommitFileDiffSides", () => {
+  it("resolves rename sides so a renamed file shows parent and commit content with hunks", async () => {
+    const repo = createRepo();
+    commitFile(repo, "old.txt", "line one\nline two\nline three\n", "initial");
+    git(repo, "mv", "old.txt", "new.txt");
+    fs.writeFileSync(path.join(repo, "new.txt"), "line one\nline two changed\nline three\n");
+    git(repo, "add", "--", "new.txt");
+    git(repo, "commit", "-m", "rename with edit");
+    const renameHash = git(repo, "rev-parse", "HEAD");
+
+    const result = await queryGitCommitFileDiffSides(repo, renameHash, "new.txt");
+
+    expect(result.oldText).toContain("line two");
+    expect(result.oldText).not.toContain("line two changed");
+    expect(result.newText).toContain("line two changed");
+    expect(result.oldLabel).toBe(`${renameHash.slice(0, 7)}^`);
+    expect(result.newLabel).toBe(renameHash.slice(0, 7));
+    expect(result.hunks.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the plain path for non-rename commits and falls back to --root for the initial commit", async () => {
+    const repo = createRepo();
+    const rootHash = commitFile(repo, "tracked.txt", "hello\n", "initial");
+    const editHash = commitFile(repo, "tracked.txt", "hello world\n", "edit");
+
+    const rootResult = await queryGitCommitFileDiffSides(repo, rootHash, "tracked.txt");
+    expect(rootResult.oldText).toBe("");
+    expect(rootResult.newText).toBe("hello\n");
+    expect(rootResult.hunks.length).toBeGreaterThan(0);
+
+    const editResult = await queryGitCommitFileDiffSides(repo, editHash, "tracked.txt");
+    expect(editResult.oldText).toBe("hello\n");
+    expect(editResult.newText).toBe("hello world\n");
+    expect(editResult.hunks.length).toBeGreaterThan(0);
+  });
+});
+
+describe("terminal:gitShow", () => {
+  it("reports rename/copy entries with their old path for old -> new display", async () => {
+    const repo = createRepo();
+    commitFile(repo, "old.txt", "old\n", "initial");
+    git(repo, "mv", "old.txt", "new.txt");
+    git(repo, "commit", "-m", "rename file");
+    const renameHash = git(repo, "rev-parse", "HEAD");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitShow");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: renameHash }) as { files: Array<{ status: string; path: string; oldPath?: string }> };
+
+    expect(result.files).toEqual([{ status: "R100", path: "new.txt", oldPath: "old.txt" }]);
   });
 });
 

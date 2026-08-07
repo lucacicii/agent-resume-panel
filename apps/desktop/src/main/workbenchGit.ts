@@ -45,11 +45,15 @@ export interface GitLogEntry {
   parents: string[];
   decorations: string;
   refs: GitCommitRefs;
+  /** Repo-relative path of the file as it existed in this commit (rename-aware). */
+  pathAtCommit: string;
 }
 
 export interface GitShowFileEntry {
   status: string;
   path: string;
+  /** Old path for rename/copy (R/C) entries, when the diff reports one. */
+  oldPath?: string;
 }
 
 export interface GitShowResult {
@@ -264,7 +268,8 @@ function parseGitLogOutput(stdout: string): GitLogEntry[] {
       subject: subjectParts.join("\x1f") || "",
       parents: parseParentsField(parentsRaw || ""),
       decorations: normalizedDecorations,
-      refs: parseGitRefs(normalizedDecorations)
+      refs: parseGitRefs(normalizedDecorations),
+      pathAtCommit: ""
     });
   }
   return entries;
@@ -277,13 +282,15 @@ function parseNameStatusOutput(stdout: string): GitShowFileEntry[] {
     const tab = line.indexOf("\t");
     if (tab < 0) continue;
     const status = line.slice(0, tab).trim();
-    let filePath = line.slice(tab + 1).trim();
-    const renameArrow = filePath.indexOf("\t");
-    if (renameArrow >= 0) {
-      filePath = filePath.slice(renameArrow + 1).trim() || filePath.slice(0, renameArrow).trim();
-    }
+    const paths = line
+      .slice(tab + 1)
+      .split("\t")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const oldPath = /^[RC]/.test(status) && paths.length > 1 ? paths[0] : undefined;
+    const filePath = oldPath !== undefined ? paths[1] : paths[0];
     if (!filePath) continue;
-    files.push({ status, path: filePath });
+    files.push(oldPath !== undefined ? { status, path: filePath, oldPath } : { status, path: filePath });
   }
   return files;
 }
@@ -309,6 +316,60 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
   } catch (error) {
     throw new Error(formatExecError(error));
   }
+}
+
+const GIT_FILE_STATUS_PATTERN = /^[MADRCUTX]$/;
+
+/**
+ * Parses `git log --name-status` output for a single pathspec. Each commit
+ * record (field-separated with \x1f) is followed by one or more name-status
+ * lines; rename/copy (R/C) entries report `old<TAB>new`, everything else
+ * reports a single path. `repoPath` seeds the file path for commits that
+ * carry no name-status lines (e.g. merge commits).
+ */
+function parseGitFileLogOutput(stdout: string, repoPath: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  let current: GitLogEntry | null = null;
+  let lastPath = repoPath;
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const parts = line.split("\x1f");
+    if (parts.length >= 7 && GIT_HASH_PATTERN.test(parts[0])) {
+      const [hash, shortHash, author, dateRaw, decorations, parentsRaw, ...subjectParts] = parts;
+      const date = Number.parseInt(dateRaw, 10);
+      if (!hash || !Number.isFinite(date)) continue;
+      const normalizedDecorations = normalizeGitDecorations(decorations || "");
+      const entry: GitLogEntry = {
+        hash,
+        shortHash: shortHash || hash.slice(0, 7),
+        author: author || "",
+        date,
+        subject: subjectParts.join("\x1f") || "",
+        parents: parseParentsField(parentsRaw || ""),
+        decorations: normalizedDecorations,
+        refs: parseGitRefs(normalizedDecorations),
+        pathAtCommit: lastPath
+      };
+      current = entry;
+      entries.push(entry);
+      continue;
+    }
+    if (!current) continue;
+    const tab = line.indexOf("\t");
+    if (tab <= 0) continue;
+    const status = line.slice(0, tab).trim();
+    if (!GIT_FILE_STATUS_PATTERN.test(status)) continue;
+    const paths = line
+      .slice(tab + 1)
+      .split("\t")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const newPath = /^[RC]/.test(status) && paths.length > 1 ? paths[1] : paths[0];
+    if (!newPath) continue;
+    lastPath = newPath;
+    current.pathAtCommit = newPath;
+  }
+  return entries;
 }
 
 export async function queryGitFileLog(
@@ -339,10 +400,10 @@ export async function queryGitFileLog(
       repoRoot,
       [
         "log",
-        "--branches",
-        "--remotes",
+        "--all",
         "--decorate=full",
         "--follow",
+        "--name-status",
         "--topo-order",
         `-n${n}`,
         "--date=unix",
@@ -351,9 +412,9 @@ export async function queryGitFileLog(
         repoPath
       ],
       30000,
-      2 * 1024 * 1024
+      4 * 1024 * 1024
     );
-    const commits = parseGitLogOutput(stdout);
+    const commits = parseGitFileLogOutput(stdout, repoPath);
     const layout = buildGitGraphLayout(
       commits.map((commit) => ({
         hash: commit.hash,
@@ -387,7 +448,7 @@ async function queryGitShow(repoRoot: string, hash: string): Promise<GitShowResu
     if (!fullHash || !Number.isFinite(date)) {
       throw new Error("无法解析 commit 详情");
     }
-    const filesStdout = await gitExec(repoRoot, ["diff-tree", "--no-commit-id", "--name-status", "-r", commit]);
+    const filesStdout = await gitExec(repoRoot, ["diff-tree", "--no-commit-id", "--name-status", "-r", "-M", commit]);
     return {
       hash: fullHash,
       shortHash: shortHash || fullHash.slice(0, 7),
@@ -414,7 +475,7 @@ async function gitShowCommitFile(repoRoot: string, ref: string, filePath: string
   }
 }
 
-async function queryGitCommitFileDiffSides(
+export async function queryGitCommitFileDiffSides(
   repoRoot: string,
   hash: string,
   filePath: string
@@ -423,13 +484,40 @@ async function queryGitCommitFileDiffSides(
   const path = assertValidGitFilePath(filePath);
   const shortHash = commit.slice(0, 7);
 
+  // Rename/copy commits changed the file under its old path: resolve the old
+  // side via diff-tree so the parent content and patch are read from there.
+  let oldPath = path;
+  try {
+    const nameStatus = await gitExec(
+      repoRoot,
+      ["diff-tree", "--no-commit-id", "--name-status", "-r", "-M", commit],
+      15000,
+      1024 * 1024
+    );
+    for (const line of nameStatus.split("\n")) {
+      if (!line.trim()) continue;
+      const tab = line.indexOf("\t");
+      if (tab < 0) continue;
+      const status = line.slice(0, tab).trim();
+      if (!/^[RC]/.test(status)) continue;
+      const [oldCandidate, newCandidate] = line.slice(tab + 1).split("\t");
+      if (oldCandidate && newCandidate && (oldCandidate.trim() === path || newCandidate.trim() === path)) {
+        oldPath = oldCandidate.trim();
+        break;
+      }
+    }
+  } catch (error) {
+    // Root commits have no parent diff; the --root fallback below handles them.
+  }
+
   const [oldFile, newFile] = await Promise.all([
-    gitShowCommitFile(repoRoot, `${commit}^`, path),
+    gitShowCommitFile(repoRoot, `${commit}^`, oldPath),
     gitShowCommitFile(repoRoot, commit, path)
   ]);
   let patch = "";
   try {
-    patch = await gitExec(repoRoot, ["diff", "--no-ext-diff", "--no-color", "--unified=3", `${commit}^`, commit, "--", path], 15000, 2 * 1024 * 1024);
+    const pathspec = oldPath === path ? [path] : [oldPath, path];
+    patch = await gitExec(repoRoot, ["diff", "--no-ext-diff", "--no-color", "--unified=3", "-M", `${commit}^`, commit, "--", ...pathspec], 15000, 2 * 1024 * 1024);
   } catch (error) {
     // Root commits do not have a parent; --root produces the same file patch.
     if (oldFile === null) {

@@ -442,6 +442,7 @@ export interface DesktopApi {
         isHead: boolean;
         primaryLabel: string | null;
       };
+      pathAtCommit: string;
     }>;
     layout: {
       laneWidth: number;
@@ -488,6 +489,7 @@ export interface DesktopApi {
         isHead: boolean;
         primaryLabel: string | null;
       };
+      pathAtCommit: string;
     }>;
     layout: {
       laneWidth: number;
@@ -522,7 +524,7 @@ export interface DesktopApi {
     date: number;
     subject: string;
     body: string;
-    files: Array<{ status: string; path: string }>;
+    files: Array<{ status: string; path: string; oldPath?: string }>;
   }>;
   terminalGitShowFileDiffSides(args: {
     repoRoot: string;

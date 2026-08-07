@@ -1064,12 +1064,23 @@ function GitGraphSvg({ row, layout }: { row: GitGraphRow; layout: GitGraphLayout
   </svg>;
 }
 
-function GitGraphPortals({ gitLog, gitShow }: { gitLog: GitLog | null; gitShow: GitShow | null }): React.JSX.Element | null {
+function formatGitCommitDate(dateSeconds: number, locale: string): string {
+  if (!Number.isFinite(dateSeconds)) return "";
+  const date = new Date(dateSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return date.toLocaleDateString();
+  }
+}
+
+function GitGraphPortals({ gitLog, gitShow, keepGraph }: { gitLog: GitLog | null; gitShow: GitShow | null; keepGraph: boolean }): React.JSX.Element | null {
   const [hosts, setHosts] = useState<HTMLElement[]>([]);
   useEffect(() => {
-    setHosts(gitLog && !gitShow ? [...document.querySelectorAll<HTMLElement>("#react-workbench .wb-git-log-graph-row")] : []);
-  }, [gitLog, gitShow]);
-  if (!gitLog || gitShow) return null;
+    setHosts(gitLog && (keepGraph || !gitShow) ? [...document.querySelectorAll<HTMLElement>("#react-workbench .wb-git-log-graph-row")] : []);
+  }, [gitLog, gitShow, keepGraph]);
+  if (!gitLog || (gitShow && !keepGraph)) return null;
   return <>{hosts.map((host, index) => {
     const row = gitLog.layout.rows[index];
     return row ? createPortal(<span className="react-git-graph-gutter wb-git-log-graph-gutter" key={gitLog.commits[index]?.hash || index}><GitGraphSvg row={row} layout={gitLog.layout} /></span>, host) : null;
@@ -1851,7 +1862,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
 
 export function WorkbenchPanel(): ReactPortal | null {
   const host = document.getElementById("react-workbench");
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [active, setActive] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
@@ -5064,12 +5075,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const showCommit = async (hash: string) => {
+  const showCommit = async (commit: GitLogCommit) => {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
     try {
-      setGitShow(await desktopApi().terminalGitShow({ repoRoot, hash }));
-    } catch (error) { notifyGitFailure("desktop.workbench.gitShowLoadFailed", error); }
+      setGitShow(await desktopApi().terminalGitShow({ repoRoot, hash: commit.hash }));
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitShowLoadFailed", error);
+      return;
+    }
+    // File history opens the commit's diff in the workbench middle area; the
+    // repository-wide log only shows commit details and never auto-opens diffs.
+    if (gitHistoryContext?.kind === "file") {
+      const pathAtCommit = commit.pathAtCommit || gitHistoryContext.repoPath;
+      if (pathAtCommit) await openGitShowFileDiff(commit.hash, pathAtCommit);
+    }
   };
 
   const openGitLogContextMenu = (event: React.MouseEvent, commit: GitLogCommit) => {
@@ -5532,6 +5552,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     ? t("desktop.workbench.gitFileHistoryBackToExplorer")
     : t("desktop.workbench.gitLogBackToChanges");
 
+  const renderGitLogRow = (commit: GitLogCommit, index: number) => {
+    const selected = gitShow?.hash === commit.hash;
+    return <button
+      type="button"
+      className={`wb-git-log-graph-row${selected ? " is-selected" : ""}`}
+      aria-pressed={selected}
+      key={commit.hash}
+      onClick={() => void showCommit(commit)}
+      onContextMenu={(event) => openGitLogContextMenu(event, commit)}
+    ><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog?.layout.rows[index]?.colorIndex ?? 0}`}><ThemeIcon name="circle" size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><GitCommitBranches commit={commit} /><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta"><span className="wb-git-log-hash">{commit.shortHash}</span><span className="wb-git-log-meta-sep">·</span><span>{commit.author}</span><span className="wb-git-log-meta-sep">·</span><span>{formatGitCommitDate(commit.date, locale)}</span></span></span></button>;
+  };
+
   if (!host) return null;
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
@@ -5828,15 +5860,31 @@ export function WorkbenchPanel(): ReactPortal | null {
             {gitHistoryContext ? <div className="wb-log-body">
               {gitLogLoading ? <p className="muted wb-git-empty" role="status">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoading" : "desktop.common.loading")}</p>
                 : gitLogError ? <div className="wb-git-panel"><p className="muted wb-git-empty is-error" role="alert">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryLoadFailed" : "desktop.workbench.gitLogLoadFailed", gitLogError)}</p><button type="button" className="ghost-btn" onClick={retryGitHistory}>{t("desktop.common.refresh")}</button></div>
-                  : gitShow ? <>
+                  : gitHistoryContext.kind === "file" ? <div className="wb-git-log-history-layout">
+                      <div className="wb-git-log-history-list">
+                        {gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div> : <p className="muted wb-git-empty">{t("desktop.workbench.gitFileHistoryEmpty")}</p>}
+                      </div>
+                      {gitShow ? <div className="wb-git-log-detail wb-git-log-history-detail">
+                        <div className="wb-git-log-detail-head">
+                          <div className="wb-git-log-detail-title-row">
+                            <h4 className="wb-git-log-detail-subject">{gitShow.subject || t("desktop.workbench.gitLogUntitled")}</h4>
+                            <button type="button" className="wb-git-log-detail-close" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitHistoryDetailClose")}><ThemeIcon name="close" size={13} /></button>
+                          </div>
+                          <p className="wb-git-log-meta"><span className="wb-git-log-hash">{gitShow.shortHash}</span><span className="wb-git-log-meta-sep">·</span><span>{gitShow.author}</span><span className="wb-git-log-meta-sep">·</span><span>{formatGitCommitDate(gitShow.date, locale)}</span></p>
+                        </div>
+                        <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
+                        <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.oldPath ? t("desktop.workbench.gitLogRename", file.oldPath, file.path) : file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
+                      </div> : null}
+                    </div>
+                    : gitShow ? <>
                     <button type="button" className="wb-diff-back" onClick={() => setGitShow(null)} aria-label={t("desktop.workbench.gitLogBackToList")}><ThemeIcon name="chevron-left" size={15} /></button>
                     <h4 className="wb-git-log-detail-subject">{gitShow.subject}</h4>
                     <p className="wb-git-log-meta">{gitShow.shortHash} · {gitShow.author}</p>
                     <pre className="wb-git-log-detail-body">{gitShow.body}</pre>
                     <div className="wb-git-log-files">{gitShow.files.length ? gitShow.files.map((file) => <button type="button" className="wb-git-log-file" key={file.path} onClick={() => void openGitShowFileDiff(gitShow.hash, file.path)}><span className="wb-git-file-status">{file.status}</span>{file.path}</button>) : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogNoFiles")}</p>}</div>
                   </>
-                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => <button type="button" className="wb-git-log-graph-row" key={commit.hash} onClick={() => void showCommit(commit.hash)} onContextMenu={(event) => openGitLogContextMenu(event, commit)}><span className={`wb-git-graph-node wb-git-graph-lane-${gitLog.layout.rows[index]?.colorIndex ?? 0}`}><ThemeIcon name="circle" size={10} fill="currentColor" /></span><span className="wb-git-log-graph-content"><GitCommitBranches commit={commit} /><span className="wb-git-log-subject">{commit.subject || t("desktop.workbench.gitLogUntitled")}</span><span className="wb-git-log-meta">{commit.shortHash} · {commit.author}</span></span></button>)}</div>
-                      : <p className="muted wb-git-empty">{t(gitHistoryContext.kind === "file" ? "desktop.workbench.gitFileHistoryEmpty" : "desktop.workbench.gitLogEmpty")}</p>}
+                    : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
+                      : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
             </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
               {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
               {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
@@ -6056,7 +6104,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         discard: t("desktop.workbench.gitDiscard")
       }}
     />
-    <GitGraphPortals gitLog={gitLog} gitShow={gitShow} />
+    <GitGraphPortals gitLog={gitLog} gitShow={gitShow} keepGraph={gitHistoryContext?.kind === "file"} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
     <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />

@@ -2560,7 +2560,8 @@ describe("WorkbenchPanel", () => {
         subject: "Update app",
         parents: [],
         decorations: "origin/feature",
-        refs: { heads: ["feature"], remotes: ["origin/feature"], tags: [], isHead: false, primaryLabel: "feature" }
+        refs: { heads: ["feature"], remotes: ["origin/feature"], tags: [], isHead: false, primaryLabel: "feature" },
+        pathAtCommit: "src/app.ts"
       }],
       layout: {
         laneWidth: 18,
@@ -2585,12 +2586,22 @@ describe("WorkbenchPanel", () => {
       date: 1,
       subject: "Update app",
       body: "Commit body",
-      files: [{ status: "M", path: "src/app.ts" }]
+      files: [
+        { status: "M", path: "src/app.ts" },
+        { status: "R100", path: "src/moved.ts", oldPath: "src/renamed.ts" }
+      ]
+    }));
+    const terminalGitShowFileDiffSides = vi.fn(async () => ({
+      oldLabel: "1234567^",
+      newLabel: "1234567",
+      oldText: "old content\n",
+      newText: "new content\n",
+      hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }]
     }));
     const clipboardWriteText = vi.fn();
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.copy": "Copy", "desktop.common.copyPath": "Copy Path", "desktop.common.paste": "Paste", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.sidePanelScripts": "Scripts", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.explorerRevealInFinder": "Reveal in Finder", "desktop.workbench.gitFileHistoryTitle": "File history · {0}", "desktop.workbench.gitFileHistoryBackToExplorer": "Back to Explorer", "desktop.workbench.gitFileHistoryLoading": "Loading file history…", "desktop.workbench.gitFileHistoryEmpty": "No commits found for this file", "desktop.workbench.gitFileHistoryLoadFailed": "Could not load file history: {0}", "desktop.workbench.gitLogBackToList": "Back to commit history", "desktop.workbench.gitLogNoFiles": "No changed files", "desktop.workbench.gitLogUntitled": "(untitled)", "desktop.workbench.gitCopyCommitHash": "Copy commit hash", "desktop.workbench.gitCopyBranchName": "Copy branch name"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.copy": "Copy", "desktop.common.copyPath": "Copy Path", "desktop.common.paste": "Paste", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.sidePanelScripts": "Scripts", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.explorerRevealInFinder": "Reveal in Finder", "desktop.workbench.gitFileHistoryTitle": "File history · {0}", "desktop.workbench.gitFileHistoryBackToExplorer": "Back to Explorer", "desktop.workbench.gitFileHistoryLoading": "Loading file history…", "desktop.workbench.gitFileHistoryEmpty": "No commits found for this file", "desktop.workbench.gitFileHistoryLoadFailed": "Could not load file history: {0}", "desktop.workbench.gitLogBackToList": "Back to commit history", "desktop.workbench.gitLogNoFiles": "No changed files", "desktop.workbench.gitLogUntitled": "(untitled)", "desktop.workbench.gitLogRename": "{0} → {1}", "desktop.workbench.gitHistoryDetailClose": "Close commit details", "desktop.workbench.gitCopyCommitHash": "Copy commit hash", "desktop.workbench.gitCopyBranchName": "Copy branch name"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -2609,6 +2620,7 @@ describe("WorkbenchPanel", () => {
       workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
       workbenchGitFileLog,
       terminalGitShow,
+      terminalGitShowFileDiffSides,
       clipboardWriteText
     } as unknown as typeof window.agentResume;
 
@@ -2640,12 +2652,32 @@ describe("WorkbenchPanel", () => {
       repoRoot: "/work/app",
       hash: "1234567890abcdef1234567890abcdef12345678"
     }));
+    // File history opens the commit diff in the middle area using pathAtCommit.
+    await waitFor(() => expect(terminalGitShowFileDiffSides).toHaveBeenCalledWith({
+      repoRoot: "/work/app",
+      hash: "1234567890abcdef1234567890abcdef12345678",
+      path: "src/app.ts"
+    }));
     expect(await screen.findByText("Commit body")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back to commit history" }));
+    // Rename/copy entries render as old -> new.
+    expect(await screen.findByText("src/renamed.ts → src/moved.ts")).toBeTruthy();
+    // The graph list stays visible next to the detail and the row is selected.
+    expect(screen.getByRole("button", { name: /Update app/ }).classList.contains("is-selected")).toBe(true);
+    expect(screen.getByRole("button", { name: /Update app/ }).getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("app.ts");
+    });
+    expect(document.querySelector(".wb-git-diff-pane .wb-diff-title")?.textContent).toBe("src/app.ts");
+    // Closing the detail returns to the plain list while staying in history.
+    fireEvent.click(screen.getByRole("button", { name: "Close commit details" }));
+    expect(screen.queryByText("Commit body")).toBeNull();
     expect(await screen.findByRole("button", { name: /Update app/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Update app/ }).classList.contains("is-selected")).toBe(false);
     fireEvent.click(screen.getAllByRole("button", { name: "Back to Explorer" }).at(-1)!);
     expect(await screen.findByText("Explorer")).toBeTruthy();
-    expect(await screen.findByText("app.ts")).toBeTruthy();
+    await waitFor(() => {
+      expect([...document.querySelectorAll(".wb-explorer-file-tree .wb-file-tree-label")].some((el) => el.textContent === "app.ts")).toBe(true);
+    });
   });
 
   it("opens a Git change from its context menu in Workbench or the default app", async () => {
