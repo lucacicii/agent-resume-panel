@@ -12614,6 +12614,8 @@ body::before {
 [data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="agent"]::before { content: "02"; }
 [data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="workbench"]::before { content: "03"; }
 [data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="notes"]::before { content: "04"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="flow"]::before { content: "05"; }
+[data-visual-theme="cyberpunk"] .primary-tabs .tab[data-tab="kanban"]::before { content: "06"; }
 [data-visual-theme="cyberpunk"] .primary-tabs .tab:hover { border-color: rgba(255,43,214,.65); background: rgba(255,43,214,.11); color: #eaffff; }
 [data-visual-theme="cyberpunk"] .primary-tabs .tab.active {
   color: #05040d;
