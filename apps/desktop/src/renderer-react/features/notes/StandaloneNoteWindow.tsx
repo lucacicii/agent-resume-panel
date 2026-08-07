@@ -4,28 +4,12 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
+import { basename, projectMatchesNote, projectPathFor, type Project } from "./noteProject";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
-type Project = Awaited<ReturnType<ReturnType<typeof desktopApi>["listProjects"]>>[number];
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function basename(value: string): string {
-  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
-function projectPathFor(project: Project): string {
-  return project.localPath || project.portableKey;
-}
-
-function projectMatchesNote(project: Project, noteProjectPath: string): boolean {
-  const path = projectPathFor(project);
-  return noteProjectPath === path
-    || noteProjectPath === project.localPath
-    || noteProjectPath === project.portableKey
-    || (!!project.localPath && noteProjectPath.endsWith(project.portableKey.replace(/^~\//, "")));
 }
 
 export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.Element {

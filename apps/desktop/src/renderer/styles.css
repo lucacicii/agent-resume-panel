@@ -490,6 +490,25 @@ textarea:focus-visible,
   }
 }
 
+/* Kanban detail modal: meta row keeps the project selector next to the note meta. */
+.kanban-note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.kanban-note-meta .session-preview-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.kanban-note-meta .kanban-note-project {
+  flex: 0 0 auto;
+}
+
 /* Kanban detail modal: editor/preview fill the remaining height. */
 .sheet-body.kanban-detail-body > .kanban-note-editor,
 .sheet-body.kanban-detail-body > .kanban-note-preview,
@@ -500,12 +519,6 @@ textarea:focus-visible,
 }
 
 .sheet-body.kanban-detail-body > .kanban-note-editor { display: flex; flex-direction: column; }
-
-/* Kanban detail modal head actions stay on one row. */
-.kanban-note-view-segmented {
-  flex: 0 0 auto;
-  width: auto;
-}
 
 .sheet-actions .session-preview-actions {
   flex-wrap: nowrap;
@@ -9191,7 +9204,8 @@ textarea.wb-editor-host {
 
 .wb-floating-note-status,
 .standalone-note-window-status,
-.standalone-note-window-project {
+.standalone-note-window-project,
+.kanban-note-project {
   height: 28px;
   padding: 0 7px;
   border: 1px solid var(--color-separator);
@@ -9207,13 +9221,15 @@ textarea.wb-editor-host {
   max-width: 112px;
 }
 
-.standalone-note-window-project {
+.standalone-note-window-project,
+.kanban-note-project {
   max-width: 170px;
 }
 
 .wb-floating-note-status:focus-visible,
 .standalone-note-window-status:focus-visible,
-.standalone-note-window-project:focus-visible {
+.standalone-note-window-project:focus-visible,
+.kanban-note-project:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }

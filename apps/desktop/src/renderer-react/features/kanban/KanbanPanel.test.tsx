@@ -75,6 +75,21 @@ function renderKanban(options: {
   const notes = options.notes ?? (options.doneNote
     ? [note, { ...note, noteId: "note-done", title: "Finished task", gtdStatus: "done" as const }]
     : [note]);
+  const noteRecords = new Map(notes.map((item) => [item.noteId, item]));
+  const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+    record: noteRecords.get(noteId) ?? { ...note, noteId },
+    content: "# Hello\nWorld"
+  }));
+  const notesMove = vi.fn(async ({ noteId, owner }: { noteId: string; owner: { scope: TestNote["scope"]; projectPath?: string } }) => {
+    const current = noteRecords.get(noteId) ?? { ...note, noteId };
+    const next = {
+      ...current,
+      scope: owner.scope,
+      projectPath: owner.scope === "project" ? owner.projectPath : undefined
+    };
+    noteRecords.set(noteId, next);
+    return next;
+  });
   const sessions = options.sessions ?? [session];
   const statuses = options.statuses ?? { "codex:session-1": "next" };
   window.agentResume = {
@@ -105,6 +120,8 @@ function renderKanban(options: {
         "desktop.kanban.resumeSession": "Run",
         "desktop.kanban.resumeFailed": "Resume failed",
         "desktop.notes.filterProjects": "Filter projects…",
+        "desktop.notes.projectLabel": "Project",
+        "desktop.notes.targetLibrary": "Standalone",
         "desktop.common.showSidebar": "Show sidebar",
         "desktop.common.hideSidebar": "Hide sidebar",
         "desktop.common.search": "Search",
@@ -163,7 +180,8 @@ function renderKanban(options: {
     notesSetGtdStatus,
     notesCreate,
     notesResumeSession,
-    notesRead: async ({ noteId }: { noteId: string }) => ({ noteId, filename: "plan.md", content: "# Hello\nWorld", updatedAtMs: Date.now() }),
+    notesRead,
+    notesMove,
     notesWrite,
     notesClipboardHasImage: async () => false,
     notesPasteImage: async () => null,
@@ -182,7 +200,7 @@ function renderKanban(options: {
       <KanbanPanel />
     </I18nProvider>
   );
-  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite, notesResumeSession };
+  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite, notesResumeSession, notesMove };
 }
 
 function activate() {
@@ -382,6 +400,45 @@ describe("KanbanPanel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "note-1", content: "# Edited\n" }));
+  });
+
+  it("moves a note to a selected project from the preview modal", async () => {
+    const { notesMove } = renderKanban();
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+    const project = within(dialog).getByRole("combobox", { name: "Project" });
+    expect((project as HTMLSelectElement).value).toBe("");
+    expect(within(dialog).getByRole("option", { name: "Standalone" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "Agent Resume" })).toBeTruthy();
+    expect(within(dialog).getByRole("option", { name: "Other" })).toBeTruthy();
+
+    fireEvent.change(project, { target: { value: "/work/agent-resume-panel" } });
+    await waitFor(() => expect(notesMove).toHaveBeenCalledWith({
+      noteId: "note-1",
+      owner: { scope: "project", projectPath: "/work/agent-resume-panel" }
+    }));
+    await waitFor(() => expect((project as HTMLSelectElement).value).toBe("/work/agent-resume-panel"));
+  });
+
+  it("moves a project note back to the library from the preview modal", async () => {
+    const { notesMove } = renderKanban({ notes: [projectNote] });
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Design doc/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Design doc/ });
+    const project = await within(dialog).findByRole("combobox", { name: "Project" });
+    await waitFor(() => expect((project as HTMLSelectElement).value).toBe("/work/agent-resume-panel"));
+
+    fireEvent.change(project, { target: { value: "" } });
+    await waitFor(() => expect(notesMove).toHaveBeenCalledWith({
+      noteId: "note-proj",
+      owner: { scope: "library" }
+    }));
+    await waitFor(() => expect((project as HTMLSelectElement).value).toBe(""));
   });
 
   it("opens a session in a centered modal showing only the clicked session's detail", async () => {

@@ -226,6 +226,14 @@ export function KanbanPanel(): ReactPortal | null {
     return desktopApi().onSessionsSynced(() => { void load(); });
   }, [active, load]);
 
+  // Keep the board fresh when a note is saved or moved from the detail modal.
+  useEffect(() => {
+    if (!active) return;
+    const onNotesMutated = () => { void load(); };
+    window.addEventListener("agent-resume:notes-mutated", onNotesMutated);
+    return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
+  }, [active, load]);
+
   const visible = useMemo(() => {
     const q = query.trim();
     return cards.filter((card) => {
@@ -614,6 +622,7 @@ export function KanbanPanel(): ReactPortal | null {
         note={detail?.kind === "note" ? detail.note : null}
         session={detail?.kind === "session" ? detail.session : null}
         onClose={() => setDetail(null)}
+        onNoteMoved={(nextNote) => setDetail({ kind: "note", note: nextNote })}
       />
       {floatingNoteTarget ? (
         <FloatingSessionNote

@@ -8,6 +8,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { isNoteSessionResumable } from "./noteSessionResume";
 import { useI18n } from "../../i18n";
+import { basename, projectMatchesNote, projectPathFor, type Project } from "../notes/noteProject";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type Session = Awaited<ReturnType<ReturnType<typeof desktopApi>["listSessions"]>>[number];
@@ -23,14 +24,16 @@ interface KanbanCardModalProps {
   note: Note | null;
   session: Session | null;
   onClose: () => void;
+  /** Called after the note is moved between library and projects so the board stays in sync. */
+  onNoteMoved?: (note: Note) => void;
 }
 
-export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps): ReactNode | null {
+export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
   const { t } = useI18n();
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
 
   // Note: edit/preview state.
-  const [noteView, setNoteView] = useState<"preview" | "edit">("preview");
+  const [noteView, setNoteView] = useState<"preview" | "edit">("edit");
   const [noteContent, setNoteContent] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -43,20 +46,26 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
   const [previewSummary, setPreviewSummary] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [assist, setAssist] = useState<"summary" | "rename" | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [moving, setMoving] = useState(false);
 
   useEffect(() => {
     if (!note) return;
     setNoteLoading(true);
     setStatus({ text: "" });
-    void desktopApi().notesRead({ noteId: note.noteId })
-      .then((result) => {
+    const projectRequest = typeof desktopApi().listProjects === "function"
+      ? desktopApi().listProjects().catch(() => [])
+      : Promise.resolve([] as Project[]);
+    void Promise.all([desktopApi().notesRead({ noteId: note.noteId }), projectRequest])
+      .then(([result, nextProjects]) => {
         const content = result.content || "";
         noteContentRef.current = content;
         loadedRef.current = content;
         dirtyRef.current = false;
         setNoteContent(content);
         setDirty(false);
-        setNoteView("preview");
+        setNoteView("edit");
+        setProjects(nextProjects || []);
         setNoteLoading(false);
       })
       .catch((error) => {
@@ -107,6 +116,43 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     }
   }, [note, t]);
+
+  const currentProjectPath = note?.scope === "project" ? note.projectPath : undefined;
+  const matchedProject = currentProjectPath
+    ? projects.find((project) => projectMatchesNote(project, currentProjectPath))
+    : undefined;
+  const projectSelectValue = matchedProject ? projectPathFor(matchedProject) : currentProjectPath || "";
+  const projectOptions = projects.map((project) => {
+    const value = projectPathFor(project);
+    return { value, label: project.alias || basename(value) };
+  });
+  if (!matchedProject && currentProjectPath) {
+    projectOptions.unshift({ value: currentProjectPath, label: basename(currentProjectPath) });
+  }
+
+  const updateProject = async (projectPath: string) => {
+    if (!note || moving || projectPath === projectSelectValue) return;
+    try {
+      setMoving(true);
+      // Flush pending edits before the note file is relocated.
+      if (dirtyRef.current) {
+        await saveNote();
+        if (dirtyRef.current) return; // save failed; keep the note in place
+      }
+      await desktopApi().notesMove({
+        noteId: note.noteId,
+        owner: projectPath ? { scope: "project", projectPath } : { scope: "library" }
+      });
+      const moved = await desktopApi().notesRead({ noteId: note.noteId });
+      onNoteMoved?.(moved.record);
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      setStatus({ text: t("desktop.kanban.moved"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setMoving(false);
+    }
+  };
 
   const openInNotes = useCallback(() => {
     if (!note) return;
@@ -196,18 +242,6 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
 
   const actions = note ? (
     <>
-      <SegmentedControl<"preview" | "edit">
-        value={noteView}
-        options={["preview", "edit"]}
-        onChange={setNoteView}
-        aria-label={t("desktop.kanban.noteView")}
-        getLabel={(value) => (
-          <span title={t(value === "edit" ? "desktop.common.edit" : "desktop.common.preview")}>
-            <ThemeIcon name={value === "edit" ? "pencil" : "eye"} size={14} aria-hidden="true" />
-          </span>
-        )}
-        className="kanban-note-view-segmented"
-      />
       {isNoteSessionResumable(note) ? (
         <button type="button" className="tool-btn" onClick={() => void resumeNoteSession(note)}>
           <ThemeIcon name="play" size={14} aria-hidden="true" />
@@ -241,10 +275,35 @@ export function KanbanCardModal({ note, session, onClose }: KanbanCardModalProps
     <Sheet open title={title} onClose={onClose} modal wide bodyClassName="kanban-detail-body" actions={actions}>
       {note ? (
         <>
-          <div className="muted session-preview-meta">
-            {t(`desktop.kanban.scope.${note.scope}`)}
-            {note.projectPath ? ` · ${note.projectPath}` : ""}
-            {` · ${note.filename}`}
+          <div className="kanban-note-meta">
+            <div className="muted session-preview-meta">
+              {t(`desktop.kanban.scope.${note.scope}`)}
+              {note.projectPath ? ` · ${note.projectPath}` : ""}
+              {` · ${note.filename}`}
+            </div>
+            <SegmentedControl<"preview" | "edit">
+              value={noteView}
+              options={["preview", "edit"]}
+              onChange={setNoteView}
+              aria-label={t("desktop.kanban.noteView")}
+              getLabel={(value) => (
+                <span title={t(value === "edit" ? "desktop.common.edit" : "desktop.common.preview")}>
+                  <ThemeIcon name={value === "edit" ? "pencil" : "eye"} size={16} aria-hidden="true" />
+                </span>
+              )}
+              className="notes-segmented"
+            />
+            <select
+              className="kanban-note-project"
+              aria-label={t("desktop.notes.projectLabel")}
+              title={t("desktop.notes.projectLabel")}
+              value={projectSelectValue}
+              disabled={noteLoading || moving}
+              onChange={(event) => void updateProject(event.target.value)}
+            >
+              <option value="">{t("desktop.notes.targetLibrary")}</option>
+              {projectOptions.map((project) => <option value={project.value} key={project.value}>{project.label}</option>)}
+            </select>
           </div>
           <Status kind={status.kind}>{status.text}</Status>
           {noteLoading ? (
