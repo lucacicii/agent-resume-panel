@@ -180,6 +180,9 @@ type PendingWorkbenchSession = {
   flowId?: string;
   flowNodeId?: string;
   noteId?: string;
+  /** When set, auto-assign the bound catalog session to this project folder. */
+  folderProjectId?: string;
+  folderId?: string;
 };
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
@@ -2273,10 +2276,22 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals(bindSessions);
     for (const pending of pendingSessions) {
       const sessionKeyValue = assignments.get(pending.terminalKey);
-      if (!sessionKeyValue || !pending.flowRequestId) continue;
+      if (!sessionKeyValue) continue;
       const colon = sessionKeyValue.indexOf(":");
       const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
       const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
+      if (pending.folderProjectId && pending.folderId && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
+        void desktopApi().assignWorkbenchSessionToFolder({
+          projectId: pending.folderProjectId,
+          provider: catalogProvider,
+          agentSessionId: sessionId,
+          folderId: pending.folderId
+        }).then(() => loadSessions())
+          .catch((error) => {
+            if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
+          });
+      }
+      if (!pending.flowRequestId) continue;
       const binding = pending.flowId && pending.flowNodeId
         ? desktopApi().flowBindSession({
             flowId: pending.flowId,
@@ -2301,7 +2316,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       });
     }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
-  }, [pendingSessions, sessions, terminals]);
+  }, [loadSessions, pendingSessions, sessions, terminals]);
 
   useEffect(() => {
     const onTab = (event: Event) => {
@@ -2900,7 +2915,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     provider: AgentProvider,
     projectPath: string,
     title: string,
-    flow?: { requestId: string; flowId?: string; nodeId?: string; noteId?: string }
+    flow?: { requestId: string; flowId?: string; nodeId?: string; noteId?: string },
+    folder?: { projectId?: string; folderId?: string | null }
   ) => {
     const pending: PendingWorkbenchSession = {
       key: `pending:${terminalKey}`,
@@ -2913,7 +2929,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       flowRequestId: flow?.requestId,
       flowId: flow?.flowId,
       flowNodeId: flow?.nodeId,
-      noteId: flow?.noteId
+      noteId: flow?.noteId,
+      folderProjectId: folder?.projectId,
+      folderId: folder?.folderId || undefined
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
@@ -3278,9 +3296,25 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       if (!selectedProject) selectProject(cwd);
       else if (targetProject && projectPathKey(selectedProject) !== projectPathKey(cwd)) selectProject(cwd);
+      // When the projects sidebar focuses a subfolder of the launch project,
+      // associate the new session with that folder automatically.
+      const focusedFolder = selectedProject && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID && selectedProjectMeta
+        && projectPathKey(cwd) === projectPathKey(selectedProject)
+        ? { projectId: selectedProjectMeta.id, folderId: selectedFolderId }
+        : null;
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record);
+        if (focusedFolder && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
+          try {
+            await desktopApi().assignWorkbenchSessionToFolder({
+              projectId: focusedFolder.projectId,
+              provider: "chat",
+              agentSessionId: record.id,
+              folderId: focusedFolder.folderId
+            });
+          } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+        }
         await loadSessions();
       } else {
         const result = await desktopApi().workbenchNewSession({
@@ -3301,13 +3335,13 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
           const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
-          addPendingSession(terminalKey, target.provider, cwd, title);
+          addPendingSession(terminalKey, target.provider, cwd, title, undefined, focusedFolder || undefined);
         }
         await loadSessions();
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, selectedProject, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, selectedFolderId, selectedProject, selectedProjectMeta, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;

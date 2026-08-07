@@ -294,6 +294,34 @@ const FOLDER_DRAG_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.deleteFolderConfirm": "Delete folder {0}?"
 };
 
+const FOLDER_FOCUS_TEST_MESSAGES: Record<string, string> = {
+  ...FOLDER_DRAG_TEST_MESSAGES,
+  "desktop.common.revealInFinder": "Reveal in Finder",
+  "desktop.workbench.newSessionTitle": "New session {0}",
+  "desktop.workbench.terminalTabs": "Terminal tabs",
+  "desktop.workbench.closeTerminal": "Close terminal",
+  "desktop.workbench.mountNote": "Mount note",
+  "desktop.workbench.removeProjectFromPanel": "Remove from panel",
+  "desktop.workbench.acpChat": "ACP chat",
+  "desktop.settings.defaultAgent": "Default agent",
+  "desktop.settings.newSessionGroupCli": "CLI (terminal)",
+  "desktop.settings.newSessionGroupAcp": "ACP (visual chat)",
+  "desktop.settings.newSessionTarget.cli_codex": "Codex",
+  "desktop.settings.newSessionTarget.cli_claude": "Claude",
+  "desktop.settings.newSessionTarget.cli_grok": "Grok",
+  "desktop.settings.newSessionTarget.cli_agy": "Antigravity",
+  "desktop.settings.newSessionTarget.cli_opencode": "OpenCode",
+  "desktop.settings.newSessionTarget.cli_pi": "Pi",
+  "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI",
+  "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+  "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code",
+  "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex",
+  "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build",
+  "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode",
+  "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
+  "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent"
+};
+
 describe("WorkbenchPanel", () => {
   it("collects case-insensitive matches across both Git diff sides", () => {
     expect(collectDiffSearchMatches("const Value = 1;\nvalue++;", "const Value = 2;\nreturn value;", " VALUE ")).toEqual([
@@ -1784,6 +1812,184 @@ describe("WorkbenchPanel", () => {
       .some((item) => item.textContent?.includes("Catalog session"))).toBe(true));
     await waitFor(() => expect([...document.querySelectorAll(".wb-list-item")].some((item) => item.textContent?.includes("New session app"))).toBe(false));
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+  });
+
+  it("auto-assigns a new CLI session to the focused subfolder once the catalog binds it", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onSessionsSynced: ((result: { syncedAt: number }) => void) | undefined;
+    let catalogSessions = [
+      { provider: "codex" as const, id: "existing", title: "Existing session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+    ];
+    const assignWorkbenchSessionToFolder = vi.fn(async () => ({
+      projectId: "project-1",
+      provider: "codex",
+      agentSessionId: "new-id",
+      folderId: "campaign",
+      updatedAtMs: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onSessionsSynced: (callback: (result: { syncedAt: number }) => void) => { onSessionsSynced = callback; return () => undefined; },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => catalogSessions,
+      listProjects: async () => [
+        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
+      ],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
+        assignments: []
+      }),
+      assignWorkbenchSessionToFolder,
+      workbenchNewSession: async () => ({ mode: "xterm", command: "codex", cwd: "/work/app" }),
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(await screen.findByTitle("Campaign"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    catalogSessions = [
+      ...catalogSessions,
+      { provider: "codex" as const, id: "new-id", title: "Catalog session", projectPath: "/work/app", projectId: "project-1", updatedAt: Date.now() }
+    ];
+    await act(async () => onSessionsSynced?.({ syncedAt: Date.now() }));
+
+    await waitFor(() => expect(assignWorkbenchSessionToFolder).toHaveBeenCalledWith({
+      projectId: "project-1",
+      provider: "codex",
+      agentSessionId: "new-id",
+      folderId: "campaign"
+    }));
+  });
+
+  it("auto-assigns a new ACP session to the focused subfolder", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const acpCreateSession = vi.fn(async ({ projectPath, provider }: { projectPath: string; provider: string }) => ({
+      id: "acp-new",
+      title: "ACP session",
+      projectPath,
+      provider,
+      createdAt: 1,
+      updatedAt: 1,
+      messageCount: 0
+    }));
+    const assignWorkbenchSessionToFolder = vi.fn(async () => ({
+      projectId: "project-1",
+      provider: "chat",
+      agentSessionId: "acp-new",
+      folderId: "campaign",
+      updatedAtMs: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", defaultNewSessionTarget: "" } }),
+      listSessions: async () => [
+        { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ],
+      listProjects: async () => [
+        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
+      ],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
+        assignments: []
+      }),
+      assignWorkbenchSessionToFolder,
+      acpCreateSession,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "acp-new", title: "ACP session", projectPath: "/work/app", provider: "codex", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(await screen.findByTitle("Campaign"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    const menu = await screen.findByRole("menu", { name: "Default agent" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "ACP · Codex" }));
+
+    await waitFor(() => expect(assignWorkbenchSessionToFolder).toHaveBeenCalledWith({
+      projectId: "project-1",
+      provider: "chat",
+      agentSessionId: "acp-new",
+      folderId: "campaign"
+    }));
+  });
+
+  it("does not auto-assign a new session to a focused folder when launching into another project", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/docs" }));
+    const assignWorkbenchSessionToFolder = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
+        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
+      ],
+      listProjects: async () => [
+        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
+        { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
+      ],
+      listWorkbenchSessionFolders: async ({ projectId }: { projectId: string }) => projectId === "project-1"
+        ? {
+            folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
+            assignments: []
+          }
+        : { folders: [], assignments: [] },
+      assignWorkbenchSessionToFolder,
+      workbenchNewSession,
+      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/docs", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(await screen.findByTitle("Campaign"));
+    fireEvent.contextMenu(await screen.findByTitle("/work/docs"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New session" }));
+
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/docs", provider: "codex", executionMode: "standard" }));
+    expect(assignWorkbenchSessionToFolder).not.toHaveBeenCalled();
   });
 
   it("reports state-changing Git actions and keeps refreshes silent", async () => {
