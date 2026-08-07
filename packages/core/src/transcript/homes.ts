@@ -12,6 +12,7 @@ export const DEFAULT_AGENT_HOMES = {
   grokHome: "~/.grok",
   opencodeHome: "~/.local/share/opencode",
   piHome: "~/.pi/agent",
+  primeHome: "~/.prime/agent",
   cursorHome: "~/.cursor"
 } as const;
 
@@ -71,6 +72,7 @@ export function resolvePreviewHomes(settings: PanelSettings, panelHomeHint?: str
     grokHome: expandHome(homes.grokHome?.trim() || DEFAULT_AGENT_HOMES.grokHome),
     opencodeHome: expandHome(homes.opencodeHome?.trim() || DEFAULT_AGENT_HOMES.opencodeHome),
     piHome: expandHome(homes.piHome?.trim() || DEFAULT_AGENT_HOMES.piHome),
+    primeHome: expandHome(homes.primeHome?.trim() || DEFAULT_AGENT_HOMES.primeHome),
     cursorHome: expandHome(homes.cursorHome?.trim() || DEFAULT_AGENT_HOMES.cursorHome),
     cursorIdeUserDataHome: expandHome(homes.cursorIdeUserDataHome?.trim() || defaultCursorIdeUserDataHome())
   };

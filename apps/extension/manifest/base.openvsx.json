@@ -2,8 +2,8 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.9.0",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "version": "2.10.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
@@ -82,6 +82,7 @@
     "onCommand:agentResume.newGrokSession",
     "onCommand:agentResume.newOpenCodeSession",
     "onCommand:agentResume.newPiSession",
+    "onCommand:agentResume.newPrimeSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -101,7 +102,8 @@
     "onCommand:agentResume.handoffTo.agy",
     "onCommand:agentResume.handoffTo.grok",
     "onCommand:agentResume.handoffTo.opencode",
-    "onCommand:agentResume.handoffTo.pi"
+    "onCommand:agentResume.handoffTo.pi",
+    "onCommand:agentResume.handoffTo.prime"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -170,6 +172,11 @@
           "type": "string",
           "default": "~/.pi/agent",
           "description": "Pi agent home directory containing sessions."
+        },
+        "agentResume.primeHome": {
+          "type": "string",
+          "default": "~/.prime/agent",
+          "description": "Prime Agent home directory containing sessions."
         },
         "agentResume.cursorHome": {
           "type": "string",
@@ -306,6 +313,22 @@
           ],
           "description": "Launch arguments for Pi ACP agent."
         },
+        "agentResume.acp.agents.prime.command": {
+          "type": "string",
+          "default": "prime-agent",
+          "description": "Launch command for Prime Agent ACP agent."
+        },
+        "agentResume.acp.agents.prime.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--mode",
+            "acp"
+          ],
+          "description": "Launch arguments for Prime Agent ACP agent."
+        },
         "agentResume.uiLanguage": {
           "type": "string",
           "enum": [
@@ -414,6 +437,7 @@
             "grok",
             "opencode",
             "pi",
+            "prime",
             "cursor"
           ],
           "default": "codex",
@@ -501,6 +525,7 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
+              "newPrimeSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -527,6 +552,7 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
+              "newPrimeSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -543,6 +569,7 @@
             "newGrokSession",
             "newOpenCodeSession",
             "newPiSession",
+            "newPrimeSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -790,6 +817,11 @@
       {
         "command": "agentResume.handoffTo.pi",
         "title": "Hand Off to Pi",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.prime",
+        "title": "Hand Off to Prime Agent",
         "category": "Agent Resume"
       },
       {
@@ -2457,6 +2489,11 @@
       {
         "command": "agentResume.ru.newCodexAppSession",
         "title": "Новая сессия ChatGPT",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newPrimeSession",
+        "title": "New Prime Agent Session",
         "category": "Agent Resume"
       },
       {

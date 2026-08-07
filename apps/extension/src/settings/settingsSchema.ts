@@ -69,7 +69,7 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldEditorNewSessionProviderDescription"),
           type: "enum",
           default: "codex",
-          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "cursor"],
+          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"],
           enumLabels: {
             codex: t("settings.enum.editorNewSessionProviderCodex"),
             claude: t("settings.enum.editorNewSessionProviderClaude"),
@@ -77,6 +77,7 @@ export function getSettingSections(): SettingSection[] {
             grok: t("settings.enum.editorNewSessionProviderGrok"),
             opencode: t("settings.enum.editorNewSessionProviderOpencode"),
             pi: t("settings.enum.editorNewSessionProviderPi"),
+            prime: t("settings.enum.editorNewSessionProviderPrime"),
             cursor: "Cursor CLI"
           }
         }
@@ -174,6 +175,13 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldPiHomeDescription"),
           type: "string",
           default: "~/.pi/agent"
+        },
+        {
+          key: "primeHome",
+          label: t("settings.fieldPrimeHomeLabel"),
+          description: t("settings.fieldPrimeHomeDescription"),
+          type: "string",
+          default: "~/.prime/agent"
         },
         {
           key: "cursorHome",
@@ -479,6 +487,26 @@ export function getSettingSections(): SettingSection[] {
               description: t("settings.fieldAcpPiLaunchArgsDescription"),
               type: "stringArray",
               default: ["-y", "pi-acp"]
+            }
+          ]
+        },
+        {
+          id: "prime",
+          title: t("settings.groupAcpPrimeTitle"),
+          fields: [
+            {
+              key: "acp.agents.prime.command",
+              label: t("settings.fieldAcpLaunchCommandLabel"),
+              description: t("settings.fieldAcpPrimeLaunchCommandDescription"),
+              type: "string",
+              default: "prime-agent"
+            },
+            {
+              key: "acp.agents.prime.args",
+              label: t("settings.fieldAcpLaunchArgsLabel"),
+              description: t("settings.fieldAcpPrimeLaunchArgsDescription"),
+              type: "stringArray",
+              default: ["--mode", "acp"]
             }
           ]
         }

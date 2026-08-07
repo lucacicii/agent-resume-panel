@@ -21,6 +21,7 @@ export interface PreviewHomes {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
 }

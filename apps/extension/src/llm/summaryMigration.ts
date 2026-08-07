@@ -21,6 +21,7 @@ const SUPPORTED_PROVIDERS = new Set<AgentProvider>([
 
   "opencode",
   "pi",
+  "prime",
   "chat"
 ]);
 

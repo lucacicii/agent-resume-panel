@@ -56,7 +56,7 @@ test("explicit missing agent home still warns", async () => {
   assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
 });
 
-test("syncs eight providers, preserves local enhancements, and isolates provider failures", async () => {
+test("syncs nine providers, preserves local enhancements, and isolates provider failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-sync-"));
   const homes = {
     codexHome: path.join(root, "codex"),
@@ -65,6 +65,7 @@ test("syncs eight providers, preserves local enhancements, and isolates provider
     grokHome: path.join(root, "grok"),
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi"),
+    primeHome: path.join(root, "prime"),
     cursorHome: path.join(root, "cursor"),
     cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
   };
@@ -89,6 +90,10 @@ test("syncs eight providers, preserves local enhancements, and isolates provider
   await jsonl(path.join(homes.piHome, "sessions", "pi-1.jsonl"), [
     { type: "session", id: "pi-1", cwd: "/tmp/pi", timestamp: "2026-01-01T00:00:07Z" },
     { type: "message", timestamp: "2026-01-01T00:00:08Z", message: { role: "user", content: "Pi title" } }
+  ]);
+  await jsonl(path.join(homes.primeHome, "sessions", "prime-1.jsonl"), [
+    { type: "session", id: "prime-1", cwd: "/tmp/prime", timestamp: "2026-01-01T00:00:09Z" },
+    { type: "message", timestamp: "2026-01-01T00:00:10Z", message: { role: "user", content: "Prime title" } }
   ]);
   await mkdir(path.join(homes.cursorHome, "chats", "workspace-a", "cursor-1"), { recursive: true });
   await writeFile(
@@ -117,11 +122,14 @@ test("syncs eight providers, preserves local enhancements, and isolates provider
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
-  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 8);
-  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "cursor", "cursor-ide"]));
+  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 9);
+  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"]));
   const cursor = first.sessions.find((item) => item.provider === "cursor");
   assert.equal(cursor?.title, "Cursor CLI title");
   assert.equal(cursor?.projectPath, "/tmp/cursor");
+  const prime = first.sessions.find((item) => item.provider === "prime");
+  assert.equal(prime?.title, "Prime title");
+  assert.equal(prime?.projectPath, "/tmp/prime");
   const cursorIde = first.sessions.find((item) => item.provider === "cursor-ide");
   assert.equal(cursorIde?.title, "Cursor IDE title");
   assert.equal(cursorIde?.projectPath, "/tmp/cursor-ide");
@@ -159,6 +167,7 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
     grokHome: path.join(root, "grok"),
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi"),
+    primeHome: path.join(root, "prime"),
     cursorHome: path.join(root, "cursor"),
     cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
   };

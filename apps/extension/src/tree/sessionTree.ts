@@ -537,6 +537,9 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "pi") {
     return "pi";
   }
+  if (provider === "prime") {
+    return "prime";
+  }
   if (provider === "cursor") {
     return "cursor cli";
   }
@@ -564,6 +567,9 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "pi") {
     return "symbol-method";
+  }
+  if (provider === "prime") {
+    return "sparkle";
   }
   if (provider === "cursor" || provider === "cursor-ide") {
     return "window";

@@ -109,7 +109,7 @@ import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
-type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "cursor">;
+type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "cursor">;
 
 function defaultCursorIdeUserDataHome(): string {
   if (process.platform === "darwin") {
@@ -293,6 +293,7 @@ export function activate(context: vscode.ExtensionContext): void {
       openNewSession(tree, node, "opencode", context)
     ),
     ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
+    ...menuCommand("agentResume.newPrimeSession", (node?: unknown) => openNewSession(tree, node, "prime", context)),
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
@@ -599,6 +600,7 @@ function buildHistoryLoadOptions(
     grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
+    primeHome: expandHome(config.get<string>("primeHome", "~/.prime/agent")),
     cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
     cursorIdeUserDataHome: configuredCursorIdeUserDataHome
       ? expandHome(configuredCursorIdeUserDataHome)
@@ -876,6 +878,11 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         label: t("quickpick.newSessionPiLabel"),
         description: t("quickpick.newSessionPiDescription"),
         provider: "pi" as const
+      },
+      {
+        label: t("quickpick.newSessionPrimeLabel"),
+        description: t("quickpick.newSessionPrimeDescription"),
+        provider: "prime" as const
       },
       {
         label: "Cursor CLI",
@@ -1172,6 +1179,7 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "grok" ||
         value.provider === "opencode" ||
         value.provider === "pi" ||
+        value.provider === "prime" ||
         value.provider === "cursor" ||
         value.provider === "cursor-ide" ||
         value.provider === "chat") &&

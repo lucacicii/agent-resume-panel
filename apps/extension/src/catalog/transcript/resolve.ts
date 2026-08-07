@@ -13,6 +13,7 @@ export function homesFromLoadOptions(options: HistoryLoadOptions): RenameHomes {
     grokHome: options.grokHome,
     opencodeHome: options.opencodeHome,
     piHome: options.piHome,
+    primeHome: options.primeHome,
     cursorHome: options.cursorHome,
     cursorIdeUserDataHome: options.cursorIdeUserDataHome
   };
@@ -32,6 +33,8 @@ export function resolveTranscriptRefs(
       return resolveGrok(session, indexes);
     case "pi":
       return resolvePi(session, indexes);
+    case "prime":
+      return resolvePrime(session, indexes);
     case "agy":
       return resolveAgy(session, indexes);
     case "opencode":
@@ -85,6 +88,14 @@ function resolvePi(session: AgentSession, indexes: TranscriptIndexes): Transcrip
   const file = indexes.pi.get(session.id);
   if (!file) {
     return { kind: "unavailable", reason: "Pi session jsonl not indexed" };
+  }
+  return { kind: "jsonl", paths: [file] };
+}
+
+function resolvePrime(session: AgentSession, indexes: TranscriptIndexes): TranscriptRefs {
+  const file = indexes.prime.get(session.id);
+  if (!file) {
+    return { kind: "unavailable", reason: "Prime Agent session jsonl not indexed" };
   }
   return { kind: "jsonl", paths: [file] };
 }

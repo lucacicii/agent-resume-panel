@@ -191,7 +191,7 @@ class AcpChatController {
       this.unsubscribeSessionUpdates?.();
       this.unsubscribeSessionUpdates = undefined;
       this.connection?.dispose();
-      this.connection = new AcpAgentConnection(this.record.provider, this.settings);
+      this.connection = new AcpAgentConnection(this.record.provider, this.settings, this.record.projectPath);
 
       if (this.record.acpSessionId) {
         const previousSessionId = this.record.acpSessionId;
@@ -966,7 +966,7 @@ export function registerAcpIpc(deps: {
       const projectPath = args.projectPath?.trim();
       const provider = args.provider;
       if (!projectPath) throw new Error("Working directory is required.");
-      if (!["codex", "claude", "grok", "opencode", "pi"].includes(provider)) {
+      if (!["codex", "claude", "grok", "opencode", "pi", "prime"].includes(provider)) {
         throw new Error(`Unsupported ACP provider: ${provider}`);
       }
       return createAcpRecord(panelHome, projectPath, provider);

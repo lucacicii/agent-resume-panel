@@ -70,7 +70,7 @@ const ARBAK_MAGIC = Buffer.from("ARBAK001", "ascii");
 const ARBAK_TAG_BYTES = 16;
 const MAX_ARBAK_HEADER_BYTES = 64 * 1024;
 const NATIVE_PROVIDERS = new Set<Exclude<NativeConversationProvider, "cursor-ide">>([
-  "codex", "claude", "agy", "grok", "opencode", "pi", "cursor"
+  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"
 ]);
 
 export type BackupStorageTarget = "local-file" | "icloud-drive";
@@ -1142,6 +1142,7 @@ async function mergeNativeConversations(settings: PanelSettings, root: string, m
     grok: homes.grokHome,
     opencode: homes.opencodeHome,
     pi: homes.piHome,
+    prime: homes.primeHome,
     cursor: homes.cursorHome
   };
   const warnings: string[] = [...manifest.nativeConversations.warnings];

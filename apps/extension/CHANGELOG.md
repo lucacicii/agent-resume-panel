@@ -8,6 +8,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.10.0]
+
+#### 新增
+
+- **笔记 GTD 状态**：Notes 右键菜单支持设置 / 清除笔记 GTD 状态，Notes 树直接显示状态标签；状态写入共享 catalog 的 `note_gtd` 表，不再依赖笔记正文中的 `:::gtd` 块。
+- **共享笔记关联存储**：catalog 新增 `note_links` 表，为项目笔记父子关联提供一致存储与迁移基础。
+- **Prime Agent 支持**：同步 `~/.prime/agent/sessions/*.jsonl`，支持原生 `prime-agent --resume` 恢复、`prime-agent --mode acp` ACP 聊天、CLI 新会话 / 自主模式、Handoff 与备份。
+
+#### 改进
+
+- **LLM 推理模型兼容性**：提高 Summarize、Auto Rename、Handoff 与连接测试的默认 token 预算；当推理模型因 `reasoning_content` 或 `finish_reason=length` 耗尽输出预算时，给出明确错误提示，而不是笼统的 empty response。
+- **Handoff 默认摘要长度**：`handoff.maxBriefTokens` 默认值从 2500 提高到 4000。
+
+#### 变更
+
+- **Notes GTD 数据模型**：扩展与共享 core 统一使用 `note_gtd` 表管理笔记 GTD 状态。
+
 ### [2.9.0]
 
 #### 新增
@@ -467,6 +484,23 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.10.0]
+
+#### Added
+
+- **Note GTD status**: set or clear GTD status from the Notes context menu; status labels now appear in the Notes tree and persist in the shared `note_gtd` catalog table instead of relying on `:::gtd` blocks inside note content.
+- **Shared note-link storage**: catalog adds the `note_links` table as the storage base for parent/child project-note relationships.
+- **Prime Agent support**: sync `~/.prime/agent/sessions/*.jsonl`, native `prime-agent --resume`, ACP Chat via `prime-agent --mode acp`, CLI new session / autonomous mode, handoff, and backup.
+
+#### Improved
+
+- **Reasoning-model LLM handling**: raised default token budgets for Summarize, Auto Rename, Handoff, and connection tests; explicit errors now surface when a reasoning model exhausts the budget via `reasoning_content` or `finish_reason=length`.
+- **Handoff brief size**: `handoff.maxBriefTokens` default increased from 2500 to 4000.
+
+#### Changed
+
+- **Notes GTD data model**: extension and shared core now manage note GTD status through the `note_gtd` table.
 
 ### [2.9.0]
 

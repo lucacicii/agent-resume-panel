@@ -165,13 +165,13 @@ describe("backupService", () => {
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"),
       antigravityHome: path.join(sourceAgents, "agy"), grokHome: path.join(sourceAgents, "grok"),
-      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"),
+      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"),
       cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"),
       antigravityHome: path.join(targetAgents, "agy"), grokHome: path.join(targetAgents, "grok"),
-      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"),
+      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"),
       cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);
@@ -189,12 +189,14 @@ describe("backupService", () => {
     await write(sourceAgents, "codex/session_index.jsonl", "{\"id\":\"index\",\"updatedAt\":200}\n", 2_000);
     const localConflict = await write(targetAgents, "codex/sessions/conflict.jsonl", "{\"id\":\"local\"}\n", 3_000);
     await write(targetAgents, "codex/session_index.jsonl", "{\"id\":\"index\",\"updatedAt\":100}\n", 1_000);
+    await write(sourceAgents, "prime/sessions/prime-session.jsonl", "{\"id\":\"prime\"}\n", 1_000);
 
     const archive = path.join(sourceHome, "native.zip");
     await exportBackup(sourceSettings, archive, "test", { includeCredentials: false, includeNativeConversations: true });
     const preview = await selectBackupForImport(archive);
-    expect(preview.nativeConversationFileCount).toBe(3);
+    expect(preview.nativeConversationFileCount).toBe(4);
     expect(preview.providers.find((provider) => provider.provider === "codex")?.fileCount).toBe(3);
+    expect(preview.providers.find((provider) => provider.provider === "prime")?.fileCount).toBe(1);
     await importBackup(targetSettings, preview.importToken, "test", {
       includeCredentials: false,
       restoreNativeConversations: true,
@@ -204,6 +206,7 @@ describe("backupService", () => {
     await expect(fs.readFile(path.join(targetAgents, "codex", "sessions", "missing.jsonl"), "utf8")).resolves.toBe("{\"id\":\"missing\"}\n");
     await expect(fs.readFile(localConflict, "utf8")).resolves.toBe("{\"id\":\"local\"}\n");
     await expect(fs.readFile(path.join(targetAgents, "codex", "session_index.jsonl"), "utf8")).resolves.toContain("\"updatedAt\":200");
+    await expect(fs.readFile(path.join(targetAgents, "prime", "sessions", "prime-session.jsonl"), "utf8")).resolves.toBe("{\"id\":\"prime\"}\n");
   }, 30_000);
 
   it("restores a compact OpenCode artifact without archived sessions, event history, or secrets", async () => {
@@ -215,11 +218,11 @@ describe("backupService", () => {
     const targetAgents = path.join(targetHome, "agent-homes");
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"), antigravityHome: path.join(sourceAgents, "agy"),
-      grokHome: path.join(sourceAgents, "grok"), opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), cursorHome: path.join(sourceAgents, "cursor")
+      grokHome: path.join(sourceAgents, "grok"), opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"), cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"), antigravityHome: path.join(targetAgents, "agy"),
-      grokHome: path.join(targetAgents, "grok"), opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), cursorHome: path.join(targetAgents, "cursor")
+      grokHome: path.join(targetAgents, "grok"), opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"), cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);
     await preparePanelDatabases(targetSettings);
@@ -283,13 +286,13 @@ describe("backupService", () => {
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"),
       antigravityHome: path.join(sourceAgents, "agy"), grokHome: path.join(sourceAgents, "grok"),
-      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"),
+      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"),
       cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"),
       antigravityHome: path.join(targetAgents, "agy"), grokHome: path.join(targetAgents, "grok"),
-      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"),
+      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"),
       cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);

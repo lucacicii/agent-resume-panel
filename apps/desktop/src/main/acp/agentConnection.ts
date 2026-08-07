@@ -66,7 +66,8 @@ export class AcpAgentConnection {
 
   constructor(
     private readonly provider: AcpAgentProvider,
-    private readonly settings: PanelSettings
+    private readonly settings: PanelSettings,
+    private readonly projectPath?: string
   ) {}
 
   async connect(): Promise<ClientContext> {
@@ -80,6 +81,7 @@ export class AcpAgentConnection {
     const spawnSpec = resolveSpawnCommand(launch.command, process.env, launch.env);
     const command = spawnSpec.command;
     const env = spawnSpec.env;
+    const args = primeAgentLaunchArgs(this.provider, launch.args, this.projectPath);
     if (!spawnSpec.resolved && !path.isAbsolute(command) && !command.includes(path.sep)) {
       throw new Error(
         `Command not found: ${launch.command}. ` +
@@ -89,7 +91,7 @@ export class AcpAgentConnection {
     }
     const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
     this.stderrBuffer = "";
-    this.process = spawn(command, launch.args, {
+    this.process = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
       shell: useShell
@@ -333,6 +335,23 @@ export class AcpAgentConnection {
     this.initialized = false;
     this.agentCapabilities = undefined;
   }
+}
+
+function primeAgentLaunchArgs(
+  provider: AcpAgentProvider,
+  args: string[],
+  projectPath?: string
+): string[] {
+  if (provider !== "prime") {
+    return args;
+  }
+  if (!projectPath) {
+    throw new Error("Prime Agent ACP requires a project working directory.");
+  }
+  if (args.some((arg) => arg === "--cwd" || arg.startsWith("--cwd="))) {
+    return args;
+  }
+  return [...args, "--cwd", path.resolve(projectPath)];
 }
 
 function supportsSessionResume(capabilities?: AgentCapabilities): boolean {

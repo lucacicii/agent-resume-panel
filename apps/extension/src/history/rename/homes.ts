@@ -25,6 +25,7 @@ export function loadRenameHomes(): RenameHomes {
     grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
+    primeHome: expandHome(config.get<string>("primeHome", "~/.prime/agent")),
     cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
     cursorIdeUserDataHome: configuredCursorIdeUserDataHome
       ? expandHome(configuredCursorIdeUserDataHome)

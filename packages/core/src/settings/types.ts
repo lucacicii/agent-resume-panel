@@ -166,14 +166,15 @@ export interface WorkbenchEditorSettings {
  */
 export type WorkbenchNewSessionTarget = string;
 
-export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi";
+export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
 
 export const ACP_AGENT_PROVIDERS: readonly AcpAgentProvider[] = [
   "claude",
   "codex",
   "grok",
   "opencode",
-  "pi"
+  "pi",
+  "prime"
 ] as const;
 
 export type AcpAutoApprovePermissions = "ask" | "allowAll";
@@ -254,6 +255,8 @@ export interface AgentHomesSettings {
   grokHome?: string;
   opencodeHome?: string;
   piHome?: string;
+  /** Prime Agent data root, containing sessions/ and AGENTS.md. */
+  primeHome?: string;
   /** Cursor CLI data root, containing chats/ and projects/. */
   cursorHome?: string;
   /** Cursor IDE User data directory. Empty uses the platform default. */

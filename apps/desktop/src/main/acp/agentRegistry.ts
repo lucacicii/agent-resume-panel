@@ -7,5 +7,6 @@ export const DEFAULT_ACP_AGENT_LAUNCH: Record<AcpAgentProvider, AcpAgentLaunchCo
   claude: { command: "npx", args: ["-y", "@agentclientprotocol/claude-agent-acp@latest"] },
   grok: { command: "grok", args: ["agent", "stdio"] },
   opencode: { command: "npx", args: ["-y", "opencode-ai@latest", "acp"] },
-  pi: { command: "npx", args: ["-y", "pi-acp"] }
+  pi: { command: "npx", args: ["-y", "pi-acp"] },
+  prime: { command: "prime-agent", args: ["--mode", "acp"] }
 };

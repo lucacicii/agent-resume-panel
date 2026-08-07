@@ -16,6 +16,9 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "pi") {
     return `pi --session ${shellQuote(session.id)}`;
   }
+  if (session.provider === "prime") {
+    return `prime-agent --resume ${shellQuote(session.id)}`;
+  }
   if (session.provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
   }
@@ -41,6 +44,9 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "pi") {
     return "pi";
+  }
+  if (provider === "prime") {
+    return "prime-agent";
   }
   if (provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(projectPath)}`;

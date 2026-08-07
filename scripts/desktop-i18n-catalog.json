@@ -824,7 +824,8 @@
       "desktop.workbench.acpPlanEmpty": "Empty plan",
       "desktop.workbench.gitDiscardLine": "Revert line change",
       "desktop.workbench.gitDiscardLineConfirm": "Revert this line or change block in the working tree? This cannot be undone.",
-      "desktop.workbench.gitDiscardLineStagedConfirm": "Revert this line or change block from the index? The working tree will be left unchanged."
+      "desktop.workbench.gitDiscardLineStagedConfirm": "Revert this line or change block from the index? The working tree will be left unchanged.",
+      "desktop.workbench.acpProvider.prime": "Prime Agent"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1143,7 +1144,10 @@
       "desktop.settings.standaloneNoteShortcut": "Global shortcut",
       "desktop.settings.standaloneNoteShortcutDesc": "Press the shortcut from any app to create a new Library Note window.",
       "desktop.settings.standaloneNoteShortcutDisable": "Disable shortcut",
-      "desktop.settings.standaloneNoteShortcutReset": "Reset to ⌘D"
+      "desktop.settings.standaloneNoteShortcutReset": "Reset to ⌘D",
+      "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+      "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
+      "desktop.settings.primeHome": "Prime Agent Home"
     },
     "usage": {
       "desktop.usage.scope": "Range",
@@ -2211,7 +2215,8 @@
       "desktop.workbench.acpPlanEmpty": "空计划",
       "desktop.workbench.gitDiscardLine": "回滚行级更改",
       "desktop.workbench.gitDiscardLineConfirm": "回滚工作区中的此行或变更块？此操作无法撤销。",
-      "desktop.workbench.gitDiscardLineStagedConfirm": "从暂存区回滚此行或变更块？工作区文件不会改变。"
+      "desktop.workbench.gitDiscardLineStagedConfirm": "从暂存区回滚此行或变更块？工作区文件不会改变。",
+      "desktop.workbench.acpProvider.prime": "Prime Agent"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2541,7 +2546,10 @@
       "desktop.settings.standaloneNoteShortcut": "全局快捷键",
       "desktop.settings.standaloneNoteShortcutDesc": "在任意 App 中按下快捷键，创建新的 Library 笔记窗口。",
       "desktop.settings.standaloneNoteShortcutDisable": "禁用快捷键",
-      "desktop.settings.standaloneNoteShortcutReset": "恢复为 ⌘D"
+      "desktop.settings.standaloneNoteShortcutReset": "恢复为 ⌘D",
+      "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+      "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
+      "desktop.settings.primeHome": "Prime Agent 数据目录"
     },
     "usage": {
       "desktop.usage.scope": "范围",
@@ -3643,7 +3651,8 @@
       "desktop.workbench.acpPlanEmpty": "空のプラン",
       "desktop.workbench.gitDiscardLine": "行の変更を元に戻す",
       "desktop.workbench.gitDiscardLineConfirm": "作業ツリーからこの行または変更ブロックを元に戻しますか？元に戻せません。",
-      "desktop.workbench.gitDiscardLineStagedConfirm": "インデックスからこの行または変更ブロックを元に戻しますか？作業ツリーは変更しません。"
+      "desktop.workbench.gitDiscardLineStagedConfirm": "インデックスからこの行または変更ブロックを元に戻しますか？作業ツリーは変更しません。",
+      "desktop.workbench.acpProvider.prime": "Prime Agent"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -3973,7 +3982,10 @@
       "desktop.settings.standaloneNoteShortcut": "グローバルショートカット",
       "desktop.settings.standaloneNoteShortcutDesc": "どのアプリからでもショートカットを押して、新しい Library ノートウィンドウを作成します。",
       "desktop.settings.standaloneNoteShortcutDisable": "ショートカットを無効化",
-      "desktop.settings.standaloneNoteShortcutReset": "⌘D に戻す"
+      "desktop.settings.standaloneNoteShortcutReset": "⌘D に戻す",
+      "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+      "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
+      "desktop.settings.primeHome": "Prime Agent ホーム"
     },
     "usage": {
       "desktop.usage.scope": "範囲",

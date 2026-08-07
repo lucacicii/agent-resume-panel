@@ -39,7 +39,7 @@ type CanvasNode = Node<CanvasNodeData, "flow">;
 type Project = Awaited<ReturnType<ReturnType<typeof desktopApi>["listProjects"]>>[number];
 type FlowPanelStatus = { text: string; kind?: StatusKind };
 
-const PROVIDERS = ["codex", "claude", "grok", "opencode", "pi", "cursor", "cursor-ide"];
+const PROVIDERS = ["codex", "claude", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"];
 const NODE_STATUSES: FlowNodeStatus[] = ["idle", "ready", "running", "completed", "failed", "blocked", "skipped", "cancelled"];
 
 function errorMessage(error: unknown): string {

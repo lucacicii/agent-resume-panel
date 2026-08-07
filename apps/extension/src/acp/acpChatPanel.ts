@@ -154,7 +154,7 @@ export class AcpChatPanel {
       this.unsubscribeSessionUpdates?.();
       this.unsubscribeSessionUpdates = undefined;
       this.connection?.dispose();
-      this.connection = new AcpAgentConnection(this.record.provider);
+      this.connection = new AcpAgentConnection(this.record.provider, this.record.projectPath);
 
       if (this.record.acpSessionId) {
         const previousSessionId = this.record.acpSessionId;

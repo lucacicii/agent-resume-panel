@@ -101,7 +101,7 @@ export type WorkbenchNewSessionTargetDraft = string;
 export interface WorkbenchDraft {
   scratchDir: string;
   /** @deprecated Prefer defaultNewSessionTarget; kept for older call sites */
-  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "cursor";
+  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "prime" | "cursor";
   /** Single-list Default Agent: CLI and ACP-prefixed options */
   defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
   newSessionYolo: boolean;
@@ -137,12 +137,14 @@ export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group:
   { value: "cli:agy", group: "cli" },
   { value: "cli:opencode", group: "cli" },
   { value: "cli:pi", group: "cli" },
+  { value: "cli:prime", group: "cli" },
   { value: "cli:cursor", group: "cli" },
   { value: "acp:claude", group: "acp" },
   { value: "acp:codex", group: "acp" },
   { value: "acp:grok", group: "acp" },
   { value: "acp:opencode", group: "acp" },
-  { value: "acp:pi", group: "acp" }
+  { value: "acp:pi", group: "acp" },
+  { value: "acp:prime", group: "acp" }
 ];
 
 export interface ReportDraft {
@@ -161,6 +163,7 @@ export interface StorageDraft {
   grokHome: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
 }
@@ -384,6 +387,7 @@ function normalizeNewSessionTarget(settings: PanelSettings): string {
     provider === "agy" ||
     provider === "opencode" ||
     provider === "pi" ||
+    provider === "prime" ||
     provider === "cursor"
       ? provider
       : "codex";
@@ -401,6 +405,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     provider === "agy" ||
     provider === "opencode" ||
     provider === "pi" ||
+    provider === "prime" ||
     provider === "cursor"
       ? provider
       : "codex";
@@ -448,6 +453,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
     cliProvider === "agy" ||
     cliProvider === "opencode" ||
     cliProvider === "pi" ||
+    cliProvider === "prime" ||
     cliProvider === "cursor"
       ? cliProvider
       : "codex";
@@ -519,6 +525,7 @@ const AGENT_HOME_DEFAULTS = {
   grokHome: "~/.grok",
   opencodeHome: "~/.local/share/opencode",
   piHome: "~/.pi/agent",
+  primeHome: "~/.prime/agent",
   cursorHome: "~/.cursor",
   cursorIdeUserDataHome: ""
 } as const;

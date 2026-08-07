@@ -4,7 +4,7 @@ import { PreviewMessage } from "../history/preview/types";
 
 export type HandoffTargetProvider = Extract<
   AgentProvider,
-  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi"
+  "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime"
 >;
 
 export type HandoffAcpTargetProvider = AcpAgentProvider;

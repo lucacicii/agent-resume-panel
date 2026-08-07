@@ -9,6 +9,7 @@ const CLI_PROVIDERS = new Set<string>([
   "agy",
   "opencode",
   "pi",
+  "prime",
   "cursor",
   "chat"
 ]);

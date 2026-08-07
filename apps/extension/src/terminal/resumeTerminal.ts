@@ -141,6 +141,9 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "pi") {
     return t("terminal.providerLabelPi");
   }
+  if (provider === "prime") {
+    return t("terminal.providerLabelPrime");
+  }
   if (provider === "cursor") {
     return "Cursor CLI";
   }
