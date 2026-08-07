@@ -1353,6 +1353,37 @@ const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = 
   activeMatchColorOverviewRuler: "#f5a623"
 };
 
+/**
+ * Full-screen TUIs (claude code, prime agent, …) switch to the alternate screen
+ * buffer, which has no xterm scrollback. They enable mouse tracking and scroll
+ * their own viewport, so the jump controls emulate a wheel burst through the PTY.
+ */
+const TUI_WHEEL_UP = "\x1b[<64;1;1M";
+const TUI_WHEEL_DOWN = "\x1b[<65;1;1M";
+/** Wheel ticks sent per jump click; TUIs scroll a few lines per tick. */
+const TUI_WHEEL_BURST = 400;
+const TUI_WHEEL_JUMP_TOP = TUI_WHEEL_UP.repeat(TUI_WHEEL_BURST);
+const TUI_WHEEL_JUMP_BOTTOM = TUI_WHEEL_DOWN.repeat(TUI_WHEEL_BURST);
+/** DEC private modes whose enablement makes the app own wheel scrolling. */
+const TUI_MOUSE_TRACKING_MODES = new Set([1000, 1002, 1003]);
+const MOUSE_TRACKING_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g;
+
+/**
+ * Track DEC private mode 1000/1002/1003 (mouse tracking) per pty from the raw
+ * PTY data stream. Full-screen TUIs enable these so they receive wheel events
+ * and scroll their own viewport; the jump controls mirror that with a burst.
+ */
+function trackTerminalMouseModes(id: number, chunk: string, tracking: Map<number, boolean>): void {
+  const previous = tracking.get(id) ?? false;
+  let next = previous;
+  for (const match of chunk.matchAll(MOUSE_TRACKING_SEQUENCE)) {
+    const modes = match[1].split(";").map((mode) => Number(mode));
+    if (!modes.some((mode) => TUI_MOUSE_TRACKING_MODES.has(mode))) continue;
+    next = match[2] === "h";
+  }
+  if (next !== previous) tracking.set(id, next);
+}
+
 type TerminalRendererMode = "webgl" | "canvas";
 
 /**
@@ -1444,7 +1475,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1454,6 +1485,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   onPty: (key: string, id: number, terminal: Terminal) => void;
   onInput: (key: string) => void;
   onInitialPromptSubmitted: (key: string) => void;
+  /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
+  mouseTracking: { current: Map<number, boolean> };
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -1469,7 +1502,9 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
-  const [scrollState, setScrollState] = useState({ canScrollTop: false, canScrollBottom: false });
+  const [scrollState, setScrollState] = useState<{ canScrollTop: boolean; canScrollBottom: boolean; tuiMode: boolean }>(
+    { canScrollTop: false, canScrollBottom: false, tuiMode: false }
+  );
 
   const runSearch = useCallback((direction: "next" | "prev", term: string) => {
     const addon = searchAddonRef.current;
@@ -1575,11 +1610,17 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     const syncScrollState = () => {
       if (!alive) return;
       const buffer = terminal.buffer.active;
-      const next = buffer.type === "normal" && buffer.baseY > 0
-        ? { canScrollTop: buffer.viewportY > 0, canScrollBottom: buffer.viewportY < buffer.baseY }
-        : { canScrollTop: false, canScrollBottom: false };
+      const tuiMode = buffer.type === "alternate"
+        && ptyId.current !== null
+        && mouseTracking.current.get(ptyId.current) === true;
+      const next = tuiMode
+        ? { canScrollTop: true, canScrollBottom: true, tuiMode: true }
+        : buffer.type === "normal" && buffer.baseY > 0
+          ? { canScrollTop: buffer.viewportY > 0, canScrollBottom: buffer.viewportY < buffer.baseY, tuiMode: false }
+          : { canScrollTop: false, canScrollBottom: false, tuiMode: false };
       setScrollState((current) => current.canScrollTop === next.canScrollTop
-        && current.canScrollBottom === next.canScrollBottom ? current : next);
+        && current.canScrollBottom === next.canScrollBottom
+        && current.tuiMode === next.tuiMode ? current : next);
     };
 
     const resizePty = (cols: number, rows: number) => {
@@ -1699,7 +1740,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       if (currentPtyId !== null) void desktopApi().terminalDestroy({ id: currentPtyId });
       terminal.dispose();
     };
-  }, [onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key]);
+  }, [mouseTracking, onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {
@@ -1768,10 +1809,15 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     {scrollState.canScrollTop ? (
       <button
         type="button"
-        className={`wb-terminal-jump is-top${searchOpen ? " is-below-search" : ""}`}
+        className={`wb-terminal-jump is-top${scrollState.tuiMode ? " is-tui" : ""}${searchOpen ? " is-below-search" : ""}`}
         aria-label={t("desktop.workbench.terminalScrollTop")}
         title={t("desktop.workbench.terminalScrollTop")}
         onClick={() => {
+          if (scrollState.tuiMode && ptyId.current !== null) {
+            void desktopApi().terminalInput({ id: ptyId.current, data: TUI_WHEEL_JUMP_TOP });
+            terminalRef.current?.focus();
+            return;
+          }
           terminalRef.current?.scrollToTop();
           terminalRef.current?.focus();
         }}
@@ -1782,10 +1828,15 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     {scrollState.canScrollBottom ? (
       <button
         type="button"
-        className="wb-terminal-jump is-bottom"
+        className={`wb-terminal-jump is-bottom${scrollState.tuiMode ? " is-tui" : ""}`}
         aria-label={t("desktop.workbench.terminalScrollBottom")}
         title={t("desktop.workbench.terminalScrollBottom")}
         onClick={() => {
+          if (scrollState.tuiMode && ptyId.current !== null) {
+            void desktopApi().terminalInput({ id: ptyId.current, data: TUI_WHEEL_JUMP_BOTTOM });
+            terminalRef.current?.focus();
+            return;
+          }
           terminalRef.current?.scrollToBottom();
           terminalRef.current?.focus();
         }}
@@ -1982,6 +2033,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [draggedSessionKey, setDraggedSessionKey] = useState<string | null>(null);
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
+  const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
   const draggedSessionRef = useRef<AgentSession | null>(null);
   const folderExpandTimerRef = useRef(0);
@@ -3170,7 +3222,10 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);
-    if (pane?.ptyId) terminalRefs.current.delete(pane.ptyId);
+    if (pane?.ptyId) {
+      terminalRefs.current.delete(pane.ptyId);
+      terminalMouseTrackingRef.current.delete(pane.ptyId);
+    }
     terminalsRef.current = terminalsRef.current.filter((item) => item.key !== key);
     setTerminals((current) => current.filter((item) => item.key !== key));
     setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== key));
@@ -5179,7 +5234,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   useEffect(() => {
-    const data = desktopApi().onTerminalData(({ id, data: value }) => terminalRefs.current.get(id)?.write(value));
+    const data = desktopApi().onTerminalData(({ id, data: value }) => {
+      const terminal = terminalRefs.current.get(id);
+      if (!terminal) return;
+      trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
+      terminal.write(value);
+    });
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
@@ -5698,7 +5758,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input

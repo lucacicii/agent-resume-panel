@@ -1212,10 +1212,13 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
   });
 
-  it("shows terminal history jump controls only for normal-buffer scrollback", async () => {
+  it("shows terminal jump controls for normal scrollback and mouse-tracking TUIs", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const terminalResize = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalScrollTop": "Scroll to terminal top", "desktop.workbench.terminalScrollBottom": "Scroll to terminal bottom"
@@ -1223,7 +1226,10 @@ describe("WorkbenchPanel", () => {
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => {
+        terminalDataHandler = callback;
+        return () => { terminalDataHandler = null; };
+      },
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
       listProjectAliases: async () => ({}),
@@ -1233,7 +1239,8 @@ describe("WorkbenchPanel", () => {
       terminalSpawn: async () => ({ id: 1 }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
+      terminalResize,
+      terminalInput
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -1243,7 +1250,10 @@ describe("WorkbenchPanel", () => {
     const terminal = xtermMocks.instances[0];
     expect(terminal.options.allowTransparency).toBe(true);
     expect((terminal.options.theme as { background?: string }).background).toBe("rgba(0, 0, 0, 0)");
+    // Spawn resolved: pty id registered so TUI mode can read mouse-tracking state.
+    await waitFor(() => expect(terminalResize).toHaveBeenCalled());
 
+    // Normal-buffer scrollback: only the top control shows at the bottom of history.
     act(() => terminal.setBuffer("normal", 5, 10));
     fireEvent.click(await screen.findByRole("button", { name: "Scroll to terminal top" }));
     expect(terminal.scrollTopCalls).toBe(1);
@@ -1251,7 +1261,28 @@ describe("WorkbenchPanel", () => {
     expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
     expect(screen.getByRole("button", { name: "Scroll to terminal bottom" })).toBeTruthy();
 
+    // Alternate buffer without mouse tracking: nothing to scroll, no controls.
     act(() => terminal.setBuffer("alternate", 0, 0));
+    expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to terminal bottom" })).toBeNull();
+
+    // TUI enables mouse tracking: both controls appear and jump via wheel bursts.
+    act(() => {
+      terminalDataHandler?.({ id: 1, data: "\x1b[?1002h\x1b[?1006h" });
+    });
+    expect(screen.getByRole("button", { name: "Scroll to terminal top" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Scroll to terminal bottom" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to terminal top" }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(400) });
+    expect(terminal.scrollTopCalls).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to terminal bottom" }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(400) });
+    expect(terminal.scrollBottomCalls).toBe(0);
+
+    // TUI disables mouse tracking again: controls disappear.
+    act(() => {
+      terminalDataHandler?.({ id: 1, data: "\x1b[?1002l" });
+    });
     expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Scroll to terminal bottom" })).toBeNull();
   });
