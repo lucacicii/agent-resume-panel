@@ -772,6 +772,164 @@ describe("WorkbenchPanel", () => {
     window.removeEventListener("agent-resume:sessions-mutated", onMutated);
   });
 
+  it("auto renames an inactive session after two minutes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: undefined
+    }));
+    const listSessions = vi.fn(async () => [
+      { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }
+    ]);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.autoRename": "Auto rename", "desktop.workbench.autoRenaming": "Auto renaming…", "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      autoRenameSession,
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+      await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
+      expect(autoRenameSession).not.toHaveBeenCalled();
+
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+      await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
+      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels delayed auto rename when the session is reactivated", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: undefined
+    }));
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.autoRename": "Auto rename", "desktop.workbench.autoRenaming": "Auto renaming…", "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      autoRenameSession,
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+      await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(document.querySelector<HTMLButtonElement>(".wb-terminal-tab-label")!);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
+      expect(autoRenameSession).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto renames a closed session after two minutes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: undefined
+    }));
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.autoRename": "Auto rename", "desktop.workbench.autoRenaming": "Auto renaming…", "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      autoRenameSession,
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+      await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+      const closeButton = host.querySelector<HTMLButtonElement>(".wb-terminal-tab-close");
+      expect(closeButton).toBeTruthy();
+      fireEvent.click(closeButton!);
+      await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
+      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("mount note opens the first project root note without creating when roots exist", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

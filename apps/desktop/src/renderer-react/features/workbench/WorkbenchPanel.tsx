@@ -100,6 +100,8 @@ const GIT_STATUS_POLL_MS = 4000;
 const GIT_AUTO_FETCH_MS = 5_000;
 /** Cap nested monorepo fetch fan-out per sweep. */
 const GIT_AUTO_FETCH_MAX_ROOTS = 8;
+/** Session tabs are auto-renamed after staying inactive this long. */
+const SESSION_AUTO_RENAME_DELAY_MS = 2 * 60_000;
 type GitTreeNode = {
   name: string;
   path: string;
@@ -1927,6 +1929,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const activeRef = useRef(active);
+  const activePanesRef = useRef<Record<string, string>>(activePanes);
+  const acpChatsRef = useRef<AcpChatPane[]>(acpChats);
+  const autoRenameTimersRef = useRef(new Map<string, number>());
+  const deferredAutoRenameKeysRef = useRef(new Set<string>());
   const watchedRootRef = useRef("");
   const editorReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
@@ -1955,6 +1961,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
+  useEffect(() => { acpChatsRef.current = acpChats; }, [acpChats]);
+  useEffect(() => () => {
+    for (const timer of autoRenameTimersRef.current.values()) window.clearTimeout(timer);
+    autoRenameTimersRef.current.clear();
+  }, []);
   useEffect(() => () => window.clearTimeout(folderExpandTimerRef.current), []);
 
   useEffect(() => {
@@ -2037,6 +2049,106 @@ export function WorkbenchPanel(): ReactPortal | null {
       setStatus({ text: "" });
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   }, []);
+
+  const performAutoRenameSession = useCallback(async (provider: string, id: string) => {
+    deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
+    if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
+    try {
+      const result = await desktopApi().autoRenameSession({ provider, id, persist: true });
+      await loadSessions();
+      let text = t("desktop.sessions.renamed", result.title);
+      if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
+      if (activeRef.current) {
+        setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
+      }
+      window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
+    } catch (error) {
+      if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [loadSessions, setStatus, t]);
+
+  const cancelSessionAutoRename = useCallback((key: string) => {
+    const timer = autoRenameTimersRef.current.get(key);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      autoRenameTimersRef.current.delete(key);
+    }
+  }, []);
+
+  const isSessionPaneActive = useCallback((key: string) => {
+    if (!activeRef.current) return false;
+    const activePaneKey = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] || "";
+    if (!activePaneKey) return false;
+    return Boolean(
+      terminalsRef.current.some((pane) => pane.key === activePaneKey && pane.sessionKey === key)
+      || acpChatsRef.current.some((pane) => pane.key === activePaneKey && acpListSessionKey(pane.recordId) === key)
+    );
+  }, []);
+
+  const scheduleSessionAutoRename = useCallback((key: string, provider: string, id: string) => {
+    if (!key || !provider || !id || isSessionPaneActive(key) || autoRenameTimersRef.current.has(key)) return;
+    const timer = window.setTimeout(() => {
+      autoRenameTimersRef.current.delete(key);
+      if (isSessionPaneActive(key)) return;
+      void performAutoRenameSession(provider, id);
+    }, SESSION_AUTO_RENAME_DELAY_MS);
+    autoRenameTimersRef.current.set(key, timer);
+  }, [isSessionPaneActive, performAutoRenameSession]);
+
+  const scheduleSessionPaneAutoRename = useCallback((pane: TerminalPane | AcpChatPane) => {
+    const key = "sessionKey" in pane && pane.sessionKey
+      ? pane.sessionKey
+      : "recordId" in pane
+        ? acpListSessionKey(pane.recordId)
+        : "";
+    const identity = sessionIdentityFromKey(key);
+    if (identity) scheduleSessionAutoRename(key, identity.provider, identity.sessionId);
+  }, [scheduleSessionAutoRename]);
+
+  const deferSessionPaneAutoRename = useCallback((pane: TerminalPane | AcpChatPane) => {
+    const key = "sessionKey" in pane && pane.sessionKey
+      ? pane.sessionKey
+      : "recordId" in pane
+        ? acpListSessionKey(pane.recordId)
+        : "";
+    if (key) deferredAutoRenameKeysRef.current.add(key);
+  }, []);
+
+  useEffect(() => {
+    const activePaneKey = active ? activePanes[paneProjectKey(selectedProject || "")] || "" : "";
+    const activeKeys = new Set<string>();
+    if (activePaneKey) {
+      for (const pane of terminals) {
+        if (pane.key === activePaneKey && pane.sessionKey) activeKeys.add(pane.sessionKey);
+      }
+      for (const pane of acpChats) {
+        if (pane.key === activePaneKey) activeKeys.add(acpListSessionKey(pane.recordId));
+      }
+    }
+    for (const key of activeKeys) {
+      if (isSessionPaneActive(key)) cancelSessionAutoRename(key);
+    }
+    for (const pane of terminals) {
+      if (!pane.sessionKey) continue;
+      const identity = sessionIdentityFromKey(pane.sessionKey);
+      if (identity && !activeKeys.has(pane.sessionKey)) {
+        scheduleSessionAutoRename(pane.sessionKey, identity.provider, identity.sessionId);
+      }
+    }
+    for (const pane of acpChats) {
+      const key = acpListSessionKey(pane.recordId);
+      const identity = sessionIdentityFromKey(key);
+      if (identity && !activeKeys.has(key)) {
+        scheduleSessionAutoRename(key, identity.provider, identity.sessionId);
+      }
+    }
+    for (const key of deferredAutoRenameKeysRef.current) {
+      const identity = sessionIdentityFromKey(key);
+      if (!identity || (activeKeys.has(key) && isSessionPaneActive(key))) continue;
+      scheduleSessionAutoRename(key, identity.provider, identity.sessionId);
+      deferredAutoRenameKeysRef.current.delete(key);
+    }
+  }, [acpChats, active, activePanes, cancelSessionAutoRename, isSessionPaneActive, scheduleSessionAutoRename, selectedProject, terminals]);
 
   useEffect(() => {
     if (typeof desktopApi().onSessionsSynced !== "function") return;
@@ -2981,22 +3093,24 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals((current) => current.filter((item) => item.key !== key));
     setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== key));
     if (pane) {
+      deferSessionPaneAutoRename(pane);
       nextPaneAfterClose(pane.projectPath, key, {
         remainingTerminals: terminals.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
       });
     }
-  }, [nextPaneAfterClose, terminals]);
+  }, [deferSessionPaneAutoRename, nextPaneAfterClose, terminals]);
 
   const closeAcpChat = useCallback((key: string) => {
     const pane = acpChats.find((item) => item.key === key);
     setAcpChats((current) => current.filter((item) => item.key !== key));
     if (pane) {
+      deferSessionPaneAutoRename(pane);
       void desktopApi().acpDisconnect({ chatId: pane.recordId });
       nextPaneAfterClose(pane.projectPath, key, {
         remainingAcp: acpChats.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
       });
     }
-  }, [acpChats, nextPaneAfterClose]);
+  }, [acpChats, deferSessionPaneAutoRename, nextPaneAfterClose]);
 
   const closeEditor = useCallback((key: string) => {
     const pane = editors.find((item) => item.key === key);
@@ -3850,15 +3964,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:sessions-preview", { detail: session }));
     if (action === "autoRename") {
-      setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
-      try {
-        const result = await desktopApi().autoRenameSession({ provider: session.provider, id: session.id, persist: true });
-        await loadSessions();
-        let text = t("desktop.sessions.renamed", result.title);
-        if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
-        setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
-        window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
-      } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      cancelSessionAutoRename(sessionKey(session));
+      await performAutoRenameSession(session.provider, session.id);
     }
     if (action === "remove" && window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id))) {
       try {
@@ -4953,10 +5060,14 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const data = desktopApi().onTerminalData(({ id, data: value }) => terminalRefs.current.get(id)?.write(value));
-    const exited = desktopApi().onTerminalExit(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`));
+    const exited = desktopApi().onTerminalExit(({ id }) => {
+      terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
+      const pane = terminalsRef.current.find((item) => item.ptyId === id);
+      if (pane) scheduleSessionPaneAutoRename(pane);
+    });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
     return () => { data(); exited(); respawned(); };
-  }, [t]);
+  }, [scheduleSessionPaneAutoRename, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
   const searchGroups = useMemo(() => {
