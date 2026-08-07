@@ -5672,6 +5672,38 @@ code {
   overflow-wrap: anywhere;
 }
 
+#react-workbench .wb-git-tracking-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border-radius: var(--radius-sm, 4px);
+}
+
+#react-workbench .wb-git-tracking-btn:hover,
+#react-workbench .wb-git-tracking-btn:focus-visible {
+  color: var(--text);
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+#react-workbench .wb-git-tracking-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring, var(--accent));
+  outline-offset: 1px;
+}
+
+#react-workbench .wb-git-tracking-btn:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
 /* The React tree portal replaces the previous flat change rows while retaining
    the shared panel container and its Git action toolbar. */
 #react-workbench .wb-git-panel > :not(.react-git-panel) {

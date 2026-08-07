@@ -768,6 +768,8 @@ function GitChangesPanel({
   commitBusy,
   commitSuggestion,
   canCommit,
+  syncing,
+  onSync,
   onToggleDir,
   onToggleKeys,
   onOpenDiff,
@@ -792,6 +794,8 @@ function GitChangesPanel({
   commitBusy: boolean;
   commitSuggestion: CommitSuggestion | null;
   canCommit: boolean;
+  syncing: boolean;
+  onSync: () => void;
   onToggleDir: (path: string) => void;
   onToggleKeys: (keys: string[], checked: boolean) => void;
   onOpenDiff: (change: GitChange, staged: boolean) => void;
@@ -813,6 +817,7 @@ function GitChangesPanel({
     autoGenerate: string;
     commit: string;
     commitAndPush: string;
+    sync: string;
     suggestedLlm: string;
     suggestedUnconfigured: string;
     suggestedFallback: string;
@@ -903,7 +908,18 @@ function GitChangesPanel({
     : null;
 
   return createPortal(<><div className="react-git-panel wb-git-panel-layout">
-    {trackingLabel ? <p className="muted wb-git-tracking" title={tracking?.upstream || undefined}>{trackingLabel}</p> : null}
+    {trackingLabel ? <button
+      type="button"
+      className="muted wb-git-tracking wb-git-tracking-btn"
+      title={tracking?.upstream ? `${labels.sync} · ${tracking.upstream}` : labels.sync}
+      aria-label={labels.sync}
+      aria-busy={syncing}
+      disabled={syncing}
+      onClick={onSync}
+    >
+      {syncing ? <ThemeIcon name="loader" size={12} className="spin" aria-hidden="true" /> : null}
+      <span>{trackingLabel}</span>
+    </button> : null}
     <div className="wb-git-changes-scroll">
       {hasEntries ? sections.map((section) => {
         if (!section.entries.length) return null;
@@ -1085,8 +1101,6 @@ function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Element | 
   }, [visible]);
   if (!visible) return null;
   const icons = [
-    { label: "Push", icon: <ThemeIcon name="arrow-up" size={16} /> },
-    { label: "Pull", icon: <ThemeIcon name="arrow-down" size={16} /> },
     { label: "Git log", icon: <ThemeIcon name="history" size={16} /> },
     { label: "Refresh", icon: <ThemeIcon name="refresh" size={16} /> }
   ];
@@ -1930,6 +1944,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLogLoading, setGitLogLoading] = useState(false);
   const [gitLogError, setGitLogError] = useState("");
   const [gitRefreshing, setGitRefreshing] = useState(false);
+  const [gitSyncing, setGitSyncing] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitBusy, setCommitBusy] = useState(false);
   const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
@@ -3356,6 +3371,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.agentResume.setWorkbenchActive(active && Boolean(activePane));
     return () => window.agentResume.setWorkbenchActive(false);
   }, [active, activePane]);
+
+  useEffect(() => {
+    if (typeof window.agentResume.setFloatingNoteOpen !== "function") return;
+    window.agentResume.setFloatingNoteOpen(Boolean(floatingNoteTarget));
+    return () => window.agentResume.setFloatingNoteOpen(false);
+  }, [floatingNoteTarget]);
 
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
     if (active) closeActivePane();
@@ -4858,15 +4879,22 @@ export function WorkbenchPanel(): ReactPortal | null {
     }));
   }, [git]);
 
-  const runGit = async (action: "push" | "pull") => {
-    if (!gitRoot) return;
+  // IDEA-style sync: pull remote changes when behind, push local commits when
+  // ahead, and fetch to check for updates when the branch is already in sync.
+  const syncGitBranch = async () => {
+    const root = trackingForRoot(git, gitRoot);
+    const repoRoot = gitRoot || root?.repoRoot;
+    if (!repoRoot) return;
+    setGitSyncing(true);
     try {
-      if (action === "push") await desktopApi().terminalGitPush({ repoRoot: gitRoot });
-      else await desktopApi().terminalGitPull({ repoRoot: gitRoot });
-      notifyGitSuccess(action === "push" ? "desktop.workbench.gitPushSucceeded" : "desktop.workbench.gitPullSucceeded");
+      if (root && root.behind > 0) await desktopApi().terminalGitPull({ repoRoot });
+      if (root && root.ahead > 0) await desktopApi().terminalGitPush({ repoRoot });
+      if (!root || (root.ahead <= 0 && root.behind <= 0)) await desktopApi().terminalGitFetch({ repoRoot });
+      notifyGitSuccess("desktop.workbench.gitSyncSucceeded");
       await refreshGit();
       currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-    } catch (error) { notifyGitFailure(action === "push" ? "desktop.workbench.gitPushFailed" : "desktop.workbench.gitPullFailed", error); }
+    } catch (error) { notifyGitFailure("desktop.workbench.gitSyncFailed", error); }
+    finally { setGitSyncing(false); }
   };
 
   const checkoutGitPanelBranch = async (selection: { branch: string; remote?: string }) => {
@@ -5759,8 +5787,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <button type="button" className="wb-git-action-btn" onClick={closeGitHistory} aria-label={gitHistoryBackLabel}><ThemeIcon name="chevron-left" size={15} /></button>
                 <button type="button" className="wb-git-action-btn" disabled={gitLogLoading} onClick={retryGitHistory} aria-label={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={15} className={gitLogLoading ? "spin" : undefined} /></button>
               </> : <>
-                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("push")} aria-label={t("desktop.workbench.gitPush")}><ThemeIcon name="chevron-right" size={15} /></button>
-                <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void runGit("pull")} aria-label={t("desktop.workbench.gitPull")}><ThemeIcon name="chevron-down" size={15} /></button>
                 <button type="button" className="wb-git-action-btn" disabled={!gitRoot} onClick={() => void loadGitLog()} aria-label={t("desktop.workbench.gitLog")}><ThemeIcon name="history" size={15} /></button>
                 <button type="button" className="wb-git-action-btn" disabled={gitRefreshing} onClick={() => void refreshGit(true)} aria-label={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={15} className={gitRefreshing ? "spin" : undefined} /></button>
               </>}</div>
@@ -5948,6 +5974,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       commitBusy={commitBusy}
       commitSuggestion={commitSuggestion}
       canCommit={canCommit}
+      syncing={gitSyncing}
+      onSync={() => void syncGitBranch()}
       onToggleDir={toggleGitDirectory}
       onToggleKeys={toggleGitSelectionKeys}
       onOpenDiff={(change, staged) => void openDiff(change, staged)}
@@ -5984,6 +6012,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         autoGenerate: t("desktop.workbench.gitCommitAutoGenerate"),
         commit: t("desktop.workbench.gitCommit"),
         commitAndPush: t("desktop.workbench.gitCommitAndPush"),
+        sync: t("desktop.workbench.gitSync"),
         suggestedLlm: t("desktop.workbench.gitCommitSuggestedLlm"),
         suggestedUnconfigured: t("desktop.workbench.gitCommitSuggestedUnconfigured"),
         suggestedFallback: t("desktop.workbench.gitCommitSuggestedFallback"),

@@ -367,6 +367,7 @@ function rejectActiveAskApprovals(): void {
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
+let floatingNoteOpen = false;
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -828,7 +829,7 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive) {
+    if (workbenchActive && !floatingNoteOpen) {
       const direction = workbenchArrowDirectionFromInput(input);
       if (direction) {
         event.preventDefault();
@@ -910,6 +911,7 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     workbenchActive = false;
+    floatingNoteOpen = false;
     // Invariant: settings never outlives main
     closeSettingsWindowIfOpen();
     mainWindowReadyToShow = false;
@@ -1033,6 +1035,12 @@ function registerIpc(): void {
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
     if (event.sender === mainWindow?.webContents) {
       workbenchActive = active === true;
+    }
+  });
+
+  ipcMain.on("workbench:setFloatingNoteOpen", (event, open: unknown) => {
+    if (event.sender === mainWindow?.webContents) {
+      floatingNoteOpen = open === true;
     }
   });
 

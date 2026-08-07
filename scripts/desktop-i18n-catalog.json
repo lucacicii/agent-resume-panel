@@ -696,8 +696,6 @@
       "desktop.workbench.gitDiscardUntrackedConfirm": "Delete untracked \"{0}\"? This cannot be undone.",
       "desktop.workbench.gitDiscardSucceeded": "Discarded changes to {0}.",
       "desktop.workbench.gitDiscardFailed": "Could not discard changes: {0}",
-      "desktop.workbench.gitPushSucceeded": "Push completed.",
-      "desktop.workbench.gitPullSucceeded": "Pull completed.",
       "desktop.workbench.gitLogLoaded": "Loaded Git log.",
       "desktop.workbench.gitCopyCommitHash": "Copy commit hash",
       "desktop.workbench.gitCopyBranchName": "Copy branch name",
@@ -826,7 +824,10 @@
       "desktop.workbench.gitDiscardLine": "Revert line change",
       "desktop.workbench.gitDiscardLineConfirm": "Revert this line or change block in the working tree? This cannot be undone.",
       "desktop.workbench.gitDiscardLineStagedConfirm": "Revert this line or change block from the index? The working tree will be left unchanged.",
-      "desktop.workbench.acpProvider.prime": "Prime Agent"
+      "desktop.workbench.acpProvider.prime": "Prime Agent",
+      "desktop.workbench.gitSync": "Sync",
+      "desktop.workbench.gitSyncSucceeded": "Sync completed.",
+      "desktop.workbench.gitSyncFailed": "Sync failed: {0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -2083,8 +2084,6 @@
       "desktop.workbench.gitDiscardUntrackedConfirm": "要删除未跟踪文件「{0}」吗？此操作无法撤销。",
       "desktop.workbench.gitDiscardSucceeded": "已回退 {0} 的修改。",
       "desktop.workbench.gitDiscardFailed": "无法回退修改：{0}",
-      "desktop.workbench.gitPushSucceeded": "推送成功。",
-      "desktop.workbench.gitPullSucceeded": "拉取成功。",
       "desktop.workbench.gitLogLoaded": "已加载 Git 日志。",
       "desktop.workbench.gitCopyCommitHash": "复制提交哈希",
       "desktop.workbench.gitCopyBranchName": "复制分支名称",
@@ -2098,10 +2097,6 @@
       "desktop.workbench.gitCommitSuggestedUnconfigured": "未配置工具 LLM，已填入基于规则的建议。",
       "desktop.workbench.gitCommitSuggestedFallback": "AI 请求失败，已填入基于规则的建议。",
       "desktop.workbench.gitLog": "日志",
-      "desktop.workbench.gitPull": "拉取",
-      "desktop.workbench.gitPullFailed": "拉取失败：{0}",
-      "desktop.workbench.gitPush": "推送",
-      "desktop.workbench.gitPushFailed": "推送失败：{0}",
       "desktop.workbench.gtdStatus.done": "完成",
       "desktop.workbench.gtdCompleted": "已完成",
       "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}",
@@ -2218,7 +2213,10 @@
       "desktop.workbench.gitDiscardLine": "回滚行级更改",
       "desktop.workbench.gitDiscardLineConfirm": "回滚工作区中的此行或变更块？此操作无法撤销。",
       "desktop.workbench.gitDiscardLineStagedConfirm": "从暂存区回滚此行或变更块？工作区文件不会改变。",
-      "desktop.workbench.acpProvider.prime": "Prime Agent"
+      "desktop.workbench.acpProvider.prime": "Prime Agent",
+      "desktop.workbench.gitSync": "同步",
+      "desktop.workbench.gitSyncSucceeded": "同步完成。",
+      "desktop.workbench.gitSyncFailed": "同步失败：{0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -3489,8 +3487,6 @@
       "desktop.workbench.gitDiscardUntrackedConfirm": "未追跡の「{0}」を削除しますか？この操作は元に戻せません。",
       "desktop.workbench.gitDiscardSucceeded": "{0} の変更を破棄しました。",
       "desktop.workbench.gitDiscardFailed": "変更を破棄できませんでした: {0}",
-      "desktop.workbench.gitPushSucceeded": "プッシュしました。",
-      "desktop.workbench.gitPullSucceeded": "プルしました。",
       "desktop.workbench.gitLogLoaded": "Git ログを読み込みました。",
       "desktop.workbench.gitCopyCommitHash": "コミットハッシュをコピー",
       "desktop.workbench.gitCopyBranchName": "ブランチ名をコピー",
@@ -3519,10 +3515,6 @@
       "desktop.workbench.gitLogTitle": "ブランチグラフ",
       "desktop.workbench.gitLogUntitled": "（件名なし）",
       "desktop.workbench.gitNoRepoSelected": "先に Git リポジトリを選択してください",
-      "desktop.workbench.gitPull": "プル",
-      "desktop.workbench.gitPullFailed": "プルに失敗しました: {0}",
-      "desktop.workbench.gitPush": "プッシュ",
-      "desktop.workbench.gitPushFailed": "プッシュに失敗しました: {0}",
       "desktop.workbench.gitRepoSelect": "Git リポジトリ",
       "desktop.workbench.gitShowLoadFailed": "コミット詳細を読み込めませんでした: {0}",
       "desktop.workbench.nestedRepoCount": "{0} リポジトリ",
@@ -3655,7 +3647,10 @@
       "desktop.workbench.gitDiscardLine": "行の変更を元に戻す",
       "desktop.workbench.gitDiscardLineConfirm": "作業ツリーからこの行または変更ブロックを元に戻しますか？元に戻せません。",
       "desktop.workbench.gitDiscardLineStagedConfirm": "インデックスからこの行または変更ブロックを元に戻しますか？作業ツリーは変更しません。",
-      "desktop.workbench.acpProvider.prime": "Prime Agent"
+      "desktop.workbench.acpProvider.prime": "Prime Agent",
+      "desktop.workbench.gitSync": "同期",
+      "desktop.workbench.gitSyncSucceeded": "同期が完了しました。",
+      "desktop.workbench.gitSyncFailed": "同期に失敗しました：{0}"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
