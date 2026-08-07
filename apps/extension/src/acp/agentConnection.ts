@@ -9,6 +9,7 @@ import { getAcpSdk } from "./sdk";
 import type { AcpAgentProvider } from "./types";
 
 const STDERR_BUFFER_LIMIT = 2048;
+const ACP_HANDSHAKE_TIMEOUT_MS = 60_000;
 
 export type AcpSessionModes = {
   currentModeId: string;
@@ -58,6 +59,7 @@ export class AcpAgentConnection {
     let handshakeComplete = false;
     let exitCode: number | null = null;
     let exitSignal: NodeJS.Signals | null = null;
+    let spawnError: Error | undefined;
 
     const processExit = new Promise<void>((resolve) => {
       this.process?.on("exit", (code, signal) => {
@@ -65,6 +67,11 @@ export class AcpAgentConnection {
         exitSignal = signal;
         resolve();
       });
+    });
+
+    this.process.on("error", (error) => {
+      spawnError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[ACP ${this.provider}] spawn error`, spawnError);
     });
 
     this.process.stderr.on("data", (chunk: Buffer) => {
@@ -79,19 +86,45 @@ export class AcpAgentConnection {
     const app = await createAcpClientApp();
     this.connection = app.connect(stream);
 
+    let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const initResponse = await this.connection.agent.request(acp.methods.agent.initialize, {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: true
-        }
-      });
+      const initResponse = await Promise.race([
+        this.connection.agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {
+            fs: { readTextFile: true, writeTextFile: true },
+            terminal: true
+          }
+        }),
+        new Promise<never>((_, reject) => {
+          handshakeTimer = setTimeout(() => {
+            reject(
+              new Error(
+                `ACP handshake timed out after ${Math.round(ACP_HANDSHAKE_TIMEOUT_MS / 1000)}s ` +
+                  `(command: ${command} ${args.join(" ")}). ` +
+                  `Check that the agent CLI is installed and supports ACP stdio.`
+              )
+            );
+          }, ACP_HANDSHAKE_TIMEOUT_MS);
+        })
+      ]);
       this.agentCapabilities = initResponse.agentCapabilities;
       handshakeComplete = true;
     } catch (error) {
-      await processExit;
+      this.dispose();
+      if (spawnError) {
+        throw this.wrapConnectError(spawnError, handshakeComplete, exitCode, exitSignal);
+      }
+      const exited = exitCode != null || exitSignal != null;
+      if (exited) {
+        throw this.wrapConnectError(error, handshakeComplete, exitCode, exitSignal);
+      }
+      await Promise.race([processExit, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
       throw this.wrapConnectError(error, handshakeComplete, exitCode, exitSignal);
+    } finally {
+      if (handshakeTimer) {
+        clearTimeout(handshakeTimer);
+      }
     }
 
     this.initialized = true;

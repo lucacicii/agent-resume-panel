@@ -1685,6 +1685,11 @@ describe("WorkbenchPanel", () => {
     const reopenedMenu = await screen.findByRole("menu", { name: "Default agent" });
     fireEvent.click(within(reopenedMenu).getByRole("menuitem", { name: "ACP · Codex" }));
     await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "codex" }));
+
+    fireEvent.click(newSessionButton);
+    const primeMenu = await screen.findByRole("menu", { name: "Default agent" });
+    fireEvent.click(within(primeMenu).getByRole("menuitem", { name: "ACP · Prime Agent" }));
+    await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "prime" }));
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {

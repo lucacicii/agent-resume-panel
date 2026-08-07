@@ -3182,7 +3182,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const raw = rawValue.trim();
     if (raw.startsWith("acp:")) {
       const provider = raw.slice(4);
-      if (["claude", "codex", "grok", "opencode", "pi"].includes(provider)) {
+      if (["claude", "codex", "grok", "opencode", "pi", "prime"].includes(provider)) {
         return { channel: "acp", provider };
       }
     }
