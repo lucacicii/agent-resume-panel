@@ -14,6 +14,7 @@ import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { FlowPanel } from "./features/flow/FlowPanel";
 import { KanbanPanel } from "./features/kanban/KanbanPanel";
+import { FieldFlowPanel } from "./features/fieldflow/FieldFlowPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
@@ -167,6 +168,7 @@ function MainRendererRuntime(): React.JSX.Element {
       <NotesPanel />
       <FlowPanel />
       <KanbanPanel />
+      <FieldFlowPanel />
       <SessionsSheet />
       <Notifications />
     </>

@@ -1,4 +1,10 @@
-import type { DesktopThemeEffects, DesktopVisualThemeId, PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import type {
+  DesktopThemeEffects,
+  DesktopVisualThemeId,
+  OutputLanguagePreference,
+  PanelSettings,
+  WorkbenchProjectContextMenuAction
+} from "@agent-resume/core";
 import {
   resolveTerminalThemeId,
   type WorkbenchTerminalThemeId
@@ -45,6 +51,71 @@ export function normalizeProjectContextMenu(
 }
 
 export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
+
+export interface FieldFlowDraft {
+  explanationLanguage: OutputLanguagePreference;
+  useGitignore: boolean;
+  useBuiltinDefaults: boolean;
+  useFieldflowIgnore: boolean;
+  watchEnabled: boolean;
+  /** One gitignore pattern per line. */
+  extraIgnoreGlobsText: string;
+  /** One relative subpath per line (monorepo modules). */
+  includePathsText: string;
+}
+
+function linesToList(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+}
+
+function listToLines(list: string[] | undefined): string {
+  return (list || []).join("\n");
+}
+
+export function fieldFlowDraftFromSettings(settings: PanelSettings): FieldFlowDraft {
+  const configured = settings.fieldFlow?.explanationLanguage;
+  return {
+    explanationLanguage:
+      configured === "en" || configured === "zh-cn" || configured === "ja" ? configured : "auto",
+    useGitignore: settings.fieldFlow?.useGitignore !== false,
+    useBuiltinDefaults: settings.fieldFlow?.useBuiltinDefaults !== false,
+    useFieldflowIgnore: settings.fieldFlow?.useFieldflowIgnore !== false,
+    watchEnabled: settings.fieldFlow?.watchEnabled !== false,
+    extraIgnoreGlobsText: listToLines(settings.fieldFlow?.extraIgnoreGlobs),
+    includePathsText: listToLines(settings.fieldFlow?.includePaths)
+  };
+}
+
+export function fieldFlowPatch(settings: PanelSettings, draft: FieldFlowDraft): Pick<PanelSettings, "fieldFlow"> {
+  const next = {
+    explanationLanguage: draft.explanationLanguage,
+    useGitignore: draft.useGitignore,
+    useBuiltinDefaults: draft.useBuiltinDefaults,
+    useFieldflowIgnore: draft.useFieldflowIgnore,
+    watchEnabled: draft.watchEnabled,
+    extraIgnoreGlobs: linesToList(draft.extraIgnoreGlobsText),
+    includePaths: linesToList(draft.includePathsText)
+  };
+  const current = fieldFlowDraftFromSettings(settings);
+  const same =
+    current.explanationLanguage === next.explanationLanguage &&
+    current.useGitignore === next.useGitignore &&
+    current.useBuiltinDefaults === next.useBuiltinDefaults &&
+    current.useFieldflowIgnore === next.useFieldflowIgnore &&
+    current.watchEnabled === next.watchEnabled &&
+    current.extraIgnoreGlobsText === draft.extraIgnoreGlobsText &&
+    current.includePathsText === draft.includePathsText;
+  if (same) return {};
+  return {
+    fieldFlow: {
+      ...settings.fieldFlow,
+      ...next
+    }
+  };
+}
 
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;

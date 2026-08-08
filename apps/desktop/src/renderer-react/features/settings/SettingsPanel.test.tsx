@@ -21,6 +21,31 @@ const messages = {
   "desktop.settings.paneReportDesc": "Report desc",
   "desktop.settings.paneStorage": "Storage",
   "desktop.settings.paneStorageDesc": "Storage desc",
+  "desktop.settings.paneFieldflow": "Field Flow",
+  "desktop.settings.paneFieldflowDesc": "Field Flow desc",
+  "desktop.settings.fieldflow.explanationGroup": "Explanation",
+  "desktop.settings.fieldflow.explanationLanguage": "Explanation language",
+  "desktop.settings.fieldflow.explanationLanguageDesc": "Language for explanations",
+  "desktop.settings.fieldflow.explanationLangAuto": "Auto (follow LLM output language)",
+  "desktop.settings.fieldflow.explanationLangZh": "中文 (Chinese)",
+  "desktop.settings.fieldflow.explanationLangEn": "English",
+  "desktop.settings.fieldflow.explanationLangJa": "日本語 (Japanese)",
+  "desktop.settings.fieldflow.languageNote": "Fallback note",
+  "desktop.settings.fieldflow.scanGroup": "Scan filters",
+  "desktop.settings.fieldflow.scanIntro": "Scan intro",
+  "desktop.settings.fieldflow.useGitignore": "Use nested gitignore",
+  "desktop.settings.fieldflow.useGitignoreDesc": "gitignore desc",
+  "desktop.settings.fieldflow.useBuiltinDefaults": "Built-in defaults",
+  "desktop.settings.fieldflow.useBuiltinDefaultsDesc": "builtin desc",
+  "desktop.settings.fieldflow.useFieldflowIgnore": "Use fieldflowignore",
+  "desktop.settings.fieldflow.useFieldflowIgnoreDesc": "fieldflowignore desc",
+  "desktop.settings.fieldflow.includePaths": "Include paths",
+  "desktop.settings.fieldflow.includePathsDesc": "include desc",
+  "desktop.settings.fieldflow.extraIgnore": "Extra ignore",
+  "desktop.settings.fieldflow.extraIgnoreDesc": "extra desc",
+  "desktop.settings.fieldflow.projectConfigHint": "project config hint",
+  "desktop.settings.fieldflow.watchEnabled": "Watch files",
+  "desktop.settings.fieldflow.watchEnabledDesc": "watch desc",
   "desktop.settings.paneUsage": "Usage",
   "desktop.settings.paneUsageDesc": "Usage desc",
   "desktop.settings.paneLogs": "Logs",
@@ -240,6 +265,20 @@ describe("SettingsPanel (window)", () => {
         })
       )
     );
+  });
+
+  it("renders the Field Flow pane and saves the explanation language", async () => {
+    const { host, saveSettings } = renderWindowSettings("fieldflow");
+    await waitFor(() => expect(host.querySelectorAll(".settings-group").length).toBeGreaterThanOrEqual(2));
+    const select = host.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("auto");
+    fireEvent.change(select, { target: { value: "zh-cn" } });
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldFlow: expect.objectContaining({ explanationLanguage: "zh-cn", useGitignore: true })
+      }),
+      expect.objectContaining({ section: "fieldflow" })
+    ));
   });
 
   it("reveals and hides model API keys", async () => {

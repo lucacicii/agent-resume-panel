@@ -29,6 +29,11 @@ import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
+import type {
+  FieldFlowProgress,
+  FieldFlowResult,
+  IndexStatus
+} from "../shared/fieldflow/types";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 
 export interface DesktopApi {
@@ -1115,6 +1120,15 @@ export interface DesktopApi {
   flowRunSkipNode(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
   flowRunCancel(args: { runId: string }): Promise<FlowAdvanceResult>;
   onFlowChanged(callback: (detail: { flowId?: string; runId?: string }) => void): () => void;
+  fieldflowIndex(args: { projectPath: string }): Promise<IndexStatus>;
+  fieldflowStatus(args: { projectPath: string }): Promise<IndexStatus>;
+  fieldflowQuery(args: { projectPath: string; question: string; candidateId?: string }): Promise<FieldFlowResult>;
+  fieldflowOpenSource(args: { projectPath: string; file: string; line?: number }): Promise<{ ok: boolean; path?: string; message?: string }>;
+  fieldflowOpenFolder(): Promise<string | null>;
+  fieldflowEnsureWatch(args: { projectPath: string }): Promise<{ ok: true }>;
+  fieldflowStopWatch(args: { projectPath: string }): Promise<{ ok: true }>;
+  onFieldflowProgress(callback: (event: FieldFlowProgress) => void): () => void;
+  onFieldflowIndexChanged(callback: (detail: { projectPath: string }) => void): () => void;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
   getAppVersion(): Promise<string>;
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
@@ -1467,6 +1481,23 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, detail: { flowId?: string; runId?: string }) => callback(detail);
     ipcRenderer.on("flow:changed", handler);
     return () => ipcRenderer.removeListener("flow:changed", handler);
+  },
+  fieldflowIndex: (args) => ipcRenderer.invoke("fieldflow:index", args),
+  fieldflowStatus: (args) => ipcRenderer.invoke("fieldflow:status", args),
+  fieldflowQuery: (args) => ipcRenderer.invoke("fieldflow:query", args),
+  fieldflowOpenSource: (args) => ipcRenderer.invoke("fieldflow:openSource", args),
+  fieldflowOpenFolder: () => ipcRenderer.invoke("fieldflow:openFolder"),
+  fieldflowEnsureWatch: (args) => ipcRenderer.invoke("fieldflow:ensureWatch", args),
+  fieldflowStopWatch: (args) => ipcRenderer.invoke("fieldflow:stopWatch", args),
+  onFieldflowProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, detail: FieldFlowProgress) => callback(detail);
+    ipcRenderer.on("fieldflow:progress", handler);
+    return () => ipcRenderer.removeListener("fieldflow:progress", handler);
+  },
+  onFieldflowIndexChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, detail: { projectPath: string }) => callback(detail);
+    ipcRenderer.on("fieldflow:indexChanged", handler);
+    return () => ipcRenderer.removeListener("fieldflow:indexChanged", handler);
   },
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
   getAppVersion: async () => {

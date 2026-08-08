@@ -292,4 +292,77 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS fieldflow_files (
+  project_path TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  language TEXT NOT NULL,
+  mtime_ms INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  PRIMARY KEY (project_path, relative_path)
+);
+
+CREATE TABLE IF NOT EXISTS fieldflow_nodes (
+  project_path TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  label TEXT NOT NULL,
+  file TEXT,
+  line INTEGER,
+  language TEXT,
+  PRIMARY KEY (project_path, node_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fieldflow_nodes_file
+  ON fieldflow_nodes(project_path, file);
+
+CREATE TABLE IF NOT EXISTS fieldflow_edges (
+  project_path TEXT NOT NULL,
+  edge_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  PRIMARY KEY (project_path, edge_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fieldflow_edges_src ON fieldflow_edges(project_path, source_id);
+CREATE INDEX IF NOT EXISTS idx_fieldflow_edges_tgt ON fieldflow_edges(project_path, target_id);
+
+CREATE TABLE IF NOT EXISTS fieldflow_symbols (
+  project_path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  qualified TEXT,
+  kind TEXT NOT NULL,
+  file TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  column_no INTEGER,
+  container TEXT,
+  language TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fieldflow_symbols_name ON fieldflow_symbols(project_path, name);
+CREATE INDEX IF NOT EXISTS idx_fieldflow_symbols_qual ON fieldflow_symbols(project_path, qualified);
+
+CREATE TABLE IF NOT EXISTS fieldflow_index_meta (
+  project_path TEXT PRIMARY KEY,
+  index_version TEXT NOT NULL,
+  root_hash TEXT NOT NULL,
+  file_count INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  status TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fieldflow_query_cache (
+  project_path TEXT NOT NULL,
+  cache_key TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (project_path, cache_key)
+);
+
+CREATE TABLE IF NOT EXISTS fieldflow_embeddings (
+  project_path TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  function_id TEXT NOT NULL,
+  embedding_json TEXT NOT NULL,
+  PRIMARY KEY (project_path, content_hash, function_id)
+);
 `;

@@ -6,7 +6,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
-import { AboutPane, BackupPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { AboutPane, BackupPane, FieldFlowPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { McpPane } from "./McpPane";
 import {
   embeddingSearchIdentityChanged,
@@ -24,6 +24,9 @@ import {
   storagePatch,
   workbenchDraftFromSettings,
   workbenchPatch,
+  fieldFlowDraftFromSettings,
+  fieldFlowPatch,
+  type FieldFlowDraft,
   type GeneralDraft,
   type ModelsDraft,
   type NotesDraft,
@@ -36,8 +39,8 @@ import {
 type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey";
 type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
 
-type Pane = "general" | "models" | "sessions" | "workbench" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
-type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft;
+type Pane = "general" | "models" | "sessions" | "workbench" | "notes" | "report" | "storage" | "fieldflow" | "mcp" | "usage" | "logs" | "backup" | "about";
+type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | FieldFlowDraft;
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about">;
 
 export type SettingsPanelProps = {
@@ -54,6 +57,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
   { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
+  { id: "fieldflow", key: "desktop.settings.paneFieldflow", desc: "desktop.settings.paneFieldflowDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
   { id: "usage", key: "desktop.settings.paneUsage", desc: "desktop.settings.paneUsageDesc" },
   { id: "logs", key: "desktop.settings.paneLogs", desc: "desktop.settings.paneLogsDesc" },
@@ -82,6 +86,7 @@ export function SettingsPanel({
   const [report, setReport] = useState<ReportDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
   const [notes, setNotes] = useState<NotesDraft | null>(null);
+  const [fieldFlow, setFieldFlow] = useState<FieldFlowDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
   const timer = useRef<number | null>(null);
@@ -97,6 +102,7 @@ export function SettingsPanel({
     setReport(reportDraftFromSettings(next));
     setStorage(storageDraftFromSettings(next));
     setNotes(notesDraftFromSettings(next));
+    setFieldFlow(fieldFlowDraftFromSettings(next));
   }, []);
 
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
@@ -195,12 +201,13 @@ export function SettingsPanel({
         : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
         : section === "notes" ? notesPatch(settings, draft as NotesDraft)
         : section === "report" ? reportPatch(settings, draft as ReportDraft)
+        : section === "fieldflow" ? fieldFlowPatch(settings, draft as FieldFlowDraft)
         : storagePatch(settings, draft as StorageDraft);
       void save({ ...settings, ...patch }, section);
     }, 450);
   };
 
-  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage) return null;
+  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage || !fieldFlow) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const close = () => {
     if (isWindow) {
@@ -230,6 +237,7 @@ export function SettingsPanel({
       />
     )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
+    : pane === "fieldflow" ? <FieldFlowPane draft={fieldFlow} setDraft={(value) => setFieldFlow(value)} scheduleSave={(draft) => scheduleSave("fieldflow", draft)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
     : pane === "logs" ? <LogsPane t={t} />

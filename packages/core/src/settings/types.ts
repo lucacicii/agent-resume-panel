@@ -4,6 +4,7 @@ import {
   type CommitMessageStyle
 } from "../git/prompts";
 import type { UiLanguagePreference } from "../i18n/locales";
+import type { OutputLanguagePreference } from "../i18n/outputLanguage";
 
 /** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
 export interface LlmSettings {
@@ -348,6 +349,45 @@ export interface SessionEmbeddingIndexSettings {
   maxPerTick?: number;
 }
 
+/** Field Flow panel preferences (Desktop-only). */
+export interface FieldFlowSettings {
+  /**
+   * Language for LLM-written field-flow summaries.
+   * "auto" follows the tool LLM output language (then the UI language).
+   */
+  explanationLanguage?: OutputLanguagePreference;
+  /**
+   * Honor nested `.gitignore` files under the scan root (default true).
+   * Applies to sub- and grandchild directories, not only the repo root.
+   */
+  useGitignore?: boolean;
+  /**
+   * Apply Field Flow built-in noise defaults (dist/build/public bundles, min.js, …).
+   * Default true. Disable to rely only on gitignore / fieldflowignore / extra globs.
+   */
+  useBuiltinDefaults?: boolean;
+  /**
+   * Honor nested `.fieldflowignore` files (default true).
+   */
+  useFieldflowIgnore?: boolean;
+  /**
+   * Extra gitignore-style patterns (global). One pattern per entry.
+   * Prefer project-local `.fieldflowignore` or `.fieldflow.json` for monorepos.
+   */
+  extraIgnoreGlobs?: string[];
+  /**
+   * Only scan these relative subpaths (empty = whole selected root).
+   * Useful when one folder holds Java + frontend + Python modules.
+   * Project `.fieldflow.json` `includePaths` overrides this when non-empty.
+   */
+  includePaths?: string[];
+  /**
+   * Watch the project root and reparse only changed source files (debounced).
+   * Default true. Does not run a full 12k reindex on each save.
+   */
+  watchEnabled?: boolean;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -372,6 +412,8 @@ export interface PanelSettings {
   workbench?: WorkbenchSettings;
   /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
   acp?: AcpSettings;
+  /** Field Flow panel preferences (Desktop-only). */
+  fieldFlow?: FieldFlowSettings;
   ghosttyExecutable?: string;
   ghosttyLaunchMode?: GhosttyLaunchMode;
   ghosttyAutoPasteDelayMs?: number;
@@ -454,5 +496,14 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   notes: {
     newStandaloneNoteShortcut: "CommandOrControl+D"
+  },
+  fieldFlow: {
+    explanationLanguage: "auto",
+    useGitignore: true,
+    useBuiltinDefaults: true,
+    useFieldflowIgnore: true,
+    extraIgnoreGlobs: [],
+    includePaths: [],
+    watchEnabled: true
   }
 };
