@@ -4,6 +4,7 @@ import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { Sheet } from "../components/Sheet";
 import { Status, type StatusKind } from "../components/Status";
+import { syncTruncationTitle } from "../components/truncationTitle";
 import { VirtualList } from "../components/VirtualList";
 
 const SESSION_ROW_HEIGHT = 58;
@@ -240,7 +241,7 @@ export function SessionsSheet(): React.JSX.Element {
                 className={`session-row${key === selectedKey ? " active" : ""}`}
                 onClick={() => void loadPreview(session)}
               >
-                <div className="s-title">{session.title}</div>
+                <div className="s-title" ref={(el) => syncTruncationTitle(el)}>{session.title}</div>
                 <div className="s-meta">
                   <span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>
                   {" · "}{basename(session.projectPath)}{" · "}{formatTime(session.updatedAt, locale)}

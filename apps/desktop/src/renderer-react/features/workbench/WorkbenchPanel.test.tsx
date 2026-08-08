@@ -764,6 +764,10 @@ describe("WorkbenchPanel", () => {
       title: "Auto renamed session",
       previousTitle: "Fix renderer",
       session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", updatedAt: 1 },
       nativeRenamed: true,
       nativeError: null
     }));
@@ -786,6 +790,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions,
       autoRenameSession,
+      renameSession,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
     } as unknown as typeof window.agentResume;
 
@@ -794,7 +799,8 @@ describe("WorkbenchPanel", () => {
     const session = await screen.findByRole("button", { name: /Fix renderer/ });
     fireEvent.contextMenu(session);
     fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
-    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
     await waitFor(() => expect(listSessions.mock.calls.length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
     window.removeEventListener("agent-resume:sessions-mutated", onMutated);
@@ -809,6 +815,10 @@ describe("WorkbenchPanel", () => {
       title: "Auto renamed session",
       previousTitle: "Fix renderer",
       session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", updatedAt: 1 },
       nativeRenamed: true,
       nativeError: undefined
     }));
@@ -831,6 +841,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions,
       autoRenameSession,
+      renameSession,
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn,
       terminalDestroy,
@@ -849,10 +860,245 @@ describe("WorkbenchPanel", () => {
 
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
       await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
-      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+      await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("appends the assigned project and folder path when auto-renaming a session", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: null
+    }));
+    const listSessions = vi.fn(async () => [
+      { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+    ]);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.autoRename": "Auto rename",
+        "desktop.workbench.autoRenaming": "Auto renaming…",
+        "desktop.sessions.renamed": "Renamed to {0}",
+        "desktop.sessions.renamedNativeError": "Native rename failed: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [
+          { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
+          { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
+        ],
+        assignments: [
+          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "phase-1", updatedAtMs: 1 }
+        ]
+      }),
+      autoRenameSession,
+      renameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1" }));
+    await waitFor(() => expect(listSessions.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("appends the project name when the session is not assigned to a folder", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: null
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.autoRename": "Auto rename",
+        "desktop.workbench.autoRenaming": "Auto renaming…",
+        "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ],
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [
+          { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }
+        ],
+        assignments: []
+      }),
+      autoRenameSession,
+      renameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
+  });
+
+  it("does not append the folder path twice when the suggestion already ends with it", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session · app / Campaign / Phase 1",
+      previousTitle: "Fix renderer · app / Campaign / Phase 1",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: null
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.autoRename": "Auto rename",
+        "desktop.workbench.autoRenaming": "Auto renaming…",
+        "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ],
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [
+          { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
+          { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
+        ],
+        assignments: [
+          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "phase-1", updatedAtMs: 1 }
+        ]
+      }),
+      autoRenameSession,
+      renameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1" }));
+    expect(renameSession.mock.calls).toHaveLength(1);
+  });
+
+  it("caps the folder suffix so the composed title stays within the native 180-char limit", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const longFolderName = "X".repeat(170);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async (args: { provider: string; id: string; title: string }) => ({
+      session: { provider: "codex", id: "session-1", title: args.title, projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+      nativeRenamed: true,
+      nativeError: null
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.autoRename": "Auto rename",
+        "desktop.workbench.autoRenaming": "Auto renaming…",
+        "desktop.sessions.renamed": "Renamed to {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ],
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      listWorkbenchSessionFolders: async () => ({
+        folders: [
+          { folderId: "long", projectId: "project-1", parentId: null, name: longFolderName, createdAtMs: 1, updatedAtMs: 1 }
+        ],
+        assignments: [
+          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "long", updatedAtMs: 1 }
+        ]
+      }),
+      autoRenameSession,
+      renameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalled());
+    const args = renameSession.mock.calls[0][0];
+    expect(args.provider).toBe("codex");
+    expect(args.id).toBe("session-1");
+    expect(args.title).toHaveLength(180);
+    expect(args.title.startsWith("Auto renamed session · app / ")).toBe(true);
+    expect(args.title.endsWith("X".repeat(151))).toBe(true);
   });
 
   it("cancels delayed auto rename when the session is reactivated", async () => {
@@ -864,6 +1110,10 @@ describe("WorkbenchPanel", () => {
       title: "Auto renamed session",
       previousTitle: "Fix renderer",
       session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", updatedAt: 1 },
       nativeRenamed: true,
       nativeError: undefined
     }));
@@ -883,6 +1133,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       autoRenameSession,
+      renameSession,
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn,
       terminalDestroy,
@@ -916,6 +1167,10 @@ describe("WorkbenchPanel", () => {
       title: "Auto renamed session",
       previousTitle: "Fix renderer",
       session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", updatedAt: 1 },
       nativeRenamed: true,
       nativeError: undefined
     }));
@@ -935,6 +1190,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       autoRenameSession,
+      renameSession,
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn,
       terminalDestroy,
@@ -952,7 +1208,8 @@ describe("WorkbenchPanel", () => {
       expect(closeButton).toBeTruthy();
       fireEvent.click(closeButton!);
       await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
-      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: true }));
+      await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
+      await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
     } finally {
       vi.useRealTimers();
     }

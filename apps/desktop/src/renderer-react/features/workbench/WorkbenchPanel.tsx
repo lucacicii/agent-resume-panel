@@ -34,6 +34,7 @@ import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
+import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
@@ -389,6 +390,81 @@ function workbenchFolderPath(folder: WorkbenchSessionFolder, folders: WorkbenchS
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   return parts.join(" / ");
+}
+
+/** Separator between the LLM-suggested session title and its project / folder suffix. */
+const SESSION_TITLE_SUFFIX_LEAD = " · ";
+const SESSION_TITLE_PATH_JOIN = " / ";
+
+/** Resolve the folder path (root / subfolder) a session is assigned to, or null when unclassified. */
+function sessionFolderPath(
+  folderData: Record<string, {
+    folders: WorkbenchSessionFolder[];
+    assignments: WorkbenchSessionFolderAssignment[];
+  }>,
+  provider: string,
+  id: string
+): string | null {
+  const key = folderAssignmentKey(provider, id);
+  for (const entry of Object.values(folderData)) {
+    const assignment = entry.assignments.find(
+      (item) => folderAssignmentKey(item.provider, item.agentSessionId) === key
+    );
+    if (!assignment) continue;
+    const folder = entry.folders.find((item) => item.folderId === assignment.folderId);
+    return folder ? workbenchFolderPath(folder, entry.folders) : null;
+  }
+  return null;
+}
+
+/** Drop a previously appended " · project / folder / subfolder" suffix before recomposing. */
+function stripSessionTitleSuffix(title: string, projectName: string, folderPath: string | null): string {
+  const full = folderPath
+    ? `${SESSION_TITLE_SUFFIX_LEAD}${projectName}${SESSION_TITLE_PATH_JOIN}${folderPath}`
+    : `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
+  if (title.endsWith(full)) return title.slice(0, title.length - full.length).trim();
+  const folderOnly = folderPath ? `${SESSION_TITLE_SUFFIX_LEAD}${folderPath}` : null;
+  if (folderOnly && title.endsWith(folderOnly)) return title.slice(0, title.length - folderOnly.length).trim();
+  const projectOnly = `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
+  if (title.endsWith(projectOnly)) return title.slice(0, title.length - projectOnly.length).trim();
+  return title;
+}
+
+/**
+ * Compose "title · project / folder / subfolder" (or "title · project" when unclassified).
+ * Dedupes when the suggestion already carries the suffix and caps the total at the 180-char
+ * native store limit, keeping the most specific (leaf) folder levels when the path does not fit.
+ */
+function composeSessionTitle(base: string, projectName: string, folderPath: string | null): string {
+  const MAX_TITLE_LENGTH = 180;
+  const suffix = folderPath
+    ? `${SESSION_TITLE_SUFFIX_LEAD}${projectName}${SESSION_TITLE_PATH_JOIN}${folderPath}`
+    : `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
+  if (base.endsWith(suffix)) return base;
+  let core = stripSessionTitleSuffix(base, projectName, folderPath);
+  if (core.length + suffix.length <= MAX_TITLE_LENGTH) return `${core}${suffix}`;
+  if (core.length >= MAX_TITLE_LENGTH - SESSION_TITLE_SUFFIX_LEAD.length) {
+    core = core.slice(0, MAX_TITLE_LENGTH - SESSION_TITLE_SUFFIX_LEAD.length);
+  }
+  const budget = MAX_TITLE_LENGTH - core.length - SESSION_TITLE_SUFFIX_LEAD.length;
+  // Project name keeps priority over folder depth (both sit behind the title).
+  const project = projectName.slice(0, Math.min(projectName.length, budget));
+  const pathBudget = folderPath ? budget - project.length - SESSION_TITLE_PATH_JOIN.length : 0;
+  let path = "";
+  if (folderPath && pathBudget > 0) {
+    const parts = folderPath.split(SESSION_TITLE_PATH_JOIN);
+    const kept: string[] = [];
+    let used = 0;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const cost = (kept.length ? SESSION_TITLE_PATH_JOIN.length : 0) + parts[i].length;
+      if (used + cost > pathBudget) break;
+      kept.unshift(parts[i]);
+      used += cost;
+    }
+    path = kept.length ? kept.join(SESSION_TITLE_PATH_JOIN) : parts[parts.length - 1].slice(0, Math.max(pathBudget, 1));
+  }
+  const body = project ? `${project}${path ? `${SESSION_TITLE_PATH_JOIN}${path}` : ""}` : path;
+  return `${core}${SESSION_TITLE_SUFFIX_LEAD}${body}`;
 }
 
 function sessionBelongsToProject(session: AgentSession | null, project: WorkbenchProject): boolean {
@@ -2173,7 +2249,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
     if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
     try {
-      const result = await desktopApi().autoRenameSession({ provider, id, persist: true });
+      const session = sessions.find((item) => item.provider === provider && item.id === id);
+      const projectName = session?.projectPath ? basename(session.projectPath) : "";
+      const folderPath = sessionFolderPath(workbenchFolderData, provider, id);
+      let result: { title: string; nativeRenamed: boolean; nativeError?: string };
+      if (projectName) {
+        // Sessions get " · project / folder / subfolder" (unclassified: " · project") appended
+        // to the LLM-suggested title so the project / folder context survives outside the tree.
+        const suggested = await desktopApi().autoRenameSession({ provider, id, persist: false });
+        const title = composeSessionTitle(suggested.title, projectName, folderPath);
+        const renamed = await desktopApi().renameSession({ provider, id, title });
+        result = { title, nativeRenamed: renamed.nativeRenamed, nativeError: renamed.nativeError };
+      } else {
+        result = await desktopApi().autoRenameSession({ provider, id, persist: true });
+      }
       await loadSessions();
       let text = t("desktop.sessions.renamed", result.title);
       if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
@@ -2184,7 +2273,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) {
       if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
     }
-  }, [loadSessions, setStatus, t]);
+  }, [loadSessions, sessions, setStatus, t, workbenchFolderData]);
 
   const cancelSessionAutoRename = useCallback((key: string) => {
     const timer = autoRenameTimersRef.current.get(key);
@@ -5695,7 +5784,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           renderItem={(row) => {
             if (row.kind === "pending") {
               const pending = row.pending;
-              return <button type="button" className={`wb-list-item has-wb-activity${activeSessionKey === pending.key ? " active" : ""}`} onClick={() => focusPendingSession(pending)}><span className="wb-list-item-top"><span className="wb-session-title-wrap"><span className="wb-session-activity-dot" aria-hidden="true" /><span className="wb-list-item-title">{pending.title}</span></span><span className="wb-list-item-date">{relativeTime(pending.createdAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={pending.provider}>{pending.provider}</span>{" · "}{aliases[pending.projectPath] || basename(pending.projectPath)}</span></button>;
+              return <button type="button" className={`wb-list-item has-wb-activity${activeSessionKey === pending.key ? " active" : ""}`} onClick={() => focusPendingSession(pending)}><span className="wb-list-item-top"><span className="wb-session-title-wrap"><span className="wb-session-activity-dot" aria-hidden="true" /><span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{pending.title}</span></span><span className="wb-list-item-date">{relativeTime(pending.createdAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={pending.provider}>{pending.provider}</span>{" · "}{aliases[pending.projectPath] || basename(pending.projectPath)}</span></button>;
             }
             const session = row.session;
             const isOpen = openSessionKeys.has(sessionKey(session));
@@ -5720,7 +5809,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onContextMenu={(event) => sessionMenu(event, session)}
               onClick={() => void openSession(session)}
               title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
-            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title">{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span><span className="wb-list-item-date">{relativeTime(session.updatedAt)}</span></span><span className="wb-list-item-preview"><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>

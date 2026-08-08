@@ -8,6 +8,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.14]
+
+#### Added
+
+- **Workbench session auto rename with project / folder context**: auto-renamed sessions now get the project name and folder path appended to the title (e.g. `Fix renderer · app / Campaign / Phase 1`; unclassified sessions get just `· app`), keeping project and folder context visible outside the tree; the suffix is deduplicated and capped at the 180-char native title limit
+- **Truncated session titles reveal full text on hover**: long session titles in the Workbench and Sessions lists show the complete title as a native tooltip when truncated
+
 ### [0.2.13]
 
 #### Fixed
@@ -343,6 +350,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.14]
+
+#### 新增
+
+- **Workbench 会话自动重命名附带项目/目录上下文**：会话自动重命名时，标题末尾追加项目名与目录路径（如 `Fix renderer · app / Campaign / Phase 1`；未分类会话仅追加 `· app`），让项目与目录归属在树之外依然可见；后缀自动去重并按原生 180 字符上限截断
+- **会话列表长标题悬停显示完整内容**：Workbench 与会话列表中被截断的长标题，悬停时以原生提示显示完整标题
 
 ### [0.2.13]
 
