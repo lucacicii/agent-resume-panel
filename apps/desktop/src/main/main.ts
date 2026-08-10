@@ -96,7 +96,6 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerFlowIpc } from "./flow/flowIpc";
-import { registerFieldflowIpc, disposeFieldflow } from "./fieldflow/ipc";
 import {
   createExternalMcpLaunchConfig,
   listMcpClients,
@@ -379,7 +378,6 @@ const SETTINGS_PANES = [
   "notes",
   "report",
   "storage",
-  "fieldflow",
   "usage",
   "about"
 ] as const;
@@ -590,7 +588,6 @@ function performQuitCleanup(): void {
     registeredStandaloneNoteShortcut = "";
   }
   disposeWorkbenchWatchers();
-  disposeFieldflow();
   stopMemoryScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();
@@ -2420,7 +2417,6 @@ app.whenReady().then(async () => {
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   registerFlowIpc();
-  registerFieldflowIpc();
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();

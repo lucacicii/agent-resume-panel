@@ -1,14 +1,14 @@
 import type { JSX } from "react";
 import {
-  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Box,
-  Braces, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud,
-  Command, Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
+  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check,
+  ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
+  Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
   FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
   FolderTree, GitBranch, History, LoaderCircle, MessageSquarePlus,
-  MessageSquareWarning, Network, PanelRight, Paperclip, Pencil, Pin, Play, Quote,
+  MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play, Quote,
   RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
-  TerminalSquare, Trash2, Type, Undo2, Upload, Variable, Workflow, Wrench, X,
+  TerminalSquare, Trash2, Undo2, Upload, Wrench, X,
   type LucideIcon,
   type LucideProps
 } from "lucide-react";
@@ -16,8 +16,8 @@ import {
 /** Semantic icon registry. A missing built-in icon is a compile-time error. */
 const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
-  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bot: Bot, box: Box, braces: Braces,
-  check: Check, "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
+  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bot: Bot, check: Check,
+  "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
   download: Download, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
   file: File, "file-archive": FileArchive, "file-audio": FileAudio, "file-code": FileCode2,
@@ -26,11 +26,10 @@ const ICONS = {
   "file-text": FileText, "file-video": FileVideo, folder: Folder, "folder-open": FolderOpen,
   "folder-tree": FolderTree, "git-branch": GitBranch, history: History, loader: LoaderCircle,
   "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
-  network: Network, "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin,
-  play: Play, quote: Quote, refresh: RefreshCw, save: Save, search: Search, send: Send,
-  settings: Settings, "shield-check": ShieldCheck, sparkles: Sparkles, square: Square,
-  terminal: TerminalSquare, trash: Trash2, type: Type, undo: Undo2, upload: Upload,
-  variable: Variable, workflow: Workflow, wrench: Wrench, close: X
+  "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play,
+  quote: Quote, refresh: RefreshCw, save: Save, search: Search, send: Send, settings: Settings,
+  "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, terminal: TerminalSquare,
+  trash: Trash2, undo: Undo2, upload: Upload, wrench: Wrench, close: X
 } as const satisfies Record<string, LucideIcon>;
 
 export type ThemeIconName = keyof typeof ICONS;

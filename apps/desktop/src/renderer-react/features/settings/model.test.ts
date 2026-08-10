@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PanelSettings } from "@agent-resume/core";
 import {
-  fieldFlowDraftFromSettings,
-  fieldFlowPatch,
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
   generalPatch,
@@ -271,46 +269,6 @@ describe("settings model", () => {
 
     const reset = storagePatch({ ...settings, agentHomes: { codexHome: "~/old-codex" } }, storageDraftFromSettings(settings));
     expect(reset.agentHomes).toBeUndefined();
-  });
-
-  it("defaults the Field Flow explanation language to auto and persists explicit choices", () => {
-    const draft = fieldFlowDraftFromSettings(settings);
-    expect(draft.explanationLanguage).toBe("auto");
-    expect(draft.useGitignore).toBe(true);
-    expect(draft.useBuiltinDefaults).toBe(true);
-
-    const base = fieldFlowDraftFromSettings(settings);
-    const patch = fieldFlowPatch(settings, { ...base, explanationLanguage: "zh-cn" });
-    expect(patch.fieldFlow?.explanationLanguage).toBe("zh-cn");
-
-    const backToAuto = fieldFlowPatch(
-      { ...settings, fieldFlow: { explanationLanguage: "zh-cn" } },
-      { ...base, explanationLanguage: "auto" }
-    );
-    expect(backToAuto.fieldFlow?.explanationLanguage).toBe("auto");
-
-    // 未变更时返回空 patch，避免多余写入
-    const unchanged = fieldFlowPatch(
-      { ...settings, fieldFlow: { explanationLanguage: "ja", useGitignore: true, useBuiltinDefaults: true, useFieldflowIgnore: true } },
-      { ...base, explanationLanguage: "ja" }
-    );
-    expect(unchanged).toEqual({});
-  });
-
-  it("normalizes invalid Field Flow explanation language values to auto", () => {
-    const draft = fieldFlowDraftFromSettings({ ...settings, fieldFlow: { explanationLanguage: "fr" as never } });
-    expect(draft.explanationLanguage).toBe("auto");
-  });
-
-  it("persists include paths and extra ignore globs for monorepos", () => {
-    const base = fieldFlowDraftFromSettings(settings);
-    const patch = fieldFlowPatch(settings, {
-      ...base,
-      includePathsText: "consignor\nweb-manager\n",
-      extraIgnoreGlobsText: "**/generated/**\n"
-    });
-    expect(patch.fieldFlow?.includePaths).toEqual(["consignor", "web-manager"]);
-    expect(patch.fieldFlow?.extraIgnoreGlobs).toEqual(["**/generated/**"]);
   });
 
 

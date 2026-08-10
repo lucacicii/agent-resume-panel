@@ -54,7 +54,6 @@ export type {
   AcpAutoApprovePermissions,
   AcpAgentLaunchConfig,
   AcpSettings,
-  FieldFlowSettings,
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
@@ -101,7 +100,6 @@ export * from "./flow/types";
 export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
 export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
-export type { OutputLanguagePreference } from "./i18n/outputLanguage";
 export {
   UI_LANGUAGE_SETTING,
   UI_LANGUAGE_AUTO,

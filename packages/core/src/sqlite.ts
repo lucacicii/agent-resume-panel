@@ -94,15 +94,8 @@ export async function runSqlite(dbPath: string, sql: string): Promise<void> {
   await execSqlite3(dbPath, sql);
 }
 
-export async function runSqliteJson<T>(
-  dbPath: string,
-  sql: string,
-  options?: { maxBuffer?: number }
-): Promise<T[]> {
-  const stdout = await execSqlite3(dbPath, sql, {
-    json: true,
-    maxBuffer: options?.maxBuffer ?? 20 * 1024 * 1024
-  });
+export async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
+  const stdout = await execSqlite3(dbPath, sql, { json: true, maxBuffer: 20 * 1024 * 1024 });
   return JSON.parse(stdout || "[]") as T[];
 }
 

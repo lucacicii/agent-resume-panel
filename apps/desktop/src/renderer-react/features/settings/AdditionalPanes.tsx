@@ -6,7 +6,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
-import type { FieldFlowDraft, NotesDraft, ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import type { NotesDraft, ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -32,91 +32,6 @@ function ToggleRow({ title, description, checked, onChange }: { title: string; d
 
 function SelectRow({ title, description, value, onChange, children }: { title: string; description?: string; value: string | number; onChange: (value: string) => void; children: ReactNode }) {
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><select className="settings-row-control" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>;
-}
-
-const EXPLANATION_LANGUAGE_OPTIONS = [
-  { value: "auto", key: "desktop.settings.fieldflow.explanationLangAuto" },
-  { value: "zh-cn", key: "desktop.settings.fieldflow.explanationLangZh" },
-  { value: "en", key: "desktop.settings.fieldflow.explanationLangEn" },
-  { value: "ja", key: "desktop.settings.fieldflow.explanationLangJa" }
-] as const;
-
-export function FieldFlowPane({ draft, setDraft, scheduleSave, t }: { draft: FieldFlowDraft; setDraft: (value: FieldFlowDraft) => void; scheduleSave: (value: FieldFlowDraft) => void; t: Translate }) {
-  const update = (value: FieldFlowDraft) => {
-    setDraft(value);
-    scheduleSave(value);
-  };
-  return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.fieldflow.explanationGroup")}</h3><div className="settings-group-body">
-      <SelectRow
-        title={t("desktop.settings.fieldflow.explanationLanguage")}
-        description={t("desktop.settings.fieldflow.explanationLanguageDesc")}
-        value={draft.explanationLanguage}
-        onChange={(value) => update({ ...draft, explanationLanguage: value as FieldFlowDraft["explanationLanguage"] })}
-      >
-        {EXPLANATION_LANGUAGE_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>{t(option.key)}</option>
-        ))}
-      </SelectRow>
-      <p className="settings-callout">{t("desktop.settings.fieldflow.languageNote")}</p>
-    </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.fieldflow.scanGroup")}</h3><div className="settings-group-body">
-      <p className="settings-callout">{t("desktop.settings.fieldflow.scanIntro")}</p>
-      <ToggleRow
-        title={t("desktop.settings.fieldflow.useGitignore")}
-        description={t("desktop.settings.fieldflow.useGitignoreDesc")}
-        checked={draft.useGitignore}
-        onChange={(checked) => update({ ...draft, useGitignore: checked })}
-      />
-      <ToggleRow
-        title={t("desktop.settings.fieldflow.useBuiltinDefaults")}
-        description={t("desktop.settings.fieldflow.useBuiltinDefaultsDesc")}
-        checked={draft.useBuiltinDefaults}
-        onChange={(checked) => update({ ...draft, useBuiltinDefaults: checked })}
-      />
-      <ToggleRow
-        title={t("desktop.settings.fieldflow.useFieldflowIgnore")}
-        description={t("desktop.settings.fieldflow.useFieldflowIgnoreDesc")}
-        checked={draft.useFieldflowIgnore}
-        onChange={(checked) => update({ ...draft, useFieldflowIgnore: checked })}
-      />
-      <ToggleRow
-        title={t("desktop.settings.fieldflow.watchEnabled")}
-        description={t("desktop.settings.fieldflow.watchEnabledDesc")}
-        checked={draft.watchEnabled}
-        onChange={(checked) => update({ ...draft, watchEnabled: checked })}
-      />
-      <label className="settings-row settings-row-stack">
-        <span className="settings-row-label">
-          <span className="settings-row-title">{t("desktop.settings.fieldflow.includePaths")}</span>
-          <span className="settings-row-desc">{t("desktop.settings.fieldflow.includePathsDesc")}</span>
-        </span>
-        <textarea
-          className="settings-row-control settings-textarea"
-          rows={4}
-          spellCheck={false}
-          value={draft.includePathsText}
-          placeholder={"consignor\nweb-manager\nservices/api"}
-          onChange={(event) => update({ ...draft, includePathsText: event.target.value })}
-        />
-      </label>
-      <label className="settings-row settings-row-stack">
-        <span className="settings-row-label">
-          <span className="settings-row-title">{t("desktop.settings.fieldflow.extraIgnore")}</span>
-          <span className="settings-row-desc">{t("desktop.settings.fieldflow.extraIgnoreDesc")}</span>
-        </span>
-        <textarea
-          className="settings-row-control settings-textarea"
-          rows={5}
-          spellCheck={false}
-          value={draft.extraIgnoreGlobsText}
-          placeholder={"**/generated/**\n**/*.pb.go"}
-          onChange={(event) => update({ ...draft, extraIgnoreGlobsText: event.target.value })}
-        />
-      </label>
-      <p className="settings-callout">{t("desktop.settings.fieldflow.projectConfigHint")}</p>
-    </div></section>
-  </>;
 }
 
 export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; scheduleSave: (value: WorkbenchDraft) => void; t: Translate }) {
