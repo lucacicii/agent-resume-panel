@@ -4480,10 +4480,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       setSide("linkgraph");
       return;
     }
-    // Keep seed free of continue / reanalyze flags so refresh always restarts cleanly.
+    // Keep seed free of reanalyze flags so refresh always restarts dig cleanly.
     const {
-      continueFromRequestId: _continueId,
       reanalyzeOnly: _reanalyzeOnly,
+      sessionRequestId: _sessionId,
       ...seedOnly
     } = args;
     linkGraphSeedRef.current = { ...seedOnly, outputLanguage: linkGraphLanguageRef.current };
@@ -4491,24 +4491,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     setLinkGraphBusy(true);
     setLinkGraphError(null);
     setLinkGraphProgress(null);
-    const previousHitCount = linkGraphResult?.hits.length ?? 0;
     try {
       const result = await api.linkGraphAnalyze({
         ...args,
         outputLanguage: args.outputLanguage || linkGraphLanguageRef.current
       });
       setLinkGraphResult(result);
-      if (result.llmError && result.hits.length === 0 && args.continueFromRequestId) {
-        setLinkGraphError(t("desktop.workbench.linkGraphFailed", result.llmError));
-      } else if (result.stopReason === "invalid_seed" || result.stopReason === "empty_seed") {
+      if (result.stopReason === "invalid_seed" || result.stopReason === "empty_seed") {
         setLinkGraphError(t("desktop.workbench.linkGraphNeedSelection"));
-      } else if (
-        args.continueFromRequestId
-        && result.hits.length <= previousHitCount
-        && (result.frontierCount ?? result.frontier.length) === 0
-        && !result.complete
-      ) {
-        setLinkGraphError(t("desktop.workbench.linkGraphContinueNoProgress"));
       } else {
         setLinkGraphError(null);
       }
@@ -4517,21 +4507,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } finally {
       setLinkGraphBusy(false);
     }
-  }, [linkGraphResult?.hits.length, t]);
-
-  const continueLinkGraph = useCallback(() => {
-    const seed = linkGraphSeedRef.current;
-    const requestId = linkGraphResult?.requestId;
-    if (!seed || !requestId) {
-      setLinkGraphError(t("desktop.workbench.linkGraphFailed", "no session"));
-      return;
-    }
-    void runLinkGraph({
-      ...seed,
-      continueFromRequestId: requestId,
-      outputLanguage: linkGraphLanguageRef.current
-    });
-  }, [linkGraphResult?.requestId, runLinkGraph, t]);
+  }, [t]);
 
   const refreshLinkGraph = useCallback(() => {
     const seed = linkGraphSeedRef.current;
@@ -4545,16 +4521,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     linkGraphLanguageRef.current = value;
     const seed = linkGraphSeedRef.current;
     const requestId = linkGraphResult?.requestId;
-    if (seed && requestId && linkGraphResult?.hits.length) {
-      // Re-summarize only — keep search graph, change narrative language.
+    if (seed && requestId && (linkGraphResult?.primaryChain.length || linkGraphResult?.hits.length)) {
       void runLinkGraph({
         ...seed,
         outputLanguage: value,
-        continueFromRequestId: requestId,
+        sessionRequestId: requestId,
         reanalyzeOnly: true
       });
     }
-  }, [linkGraphResult?.hits.length, linkGraphResult?.requestId, runLinkGraph]);
+  }, [linkGraphResult?.hits.length, linkGraphResult?.primaryChain.length, linkGraphResult?.requestId, runLinkGraph]);
 
   const openLinkGraphFromEditor = useCallback(() => {
     if (!selectedProject || !currentEditor) return;
@@ -6219,7 +6194,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                   </>
                     : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
                       : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
-            </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onContinue={linkGraphResult && !linkGraphResult.complete && (linkGraphResult.frontierCount ?? linkGraphResult.frontier.length) > 0 ? continueLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
+            </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
               const root = selectedProject || "";
               const raw = target.path.replaceAll("\\", "/");
               const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);

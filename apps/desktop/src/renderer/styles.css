@@ -14592,7 +14592,168 @@ body::before {
 .wb-linkgraph-role.is-read { color: var(--color-success, #34c759); }
 .wb-linkgraph-role.is-call { color: #af52de; }
 .wb-linkgraph-role.is-transform { color: #5ac8fa; }
+.wb-linkgraph-role.is-import { color: #5ac8fa; }
+.wb-linkgraph-role.is-bridge { color: #ff9500; }
+.wb-linkgraph-role.is-reference { color: var(--color-success, #34c759); }
 .wb-linkgraph-role.is-other { color: var(--color-label-secondary); }
+.wb-linkgraph-hop.is-bridge .wb-linkgraph-hop-main {
+  border-color: color-mix(in srgb, #ff9500 50%, var(--color-separator));
+  background: color-mix(in srgb, #ff9500 8%, transparent);
+}
+.wb-linkgraph-hop.is-terminal .wb-linkgraph-hop-main {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-separator));
+}
+.wb-linkgraph-bridge-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #ff9500;
+  text-transform: uppercase;
+}
+.wb-linkgraph-branches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wb-linkgraph-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 2px;
+  font-size: 12px;
+}
+.wb-linkgraph-branch-title {
+  font-weight: 600;
+  word-break: break-all;
+}
+.wb-linkgraph-branch-preview {
+  margin: 0 0 0 18px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.wb-linkgraph-branch-steps {
+  margin-top: 4px;
+  margin-left: 8px;
+}
+.wb-linkgraph-branch-entry {
+  font-size: 11px;
+  padding: 2px 4px;
+  word-break: break-all;
+}
+.wb-linkgraph-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wb-linkgraph-group {
+  border: 1px solid var(--color-separator, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-secondary-bg, rgba(0, 0, 0, 0.03));
+  overflow: hidden;
+}
+.wb-linkgraph-group.is-primary {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-separator));
+}
+.wb-linkgraph-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.wb-linkgraph-group-head:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
+}
+.wb-linkgraph-group-title {
+  font-weight: 650;
+  color: var(--color-label-primary);
+}
+.wb-linkgraph-group-meta {
+  font-size: 11px;
+  word-break: break-all;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.wb-linkgraph-group-steps {
+  margin: 0;
+  padding: 0 8px 8px;
+  border-top: 1px solid var(--color-separator, rgba(0, 0, 0, 0.08));
+  padding-top: 6px;
+}
+.wb-linkgraph-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-label-secondary);
+  background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.06));
+}
+.wb-linkgraph-terminal-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-transform: uppercase;
+}
+.wb-linkgraph-page-refs {
+  margin: 2px 0 6px 28px;
+}
+.wb-linkgraph-page-ref-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb-linkgraph-page-ref-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.wb-linkgraph-page-ref-btn:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
+}
+.wb-linkgraph-open-ends {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.wb-linkgraph-open-ends code {
+  font-size: 10px;
+}
 .wb-linkgraph-hop-title {
   font-size: 12px;
   font-weight: 600;

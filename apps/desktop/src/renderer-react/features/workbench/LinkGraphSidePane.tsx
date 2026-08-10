@@ -1,10 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import type {
   LinkGraphAnalyzeResult,
-  LinkGraphHit,
-  LinkGraphHop,
+  LinkGraphChainStep,
   LinkGraphHopRole,
   LinkGraphOutputLanguage,
   LinkGraphProgressEvent
@@ -24,41 +23,23 @@ const LANGUAGE_OPTIONS: Array<{ value: LinkGraphOutputLanguage; labelKey: string
   { value: "ja", labelKey: "desktop.workbench.linkGraphLangJa" }
 ];
 
-/** Max cumulative evidence rows shown before "show more". */
-const EVIDENCE_PREVIEW = 40;
-
-type LlmHopIndex = Map<string, LinkGraphHop>;
-
-function hopLookupKey(file: string, line: number): string {
-  return `${file.replaceAll("\\", "/").replace(/^\.\//, "")}:${line}`;
-}
-
-function buildLlmHopIndex(hops: LinkGraphHop[]): LlmHopIndex {
-  const map: LlmHopIndex = new Map();
-  for (const hop of hops) {
-    const file = hop.file.replaceAll("\\", "/").replace(/^\.\//, "");
-    map.set(hopLookupKey(file, hop.line), hop);
-    // Soft near-line keys so UI can still attach role when LLM line is off by 1–2.
-    for (const delta of [-2, -1, 1, 2]) {
-      const near = hop.line + delta;
-      if (near < 1) continue;
-      const key = hopLookupKey(file, near);
-      if (!map.has(key)) map.set(key, hop);
-    }
-  }
-  return map;
-}
-
-function findLlmHop(index: LlmHopIndex, relativePath: string, line: number): LinkGraphHop | undefined {
-  const file = relativePath.replaceAll("\\", "/");
-  return (
-    index.get(hopLookupKey(file, line))
-    || index.get(hopLookupKey(file.split("/").slice(-2).join("/"), line))
-  );
-}
+type ChainGroupModel = {
+  id: string;
+  kind: "primary" | "branch";
+  title: string;
+  subtitle?: string;
+  steps: LinkGraphChainStep[];
+  hasBridge: boolean;
+  hasTerminal: boolean;
+};
 
 function roleLabelKey(role: LinkGraphHopRole): string {
   return `desktop.workbench.linkGraphRole.${role}`;
+}
+
+function stepEntryLabel(steps: LinkGraphChainStep[], fallback: string): string {
+  if (!steps.length) return fallback;
+  return `${steps[0].file}:${steps[0].line}`;
 }
 
 export function LinkGraphSidePane({
@@ -69,7 +50,6 @@ export function LinkGraphSidePane({
   outputLanguage,
   onOutputLanguageChange,
   onRefresh,
-  onContinue,
   onCancel,
   onOpen
 }: {
@@ -80,47 +60,120 @@ export function LinkGraphSidePane({
   outputLanguage: LinkGraphOutputLanguage;
   onOutputLanguageChange: (value: LinkGraphOutputLanguage) => void;
   onRefresh?: () => void;
-  onContinue?: () => void;
   onCancel?: () => void;
   onOpen: (target: LinkGraphOpenTarget) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [expandedHit, setExpandedHit] = useState<string | null>(null);
-  const [showAllHits, setShowAllHits] = useState(false);
-  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(["primary"]));
+  const [prunedOpen, setPrunedOpen] = useState(false);
+  const [pageRefsOpen, setPageRefsOpen] = useState<string | null>(null);
+  const [openEndsOpen, setOpenEndsOpen] = useState(true);
 
-  const hits = result?.hits || [];
-  const llmHops = result?.analysis?.hops || [];
-  const frontierCount = result?.frontierCount ?? result?.frontier.length ?? 0;
+  const primaryChain = result?.primaryChain || [];
+  const branches = result?.branches || [];
+  const openEnds = result?.openEnds || result?.analysis?.openEnds || [];
+  const discardedCount = result?.discardedCount ?? 0;
+  const truncatedBranchCount = result?.truncatedBranchCount ?? 0;
+  const bridgeStatus = result?.bridgeStatus;
 
-  const llmHopIndex = useMemo(() => buildLlmHopIndex(llmHops), [llmHops]);
+  const mainSteps: LinkGraphChainStep[] = useMemo(() => {
+    if (primaryChain.length) return primaryChain;
+    return (result?.analysis?.hops || []).map((hop) => ({
+      id: hop.id,
+      edgeKind:
+        hop.role === "bridge"
+          ? ("bridge" as const)
+          : hop.role === "import"
+            ? ("imports" as const)
+            : ("defines" as const),
+      nodeKind: "unknown" as const,
+      role: hop.role,
+      title: hop.title,
+      narrative: hop.narrative,
+      file: hop.file,
+      path: absolutePathForFile(result, hop.file),
+      line: hop.line,
+      symbol: result?.seed.symbol || "",
+      preview: hop.narrative,
+      confidence: hop.confidence,
+      bridgeKind: hop.bridgeKind
+    }));
+  }, [primaryChain, result]);
 
-  /** Cumulative evidence timeline (depth asc). */
-  const evidenceHits = useMemo(() => {
-    return [...hits].sort(
-      (a, b) => a.depth - b.depth || b.score - a.score || a.relativePath.localeCompare(b.relativePath) || a.line - b.line
-    );
-  }, [hits]);
+  const groups = useMemo((): ChainGroupModel[] => {
+    const out: ChainGroupModel[] = [];
+    if (mainSteps.length) {
+      out.push({
+        id: "primary",
+        kind: "primary",
+        title: t("desktop.workbench.linkGraphPrimaryChain"),
+        subtitle: stepEntryLabel(mainSteps, result?.seed.relativePath || ""),
+        steps: mainSteps,
+        hasBridge: mainSteps.some((s) => s.edgeKind === "bridge"),
+        hasTerminal: mainSteps.some((s) => s.terminal)
+      });
+    }
+    for (const branch of branches.filter((b) => !b.pruned)) {
+      out.push({
+        id: branch.id,
+        kind: "branch",
+        title: t("desktop.workbench.linkGraphBranchGroup", branch.entryFile),
+        subtitle: `${branch.entryFile}:${branch.entryLine}`,
+        steps: branch.steps,
+        hasBridge: branch.steps.some((s) => s.edgeKind === "bridge"),
+        hasTerminal: branch.steps.some((s) => s.terminal)
+      });
+    }
+    return out;
+  }, [branches, mainSteps, result?.seed.relativePath, t]);
 
-  const visibleEvidence = evidenceExpanded ? evidenceHits : evidenceHits.slice(0, EVIDENCE_PREVIEW);
+  const prunedBranches = useMemo(() => branches.filter((b) => b.pruned), [branches]);
 
   const statusLabel = useMemo(() => {
     if (busy && progress?.phase === "analyzing") return t("desktop.workbench.linkGraphAnalyzing");
-    if (busy) return t("desktop.workbench.linkGraphSearching");
+    if (busy) return progress?.message || t("desktop.workbench.linkGraphSearching");
     if (error) return error;
     if (!result) return t("desktop.workbench.linkGraphEmpty");
-    if (result.complete) return t("desktop.workbench.linkGraphComplete");
-    return t("desktop.workbench.linkGraphIncomplete", frontierCount, result.stopReason);
-  }, [busy, error, frontierCount, progress?.phase, result, t]);
+    if (result.stopReason === "time_budget") return t("desktop.workbench.linkGraphTimedOut");
+    if (result.stopReason === "cancelled") return t("desktop.common.cancel");
+    return t("desktop.workbench.linkGraphComplete");
+  }, [busy, error, progress?.message, progress?.phase, result, t]);
 
   const meta = result
     ? t(
-      "desktop.workbench.linkGraphMeta",
+      "desktop.workbench.linkGraphMetaChains",
       result.seed.symbol || result.seed.selection,
-      result.reachedDepth,
-      result.hits.length
+      mainSteps.length,
+      groups.length
     )
     : "";
+
+  const toggleGroup = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (result?.requestId) {
+      setExpandedIds(new Set(["primary"]));
+      setPrunedOpen(false);
+      setPageRefsOpen(null);
+      setOpenEndsOpen(true);
+    }
+  }, [result?.requestId]);
+
+  const openStep = (step: LinkGraphChainStep, lineOverride?: number) => {
+    onOpen({
+      path: step.path || absolutePathForFile(result, step.file),
+      line: lineOverride ?? step.line,
+      column: step.column,
+      endColumn: step.endColumn
+    });
+  };
 
   return (
     <div className="wb-side-pane wb-linkgraph-pane">
@@ -183,167 +236,170 @@ export function LinkGraphSidePane({
             {result.llmStatus === "failed" ? (
               <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphLlmFailed", result.llmError || "")}</p>
             ) : null}
-          </section>
-        ) : null}
-
-        {/* LLM main path: role + title + narrative (restored) */}
-        {llmHops.length ? (
-          <section className="wb-linkgraph-section">
-            <h3 className="wb-linkgraph-section-title">
-              {t("desktop.workbench.linkGraphMainPath")} · {llmHops.length}
-            </h3>
-            <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphMainPathHint")}</p>
-            <ol className="wb-linkgraph-chain">
-              {llmHops.map((hop) => (
-                <li key={hop.id} className="wb-linkgraph-hop is-llm-path">
-                  <button
-                    type="button"
-                    className="wb-linkgraph-hop-main"
-                    onClick={() => {
-                      const absolute = absolutePathForFile(result, hop.file);
-                      onOpen({ path: absolute, line: hop.line });
-                    }}
-                    title={`${hop.file}:${hop.line}`}
-                  >
-                    <span className={`wb-linkgraph-role is-${hop.role}`}>
-                      {t(roleLabelKey(hop.role))}
-                    </span>
-                    <span className="wb-linkgraph-hop-title">{hop.title || hop.file}</span>
-                    <span className="wb-linkgraph-hop-loc muted">{hop.file}:{hop.line}</span>
-                    {hop.narrative ? (
-                      <span className="wb-linkgraph-hop-narrative">{hop.narrative}</span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
-
-        {/* Cumulative evidence: keeps growing with Continue; attach LLM role when matched */}
-        {evidenceHits.length ? (
-          <section className="wb-linkgraph-section">
-            <h3 className="wb-linkgraph-section-title">
-              {t("desktop.workbench.linkGraphEvidence")} · {evidenceHits.length}
-            </h3>
-            <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphChainCumulativeHint")}</p>
-            <ol className="wb-linkgraph-chain">
-              {visibleEvidence.map((hit) => {
-                const key = hitKey(hit);
-                const llm = findLlmHop(llmHopIndex, hit.relativePath, hit.line);
-                return (
-                  <li key={key} className={`wb-linkgraph-hop${llm ? " is-llm-path" : ""}`}>
-                    <button
-                      type="button"
-                      className="wb-linkgraph-hop-main"
-                      onClick={() => onOpen({
-                        path: hit.path,
-                        line: hit.line,
-                        column: hit.column,
-                        endColumn: hit.endColumn
-                      })}
-                      title={`${hit.relativePath}:${hit.line}`}
-                    >
-                      <span className="wb-linkgraph-hit-depth">d{hit.depth}</span>
-                      {llm ? (
-                        <span className={`wb-linkgraph-role is-${llm.role}`}>
-                          {t(roleLabelKey(llm.role))}
-                        </span>
-                      ) : null}
-                      <span className="wb-linkgraph-hop-title">
-                        {llm?.title || hit.symbol}
-                      </span>
-                      <span className="wb-linkgraph-hop-loc muted">{hit.relativePath}:{hit.line}</span>
-                      <span className="wb-linkgraph-hop-narrative">
-                        {llm?.narrative || hit.preview}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-            {evidenceHits.length > EVIDENCE_PREVIEW ? (
-              <button
-                type="button"
-                className="wb-linkgraph-section-toggle"
-                onClick={() => setEvidenceExpanded((value) => !value)}
-              >
-                {evidenceExpanded
-                  ? t("desktop.workbench.linkGraphShowLess")
-                  : t("desktop.workbench.linkGraphShowMore", evidenceHits.length - EVIDENCE_PREVIEW)}
-              </button>
+            {discardedCount > 0 ? (
+              <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphDiscarded", discardedCount)}</p>
+            ) : null}
+            {truncatedBranchCount > 0 ? (
+              <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphTruncated", truncatedBranchCount)}</p>
+            ) : null}
+            {bridgeStatus && bridgeStatus !== "skipped" ? (
+              <p className="muted wb-linkgraph-hint">
+                {t(`desktop.workbench.linkGraphBridge.${bridgeStatus}`)}
+              </p>
             ) : null}
           </section>
         ) : null}
 
-        {result && !result.complete && frontierCount > 0 ? (
-          <div className="wb-linkgraph-continue">
-            <button type="button" className="tool-btn" disabled={busy || !onContinue} onClick={() => onContinue?.()}>
-              {t("desktop.workbench.linkGraphContinue", frontierCount)}
-            </button>
-          </div>
+        {groups.length ? (
+          <section className="wb-linkgraph-section">
+            <h3 className="wb-linkgraph-section-title">
+              {t("desktop.workbench.linkGraphChainGroups")} · {groups.length}
+            </h3>
+            <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphChainGroupsHint")}</p>
+            <div className="wb-linkgraph-groups">
+              {groups.map((group) => {
+                const open = expandedIds.has(group.id);
+                return (
+                  <div
+                    key={group.id}
+                    className={`wb-linkgraph-group${group.kind === "primary" ? " is-primary" : ""}${open ? " is-open" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="wb-linkgraph-group-head"
+                      aria-expanded={open}
+                      onClick={() => toggleGroup(group.id)}
+                    >
+                      <ThemeIcon name="chevron-right" className={open ? "is-expanded" : ""} size={12} />
+                      <span className="wb-linkgraph-group-title">{group.title}</span>
+                      <span className="wb-linkgraph-group-meta muted">
+                        {group.subtitle}
+                        {" · "}
+                        {t("desktop.workbench.linkGraphStepCount", group.steps.length)}
+                      </span>
+                      {group.hasBridge ? (
+                        <span className="wb-linkgraph-bridge-badge">{t("desktop.workbench.linkGraphBadgeBridge")}</span>
+                      ) : null}
+                      {group.hasTerminal ? (
+                        <span className="wb-linkgraph-terminal-badge">{t("desktop.workbench.linkGraphBadgeVo")}</span>
+                      ) : null}
+                    </button>
+                    {open ? (
+                      <ol className="wb-linkgraph-chain wb-linkgraph-group-steps">
+                        {group.steps.map((step, index) => (
+                          <li
+                            key={step.id}
+                            className={`wb-linkgraph-hop${step.edgeKind === "bridge" ? " is-bridge" : ""}${step.terminal ? " is-terminal" : ""}`}
+                          >
+                            <button
+                              type="button"
+                              className="wb-linkgraph-hop-main"
+                              onClick={() => openStep(step)}
+                              title={`${step.file}:${step.line}`}
+                            >
+                              <span className="wb-linkgraph-step-index">{index + 1}</span>
+                              <span className={`wb-linkgraph-role is-${step.role}`}>
+                                {t(roleLabelKey(step.role))}
+                              </span>
+                              {step.bridgeKind ? (
+                                <span className="wb-linkgraph-bridge-badge">{step.bridgeKind}</span>
+                              ) : null}
+                              <span className="wb-linkgraph-hop-title">{step.title || step.file}</span>
+                              <span className="wb-linkgraph-hop-loc muted">{step.file}:{step.line}</span>
+                              {step.narrative || step.preview ? (
+                                <span className="wb-linkgraph-hop-narrative">{step.narrative || step.preview}</span>
+                              ) : null}
+                            </button>
+                            {step.pageRefs?.length ? (
+                              <div className="wb-linkgraph-page-refs">
+                                <button
+                                  type="button"
+                                  className="wb-linkgraph-section-toggle"
+                                  onClick={() => setPageRefsOpen((id) => (id === step.id ? null : step.id))}
+                                >
+                                  {t("desktop.workbench.linkGraphPageRefs", step.pageRefs.length)}
+                                </button>
+                                {pageRefsOpen === step.id ? (
+                                  <ul className="wb-linkgraph-page-ref-list">
+                                    {step.pageRefs.map((ref) => (
+                                      <li key={`${step.id}_${ref.line}_${ref.column}`}>
+                                        <button
+                                          type="button"
+                                          className="wb-linkgraph-page-ref-btn"
+                                          onClick={() => openStep(step, ref.line)}
+                                        >
+                                          <span className="muted">L{ref.line}</span>
+                                          <span>{ref.preview}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         ) : null}
 
-        {hits.length ? (
+        {openEnds.length ? (
           <section className="wb-linkgraph-section">
             <button
               type="button"
               className="wb-linkgraph-section-toggle"
-              aria-expanded={showAllHits}
-              onClick={() => setShowAllHits((value) => !value)}
+              aria-expanded={openEndsOpen}
+              onClick={() => setOpenEndsOpen((v) => !v)}
             >
-              <ThemeIcon name="chevron-right" className={showAllHits ? "is-expanded" : ""} size={12} />
+              <ThemeIcon name="chevron-right" className={openEndsOpen ? "is-expanded" : ""} size={12} />
               <span className="wb-linkgraph-section-title">
-                {t("desktop.workbench.linkGraphAllHits", hits.length)}
+                {t("desktop.workbench.linkGraphOpenEnds")} · {openEnds.length}
               </span>
             </button>
-            {showAllHits ? (
-              <ul className="wb-linkgraph-hits">
-                {hits.map((hit) => {
-                  const key = hitKey(hit);
-                  const open = expandedHit === key;
-                  const llm = findLlmHop(llmHopIndex, hit.relativePath, hit.line);
-                  return (
-                    <li key={key} className="wb-linkgraph-hit">
-                      <button
-                        type="button"
-                        className="wb-linkgraph-hit-main"
-                        onClick={() => onOpen({
-                          path: hit.path,
-                          line: hit.line,
-                          column: hit.column,
-                          endColumn: hit.endColumn
-                        })}
-                      >
-                        <span className="wb-linkgraph-hit-depth">d{hit.depth}</span>
-                        {llm ? (
-                          <span className={`wb-linkgraph-role is-${llm.role}`}>
-                            {t(roleLabelKey(llm.role))}
-                          </span>
-                        ) : null}
-                        <span className="wb-linkgraph-hit-path">{hit.relativePath}:{hit.line}</span>
-                        <span className="wb-linkgraph-hit-preview muted">
-                          {llm?.narrative || hit.preview}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="wb-linkgraph-hit-expand"
-                        aria-expanded={open}
-                        aria-label={t("desktop.workbench.linkGraphTogglePreview")}
-                        onClick={() => setExpandedHit(open ? null : key)}
-                      >
-                        <ThemeIcon name="chevron-right" className={open ? "is-expanded" : ""} size={12} />
-                      </button>
-                      {open ? (
-                        <pre className="wb-linkgraph-hit-snippet">
-                          {llm?.narrative ? `${llm.narrative}\n\n${hit.preview}` : hit.preview}
-                        </pre>
-                      ) : null}
-                    </li>
-                  );
-                })}
+            {openEndsOpen ? (
+              <ul className="wb-linkgraph-open-ends">
+                {openEnds.map((item, i) => (
+                  <li key={`${item.reason}_${item.file}_${item.line}_${i}`} className="muted">
+                    <code>{item.reason}</code>
+                    {item.file ? ` · ${item.file}${item.line ? `:${item.line}` : ""}` : ""}
+                    {item.symbol ? ` · ${item.symbol}` : ""}
+                  </li>
+                ))}
               </ul>
+            ) : null}
+          </section>
+        ) : null}
+
+        {prunedBranches.length ? (
+          <section className="wb-linkgraph-section">
+            <button
+              type="button"
+              className="wb-linkgraph-section-toggle"
+              aria-expanded={prunedOpen}
+              onClick={() => setPrunedOpen((v) => !v)}
+            >
+              <ThemeIcon name="chevron-right" className={prunedOpen ? "is-expanded" : ""} size={12} />
+              <span className="wb-linkgraph-section-title muted">
+                {t("desktop.workbench.linkGraphPrunedBranches")} · {prunedBranches.length}
+              </span>
+            </button>
+            {prunedOpen ? (
+              <>
+                <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphPrunedHint")}</p>
+                <ul className="wb-linkgraph-branches is-pruned">
+                  {prunedBranches.map((branch) => (
+                    <li key={branch.id} className="wb-linkgraph-branch-entry muted">
+                      {branch.entryFile}:{branch.entryLine}
+                      {branch.pruneReason ? ` · ${branch.pruneReason}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
           </section>
         ) : null}
@@ -351,24 +407,29 @@ export function LinkGraphSidePane({
         {!busy && !error && !result ? (
           <p className="muted wb-linkgraph-empty">{t("desktop.workbench.linkGraphHint")}</p>
         ) : null}
+
+        {!busy && result && !groups.length && !prunedBranches.length ? (
+          <p className="muted wb-linkgraph-empty">{t("desktop.workbench.linkGraphNoChains")}</p>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function hitKey(hit: LinkGraphHit): string {
-  return `${hit.relativePath}:${hit.line}:${hit.symbol}:${hit.depth}`;
-}
-
-/** Prefer absolute hit paths so openFile/inspectFile stay within the project root. */
 function absolutePathForFile(result: LinkGraphAnalyzeResult | null, file: string): string {
   const normalized = file.replaceAll("\\", "/");
-  if (normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) {
-    return file;
-  }
+  if (normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) return file;
   const exact = result?.hits.find((hit) => hit.relativePath === normalized && hit.path);
   if (exact) return exact.path;
-  const sameFile = result?.hits.find((hit) => hit.relativePath === normalized || hit.relativePath.endsWith(`/${normalized}`));
+  const chain = result?.primaryChain?.find((s) => s.file === normalized && s.path);
+  if (chain) return chain.path;
+  for (const branch of result?.branches || []) {
+    const step = branch.steps.find((s) => s.file === normalized && s.path);
+    if (step) return step.path;
+  }
+  const sameFile = result?.hits.find(
+    (hit) => hit.relativePath === normalized || hit.relativePath.endsWith(`/${normalized}`)
+  );
   if (sameFile) return sameFile.path;
   return normalized;
 }
