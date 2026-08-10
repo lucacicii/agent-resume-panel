@@ -63,9 +63,10 @@ import {
   handleFlowSync,
   handleFlowValidate
 } from "./flowTools";
+import { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
-export const MCP_SERVER_VERSION = "0.4.0";
+export const MCP_SERVER_VERSION = "0.5.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -89,7 +90,8 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      instructions: "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Flow is the only workflow execution surface. Use flow_sync to create or update sourced workflows and flow_node_complete only for the exact run/node/attempt supplied by an active Flow prompt."
+      instructions:
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Flow is the only workflow execution surface. Use flow_sync to create or update sourced workflows and flow_node_complete only for the exact run/node/attempt supplied by an active Flow prompt. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
     }
   );
 
@@ -419,6 +421,31 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         throw new Error("catalogDb is not configured for session tools.");
       }
       return handleSessionResume(args, sessionCtx);
+    }
+  );
+
+  server.registerTool(
+    "link_graph_trace",
+    {
+      description:
+        "Trace a code field/symbol across frontend → API client → HTTP path → backend handler → DTO/VO in one call. "
+        + "An internal LLM agent performs the full search step-by-step; tools only read/search/verify. "
+        + "Use when the user asks for 链路图, call chain, where a form field goes, FE-BE mapping, or API lineage. "
+        + "Requires workspaceRoot + symbol; pass filePath and line when known. Returns structured primaryChain, timeline, summary, openEnds. "
+        + "Requires Agent Resume LLM settings to be configured.",
+      inputSchema: linkGraphTraceSchema
+    },
+    async (args: {
+      workspaceRoot: string;
+      symbol: string;
+      filePath?: string;
+      line?: number;
+      selection?: string;
+      language?: string;
+      backendRoots?: string[];
+      timeBudgetMs?: number;
+    }) => {
+      return handleLinkGraphTrace(args);
     }
   );
 

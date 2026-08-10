@@ -14754,6 +14754,85 @@ body::before {
 .wb-linkgraph-open-ends code {
   font-size: 10px;
 }
+.wb-linkgraph-timeline {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wb-linkgraph-timeline-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+}
+.wb-linkgraph-timeline-status {
+  flex: 0 0 16px;
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-label-secondary);
+}
+.wb-linkgraph-timeline-item.is-done .wb-linkgraph-timeline-status {
+  color: var(--color-success, #34c759);
+}
+.wb-linkgraph-timeline-item.is-running .wb-linkgraph-timeline-status {
+  color: var(--color-accent);
+}
+.wb-linkgraph-timeline-item.is-failed .wb-linkgraph-timeline-status {
+  color: var(--color-danger, #ff3b30);
+}
+.wb-linkgraph-timeline-body {
+  flex: 1;
+  min-width: 0;
+}
+.wb-linkgraph-timeline-title {
+  font-weight: 600;
+  line-height: 1.35;
+}
+.wb-linkgraph-timeline-phase {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-label-tertiary);
+}
+.wb-linkgraph-timeline-detail {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.wb-linkgraph-timeline-evidence {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb-linkgraph-timeline-ev-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+.wb-linkgraph-timeline-ev-btn:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
+}
 .wb-linkgraph-hop-title {
   font-size: 12px;
   font-weight: 600;

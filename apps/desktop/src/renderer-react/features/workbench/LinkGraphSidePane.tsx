@@ -6,7 +6,8 @@ import type {
   LinkGraphChainStep,
   LinkGraphHopRole,
   LinkGraphOutputLanguage,
-  LinkGraphProgressEvent
+  LinkGraphProgressEvent,
+  LinkGraphTimelineItem
 } from "../../../shared/linkGraphTypes";
 
 export type LinkGraphOpenTarget = {
@@ -22,16 +23,6 @@ const LANGUAGE_OPTIONS: Array<{ value: LinkGraphOutputLanguage; labelKey: string
   { value: "en", labelKey: "desktop.workbench.linkGraphLangEn" },
   { value: "ja", labelKey: "desktop.workbench.linkGraphLangJa" }
 ];
-
-type ChainGroupModel = {
-  id: string;
-  kind: "primary" | "branch";
-  title: string;
-  subtitle?: string;
-  steps: LinkGraphChainStep[];
-  hasBridge: boolean;
-  hasTerminal: boolean;
-};
 
 function roleLabelKey(role: LinkGraphHopRole): string {
   return `desktop.workbench.linkGraphRole.${role}`;
@@ -64,17 +55,19 @@ export function LinkGraphSidePane({
   onOpen: (target: LinkGraphOpenTarget) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(["primary"]));
-  const [prunedOpen, setPrunedOpen] = useState(false);
+  const [chainOpen, setChainOpen] = useState(true);
   const [pageRefsOpen, setPageRefsOpen] = useState<string | null>(null);
   const [openEndsOpen, setOpenEndsOpen] = useState(true);
+  const [timelineOpen, setTimelineOpen] = useState(true);
 
   const primaryChain = result?.primaryChain || [];
-  const branches = result?.branches || [];
   const openEnds = result?.openEnds || result?.analysis?.openEnds || [];
-  const discardedCount = result?.discardedCount ?? 0;
-  const truncatedBranchCount = result?.truncatedBranchCount ?? 0;
   const bridgeStatus = result?.bridgeStatus;
+
+  const timeline: LinkGraphTimelineItem[] = useMemo(() => {
+    if (progress?.timeline?.length) return progress.timeline;
+    return result?.timeline || [];
+  }, [progress?.timeline, result?.timeline]);
 
   const mainSteps: LinkGraphChainStep[] = useMemo(() => {
     if (primaryChain.length) return primaryChain;
@@ -100,34 +93,8 @@ export function LinkGraphSidePane({
     }));
   }, [primaryChain, result]);
 
-  const groups = useMemo((): ChainGroupModel[] => {
-    const out: ChainGroupModel[] = [];
-    if (mainSteps.length) {
-      out.push({
-        id: "primary",
-        kind: "primary",
-        title: t("desktop.workbench.linkGraphPrimaryChain"),
-        subtitle: stepEntryLabel(mainSteps, result?.seed.relativePath || ""),
-        steps: mainSteps,
-        hasBridge: mainSteps.some((s) => s.edgeKind === "bridge"),
-        hasTerminal: mainSteps.some((s) => s.terminal)
-      });
-    }
-    for (const branch of branches.filter((b) => !b.pruned)) {
-      out.push({
-        id: branch.id,
-        kind: "branch",
-        title: t("desktop.workbench.linkGraphBranchGroup", branch.entryFile),
-        subtitle: `${branch.entryFile}:${branch.entryLine}`,
-        steps: branch.steps,
-        hasBridge: branch.steps.some((s) => s.edgeKind === "bridge"),
-        hasTerminal: branch.steps.some((s) => s.terminal)
-      });
-    }
-    return out;
-  }, [branches, mainSteps, result?.seed.relativePath, t]);
-
-  const prunedBranches = useMemo(() => branches.filter((b) => b.pruned), [branches]);
+  const hasBridge = mainSteps.some((s) => s.edgeKind === "bridge");
+  const hasTerminal = mainSteps.some((s) => s.terminal);
 
   const statusLabel = useMemo(() => {
     if (busy && progress?.phase === "analyzing") return t("desktop.workbench.linkGraphAnalyzing");
@@ -143,24 +110,13 @@ export function LinkGraphSidePane({
     ? t(
       "desktop.workbench.linkGraphMetaChains",
       result.seed.symbol || result.seed.selection,
-      mainSteps.length,
-      groups.length
+      mainSteps.length
     )
     : "";
 
-  const toggleGroup = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   useEffect(() => {
     if (result?.requestId) {
-      setExpandedIds(new Set(["primary"]));
-      setPrunedOpen(false);
+      setChainOpen(true);
       setPageRefsOpen(null);
       setOpenEndsOpen(true);
     }
@@ -226,21 +182,83 @@ export function LinkGraphSidePane({
           <span>{statusLabel}</span>
         </p>
 
-        {result?.analysis?.summary ? (
+        {timeline.length ? (
+          <section className="wb-linkgraph-section">
+            <button
+              type="button"
+              className="wb-linkgraph-section-toggle"
+              aria-expanded={timelineOpen}
+              onClick={() => setTimelineOpen((v) => !v)}
+            >
+              <ThemeIcon name="chevron-right" className={timelineOpen ? "is-expanded" : ""} size={12} />
+              <span className="wb-linkgraph-section-title">
+                {t("desktop.workbench.linkGraphTimeline")} · {timeline.length}
+              </span>
+            </button>
+            {timelineOpen ? (
+              <ol className="wb-linkgraph-timeline">
+                {timeline.map((item) => (
+                  <li
+                    key={item.id}
+                    className={`wb-linkgraph-timeline-item is-${item.status}`}
+                  >
+                    <span className="wb-linkgraph-timeline-status" aria-hidden="true">
+                      {item.status === "running" ? (
+                        <ThemeIcon name="loader" className="spin" size={12} />
+                      ) : item.status === "done" ? (
+                        "✓"
+                      ) : item.status === "failed" ? (
+                        "!"
+                      ) : (
+                        "·"
+                      )}
+                    </span>
+                    <div className="wb-linkgraph-timeline-body">
+                      <div className="wb-linkgraph-timeline-title">
+                        <span className="wb-linkgraph-timeline-phase">{item.phase}</span>
+                        {item.title}
+                      </div>
+                      {item.detail ? (
+                        <p className="wb-linkgraph-timeline-detail muted">{item.detail}</p>
+                      ) : null}
+                      {item.evidence?.length ? (
+                        <ul className="wb-linkgraph-timeline-evidence">
+                          {item.evidence.map((ev, i) => (
+                            <li key={`${item.id}_ev_${i}`}>
+                              <button
+                                type="button"
+                                className="wb-linkgraph-timeline-ev-btn"
+                                onClick={() => onOpen({
+                                  path: ev.path || absolutePathForFile(result, ev.file),
+                                  line: ev.line
+                                })}
+                              >
+                                <span className="muted">{ev.file}:{ev.line}</span>
+                                {ev.preview ? <span>{ev.preview}</span> : null}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </section>
+        ) : null}
+
+        {result?.analysis?.summary || result?.llmStatus === "unconfigured" || result?.llmStatus === "failed" ? (
           <section className="wb-linkgraph-section">
             <h3 className="wb-linkgraph-section-title">{t("desktop.workbench.linkGraphSummary")}</h3>
-            <p className="wb-linkgraph-summary">{result.analysis.summary}</p>
+            {result.analysis?.summary ? (
+              <p className="wb-linkgraph-summary">{result.analysis.summary}</p>
+            ) : null}
             {result.llmStatus === "unconfigured" ? (
               <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphLlmUnconfigured")}</p>
             ) : null}
             {result.llmStatus === "failed" ? (
               <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphLlmFailed", result.llmError || "")}</p>
-            ) : null}
-            {discardedCount > 0 ? (
-              <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphDiscarded", discardedCount)}</p>
-            ) : null}
-            {truncatedBranchCount > 0 ? (
-              <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphTruncated", truncatedBranchCount)}</p>
             ) : null}
             {bridgeStatus && bridgeStatus !== "skipped" ? (
               <p className="muted wb-linkgraph-hint">
@@ -250,100 +268,92 @@ export function LinkGraphSidePane({
           </section>
         ) : null}
 
-        {groups.length ? (
+        {mainSteps.length ? (
           <section className="wb-linkgraph-section">
             <h3 className="wb-linkgraph-section-title">
-              {t("desktop.workbench.linkGraphChainGroups")} · {groups.length}
+              {t("desktop.workbench.linkGraphPrimaryChain")}
             </h3>
-            <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphChainGroupsHint")}</p>
-            <div className="wb-linkgraph-groups">
-              {groups.map((group) => {
-                const open = expandedIds.has(group.id);
-                return (
-                  <div
-                    key={group.id}
-                    className={`wb-linkgraph-group${group.kind === "primary" ? " is-primary" : ""}${open ? " is-open" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="wb-linkgraph-group-head"
-                      aria-expanded={open}
-                      onClick={() => toggleGroup(group.id)}
+            <p className="muted wb-linkgraph-hint">
+              {stepEntryLabel(mainSteps, result?.seed.relativePath || "")}
+              {" · "}
+              {t("desktop.workbench.linkGraphStepCount", mainSteps.length)}
+            </p>
+            <div className={`wb-linkgraph-group is-primary${chainOpen ? " is-open" : ""}`}>
+              <button
+                type="button"
+                className="wb-linkgraph-group-head"
+                aria-expanded={chainOpen}
+                onClick={() => setChainOpen((v) => !v)}
+              >
+                <ThemeIcon name="chevron-right" className={chainOpen ? "is-expanded" : ""} size={12} />
+                <span className="wb-linkgraph-group-title">{t("desktop.workbench.linkGraphPrimaryChain")}</span>
+                <span className="wb-linkgraph-group-meta muted">
+                  {t("desktop.workbench.linkGraphStepCount", mainSteps.length)}
+                </span>
+                {hasBridge ? (
+                  <span className="wb-linkgraph-bridge-badge">{t("desktop.workbench.linkGraphBadgeBridge")}</span>
+                ) : null}
+                {hasTerminal ? (
+                  <span className="wb-linkgraph-terminal-badge">{t("desktop.workbench.linkGraphBadgeVo")}</span>
+                ) : null}
+              </button>
+              {chainOpen ? (
+                <ol className="wb-linkgraph-chain wb-linkgraph-group-steps">
+                  {mainSteps.map((step, index) => (
+                    <li
+                      key={step.id}
+                      className={`wb-linkgraph-hop${step.edgeKind === "bridge" ? " is-bridge" : ""}${step.terminal ? " is-terminal" : ""}`}
                     >
-                      <ThemeIcon name="chevron-right" className={open ? "is-expanded" : ""} size={12} />
-                      <span className="wb-linkgraph-group-title">{group.title}</span>
-                      <span className="wb-linkgraph-group-meta muted">
-                        {group.subtitle}
-                        {" · "}
-                        {t("desktop.workbench.linkGraphStepCount", group.steps.length)}
-                      </span>
-                      {group.hasBridge ? (
-                        <span className="wb-linkgraph-bridge-badge">{t("desktop.workbench.linkGraphBadgeBridge")}</span>
-                      ) : null}
-                      {group.hasTerminal ? (
-                        <span className="wb-linkgraph-terminal-badge">{t("desktop.workbench.linkGraphBadgeVo")}</span>
-                      ) : null}
-                    </button>
-                    {open ? (
-                      <ol className="wb-linkgraph-chain wb-linkgraph-group-steps">
-                        {group.steps.map((step, index) => (
-                          <li
-                            key={step.id}
-                            className={`wb-linkgraph-hop${step.edgeKind === "bridge" ? " is-bridge" : ""}${step.terminal ? " is-terminal" : ""}`}
+                      <button
+                        type="button"
+                        className="wb-linkgraph-hop-main"
+                        onClick={() => openStep(step)}
+                        title={`${step.file}:${step.line}`}
+                      >
+                        <span className="wb-linkgraph-step-index">{index + 1}</span>
+                        <span className={`wb-linkgraph-role is-${step.role}`}>
+                          {t(roleLabelKey(step.role))}
+                        </span>
+                        {step.bridgeKind ? (
+                          <span className="wb-linkgraph-bridge-badge">{step.bridgeKind}</span>
+                        ) : null}
+                        <span className="wb-linkgraph-hop-title">{step.title || step.file}</span>
+                        <span className="wb-linkgraph-hop-loc muted">{step.file}:{step.line}</span>
+                        {step.narrative || step.preview ? (
+                          <span className="wb-linkgraph-hop-narrative">{step.narrative || step.preview}</span>
+                        ) : null}
+                      </button>
+                      {step.pageRefs?.length ? (
+                        <div className="wb-linkgraph-page-refs">
+                          <button
+                            type="button"
+                            className="wb-linkgraph-section-toggle"
+                            onClick={() => setPageRefsOpen((id) => (id === step.id ? null : step.id))}
                           >
-                            <button
-                              type="button"
-                              className="wb-linkgraph-hop-main"
-                              onClick={() => openStep(step)}
-                              title={`${step.file}:${step.line}`}
-                            >
-                              <span className="wb-linkgraph-step-index">{index + 1}</span>
-                              <span className={`wb-linkgraph-role is-${step.role}`}>
-                                {t(roleLabelKey(step.role))}
-                              </span>
-                              {step.bridgeKind ? (
-                                <span className="wb-linkgraph-bridge-badge">{step.bridgeKind}</span>
-                              ) : null}
-                              <span className="wb-linkgraph-hop-title">{step.title || step.file}</span>
-                              <span className="wb-linkgraph-hop-loc muted">{step.file}:{step.line}</span>
-                              {step.narrative || step.preview ? (
-                                <span className="wb-linkgraph-hop-narrative">{step.narrative || step.preview}</span>
-                              ) : null}
-                            </button>
-                            {step.pageRefs?.length ? (
-                              <div className="wb-linkgraph-page-refs">
-                                <button
-                                  type="button"
-                                  className="wb-linkgraph-section-toggle"
-                                  onClick={() => setPageRefsOpen((id) => (id === step.id ? null : step.id))}
-                                >
-                                  {t("desktop.workbench.linkGraphPageRefs", step.pageRefs.length)}
-                                </button>
-                                {pageRefsOpen === step.id ? (
-                                  <ul className="wb-linkgraph-page-ref-list">
-                                    {step.pageRefs.map((ref) => (
-                                      <li key={`${step.id}_${ref.line}_${ref.column}`}>
-                                        <button
-                                          type="button"
-                                          className="wb-linkgraph-page-ref-btn"
-                                          onClick={() => openStep(step, ref.line)}
-                                        >
-                                          <span className="muted">L{ref.line}</span>
-                                          <span>{ref.preview}</span>
-                                        </button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
-                  </div>
-                );
-              })}
+                            {t("desktop.workbench.linkGraphPageRefs", step.pageRefs.length)}
+                          </button>
+                          {pageRefsOpen === step.id ? (
+                            <ul className="wb-linkgraph-page-ref-list">
+                              {step.pageRefs.map((ref) => (
+                                <li key={`${step.id}_${ref.line}_${ref.column}`}>
+                                  <button
+                                    type="button"
+                                    className="wb-linkgraph-page-ref-btn"
+                                    onClick={() => openStep(step, ref.line)}
+                                  >
+                                    <span className="muted">L{ref.line}</span>
+                                    <span>{ref.preview}</span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -375,40 +385,11 @@ export function LinkGraphSidePane({
           </section>
         ) : null}
 
-        {prunedBranches.length ? (
-          <section className="wb-linkgraph-section">
-            <button
-              type="button"
-              className="wb-linkgraph-section-toggle"
-              aria-expanded={prunedOpen}
-              onClick={() => setPrunedOpen((v) => !v)}
-            >
-              <ThemeIcon name="chevron-right" className={prunedOpen ? "is-expanded" : ""} size={12} />
-              <span className="wb-linkgraph-section-title muted">
-                {t("desktop.workbench.linkGraphPrunedBranches")} · {prunedBranches.length}
-              </span>
-            </button>
-            {prunedOpen ? (
-              <>
-                <p className="muted wb-linkgraph-hint">{t("desktop.workbench.linkGraphPrunedHint")}</p>
-                <ul className="wb-linkgraph-branches is-pruned">
-                  {prunedBranches.map((branch) => (
-                    <li key={branch.id} className="wb-linkgraph-branch-entry muted">
-                      {branch.entryFile}:{branch.entryLine}
-                      {branch.pruneReason ? ` · ${branch.pruneReason}` : ""}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
-          </section>
-        ) : null}
-
         {!busy && !error && !result ? (
           <p className="muted wb-linkgraph-empty">{t("desktop.workbench.linkGraphHint")}</p>
         ) : null}
 
-        {!busy && result && !groups.length && !prunedBranches.length ? (
+        {!busy && result && !mainSteps.length ? (
           <p className="muted wb-linkgraph-empty">{t("desktop.workbench.linkGraphNoChains")}</p>
         ) : null}
       </div>
@@ -423,10 +404,6 @@ function absolutePathForFile(result: LinkGraphAnalyzeResult | null, file: string
   if (exact) return exact.path;
   const chain = result?.primaryChain?.find((s) => s.file === normalized && s.path);
   if (chain) return chain.path;
-  for (const branch of result?.branches || []) {
-    const step = branch.steps.find((s) => s.file === normalized && s.path);
-    if (step) return step.path;
-  }
   const sameFile = result?.hits.find(
     (hit) => hit.relativePath === normalized || hit.relativePath.endsWith(`/${normalized}`)
   );

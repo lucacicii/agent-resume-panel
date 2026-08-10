@@ -59,3 +59,5 @@ export {
 export type { SessionToolContext } from "./sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./client";
 export type { McpToolInfo, McpToolCallResult } from "./client";
+export { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
+export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./linkGraphTools";

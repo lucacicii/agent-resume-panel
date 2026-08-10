@@ -92,9 +92,20 @@ export interface GitDiffSidesResult {
 }
 
 function formatExecError(error: unknown): string {
-  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
+  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer; stdout?: string | Buffer };
   const stderr = err.stderr ? String(err.stderr).trim() : "";
   if (stderr) return stderr;
+  // Some git failures write their diagnostic to stdout and leave stderr empty
+  // (e.g. "nothing to commit"). Surface the actionable summary instead of the
+  // generic "Command failed: …" error message.
+  const stdout = err.stdout ? String(err.stdout).trim() : "";
+  if (stdout) {
+    const lines = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return lines[lines.length - 1] ?? stdout;
+  }
   if (error instanceof Error && error.message) return error.message;
   return String(error);
 }

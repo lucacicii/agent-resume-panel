@@ -38,6 +38,19 @@ function commitFile(repo: string, relativePath: string, content: string, message
   return git(repo, "rev-parse", "HEAD");
 }
 
+/** Inits a nested git repo and registers it as a gitlink in the parent. */
+function makeSubmodule(parent: string, name: string): string {
+  const sub = path.join(parent, name);
+  fs.mkdirSync(sub, { recursive: true });
+  git(sub, "init", "-b", "main");
+  git(sub, "config", "user.name", "Workbench Test");
+  git(sub, "config", "user.email", "workbench@example.test");
+  commitFile(sub, "nested.txt", "base\n", "initial nested file");
+  git(parent, "add", "--", name);
+  git(parent, "commit", "-m", "add submodule");
+  return sub;
+}
+
 afterEach(() => {
   while (roots.length) fs.rmSync(roots.pop()!, { recursive: true, force: true });
 });
@@ -235,5 +248,85 @@ describe("terminal:gitCommit", () => {
     expect(git(repo, "show", "--format=", "--name-only", "-z", "HEAD").split("\0").filter(Boolean)).toEqual([unicodePath]);
     expect(git(repo, "diff", "--cached", "--name-only", "--", unselectedPath)).toBe("");
     expect(git(repo, "diff", "--name-only", "--", unselectedPath)).toBe(unselectedPath);
+  });
+
+  it("skips a dirty submodule whose gitlink did not move and commits the rest", async () => {
+    const repo = createRepo();
+    commitFile(repo, "app.txt", "base\n", "initial app file");
+    const sub = makeSubmodule(repo, "sub");
+    // Dirty the submodule working tree WITHOUT committing inside it.
+    fs.writeFileSync(path.join(sub, "nested.txt"), "changed\n");
+    // Also modify a normal parent file.
+    fs.writeFileSync(path.join(repo, "app.txt"), "parent change\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    const handler = registration![1];
+
+    const result = await handler({} as never, {
+      repoRoot: repo,
+      message: "chore: bump parent",
+      paths: ["sub", "app.txt"]
+    }) as { ok: boolean; skipped?: string[] };
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toEqual(["sub"]);
+    // The parent file was committed; the submodule gitlink stayed at the original nested commit.
+    expect(git(repo, "show", "--format=", "--name-only", "-z", "HEAD").split("\0").filter(Boolean)).toEqual(["app.txt"]);
+    expect(git(repo, "ls-tree", "HEAD", "sub")).toContain(git(path.join(repo, "sub"), "rev-parse", "HEAD"));
+  });
+
+  it("rejects a commit whose only selected change is an uncommittable dirty submodule", async () => {
+    const repo = createRepo();
+    const sub = makeSubmodule(repo, "sub");
+    fs.writeFileSync(path.join(sub, "nested.txt"), "changed\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    const handler = registration![1];
+
+    await expect(handler({} as never, {
+      repoRoot: repo,
+      message: "chore: bump",
+      paths: ["sub"]
+    })).rejects.toThrow(/子模块 sub 内部有未提交的改动/);
+  });
+
+  it("commits a submodule whose HEAD moved (committable gitlink update)", async () => {
+    const repo = createRepo();
+    const sub = makeSubmodule(repo, "sub");
+    // Commit inside the submodule: the parent gitlink is now outdated.
+    const newHead = commitFile(sub, "nested.txt", "updated\n", "update nested content");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    const handler = registration![1];
+
+    const result = await handler({} as never, {
+      repoRoot: repo,
+      message: "chore: bump sub",
+      paths: ["sub"]
+    }) as { ok: boolean; skipped?: string[] };
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toEqual([]);
+    expect(git(repo, "ls-tree", "HEAD", "sub")).toContain(newHead);
+  });
+
+  it("surfaces git's stdout diagnostic when the selection has nothing to commit", async () => {
+    const repo = createRepo();
+    commitFile(repo, "clean.txt", "base\n", "initial clean file");
+    commitFile(repo, "dirty.txt", "base\n", "initial dirty file");
+    fs.writeFileSync(path.join(repo, "dirty.txt"), "changed\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    const handler = registration![1];
+
+    await expect(handler({} as never, {
+      repoRoot: repo,
+      message: "chore: bump",
+      paths: ["clean.txt"]
+    })).rejects.toThrow(/no changes added to commit/);
   });
 });

@@ -424,7 +424,7 @@ export interface DesktopApi {
     source: "llm" | "heuristic";
     fallbackReason?: "unconfigured" | "request-failed";
   }>;
-  terminalGitCommit(args: { repoRoot: string; message: string; paths?: string[] }): Promise<{ ok: boolean }>;
+  terminalGitCommit(args: { repoRoot: string; message: string; paths?: string[] }): Promise<{ ok: boolean; skipped?: string[] }>;
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitFetch(args: { repoRoot: string }): Promise<{ ok: boolean }>;

@@ -2507,6 +2507,87 @@ describe("WorkbenchPanel", () => {
     expect(messageField).toHaveProperty("value", "feat: keep draft");
   });
 
+  it("notifies when a commit skips an uncommittable submodule", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFilePath = "public/files/app.ts";
+    const gitFile = {
+      path: gitFilePath,
+      repoPath: gitFilePath,
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [gitFile],
+      nestedRepos: [],
+      tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
+    }));
+    const terminalGitFetch = vi.fn(async () => ({ ok: true }));
+    const terminalGitPush = vi.fn(async () => ({ ok: true }));
+    const terminalGitPull = vi.fn(async () => ({ ok: true }));
+    const terminalGitCommit = vi.fn(async () => ({ ok: true, skipped: ["vendor/docs"] }));
+    const terminalGitSuggestCommit = vi.fn(async () => ({ message: "fix: commit", source: "heuristic" as const }));
+    const terminalGitBranches = vi.fn(async () => ({
+      mode: "direct" as const,
+      current: "main",
+      branches: ["main"],
+      localBranches: ["main"],
+      remoteBranches: [],
+      repoRoot: "/work/app"
+    }));
+    const terminalGitCheckout = vi.fn(async () => ({ branch: "main", repoRoot: "/work/app" }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.resizeCommitInput": "Resize commit input", "desktop.workbench.gitCommitAutoGenerate": "Auto generate", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitCommitSkippedSubmodules": "Skipped submodule(s) with uncommitted changes: {0}", "desktop.workbench.gitSyncSucceeded": "Sync completed.", "desktop.workbench.gitSyncFailed": "Sync failed: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitBranchTracking": "{0}  ↑{1}  ↓{2}", "desktop.workbench.gitNoUpstream": "{0} · no upstream", "desktop.workbench.switchBranch": "Switch branch", "desktop.workbench.gitLocalBranches": "Local Branches", "desktop.workbench.gitRemoteBranches": "Remote Branches", "desktop.workbench.gitNoLocalBranches": "No local branches", "desktop.workbench.gitNoRemoteBranches": "No origin branches", "desktop.workbench.checkoutBranchSucceeded": "Switched to branch {0}.", "desktop.workbench.checkoutBranchFailed": "Could not switch branch: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch,
+      terminalGitPush,
+      terminalGitPull,
+      terminalGitCommit,
+      terminalGitSuggestCommit,
+      terminalGitBranches,
+      terminalGitCheckout
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
+
+    const changeCheckbox = screen.getByRole("checkbox", { name: gitFilePath });
+    expect(changeCheckbox.getAttribute("aria-checked")).toBe("true");
+    const messageField = await screen.findByRole("textbox", { name: "Commit changes" });
+    fireEvent.change(messageField, { target: { value: "fix: commit with submodule skip" } });
+    notificationMocks.notifyDesktop.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
+    await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith({
+      repoRoot: "/work/app",
+      message: "fix: commit with submodule skip",
+      paths: [gitFilePath]
+    }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Skipped submodule(s) with uncommitted changes: vendor/docs", kind: "info" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Commit completed.", kind: "ok" }));
+  });
+
   it("polls git status while Workbench is active without opening the Git panel", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const host = document.createElement("div");

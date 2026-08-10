@@ -4480,13 +4480,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       setSide("linkgraph");
       return;
     }
-    // Keep seed free of reanalyze flags so refresh always restarts dig cleanly.
-    const {
-      reanalyzeOnly: _reanalyzeOnly,
-      sessionRequestId: _sessionId,
-      ...seedOnly
-    } = args;
-    linkGraphSeedRef.current = { ...seedOnly, outputLanguage: linkGraphLanguageRef.current };
+    linkGraphSeedRef.current = { ...args, outputLanguage: linkGraphLanguageRef.current };
     setSide("linkgraph");
     setLinkGraphBusy(true);
     setLinkGraphError(null);
@@ -4520,16 +4514,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     localStorage.setItem("wb-linkgraph-lang", value);
     linkGraphLanguageRef.current = value;
     const seed = linkGraphSeedRef.current;
-    const requestId = linkGraphResult?.requestId;
-    if (seed && requestId && (linkGraphResult?.primaryChain.length || linkGraphResult?.hits.length)) {
-      void runLinkGraph({
-        ...seed,
-        outputLanguage: value,
-        sessionRequestId: requestId,
-        reanalyzeOnly: true
-      });
+    if (seed && (linkGraphResult?.primaryChain.length || linkGraphResult?.hits.length)) {
+      void runLinkGraph({ ...seed, outputLanguage: value });
     }
-  }, [linkGraphResult?.hits.length, linkGraphResult?.primaryChain.length, linkGraphResult?.requestId, runLinkGraph]);
+  }, [linkGraphResult?.hits.length, linkGraphResult?.primaryChain.length, runLinkGraph]);
 
   const openLinkGraphFromEditor = useCallback(() => {
     if (!selectedProject || !currentEditor) return;
@@ -5295,11 +5283,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     finally { setCommitBusy(false); }
   };
 
+  const notifySkippedSubmodules = (result: { ok: boolean; skipped?: string[] } | undefined) => {
+    if (!result?.skipped?.length) return;
+    const text = t("desktop.workbench.gitCommitSkippedSubmodules", result.skipped.join(", "));
+    setStatus({ text, kind: "warning" });
+    notifyDesktop({ text, kind: "info" });
+  };
+
   const commit = async (pushAfter = false) => {
     if (!gitRoot || !commitMessage.trim() || !selectedCommitPaths.length) return;
+    let result: { ok: boolean; skipped?: string[] } | undefined;
     try {
       setCommitBusy(true);
-      await desktopApi().terminalGitCommit({
+      result = await desktopApi().terminalGitCommit({
         repoRoot: gitRoot,
         message: commitMessage.trim(),
         paths: selectedCommitPaths
@@ -5313,10 +5309,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (pushAfter) {
       try {
         await desktopApi().terminalGitPush({ repoRoot: gitRoot });
+        notifySkippedSubmodules(result);
         notifyGitSuccess("desktop.workbench.gitCommitAndPushSucceeded");
         setCommitMessage("");
       } catch (error) { notifyGitFailure("desktop.workbench.gitCommitSucceededPushFailed", error); }
     } else {
+      notifySkippedSubmodules(result);
       notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
       setCommitMessage("");
     }

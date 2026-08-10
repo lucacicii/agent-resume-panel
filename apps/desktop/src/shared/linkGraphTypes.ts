@@ -10,6 +10,34 @@ export type LinkGraphStopReason =
 
 export type LinkGraphPhase = "searching" | "analyzing" | "done" | "error";
 
+/** Agent exploration phases shown in the side-panel timeline. */
+export type LinkGraphAgentPhase =
+  | "locate"
+  | "expand_fe"
+  | "bridge"
+  | "expand_be"
+  | "structure";
+
+export type LinkGraphTimelineStatus = "running" | "done" | "failed" | "skipped";
+
+export interface LinkGraphTimelineEvidence {
+  file: string;
+  line: number;
+  preview?: string;
+  path?: string;
+}
+
+export interface LinkGraphTimelineItem {
+  id: string;
+  phase: LinkGraphAgentPhase;
+  status: LinkGraphTimelineStatus;
+  title: string;
+  detail?: string;
+  evidence?: LinkGraphTimelineEvidence[];
+  stepId?: string;
+  at: number;
+}
+
 export type LinkGraphHopRole =
   | "definition"
   | "write"
@@ -54,7 +82,7 @@ export type LinkGraphNodeKind =
 
 export type LinkGraphBridgeStatus = "skipped" | "ok" | "failed" | "partial";
 
-/** Flattened step for jump / LLM evidence (not primary UI). */
+/** Flattened step for jump navigation. */
 export interface LinkGraphHit {
   path: string;
   relativePath: string;
@@ -66,15 +94,12 @@ export interface LinkGraphHit {
   symbol: string;
   reason: string;
   score: number;
-  matchedAlias?: string;
   edgeKind?: LinkGraphEdgeKind;
   nodeKind?: LinkGraphNodeKind;
   bridgeKind?: LinkGraphBridgeKind;
   confidence?: LinkGraphConfidence;
-  branchId?: string;
 }
 
-/** Same-file extra references under the seed step. */
 export interface LinkGraphPageRef {
   line: number;
   column: number;
@@ -103,16 +128,6 @@ export interface LinkGraphChainStep {
   pageRefs?: LinkGraphPageRef[];
 }
 
-export interface LinkGraphBranch {
-  id: string;
-  entryFile: string;
-  entryLine: number;
-  entryPreview: string;
-  pruned: boolean;
-  pruneReason?: string;
-  steps: LinkGraphChainStep[];
-}
-
 export interface LinkGraphHop {
   id: string;
   role: LinkGraphHopRole;
@@ -139,37 +154,18 @@ export interface LinkGraphAnalysis {
   confidence: LinkGraphConfidence;
 }
 
-export interface LinkGraphSeed {
+export type LinkGraphOutputLanguage = "auto" | "en" | "zh-cn" | "ja";
+
+export interface LinkGraphAnalyzeArgs {
   projectPath: string;
   filePath: string;
   selection: string;
   startLine: number;
   endLine: number;
-}
-
-export type LinkGraphOutputLanguage = "auto" | "en" | "zh-cn" | "ja";
-
-export interface LinkGraphAnalyzeArgs extends LinkGraphSeed {
-  /** Re-run LLM narrative only; pair with sessionRequestId. */
-  reanalyzeOnly?: boolean;
-  sessionRequestId?: string;
-  maxBranches?: number;
   timeBudgetMs?: number;
-  maxHops?: number;
-  skipLlm?: boolean;
   outputLanguage?: LinkGraphOutputLanguage | string;
-  /**
-   * Extra roots to search for BE controllers / DTOs (absolute or ~ paths).
-   * Also auto-includes sibling repos under the parent of projectPath when present.
-   */
+  /** Extra roots for backend search (also auto-discovered under monorepo). */
   backendRoots?: string[];
-  /**
-   * LLM discover policy:
-   * - off: never
-   * - on_gap: when bridge fails or no URL on chain (default)
-   * - always: after rule dig
-   */
-  discoverMode?: "off" | "on_gap" | "always";
 }
 
 export interface LinkGraphAnalyzeResult {
@@ -184,19 +180,16 @@ export interface LinkGraphAnalyzeResult {
   };
   hits: LinkGraphHit[];
   primaryChain: LinkGraphChainStep[];
-  branches: LinkGraphBranch[];
   openEnds: LinkGraphOpenEnd[];
   analysis: LinkGraphAnalysis | null;
   reachedDepth: number;
   stopReason: LinkGraphStopReason;
-  truncated: boolean;
-  truncatedBranchCount: number;
   complete: boolean;
-  engine: "rg" | "node" | "mixed" | "none";
+  engine: "llm_agent" | "none";
   llmStatus: "skipped" | "ok" | "unconfigured" | "failed";
   llmError?: string;
-  discardedCount?: number;
   bridgeStatus?: LinkGraphBridgeStatus;
+  timeline?: LinkGraphTimelineItem[];
 }
 
 export interface LinkGraphProgressEvent {
@@ -205,4 +198,5 @@ export interface LinkGraphProgressEvent {
   message: string;
   hitCount: number;
   reachedDepth: number;
+  timeline?: LinkGraphTimelineItem[];
 }
