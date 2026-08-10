@@ -60,6 +60,18 @@ export interface CodeEditorRevealRange {
   focus?: boolean;
 }
 
+export interface CodeEditorSelectionRange {
+  /** 1-based start line */
+  startLine: number;
+  /** 1-based end line */
+  endLine: number;
+  /** 1-based start column */
+  startColumn: number;
+  /** 1-based end column */
+  endColumn: number;
+  text: string;
+}
+
 export interface CodeEditorHandle {
   focus(): void;
   find(query: string, direction?: "forward" | "backward", options?: CodeEditorFindOptions): boolean;
@@ -68,6 +80,8 @@ export interface CodeEditorHandle {
   clearSearch(): void;
   getSearchResult(): CodeEditorSearchResult;
   getSelectedText(): string;
+  /** Non-empty selection range in 1-based line/column coordinates. */
+  getSelectionRange(): CodeEditorSelectionRange | null;
   /** Select and scroll to a 1-based line/column range (for Find in Files). */
   revealRange(range: CodeEditorRevealRange): boolean;
 }
@@ -348,6 +362,23 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       if (!instance) return "";
       const { from, to } = instance.state.selection.main;
       return from === to ? "" : instance.state.sliceDoc(from, to);
+    },
+    getSelectionRange: () => {
+      const instance = view.current;
+      if (!instance) return null;
+      const { from, to } = instance.state.selection.main;
+      if (from === to) return null;
+      const start = Math.min(from, to);
+      const end = Math.max(from, to);
+      const startLine = instance.state.doc.lineAt(start);
+      const endLine = instance.state.doc.lineAt(end);
+      return {
+        startLine: startLine.number,
+        endLine: endLine.number,
+        startColumn: start - startLine.from + 1,
+        endColumn: end - endLine.from + 1,
+        text: instance.state.sliceDoc(start, end)
+      };
     },
     revealRange: (range) => {
       const instance = view.current;

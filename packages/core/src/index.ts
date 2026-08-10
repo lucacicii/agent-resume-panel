@@ -692,6 +692,23 @@ export type {
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
 
+// Link graph engine (domain — no Notes/Session/Flow deps; MCP + Desktop both call this)
+export { runLinkGraphTrace } from "./linkgraph/agent";
+export {
+  factsFromSteps,
+  reconcileOpenEnds,
+  sanitizeLinkGraphSummary
+} from "./linkgraph/evidence";
+export { normalizeLinkGraphSymbol } from "./linkgraph/symbol";
+export type {
+  LinkGraphTraceArgs,
+  LinkGraphTraceResult,
+  LinkGraphStep,
+  LinkGraphTimelineItem,
+  LinkGraphFacts,
+  LinkGraphOpenEnd
+} from "./linkgraph/types";
+
 // MCP server and tool-calling support
 export {
   createNoteMcpServer,
@@ -700,6 +717,11 @@ export {
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION
 } from "./mcp/server";
+export {
+  handleLinkGraphTrace,
+  linkGraphTraceSchema
+} from "./mcp/linkGraphTools";
+export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphTools";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {

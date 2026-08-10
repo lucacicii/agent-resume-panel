@@ -72,4 +72,17 @@ describe("workbench file synchronization I/O", () => {
       .toThrow("路径超出允许范围");
     expect(fs.existsSync(path.join(outside, "escape.txt"))).toBe(false);
   });
+
+  it("resolves project-relative paths for inspect", () => {
+    const root = tempDir("workbench-file-rel-");
+    const file = path.join(root, "src", "main.ts");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "export const x = 1;\n");
+
+    const inspected = inspectWorkbenchFile(root, "src/main.ts");
+    expect(inspected.kind).toBe("text");
+    if (inspected.kind === "text") {
+      expect(inspected.content).toContain("export const x");
+    }
+  });
 });

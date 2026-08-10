@@ -82,9 +82,20 @@ export interface GitFileLogResult {
 }
 
 function formatExecError(error: unknown): string {
-  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
+  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer; stdout?: string | Buffer };
   const stderr = err.stderr ? String(err.stderr).trim() : "";
   if (stderr) return stderr;
+  // Some git failures write their diagnostic to stdout and leave stderr empty
+  // (e.g. "nothing to commit"). Surface the actionable summary instead of the
+  // generic "Command failed: …" error message.
+  const stdout = err.stdout ? String(err.stdout).trim() : "";
+  if (stdout) {
+    const lines = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return lines[lines.length - 1] ?? stdout;
+  }
   if (error instanceof Error && error.message) return error.message;
   return String(error);
 }
@@ -127,9 +138,13 @@ function normalizeCommitPaths(raw?: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
+    // Porcelain status represents an untracked directory with a trailing slash
+    // (for example `newdir/`). Strip it so the directory (and its new files)
+    // is not dropped as an invalid empty path segment.
     const normalized = String(item || "")
       .replace(/\\/g, "/")
       .replace(/^\.?\//, "")
+      .replace(/\/+$/, "")
       .trim();
     if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) continue;
     if (normalized.split("/").some((part) => part === ".." || part === "")) continue;
@@ -605,6 +620,33 @@ async function suggestCommitMessage(
   }
 }
 
+/**
+ * A submodule whose recorded gitlink equals its own HEAD but whose working
+ * tree is dirty cannot be staged or committed from the parent repo (`git add`
+ * is a no-op). Returns true for exactly that case so callers can skip it.
+ * Freshly-added gitlinks, missing submodule directories, and submodules whose
+ * HEAD moved are all considered committable (git handles them normally).
+ */
+async function isUncommittableSubmodule(repoRoot: string, repoPath: string): Promise<boolean> {
+  try {
+    const lsFiles = await gitExec(repoRoot, ["ls-files", "--stage", "--", repoPath], 10000, 64 * 1024);
+    if (!/^160000\s/.test(lsFiles.trim())) return false;
+
+    const lsTree = await gitExec(repoRoot, ["ls-tree", "HEAD", repoPath], 10000, 64 * 1024).catch(() => "");
+    const recorded = lsTree.match(/^160000 commit ([0-9a-f]{40})\t/);
+    if (!recorded) return false;
+
+    const submoduleDir = path.join(repoRoot, repoPath);
+    const [head, subStatus] = await Promise.all([
+      gitExec(submoduleDir, ["rev-parse", "HEAD"], 10000, 64 * 1024).catch(() => ""),
+      gitExec(submoduleDir, ["status", "--porcelain"], 10000, 64 * 1024).catch(() => "")
+    ]);
+    return head.trim() === recorded[1] && subStatus.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
   safeHandle("terminal:gitSuggestCommit", async (_event, args: { repoRoot: string; paths: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
@@ -614,16 +656,30 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
   safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string; paths?: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const message = normalizeCommitMessage(args.message);
-    const paths = normalizeCommitPaths(args.paths);
-    if (!paths.length) {
+    const rawPaths = normalizeCommitPaths(args.paths);
+    if (!rawPaths.length) {
       throw new Error("请选择要提交的文件");
     }
     const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1", "-z"], 10000);
     if (!statusText) {
       throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
     }
+
+    // A submodule with an unchanged gitlink but a dirty working tree cannot be
+    // committed from the parent repo (`git add` is a no-op). Skip those paths
+    // and commit the rest; if nothing committable remains, fail with guidance.
+    const skipped: string[] = [];
+    const paths: string[] = [];
+    for (const rawPath of rawPaths) {
+      if (await isUncommittableSubmodule(repoRoot, rawPath)) skipped.push(rawPath);
+      else paths.push(rawPath);
+    }
+    if (!paths.length) {
+      throw new Error(`子模块 ${skipped.join("、")} 内部有未提交的改动，无法从父仓库提交；请先在子模块目录内提交后再提交引用更新`);
+    }
+
     const previouslyStaged = stagedRepoPaths(parseGitStatusPorcelainV1Z(statusText));
-    const selected = new Set(paths);
+    const selected = new Set(rawPaths);
     const toUnstage = previouslyStaged.filter((path) => !selected.has(path));
     try {
       await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
@@ -643,7 +699,7 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     } catch (error) {
       throw new Error(formatExecError(error));
     }
-    return { ok: true };
+    return { ok: true, skipped };
   });
 
   safeHandle("terminal:gitPush", async (_event, args: { repoRoot: string }) => {

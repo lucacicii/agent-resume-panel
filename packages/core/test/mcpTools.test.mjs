@@ -98,6 +98,7 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "flow_read",
       "flow_sync",
       "flow_validate",
+      "link_graph_trace",
       "note_append",
       "note_create",
       "note_delete",

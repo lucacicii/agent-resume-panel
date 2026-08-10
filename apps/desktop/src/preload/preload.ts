@@ -29,6 +29,11 @@ import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
+import type {
+  LinkGraphAnalyzeArgs,
+  LinkGraphAnalyzeResult,
+  LinkGraphProgressEvent
+} from "../shared/linkGraphTypes";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 
 export interface DesktopApi {
@@ -419,7 +424,7 @@ export interface DesktopApi {
     source: "llm" | "heuristic";
     fallbackReason?: "unconfigured" | "request-failed";
   }>;
-  terminalGitCommit(args: { repoRoot: string; message: string; paths?: string[] }): Promise<{ ok: boolean }>;
+  terminalGitCommit(args: { repoRoot: string; message: string; paths?: string[] }): Promise<{ ok: boolean; skipped?: string[] }>;
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitFetch(args: { repoRoot: string }): Promise<{ ok: boolean }>;
@@ -650,6 +655,9 @@ export interface DesktopApi {
     engine: "rg" | "node";
   }>;
   workbenchSearchTextCancel(): Promise<{ ok: boolean }>;
+  linkGraphAnalyze(args: LinkGraphAnalyzeArgs): Promise<LinkGraphAnalyzeResult>;
+  linkGraphCancel(): Promise<{ ok: boolean }>;
+  onLinkGraphProgress(callback: (event: LinkGraphProgressEvent) => void): () => void;
   terminalGitStatus(args: {
     cwd: string;
     nestedScan?: { maxDepth?: number; ignoreDirs?: string[]; maxRepos?: number };
@@ -1275,6 +1283,13 @@ const api: DesktopApi = {
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),
   workbenchSearchTextCancel: () => ipcRenderer.invoke("workbench:searchTextCancel"),
+  linkGraphAnalyze: (args) => ipcRenderer.invoke("linkgraph:analyze", args),
+  linkGraphCancel: () => ipcRenderer.invoke("linkgraph:cancel"),
+  onLinkGraphProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: LinkGraphProgressEvent) => callback(payload);
+    ipcRenderer.on("linkgraph:progress", handler);
+    return () => ipcRenderer.removeListener("linkgraph:progress", handler);
+  },
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
