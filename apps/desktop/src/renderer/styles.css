@@ -14443,3 +14443,216 @@ body::before {
   background: linear-gradient(90deg, rgba(0,240,255,.22), rgba(255,43,214,.08));
   box-shadow: inset 3px 0 0 var(--cyber-cyan), 0 0 14px rgba(0,240,255,.16);
 }
+
+/* Workbench Link Graph side panel */
+.wb-linkgraph-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.wb-linkgraph-head-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.wb-linkgraph-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 12px;
+}
+.wb-linkgraph-meta {
+  margin: 0;
+  font-size: 11px;
+  word-break: break-all;
+}
+.wb-linkgraph-lang {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.wb-linkgraph-lang-label {
+  font-size: 11px;
+  color: var(--color-label-secondary);
+  flex-shrink: 0;
+}
+.wb-linkgraph-lang-select {
+  min-width: 0;
+  flex: 1;
+  max-width: 160px;
+  height: 26px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-control-bg, var(--color-elevated-bg));
+  color: var(--color-label-primary);
+  font-size: 11px;
+  padding: 0 6px;
+}
+.wb-linkgraph-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+}
+.wb-linkgraph-status.is-busy {
+  color: var(--color-label-primary);
+}
+.wb-linkgraph-status.is-error {
+  color: var(--color-destructive);
+}
+.wb-linkgraph-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wb-linkgraph-section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-label-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.wb-linkgraph-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.wb-linkgraph-section-toggle .is-expanded,
+.wb-linkgraph-hit-expand .is-expanded {
+  transform: rotate(90deg);
+}
+.wb-linkgraph-summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-label-primary);
+  white-space: pre-wrap;
+}
+.wb-linkgraph-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+.wb-linkgraph-chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wb-linkgraph-hop-main,
+.wb-linkgraph-hit-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 8px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.04));
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wb-linkgraph-hop.is-llm-path .wb-linkgraph-hop-main {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-separator));
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.wb-linkgraph-llm-badge {
+  font-size: 10px;
+  font-weight: 600;
+}
+.wb-linkgraph-hop-main:hover,
+.wb-linkgraph-hit-main:hover {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.06));
+}
+.wb-linkgraph-role {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+}
+.wb-linkgraph-role.is-definition { color: var(--color-accent); }
+.wb-linkgraph-role.is-write { color: var(--color-warning, #ff9500); }
+.wb-linkgraph-role.is-read { color: var(--color-success, #34c759); }
+.wb-linkgraph-role.is-call { color: #af52de; }
+.wb-linkgraph-role.is-transform { color: #5ac8fa; }
+.wb-linkgraph-role.is-other { color: var(--color-label-secondary); }
+.wb-linkgraph-hop-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-label-primary);
+}
+.wb-linkgraph-hop-loc,
+.wb-linkgraph-hit-path {
+  font-size: 11px;
+  word-break: break-all;
+}
+.wb-linkgraph-hop-narrative,
+.wb-linkgraph-hit-preview {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-label-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wb-linkgraph-continue {
+  display: flex;
+}
+.wb-linkgraph-continue .tool-btn {
+  width: 100%;
+  justify-content: center;
+}
+.wb-linkgraph-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wb-linkgraph-hit {
+  position: relative;
+}
+.wb-linkgraph-hit-expand {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+  padding: 2px;
+}
+.wb-linkgraph-hit-snippet {
+  margin: 4px 0 0;
+  padding: 8px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-secondary-bg, #ebebf0);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 120px;
+}
+.wb-linkgraph-empty {
+  margin: 12px 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}

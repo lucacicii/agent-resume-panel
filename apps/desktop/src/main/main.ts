@@ -96,6 +96,7 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerFlowIpc } from "./flow/flowIpc";
+import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import {
   createExternalMcpLaunchConfig,
   listMcpClients,
@@ -2417,6 +2418,7 @@ app.whenReady().then(async () => {
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   registerFlowIpc();
+  registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
   try {
     await loadPanelDbPaths();

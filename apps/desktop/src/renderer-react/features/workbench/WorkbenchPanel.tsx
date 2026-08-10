@@ -58,6 +58,13 @@ import {
   WorkbenchFileExplorer,
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
+import { LinkGraphSidePane } from "./LinkGraphSidePane";
+import type {
+  LinkGraphAnalyzeArgs,
+  LinkGraphAnalyzeResult,
+  LinkGraphOutputLanguage,
+  LinkGraphProgressEvent
+} from "../../../shared/linkGraphTypes";
 import {
   QuickAccess,
   rankQuickAccessProjects,
@@ -195,7 +202,7 @@ type AcpChatPane = {
   provider: string;
   projectPath: string;
 };
-type SideView = "files" | "git" | "search" | "scripts" | null;
+type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned" | "active";
@@ -2046,6 +2053,18 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [searchProjectMode, setSearchProjectMode] = useState(false);
   const [searchProjectQuery, setSearchProjectQuery] = useState("");
   const [searchProjectSelectionId, setSearchProjectSelectionId] = useState("");
+  const [linkGraphResult, setLinkGraphResult] = useState<LinkGraphAnalyzeResult | null>(null);
+  const [linkGraphProgress, setLinkGraphProgress] = useState<LinkGraphProgressEvent | null>(null);
+  const [linkGraphBusy, setLinkGraphBusy] = useState(false);
+  const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
+  const [linkGraphLanguage, setLinkGraphLanguage] = useState<LinkGraphOutputLanguage>(() => {
+    const stored = storageString("wb-linkgraph-lang");
+    return stored === "en" || stored === "zh-cn" || stored === "ja" || stored === "auto" ? stored : "auto";
+  });
+  const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  const linkGraphSeedRef = useRef<LinkGraphAnalyzeArgs | null>(null);
+  const linkGraphLanguageRef = useRef(linkGraphLanguage);
+  linkGraphLanguageRef.current = linkGraphLanguage;
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
   const [quickAccessQuery, setQuickAccessQuery] = useState("");
@@ -2487,6 +2506,30 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:settings-saved", onSettingsSaved);
     };
   }, [loadSessions]);
+
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.onLinkGraphProgress !== "function") return;
+    return api.onLinkGraphProgress((event) => {
+      setLinkGraphProgress(event);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!editorContextMenu) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setEditorContextMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEditorContextMenu(null);
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editorContextMenu]);
 
   useEffect(() => () => {
     gitRefreshTimers.current.forEach((timer) => window.clearTimeout(timer));
@@ -4373,15 +4416,48 @@ export function WorkbenchPanel(): ReactPortal | null {
     }, delay));
   };
 
+  const applyEditorReveal = useCallback((reveal: SearchReveal, expectedPath: string) => {
+    pendingRevealRef.current = reveal;
+    // Same already-active file won't change currentEditor/activePane, so the reveal
+    // effect may not re-run — always schedule an explicit reveal for open files.
+    // Double rAF: first paint after setActivePane, then CodeMirror is ready.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const pending = pendingRevealRef.current;
+        if (!pending) return;
+        const editor = editorsRef.current.find((item) => item.key === `editor:${expectedPath}` || item.path === expectedPath);
+        const active = editorRef.current;
+        if (!active || !editor) return;
+        const pendingNorm = pending.path.replaceAll("\\", "/");
+        const editorNorm = editor.path.replaceAll("\\", "/");
+        if (
+          pendingNorm !== editorNorm
+          && !pendingNorm.endsWith(`/${editorNorm}`)
+          && !editorNorm.endsWith(`/${pendingNorm}`)
+          && pendingNorm !== expectedPath.replaceAll("\\", "/")
+        ) {
+          return;
+        }
+        active.revealRange({
+          line: pending.line,
+          column: pending.column,
+          endColumn: pending.endColumn
+        });
+        pendingRevealRef.current = null;
+      });
+    });
+  }, []);
+
   const openFile = async (path: string, reveal?: SearchReveal, targetProject = selectedProject) => {
     if (!targetProject) return;
     try {
       const key = `editor:${path}`;
-      const existing = editorsRef.current.find((item) => item.key === key);
+      const existing = editorsRef.current.find((item) => item.key === key)
+        || editorsRef.current.find((item) => item.path === path);
       if (existing) {
         await syncEditorFromDisk(existing);
-        if (reveal) pendingRevealRef.current = reveal;
-        setActivePane(key, targetProject);
+        setActivePane(existing.key, targetProject);
+        if (reveal) applyEditorReveal({ ...reveal, path: existing.path }, existing.path);
         return;
       }
       const inspected = await desktopApi().workbenchInspectFile({ rootPath: targetProject, filePath: path });
@@ -4392,10 +4468,111 @@ export function WorkbenchPanel(): ReactPortal | null {
         editorsRef.current = next;
         return next;
       });
-      if (reveal) pendingRevealRef.current = reveal;
+      if (reveal) pendingRevealRef.current = { ...reveal, path };
       setActivePane(key, targetProject);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
+
+  const runLinkGraph = useCallback(async (args: LinkGraphAnalyzeArgs) => {
+    const api = desktopApi();
+    if (typeof api.linkGraphAnalyze !== "function") {
+      setLinkGraphError(t("desktop.workbench.linkGraphFailed", "unavailable"));
+      setSide("linkgraph");
+      return;
+    }
+    // Keep seed free of continue / reanalyze flags so refresh always restarts cleanly.
+    const {
+      continueFromRequestId: _continueId,
+      reanalyzeOnly: _reanalyzeOnly,
+      ...seedOnly
+    } = args;
+    linkGraphSeedRef.current = { ...seedOnly, outputLanguage: linkGraphLanguageRef.current };
+    setSide("linkgraph");
+    setLinkGraphBusy(true);
+    setLinkGraphError(null);
+    setLinkGraphProgress(null);
+    const previousHitCount = linkGraphResult?.hits.length ?? 0;
+    try {
+      const result = await api.linkGraphAnalyze({
+        ...args,
+        outputLanguage: args.outputLanguage || linkGraphLanguageRef.current
+      });
+      setLinkGraphResult(result);
+      if (result.llmError && result.hits.length === 0 && args.continueFromRequestId) {
+        setLinkGraphError(t("desktop.workbench.linkGraphFailed", result.llmError));
+      } else if (result.stopReason === "invalid_seed" || result.stopReason === "empty_seed") {
+        setLinkGraphError(t("desktop.workbench.linkGraphNeedSelection"));
+      } else if (
+        args.continueFromRequestId
+        && result.hits.length <= previousHitCount
+        && (result.frontierCount ?? result.frontier.length) === 0
+        && !result.complete
+      ) {
+        setLinkGraphError(t("desktop.workbench.linkGraphContinueNoProgress"));
+      } else {
+        setLinkGraphError(null);
+      }
+    } catch (error) {
+      setLinkGraphError(t("desktop.workbench.linkGraphFailed", statusError(error)));
+    } finally {
+      setLinkGraphBusy(false);
+    }
+  }, [linkGraphResult?.hits.length, t]);
+
+  const continueLinkGraph = useCallback(() => {
+    const seed = linkGraphSeedRef.current;
+    const requestId = linkGraphResult?.requestId;
+    if (!seed || !requestId) {
+      setLinkGraphError(t("desktop.workbench.linkGraphFailed", "no session"));
+      return;
+    }
+    void runLinkGraph({
+      ...seed,
+      continueFromRequestId: requestId,
+      outputLanguage: linkGraphLanguageRef.current
+    });
+  }, [linkGraphResult?.requestId, runLinkGraph, t]);
+
+  const refreshLinkGraph = useCallback(() => {
+    const seed = linkGraphSeedRef.current;
+    if (!seed) return;
+    void runLinkGraph({ ...seed, outputLanguage: linkGraphLanguageRef.current });
+  }, [runLinkGraph]);
+
+  const changeLinkGraphLanguage = useCallback((value: LinkGraphOutputLanguage) => {
+    setLinkGraphLanguage(value);
+    localStorage.setItem("wb-linkgraph-lang", value);
+    linkGraphLanguageRef.current = value;
+    const seed = linkGraphSeedRef.current;
+    const requestId = linkGraphResult?.requestId;
+    if (seed && requestId && linkGraphResult?.hits.length) {
+      // Re-summarize only — keep search graph, change narrative language.
+      void runLinkGraph({
+        ...seed,
+        outputLanguage: value,
+        continueFromRequestId: requestId,
+        reanalyzeOnly: true
+      });
+    }
+  }, [linkGraphResult?.hits.length, linkGraphResult?.requestId, runLinkGraph]);
+
+  const openLinkGraphFromEditor = useCallback(() => {
+    if (!selectedProject || !currentEditor) return;
+    const selection = editorRef.current?.getSelectionRange();
+    const text = selection?.text.trim() || editorRef.current?.getSelectedText().trim() || "";
+    if (!text) {
+      setStatus({ text: t("desktop.workbench.linkGraphNeedSelection"), kind: "error" });
+      return;
+    }
+    void runLinkGraph({
+      projectPath: selectedProject,
+      filePath: currentEditor.path,
+      selection: text,
+      startLine: selection?.startLine || 1,
+      endLine: selection?.endLine || selection?.startLine || 1,
+      outputLanguage: linkGraphLanguageRef.current
+    });
+  }, [currentEditor, runLinkGraph, selectedProject, t]);
 
   const quickAccessRoot = selectedProject || storageString(QUICK_ACCESS_PROJECT_KEY) || "";
   const quickAccessProjectLabel = quickAccessRoot
@@ -4732,12 +4909,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     if (!currentEditor) return;
     const pending = pendingRevealRef.current;
-    if (!pending || pending.path !== currentEditor.path) return;
+    if (!pending) return;
+    const pendingNorm = pending.path.replaceAll("\\", "/");
+    const editorNorm = currentEditor.path.replaceAll("\\", "/");
+    const pathMatches =
+      pendingNorm === editorNorm
+      || pendingNorm.endsWith(`/${editorNorm}`)
+      || editorNorm.endsWith(`/${pendingNorm}`);
+    if (!pathMatches) return;
     const handle = editorRef.current;
     if (!handle) return;
     // Wait a frame so CodeMirror mounts with the new document.
     const timer = window.requestAnimationFrame(() => {
-      if (pendingRevealRef.current?.path !== currentEditor.path) return;
+      if (!pendingRevealRef.current) return;
       handle.revealRange({
         line: pending.line,
         column: pending.column,
@@ -5840,6 +6024,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><ThemeIcon name="folder-tree" size={16} /></button>
               <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
               <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
+              <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
               <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
             </div>
           </div>
@@ -5882,7 +6067,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane">{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -6034,7 +6219,21 @@ export function WorkbenchPanel(): ReactPortal | null {
                   </>
                     : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
                       : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
-            </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
+            </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onContinue={linkGraphResult && !linkGraphResult.complete && (linkGraphResult.frontierCount ?? linkGraphResult.frontier.length) > 0 ? continueLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
+              const root = selectedProject || "";
+              const raw = target.path.replaceAll("\\", "/");
+              const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
+              const hit = linkGraphResult?.hits.find((item) => item.path === target.path || item.relativePath === raw);
+              const absolute = isAbs
+                ? target.path
+                : hit?.path || (root ? `${root.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}` : target.path);
+              void openFile(absolute, {
+                path: absolute,
+                line: target.line,
+                column: target.column || 1,
+                endColumn: target.endColumn || (target.column || 1) + 1
+              });
+            }} /> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
               {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
               {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
               {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
@@ -6044,6 +6243,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       </main>
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
+    {editorContextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 200)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 80)) }} onContextMenu={(event) => event.preventDefault()}>
+      <button type="button" role="menuitem" disabled={!editorContextMenu.hasSelection} onClick={() => { setEditorContextMenu(null); openLinkGraphFromEditor(); }}>{t("desktop.workbench.linkGraphView")}</button>
+    </div> : null}
     {gitLogContextMenu ? <div
       className="wb-context-menu wb-git-log-context-menu"
       role="menu"

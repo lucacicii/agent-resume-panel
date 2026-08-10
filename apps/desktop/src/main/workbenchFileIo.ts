@@ -39,7 +39,11 @@ function isPathWithinRoot(targetPath: string, rootPath: string): boolean {
 
 function resolveLexicalWorkbenchPath(rootPath: string, targetPath: string): string {
   const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
-  const resolvedTarget = path.resolve(expandHome(targetPath.trim()));
+  const raw = expandHome(targetPath.trim());
+  // Relative paths are project-relative (e.g. search / link-graph hops), not CWD-relative.
+  const resolvedTarget = path.isAbsolute(raw)
+    ? path.resolve(raw)
+    : path.resolve(resolvedRoot, raw);
   if (!isPathWithinRoot(resolvedTarget, resolvedRoot)) {
     throw new Error("路径超出允许范围");
   }
@@ -60,7 +64,10 @@ export function resolveCanonicalWorkbenchPath(rootPath: string, targetPath: stri
 
 function resolveCreatableWorkbenchPath(rootPath: string, targetPath: string): string {
   const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
-  const resolvedTarget = path.resolve(expandHome(targetPath.trim()));
+  const raw = expandHome(targetPath.trim());
+  const resolvedTarget = path.isAbsolute(raw)
+    ? path.resolve(raw)
+    : path.resolve(resolvedRoot, raw);
   if (!isPathWithinRoot(resolvedTarget, resolvedRoot)) {
     throw new Error("路径超出允许范围");
   }
