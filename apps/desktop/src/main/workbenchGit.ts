@@ -138,9 +138,13 @@ function normalizeCommitPaths(raw?: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
+    // Porcelain status represents an untracked directory with a trailing slash
+    // (for example `newdir/`). Strip it so the directory (and its new files)
+    // is not dropped as an invalid empty path segment.
     const normalized = String(item || "")
       .replace(/\\/g, "/")
       .replace(/^\.?\//, "")
+      .replace(/\/+$/, "")
       .trim();
     if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) continue;
     if (normalized.split("/").some((part) => part === ".." || part === "")) continue;

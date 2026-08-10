@@ -329,4 +329,24 @@ describe("terminal:gitCommit", () => {
       paths: ["clean.txt"]
     })).rejects.toThrow(/no changes added to commit/);
   });
+
+  it("commits an untracked directory reported with a trailing slash by porcelain status", async () => {
+    const repo = createRepo();
+    fs.mkdirSync(path.join(repo, "newdir"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "newdir", "inner.txt"), "new\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCommit");
+    const handler = registration![1];
+
+    const result = await handler({} as never, {
+      repoRoot: repo,
+      message: "feat: add new folder",
+      paths: ["newdir/"]
+    }) as { ok: boolean; skipped?: string[] };
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toEqual([]);
+    expect(git(repo, "show", "--format=", "--name-only", "-z", "HEAD").split("\0").filter(Boolean)).toEqual(["newdir/inner.txt"]);
+  });
 });
