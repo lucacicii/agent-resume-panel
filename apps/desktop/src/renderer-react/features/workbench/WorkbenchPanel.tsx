@@ -84,6 +84,7 @@ import {
 } from "./sessionLaunchBridge";
 import { storedWidth } from "../../storage";
 import type { WorkbenchArrowDirection } from "../../../shared/workbenchShortcuts";
+import { startModalOpenReporter } from "./shortcutModalReporter";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -3604,11 +3605,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.agentResume.setWorkbenchActive(false);
   }, [active, activePane]);
 
-  useEffect(() => {
-    if (typeof window.agentResume.setFloatingNoteOpen !== "function") return;
-    window.agentResume.setFloatingNoteOpen(Boolean(floatingNoteTarget));
-    return () => window.agentResume.setFloatingNoteOpen(false);
-  }, [floatingNoteTarget]);
+  // Track modal state (⌘P palette and all aria-modal dialogs) so main can suppress
+  // the ⌘+Arrow pane navigation while a modal is on screen.
+  useEffect(() => startModalOpenReporter(), []);
 
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
     if (active) closeActivePane();

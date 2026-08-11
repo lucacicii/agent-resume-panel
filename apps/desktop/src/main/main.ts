@@ -368,7 +368,8 @@ function rejectActiveAskApprovals(): void {
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
-let floatingNoteOpen = false;
+let floatingNoteFocused = false;
+let modalOpen = false;
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -830,7 +831,7 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive && !floatingNoteOpen) {
+    if (workbenchActive && !modalOpen && !floatingNoteFocused) {
       const direction = workbenchArrowDirectionFromInput(input);
       if (direction) {
         event.preventDefault();
@@ -912,7 +913,8 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     workbenchActive = false;
-    floatingNoteOpen = false;
+    floatingNoteFocused = false;
+    modalOpen = false;
     // Invariant: settings never outlives main
     closeSettingsWindowIfOpen();
     mainWindowReadyToShow = false;
@@ -1039,9 +1041,15 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.on("workbench:setFloatingNoteOpen", (event, open: unknown) => {
+  ipcMain.on("workbench:setFloatingNoteFocused", (event, focused: unknown) => {
     if (event.sender === mainWindow?.webContents) {
-      floatingNoteOpen = open === true;
+      floatingNoteFocused = focused === true;
+    }
+  });
+
+  ipcMain.on("workbench:setModalOpen", (event, open: unknown) => {
+    if (event.sender === mainWindow?.webContents) {
+      modalOpen = open === true;
     }
   });
 

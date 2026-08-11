@@ -126,6 +126,22 @@ describe("FloatingSessionNote", () => {
     expect(notesWrite).toHaveBeenCalledWith({ noteId: "latest", content: "# Latest\nChanged" });
   });
 
+  it("reports DOM focus to main for ⌘+Arrow shortcut suppression", async () => {
+    const setFloatingNoteFocused = vi.fn();
+    installBridge({ setFloatingNoteFocused });
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={vi.fn()} /></I18nProvider>);
+    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
+
+    // Initial report: the editor has not gained focus yet.
+    expect(setFloatingNoteFocused).toHaveBeenLastCalledWith(false);
+
+    editor.focus();
+    await waitFor(() => expect(setFloatingNoteFocused).toHaveBeenLastCalledWith(true));
+
+    editor.blur();
+    await waitFor(() => expect(setFloatingNoteFocused).toHaveBeenLastCalledWith(false));
+  });
+
   it("sets the floating note GTD status through catalog metadata", async () => {
     const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note(noteId, 30), gtdStatus: status || undefined }));
     installBridge({ notesSetGtdStatus });

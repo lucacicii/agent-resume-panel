@@ -712,8 +712,10 @@ export interface DesktopApi {
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
-  /** Notify main when a floating note is open so workbench shortcuts (⌘+Arrow) are suppressed. */
-  setFloatingNoteOpen(open: boolean): void;
+  /** Notify main when the floating note has DOM focus so workbench shortcuts (⌘+Arrow) are suppressed. */
+  setFloatingNoteFocused(focused: boolean): void;
+  /** Notify main when any modal dialog (aria-modal) is open so workbench shortcuts (⌘+Arrow) are suppressed. */
+  setModalOpen(open: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
   onWorkbenchCmdArrow(callback: (direction: WorkbenchArrowDirection) => void): () => void;
@@ -1322,7 +1324,8 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
   setWorkbenchActive: (active) => ipcRenderer.send("workbench:setActive", active),
-  setFloatingNoteOpen: (open) => ipcRenderer.send("workbench:setFloatingNoteOpen", open),
+  setFloatingNoteFocused: (focused) => ipcRenderer.send("workbench:setFloatingNoteFocused", focused),
+  setModalOpen: (open) => ipcRenderer.send("workbench:setModalOpen", open),
   onWorkbenchCmdT: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdT", handler);

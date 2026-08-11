@@ -3561,13 +3561,15 @@ describe("WorkbenchPanel", () => {
     const notesCreate = vi.fn(async () => ({ noteId: "floating-note", filename: "floating.md" }));
     const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "floating.md", updatedAtMs: 3, content }));
     const notesDelete = vi.fn(async () => ({ ok: true }));
-    const setFloatingNoteOpen = vi.fn();
+    const setFloatingNoteFocused = vi.fn();
+    const setModalOpen = vi.fn();
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note."
       } }),
       onLocaleChanged: () => () => undefined,
-      setFloatingNoteOpen,
+      setFloatingNoteFocused,
+      setModalOpen,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
       onTerminalData: () => () => undefined,
@@ -3605,11 +3607,16 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "floating-note", content: "# app · Fix renderer\n\n" }));
     expect(notesList).toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "Floating note" })).toBeTruthy();
-    expect(setFloatingNoteOpen).toHaveBeenCalledWith(true);
+    // The editor has not gained focus yet, so main keeps ⌘+Arrow pane navigation enabled.
+    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([false]));
+
+    // Focusing the note suppresses ⌘+Arrow; closing the note re-enables it.
+    (await screen.findByPlaceholderText("Floating note editor")).focus();
+    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([true]));
 
     fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
     await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "floating-note" }));
-    await waitFor(() => expect(setFloatingNoteOpen.mock.calls.at(-1)).toEqual([false]));
+    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([false]));
   });
 
   it("opens the newest linked note from the session list without creating another note", async () => {
