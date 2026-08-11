@@ -14,6 +14,90 @@ const weeklyReport: ReportEntry = { ...report, id: `weekly:${week}`, level: "wee
 const monthlyReport: ReportEntry = { ...report, id: `monthly:${month}`, level: "monthly" };
 const session: AgentSession = { provider: "codex", id: "s-1", title: "Renderer migration", projectPath: "/work/panel", updatedAt: now.getTime() };
 
+const i18nMessages = {
+  "desktop.report.digestDaily": "Daily",
+  "desktop.report.digestWeekly": "Weekly",
+  "desktop.report.digestMonthly": "Monthly",
+  "desktop.report.digestDetailTitle": "{0} · {1}",
+  "desktop.report.sessionsTitle": "Sessions",
+  "desktop.report.sessionCountMeta": "{0} sessions",
+  "desktop.report.rangeDay": "Day {0}",
+  "desktop.report.rangeWeek": "Week {0}",
+  "desktop.report.rangeMonth": "Month {0}",
+  "desktop.report.scopeDay": "this day",
+  "desktop.report.scopeWeek": "this week",
+  "desktop.report.scopeMonth": "this month",
+  "desktop.report.legendDates": "Dates:",
+  "desktop.report.legendDailyOk": "D generated",
+  "desktop.report.legendDailyStale": "Update pending",
+  "desktop.report.legendDailyMissing": "Not generated",
+  "desktop.report.legendNoSession": "No activity",
+  "desktop.report.legendWeekly": "Weekly",
+  "desktop.report.legendMonthly": "Monthly",
+  "desktop.report.regenerateBtn": "Regenerate",
+  "desktop.report.gtdBtn": "GTD",
+  "desktop.report.created": "created",
+  "desktop.report.digestOk": "{0} {1} OK",
+  "desktop.report.backToReport": "Back",
+  "desktop.common.loading": "Loading",
+  "desktop.common.refresh": "Refresh",
+  "desktop.common.today": "Today",
+  "desktop.common.yearSuffix": "{0}",
+  "desktop.report.prevMonth": "Previous",
+  "desktop.report.nextMonth": "Next",
+  "desktop.report.weekdayMon": "Mon",
+  "desktop.report.weekdayTue": "Tue",
+  "desktop.report.weekdayWed": "Wed",
+  "desktop.report.weekdayThu": "Thu",
+  "desktop.report.weekdayFri": "Fri",
+  "desktop.report.weekdaySat": "Sat",
+  "desktop.report.weekdaySun": "Sun",
+  "desktop.report.weekCol": "Wk",
+  "desktop.report.monthBtn": "Month",
+  "desktop.report.noSessionsInRange": "No sessions",
+  "desktop.report.futureDateHint": "Future",
+  "desktop.report.emptyHasSessions": "Ready",
+  "desktop.report.emptyNoSessions": "Empty",
+  "desktop.report.generateBtn": "Generate {0}",
+  "desktop.report.generatingLabel": "Generating {0} {1}",
+  "desktop.report.generatingStrong": "Generating",
+  "desktop.report.generatingHint": "Waiting for this digest",
+  "desktop.calendar.month1": "Jan",
+  "desktop.calendar.month2": "Feb",
+  "desktop.calendar.month3": "Mar",
+  "desktop.calendar.month4": "Apr",
+  "desktop.calendar.month5": "May",
+  "desktop.calendar.month6": "Jun",
+  "desktop.calendar.month7": "Jul",
+  "desktop.calendar.month8": "Aug",
+  "desktop.calendar.month9": "Sep",
+  "desktop.calendar.month10": "Oct",
+  "desktop.calendar.month11": "Nov",
+  "desktop.calendar.month12": "Dec"
+};
+
+function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): typeof window.agentResume {
+  return {
+    getI18nBundle: async () => ({ locale: "en", messages: i18nMessages }),
+    onLocaleChanged: () => () => undefined,
+    listReports: async () => [report],
+    listSessionsInRange: async () => [session],
+    needsDailyDigestRefresh: async () => ({ needed: false, reason: "up_to_date", message: "64 sessions included" }),
+    needsWeeklyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
+    needsMonthlyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
+    getReportLinks: async () => [],
+    previewSession: async () => ({ session, preview: { title: session.title, messages: [] } }),
+    summarizeSession: async () => ({ summary: "Migrated the Report panel.", language: "en", session: { ...session, sessionSummary: "Migrated the Report panel." } }),
+    autoRenameSession: async () => ({ title: "Migrate Report panel", previousTitle: session.title, session: { ...session, title: "Migrate Report panel" }, nativeRenamed: true }),
+    previewDigestRun: async () => ({ level: "daily", periodKey: day, sessionCount: 1, summaryCallCount: 1, digestCallCount: 1, estimatedLlmCalls: 1, callBudget: 100, overBudget: false }),
+    runDailyDigest: async () => ({ replaced: false, sessionCount: 1, summaryReadyCount: 1 }),
+    runWeeklyDigest: async () => ({}),
+    runMonthlyDigest: async () => ({}),
+    onDigestProgress: () => () => undefined,
+    ...overrides
+  } as unknown as typeof window.agentResume;
+}
+
 afterEach(() => { cleanup(); document.getElementById("react-report")?.remove(); vi.restoreAllMocks(); });
 
 describe("ReportPanel", () => {
@@ -30,6 +114,7 @@ describe("ReportPanel", () => {
       onLocaleChanged: () => () => undefined,
       listReports: async () => [report, weeklyReport, monthlyReport],
       listSessionsInRange: async () => [session],
+      getReportLinks: async () => [],
       needsDailyDigestRefresh: async () => ({ needed: false, reason: "up_to_date", message: "64 sessions included" }),
       needsWeeklyDigestRefresh: async () => ({ needed: true, reason: "updated_sessions" }),
       needsMonthlyDigestRefresh: async () => ({ needed: true, reason: "updated_sessions" }),
@@ -84,6 +169,7 @@ describe("ReportPanel", () => {
       onLocaleChanged: () => () => undefined,
       listReports: async () => [report, weeklyReport, monthlyReport],
       listSessionsInRange: async () => [session],
+      getReportLinks: async () => [],
       needsDailyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
       needsWeeklyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
       needsMonthlyDigestRefresh: async () => ({ needed: false, reason: "up_to_date" }),
@@ -112,5 +198,72 @@ describe("ReportPanel", () => {
     expect(document.querySelector(".cal-detail")?.textContent).not.toContain("Daily progress");
 
     await act(async () => { resolveDaily!(); });
+  });
+
+  it("opens a session when a digest session reference is clicked", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    const sessionRefReport: ReportEntry = {
+      ...report,
+      content: `## 概览\nRenderer work.\n\n## Session 索引\n- [codex] Renderer migration\n`
+    };
+    const spy = vi.fn();
+    window.addEventListener("agent-resume:sessions-preview", spy);
+    window.agentResume = mockAgentResume({
+      listReports: async () => [sessionRefReport],
+      getReportLinks: async () => [{ reportId: `daily:${day}`, provider: "codex", agentSessionId: "s-1", projectPath: "/work/panel" }]
+    });
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+
+    await screen.findByText("Daily digest");
+    const link = await waitFor(() => {
+      const element = document.querySelector<HTMLAnchorElement>("a.digest-ref[data-session-ref]");
+      expect(element).toBeTruthy();
+      return element;
+    });
+    expect(link!.getAttribute("data-session-ref")).toBe("codex:s-1");
+    expect(link!.textContent).toContain("Renderer migration");
+    fireEvent.click(link!);
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const detail = (spy.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.provider).toBe("codex");
+    expect(detail.id).toBe("s-1");
+    expect(detail.projectPath).toBe("/work/panel");
+    window.removeEventListener("agent-resume:sessions-preview", spy);
+  });
+
+  it("jumps to a report when a digest report reference is clicked", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    const reportRefReport: ReportEntry = {
+      ...report,
+      id: `weekly:${week}`,
+      level: "weekly",
+      title: "Weekly digest",
+      content: `## 本周主题\nAll good.\n\n## 来源日报\n- Daily · ${day}\n`
+    };
+    const spy = vi.fn();
+    window.addEventListener("agent-resume:report-focus", spy);
+    window.agentResume = mockAgentResume({
+      listReports: async () => [reportRefReport],
+      listSessionsInRange: async () => [],
+      getReportLinks: async () => []
+    });
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: { type: "week", key: week } })));
+
+    await screen.findByText("Weekly digest");
+    const link = await waitFor(() => {
+      const element = document.querySelector<HTMLAnchorElement>("a.digest-ref[data-report-ref]");
+      expect(element).toBeTruthy();
+      return element;
+    });
+    expect(link!.getAttribute("data-report-ref")).toBe(`daily:${day}`);
+    fireEvent.click(link!);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect((spy.mock.calls.at(-1)?.[0] as CustomEvent).detail).toEqual({ type: "day", key: day });
+    window.removeEventListener("agent-resume:report-focus", spy);
   });
 });

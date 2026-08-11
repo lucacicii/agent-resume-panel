@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
-import type { AgentSession, DigestProgressEvent, ReportEntry } from "@agent-resume/core";
+import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { renderMarkdown as markdown } from "../../components/Markdown";
@@ -34,6 +34,130 @@ function isFuture(type: ReportPeriodType, key: string): boolean {
 }
 function formatTime(value: number, locale: string): string { return new Date(value).toLocaleString(locale); }
 
+/** Matches a report period reference inside a digest body: `Daily · 2026-08-08`, `daily:2026-08-08`, `Weekly · 2026-W32`, `monthly:2026-08`, … */
+const REPORT_REF_PATTERN = /(?:(?:Daily ·\s*|daily:)(\d{4}-\d{2}-\d{2}))|(?:(?:Weekly ·\s*|weekly:)(\d{4}-W\d{2}))|(?:(?:Monthly ·\s*|monthly:)(\d{4}-\d{2}))/g;
+/** Matches a `Session 索引` bullet: `- [provider] title`. */
+const SESSION_INDEX_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
+
+function periodFromReportRef(ref: string): { type: "day" | "week" | "month"; key: string } | null {
+  if (ref.startsWith("daily:")) return { type: "day", key: ref.slice("daily:".length) };
+  if (ref.startsWith("weekly:")) return { type: "week", key: ref.slice("weekly:".length) };
+  if (ref.startsWith("monthly:")) return { type: "month", key: ref.slice("monthly:".length) };
+  return null;
+}
+
+/**
+ * Renders a digest body and rewrites its source references into clickable `.digest-ref`
+ * anchors: session bullets in the daily `Session 索引` section (resolved against the
+ * report's ordered `report_links`) and report-period references (`Daily · 2026-08-08`,
+ * `daily:…`, …) found anywhere. Follows the `renderAssistantMarkdown` pattern in the
+ * Agent panel so the anchors bypass the shared sanitizer.
+ */
+function renderDigestMarkdown(content: string, links: ReportLinkRow[]): string {
+  if (typeof document === "undefined") return markdown(content);
+  const template = document.createElement("template");
+  template.innerHTML = markdown(content);
+  const root = template.content;
+
+  // Session references: zip `[provider] title` list items against report_links grouped by
+  // provider (report_links preserve the order the digest was built from, so per-provider
+  // position stays aligned even when the LLM abbreviated a title).
+  if (links.length) {
+    const byProvider = new Map<string, ReportLinkRow[]>();
+    for (const link of links) {
+      if (!link.provider || !link.agentSessionId) continue;
+      const group = byProvider.get(link.provider) || [];
+      group.push(link);
+      byProvider.set(link.provider, group);
+    }
+    const cursor = new Map<string, number>();
+    const items = root.querySelectorAll<HTMLLIElement>("li");
+    for (const item of items) {
+      const text = item.textContent || "";
+      const match = SESSION_INDEX_PATTERN.exec(text);
+      if (!match) continue;
+      const provider = match[1].trim();
+      const group = byProvider.get(provider);
+      if (!group) continue;
+      const index = cursor.get(provider) || 0;
+      const link = group[index];
+      if (!link) continue;
+      cursor.set(provider, index + 1);
+      const anchor = document.createElement("a");
+      anchor.className = "digest-ref";
+      anchor.href = "#";
+      anchor.dataset.sessionRef = `${link.provider}:${link.agentSessionId}`;
+      anchor.textContent = text;
+      item.replaceChildren(anchor);
+    }
+  }
+
+  // Report references: rewrite period reference text into links.
+  const walker = document.createTreeWalker(root, 4);
+  const textNodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    const parent = current.parentElement;
+    if (parent && !parent.closest("a, code, pre")) textNodes.push(current as Text);
+    current = walker.nextNode();
+  }
+  for (const textNode of textNodes) {
+    const value = textNode.data;
+    const matches = [...value.matchAll(REPORT_REF_PATTERN)];
+    if (!matches.length) continue;
+    const replacement = document.createDocumentFragment();
+    let offset = 0;
+    for (const match of matches) {
+      const index = match.index || 0;
+      replacement.append(value.slice(offset, index));
+      const [, day, week, month] = match;
+      const target = day ? `daily:${day}` : week ? `weekly:${week}` : `monthly:${month}`;
+      const anchor = document.createElement("a");
+      anchor.className = "digest-ref";
+      anchor.href = "#";
+      anchor.dataset.reportRef = target;
+      anchor.textContent = match[0];
+      replacement.append(anchor);
+      offset = index + match[0].length;
+    }
+    replacement.append(value.slice(offset));
+    textNode.replaceWith(replacement);
+  }
+
+  return template.innerHTML;
+}
+
+/** Handles clicks on `.digest-ref` anchors inside a rendered digest body. */
+function onDigestRefClick(event: React.MouseEvent<HTMLDivElement>, entry: ReportEntry, links: ReportLinkRow[]): void {
+  const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a.digest-ref") : null;
+  if (!target || !event.currentTarget.contains(target)) return;
+  event.preventDefault();
+  const reportRef = target.dataset.reportRef;
+  if (reportRef) {
+    const period = periodFromReportRef(reportRef);
+    if (!period) return;
+    window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+    return;
+  }
+  const sessionRef = target.dataset.sessionRef;
+  if (!sessionRef) return;
+  const separator = sessionRef.indexOf(":");
+  const provider = sessionRef.slice(0, separator);
+  const id = sessionRef.slice(separator + 1);
+  const link = links.find((item) => item.provider === provider && item.agentSessionId === id);
+  if (!link) return;
+  window.dispatchEvent(new CustomEvent("agent-resume:sessions-preview", {
+    detail: {
+      provider,
+      id,
+      title: target.textContent || id,
+      projectPath: link.projectPath || "",
+      updatedAt: entry.periodEndMs || Date.now()
+    }
+  }));
+}
+
 export function ReportPanel(): ReactPortal | null {
   const host = document.getElementById("react-report");
   const { locale, t } = useI18n();
@@ -53,11 +177,13 @@ export function ReportPanel(): ReactPortal | null {
   const [runningPeriods, setRunningPeriods] = useState<Set<string>>(new Set());
   const [progressByPeriod, setProgressByPeriod] = useState<Map<string, DigestProgressEvent>>(new Map());
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [reportLinks, setReportLinks] = useState<ReportLinkRow[]>([]);
   const sessionRequestId = useRef(0);
   const monthRequestId = useRef(0);
 
   const monthKey = viewMonthKey(view.year, view.month);
   const index = useMemo(() => digestIndex(entries), [entries]);
+  const selectedEntryId = index.get(`${levelFor(focus.type)}:${focus.key}`)?.id;
   const sessionDays = useMemo(() => new Set(monthSessions.map((item) => dayKeyFromMs(item.updatedAt))), [monthSessions]);
 
   const loadMonth = useCallback(async () => {
@@ -144,6 +270,17 @@ export function ReportPanel(): ReactPortal | null {
     if (!key) return;
     setProgressByPeriod((current) => new Map(current).set(key, event));
   }), []);
+  useEffect(() => {
+    if (!selectedEntryId?.startsWith("daily:")) {
+      setReportLinks([]);
+      return;
+    }
+    let cancelled = false;
+    void desktopApi().getReportLinks(selectedEntryId)
+      .then((links) => { if (!cancelled) setReportLinks(links); })
+      .catch(() => { if (!cancelled) setReportLinks([]); });
+    return () => { cancelled = true; };
+  }, [selectedEntryId]);
 
   const selectFocus = (next: Focus) => { setFocus(next); };
   const navigate = (delta: number) => {
@@ -245,7 +382,7 @@ export function ReportPanel(): ReactPortal | null {
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
   const focusedRunning = runningPeriods.has(focusedPeriodKey);
   const focusedProgress = progressByPeriod.get(focusedPeriodKey);
-  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} status={previewStatus} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
+  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} status={previewStatus} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
   const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
   const hasMonthDigest = index.has(`monthly:${monthKey}`);
   return createPortal(
@@ -295,13 +432,13 @@ function DigestProgressCard({ focus, progress, t }: { focus: Focus; progress?: D
   return <div className="detail-progress gen-progress is-loading" role="status" aria-live="polite"><div className="gen-progress-line">{progressText}</div>{sessionText ? <div className="gen-progress-session-row"><span className="gen-progress-pulse" aria-hidden="true" /><span className="gen-progress-session">{sessionText}</span></div> : null}<div className="gen-progress-bar-wrap"><div className="gen-progress-bar" style={{ width: progressWidth }} /></div></div>;
 }
 
-function DigestDetail({ entry, focus, hasSessions, stale, running, locale, t, onRun, onGtd }: { entry?: ReportEntry; focus: Focus; hasSessions: boolean; stale: boolean; running: boolean; locale: string; t: Translate; onRun: () => void; onGtd: () => void }) {
+function DigestDetail({ entry, focus, hasSessions, stale, running, locale, t, links, onRun, onGtd }: { entry?: ReportEntry; focus: Focus; hasSessions: boolean; stale: boolean; running: boolean; locale: string; t: Translate; links: ReportLinkRow[]; onRun: () => void; onGtd: () => void }) {
   if (running) {
     return <div className="detail-generating"><p className="empty-hint">{t("desktop.report.generatingStrong")} {" "}<strong>{digestLabel(focus.type, t)}</strong><span className="detail-generating-key">{focus.key}</span></p><p className="muted detail-generating-hint">{t("desktop.report.generatingHint")}</p></div>;
   }
   if (isFuture(focus.type, focus.key)) return <p className="empty-hint muted">{t("desktop.report.futureDateHint", digestLabel(focus.type, t))}</p>;
   if (!entry) return <div className={`digest-panel digest-panel-empty${hasSessions ? "" : " digest-panel-quiet"}`}><header className="digest-panel-head"><h3><span className={`badge ${levelFor(focus.type)}`}>{levelFor(focus.type)}</span>{digestLabel(focus.type, t)} · {focus.key}</h3></header><p className="empty-hint muted">{hasSessions ? t("desktop.report.emptyHasSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t)) : t("desktop.report.emptyNoSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t))}</p>{hasSessions ? <button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.generateBtn", digestLabel(focus.type, t))}</button> : null}</div>;
-  return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button><button type="button" className="tool-btn" onClick={onGtd}>{t("desktop.report.gtdBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" dangerouslySetInnerHTML={{ __html: markdown(entry.content) }} /></article></>;
+  return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button><button type="button" className="tool-btn" onClick={onGtd}>{t("desktop.report.gtdBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" onClick={(event) => onDigestRefClick(event, entry, links)} dangerouslySetInnerHTML={{ __html: renderDigestMarkdown(entry.content, links) }} /></article></>;
 }
 
 function SessionDetail({ preview, locale, t, assist, status, onSummarize, onAutoRename }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; status: { text: string; kind?: StatusKind }; onSummarize: () => void; onAutoRename: () => void }) {

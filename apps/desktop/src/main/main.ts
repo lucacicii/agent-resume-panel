@@ -31,6 +31,7 @@ import {
   listProjects,
   listReportEntries,
   listReportEntriesInRange,
+  listReportLinks,
   listScheduleRuns,
   countSessions,
   listSessions,
@@ -1658,6 +1659,20 @@ function registerIpc(): void {
     } catch (error) {
       void recordAppError({ source: "report", message: "report:getEntry failed.", error });
       return null;
+    }
+  });
+
+  ipcMain.handle("report:getLinks", async (_event, reportId?: string) => {
+    const id = typeof reportId === "string" ? reportId.trim() : "";
+    if (!id) {
+      return [];
+    }
+    try {
+      const paths = await loadPanelDbPaths();
+      return await listReportLinks(paths.desktopDb, id);
+    } catch (error) {
+      void recordAppError({ source: "report", message: "report:getLinks failed.", error });
+      return [];
     }
   });
 

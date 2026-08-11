@@ -10,6 +10,7 @@ import type {
   DigestProgressEvent,
   DigestGenerationEstimate,
   ReportEntry,
+  ReportLinkRow,
   ReportSearchHit,
   NoteIndexProgressEvent,
   PanelSettings,
@@ -732,6 +733,7 @@ export interface DesktopApi {
     toMs?: number;
   }): Promise<ReportEntry[]>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
+  getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
   listDailyDigests(limit?: number): Promise<ReportEntry[]>;
   previewDigestRun(args: { level: "daily" | "weekly" | "monthly"; periodKey?: string }): Promise<DigestGenerationEstimate>;
   runDailyDigest(
@@ -1358,6 +1360,7 @@ const api: DesktopApi = {
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
+  getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
   listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
   previewDigestRun: (args) => ipcRenderer.invoke("report:previewRun", args),
   runDailyDigest: (dateOrOpts) => {
