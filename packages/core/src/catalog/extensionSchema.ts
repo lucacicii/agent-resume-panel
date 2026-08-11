@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS projects (
   hidden INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  absorbed_keys TEXT
 );
 CREATE TABLE IF NOT EXISTS project_local_paths (
   project_id TEXT NOT NULL,

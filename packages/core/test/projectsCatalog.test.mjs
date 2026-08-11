@@ -167,6 +167,49 @@ test("merge survives reconcile: merged sessions stay in target, source not re-cr
   }
 });
 
+test("chained merges keep every absorbed session in the final target", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-chain-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const pathA = path.join(os.homedir(), "chain-a");
+  const pathB = path.join(os.homedir(), "chain-b");
+  const pathC = path.join(os.homedir(), "chain-c");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'c-a', 'A', '${pathA.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'c-b', 'B', '${pathB.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'c-c', 'C', '${pathC.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
+    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    const c = projects.find((p) => p.portableKey === toPortableKey(pathC));
+    assert.ok(a && b && c);
+
+    // Two merges into the same target: the second must not clobber the first.
+    await mergeProjectsInCatalog(dbPath, a.projectId, b.projectId);
+    await mergeProjectsInCatalog(dbPath, c.projectId, b.projectId);
+    await reconcileProjectsFromSessions(dbPath);
+
+    const after = await listProjects(dbPath);
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathA)), "first source must not be re-created");
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathC)), "second source must not be re-created");
+    const { runSqliteJson } = await import("../dist/index.js");
+    const linked = await runSqliteJson(
+      dbPath,
+      `SELECT COUNT(*) AS c FROM sessions WHERE project_id = '${b.projectId}';`
+    );
+    assert.equal(Number(linked[0].c), 3, "all sessions must stay in the final target after reconcile");
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
 test("splitProjectPathInCatalog peels a different portable key path", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-split-"));
   const dbPath = path.join(panelHome, "catalog.db");

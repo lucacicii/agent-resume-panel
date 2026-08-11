@@ -38,6 +38,8 @@ interface ProjectSqlRow {
   pinned?: number | null;
   last_seen_at_ms: number | null;
   updated_at_ms: number;
+  /** JSON array of portable keys absorbed into this project by merge. */
+  absorbed_keys?: string | null;
 }
 
 const PROJECTS_CREATE_SQL = `CREATE TABLE projects (
@@ -47,7 +49,8 @@ const PROJECTS_CREATE_SQL = `CREATE TABLE projects (
   hidden INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  absorbed_keys TEXT
 );`;
 
 async function ensureProjectsAdditiveColumns(dbPath: string): Promise<void> {
@@ -55,7 +58,8 @@ async function ensureProjectsAdditiveColumns(dbPath: string): Promise<void> {
     `ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN last_seen_at_ms INTEGER`,
-    `ALTER TABLE projects ADD COLUMN alias TEXT NOT NULL DEFAULT ''`
+    `ALTER TABLE projects ADD COLUMN alias TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE projects ADD COLUMN absorbed_keys TEXT`
   ]) {
     try {
       await runSqlite(dbPath, `${stmt};`);
@@ -213,6 +217,17 @@ function newProjectId(): string {
   return randomUUID();
 }
 
+/** Parse the JSON-array absorbed_keys column; tolerant of legacy/NULL values. */
+function parseAbsorbedKeys(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 async function upsertLocalPath(
   dbPath: string,
   projectId: string,
@@ -237,7 +252,7 @@ async function findProjectByPortableKey(
 ): Promise<ProjectSqlRow | undefined> {
   const rows = await runSqliteJson<ProjectSqlRow>(
     dbPath,
-    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms
+    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms, absorbed_keys
      FROM projects WHERE portable_key = '${escapeSqlLiteral(portableKey)}' LIMIT 1;`
   );
   return rows[0];
@@ -246,7 +261,7 @@ async function findProjectByPortableKey(
 async function findProjectById(dbPath: string, projectId: string): Promise<ProjectSqlRow | undefined> {
   const rows = await runSqliteJson<ProjectSqlRow>(
     dbPath,
-    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms
+    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms, absorbed_keys
      FROM projects WHERE project_id = '${escapeSqlLiteral(projectId)}' LIMIT 1;`
   );
   return rows[0];
@@ -265,6 +280,25 @@ async function findProjectIdForAbsolutePath(dbPath: string, absolutePath: string
   const key = toPortableKey(absolute);
   const byKey = await findProjectByPortableKey(dbPath, key);
   return byKey?.project_id;
+}
+
+/**
+ * Find a project that absorbed this portable key via a merge. Merged-away
+ * paths must keep resolving to the absorbing target so the periodic reconcile
+ * does not re-create the deleted source project and pull sessions back out.
+ */
+async function findAbsorberProjectId(dbPath: string, portableKey: string): Promise<string | undefined> {
+  const rows = await runSqliteJson<{ project_id: string }>(
+    dbPath,
+    `SELECT project_id FROM projects
+     WHERE absorbed_keys IS NOT NULL AND absorbed_keys != ''
+       AND EXISTS (
+         SELECT 1 FROM json_each(projects.absorbed_keys)
+         WHERE json_each.value = '${escapeSqlLiteral(portableKey)}'
+       )
+     LIMIT 1;`
+  );
+  return rows[0]?.project_id;
 }
 
 /**
@@ -291,6 +325,14 @@ export async function ensureProjectForPath(
     const ownerId = await findProjectIdForAbsolutePath(dbPath, absolute);
     if (ownerId) {
       row = await findProjectById(dbPath, ownerId);
+    }
+  }
+  if (!row) {
+    // Path absorbed by an earlier merge still belongs to the absorbing project,
+    // even after later merges overwrite the local-path binding on this machine.
+    const absorberId = await findAbsorberProjectId(dbPath, portableKey);
+    if (absorberId) {
+      row = await findProjectById(dbPath, absorberId);
     }
   }
   if (!row) {
@@ -924,7 +966,10 @@ export async function mergeProjectsInCatalog(
     mergedSessions += Number(extra[0]?.changes) || 0;
   }
 
-  // Move local paths (replace conflicts for same machine)
+  // Move local paths. Keep the target's own path on this machine (INSERT OR
+  // IGNORE instead of overwriting) — the absorbed path stays reachable via
+  // absorbed_keys below — and add the source's rows for machines the target
+  // does not already cover.
   const locals = await runSqliteJson<LocalPathSqlRow>(
     dbPath,
     `SELECT project_id, machine_id, absolute_path, updated_at_ms FROM project_local_paths
@@ -933,18 +978,25 @@ export async function mergeProjectsInCatalog(
   for (const row of locals) {
     await runSqlite(
       dbPath,
-      `INSERT INTO project_local_paths (project_id, machine_id, absolute_path, updated_at_ms)
+      `INSERT OR IGNORE INTO project_local_paths (project_id, machine_id, absolute_path, updated_at_ms)
        VALUES ('${escapeSqlLiteral(targetProjectId)}', '${escapeSqlLiteral(row.machine_id)}',
-               '${escapeSqlLiteral(row.absolute_path)}', ${now})
-       ON CONFLICT(project_id, machine_id) DO UPDATE SET
-         absolute_path = excluded.absolute_path,
-         updated_at_ms = excluded.updated_at_ms;`
+               '${escapeSqlLiteral(row.absolute_path)}', ${now});`
     );
   }
   await runSqlite(
     dbPath,
     `DELETE FROM project_local_paths WHERE project_id = '${escapeSqlLiteral(sourceProjectId)}';`
   );
+
+  // Record which portable keys this target has absorbed so the periodic
+  // reconcile keeps routing those paths back to it — even after later merges
+  // overwrite this machine's local-path binding — instead of re-creating the
+  // merged-away project and splitting its sessions back out.
+  const absorbed = new Set<string>(parseAbsorbedKeys(target.absorbed_keys));
+  for (const key of parseAbsorbedKeys(source.absorbed_keys)) absorbed.add(key);
+  absorbed.add(source.portable_key);
+  for (const row of locals) absorbed.add(toPortableKey(row.absolute_path));
+  const absorbedJson = absorbed.size ? JSON.stringify([...absorbed]) : null;
 
   // Merge personalization onto target
   const sourceAlias = (source.alias || "").trim();
@@ -958,6 +1010,7 @@ export async function mergeProjectsInCatalog(
        alias = '${escapeSqlLiteral(alias)}',
        pinned = ${pinned},
        hidden = ${hidden},
+       absorbed_keys = ${absorbedJson ? `'${escapeSqlLiteral(absorbedJson)}'` : "NULL"},
        updated_at_ms = ${now},
        last_seen_at_ms = ${now}
      WHERE project_id = '${escapeSqlLiteral(targetProjectId)}';
@@ -1039,6 +1092,18 @@ export async function splitProjectPathInCatalog(
      WHERE project_id = '${escapeSqlLiteral(sourceProjectId)}'
        AND absolute_path = '${escapeSqlLiteral(absolute)}';`
   );
+
+  // This path is no longer absorbed: split gives it a real project again, so
+  // drop it from the source's absorbed_keys to keep reconcile routing it here.
+  if (source.absorbed_keys) {
+    const remaining = parseAbsorbedKeys(source.absorbed_keys).filter((key) => key !== portableKey);
+    await runSqlite(
+      dbPath,
+      `UPDATE projects SET
+         absorbed_keys = ${remaining.length ? `'${escapeSqlLiteral(JSON.stringify(remaining))}'` : "NULL"}
+       WHERE project_id = '${escapeSqlLiteral(sourceProjectId)}';`
+    );
+  }
 
   // If source has no remaining sessions and no local paths, hide empty shell (keep for alias history)
   const remaining = await runSqliteJson<{ c: number }>(
