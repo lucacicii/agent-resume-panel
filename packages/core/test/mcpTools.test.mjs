@@ -6,15 +6,19 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
+  AGENT_TOOL_CATALOG,
+  AGENT_TOOL_NAMES,
   createNoteMcpServer,
   desktopDbPath,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
+  ensureProjectForPath,
   handleLinkGraphTrace,
   insertReportEntry,
   localDayRange,
   NotesStore,
-  runSqlite
+  runSqlite,
+  toPortableKey
 } from "../dist/index.js";
 
 async function setupTestContext() {
@@ -86,7 +90,7 @@ function parseToolJson(result) {
   return start >= 0 ? JSON.parse(text.slice(start)) : undefined;
 }
 
-test("MCP server exposes all note, report, and session tools", async () => {
+test("MCP server exposes all note, report, session, and project tools", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -112,10 +116,15 @@ test("MCP server exposes all note, report, and session tools", async () => {
       "note_set_parent",
       "note_tree_read",
       "note_write",
+      "project_list",
+      "project_merge",
+      "project_reconcile",
+      "project_tidy",
       "report_list",
       "report_read",
       "report_search",
       "session_list",
+      "session_move",
       "session_read",
       "session_read_transcript",
       "session_resume",
@@ -851,6 +860,170 @@ test("link_graph_trace is hidden when enableLinkGraphTrace is false", async () =
   try {
     const names = (await client.listTools()).tools.map((t) => t.name);
     assert.ok(!names.includes("link_graph_trace"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("project_reconcile links same-path sessions and project_list reflects counts", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  const projectPath = path.join(os.homedir(), "reconcile-mcp");
+  await seedSession(catalogDb, { id: "rc-1", title: "One", projectPath });
+  await seedSession(catalogDb, { id: "rc-2", title: "Two", projectPath });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const reconcile = parseToolJson(await client.callTool({ name: "project_reconcile", arguments: {} }));
+    assert.equal(reconcile.ok, true);
+    assert.ok(reconcile.linkedSessions >= 1);
+
+    const projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    const merged = projects.filter((p) => p.portableKey === toPortableKey(projectPath));
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].sessionCount, 2);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("project_merge reassigns sessions and removes the source project", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  const pathA = path.join(os.homedir(), "merge-mcp-a");
+  const pathB = path.join(os.homedir(), "merge-mcp-b");
+  await seedSession(catalogDb, { id: "pm-a", title: "A", projectPath: pathA });
+  await seedSession(catalogDb, { id: "pm-b", title: "B", projectPath: pathB });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    await client.callTool({ name: "project_reconcile", arguments: {} });
+    let projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
+    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    assert.ok(a && b && a.projectId !== b.projectId);
+
+    const merged = parseToolJson(await client.callTool({
+      name: "project_merge",
+      arguments: { sourceProjectId: a.projectId, targetProjectId: b.projectId }
+    }));
+    assert.equal(merged.ok, true);
+    assert.equal(merged.targetProjectId, b.projectId);
+    assert.ok(merged.mergedSessions >= 1);
+
+    projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    assert.ok(!projects.some((p) => p.projectId === a.projectId));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("project_tidy reports candidates in dry run and hides them when applied", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  const ghost = path.join(os.tmpdir(), `ghost-project-${Date.now()}`);
+  await ensureProjectForPath(catalogDb, ghost); // directory does not exist → pathMissing
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const dry = parseToolJson(await client.callTool({ name: "project_tidy", arguments: {} }));
+    assert.equal(dry.dryRun, true);
+    assert.equal(dry.hiddenProjects, 0);
+    assert.ok(dry.candidates.some((c) => c.portableKey === toPortableKey(ghost)));
+
+    let projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    assert.ok(projects.some((p) => p.portableKey === toPortableKey(ghost)));
+
+    const applied = parseToolJson(await client.callTool({ name: "project_tidy", arguments: { apply: true } }));
+    assert.equal(applied.dryRun, false);
+    assert.ok(applied.hiddenProjects >= 1);
+
+    projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    assert.ok(!projects || !projects.some((p) => p.portableKey === toPortableKey(ghost)));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("AGENT_TOOL_CATALOG matches the tools registered by the MCP server", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx); // default ctx keeps link_graph_trace registered
+  const client = await connectClient(server);
+  try {
+    const registered = (await client.listTools()).tools.map((t) => t.name);
+    const registeredSet = new Set(registered);
+    const catalogNames = AGENT_TOOL_CATALOG.map((tool) => tool.name);
+
+    // Every catalog entry is registered, and every registered tool is in the catalog.
+    for (const name of catalogNames) {
+      assert.ok(registeredSet.has(name), `catalog tool ${name} is not registered`);
+    }
+    for (const name of registered) {
+      assert.ok(AGENT_TOOL_NAMES.has(name), `registered tool ${name} is missing from AGENT_TOOL_CATALOG`);
+    }
+    assert.equal(catalogNames.length, registered.length, "catalog and server tool counts differ");
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("session_move reassigns a session to a different project directory", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  const pathA = path.join(os.homedir(), "move-from");
+  const pathB = path.join(os.homedir(), "move-to");
+  await seedSession(catalogDb, { id: "mv-1", title: "Move me", projectPath: pathA });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    await client.callTool({ name: "project_reconcile", arguments: {} });
+
+    const moved = parseToolJson(await client.callTool({
+      name: "session_move",
+      arguments: { provider: "codex", sessionId: "mv-1", targetProjectPath: pathB }
+    }));
+    assert.equal(moved.ok, true);
+    assert.equal(moved.moved, true);
+    assert.equal(path.resolve(moved.newPath), path.resolve(pathB));
+
+    const read = parseToolJson(await client.callTool({
+      name: "session_read",
+      arguments: { provider: "codex", sessionId: "mv-1" }
+    }));
+    assert.equal(path.resolve(read.projectPath), path.resolve(pathB));
+
+    const projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
+    const target = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    assert.ok(target && target.sessionCount === 1);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("session_move errors on unknown session and on missing target path", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const missing = await client.callTool({
+      name: "session_move",
+      arguments: { provider: "codex", sessionId: "does-not-exist", targetProjectPath: "/tmp/x" }
+    });
+    assert.equal(missing.isError, true);
+    assert.match(missing.content[0].text, /not found/i);
+
+    const noTarget = await client.callTool({
+      name: "session_move",
+      arguments: { provider: "codex", sessionId: "does-not-exist" }
+    });
+    assert.equal(noTarget.isError, true);
   } finally {
     await client.close();
     await server.close();

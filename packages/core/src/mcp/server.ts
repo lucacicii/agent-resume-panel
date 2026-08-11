@@ -63,10 +63,22 @@ import {
   handleFlowSync,
   handleFlowValidate
 } from "./flowTools";
+import {
+  handleProjectList,
+  handleProjectMerge,
+  handleProjectReconcile,
+  handleProjectTidy,
+  handleSessionMove,
+  projectListSchema,
+  projectMergeSchema,
+  projectReconcileSchema,
+  projectTidySchema,
+  sessionMoveSchema
+} from "./projectTools";
 import { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
-export const MCP_SERVER_VERSION = "0.5.0";
+export const MCP_SERVER_VERSION = "0.6.0";
 
 export interface AgentMcpContext extends NoteToolContext {
   panelHome: string;
@@ -429,6 +441,83 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         throw new Error("catalogDb is not configured for session tools.");
       }
       return handleSessionResume(args, sessionCtx);
+    }
+  );
+
+  const projectCtx = { catalogDb, desktopDb: ctx.dbPath };
+
+  server.registerTool(
+    "project_list",
+    {
+      description:
+        "List catalog projects with alias, local path, and session counts. Use to review the projects directory before tidying or merging. Read-only.",
+      inputSchema: projectListSchema
+    },
+    async (args: { includeHidden?: boolean; limit?: number }) => {
+      if (!projectCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for project tools.");
+      }
+      return handleProjectList(args, projectCtx);
+    }
+  );
+
+  server.registerTool(
+    "project_merge",
+    {
+      description:
+        "Merge a source project into a target project, reassigning its sessions and (by default) the desktop workbench folder tree. Use to consolidate duplicate projects. Removes the source project row.",
+      inputSchema: projectMergeSchema
+    },
+    async (args: { sourceProjectId: string; targetProjectId: string; mergeWorkbenchFolders?: boolean }) => {
+      if (!projectCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for project tools.");
+      }
+      return handleProjectMerge(args, projectCtx);
+    }
+  );
+
+  server.registerTool(
+    "project_tidy",
+    {
+      description:
+        "Hide stale/empty projects (not pinned, no visible sessions, local path missing). Dry run by default — pass apply:true to hide. Hidden projects stay recoverable.",
+      inputSchema: projectTidySchema
+    },
+    async (args: { apply?: boolean }) => {
+      if (!projectCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for project tools.");
+      }
+      return handleProjectTidy(args, projectCtx);
+    }
+  );
+
+  server.registerTool(
+    "project_reconcile",
+    {
+      description:
+        "Reconcile projects from catalog sessions: merge same-path variants by portable key and re-link sessions to their project. Idempotent and non-destructive.",
+      inputSchema: projectReconcileSchema
+    },
+    async () => {
+      if (!projectCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for project tools.");
+      }
+      return handleProjectReconcile({}, projectCtx);
+    }
+  );
+
+  server.registerTool(
+    "session_move",
+    {
+      description:
+        "Move a catalog session to a different project directory. Updates only catalog metadata (project_path/project_id and session-scoped note paths); on-disk session/note files are never moved.",
+      inputSchema: sessionMoveSchema
+    },
+    async (args: { provider: string; sessionId: string; targetProjectPath: string }) => {
+      if (!projectCtx.catalogDb) {
+        throw new Error("catalogDb is not configured for project tools.");
+      }
+      return handleSessionMove(args, projectCtx);
     }
   );
 

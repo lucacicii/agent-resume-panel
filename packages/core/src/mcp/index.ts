@@ -59,5 +59,18 @@ export {
 export type { SessionToolContext } from "./sessionTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./client";
 export type { McpToolInfo, McpToolCallResult } from "./client";
+export {
+  projectListSchema,
+  projectMergeSchema,
+  projectTidySchema,
+  projectReconcileSchema,
+  sessionMoveSchema,
+  handleProjectList,
+  handleProjectMerge,
+  handleProjectTidy,
+  handleProjectReconcile,
+  handleSessionMove
+} from "./projectTools";
+export type { ProjectToolContext } from "./projectTools";
 export { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
 export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./linkGraphTools";

@@ -209,7 +209,9 @@ export {
   getProjectById,
   listProjectPathVariants,
   mergeProjectsInCatalog,
-  splitProjectPathInCatalog
+  splitProjectPathInCatalog,
+  tidyProjectsInCatalog,
+  moveSessionToProjectInCatalog
 } from "./catalog/projects";
 export type { ProjectRow, ResolveProjectCwdResult } from "./catalog/projects";
 export {
@@ -725,6 +727,11 @@ export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphToo
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {
+  AGENT_TOOL_CATALOG,
+  AGENT_TOOL_NAMES
+} from "./mcp/toolCatalog";
+export type { AgentToolCategory, AgentToolDescriptor } from "./mcp/toolCatalog";
+export {
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,
@@ -733,6 +740,19 @@ export {
   handleSessionResume
 } from "./mcp/sessionTools";
 export type { SessionToolContext } from "./mcp/sessionTools";
+export {
+  projectListSchema,
+  projectMergeSchema,
+  projectTidySchema,
+  projectReconcileSchema,
+  sessionMoveSchema,
+  handleProjectList,
+  handleProjectMerge,
+  handleProjectTidy,
+  handleProjectReconcile,
+  handleSessionMove
+} from "./mcp/projectTools";
+export type { ProjectToolContext } from "./mcp/projectTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
 export { runToolLoop } from "./agent/toolLoop";

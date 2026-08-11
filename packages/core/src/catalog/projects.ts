@@ -1055,3 +1055,134 @@ export async function splitProjectPathInCatalog(
 
   return { projectId, movedSessions, created };
 }
+
+export interface TidyProjectCandidate {
+  projectId: string;
+  portableKey: string;
+  alias: string;
+  localPath: string | null;
+  /** Number of visible sessions. */
+  sessionCount: number;
+}
+
+/**
+ * Tidy the projects catalog: hide stale/empty projects that are not pinned,
+ * have no visible sessions, and have no resolvable local directory. Hidden
+ * projects stay recoverable (unhide) — nothing is deleted. Dry-run by default.
+ */
+export async function tidyProjectsInCatalog(
+  dbPath: string,
+  options?: { dryRun?: boolean }
+): Promise<{ dryRun: boolean; hiddenProjects: number; candidates: TidyProjectCandidate[] }> {
+  await ensureProjectsCatalogSchema(dbPath);
+  const projects = await listProjects(dbPath, { includeHidden: true });
+  const candidates: TidyProjectCandidate[] = projects
+    .filter((p) => !p.pinned && !p.hidden && p.sessionCount === 0 && p.pathMissing)
+    .map((p) => ({
+      projectId: p.projectId,
+      portableKey: p.portableKey,
+      alias: (p.alias || "").trim(),
+      localPath: p.localPath,
+      sessionCount: p.sessionCount
+    }));
+
+  if (options?.dryRun !== false) {
+    return { dryRun: true, hiddenProjects: 0, candidates };
+  }
+
+  for (const candidate of candidates) {
+    await hideProjectInCatalog(dbPath, candidate.projectId);
+  }
+  return { dryRun: false, hiddenProjects: candidates.length, candidates };
+}
+
+/**
+ * Reassign one catalog session to a different project directory (catalog
+ * metadata only). The target project is reused when it already exists for the
+ * path, otherwise created. Session-scoped note catalog rows follow the new
+ * project path; on-disk session/note files are never moved.
+ */
+export async function moveSessionToProjectInCatalog(
+  dbPath: string,
+  provider: string,
+  sessionId: string,
+  targetProjectPath: string
+): Promise<{
+  provider: string;
+  sessionId: string;
+  moved: boolean;
+  fromProjectId: string | null;
+  toProjectId: string;
+  oldPath: string;
+  newPath: string;
+}> {
+  await ensureProjectsCatalogSchema(dbPath);
+  const providerT = provider?.trim();
+  const sessionIdT = sessionId?.trim();
+  const target = normalizeProjectPath(expandHome(targetProjectPath?.trim() || ""));
+  if (!providerT || !sessionIdT) {
+    throw new Error("provider and sessionId are required.");
+  }
+  if (!target) {
+    throw new Error("targetProjectPath is required.");
+  }
+
+  const rows = await runSqliteJson<{ project_id: string | null; project_path: string | null }>(
+    dbPath,
+    `SELECT project_id, project_path FROM sessions
+     WHERE provider = '${escapeSqlLiteral(providerT)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}' LIMIT 1;`
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`Session not found: ${providerT}:${sessionIdT}.`);
+  }
+
+  const now = Date.now();
+  const toProjectId = await ensureProjectForPath(dbPath, target, { touchSeen: true });
+  const oldPath = row.project_path || "";
+  const normalizedOld = oldPath ? normalizeProjectPath(expandHome(oldPath)) : "";
+  if (normalizedOld === target && row.project_id === toProjectId) {
+    return {
+      provider: providerT,
+      sessionId: sessionIdT,
+      moved: false,
+      fromProjectId: row.project_id,
+      toProjectId,
+      oldPath,
+      newPath: target
+    };
+  }
+
+  await runSqlite(
+    dbPath,
+    `UPDATE sessions SET project_path = '${escapeSqlLiteral(target)}',
+                         project_id = '${escapeSqlLiteral(toProjectId)}',
+                         updated_at_ms = ${now}
+     WHERE provider = '${escapeSqlLiteral(providerT)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}';`
+  );
+
+  // Session-scoped note catalog rows follow the session's new project path.
+  try {
+    await runSqlite(
+      dbPath,
+      `UPDATE notes SET project_path = '${escapeSqlLiteral(target)}'
+       WHERE scope = 'session'
+         AND provider = '${escapeSqlLiteral(providerT)}'
+         AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}';`
+    );
+  } catch {
+    // Older catalogs may lack the notes table — ignore.
+  }
+
+  return {
+    provider: providerT,
+    sessionId: sessionIdT,
+    moved: true,
+    fromProjectId: row.project_id,
+    toProjectId,
+    oldPath,
+    newPath: target
+  };
+}
