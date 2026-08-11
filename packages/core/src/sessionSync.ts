@@ -454,9 +454,19 @@ async function loadClaude(home: string, maxItems: number): Promise<LoadedSession
   for (const row of await readCachedJsonLinesSafe<any>(path.join(home, "history.jsonl"))) if (row.sessionId) mergeLatest(byId, session("claude", row.sessionId, clean(row.display) || row.sessionId, row.project || os.homedir(), Number(row.timestamp || 0), { source: "history" }));
   const files = await cachedFiles(`claude:${home}`, () => listJsonlFiles(path.join(home, "projects")));
   for (const file of files) {
-    const rows = await readCachedJsonLines<any>(file); let id = path.basename(file, ".jsonl"), title = "", cwd = "", updated = 0, branch: string | undefined, model: string | undefined;
-    for (const row of rows) { id = row.sessionId || id; cwd = row.cwd || cwd; branch = row.gitBranch || branch; model = row.version || model; updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (!title && row.type === "ai-title") title = row.aiTitle || ""; if (!title && row.type === "user") title = contentText(row.message?.content); }
-    mergeLatest(byId, session("claude", id, clean(title) || id, cwd || claudePath(file), updated, { branch, model, source: "project", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) }));
+    // Prefer the first transcript cwd (session start workspace). Claude Code rewrites later
+    // rows' cwd after Bash `cd`, so last-cwd would mis-file monorepo sessions under subdirs.
+    const rows = await readCachedJsonLines<any>(file); let id = path.basename(file, ".jsonl"), title = "", firstCwd = "", updated = 0, branch: string | undefined, model: string | undefined;
+    for (const row of rows) {
+      id = row.sessionId || id;
+      if (!firstCwd && typeof row.cwd === "string" && row.cwd.trim()) firstCwd = row.cwd.trim();
+      branch = row.gitBranch || branch;
+      model = row.version || model;
+      updated = Math.max(updated, Date.parse(row.timestamp || "") || 0);
+      if (!title && row.type === "ai-title") title = row.aiTitle || "";
+      if (!title && row.type === "user") title = contentText(row.message?.content);
+    }
+    mergeLatest(byId, session("claude", id, clean(title) || id, firstCwd || claudePath(file), updated, { branch, model, source: "project", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) }));
   }
   return [...byId.values()].sort(byUpdated).slice(0, maxItems);
 }

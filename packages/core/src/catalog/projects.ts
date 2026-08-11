@@ -302,13 +302,22 @@ async function findAbsorberProjectId(dbPath: string, portableKey: string): Promi
 }
 
 /**
- * Ensure a logical project exists for an absolute path; record this machine's local path.
+ * Ensure a logical project exists for an absolute path; optionally bind this machine's local path.
  * Returns project_id.
+ *
+ * Local-path binding rules (one primary path per project per machine):
+ * - New project: bind this path (it is the portable identity).
+ * - Path matches the project's portable_key: refresh the primary binding.
+ * - bindLocalPath: true: force bind (caller intent).
+ * - Absorbed / non-canonical paths that only resolve via owner or absorbed_keys:
+ *   link to the project but do **not** overwrite the primary local path.
+ *   Otherwise periodic reconcile after merge rewrites the cwd to a subfolder
+ *   (e.g. packages/core) and "Set local folder" never sticks.
  */
 export async function ensureProjectForPath(
   dbPath: string,
   projectPath: string,
-  options?: { machineId?: string; touchSeen?: boolean }
+  options?: { machineId?: string; touchSeen?: boolean; bindLocalPath?: boolean }
 ): Promise<string> {
   await ensureProjectsCatalogSchema(dbPath);
   const absolute = normalizeProjectPath(expandHome(projectPath.trim() || ""));
@@ -335,6 +344,7 @@ export async function ensureProjectForPath(
       row = await findProjectById(dbPath, absorberId);
     }
   }
+  let created = false;
   if (!row) {
     const projectId = newProjectId();
     await runSqlite(
@@ -351,6 +361,7 @@ export async function ensureProjectForPath(
       last_seen_at_ms: now,
       updated_at_ms: now
     };
+    created = true;
   } else if (options?.touchSeen !== false) {
     await runSqlite(
       dbPath,
@@ -358,7 +369,11 @@ export async function ensureProjectForPath(
     );
   }
 
-  await upsertLocalPath(dbPath, row.project_id, machineId, absolute, now);
+  const isCanonical = portableKey === row.portable_key;
+  const shouldBind = options?.bindLocalPath === true || created || isCanonical;
+  if (shouldBind) {
+    await upsertLocalPath(dbPath, row.project_id, machineId, absolute, now);
+  }
   return row.project_id;
 }
 
@@ -533,7 +548,10 @@ async function resolveExistingLocalPath(
     };
   }
 
-  // Session paths for this project (may not be in local_paths yet)
+  // Session paths for this project (may not be in local_paths yet).
+  // Prefer paths that match the project's portable identity so a merge that
+  // absorbed subfolder sessions (packages/core, apps/desktop) does not make
+  // listProjects pick those as the primary cwd.
   const sessionPaths = await runSqliteJson<{ project_path: string }>(
     dbPath,
     `SELECT DISTINCT project_path FROM sessions
@@ -541,7 +559,13 @@ async function resolveExistingLocalPath(
        AND project_path IS NOT NULL AND TRIM(project_path) != '';`
   ).catch(() => [] as Array<{ project_path: string }>);
 
-  for (const row of sessionPaths) {
+  const orderedSessionPaths = [...sessionPaths].sort((a, b) => {
+    const aCanon = toPortableKey(a.project_path) === portableKey ? 0 : 1;
+    const bCanon = toPortableKey(b.project_path) === portableKey ? 0 : 1;
+    return aCanon - bCanon;
+  });
+
+  for (const row of orderedSessionPaths) {
     const rehomed = expandHome(row.project_path);
     if (rehomed && (await isDirectory(rehomed))) {
       if (persist) {

@@ -158,6 +158,60 @@ test("syncs nine providers, preserves local enhancements, and isolates provider 
   assert.ok((await listSessions(options.dbPath, 100)).some((item) => item.id === "opencode-1"), "failed provider keeps old catalog rows");
 });
 
+test("Claude project_path uses first transcript cwd, not later Bash cd drift", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-claude-cwd-"));
+  const claudeHome = path.join(root, "claude");
+  await mkdir(claudeHome, { recursive: true });
+  // Claude keeps the jsonl under the start project folder even after shell cd.
+  await jsonl(path.join(claudeHome, "projects", "-tmp-monorepo", "claude-drift.jsonl"), [
+    {
+      type: "user",
+      sessionId: "claude-drift",
+      cwd: "/tmp/monorepo",
+      timestamp: "2026-01-01T00:00:01Z",
+      message: { content: "start at monorepo root" }
+    },
+    {
+      type: "assistant",
+      sessionId: "claude-drift",
+      cwd: "/tmp/monorepo",
+      timestamp: "2026-01-01T00:00:02Z",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "cd apps/desktop && pnpm test" } }] }
+    },
+    {
+      type: "user",
+      sessionId: "claude-drift",
+      cwd: "/tmp/monorepo/apps/desktop",
+      timestamp: "2026-01-01T00:00:03Z",
+      message: { content: [{ type: "tool_result", content: "ok" }] }
+    },
+    {
+      type: "assistant",
+      sessionId: "claude-drift",
+      cwd: "/tmp/monorepo/apps/desktop",
+      timestamp: "2026-01-01T00:00:04Z",
+      message: { content: "done" }
+    }
+  ]);
+
+  const settings = {
+    panelHome: path.join(root, "panel"),
+    llm: { baseUrl: "http://localhost", model: "test" },
+    embedding: { model: "test" },
+    agentHomes: { claudeHome },
+    sessionSync: { maxItems: 10000, stalePolicy: "off" }
+  };
+  const options = sessionSyncOptionsFromSettings(settings);
+  const result = await syncAgentSessions(options);
+  const session = result.sessions.find((item) => item.id === "claude-drift");
+  assert.equal(session?.projectPath, "/tmp/monorepo");
+  const rows = await runSqliteJson(
+    options.dbPath,
+    "SELECT project_path FROM sessions WHERE provider='claude' AND agent_session_id='claude-drift';"
+  );
+  assert.equal(rows[0]?.project_path, "/tmp/monorepo");
+});
+
 test("keeps Codex ACP threads out of CLI sessions and removes existing catalog duplicates", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-codex-acp-"));
   const homes = {
