@@ -1,4 +1,5 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
+import { ProviderIcon } from "../../components/ProviderIcon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
@@ -1099,7 +1100,7 @@ export function AcpChatView({
           <span className={`wb-acp-status-dot ${connectionStatus}`} aria-hidden="true" />
           <div className="wb-acp-header-text">
             <div className="wb-acp-title">
-              <ThemeIcon name="bot" size={15} aria-hidden="true" />
+              <ProviderIcon provider={provider} size={15} className="wb-acp-title-icon" aria-hidden="true" />
               <span>{headerTitle || t("desktop.workbench.acpChat")}</span>
             </div>
             <div className="wb-acp-meta muted">
@@ -1161,7 +1162,7 @@ export function AcpChatView({
                   >
                     {showSender ? (
                       <div className="chat-sender">
-                        <ThemeIcon name="bot" size={14} aria-hidden="true" />
+                        <ProviderIcon provider={provider} size={14} aria-hidden="true" />
                         {providerLabel(provider, t)}
                       </div>
                     ) : null}
@@ -1253,7 +1254,7 @@ export function AcpChatView({
             <div className="chat-message chat-message-in is-cluster-start is-cluster-end">
               <div className="chat-bubble assistant streaming">
                 <div className="chat-sender">
-                  <ThemeIcon name="bot" size={14} aria-hidden="true" />
+                  <ProviderIcon provider={provider} size={14} aria-hidden="true" />
                   {providerLabel(provider, t)}
                 </div>
                 <div className="chat-body">

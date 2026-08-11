@@ -17,5 +17,14 @@ await esbuild.build({
   minify: true,
   outfile,
   sourcemap: true,
-  logLevel: "info"
+  logLevel: "info",
+  loader: {
+    ".svg": "dataurl",
+    ".ico": "dataurl",
+    ".jpg": "dataurl",
+    ".jpeg": "dataurl",
+    ".png": "dataurl",
+    ".webp": "dataurl",
+    ".gif": "dataurl"
+  }
 });
