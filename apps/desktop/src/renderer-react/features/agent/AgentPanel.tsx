@@ -1,7 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
-import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ReportEntry } from "@agent-resume/core";
+import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ProjectRow, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { renderMarkdown } from "../../components/Markdown";
@@ -46,6 +46,16 @@ const SIDEBAR_COLLAPSED_KEY = "askSidebarCollapsed";
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 260;
+const THREAD_PROJECT_KEY_PREFIX = "agent-thread-project:";
+function threadProjectKey(threadId: string): string {
+  return `${THREAD_PROJECT_KEY_PREFIX}${threadId}`;
+}
+function readThreadProject(threadId: string): string {
+  return localStorage.getItem(threadProjectKey(threadId)) || "";
+}
+function writeThreadProject(threadId: string, value: string): void {
+  localStorage.setItem(threadProjectKey(threadId), value);
+}
 function isNote(citation: AgentCitation): boolean {
   return citation.source === "note" || citation.level === "note";
 }
@@ -221,6 +231,8 @@ export function AgentPanel(): ReactPortal | null {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [tools, setTools] = useState(true);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [projectPath, setProjectPath] = useState("");
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
@@ -246,6 +258,11 @@ export function AgentPanel(): ReactPortal | null {
   const prependScroll = useRef<{ height: number; top: number } | null>(null);
   const stickToBottom = useRef(true);
   const activeThread = useMemo(() => threads.find((thread) => thread.id === threadId), [threadId, threads]);
+  const scopeLabel = useMemo(() => {
+    if (!projectPath) return t("desktop.agent.contextProjectAll");
+    const match = projects.find((project) => (project.localPath || project.portableKey) === projectPath);
+    return match ? (match.alias || match.portableKey) : projectPath;
+  }, [projectPath, projects, t]);
   const pendingApproval = useMemo(() => {
     for (let index = turns.length - 1; index >= 0; index -= 1) {
       const step = (turns[index].toolTrace || []).find((item) => item.kind === "tool" && item.status === "awaiting_approval");
@@ -302,6 +319,7 @@ export function AgentPanel(): ReactPortal | null {
       const selected = saved && next.some((thread) => thread.id === saved) ? saved : next[0]?.id || "";
       setThreads(next);
       setThreadId(selected);
+      setProjectPath(readThreadProject(selected));
       localStorage.setItem("activeAgentThreadId", selected);
       if (selected) await loadMessages(selected);
     } catch (error) {
@@ -318,6 +336,12 @@ export function AgentPanel(): ReactPortal | null {
     } finally {
       setAuditLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.listProjects !== "function") return;
+    void api.listProjects().then(setProjects).catch(() => setProjects([]));
   }, []);
 
   useEffect(() => {
@@ -378,6 +402,7 @@ export function AgentPanel(): ReactPortal | null {
   const selectThread = async (id: string) => {
     if (id === threadId || sending) return;
     setThreadId(id);
+    setProjectPath(readThreadProject(id));
     localStorage.setItem("activeAgentThreadId", id);
     setTurns([]);
     setHasMore(false);
@@ -390,6 +415,7 @@ export function AgentPanel(): ReactPortal | null {
       const thread = await desktopApi().createAgentThread({ title: t("desktop.agent.newThread") });
       setThreads((current) => [thread, ...current]);
       setThreadId(thread.id);
+      setProjectPath("");
       localStorage.setItem("activeAgentThreadId", thread.id);
       setTurns([]);
       setHasMore(false);
@@ -414,6 +440,7 @@ export function AgentPanel(): ReactPortal | null {
     if (!thread || sending || !window.confirm(t("desktop.agent.deleteConfirmSimple", thread.title))) return;
     try {
       await desktopApi().deleteAgentThread({ id });
+      localStorage.removeItem(threadProjectKey(id));
       const next = threads.filter((item) => item.id !== id);
       if (!next.length) {
         const replacement = await desktopApi().createAgentThread({ title: t("desktop.agent.newThread") });
@@ -556,7 +583,7 @@ export function AgentPanel(): ReactPortal | null {
       }
     });
     try {
-      const result = await desktopApi().askAgent({ query, history, threadId, enableTools: tools });
+      const result = await desktopApi().askAgent({ query, history, threadId, enableTools: tools, projectPath: projectPath || undefined });
       const completionText = result.fallback
         ? t("desktop.agent.completeFallback", result.citations.length)
         : t("desktop.agent.completeDone", result.citations.length, result.toolCallsExecuted ? t("desktop.agent.completeToolCalls", result.toolCallsExecuted) : "");
@@ -743,7 +770,7 @@ export function AgentPanel(): ReactPortal | null {
               <div className="chat-compose-frame">
                 <div className="chat-compose-field"><textarea rows={1} value={input} disabled={sending} placeholder={t("desktop.agent.inputPlaceholder")} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} /></div>
                 <div className="chat-compose-toolbar">
-                  <span className="chat-compose-context" title={activeThread?.title || t("desktop.tabs.agent")}><ThemeIcon name="folder" size={16} /><span>{activeThread?.title || t("desktop.tabs.agent")}</span></span>
+                  <span className="chat-compose-context" title={scopeLabel}><ThemeIcon name="folder" size={16} /><select className="chat-compose-context-select" value={projectPath} aria-label={t("desktop.agent.contextProjectTitle")} disabled={sending} onChange={(event) => { const value = event.target.value; setProjectPath(value); if (threadId) writeThreadProject(threadId, value); }}><option value="">{t("desktop.agent.contextProjectAll")}</option>{projects.map((project) => <option key={project.projectId} value={project.localPath || project.portableKey}>{project.alias || project.portableKey}</option>)}</select></span>
                   <span className="chat-compose-toolbar-divider" aria-hidden="true" />
                   <button type="button" className={`chat-tools-toggle${tools ? " active" : ""}`} title={tools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={tools} disabled={sending} onClick={() => { setTools((value) => !value); setStatus({ text: tools ? t("desktop.agent.toolsOffStatus") : t("desktop.agent.toolsOnStatus"), kind: "ok" }); }}><ThemeIcon name="wrench" size={16} /></button>
                   <span className="chat-compose-toolbar-spacer" />

@@ -94,13 +94,14 @@ async function searchSessionsForAsk(options: {
   settings: PanelSettings;
   queryVector?: number[];
   limit: number;
+  projectPath?: string;
 }): Promise<SessionSearchHit[]> {
   const query = options.query.trim();
   if (!query) {
     return [];
   }
   const limit = Math.max(1, Math.min(options.limit, MAX_SESSION_LIMIT));
-  const filters = { query, limit: limit * 2 };
+  const filters = { query, limit: limit * 2, projectPath: options.projectPath };
 
   let keywordHits = await searchCatalogSessions(options.catalogDb, filters);
   // Full-query LIKE is phrase-based; natural-language Ask queries often miss. Fall back to tokens.
@@ -158,6 +159,8 @@ export async function retrieveAgentContext(options: {
   panelHome?: string;
   limit?: number;
   onNoteIndexProgress?: NoteIndexProgressCallback;
+  /** When set, reports/notes/sessions are filtered to this project path. */
+  projectPath?: string;
 }): Promise<RetrieveAgentContextResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
@@ -215,7 +218,8 @@ export async function retrieveAgentContext(options: {
         panelHome: options.panelHome,
         query: options.query,
         limit,
-        queryVector
+        queryVector,
+        projectPath: options.projectPath
       });
       if (hits.length) {
         digests = hits.map((h) => ({ entry: h.entry, score: h.score }));
@@ -228,8 +232,8 @@ export async function retrieveAgentContext(options: {
 
     if (!digests.length) {
       fallback = true;
-      const dailies = await listReportEntries(desktopDb, { level: "daily", limit: Math.ceil(limit / 2) });
-      const weeklies = await listReportEntries(desktopDb, { level: "weekly", limit: Math.ceil(limit / 2) });
+      const dailies = await listReportEntries(desktopDb, { level: "daily", limit: Math.ceil(limit / 2), projectPath: options.projectPath });
+      const weeklies = await listReportEntries(desktopDb, { level: "weekly", limit: Math.ceil(limit / 2), projectPath: options.projectPath });
       const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
       digests = merged.slice(0, limit).map((entry) => ({ entry }));
     }
@@ -245,7 +249,8 @@ export async function retrieveAgentContext(options: {
       limit: exactNoteSearch ? EXACT_NOTE_LIMIT : DEFAULT_NOTE_LIMIT,
       queryVector,
       onIndexProgress: options.onNoteIndexProgress,
-      plan: noteSearchPlan
+      plan: noteSearchPlan,
+      projectPath: options.projectPath
     });
     noteMatchTotal = exactNoteSearch ? (hits[0]?.exactMatchTotal ?? 0) : undefined;
     let remaining = exactNoteSearch ? EXACT_NOTE_CONTEXT_CHARS : NOTE_CONTEXT_CHARS;
@@ -271,7 +276,8 @@ export async function retrieveAgentContext(options: {
         desktopDb,
         settings,
         queryVector,
-        limit: sessionLimit
+        limit: sessionLimit,
+        projectPath: options.projectPath
       });
       let remaining = SESSION_CONTEXT_CHARS;
       for (const hit of hits) {

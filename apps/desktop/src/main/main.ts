@@ -1756,6 +1756,7 @@ function registerIpc(): void {
         history?: Array<{ role: "user" | "assistant"; content: string }>;
         threadId?: string;
         enableTools?: boolean;
+        projectPath?: string;
       }
     ) => {
       activeAskAbort?.abort();
@@ -1769,6 +1770,7 @@ function registerIpc(): void {
           history: args.history,
           threadId: args.threadId,
           enableTools: args.enableTools ?? true,
+          projectPath: args.projectPath,
           systemLocale: app.getLocale(),
           signal,
           requestToolApproval: async (call) => {

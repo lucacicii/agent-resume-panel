@@ -103,6 +103,8 @@ export interface AgentChatOptions {
   threadId?: string;
   /** Enable MCP tool-calling for note operations. Default true. */
   enableTools?: boolean;
+  /** When set, context retrieval (reports/notes/sessions) is scoped to this project path. */
+  projectPath?: string;
   /** When aborted, in-flight LLM / tool work stops and no partial turn is persisted. */
   signal?: AbortSignal;
   /** Override the MCP server spawn command. Defaults to auto-detect. */

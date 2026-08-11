@@ -1,4 +1,4 @@
-export function buildMetaAgentSystemPrompt(outputLanguage: string): string {
+export function buildMetaAgentSystemPrompt(outputLanguage: string, projectPath?: string): string {
   return [
     "You are Meta-Agent for Agent Resume Desktop — a memory-grounded assistant for a developer who uses multiple coding CLIs.",
     "Answer ONLY using the Report Sources, Note Sources, and Session Sources provided. If sources are insufficient, say you do not know from the available reports, notes, and sessions.",
@@ -7,7 +7,10 @@ export function buildMetaAgentSystemPrompt(outputLanguage: string): string {
     "When Note Sources are marked exact, do not substitute Report Sources or infer additional matches; list every exact Note Source provided.",
     "Report Sources are cross-session digests; Session Sources are individual CLI sessions (title/summary previews).",
     "Be concise; use bullet points when listing work items.",
-    `Write in language: ${outputLanguage}.`
+    `Write in language: ${outputLanguage}.`,
+    ...(projectPath
+      ? [`Context is scoped to project ${projectPath}. Answer ONLY from sources belonging to this project.`]
+      : [])
   ].join(" ");
 }
 
@@ -85,9 +88,9 @@ export function formatSessionSourceBlock(input: {
   return `[S${input.index}] session · ${input.title} · ${input.provider}/${input.sessionId}${pathPart}${matchPart}${scorePart}\n${input.content}`;
 }
 
-export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): string {
+export function buildMetaAgentSystemPromptWithTools(outputLanguage: string, projectPath?: string): string {
   return [
-    buildMetaAgentSystemPrompt(outputLanguage),
+    buildMetaAgentSystemPrompt(outputLanguage, projectPath),
     "When the user asks to create, find, or manage notes, use the available tools to perform the action directly.",
     "For note creation, ask the user for any missing required information (title and owner scope, unless a parentNoteId is known) before calling note_create. Use parentNoteId when the user asks to create a child under a Project Note.",
     "For note search or enumeration, use note_search or note_list with owner filters when the project, provider, or session is known. Use limit up to 200 when the user asks for all matching notes; do not pass limits above 200.",
@@ -105,6 +108,9 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string): str
     "Report Sources are cross-session digests; Session Sources and session tools are single-session. Do not invent sessions, providers, or session ids not present in Session Sources or tool results.",
     "Do not generate daily/weekly/monthly digests via tools; direct the user to the Report panel for those actions.",
     "After executing a tool, summarize what was done in a concise sentence.",
-    "Do not pretend to have performed an action if the tool call failed — report the error honestly."
+    "Do not pretend to have performed an action if the tool call failed — report the error honestly.",
+    ...(projectPath
+      ? [`Context is scoped to project ${projectPath}. When using note_search, session_search, session_list, note_list, or report_search, pass projectPath: '${projectPath}' so results stay within this project.`]
+      : [])
   ].join(" ");
 }

@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { sanitizeLikeFragment } from "../catalog/search";
 import { ensureDesktopDbSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "../sqlite";
 import { ReportEntry, ReportLevel } from "./schema";
@@ -148,18 +149,26 @@ export async function readReportEntryById(
 
 export async function listReportEntries(
   dbPath: string,
-  options?: { level?: ReportLevel | string; limit?: number }
+  options?: { level?: ReportLevel | string; limit?: number; projectPath?: string }
 ): Promise<ReportEntry[]> {
   const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
-  const levelClause = options?.level
-    ? `WHERE level = '${escapeSqlLiteral(options.level)}'`
-    : "";
+  const clauses: string[] = [];
+  if (options?.level) {
+    clauses.push(`level = '${escapeSqlLiteral(options.level)}'`);
+  }
+  if (options?.projectPath) {
+    const frag = sanitizeLikeFragment(options.projectPath);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM report_links l WHERE l.report_id = report_entries.id AND l.project_path LIKE '%${escapeSqlLiteral(frag)}%')`
+    );
+  }
+  const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 
   const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
      FROM report_entries
-     ${levelClause}
+     ${whereClause}
      ORDER BY period_start_ms DESC, created_at_ms DESC
      LIMIT ${limit};`
   );

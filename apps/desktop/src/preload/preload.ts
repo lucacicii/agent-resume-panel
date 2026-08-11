@@ -751,6 +751,7 @@ export interface DesktopApi {
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     threadId?: string;
     enableTools?: boolean;
+    projectPath?: string;
   }): Promise<AgentChatResult>;
   cancelAskAgent(): Promise<{ ok: boolean }>;
   respondToolApproval(args: { toolCallId: string; approved: boolean }): Promise<{ ok: boolean }>;

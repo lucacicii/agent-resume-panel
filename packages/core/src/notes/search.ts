@@ -1,8 +1,10 @@
 import * as fs from "node:fs/promises";
+import { sanitizeLikeFragment } from "../catalog/search";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { embedTextsDetailed } from "../llm/embeddings";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import { effectivePanelHome, loadSettings } from "../settings/store";
+import { escapeSqlLiteral } from "../sqlite";
 import { queryNoteChunksWithProjects } from "../sqliteAttach";
 import { recordLlmUsage } from "../usage/store";
 import { cosineSimilarity, parseEmbeddingJson } from "../report/cosine";
@@ -127,14 +129,19 @@ async function searchExactNotesFromDisk(
   dbPath: string,
   panelHome: string,
   plan: NoteSearchPlan,
-  limit: number
+  limit: number,
+  projectPath?: string
 ): Promise<NoteSearchHit[]> {
   await reconcileNotesIndex(dbPath, panelHome);
   const notes = await listAllNotes(dbPath);
+  const projectFrag = projectPath ? sanitizeLikeFragment(projectPath).toLocaleLowerCase() : "";
   const lowerTerms = plan.terms.map((term) => term.toLocaleLowerCase());
   const hits: NoteSearchHit[] = [];
   let totalMatches = 0;
   for (const note of notes) {
+    if (projectFrag && !(note.projectPath || "").toLocaleLowerCase().includes(projectFrag)) {
+      continue;
+    }
     try {
       const raw = await fs.readFile(absFromRelMdPath(panelHome, note.relMdPath), "utf8");
       const body = parseNoteDocument(raw).body;
@@ -188,6 +195,8 @@ export async function searchNotesByEmbedding(options: {
   queryVector?: number[];
   onIndexProgress?: NoteIndexProgressCallback;
   plan?: NoteSearchPlan;
+  /** When set, only notes whose project_path contains this path are considered. */
+  projectPath?: string;
 }): Promise<NoteSearchHit[]> {
   const query = options.query?.trim();
   if (!query) {
@@ -201,7 +210,7 @@ export async function searchNotesByEmbedding(options: {
   const plan = options.plan ?? planNoteSearchDeterministically(query);
   if (plan.mode === "exact") {
     const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, MAX_EXACT_LIMIT));
-    return searchExactNotesFromDisk(catalogDb, panelHome, plan, exactLimit);
+    return searchExactNotesFromDisk(catalogDb, panelHome, plan, exactLimit, options.projectPath);
   }
 
   const embedding = embeddingConfigFromSettings(settings);
@@ -242,6 +251,9 @@ export async function searchNotesByEmbedding(options: {
 
   const candidateLimit = Math.max(1, Math.min(options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT, 10000));
   const hits: NoteSearchHit[] = [];
+  const projectWhere = options.projectPath
+    ? `WHERE n.project_path LIKE '%${escapeSqlLiteral(sanitizeLikeFragment(options.projectPath))}%'`
+    : "";
   for (let offset = 0; offset < candidateLimit; offset += CANDIDATE_PAGE_SIZE) {
     const pageSize = Math.min(CANDIDATE_PAGE_SIZE, candidateLimit - offset);
     const rows = (await queryNoteChunksWithProjects(
@@ -250,6 +262,7 @@ export async function searchNotesByEmbedding(options: {
       `SELECT c.chunk_id, c.note_id, c.rel_md_path, c.scope, c.title, c.heading, c.chunk_index,
               c.content, c.embedding_json, c.updated_at_ms, n.project_path
        FROM note_chunks c LEFT JOIN {catalog}.notes n ON c.note_id = n.note_id
+       ${projectWhere}
        ORDER BY c.updated_at_ms DESC, c.note_id, c.chunk_index
        LIMIT ${pageSize} OFFSET ${offset};`
     )) as unknown as NoteChunkRow[];

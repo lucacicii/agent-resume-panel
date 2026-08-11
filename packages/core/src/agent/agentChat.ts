@@ -60,6 +60,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     query,
     panelHome: options.panelHome || panelHome,
     limit: options.limit,
+    projectPath: options.projectPath,
     onNoteIndexProgress: (progress) =>
       options.onStream?.({
         phase: "indexing_notes",
@@ -137,6 +138,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
       notesSummary,
       sessionsBlock,
       historyBlock,
+      projectPath: options.projectPath,
       desktopDb,
       retrieved,
       executionTrace: retrievalTrace
@@ -150,6 +152,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
     notesSummary,
     sessionsBlock,
     historyBlock,
+    projectPath: options.projectPath,
     desktopDb,
     retrieved,
     executionTrace: retrievalTrace
@@ -163,6 +166,7 @@ interface AskContext {
   notesSummary?: string;
   sessionsBlock?: string;
   historyBlock?: string;
+  projectPath?: string;
   desktopDb: string;
   retrieved: Awaited<ReturnType<typeof retrieveAgentContext>>;
   executionTrace: AgentExecutionStep[];
@@ -175,7 +179,7 @@ async function runAskWithoutTools(
   ctx: AskContext
 ): Promise<AgentChatResult> {
   const messages: ChatMessage[] = [
-    { role: "system", content: buildMetaAgentSystemPrompt(language) },
+    { role: "system", content: buildMetaAgentSystemPrompt(language, ctx.projectPath) },
     {
       role: "user",
       content: buildMetaAgentUserPrompt({
@@ -250,7 +254,7 @@ async function runAskWithTools(
   const settings = await loadSettings(options.panelHome);
   const pt = createUiText(settings, options.systemLocale);
   const messages: ChatMessage[] = [
-    { role: "system", content: buildMetaAgentSystemPromptWithTools(language) },
+    { role: "system", content: buildMetaAgentSystemPromptWithTools(language, ctx.projectPath) },
     {
       role: "user",
       content: buildMetaAgentUserPrompt({
