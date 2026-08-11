@@ -40,6 +40,8 @@ export interface ToolLoopOptions {
   maxTokens?: number;
   maxIterations?: number;
   signal?: AbortSignal;
+  /** When set and non-empty, only these MCP tool names are exposed to and executable by the model. */
+  enabledTools?: string[];
   onToolCall?: (call: { id: string; toolName: string; impact: AgentToolImpact; args: Record<string, unknown> }) => void | Promise<void>;
   onToolResult?: (call: { id: string; toolName: string; impact: AgentToolImpact; result: string; error?: string; status: "succeeded" | "failed" | "rejected"; durationMs: number }) => void | Promise<void>;
   onExecution?: (step: AgentExecutionStep) => void | Promise<void>;
@@ -363,7 +365,11 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     args.length ? `${key} ${args.join(" ")}` : key);
 
   options.onProgress?.(pt("desktop.agent.fetchingTools"));
-  const toolsList = await options.mcpClient.listTools();
+  const allTools = await options.mcpClient.listTools();
+  const allowedTools = options.enabledTools && options.enabledTools.length > 0
+    ? new Set(options.enabledTools)
+    : null;
+  const toolsList = allowedTools ? allTools.filter((t) => allowedTools.has(t.name)) : allTools;
   const tools = convertMcpToolsToOpenAiFormat(toolsList);
   options.onProgress?.(pt("desktop.agent.toolsReady", toolsList.map((t) => t.name).join(", ")));
 
@@ -495,6 +501,19 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       toolTrace.push(step);
       await options.onExecution?.({ ...step });
       await options.onToolCall?.({ id, toolName, impact, args: traceArgs });
+
+      // The model could hallucinate a disabled tool name even though it was not
+      // offered in the `tools` array; never execute it. Mirrors the denial path.
+      if (allowedTools && !allowedTools.has(toolName)) {
+        const denied = `Tool "${toolName}" is not enabled for this conversation. Enable it in the tools menu and resend.`;
+        step.status = "failed";
+        step.result = denied;
+        step.completedAtMs = Date.now();
+        await options.onExecution?.({ ...step });
+        await options.onToolResult?.({ id, toolName, impact, result: denied, status: "failed", durationMs: 0 });
+        messages.push({ role: "tool", content: denied, tool_call_id: toolCall.id, name: toolName });
+        continue;
+      }
 
       if (options.requestToolApproval && impact !== "read") {
         step.status = "awaiting_approval";

@@ -1,7 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
-import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, ProjectRow, ReportEntry } from "@agent-resume/core";
+import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, AgentToolCategory, AgentToolDescriptor, ProjectRow, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { renderMarkdown } from "../../components/Markdown";
@@ -38,6 +38,14 @@ interface ChatContext {
   top: number;
 }
 
+/** Tool selection for a chat thread. */
+type AskToolMode = "auto" | "custom" | "off";
+interface AskToolPrefs {
+  mode: AskToolMode;
+  /** Checked tools; only consulted when mode === "custom". */
+  enabledTools: string[];
+}
+
 const LOCAL_SORT_ORDER_FLOOR = Number.MAX_SAFE_INTEGER - 1000;
 
 const PAGE_SIZE = 40;
@@ -55,6 +63,27 @@ function readThreadProject(threadId: string): string {
 }
 function writeThreadProject(threadId: string, value: string): void {
   localStorage.setItem(threadProjectKey(threadId), value);
+}
+const THREAD_TOOLS_KEY_PREFIX = "agent-thread-tools:";
+function threadToolsKey(threadId: string): string {
+  return `${THREAD_TOOLS_KEY_PREFIX}${threadId}`;
+}
+function readThreadTools(threadId: string): AskToolPrefs {
+  try {
+    const raw = localStorage.getItem(threadToolsKey(threadId));
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AskToolPrefs>;
+      if (parsed.mode === "auto" || parsed.mode === "custom" || parsed.mode === "off") {
+        return { mode: parsed.mode, enabledTools: Array.isArray(parsed.enabledTools) ? parsed.enabledTools : [] };
+      }
+    }
+  } catch {
+    // Corrupt stored value — fall back to the default.
+  }
+  return { mode: "auto", enabledTools: [] };
+}
+function writeThreadTools(threadId: string, prefs: AskToolPrefs): void {
+  localStorage.setItem(threadToolsKey(threadId), JSON.stringify(prefs));
 }
 function isNote(citation: AgentCitation): boolean {
   return citation.source === "note" || citation.level === "note";
@@ -230,7 +259,10 @@ export function AgentPanel(): ReactPortal | null {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [tools, setTools] = useState(true);
+  const [toolPrefs, setToolPrefs] = useState<AskToolPrefs>({ mode: "auto", enabledTools: [] });
+  const [toolsPopoverOpen, setToolsPopoverOpen] = useState(false);
+  const [toolCatalog, setToolCatalog] = useState<AgentToolDescriptor[] | null>(null);
+  const toolsPopoverRef = useRef<HTMLDivElement>(null);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [projectPath, setProjectPath] = useState("");
   const [input, setInput] = useState("");
@@ -263,6 +295,11 @@ export function AgentPanel(): ReactPortal | null {
     const match = projects.find((project) => (project.localPath || project.portableKey) === projectPath);
     return match ? (match.alias || match.portableKey) : projectPath;
   }, [projectPath, projects, t]);
+  const toolsEffectiveOn = toolPrefs.mode === "auto" || (toolPrefs.mode === "custom" && toolPrefs.enabledTools.length > 0);
+  const visibleTools = useMemo(
+    () => toolCatalog ? (projectPath ? toolCatalog : toolCatalog.filter((tool) => tool.category !== "link_graph")) : [],
+    [toolCatalog, projectPath]
+  );
   const pendingApproval = useMemo(() => {
     for (let index = turns.length - 1; index >= 0; index -= 1) {
       const step = (turns[index].toolTrace || []).find((item) => item.kind === "tool" && item.status === "awaiting_approval");
@@ -320,6 +357,8 @@ export function AgentPanel(): ReactPortal | null {
       setThreads(next);
       setThreadId(selected);
       setProjectPath(readThreadProject(selected));
+      setToolPrefs(readThreadTools(selected));
+      setToolsPopoverOpen(false);
       localStorage.setItem("activeAgentThreadId", selected);
       if (selected) await loadMessages(selected);
     } catch (error) {
@@ -398,11 +437,40 @@ export function AgentPanel(): ReactPortal | null {
     window.addEventListener("pointerdown", dismiss);
     return () => window.removeEventListener("pointerdown", dismiss);
   }, []);
+  useEffect(() => {
+    if (!toolsPopoverOpen || toolCatalog) return;
+    let active = true;
+    const api = desktopApi();
+    if (typeof api.listAgentTools !== "function") return;
+    void api.listAgentTools()
+      .then((list) => { if (active) setToolCatalog(list); })
+      .catch(() => { if (active) setToolCatalog([]); });
+    return () => { active = false; };
+  }, [toolsPopoverOpen, toolCatalog]);
+  useEffect(() => {
+    if (!toolsPopoverOpen) return;
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (toolsPopoverRef.current && !toolsPopoverRef.current.contains(event.target as Node)) {
+        setToolsPopoverOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setToolsPopoverOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [toolsPopoverOpen]);
 
   const selectThread = async (id: string) => {
     if (id === threadId || sending) return;
     setThreadId(id);
     setProjectPath(readThreadProject(id));
+    setToolPrefs(readThreadTools(id));
+    setToolsPopoverOpen(false);
     localStorage.setItem("activeAgentThreadId", id);
     setTurns([]);
     setHasMore(false);
@@ -416,6 +484,8 @@ export function AgentPanel(): ReactPortal | null {
       setThreads((current) => [thread, ...current]);
       setThreadId(thread.id);
       setProjectPath("");
+      setToolPrefs({ mode: "auto", enabledTools: [] });
+      setToolsPopoverOpen(false);
       localStorage.setItem("activeAgentThreadId", thread.id);
       setTurns([]);
       setHasMore(false);
@@ -441,6 +511,7 @@ export function AgentPanel(): ReactPortal | null {
     try {
       await desktopApi().deleteAgentThread({ id });
       localStorage.removeItem(threadProjectKey(id));
+      localStorage.removeItem(threadToolsKey(id));
       const next = threads.filter((item) => item.id !== id);
       if (!next.length) {
         const replacement = await desktopApi().createAgentThread({ title: t("desktop.agent.newThread") });
@@ -522,6 +593,7 @@ export function AgentPanel(): ReactPortal | null {
     setInput("");
     setSending(true);
     setStatus({ text: "" });
+    setToolsPopoverOpen(false);
     setTurns([
       ...prefix,
       { id: `local-${Date.now()}`, role: "user", content: query, sortOrder: Number.MAX_SAFE_INTEGER - 1 },
@@ -583,7 +655,14 @@ export function AgentPanel(): ReactPortal | null {
       }
     });
     try {
-      const result = await desktopApi().askAgent({ query, history, threadId, enableTools: tools, projectPath: projectPath || undefined });
+      const result = await desktopApi().askAgent({
+        query,
+        history,
+        threadId,
+        enableTools: toolsEffectiveOn,
+        enabledTools: toolPrefs.mode === "custom" && toolPrefs.enabledTools.length > 0 ? toolPrefs.enabledTools : undefined,
+        projectPath: projectPath || undefined
+      });
       const completionText = result.fallback
         ? t("desktop.agent.completeFallback", result.citations.length)
         : t("desktop.agent.completeDone", result.citations.length, result.toolCallsExecuted ? t("desktop.agent.completeToolCalls", result.toolCallsExecuted) : "");
@@ -772,7 +851,10 @@ export function AgentPanel(): ReactPortal | null {
                 <div className="chat-compose-toolbar">
                   <span className="chat-compose-context" title={scopeLabel}><ThemeIcon name="folder" size={16} /><select className="chat-compose-context-select" value={projectPath} aria-label={t("desktop.agent.contextProjectTitle")} disabled={sending} onChange={(event) => { const value = event.target.value; setProjectPath(value); if (threadId) writeThreadProject(threadId, value); }}><option value="">{t("desktop.agent.contextProjectAll")}</option>{projects.map((project) => <option key={project.projectId} value={project.localPath || project.portableKey}>{project.alias || project.portableKey}</option>)}</select></span>
                   <span className="chat-compose-toolbar-divider" aria-hidden="true" />
-                  <button type="button" className={`chat-tools-toggle${tools ? " active" : ""}`} title={tools ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={tools} disabled={sending} onClick={() => { setTools((value) => !value); setStatus({ text: tools ? t("desktop.agent.toolsOffStatus") : t("desktop.agent.toolsOnStatus"), kind: "ok" }); }}><ThemeIcon name="wrench" size={16} /></button>
+                  <span className="chat-tools-wrap" ref={toolsPopoverRef}>
+                    <button type="button" className={`chat-tools-toggle${toolsEffectiveOn ? " active" : ""}`} title={toolsEffectiveOn ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")} aria-label={t("desktop.agent.toolsToggle")} aria-pressed={toolsEffectiveOn} aria-expanded={toolsPopoverOpen} aria-haspopup="dialog" disabled={sending} onClick={() => setToolsPopoverOpen((value) => !value)}><ThemeIcon name="wrench" size={16} /></button>
+                    {toolsPopoverOpen ? <ToolSettingsPopover prefs={toolPrefs} tools={visibleTools} onPrefsChange={(next) => { setToolPrefs(next); if (threadId) writeThreadTools(threadId, next); }} onClose={() => setToolsPopoverOpen(false)} t={t} /> : null}
+                  </span>
                   <span className="chat-compose-toolbar-spacer" />
                   {sending ? <button type="button" className="chat-send-btn" aria-label={t("desktop.common.cancel")} onClick={() => void cancel()}><ThemeIcon name="square" size={15} /></button> : <button type="button" className="chat-send-btn" aria-label={t("desktop.common.send")} disabled={!input.trim()} onClick={() => void send()}><ThemeIcon name="send" size={18} /></button>}
                 </div>
@@ -794,6 +876,87 @@ export function AgentPanel(): ReactPortal | null {
       <CitationSheet turn={turns.find((turn) => turn.id === citationDrawerTurnId) || null} t={t} onClose={() => setCitationDrawerTurnId(null)} onOpenCitation={openCitation} onResumeSession={resumeCitationSession} />
     </section>,
     host
+  );
+}
+
+const TOOL_CATEGORY_ORDER: AgentToolCategory[] = ["notes", "flow", "reports", "sessions", "projects", "link_graph"];
+
+function ToolSettingsPopover({ prefs, tools, onPrefsChange, onClose, t }: {
+  prefs: AskToolPrefs;
+  tools: AgentToolDescriptor[];
+  onPrefsChange: (next: AskToolPrefs) => void;
+  onClose: () => void;
+  t: Translate;
+}): ReactNode {
+  const selected = new Set(prefs.enabledTools);
+  const toggleTool = (name: string) => {
+    const next = new Set(selected);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    onPrefsChange({ ...prefs, enabledTools: [...next] });
+  };
+  const modeOptions: Array<{ value: AskToolMode; label: string }> = [
+    { value: "auto", label: t("desktop.agent.toolsMode.auto") },
+    { value: "custom", label: t("desktop.agent.toolsMode.custom") },
+    { value: "off", label: t("desktop.agent.toolsMode.off") }
+  ];
+  const categoryLabel: Record<AgentToolCategory, string> = {
+    notes: t("desktop.agent.toolCategory.notes"),
+    flow: t("desktop.agent.toolCategory.flow"),
+    reports: t("desktop.agent.toolCategory.reports"),
+    sessions: t("desktop.agent.toolCategory.sessions"),
+    projects: t("desktop.agent.toolCategory.projects"),
+    link_graph: t("desktop.agent.toolCategory.link_graph")
+  };
+  return (
+    <div className="chat-tools-popover" role="dialog" aria-label={t("desktop.agent.toolsDialogTitle")}>
+      <div className="chat-tools-popover-head">
+        <span className="chat-tools-popover-title">{t("desktop.agent.toolsDialogTitle")}</span>
+        <button type="button" className="icon-btn chat-tools-popover-close" aria-label={t("desktop.common.close")} onClick={onClose}><ThemeIcon name="close" size={14} /></button>
+      </div>
+      <div className="chat-tools-modes" role="tablist" aria-label={t("desktop.agent.toolsModeTitle")}>
+        {modeOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={prefs.mode === option.value}
+            className={`chat-tools-mode${prefs.mode === option.value ? " active" : ""}`}
+            onClick={() => onPrefsChange({ ...prefs, mode: option.value })}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {prefs.mode === "custom" ? (
+        <>
+          <div className="chat-tools-quick-actions">
+            <button type="button" className="ghost-btn" disabled={tools.length === 0} onClick={() => onPrefsChange({ ...prefs, enabledTools: tools.map((tool) => tool.name) })}>{t("desktop.agent.toolsSelectAll")}</button>
+            <button type="button" className="ghost-btn" disabled={tools.length === 0} onClick={() => onPrefsChange({ ...prefs, enabledTools: [] })}>{t("desktop.agent.toolsClearAll")}</button>
+          </div>
+          <div className="chat-tools-scroll">
+            {tools.length === 0 ? <div className="chat-tools-empty-hint">{t("desktop.common.loading")}</div> : TOOL_CATEGORY_ORDER.map((category) => {
+              const items = tools.filter((tool) => tool.category === category);
+              if (!items.length) return null;
+              return (
+                <div key={category} className="chat-tools-category">
+                  <div className="chat-tools-category-label">{categoryLabel[category]}</div>
+                  {items.map((tool) => (
+                    <label key={tool.name} className="chat-tools-item" title={tool.description}>
+                      <input type="checkbox" checked={selected.has(tool.name)} onChange={() => toggleTool(tool.name)} />
+                      <span className="chat-tools-item-name">{tool.name}</span>
+                      <span className="chat-tools-item-desc">{tool.description}</span>
+                    </label>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          {tools.length > 0 && prefs.enabledTools.length === 0 ? <div className="chat-tools-empty-hint">{t("desktop.agent.toolsCustomEmpty")}</div> : null}
+        </>
+      ) : null}
+      {prefs.mode === "auto" ? <div className="chat-tools-foot">{t("desktop.agent.toolsFoot")}</div> : null}
+    </div>
   );
 }
 

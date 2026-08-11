@@ -130,7 +130,8 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
 
   const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 
-  if (options.enableTools ?? true) {
+  const useTools = (options.enableTools ?? true) && (!options.enabledTools || options.enabledTools.length > 0);
+  if (useTools) {
     return runAskWithTools(options, llm, language, desktopDb, panelHome, {
       query,
       sourcesBlock,
@@ -301,6 +302,7 @@ async function runAskWithTools(
       messages,
       mcpClient,
       maxTokens: 4000,
+      enabledTools: options.enabledTools,
       signal: options.signal,
       uiText: pt,
       onProgress: (message, iteration) => {

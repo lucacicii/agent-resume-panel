@@ -19,6 +19,7 @@ import type {
   RunMonthlyDigestResult,
   RunWeeklyDigestResult,
   AgentSessionSyncResult,
+  AgentToolDescriptor,
   GtdEvidence,
   GtdStatus,
   WorkbenchSessionFolder,
@@ -755,8 +756,12 @@ export interface DesktopApi {
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     threadId?: string;
     enableTools?: boolean;
+    /** When set and non-empty, only these MCP tool names are exposed to the model. */
+    enabledTools?: string[];
     projectPath?: string;
   }): Promise<AgentChatResult>;
+  /** Static catalog of Ask chat tools (for the tools popover checklist). */
+  listAgentTools(): Promise<AgentToolDescriptor[]>;
   cancelAskAgent(): Promise<{ ok: boolean }>;
   respondToolApproval(args: { toolCallId: string; approved: boolean }): Promise<{ ok: boolean }>;
   listAgentChat(args?: { limit?: number; threadId?: string }): Promise<{
@@ -1385,6 +1390,7 @@ const api: DesktopApi = {
   },
   searchReports: (args) => ipcRenderer.invoke("report:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
+  listAgentTools: () => ipcRenderer.invoke("agent:listTools"),
   cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
   respondToolApproval: (args) => ipcRenderer.invoke("agent:respondToolApproval", args),
   listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),

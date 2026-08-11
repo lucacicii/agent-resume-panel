@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  AGENT_TOOL_CATALOG,
   runAgentChat,
   clearAgentMessages,
   clearReportJobsByStatus,
@@ -1779,6 +1780,8 @@ function registerIpc(): void {
         history?: Array<{ role: "user" | "assistant"; content: string }>;
         threadId?: string;
         enableTools?: boolean;
+        /** When set and non-empty, only these MCP tool names are exposed to the model. */
+        enabledTools?: string[];
         projectPath?: string;
       }
     ) => {
@@ -1793,6 +1796,7 @@ function registerIpc(): void {
           history: args.history,
           threadId: args.threadId,
           enableTools: args.enableTools ?? true,
+          enabledTools: args.enabledTools,
           projectPath: args.projectPath,
           systemLocale: app.getLocale(),
           signal,
@@ -1875,6 +1879,8 @@ function registerIpc(): void {
       }
     }
   );
+
+  ipcMain.handle("agent:listTools", () => AGENT_TOOL_CATALOG);
 
   ipcMain.handle("agent:cancelAsk", async () => {
     activeAskAbort?.abort();

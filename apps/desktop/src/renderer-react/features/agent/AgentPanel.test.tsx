@@ -6,10 +6,10 @@ import { AgentPanel } from "./AgentPanel";
 
 const thread: AgentThread = { id: "thread-1", title: "Renderer work", createdAtMs: 1, updatedAtMs: 1 };
 
-afterEach(() => { cleanup(); document.getElementById("react-agent")?.remove(); localStorage.removeItem("activeAgentThreadId"); localStorage.removeItem("askSidebarCollapsed"); localStorage.removeItem("sidebar-folders-width"); localStorage.removeItem("agent-thread-project:thread-1"); });
+afterEach(() => { cleanup(); document.getElementById("react-agent")?.remove(); localStorage.removeItem("activeAgentThreadId"); localStorage.removeItem("askSidebarCollapsed"); localStorage.removeItem("sidebar-folders-width"); localStorage.removeItem("agent-thread-project:thread-1"); localStorage.removeItem("agent-thread-tools:thread-1"); });
 
 const messages = {
-  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.contextProjectAll": "All projects", "desktop.agent.contextProjectTitle": "Conversation project", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.citationSessions": "Sessions", "desktop.agent.sessionLevel": "Session", "desktop.agent.openInSessions": "Open in Sessions", "desktop.agent.resumeSession": "Resume", "desktop.agent.resumeStarted": "Resume started: {0} {1}", "desktop.agent.cannotResolveSession": "Cannot resolve session", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationRef": "Citation", "desktop.agent.citationsTitle": "Citations", "desktop.agent.citationsDescription": "Sources used for this answer.", "desktop.agent.citationsEmpty": "No sources", "desktop.agent.citationContent": "Content", "desktop.agent.citationField.source": "Source", "desktop.agent.citationField.level": "Level", "desktop.agent.citationField.operation": "Operation", "desktop.agent.citationField.score": "Score", "desktop.agent.citationField.reportId": "Report ID", "desktop.agent.citationField.noteId": "Note ID", "desktop.agent.citationField.path": "Path", "desktop.agent.citationField.scope": "Scope", "desktop.agent.citationField.heading": "Heading", "desktop.agent.citationField.period": "Source time", "desktop.agent.citationField.session": "Related session", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.previewLoadFailed": "Preview failed: {0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.toolTraceTitle": "Tool activity", "desktop.agent.toolTraceDescription": "Calls made while generating this answer.", "desktop.agent.toolTraceEmpty": "No tool calls were needed for this answer.", "desktop.agent.toolTraceSummary": "{0} tool calls", "desktop.agent.toolTraceLlmRound": "LLM request round {0}", "desktop.agent.toolTraceDuration": "{0} ms", "desktop.agent.toolTraceInput": "Input", "desktop.agent.toolTraceOutput": "Output", "desktop.agent.toolTraceImpact.write": "Write", "desktop.agent.toolTraceStatus.awaiting_approval": "Approval needed", "desktop.agent.toolTraceStatus.succeeded": "Completed", "desktop.agent.executionTraceTitle": "Execution flow", "desktop.agent.executionTraceDescription": "Context retrieval, model requests, and actions used to generate this answer.", "desktop.agent.executionTraceSummary": "Execution flow", "desktop.agent.executionSummary.retrieval": "{0} retrieval", "desktop.agent.executionSummary.tool": "{0} tools", "desktop.agent.executionSummary.llm": "{0} LLM", "desktop.agent.executionSummary.skill": "{0} skills", "desktop.agent.executionGroup.retrieval": "Context retrieval", "desktop.agent.executionGroup.llm": "Model reasoning", "desktop.agent.executionGroup.tool": "Actions", "desktop.agent.executionGroup.skill": "Skills", "desktop.agent.executionCapability.mcp": "MCP", "desktop.agent.executionStep.reportRetrieval": "Report retrieval", "desktop.agent.executionStep.noteRetrieval": "Note retrieval", "desktop.agent.executionStep.sessionRetrieval": "Session retrieval", "desktop.agent.toolApprovalNeeded": "Approval needed: {0}", "desktop.agent.toolApprovalPrompt": "Allow this action?", "desktop.agent.toolApprovalAllow": "Allow", "desktop.agent.toolApprovalDeny": "Deny", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.edit": "Edit", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
+  "desktop.agent.newThread": "New chat", "desktop.agent.newChat": "New chat", "desktop.agent.deleteThreadTitle": "Delete chat", "desktop.agent.renameChat": "Rename", "desktop.agent.audit": "Trace", "desktop.agent.deleteChat": "Delete chat", "desktop.agent.emptyChat": "Start a conversation", "desktop.agent.emptyHint": "Ask about reports", "desktop.agent.inputPlaceholder": "Type a message", "desktop.agent.contextProjectAll": "All projects", "desktop.agent.contextProjectTitle": "Conversation project", "desktop.agent.searchingReports": "Searching", "desktop.agent.statusGenerating": "Generating", "desktop.agent.completeDone": "Done · {0} sources{1}", "desktop.agent.completeFallback": "Done", "desktop.agent.completeToolCalls": " · {0} tools", "desktop.agent.typing": "Typing", "desktop.agent.recentSummary": "Recent summary", "desktop.agent.reportRetrieval": "Memory retrieval", "desktop.agent.citationReports": "Reports", "desktop.agent.citationNotes": "Notes", "desktop.agent.citationSessions": "Sessions", "desktop.agent.sessionLevel": "Session", "desktop.agent.openInSessions": "Open in Sessions", "desktop.agent.resumeSession": "Resume", "desktop.agent.resumeStarted": "Resume started: {0} {1}", "desktop.agent.cannotResolveSession": "Cannot resolve session", "desktop.agent.loadOlder": "Load older", "desktop.agent.renameDialogTitle": "Rename chat", "desktop.agent.deleteConfirmSimple": "Delete {0}?", "desktop.agent.auditTitle": "Trace", "desktop.agent.auditEmpty": "No trace", "desktop.agent.auditUnspecifiedNote": "Untitled", "desktop.agent.indexingNotes": "Indexing notes", "desktop.agent.citationRef": "Citation", "desktop.agent.citationsTitle": "Citations", "desktop.agent.citationsDescription": "Sources used for this answer.", "desktop.agent.citationsEmpty": "No sources", "desktop.agent.citationContent": "Content", "desktop.agent.citationField.source": "Source", "desktop.agent.citationField.level": "Level", "desktop.agent.citationField.operation": "Operation", "desktop.agent.citationField.score": "Score", "desktop.agent.citationField.reportId": "Report ID", "desktop.agent.citationField.noteId": "Note ID", "desktop.agent.citationField.path": "Path", "desktop.agent.citationField.scope": "Scope", "desktop.agent.citationField.heading": "Heading", "desktop.agent.citationField.period": "Source time", "desktop.agent.citationField.session": "Related session", "desktop.agent.citationNoPreview": "No preview{0}", "desktop.agent.previewLoadFailed": "Preview failed: {0}", "desktop.agent.openInNotes": "Open in Notes", "desktop.agent.openInReport": "Open in Memory", "desktop.agent.noteDeleted": "Note deleted", "desktop.agent.cannotResolveNote": "Cannot resolve note", "desktop.agent.cannotResolveReport": "Cannot resolve report", "desktop.agent.resizeSidebar": "Resize sidebar", "desktop.agent.toolsOn": "Tools on", "desktop.agent.toolsOffTitle": "Tools off", "desktop.agent.toolsToggle": "Tools toggle", "desktop.agent.toolsOnStatus": "Tools enabled", "desktop.agent.toolsOffStatus": "Tools disabled", "desktop.agent.toolsDialogTitle": "Tools", "desktop.agent.toolsModeTitle": "Tool mode", "desktop.agent.toolsMode.auto": "Auto", "desktop.agent.toolsMode.custom": "Custom", "desktop.agent.toolsMode.off": "Off", "desktop.agent.toolsSelectAll": "All", "desktop.agent.toolsClearAll": "None", "desktop.agent.toolsCustomEmpty": "No tools selected", "desktop.agent.toolsFoot": "Auto lets the assistant choose", "desktop.agent.toolCategory.notes": "Notes", "desktop.agent.toolCategory.flow": "Flows", "desktop.agent.toolCategory.reports": "Reports", "desktop.agent.toolCategory.sessions": "Sessions", "desktop.agent.toolCategory.projects": "Projects", "desktop.agent.toolCategory.link_graph": "Link graph", "desktop.agent.callingTool": "Calling {0}", "desktop.agent.executingTool": "Executing {0}", "desktop.agent.toolTraceTitle": "Tool activity", "desktop.agent.toolTraceDescription": "Calls made while generating this answer.", "desktop.agent.toolTraceEmpty": "No tool calls were needed for this answer.", "desktop.agent.toolTraceSummary": "{0} tool calls", "desktop.agent.toolTraceLlmRound": "LLM request round {0}", "desktop.agent.toolTraceDuration": "{0} ms", "desktop.agent.toolTraceInput": "Input", "desktop.agent.toolTraceOutput": "Output", "desktop.agent.toolTraceImpact.write": "Write", "desktop.agent.toolTraceStatus.awaiting_approval": "Approval needed", "desktop.agent.toolTraceStatus.succeeded": "Completed", "desktop.agent.executionTraceTitle": "Execution flow", "desktop.agent.executionTraceDescription": "Context retrieval, model requests, and actions used to generate this answer.", "desktop.agent.executionTraceSummary": "Execution flow", "desktop.agent.executionSummary.retrieval": "{0} retrieval", "desktop.agent.executionSummary.tool": "{0} tools", "desktop.agent.executionSummary.llm": "{0} LLM", "desktop.agent.executionSummary.skill": "{0} skills", "desktop.agent.executionGroup.retrieval": "Context retrieval", "desktop.agent.executionGroup.llm": "Model reasoning", "desktop.agent.executionGroup.tool": "Actions", "desktop.agent.executionGroup.skill": "Skills", "desktop.agent.executionCapability.mcp": "MCP", "desktop.agent.executionStep.reportRetrieval": "Report retrieval", "desktop.agent.executionStep.noteRetrieval": "Note retrieval", "desktop.agent.executionStep.sessionRetrieval": "Session retrieval", "desktop.agent.toolApprovalNeeded": "Approval needed: {0}", "desktop.agent.toolApprovalPrompt": "Allow this action?", "desktop.agent.toolApprovalAllow": "Allow", "desktop.agent.toolApprovalDeny": "Deny", "desktop.agent.copied": "Copied", "desktop.agent.copiedAnswer": "Answer copied", "desktop.agent.createFailedPrefix": "Create failed: {0}", "desktop.agent.loadThreadsFailedPrefix": "Load failed: {0}", "desktop.agent.loadChatFailedPrefix": "Load failed: {0}", "desktop.agent.loadOlderFailedPrefix": "Load older failed: {0}", "desktop.agent.deleteFailedPrefix": "Delete failed: {0}", "desktop.agent.renameFailedPrefix": "Rename failed: {0}", "desktop.agent.auditLoading": "Loading trace", "desktop.common.copy": "Copy", "desktop.common.edit": "Edit", "desktop.common.resend": "Resend", "desktop.common.send": "Send", "desktop.common.cancel": "Cancel", "desktop.common.close": "Close", "desktop.common.confirm": "Confirm", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading", "desktop.common.hideSidebar": "Hide sidebar", "desktop.common.showSidebar": "Show sidebar", "desktop.tabs.agent": "Agent"
 };
 
 describe("AgentPanel", () => {
@@ -495,5 +495,107 @@ describe("AgentPanel", () => {
       projectPath: "/Users/me/proj-a"
     })));
     expect(localStorage.getItem("agent-thread-project:thread-1")).toBe("/Users/me/proj-a");
+  });
+
+  const toolCatalog = [
+    { name: "note_search", description: "Search notes", category: "notes" },
+    { name: "note_read", description: "Read a note", category: "notes" },
+    { name: "session_search", description: "Search sessions", category: "sessions" },
+    { name: "link_graph_trace", description: "Trace a symbol", category: "link_graph" }
+  ];
+
+  type AskAgentArgs = { query: string; threadId?: string; enableTools?: boolean; enabledTools?: string[]; projectPath?: string };
+
+  function toolsMock(askAgent: unknown, extra: Record<string, unknown> = {}) {
+    return {
+      getI18nBundle: async () => ({ locale: "en", messages }), onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread], listAgentChat: async () => ({ messages: [], hasMore: false }), listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      listAgentTools: async () => toolCatalog,
+      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }),
+      askAgent, cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined, clearAgentChat: async () => ({ ok: true }),
+      ...extra
+    } as unknown as typeof window.agentResume;
+  }
+
+  it("sends only the checked tools in custom mode", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const askAgent = vi.fn(async (_args: AskAgentArgs) => ({ answer: "", citations: [], fallback: false, digests: [] }));
+    window.agentResume = toolsMock(askAgent);
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+    fireEvent.change(screen.getByPlaceholderText("Type a message"), { target: { value: "Search notes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    fireEvent.click(screen.getByRole("tab", { name: "Custom" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /note_search/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(askAgent).toHaveBeenCalled());
+    const args = askAgent.mock.calls[0]![0]!;
+    expect(args.enableTools).toBe(true);
+    expect(args.enabledTools).toEqual(["note_search"]);
+  });
+
+  it("disables tools in off mode and when custom has nothing checked", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const askAgent = vi.fn(async (_args: AskAgentArgs) => ({ answer: "", citations: [], fallback: false, digests: [] }));
+    window.agentResume = toolsMock(askAgent);
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+    fireEvent.change(screen.getByPlaceholderText("Type a message"), { target: { value: "Anything" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    fireEvent.click(screen.getByRole("tab", { name: "Off" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(askAgent).toHaveBeenCalled());
+    let args = askAgent.mock.calls[0]![0]!;
+    expect(args.enableTools).toBe(false);
+    expect(args.enabledTools).toBeUndefined();
+
+    // Custom with zero checks behaves like off.
+    fireEvent.change(screen.getByPlaceholderText("Type a message"), { target: { value: "Anything again" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    fireEvent.click(screen.getByRole("tab", { name: "Custom" }));
+    await screen.findByRole("checkbox", { name: /note_search/ });
+    const sendEl = screen.getByRole("button", { name: "Send" });
+    fireEvent.click(sendEl);
+    await waitFor(() => expect(askAgent).toHaveBeenCalledTimes(2));
+    args = askAgent.mock.calls[1]![0]!;
+    expect(args.enableTools).toBe(false);
+    expect(args.enabledTools).toBeUndefined();
+  });
+
+  it("persists tool prefs per thread and hides link_graph_trace without a project", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    const threadA = { id: "thread-a", title: "Thread A", createdAtMs: 1, updatedAtMs: 1 };
+    const threadB = { id: "thread-b", title: "Thread B", createdAtMs: 2, updatedAtMs: 2 };
+    const askAgent = vi.fn(async (_args: AskAgentArgs) => ({ answer: "", citations: [], fallback: false, digests: [] }));
+    window.agentResume = toolsMock(askAgent, { listAgentThreads: async () => [threadA, threadB] });
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+
+    // On thread A (no project), pick a custom subset; link_graph_trace must be hidden.
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    fireEvent.click(screen.getByRole("tab", { name: "Custom" }));
+    await screen.findByRole("checkbox", { name: /note_search/ });
+    expect(screen.queryByRole("checkbox", { name: /link_graph_trace/ })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: /note_search/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(localStorage.getItem("agent-thread-tools:thread-a")).toContain("note_search");
+
+    // Thread B starts in auto mode.
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Thread B/ })); });
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    expect(screen.getByRole("tab", { name: "Auto" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    // Back on thread A the custom selection is restored.
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Thread A/ })); });
+    fireEvent.click(screen.getByRole("button", { name: "Tools toggle" }));
+    await screen.findByRole("dialog", { name: "Tools" });
+    expect(screen.getByRole("tab", { name: "Custom" }).getAttribute("aria-selected")).toBe("true");
+    expect((screen.getByRole("checkbox", { name: /note_search/ }) as HTMLInputElement).checked).toBe(true);
   });
 });
