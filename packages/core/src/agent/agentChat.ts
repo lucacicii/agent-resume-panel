@@ -284,7 +284,13 @@ async function runAskWithTools(
       catalogDb: ctx.retrieved.catalogDb,
       resumeSession: options.onResumeSession
         ? async (args) => options.onResumeSession!(args)
-        : undefined
+        : undefined,
+      // link_graph_trace is exposed only when the conversation is project-scoped,
+      // with the selected project as the default workspace root.
+      enableLinkGraphTrace: Boolean(ctx.projectPath),
+      linkGraphWorkspaceRoot: ctx.projectPath,
+      linkGraphSignal: options.signal,
+      linkGraphCompact: true
     });
     await mcpClient.connectInMemory(server);
 

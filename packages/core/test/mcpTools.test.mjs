@@ -10,6 +10,7 @@ import {
   desktopDbPath,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
+  handleLinkGraphTrace,
   insertReportEntry,
   localDayRange,
   NotesStore,
@@ -831,6 +832,25 @@ test("report_search returns a structured response", async () => {
     } else {
       assert.ok(text.includes("No memory digests found"));
     }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("link_graph_trace fails fast when neither workspaceRoot nor a default is provided", async () => {
+  const result = await handleLinkGraphTrace({ symbol: "deliveryNum" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /workspaceRoot is required/);
+});
+
+test("link_graph_trace is hidden when enableLinkGraphTrace is false", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer({ ...ctx, enableLinkGraphTrace: false });
+  const client = await connectClient(server);
+  try {
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    assert.ok(!names.includes("link_graph_trace"));
   } finally {
     await client.close();
     await server.close();

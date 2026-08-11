@@ -110,7 +110,10 @@ export function buildMetaAgentSystemPromptWithTools(outputLanguage: string, proj
     "After executing a tool, summarize what was done in a concise sentence.",
     "Do not pretend to have performed an action if the tool call failed — report the error honestly.",
     ...(projectPath
-      ? [`Context is scoped to project ${projectPath}. When using note_search, session_search, session_list, note_list, or report_search, pass projectPath: '${projectPath}' so results stay within this project.`]
+      ? [
+          `Context is scoped to project ${projectPath}. When using note_search, session_search, session_list, note_list, or report_search, pass projectPath: '${projectPath}' so results stay within this project.`,
+          `For cross-stack field/API/call-chain questions within this project (链路图), call link_graph_trace once with the symbol; workspaceRoot defaults to this project, pass filePath/line when known; use compact results.`
+        ]
       : [])
   ].join(" ");
 }

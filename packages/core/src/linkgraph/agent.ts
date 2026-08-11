@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { chatCompletion } from "../llm/chat";
+import { chatCompletionDetailed } from "../llm/chat";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { loadSettings } from "../settings/store";
 import { expandHome } from "../pathUtils";
@@ -25,23 +25,31 @@ function now(): number {
   return Date.now();
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
 async function llmJson(
   system: string,
   user: string,
-  maxTokens = 800
+  maxTokens = 800,
+  signal?: AbortSignal
 ): Promise<{ ok: boolean; parsed: Record<string, unknown> | null; unconfigured?: boolean; error?: string }> {
   const settings = await loadSettings();
   const llm = llmConfigFromSettings(settings);
   if (!llm) return { ok: false, parsed: null, unconfigured: true, error: "LLM unconfigured" };
   try {
-    const content = await chatCompletion(
+    const content = (await chatCompletionDetailed(
       llm,
       [
         { role: "system", content: system },
         { role: "user", content: user }
       ],
-      maxTokens
-    );
+      maxTokens,
+      signal
+    )).content;
     const raw = String(content || "");
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return { ok: false, parsed: null, error: "no json" };
@@ -211,6 +219,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   const seedLine = Math.max(1, Math.floor(raw.line || 1));
 
   // ─── locate ───
+  throwIfAborted(raw.signal);
   pushTl(timeline, {
     id: "locate",
     phase: "locate",
@@ -229,7 +238,9 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
     });
     const pick = await llmJson(
       'Pick the best seed file for this symbol (form field / page). JSON: {"file":"relative/path","line":1,"thought":"..."}',
-      `Symbol: ${symbol}\nMatches:\n${matches.map((m) => `${m.relativePath}:${m.line} ${m.preview}`).join("\n")}`
+      `Symbol: ${symbol}\nMatches:\n${matches.map((m) => `${m.relativePath}:${m.line} ${m.preview}`).join("\n")}`,
+      undefined,
+      raw.signal
     );
     const f = typeof pick.parsed?.file === "string" ? pick.parsed.file : matches[0]?.relativePath;
     if (f) {
@@ -309,7 +320,9 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
 
   const locateThought = await llmJson(
     'Phase locate. JSON: {"thought":"one sentence about local usage"}',
-    `Symbol ${symbol} in ${seedRel}\n${(await readWindow(seedAbs, firstRef, 20)).text.slice(0, 3000)}`
+    `Symbol ${symbol} in ${seedRel}\n${(await readWindow(seedAbs, firstRef, 20)).text.slice(0, 3000)}`,
+    undefined,
+    raw.signal
   );
   pushTl(timeline, {
     id: "locate",
@@ -321,6 +334,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   }, raw.onTimeline);
 
   // ─── expand_fe ───
+  throwIfAborted(raw.signal);
   pushTl(timeline, {
     id: "expand_fe",
     phase: "expand_fe",
@@ -342,7 +356,9 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
       calls.map((c) => `L${c.line}: ${c.client}.${c.method} :: ${c.preview}`).join("\n") || "(none)",
       "Imports:",
       imports.map((i) => `${i.localName} from ${i.specifier}`).join("\n") || "(none)"
-    ].join("\n")
+    ].join("\n"),
+    undefined,
+    raw.signal
   );
 
   let client =
@@ -463,6 +479,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   }, raw.onTimeline);
 
   // ─── bridge ───
+  throwIfAborted(raw.signal);
   pushTl(timeline, {
     id: "bridge",
     phase: "bridge",
@@ -474,6 +491,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   const uniqueUrls = [...new Set(urls)];
 
   for (const feUrl of uniqueUrls.slice(0, 3)) {
+    throwIfAborted(raw.signal);
     if (Date.now() > deadline) break;
     const segs = feUrl.split("/").filter(Boolean);
     const queries = [
@@ -547,7 +565,8 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
           .map((c) => `[${c.id}] score=${c.score} ${c.relativePath}:${c.line}\n${c.snippet}`)
           .join("\n---\n") || "(none)"
       ].join("\n"),
-      900
+      900,
+      raw.signal
     );
 
     const id = typeof pick.parsed?.candidateId === "string" ? pick.parsed.candidateId : null;
@@ -601,6 +620,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   }, raw.onTimeline);
 
   // ─── expand_be ───
+  throwIfAborted(raw.signal);
   pushTl(timeline, {
     id: "expand_be",
     phase: "expand_be",
@@ -615,7 +635,9 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
         "From this handler, name the request body / query DTO type for the field.",
         'JSON: {"thought":"...","bodyType":"InvoiceDetailQueryVo"|null}'
       ].join("\n"),
-      `Field: ${symbol}\nHandler:\n${handlerText.slice(0, 5000)}`
+      `Field: ${symbol}\nHandler:\n${handlerText.slice(0, 5000)}`,
+      undefined,
+      raw.signal
     );
     let bodyType =
       typeof bePlan.parsed?.bodyType === "string" ? bePlan.parsed.bodyType : null;
@@ -751,6 +773,7 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
   }, raw.onTimeline);
 
   // ─── structure ───
+  throwIfAborted(raw.signal);
   pushTl(timeline, {
     id: "structure",
     phase: "structure",
@@ -782,7 +805,9 @@ export async function runLinkGraphTrace(raw: LinkGraphTraceArgs): Promise<LinkGr
     ].join("\n"),
     `Facts: ${JSON.stringify(facts)}\nDraft: ${summary}\nSteps:\n${steps
       .map((s) => `- ${s.title} @ ${s.file}:${s.line}`)
-      .join("\n")}\nOpenEnds: ${cleanedEnds.map((o) => o.reason).join(", ") || "(none)"}`
+      .join("\n")}\nOpenEnds: ${cleanedEnds.map((o) => o.reason).join(", ") || "(none)"}`,
+    undefined,
+    raw.signal
   );
   if (typeof polish.parsed?.summary === "string" && polish.parsed.summary.trim()) {
     summary = sanitizeLinkGraphSummary(polish.parsed.summary.trim(), facts).slice(0, 800)

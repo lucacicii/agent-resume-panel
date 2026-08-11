@@ -84,6 +84,14 @@ export interface AgentMcpContext extends NoteToolContext {
     external?: boolean;
     error?: string;
   }>;
+  /** Expose link_graph_trace. Default true; Ask sets it to the project-scoped state. */
+  enableLinkGraphTrace?: boolean;
+  /** Default workspaceRoot for link_graph_trace (Ask injects the selected project path). */
+  linkGraphWorkspaceRoot?: string;
+  /** Abort signal forwarded to the link_graph_trace engine (Ask cancel). */
+  linkGraphSignal?: AbortSignal;
+  /** Ask returns a condensed chain+summary instead of the full primaryChain/timeline. */
+  linkGraphCompact?: boolean;
 }
 
 export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
@@ -424,30 +432,38 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     }
   );
 
-  server.registerTool(
-    "link_graph_trace",
-    {
-      description:
-        "Trace a code field/symbol across frontend → API client → HTTP path → backend handler → DTO/VO in one call. "
-        + "An internal LLM agent performs the full search step-by-step; tools only read/search/verify. "
-        + "Use when the user asks for 链路图, call chain, where a form field goes, FE-BE mapping, or API lineage. "
-        + "Requires workspaceRoot + symbol; pass filePath and line when known. Returns structured primaryChain, timeline, summary, openEnds. "
-        + "Requires Agent Resume LLM settings to be configured.",
-      inputSchema: linkGraphTraceSchema
-    },
-    async (args: {
-      workspaceRoot: string;
-      symbol: string;
-      filePath?: string;
-      line?: number;
-      selection?: string;
-      language?: string;
-      backendRoots?: string[];
-      timeBudgetMs?: number;
-    }) => {
-      return handleLinkGraphTrace(args);
-    }
-  );
+  if (ctx.enableLinkGraphTrace !== false) {
+    server.registerTool(
+      "link_graph_trace",
+      {
+        description:
+          "Trace a code field/symbol across frontend → API client → HTTP path → backend handler → DTO/VO in one call. "
+          + "An internal LLM agent performs the full search step-by-step; tools only read/search/verify. "
+          + "Use when the user asks for 链路图, call chain, where a form field goes, FE-BE mapping, or API lineage. "
+          + "Requires symbol; workspaceRoot defaults to the conversation's project when omitted; pass filePath and line when known. "
+          + "Returns a structured primaryChain (or a compact chain when compact is set), summary, and openEnds. "
+          + "Requires Agent Resume LLM settings to be configured.",
+        inputSchema: linkGraphTraceSchema
+      },
+      async (args: {
+        workspaceRoot?: string;
+        symbol: string;
+        filePath?: string;
+        line?: number;
+        selection?: string;
+        language?: string;
+        backendRoots?: string[];
+        timeBudgetMs?: number;
+        compact?: boolean;
+      }) => {
+        return handleLinkGraphTrace(args, {
+          defaultWorkspaceRoot: ctx.linkGraphWorkspaceRoot,
+          signal: ctx.linkGraphSignal,
+          compact: ctx.linkGraphCompact
+        });
+      }
+    );
+  }
 
   return server;
 }
