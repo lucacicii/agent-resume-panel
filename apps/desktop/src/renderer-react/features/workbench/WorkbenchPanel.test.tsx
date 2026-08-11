@@ -3138,6 +3138,86 @@ describe("WorkbenchPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Copy Path" })).toBeNull();
   });
 
+  it("opens the diff file in the editor from the diff head button", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalGitDiffSides = vi.fn(async () => ({
+      oldLabel: "HEAD",
+      newLabel: "Working Tree",
+      oldText: "export const old = true;\n",
+      newText: "export const app = true;\n",
+      hunks: []
+    }));
+    const workbenchInspectFile = vi.fn(async () => ({
+      kind: "text" as const,
+      content: "export const app = true;\n",
+      encoding: "utf8" as const,
+      version: "v1",
+      size: 25,
+      mtimeMs: 1
+    }));
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: "",
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }) as unknown as typeof window.matchMedia;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.common.copyPath": "Copy Path", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileOpen": "Open File", "desktop.workbench.fileOpenDefault": "Open with default app", "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [gitFile],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitDiffSides,
+      workbenchInspectFile
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+
+    fireEvent.click(await screen.findByTitle("src/app.ts"));
+    await waitFor(() => expect(terminalGitDiffSides).toHaveBeenCalledWith({ cwd: "/work/app", path: "src/app.ts", staged: false }));
+    const openButton = await screen.findByRole("button", { name: "Open File" });
+    expect(openButton.closest(".wb-diff-head")).toBeTruthy();
+    fireEvent.click(openButton);
+    await waitFor(() => expect(workbenchInspectFile).toHaveBeenCalledWith({
+      rootPath: "/work/app",
+      filePath: "/work/app/src/app.ts"
+    }));
+    await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
+  });
+
   it("discards a Git file after confirmation and refreshes its status", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -3927,5 +4007,111 @@ describe("WorkbenchPanel", () => {
     const before = xtermMocks.instances[0]!.focusCalls;
     await act(async () => resume("session-c"));
     await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(before));
+  });
+
+  it("refreshes the git tree promptly when project files change on disk", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [gitFile],
+      nestedRepos: [],
+      tracking: []
+    }));
+    let onFileSystemChanged: ((event: {
+      type: "change" | "error";
+      rootPath: string;
+      paths?: string[];
+      fullRescan?: boolean;
+      message?: string;
+      sequence: number;
+    }) => void) | undefined;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSetFileWatch: async () => ({ rootPath: "/work/app" }),
+      onWorkbenchFileSystemChanged: (callback: (event: {
+        type: "change" | "error";
+        rootPath: string;
+        paths?: string[];
+        fullRescan?: boolean;
+        message?: string;
+        sequence: number;
+      }) => void) => {
+        onFileSystemChanged = callback;
+        return () => { onFileSystemChanged = undefined; };
+      },
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
+    // The watch root must be registered so the event below matches the project.
+    await waitFor(() => expect(onFileSystemChanged).toBeDefined());
+    const statusCallsBeforeChange = terminalGitStatus.mock.calls.length;
+
+    // A file change on disk (e.g. after a save) should re-run git status within
+    // the debounce window instead of waiting for the 4s poll.
+    await act(async () => {
+      onFileSystemChanged!({
+        type: "change",
+        rootPath: "/work/app",
+        paths: ["/work/app/src/app.ts"],
+        fullRescan: false,
+        sequence: 1
+      });
+    });
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(statusCallsBeforeChange), { timeout: 2000 });
   });
 });

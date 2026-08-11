@@ -7427,6 +7427,10 @@ code {
   font-weight: 600;
 }
 
+.wb-diff-open {
+  margin-left: auto;
+}
+
 .wb-diff-labels {
   flex: 0 0 auto;
   display: grid;
