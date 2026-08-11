@@ -7761,8 +7761,11 @@ button.wb-pane-tab-group-label.is-busy {
   display: block;
 }
 
-.wb-terminal-tab-label svg {
+.wb-terminal-tab-label svg,
+.wb-terminal-tab-label img {
   flex: 0 0 auto;
+  vertical-align: -0.15em;
+  margin-right: 4px;
 }
 
 .wb-terminal-tab:hover .wb-terminal-tab-label {

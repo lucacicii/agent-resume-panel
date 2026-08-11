@@ -1,40 +1,47 @@
 import type { JSX } from "react";
 import { ThemeIcon } from "./ThemeIcon";
 
-import piIcon from "../assets/providers/pi.svg";
-import opencodeIcon from "../assets/providers/opencode.ico";
-import claudeIcon from "../assets/providers/claude.svg";
-import chatgptIcon from "../assets/providers/chatgpt.svg";
-import cursorIcon from "../assets/providers/cursor.svg";
-import antigravityIcon from "../assets/providers/antigravity.ico";
-import primeIcon from "../assets/providers/prime.jpg";
-import grokIcon from "../assets/providers/grok.svg";
-
 export type ProviderIconProps = {
   provider: string;
   size?: number;
   className?: string;
 };
 
-/** Canonical catalog/ACP ids plus a few aliases used in UI labels. */
-const PROVIDER_ICONS: Record<string, string> = {
-  pi: piIcon,
-  opencode: opencodeIcon,
-  claude: claudeIcon,
+/**
+ * Paths are relative to dist/renderer/index.html (file:// or app package).
+ * Assets are copied from src/renderer/assets by scripts/copy-renderer.cjs.
+ */
+const PROVIDER_ICON_FILES: Record<string, string> = {
+  pi: "./assets/providers/pi.svg",
+  opencode: "./assets/providers/opencode.png",
+  claude: "./assets/providers/claude.svg",
   // Codex uses the ChatGPT product mark.
-  codex: chatgptIcon,
-  chatgpt: chatgptIcon,
-  openai: chatgptIcon,
-  cursor: cursorIcon,
-  "cursor-ide": cursorIcon,
-  agy: antigravityIcon,
-  antigravity: antigravityIcon,
-  prime: primeIcon,
-  grok: grokIcon,
+  codex: "./assets/providers/chatgpt.svg",
+  chatgpt: "./assets/providers/chatgpt.svg",
+  openai: "./assets/providers/chatgpt.svg",
+  cursor: "./assets/providers/cursor.svg",
+  "cursor-ide": "./assets/providers/cursor.svg",
+  agy: "./assets/providers/antigravity.png",
+  antigravity: "./assets/providers/antigravity.png",
+  prime: "./assets/providers/prime.png",
+  grok: "./assets/providers/grok.svg"
 };
 
+function resolveProviderIcon(provider: string | undefined): string | undefined {
+  const key = provider?.toLowerCase()?.trim();
+  if (!key) return undefined;
+  if (PROVIDER_ICON_FILES[key]) return PROVIDER_ICON_FILES[key];
+  // Tolerate values like "cli:codex" / "acp:claude".
+  const colon = key.lastIndexOf(":");
+  if (colon >= 0) {
+    const tail = key.slice(colon + 1);
+    if (PROVIDER_ICON_FILES[tail]) return PROVIDER_ICON_FILES[tail];
+  }
+  return undefined;
+}
+
 export function ProviderIcon({ provider, size = 14, className }: ProviderIconProps): JSX.Element {
-  const iconSrc = PROVIDER_ICONS[provider?.toLowerCase()?.trim()];
+  const iconSrc = resolveProviderIcon(provider);
 
   if (iconSrc) {
     return (
@@ -44,7 +51,8 @@ export function ProviderIcon({ provider, size = 14, className }: ProviderIconPro
         width={size}
         height={size}
         className={className}
-        style={{ objectFit: "contain" }}
+        style={{ objectFit: "contain", display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}
+        draggable={false}
         aria-hidden="true"
       />
     );
