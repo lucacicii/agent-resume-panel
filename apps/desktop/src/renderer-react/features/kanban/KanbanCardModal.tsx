@@ -48,6 +48,7 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
   const [assist, setAssist] = useState<"summary" | "rename" | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [moving, setMoving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!note) return;
@@ -240,6 +241,30 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
     ? note.title || note.filename.replace(/\.md$/i, "") || note.noteId
     : session!.title.trim() || session!.id;
 
+  const deleteNote = async () => {
+    if (!note || deleting) return;
+    let childCount = 0;
+    try {
+      if (typeof desktopApi().notesListChildCounts === "function") {
+        childCount = (await desktopApi().notesListChildCounts())[note.noteId] ?? 0;
+      }
+    } catch { /* child count is best-effort; fall back to the plain confirmation */ }
+    const message = childCount > 0
+      ? t("desktop.notes.deleteWithChildren", title, childCount)
+      : t("desktop.notes.deleteConfirm", title);
+    if (!window.confirm(message)) return;
+    setDeleting(true);
+    try {
+      const result = await desktopApi().notesDelete({ noteId: note.noteId });
+      if (!result.ok) throw new Error("Note deletion failed.");
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      onClose();
+    } catch (error) {
+      setDeleting(false);
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  };
+
   const actions = note ? (
     <>
       {isNoteSessionResumable(note) ? (
@@ -255,6 +280,17 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
       ) : null}
       <button type="button" className="tool-btn" onClick={openInNotes}>
         {t("desktop.agent.openInNotes")}
+      </button>
+      <button
+        type="button"
+        className="tool-btn is-danger"
+        onClick={() => void deleteNote()}
+        disabled={deleting}
+        aria-label={t("desktop.notes.deleteNote")}
+        title={t("desktop.notes.deleteNote")}
+      >
+        <ThemeIcon name="trash" size={14} aria-hidden="true" />
+        {deleting ? t("desktop.notes.deletingNote") : t("desktop.notes.deleteNote")}
       </button>
     </>
   ) : (

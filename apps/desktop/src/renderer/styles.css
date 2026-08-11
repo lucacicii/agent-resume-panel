@@ -524,6 +524,28 @@ textarea:focus-visible,
   flex-wrap: nowrap;
 }
 
+.sheet-actions .tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sheet-actions .tool-btn.is-danger {
+  color: var(--danger) !important;
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent) !important;
+}
+
+.sheet-actions .tool-btn.is-danger:hover:not(:disabled) {
+  color: var(--danger) !important;
+  background: color-mix(in srgb, var(--danger) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent) !important;
+}
+
+.sheet-actions .tool-btn.is-danger:disabled {
+  color: var(--color-label-secondary) !important;
+  border-color: var(--border) !important;
+}
+
 @keyframes sheet-in {
   from {
     transform: translateX(12px);
@@ -4095,6 +4117,24 @@ legend {
   color: var(--text);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.digest-card .digest-body .digest-ref {
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.digest-card .digest-body .digest-ref:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.digest-card .digest-body .digest-ref:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .markdown-body> :first-child {

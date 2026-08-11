@@ -66,7 +66,9 @@ function renderKanban(options: {
   const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note, noteId, gtdStatus: status || undefined }));
   const notesCreate = vi.fn(async () => ({ noteId: "created-kanban", filename: "2026-08-06-01.md" }));
   const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "plan.md", content, updatedAtMs: Date.now() }));
-  const notesResumeSession = vi.fn(async ({ provider, sessionId }: { provider: string; sessionId: string }) => ({
+  const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
+  const notesListChildCounts = vi.fn(async () => ({} as Record<string, number>));
+  const notesResumeSession = vi.fn(async ({ sessionId }: { sessionId: string }) => ({
     ok: true,
     command: `codex resume ${sessionId}`,
     cwd: "/work/agent-resume-panel",
@@ -144,7 +146,9 @@ function renderKanban(options: {
         "desktop.workbench.floatingNoteSaved": "Saved",
         "desktop.workbench.floatingNoteUnsaved": "Unsaved changes",
         "desktop.notes.deleteNote": "Delete note",
+        "desktop.notes.deletingNote": "Deleting…",
         "desktop.notes.deleteConfirm": "Delete note \"{0}\"?",
+        "desktop.notes.deleteWithChildren": "Delete note \"{0}\" and its {1} linked child note(s)?",
         "desktop.workbench.setGtdStatus": "Set GTD status",
         "desktop.workbench.clearGtdStatus": "Clear GTD status",
         "desktop.workbench.gtdStatusSaveFailed": "Could not save GTD status: {0}",
@@ -183,6 +187,8 @@ function renderKanban(options: {
     notesRead,
     notesMove,
     notesWrite,
+    notesDelete,
+    notesListChildCounts,
     notesClipboardHasImage: async () => false,
     notesPasteImage: async () => null,
     previewSession: async () => ({
@@ -200,7 +206,7 @@ function renderKanban(options: {
       <KanbanPanel />
     </I18nProvider>
   );
-  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite, notesResumeSession, notesMove };
+  return { setSessionGtdStatus, notesSetGtdStatus, notesCreate, notesWrite, notesResumeSession, notesMove, notesDelete, notesListChildCounts };
 }
 
 function activate() {
@@ -439,6 +445,56 @@ describe("KanbanPanel", () => {
       owner: { scope: "library" }
     }));
     await waitFor(() => expect((project as HTMLSelectElement).value).toBe(""));
+  });
+
+  it("deletes a note from the preview modal after confirmation and closes it", async () => {
+    const stub = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { notesDelete, notesListChildCounts } = renderKanban();
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete note" }));
+
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
+    expect(notesListChildCounts).toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector(".sheet-modal-panel")).toBeNull());
+    stub.mockRestore();
+  });
+
+  it("aborts deletion when the confirmation is declined", async () => {
+    const stub = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { notesDelete } = renderKanban();
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete note" }));
+
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+    expect(notesDelete).not.toHaveBeenCalled();
+    expect(document.querySelector(".sheet-modal-panel")).not.toBeNull();
+    stub.mockRestore();
+  });
+
+  it("warns about linked child notes when deleting a note with children", async () => {
+    const stub = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { notesDelete } = renderKanban();
+    window.agentResume.notesListChildCounts = async () => ({ "note-1": 3 });
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete note" }));
+
+    await waitFor(() =>
+      expect(window.confirm).toHaveBeenCalledWith("Delete note \"Quarterly plan\" and its 3 linked child note(s)?")
+    );
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
+    stub.mockRestore();
   });
 
   it("opens a session in a centered modal showing only the clicked session's detail", async () => {
