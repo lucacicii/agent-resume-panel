@@ -284,6 +284,16 @@ export async function ensureProjectForPath(
 
   let row = await findProjectByPortableKey(dbPath, portableKey);
   if (!row) {
+    // A path already bound to a project as a local path resolves to that owner.
+    // After a merge the source path becomes a local path of the target, so the
+    // next reconcile must resolve it back to the target instead of re-creating
+    // the merged-away project (which would pull the merged sessions out again).
+    const ownerId = await findProjectIdForAbsolutePath(dbPath, absolute);
+    if (ownerId) {
+      row = await findProjectById(dbPath, ownerId);
+    }
+  }
+  if (!row) {
     const projectId = newProjectId();
     await runSqlite(
       dbPath,

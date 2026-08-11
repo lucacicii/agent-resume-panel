@@ -126,6 +126,47 @@ test("mergeProjectsInCatalog reassigns sessions and removes source", async () =>
   }
 });
 
+test("merge survives reconcile: merged sessions stay in target, source not re-created", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-merge-reconcile-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const pathA = path.join(os.homedir(), "merge-a");
+  const pathB = path.join(os.homedir(), "merge-b");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'm-a', 'A', '${pathA.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'm-b', 'B', '${pathB.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
+    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    assert.ok(a && b && a.projectId !== b.projectId);
+
+    await mergeProjectsInCatalog(dbPath, a.projectId, b.projectId);
+
+    // Periodic session sync re-runs reconcile. The absorbed source path is now
+    // a local path of the target, so it must resolve back to the target instead
+    // of re-creating the merged-away project and pulling sessions back out.
+    await reconcileProjectsFromSessions(dbPath);
+    const after = await listProjects(dbPath);
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathA)), "source project must not be re-created");
+    assert.ok(after.some((p) => p.projectId === b.projectId));
+    const { runSqliteJson } = await import("../dist/index.js");
+    const linked = await runSqliteJson(
+      dbPath,
+      `SELECT COUNT(*) AS c FROM sessions WHERE project_id = '${b.projectId}';`
+    );
+    assert.equal(Number(linked[0].c), 2, "merged sessions must stay in target after reconcile");
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
 test("splitProjectPathInCatalog peels a different portable key path", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-split-"));
   const dbPath = path.join(panelHome, "catalog.db");
