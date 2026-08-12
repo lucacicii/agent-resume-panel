@@ -5875,7 +5875,7 @@ code {
 }
 
 #react-workbench .wb-git-tracking {
-  margin: 6px 10px 2px;
+  margin: 0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -5911,6 +5911,15 @@ code {
 #react-workbench .wb-git-tracking-btn:disabled {
   cursor: default;
   opacity: 0.75;
+}
+
+/* Tracking indicator sits in the commit-action row, after the action buttons,
+   and reads as a separate sync control (counts only, no branch name). */
+#react-workbench .wb-git-commit-actions .wb-git-tracking-btn {
+  margin-left: 8px;
+  padding: 3px 6px;
+  border-left: 1px solid var(--color-separator, var(--border));
+  border-radius: 0;
 }
 
 /* The React tree portal replaces the previous flat change rows while retaining

@@ -984,10 +984,8 @@ function GitChangesPanel({
   const hasEntries = sections.some((section) => section.entries.length > 0);
   const hasSelectedEntries = allEntries.some((change) => selected.has(gitChangeKey(change)));
   const tracking = trackingForRoot(git, gitRoot);
-  const trackingLabel = tracking?.branch
-    ? tracking.upstream
-      ? t("desktop.workbench.gitBranchTracking", tracking.branch, tracking.ahead, tracking.behind)
-      : t("desktop.workbench.gitNoUpstream", tracking.branch)
+  const trackingLabel = tracking?.upstream
+    ? t("desktop.workbench.gitBranchTracking", tracking.ahead, tracking.behind)
     : null;
   const suggestionText = commitSuggestion
     ? commitSuggestion.source === "llm"
@@ -998,18 +996,6 @@ function GitChangesPanel({
     : null;
 
   return createPortal(<><div className="react-git-panel wb-git-panel-layout">
-    {trackingLabel ? <button
-      type="button"
-      className="muted wb-git-tracking wb-git-tracking-btn"
-      title={tracking?.upstream ? `${labels.sync} · ${tracking.upstream}` : labels.sync}
-      aria-label={labels.sync}
-      aria-busy={syncing}
-      disabled={syncing}
-      onClick={onSync}
-    >
-      {syncing ? <ThemeIcon name="loader" size={12} className="spin" aria-hidden="true" /> : null}
-      <span>{trackingLabel}</span>
-    </button> : null}
     <div className="wb-git-changes-scroll">
       {hasEntries ? sections.map((section) => {
         if (!section.entries.length) return null;
@@ -1104,6 +1090,18 @@ function GitChangesPanel({
         >
           <ThemeIcon name="arrow-up-to-line" size={16} />
         </button>
+        {trackingLabel ? <button
+          type="button"
+          className="muted wb-git-tracking wb-git-tracking-btn"
+          title={tracking?.upstream ? `${labels.sync} · ${tracking.upstream}` : labels.sync}
+          aria-label={labels.sync}
+          aria-busy={syncing}
+          disabled={syncing}
+          onClick={onSync}
+        >
+          {syncing ? <ThemeIcon name="loader" size={12} className="spin" aria-hidden="true" /> : null}
+          <span>{trackingLabel}</span>
+        </button> : null}
       </div>
     </div>
   </div>
@@ -2144,6 +2142,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
   const editorsRef = useRef<EditorPane[]>([]);
+  const diffsRef = useRef<DiffPane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const activeRef = useRef(active);
@@ -2178,6 +2177,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { editorsRef.current = editors; }, [editors]);
+  useEffect(() => { diffsRef.current = diffs; }, [diffs]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
@@ -4969,19 +4969,72 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [collectGitRoots, notifyGitFailure, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
 
+  // Re-fetch content for open diff panes whose underlying file changed on disk
+  // so the diff stays live alongside the git tree. `changedPaths` holds the
+  // absolute paths reported by the watcher; pass null to refresh every live
+  // (non-commit) diff pane for the current project.
+  const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
+    if (!selectedProject) return;
+    const projectDiffs = diffsRef.current.filter(
+      (pane) => pane.projectPath === selectedProject && pane.source !== "commit"
+    );
+    if (!projectDiffs.length) return;
+    const targets = changedPaths === null
+      ? projectDiffs
+      : projectDiffs.filter((pane) => changedPaths.has(normalizeWorkbenchPath(gitChangeFilePath(pane))));
+    if (!targets.length) return;
+    await Promise.all(targets.map(async (pane) => {
+      try {
+        const refreshed = await desktopApi().terminalGitDiffSides({
+          cwd: pane.repoRoot,
+          path: pane.repoPath,
+          staged: pane.source === "staged"
+        });
+        if (pane.source !== "untracked" && !refreshed.hunks.length) {
+          // The working-tree/staged change is gone; close the now-empty pane.
+          setDiffs((current) => current.filter((item) => item.key !== pane.key));
+          setActivePanes((current) => {
+            const projectKey = paneProjectKey(selectedProject);
+            return current[projectKey] === pane.key ? { ...current, [projectKey]: "" } : current;
+          });
+        } else {
+          setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
+        }
+      } catch {
+        // Transient failure (file briefly unavailable, repo churn): keep the
+        // last rendered diff; the next change event re-attempts.
+      }
+    }));
+  }, [selectedProject]);
+
   // Refresh the git tree promptly when project files change on disk (saves,
   // external edits, checkouts, discards) instead of waiting for the poll.
   const gitRefreshDebounceRef = useRef(0);
+  // Absolute paths (normalized) of files changed within the debounce window,
+  // so an open diff pane is re-fetched even when several change events coalesce.
+  const gitDiffRefreshPendingRef = useRef<{ paths: Set<string>; fullRescan: boolean }>({
+    paths: new Set(),
+    fullRescan: false
+  });
   useEffect(() => {
     const api = desktopApi();
     if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
     const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
       if (event.type !== "change") return;
       if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
+      const pending = gitDiffRefreshPendingRef.current;
+      if (event.fullRescan || !event.paths.length) {
+        pending.fullRescan = true;
+      } else {
+        for (const changedPath of event.paths) pending.paths.add(normalizeWorkbenchPath(changedPath));
+      }
       if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
       gitRefreshDebounceRef.current = window.setTimeout(() => {
         gitRefreshDebounceRef.current = 0;
+        const { paths, fullRescan } = gitDiffRefreshPendingRef.current;
+        gitDiffRefreshPendingRef.current = { paths: new Set(), fullRescan: false };
         void refreshGit(false);
+        void refreshOpenGitDiffs(fullRescan ? null : paths);
       }, GIT_REFRESH_DEBOUNCE_MS);
     });
     return () => {
@@ -4989,7 +5042,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRefreshDebounceRef.current = 0;
       unsubscribe();
     };
-  }, [refreshGit]);
+  }, [refreshGit, refreshOpenGitDiffs]);
 
   const autoFetchGit = useCallback(async (force = false) => {
     if (!selectedProject || gitFetchInFlightRef.current) return;
@@ -5442,6 +5495,26 @@ export function WorkbenchPanel(): ReactPortal | null {
   const copyGitLogValue = (value: string) => {
     desktopApi().clipboardWriteText?.(value);
     setGitLogContextMenu(null);
+  };
+
+  const revertGitLogCommit = async (commit: GitLogCommit) => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
+    const label = commit.subject || commit.shortHash;
+    if (!window.confirm(t("desktop.workbench.gitRevertConfirm", label))) return;
+    setGitLogContextMenu(null);
+    try {
+      await desktopApi().terminalGitRevert({ repoRoot, hash: commit.hash });
+      notifyGitSuccess("desktop.workbench.gitRevertSucceeded", commit.shortHash);
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitRevertFailed", error);
+    }
   };
 
   const closeGitHistory = () => {
@@ -6266,12 +6339,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       role="menu"
       style={{
         left: Math.max(8, Math.min(gitLogContextMenu.x, window.innerWidth - 220)),
-        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 96 : 56)))
+        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 148 : 104)))
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button type="button" role="menuitem" onClick={() => copyGitLogValue(gitLogContextMenu.commit.hash)}>{t("desktop.workbench.gitCopyCommitHash")}</button>
       {gitLogContextMenu.branchName ? <button type="button" role="menuitem" title={gitLogContextMenu.branchName} onClick={() => copyGitLogValue(gitLogContextMenu.branchName!)}>{t("desktop.workbench.gitCopyBranchName")}</button> : null}
+      <div className="context-menu-separator" role="separator" />
+      <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void revertGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitRevert")}</button>
     </div> : null}
     {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
       <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>

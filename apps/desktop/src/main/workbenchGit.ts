@@ -805,4 +805,21 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
       return queryGitCommitFileDiffSides(repoRoot, args.hash, args.path);
     }
   );
+
+  safeHandle("terminal:gitRevert", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // --no-edit keeps the default revert message; a GUI revert must not block
+      // on an interactive editor. Conflicts leave git in its standard
+      // revert-in-progress state and surface a diagnostic to the caller.
+      await execFileAsync("git", ["-C", repoRoot, "revert", "--no-edit", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
 }
