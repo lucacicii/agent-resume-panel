@@ -1146,8 +1146,18 @@ export function NotesPanel(): ReactPortal | null {
   };
 
   if (!host) return null;
+
+  // The folder-collapse toggle lives in the app header while Notes is active.
+  const headerSlot = document.getElementById("app-header-slot");
+  const collapseToggle = (
+    <button type="button" id="btnNotesToggleFolders" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} title={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} aria-expanded={!foldersCollapsed} onClick={toggleFolders}>
+      <ThemeIcon name="panel-right" size={17} />
+    </button>
+  );
+
   return createPortal(
     <section className="panel active notes-panel react-notes-panel" hidden={!active}>
+      {active && headerSlot && sidebarView === "notes" ? createPortal(collapseToggle, headerSlot) : null}
       <div className="notes-layout">
         <aside className={`sidebar-folders-pane notes-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`} style={{ width: foldersCollapsed ? undefined : foldersWidth }}>
           <div className="sidebar-project-filter-wrap">
@@ -1190,9 +1200,6 @@ export function NotesPanel(): ReactPortal | null {
           {sidebarView === "notes" ? <>
           <div className={`notes-list-toolbar-wrap${target ? " is-target-open" : ""}`}>
             <div ref={listSearchToolbarRef} className={`notes-list-search-wrap${listSearchOpen ? " is-search-open" : ""}`}>
-              <button type="button" id="btnNotesToggleFolders" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} title={t(foldersCollapsed ? "desktop.common.showSidebar" : "desktop.common.hideSidebar")} aria-expanded={!foldersCollapsed} onClick={toggleFolders}>
-                <ThemeIcon name="panel-right" size={17} />
-              </button>
               <button ref={listSearchButtonRef} type="button" className={`notes-icon-btn notes-list-search-btn${listQuery && !listSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={listSearchOpen} aria-controls="notes-list-search" onClick={openListSearch}><ThemeIcon name="search" size={15} /></button>
               <input ref={listSearchRef} id="notes-list-search" type="search" className="notes-search notes-list-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={listQuery} hidden={!listSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => setListQuery(event.target.value)} onKeyDown={(event) => {
                 if (event.key !== "Escape") return;

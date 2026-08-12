@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { collectPreviewSearchRanges, NotesPanel } from "./NotesPanel";
 
@@ -118,10 +118,18 @@ const messages = {
   "desktop.workbench.gtdStatus.done": "Done"
 };
 
+beforeEach(() => {
+  // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
+  const headerSlot = document.createElement("div");
+  headerSlot.id = "app-header-slot";
+  document.body.append(headerSlot);
+});
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
   document.getElementById("react-notes")?.remove();
+  document.getElementById("app-header-slot")?.remove();
 });
 
 function installBridge() {
