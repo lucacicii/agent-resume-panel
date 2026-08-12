@@ -9906,7 +9906,8 @@ textarea.wb-floating-note-editor {
 
 .sidebar-folders-pane.notes-folders-pane.is-collapsed,
 .sidebar-folders-pane.wb-folders-pane.is-collapsed,
-.sidebar-folders-pane.kanban-folders-pane.is-collapsed {
+.sidebar-folders-pane.kanban-folders-pane.is-collapsed,
+.sidebar-folders-pane.agent-sidebar-pane.is-collapsed {
   width: 0;
   min-width: 0;
   overflow: hidden;
