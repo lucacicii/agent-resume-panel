@@ -39,6 +39,7 @@ const providerSchema = z.enum([
   "grok",
   "opencode",
   "pi",
+  "prime",
   "cursor",
   "cursor-ide",
   "chat"

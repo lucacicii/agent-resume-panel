@@ -4,6 +4,7 @@ import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentc
 import * as path from "node:path";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
+import { resolveSpawnCommand } from "./resolveCommand";
 
 import { getAcpSdk } from "./sdk";
 import type { AcpAgentProvider } from "./types";
@@ -45,9 +46,18 @@ export class AcpAgentConnection {
 
     const acp = await getAcpSdk();
     const launch = loadAcpAgentLaunch(this.provider);
-    const env = { ...process.env, ...launch.env };
-    const command = launch.command;
+    // GUI-launched VS Code often lacks fnm/nvm/Homebrew on PATH → spawn ENOENT.
+    const spawnSpec = resolveSpawnCommand(launch.command, process.env, launch.env);
+    const command = spawnSpec.command;
+    const env = spawnSpec.env;
     const args = primeAgentLaunchArgs(this.provider, launch.args, this.projectPath);
+    if (!spawnSpec.resolved && !path.isAbsolute(command) && !command.includes(path.sep)) {
+      throw new Error(
+        `Command not found: ${launch.command}. ` +
+          `Install the agent CLI or set Settings → ACP → ${this.provider} command to an absolute path. ` +
+          `Searched PATH includes Homebrew/fnm/nvm common locations.`
+      );
+    }
     const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
     this.stderrBuffer = "";
     this.process = spawn(command, args, {

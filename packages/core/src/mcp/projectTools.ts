@@ -18,7 +18,7 @@ export interface ProjectToolContext {
 export const PROJECT_LIST_DEFAULT_LIMIT = 100;
 export const PROJECT_LIST_MAX_LIMIT = 200;
 
-const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "chat"]);
+const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "chat"]);
 
 export const projectListSchema = {
   includeHidden: z

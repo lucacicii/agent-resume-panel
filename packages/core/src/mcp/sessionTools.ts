@@ -52,7 +52,7 @@ export const SESSION_READ_MAX_SUMMARY = 16_000;
 export const SESSION_TRANSCRIPT_DEFAULT_MAX = 2500;
 export const SESSION_TRANSCRIPT_MAX = 8000;
 
-const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "chat"]);
+const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "chat"]);
 
 const filterFields = {
   provider: providerEnum.optional().describe("Filter by agent provider."),

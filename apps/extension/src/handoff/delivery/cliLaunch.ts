@@ -49,5 +49,5 @@ function shellQuotePathForPi(filePath: string): string {
   if (/^[A-Za-z0-9_./-]+$/.test(filePath)) {
     return filePath;
   }
-  return shellQuote(filePath).slice(1, -1);
+  return shellQuote(filePath);
 }
