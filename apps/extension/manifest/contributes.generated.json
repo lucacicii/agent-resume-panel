@@ -602,6 +602,10 @@
         "when": "false"
       },
       {
+        "command": "agentResume.newPrimeSession",
+        "when": "false"
+      },
+      {
         "command": "agentResume.newCodexAppSession",
         "when": "false"
       },

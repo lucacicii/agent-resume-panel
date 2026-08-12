@@ -8,6 +8,24 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.11.0]
+
+#### 新增
+
+- **Prime Agent 集成完善**：MCP 工具（`session_search` / `session_list` / `session_read` / `session_read_transcript` / `session_set_gtd` / `session_resume` / `session_move` 及会话级笔记工具）的 `provider` 现接受 `prime`，可在 Claude Code 中检索、读取与迁移 Prime Agent 会话；`New Prime Agent Session` 命令现正确纳入命令面板。
+- **MCP 项目整理与会话迁移**：新增 project tidy（项目整理）与 session move（会话迁移至目录）工具。
+- **链路图工具收敛到 core/MCP**：`link_graph_trace` 等链路图工具在项目限定下可通过 MCP 调用。
+
+#### 改进
+
+- **ACP 命令解析**：GUI 启动的 VS Code（PATH 缺少 Homebrew / fnm / nvm 等常见位置）现在也能定位 `prime-agent` 等 ACP 命令；找不到命令时立即给出明确错误，不再等待 60 秒超时。
+- **Claude 会话归属**：会话归属取会话起始目录，避免 `cd` 漂移到子目录后归属错乱。
+
+#### 修复
+
+- **Prime 会话识别**：修复 MCP provider 枚举遗漏 `prime`，导致 Claude Code 中无法检索 Prime Agent 会话的问题。
+- **Handoff 文件引用**：手递文件路径含空格时不再因引号剥离生成损坏命令。
+
 ### [2.10.0]
 
 #### 新增
@@ -484,6 +502,24 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.11.0]
+
+#### Added
+
+- **Prime Agent integration**: MCP tools (`session_search` / `session_list` / `session_read` / `session_read_transcript` / `session_set_gtd` / `session_resume` / `session_move` and session-scoped note tools) now accept `prime` as `provider`, so Prime Agent sessions can be searched, read, and migrated from Claude Code. The `New Prime Agent Session` command is now correctly wired into the command palette.
+- **MCP project tidy & session move tools**: new project tidy and session move-to-folder tools.
+- **Link-graph tools in core/MCP**: `link_graph_trace` and related tools are available via MCP within a project scope.
+
+#### Improved
+
+- **ACP command resolution**: GUI-launched VS Code (whose PATH lacks Homebrew / fnm / nvm etc.) now finds ACP commands such as `prime-agent`; a missing command fails fast with a clear error instead of a 60s timeout.
+- **Claude session ownership**: sessions are attributed to the directory where they started, so `cd` into a subdirectory no longer misattributes ownership.
+
+#### Fixed
+
+- **Prime session recognition**: the MCP provider enum omitted `prime`, so Prime Agent sessions could not be retrieved from Claude Code; now fixed.
+- **Handoff @file quoting**: handoff file paths containing spaces no longer produce a broken command.
 
 ### [2.10.0]
 
