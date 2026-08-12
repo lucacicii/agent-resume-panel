@@ -72,6 +72,7 @@ export interface DesktopApi {
   }): Promise<TestModelConnectionResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
+  onOpenSessions(callback: () => void): () => void;
   standaloneNoteGetState(): Promise<{ noteId: string; pinned: boolean }>;
   standaloneNoteSetAlwaysOnTop(args: { pinned: boolean }): Promise<{ pinned: boolean }>;
   standaloneNoteClose(): Promise<{ ok: boolean }>;
@@ -1176,6 +1177,11 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
     ipcRenderer.on("settings:navigate", handler);
     return () => ipcRenderer.removeListener("settings:navigate", handler);
+  },
+  onOpenSessions: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("sessions:open", handler);
+    return () => ipcRenderer.removeListener("sessions:open", handler);
   },
   onSettingsChanged: (callback) => {
     const handler = (

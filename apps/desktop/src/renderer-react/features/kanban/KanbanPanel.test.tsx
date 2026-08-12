@@ -224,10 +224,14 @@ describe("KanbanPanel", () => {
     const host = document.createElement("div");
     host.id = "react-kanban";
     document.body.appendChild(host);
+    // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
+    const headerSlot = document.createElement("div");
+    headerSlot.id = "app-header-slot";
+    document.body.appendChild(headerSlot);
   });
   afterEach(() => {
     cleanup();
-    document.querySelectorAll("#react-kanban").forEach((node) => node.remove());
+    document.querySelectorAll("#react-kanban, #app-header-slot").forEach((node) => node.remove());
   });
 
   it("groups sessions and notes into their GTD status columns", async () => {

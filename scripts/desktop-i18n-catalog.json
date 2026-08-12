@@ -84,14 +84,10 @@
       "desktop.kanban.resumeSession": "Run",
       "desktop.kanban.resumeFailed": "Resume failed"
     },
-    "top": {
-      "desktop.top.sessionsRef": "Sessions",
-      "desktop.top.sessionsRefTitle": "Sessions reference",
-      "desktop.top.settings": "Settings",
-      "desktop.top.settingsTitle": "Settings"
-    },
     "menu": {
-      "desktop.menu.settings": "Settings…"
+      "desktop.menu.settings": "Settings…",
+      "desktop.menu.sessions": "Sessions…",
+      "desktop.menu.checkForUpdates": "Check for Updates…"
     },
     "report": {
       "desktop.report.prevMonth": "Previous month",
@@ -1510,12 +1506,6 @@
       "desktop.kanban.resumeSession": "执行",
       "desktop.kanban.resumeFailed": "恢复失败"
     },
-    "top": {
-      "desktop.top.sessionsRef": "Sessions",
-      "desktop.top.sessionsRefTitle": "Sessions 参考",
-      "desktop.top.settings": "设置",
-      "desktop.top.settingsTitle": "设置"
-    },
     "report": {
       "desktop.report.prevMonth": "上月",
       "desktop.report.nextMonth": "下月",
@@ -2782,7 +2772,9 @@
     "desktop.settings.projectMenu.splitDesc": "把某条路径变体拆成独立项目（用于撤销误合并）。至少需要两种路径变体。",
     "desktop.settings.projectMenu.removeDesc": "从面板隐藏该项目及其 session。不删除 Agent 历史、磁盘目录和笔记。",
     "menu": {
-      "desktop.menu.settings": "设置…"
+      "desktop.menu.settings": "设置…",
+      "desktop.menu.sessions": "会话…",
+      "desktop.menu.checkForUpdates": "检查更新…"
     },
     "desktop.settings.summaryAuto": "会话摘要",
     "desktop.settings.summaryAutoEnabled": "自动生成会话摘要",
@@ -2972,13 +2964,6 @@
       "desktop.kanban.noteView": "表示",
       "desktop.kanban.resumeSession": "実行",
       "desktop.kanban.resumeFailed": "再開に失敗しました"
-    },
-    "top": {
-      "desktop.top.sessionsRef": "Sessions",
-      "desktop.top.sessionsRefTitle": "Sessions 参考",
-      "desktop.top.settings": "設定",
-      "desktop.top.settingsTitle": "設定",
-      "desktop.top.settingsUpdateAvailable": "新バージョン {0} あり — についてを開く"
     },
     "report": {
       "desktop.report.prevMonth": "前月",
@@ -4276,7 +4261,9 @@
     "desktop.settings.projectMenu.splitDesc": "あるパス変種を別プロジェクトとして切り離します（誤った統合の取り消し用）。パス変種が 2 つ以上必要です。",
     "desktop.settings.projectMenu.removeDesc": "パネルからこのプロジェクトと session を非表示にします。Agent 履歴・ディスク・ノートは削除しません。",
     "menu": {
-      "desktop.menu.settings": "設定…"
+      "desktop.menu.settings": "設定…",
+      "desktop.menu.sessions": "セッション…",
+      "desktop.menu.checkForUpdates": "アップデートを確認…"
     },
     "desktop.settings.summaryAuto": "セッション要約",
     "desktop.settings.summaryAutoEnabled": "セッション要約を自動生成",

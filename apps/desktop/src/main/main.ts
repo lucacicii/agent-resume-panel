@@ -988,12 +988,26 @@ function openSettingsWindow(options?: { pane?: unknown }): void {
 async function installApplicationMenu(): Promise<void> {
   const settings = await loadSettings();
   const settingsLabel = desktopT(settings, "desktop.menu.settings");
+  const sessionsLabel = desktopT(settings, "desktop.menu.sessions");
+  const checkForUpdatesLabel = desktopT(settings, "desktop.menu.checkForUpdates");
   const isMac = process.platform === "darwin";
 
   const settingsItem: Electron.MenuItemConstructorOptions = {
     label: settingsLabel,
     accelerator: "CommandOrControl+,",
     click: () => openSettingsWindow({ pane: "general" })
+  };
+
+  const sessionsItem: Electron.MenuItemConstructorOptions = {
+    label: sessionsLabel,
+    click: () => {
+      mainWindow?.webContents.send("sessions:open");
+    }
+  };
+
+  const checkForUpdatesItem: Electron.MenuItemConstructorOptions = {
+    label: checkForUpdatesLabel,
+    click: () => openSettingsWindow({ pane: "about" })
   };
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1005,6 +1019,8 @@ async function installApplicationMenu(): Promise<void> {
               { role: "about" as const },
               { type: "separator" as const },
               settingsItem,
+              sessionsItem,
+              checkForUpdatesItem,
               { type: "separator" as const },
               { role: "services" as const },
               { type: "separator" as const },
@@ -1019,7 +1035,13 @@ async function installApplicationMenu(): Promise<void> {
       : [
           {
             label: "File",
-            submenu: [settingsItem, { type: "separator" as const }, { role: "quit" as const }]
+            submenu: [
+              settingsItem,
+              sessionsItem,
+              checkForUpdatesItem,
+              { type: "separator" as const },
+              { role: "quit" as const }
+            ]
           }
         ]),
     { role: "editMenu" },

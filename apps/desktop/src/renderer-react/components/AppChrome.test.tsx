@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../i18n";
 import { AppChrome } from "./AppChrome";
 
-function renderChrome(openSettingsWindow = vi.fn(async () => undefined)) {
+function renderChrome() {
+  let openSessionsHandler: (() => void) | undefined;
   window.agentResume = {
     getI18nBundle: async () => ({
       locale: "en",
@@ -13,14 +14,14 @@ function renderChrome(openSettingsWindow = vi.fn(async () => undefined)) {
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.flow": "Flow",
-        "desktop.tabs.kanban": "Kanban",
-        "desktop.top.sessionsRefTitle": "Sessions",
-        "desktop.top.settingsTitle": "Settings",
-        "desktop.top.settingsUpdateAvailable": "Update {0} is available"
+        "desktop.tabs.kanban": "Kanban"
       }
     }),
     onLocaleChanged: () => () => undefined,
-    openSettingsWindow
+    onOpenSessions: (callback: () => void) => {
+      openSessionsHandler = callback;
+      return () => undefined;
+    }
   } as unknown as typeof window.agentResume;
 
   render(
@@ -28,7 +29,7 @@ function renderChrome(openSettingsWindow = vi.fn(async () => undefined)) {
       <AppChrome />
     </I18nProvider>
   );
-  return { openSettingsWindow };
+  return { getOpenSessionsHandler: () => openSessionsHandler };
 }
 
 describe("AppChrome", () => {
@@ -38,7 +39,6 @@ describe("AppChrome", () => {
     renderChrome();
     const report = await screen.findByRole("button", { name: "Report" });
     expect(report.classList.contains("active")).toBe(true);
-    expect(document.querySelector(".cyber-chrome-breath-line")?.getAttribute("aria-hidden")).toBe("true");
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" }));
@@ -48,50 +48,34 @@ describe("AppChrome", () => {
     );
   });
 
-    it("places Flow immediately after Notes in primary navigation", async () => {
-      renderChrome();
-      await screen.findByRole("button", { name: "Flow" });
-      const labels = [...document.querySelectorAll(".primary-tabs .tab")].map((item) => item.textContent);
-      expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow", "Kanban"]);
-    });
-
-  it("opens settings window without changing primary tab", async () => {
-    const { openSettingsWindow } = renderChrome();
-    const report = await screen.findByRole("button", { name: "Report" });
-    expect(report.classList.contains("active")).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" });
-    expect(screen.getByRole("button", { name: "Report" }).classList.contains("active")).toBe(true);
+  it("places Flow immediately after Notes in primary navigation", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Flow" });
+    const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
+      item.getAttribute("aria-label")
+    );
+    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow", "Kanban"]);
   });
 
-  it("opens about pane from the update button", async () => {
-    const { openSettingsWindow } = renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-
-    await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent("agent-resume:update-change", { detail: { available: true, version: "0.1.5" } })
-      );
-    });
-
-    const updateBtn = await screen.findByRole("button", { name: "Update 0.1.5 is available" });
-    fireEvent.click(updateBtn);
-    expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "about" });
-  });
-
-  it("reflects the update state emitted by the legacy renderer", async () => {
+  it("requests the primary tab when a rail button is clicked", async () => {
     renderChrome();
     await screen.findByRole("button", { name: "Report" });
+    const listener = vi.fn();
+    window.addEventListener("agent-resume:tab-change", listener);
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ detail: "notes" }));
+    window.removeEventListener("agent-resume:tab-change", listener);
+  });
 
-    await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent("agent-resume:update-change", { detail: { available: true, version: "0.1.5" } })
-      );
-    });
-
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Update 0.1.5 is available" })).not.toBeNull()
-    );
+  it("opens the sessions reference when requested from the native menu", async () => {
+    const { getOpenSessionsHandler } = renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    const listener = vi.fn();
+    window.addEventListener("agent-resume:sessions-open", listener);
+    const handler = getOpenSessionsHandler();
+    expect(handler).toBeDefined();
+    await act(async () => handler?.());
+    expect(listener).toHaveBeenCalled();
+    window.removeEventListener("agent-resume:sessions-open", listener);
   });
 });

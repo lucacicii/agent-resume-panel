@@ -8,7 +8,7 @@ import {
   FolderTree, GitBranch, History, LoaderCircle, MessageSquarePlus,
   MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play, Quote,
   RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
-  TerminalSquare, Trash2, Undo2, Upload, Waypoints, Wrench, X,
+  SquareKanban, TerminalSquare, Trash2, Undo2, Upload, Waypoints, Wrench, X,
   type LucideIcon,
   type LucideProps
 } from "lucide-react";
@@ -28,7 +28,8 @@ const ICONS = {
   "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
   "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play,
   quote: Quote, refresh: RefreshCw, save: Save, search: Search, send: Send, settings: Settings,
-  "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, terminal: TerminalSquare,
+  "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban,
+  terminal: TerminalSquare,
   trash: Trash2, undo: Undo2, upload: Upload, waypoints: Waypoints, wrench: Wrench, close: X
 } as const satisfies Record<string, LucideIcon>;
 

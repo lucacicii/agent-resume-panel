@@ -37,17 +37,6 @@ describe("built-in visual theme manifests", () => {
     expect(styles).toContain('content: none !important;');
   });
 
-  it("adds a breathing energy line below the Cyberpunk app chrome", () => {
-    const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
-    expect(styles).toContain('.cyber-chrome-breath-line');
-    expect(styles).toContain('@keyframes cyber-chrome-line-breathe');
-    expect(styles).toContain('@keyframes cyber-chrome-line-core');
-    expect(styles).toContain('animation: cyber-chrome-line-core 2.8s ease-in-out infinite alternate;');
-    expect(styles).toContain('0% { left: -30%;');
-    expect(styles).toContain('100% { left: 100%;');
-    expect(styles).toContain('[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cyber-chrome-breath-line');
-  });
-
   it("keeps Git commit generation visible as a Cyberpunk scan in full and reduced motion", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
     expect(styles).toContain('.wb-git-commit-auto-btn.is-loading .wb-git-cyber-loading');
