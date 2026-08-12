@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession, DigestProgressEvent, ReportEntry } from "@agent-resume/core";
 import { I18nProvider } from "../../i18n";
 import { ReportPanel } from "./ReportPanel";
@@ -98,7 +98,18 @@ function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): ty
   } as unknown as typeof window.agentResume;
 }
 
-afterEach(() => { cleanup(); document.getElementById("react-report")?.remove(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  const headerSlot = document.createElement("div");
+  headerSlot.id = "app-header-slot";
+  document.body.append(headerSlot);
+});
+
+afterEach(() => {
+  cleanup();
+  document.getElementById("react-report")?.remove();
+  document.getElementById("app-header-slot")?.remove();
+  vi.restoreAllMocks();
+});
 
 describe("ReportPanel", () => {
   it("loads the current report, shows session details, and regenerates the focused digest", async () => {

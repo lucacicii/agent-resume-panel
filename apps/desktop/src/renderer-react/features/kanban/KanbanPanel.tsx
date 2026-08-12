@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -102,7 +102,7 @@ export function cardProjectId(card: KanbanCard, projects: CatalogProject[]): str
   return byPath ? byPath.projectId : null;
 }
 
-export function KanbanPanel(): React.JSX.Element | null {
+export function KanbanPanel(): ReactPortal | null {
   const host = document.getElementById("react-kanban");
   const { t } = useI18n();
   const [active, setActive] = useState(false);
@@ -422,227 +422,223 @@ export function KanbanPanel(): React.JSX.Element | null {
     </div>
   );
 
-  return (
-    <>
+  return createPortal(
+    <section className="react-kanban-panel panel" hidden={!active} aria-label={t("desktop.kanban.title")}>
       {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
-      {createPortal(
-        <section className="react-kanban-panel panel" hidden={!active} aria-label={t("desktop.kanban.title")}>
-        <div className="kanban-split">
-          <aside
-            className={`sidebar-folders-pane kanban-folders-pane${sidebarCollapsed ? " is-collapsed" : ""}`}
-            style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
-            aria-label={t("desktop.kanban.projects")}
-          >
-            {!sidebarCollapsed && (
-              <div className="kanban-folders">
-                <label className="sidebar-project-search-wrap">
-                  <input
-                    type="search"
-                    className="sidebar-project-search"
-                    placeholder={t("desktop.notes.filterProjects")}
-                    aria-label={t("desktop.notes.filterProjects")}
-                    value={projectQuery}
-                    onChange={(event) => setProjectQuery(event.target.value)}
-                  />
-                </label>
+      <div className="kanban-split">
+        <aside
+          className={`sidebar-folders-pane kanban-folders-pane${sidebarCollapsed ? " is-collapsed" : ""}`}
+          style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
+          aria-label={t("desktop.kanban.projects")}
+        >
+          {!sidebarCollapsed && (
+            <div className="kanban-folders">
+              <label className="sidebar-project-search-wrap">
+                <input
+                  type="search"
+                  className="sidebar-project-search"
+                  placeholder={t("desktop.notes.filterProjects")}
+                  aria-label={t("desktop.notes.filterProjects")}
+                  value={projectQuery}
+                  onChange={(event) => setProjectQuery(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className={`kanban-folder-row${selectedProjectId === "" ? " active" : ""}`}
+                onClick={() => selectProject("")}
+                aria-label={t("desktop.kanban.allProjects")}
+              >
+                <span className="kanban-folder-label">{t("desktop.kanban.allProjects")}</span>
+                <span className="kanban-folder-count">{sourceFiltered.length}</span>
+              </button>
+              {projectRows.length ? projectRows.map((row) => (
                 <button
                   type="button"
-                  className={`kanban-folder-row${selectedProjectId === "" ? " active" : ""}`}
-                  onClick={() => selectProject("")}
-                  aria-label={t("desktop.kanban.allProjects")}
+                  key={row.project.projectId}
+                  title={row.path}
+                  className={`kanban-folder-row${selectedProjectId === row.project.projectId ? " active" : ""}`}
+                  onClick={() => selectProject(row.project.projectId)}
+                  aria-label={row.label}
                 >
-                  <span className="kanban-folder-label">{t("desktop.kanban.allProjects")}</span>
-                  <span className="kanban-folder-count">{sourceFiltered.length}</span>
+                  {row.project.pinned ? <ThemeIcon name="pin" size={12} className="kanban-folder-pin" aria-hidden="true" /> : null}
+                  <span className="kanban-folder-label">{row.label}</span>
+                  <span className="kanban-folder-count">{row.count}</span>
                 </button>
-                {projectRows.length ? projectRows.map((row) => (
+              )) : <p className="kanban-folder-empty">{t("desktop.kanban.noProjects")}</p>}
+            </div>
+          )}
+        </aside>
+        {!sidebarCollapsed && (
+          <div
+            className="pane-resizer kanban-pane-resizer"
+            role="separator"
+            aria-label={t("desktop.common.showSidebar")}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              let previous = event.clientX;
+              document.body.classList.add("is-pane-resizing");
+              const move = (next: PointerEvent) => {
+                resizeSidebar(next.clientX - previous);
+                previous = next.clientX;
+              };
+              const up = () => {
+                document.body.classList.remove("is-pane-resizing");
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+              };
+              window.addEventListener("pointermove", move);
+              window.addEventListener("pointerup", up);
+            }}
+          />
+        )}
+      <div className="kanban-board">
+        {GTD_STATUSES.map((statusValue) => {
+          const column = byStatus.get(statusValue) || [];
+          const isTarget = dropTarget === statusValue;
+          const isDone = statusValue === "done";
+          const collapsed = isDone && doneCollapsed;
+          return (
+            <div
+              key={statusValue}
+              className={`kanban-column is-${statusValue}${isTarget ? " is-drop-target" : ""}${collapsed ? " is-collapsed" : ""}`}
+              onDragOver={(event) => { event.preventDefault(); setDropTarget(statusValue); }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTarget((current) => current === statusValue ? null : current);
+              }}
+              onDrop={(event) => { event.preventDefault(); onDrop(statusValue); }}
+            >
+              <div className="kanban-column-head">
+                {isDone ? (
                   <button
                     type="button"
-                    key={row.project.projectId}
-                    title={row.path}
-                    className={`kanban-folder-row${selectedProjectId === row.project.projectId ? " active" : ""}`}
-                    onClick={() => selectProject(row.project.projectId)}
-                    aria-label={row.label}
+                    className="kanban-column-toggle"
+                    onClick={toggleDone}
+                    aria-expanded={!collapsed}
+                    aria-label={t(`desktop.workbench.gtdStatus.${statusValue}`)}
                   >
-                    {row.project.pinned ? <ThemeIcon name="pin" size={12} className="kanban-folder-pin" aria-hidden="true" /> : null}
-                    <span className="kanban-folder-label">{row.label}</span>
-                    <span className="kanban-folder-count">{row.count}</span>
+                    <ThemeIcon name={collapsed ? "chevron-right" : "chevron-down"} size={12} aria-hidden="true" />
+                    <span className={`kanban-status-dot is-${statusValue}`} aria-hidden="true" />
+                    <span className="kanban-column-title">{t(`desktop.workbench.gtdStatus.${statusValue}`)}</span>
+                    <span className="kanban-column-count">{column.length}</span>
                   </button>
-                )) : <p className="kanban-folder-empty">{t("desktop.kanban.noProjects")}</p>}
+                ) : (
+                  <>
+                    <span className={`kanban-status-dot is-${statusValue}`} aria-hidden="true" />
+                    <span className="kanban-column-title">{t(`desktop.workbench.gtdStatus.${statusValue}`)}</span>
+                    <span className="kanban-column-count">{column.length}</span>
+                    {source === "notes" ? (
+                      <button
+                        type="button"
+                        className="kanban-column-add-note"
+                        onClick={() => setFloatingNoteTarget(addNoteTarget(statusValue))}
+                        title={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
+                        aria-label={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
+                      >
+                        <ThemeIcon name="file-plus" size={13} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </>
+                )}
+                {isDone && column.length > 0 && (
+                  <button
+                    type="button"
+                    className="kanban-archive-all"
+                    onClick={() => void archiveAllDone()}
+                    title={t("desktop.kanban.archiveAll")}
+                    aria-label={t("desktop.kanban.archiveAll")}
+                  >
+                    <ThemeIcon name="archive" size={13} aria-hidden="true" />
+                  </button>
+                )}
               </div>
-            )}
-          </aside>
-          {!sidebarCollapsed && (
-            <div
-              className="pane-resizer kanban-pane-resizer"
-              role="separator"
-              aria-label={t("desktop.common.showSidebar")}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                let previous = event.clientX;
-                document.body.classList.add("is-pane-resizing");
-                const move = (next: PointerEvent) => {
-                  resizeSidebar(next.clientX - previous);
-                  previous = next.clientX;
-                };
-                const up = () => {
-                  document.body.classList.remove("is-pane-resizing");
-                  window.removeEventListener("pointermove", move);
-                  window.removeEventListener("pointerup", up);
-                };
-                window.addEventListener("pointermove", move);
-                window.addEventListener("pointerup", up);
-              }}
-            />
-          )}
-        <div className="kanban-board">
-          {GTD_STATUSES.map((statusValue) => {
-            const column = byStatus.get(statusValue) || [];
-            const isTarget = dropTarget === statusValue;
-            const isDone = statusValue === "done";
-            const collapsed = isDone && doneCollapsed;
-            return (
-              <div
-                key={statusValue}
-                className={`kanban-column is-${statusValue}${isTarget ? " is-drop-target" : ""}${collapsed ? " is-collapsed" : ""}`}
-                onDragOver={(event) => { event.preventDefault(); setDropTarget(statusValue); }}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTarget((current) => current === statusValue ? null : current);
-                }}
-                onDrop={(event) => { event.preventDefault(); onDrop(statusValue); }}
-              >
-                <div className="kanban-column-head">
-                  {isDone ? (
+              {!collapsed && (
+              <div className="kanban-column-body">
+                {column.map((card) => (
+                  <article
+                    key={card.key}
+                    className={`kanban-card is-${card.kind}${card.status === "done" ? " is-done" : ""}`}
+                    draggable
+                    onDragStart={(event) => {
+                      draggingKey.current = card.key;
+                      event.dataTransfer.setData("text/plain", card.key);
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => { draggingKey.current = null; setDropTarget(null); }}
+                    onClick={() => openCard(card)}
+                    onKeyDown={(event) => { if (event.key === "Enter") openCard(card); }}
+                    tabIndex={0}
+                    role="button"
+                    title={titleOf(card)}
+                  >
                     <button
                       type="button"
-                      className="kanban-column-toggle"
-                      onClick={toggleDone}
-                      aria-expanded={!collapsed}
-                      aria-label={t(`desktop.workbench.gtdStatus.${statusValue}`)}
-                    >
-                      <ThemeIcon name={collapsed ? "chevron-right" : "chevron-down"} size={12} aria-hidden="true" />
-                      <span className={`kanban-status-dot is-${statusValue}`} aria-hidden="true" />
-                      <span className="kanban-column-title">{t(`desktop.workbench.gtdStatus.${statusValue}`)}</span>
-                      <span className="kanban-column-count">{column.length}</span>
-                    </button>
-                  ) : (
-                    <>
-                      <span className={`kanban-status-dot is-${statusValue}`} aria-hidden="true" />
-                      <span className="kanban-column-title">{t(`desktop.workbench.gtdStatus.${statusValue}`)}</span>
-                      <span className="kanban-column-count">{column.length}</span>
-                      {source === "notes" ? (
-                        <button
-                          type="button"
-                          className="kanban-column-add-note"
-                          onClick={() => setFloatingNoteTarget(addNoteTarget(statusValue))}
-                          title={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
-                          aria-label={t("desktop.kanban.addNote", t(`desktop.workbench.gtdStatus.${statusValue}`))}
-                        >
-                          <ThemeIcon name="file-plus" size={13} aria-hidden="true" />
-                        </button>
-                      ) : null}
-                    </>
-                  )}
-                  {isDone && column.length > 0 && (
-                    <button
-                      type="button"
-                      className="kanban-archive-all"
-                      onClick={() => void archiveAllDone()}
-                      title={t("desktop.kanban.archiveAll")}
-                      aria-label={t("desktop.kanban.archiveAll")}
+                      className="kanban-card-archive"
+                      onClick={(event) => { event.stopPropagation(); void archiveCard(card); }}
+                      title={t("desktop.kanban.archive")}
+                      aria-label={t("desktop.kanban.archive")}
                     >
                       <ThemeIcon name="archive" size={13} aria-hidden="true" />
                     </button>
-                  )}
-                </div>
-                {!collapsed && (
-                <div className="kanban-column-body">
-                  {column.map((card) => (
-                    <article
-                      key={card.key}
-                      className={`kanban-card is-${card.kind}${card.status === "done" ? " is-done" : ""}`}
-                      draggable
-                      onDragStart={(event) => {
-                        draggingKey.current = card.key;
-                        event.dataTransfer.setData("text/plain", card.key);
-                        event.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragEnd={() => { draggingKey.current = null; setDropTarget(null); }}
-                      onClick={() => openCard(card)}
-                      onKeyDown={(event) => { if (event.key === "Enter") openCard(card); }}
-                      tabIndex={0}
-                      role="button"
-                      title={titleOf(card)}
-                    >
+                    {card.kind === "note" && isNoteSessionResumable(card.note) && (
                       <button
                         type="button"
-                        className="kanban-card-archive"
-                        onClick={(event) => { event.stopPropagation(); void archiveCard(card); }}
-                        title={t("desktop.kanban.archive")}
-                        aria-label={t("desktop.kanban.archive")}
+                        className="kanban-card-run"
+                        onClick={(event) => { event.stopPropagation(); void resumeNoteSession(card.note); }}
+                        onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}
+                        title={t("desktop.kanban.resumeSession")}
+                        aria-label={t("desktop.kanban.resumeSession")}
                       >
-                        <ThemeIcon name="archive" size={13} aria-hidden="true" />
+                        <ThemeIcon name="play" size={13} aria-hidden="true" />
                       </button>
-                      {card.kind === "note" && isNoteSessionResumable(card.note) && (
-                        <button
-                          type="button"
-                          className="kanban-card-run"
-                          onClick={(event) => { event.stopPropagation(); void resumeNoteSession(card.note); }}
-                          onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}
-                          title={t("desktop.kanban.resumeSession")}
-                          aria-label={t("desktop.kanban.resumeSession")}
-                        >
-                          <ThemeIcon name="play" size={13} aria-hidden="true" />
-                        </button>
-                      )}
-                      <p className="kanban-card-title">{titleOf(card)}</p>
-                      <div className="kanban-card-meta">
-                        <span className="kanban-card-tag">{card.kind === "session" ? card.session.provider : t(`desktop.kanban.scope.${card.note.scope}`)}</span>
-                        <span className="kanban-card-time">{relativeTime(card.kind === "session" ? card.session.updatedAt : card.note.updatedAtMs, t)}</span>
-                      </div>
-                      {card.kind === "session" && card.session.projectPath && (
-                        <p className="kanban-card-sub">{basename(card.session.projectPath)}</p>
-                      )}
-                      {card.kind === "note" && card.note.projectPath && (
-                        <p className="kanban-card-sub">{basename(card.note.projectPath)}</p>
-                      )}
-                    </article>
-                  ))}
-                  {column.length === 0 && (
-                    <p className="kanban-column-empty">{t("desktop.kanban.emptyColumn")}</p>
-                  )}
-                </div>
+                    )}
+                    <p className="kanban-card-title">{titleOf(card)}</p>
+                    <div className="kanban-card-meta">
+                      <span className="kanban-card-tag">{card.kind === "session" ? card.session.provider : t(`desktop.kanban.scope.${card.note.scope}`)}</span>
+                      <span className="kanban-card-time">{relativeTime(card.kind === "session" ? card.session.updatedAt : card.note.updatedAtMs, t)}</span>
+                    </div>
+                    {card.kind === "session" && card.session.projectPath && (
+                      <p className="kanban-card-sub">{basename(card.session.projectPath)}</p>
+                    )}
+                    {card.kind === "note" && card.note.projectPath && (
+                      <p className="kanban-card-sub">{basename(card.note.projectPath)}</p>
+                    )}
+                  </article>
+                ))}
+                {column.length === 0 && (
+                  <p className="kanban-column-empty">{t("desktop.kanban.emptyColumn")}</p>
                 )}
               </div>
-            );
-          })}
-        </div>
-        </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      </div>
 
-        <div className="kanban-status">
-          {total === 0 && !loading ? (
-            <Status>{t("desktop.kanban.empty")}</Status>
-          ) : (
-           <Status kind={status.kind}>{status.text}</Status>
-          )}
-        </div>
-        <KanbanCardModal
-          note={detail?.kind === "note" ? detail.note : null}
-          session={detail?.kind === "session" ? detail.session : null}
-          onClose={() => setDetail(null)}
-          onNoteMoved={(nextNote) => setDetail({ kind: "note", note: nextNote })}
+      <div className="kanban-status">
+        {total === 0 && !loading ? (
+          <Status>{t("desktop.kanban.empty")}</Status>
+        ) : (
+         <Status kind={status.kind}>{status.text}</Status>
+        )}
+      </div>
+      <KanbanCardModal
+        note={detail?.kind === "note" ? detail.note : null}
+        session={detail?.kind === "session" ? detail.session : null}
+        onClose={() => setDetail(null)}
+        onNoteMoved={(nextNote) => setDetail({ kind: "note", note: nextNote })}
+      />
+      {floatingNoteTarget ? (
+        <FloatingSessionNote
+          target={floatingNoteTarget}
+          onClose={() => {
+            setFloatingNoteTarget(null);
+            void load();
+          }}
         />
-        {floatingNoteTarget ? (
-          <FloatingSessionNote
-            target={floatingNoteTarget}
-            onClose={() => {
-              setFloatingNoteTarget(null);
-              void load();
-            }}
-          />
-        ) : null}
-        </section>,
-        host
-      )}
-    </>
+      ) : null}
+    </section>,
+    host
   );
 }

@@ -5895,6 +5895,45 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   if (!host) return null;
+
+  // Detail head + folder-collapse toggle live in the app header while Workbench is active.
+  const headerSlot = document.getElementById("app-header-slot");
+  const collapseToggle = (
+    <button type="button" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t("desktop.workbench.resizeProjects")} onClick={() => setFoldersCollapsed((current) => { const next = !current; localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next)); return next; })}><ThemeIcon name="panel-right" size={17} /></button>
+  );
+  const detailHead = (
+    <div className="wb-detail-head">
+      <span className="wb-detail-project-label">
+        <span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>
+        {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
+      </span>
+      <div className="wb-detail-head-actions">
+        {branchStatusLabel && branchStatusPane ? (
+          <div className="wb-terminal-status">
+            <button
+              type="button"
+              className="wb-terminal-status-branch"
+              title={branchStatusNested
+                ? branchStatusPane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ")
+                : branchStatusLabel}
+              onClick={(event) => void openBranchMenu(branchStatusPane, event.currentTarget)}
+            >
+              <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
+              <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
+            </button>
+          </div>
+        ) : null}
+        <div className="wb-detail-tools">
+          <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><ThemeIcon name="folder-tree" size={16} /></button>
+          <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
+          <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
+          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
+          <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
+        </div>
+      </div>
+    </div>
+  );
+
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
@@ -5934,7 +5973,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
       <aside className="wb-list-pane">
         <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
-          <button type="button" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t("desktop.workbench.resizeProjects")} onClick={() => setFoldersCollapsed((current) => { const next = !current; localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next)); return next; })}><ThemeIcon name="panel-right" size={17} /></button>
           <button ref={sessionSearchButtonRef} type="button" className={`wb-icon-btn wb-session-search-btn${sessionQuery && !sessionSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={sessionSearchOpen} aria-controls="wb-session-search" onClick={openSessionSearch}><ThemeIcon name="search" size={15} /></button>
           <input ref={sessionSearchInputRef} id="wb-session-search" type="search" className="wb-search wb-session-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={sessionQuery} hidden={!sessionSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => setSessionQuery(event.target.value)} onKeyDown={(event) => {
             if (event.key !== "Escape") return;
@@ -5996,36 +6034,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        <div className="wb-detail-head">
-          <span className="wb-detail-project-label">
-            <span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>
-            {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
-          </span>
-          <div className="wb-detail-head-actions">
-            {branchStatusLabel && branchStatusPane ? (
-              <div className="wb-terminal-status">
-                <button
-                  type="button"
-                  className="wb-terminal-status-branch"
-                  title={branchStatusNested
-                    ? branchStatusPane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ")
-                    : branchStatusLabel}
-                  onClick={(event) => void openBranchMenu(branchStatusPane, event.currentTarget)}
-                >
-                  <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
-                  <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
-                </button>
-              </div>
-            ) : null}
-            <div className="wb-detail-tools">
-              <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><ThemeIcon name="folder-tree" size={16} /></button>
-              <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
-              <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
-              <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-              <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
-            </div>
-          </div>
-        </div>
+        {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;

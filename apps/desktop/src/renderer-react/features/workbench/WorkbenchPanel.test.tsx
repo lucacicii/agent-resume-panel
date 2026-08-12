@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import {
   WorkbenchPanel,
@@ -210,6 +210,13 @@ vi.stubGlobal("ResizeObserver", class {
   disconnect() {}
 });
 
+beforeEach(() => {
+  // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
+  const headerSlot = document.createElement("div");
+  headerSlot.id = "app-header-slot";
+  document.body.append(headerSlot);
+});
+
 afterEach(() => {
   cleanup();
   notificationMocks.notifyDesktop.mockClear();
@@ -217,6 +224,7 @@ afterEach(() => {
   xtermMocks.resizeObservers.length = 0;
   xtermMocks.fitDimensions = { cols: 80, rows: 24 };
   document.getElementById("react-workbench")?.remove();
+  document.getElementById("app-header-slot")?.remove();
   localStorage.removeItem("workbench-sidebar-view");
   localStorage.removeItem("workbench-selected-project");
   localStorage.removeItem("workbench-quick-access-project");

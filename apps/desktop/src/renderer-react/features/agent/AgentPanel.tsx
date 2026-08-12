@@ -799,7 +799,20 @@ export function AgentPanel(): ReactPortal | null {
 
   if (!host) return null;
   const sidebarLabel = sidebarCollapsed ? t("desktop.common.showSidebar") : t("desktop.common.hideSidebar");
-  return createPortal(
+  // The toolbar lives in the app header while the Ask view is active.
+  const headerSlot = document.getElementById("app-header-slot");
+  const toolbar = (
+    <div className="toolbar ask-toolbar">
+      {editingThread ? <form className="agent-title-editor" onSubmit={(event) => { event.preventDefault(); void rename(); }}><input value={titleInput} aria-label={t("desktop.agent.renameDialogTitle")} onChange={(event) => setTitleInput(event.target.value)} autoFocus /><button type="submit" className="icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="check" size={16} /></button></form> : <h2 className="quiet-title">{activeThread?.title || t("desktop.tabs.agent")}</h2>}
+      <div className="agent-toolbar-actions">
+        <button type="button" className="ghost-btn" onClick={() => { setTitleInput(activeThread?.title || ""); setEditingThread(true); }} disabled={!activeThread || sending}>{t("desktop.agent.renameChat")}</button>
+        <button type="button" className={`ghost-btn${auditOpen ? " active" : ""}`} aria-pressed={auditOpen} onClick={() => setAuditOpen((value) => !value)}>{t("desktop.agent.audit")}</button>
+        <button type="button" className="ghost-btn" onClick={() => void clearChat()} disabled={!activeThread || sending}>{t("desktop.agent.deleteChat")}</button>
+      </div>
+    </div>
+  );
+
+return createPortal(
     <section className="panel active agent-panel react-agent-panel" hidden={!active} onClick={() => setContext(null)}>
       <div className="agent-layout">
         <aside className={`sidebar-folders-pane agent-sidebar-pane${sidebarCollapsed ? " is-collapsed" : ""}`}>
@@ -819,14 +832,7 @@ export function AgentPanel(): ReactPortal | null {
           resizeSidebar(sidebarWidth + (event.key === "ArrowRight" ? 8 : -8));
         }} />
         <main className="ask-main-pane">
-          <div className="toolbar ask-toolbar">
-            {editingThread ? <form className="agent-title-editor" onSubmit={(event) => { event.preventDefault(); void rename(); }}><input value={titleInput} aria-label={t("desktop.agent.renameDialogTitle")} onChange={(event) => setTitleInput(event.target.value)} autoFocus /><button type="submit" className="icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="check" size={16} /></button></form> : <h2 className="quiet-title">{activeThread?.title || t("desktop.tabs.agent")}</h2>}
-            <div className="agent-toolbar-actions">
-              <button type="button" className="ghost-btn" onClick={() => { setTitleInput(activeThread?.title || ""); setEditingThread(true); }} disabled={!activeThread || sending}>{t("desktop.agent.renameChat")}</button>
-              <button type="button" className={`ghost-btn${auditOpen ? " active" : ""}`} aria-pressed={auditOpen} onClick={() => setAuditOpen((value) => !value)}>{t("desktop.agent.audit")}</button>
-              <button type="button" className="ghost-btn" onClick={() => void clearChat()} disabled={!activeThread || sending}>{t("desktop.agent.deleteChat")}</button>
-            </div>
-          </div>
+          {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
           <div className="ask-chat-shell">
             {indexProgress || status.text || auditOpen ? <div className="agent-chat-notices">
               {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}

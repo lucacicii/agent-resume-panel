@@ -505,20 +505,27 @@ export function FlowPanel(): ReactPortal | null {
     : 0;
 
   if (!host) return null;
+
+  // The toolbar lives in the app header while the Flow view is active.
+  const headerSlot = document.getElementById("app-header-slot");
+  const toolbar = (
+    <div className="flow-toolbar">
+      <div className="flow-toolbar-title">
+        <strong>{t("desktop.flow.title")}</strong>
+        {flow && <span className={`flow-run-badge is-${flow.status}`}>{flow.status}</span>}
+      </div>
+      <div className="flow-toolbar-actions">
+        <button type="button" className="tool-btn" onClick={() => void createFlow()} disabled={busy || !selectedProject}>{t("desktop.flow.newFlow")}</button>
+        <button type="button" className="tool-btn" onClick={() => void saveGraph()} disabled={busy || !flow}>{t("desktop.flow.saved")}</button>
+        <button type="button" className="tool-btn" onClick={() => void runFlow()} disabled={busy || !flow || flow.status === "running"}>{t("desktop.flow.run")}</button>
+        <button type="button" className="tool-btn" onClick={() => void cancelRun()} disabled={busy || !run || run.status !== "running"}>{t("desktop.flow.stop")}</button>
+      </div>
+    </div>
+  );
+
   return createPortal(
     <section className="react-flow-panel panel" hidden={!active}>
-      <div className="flow-toolbar">
-        <div className="flow-toolbar-title">
-          <strong>{t("desktop.flow.title")}</strong>
-          {flow && <span className={`flow-run-badge is-${flow.status}`}>{flow.status}</span>}
-        </div>
-        <div className="flow-toolbar-actions">
-          <button type="button" className="tool-btn" onClick={() => void createFlow()} disabled={busy || !selectedProject}>{t("desktop.flow.newFlow")}</button>
-          <button type="button" className="tool-btn" onClick={() => void saveGraph()} disabled={busy || !flow}>{t("desktop.flow.saved")}</button>
-          <button type="button" className="tool-btn" onClick={() => void runFlow()} disabled={busy || !flow || flow.status === "running"}>{t("desktop.flow.run")}</button>
-          <button type="button" className="tool-btn" onClick={() => void cancelRun()} disabled={busy || !run || run.status !== "running"}>{t("desktop.flow.stop")}</button>
-        </div>
-      </div>
+      {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
       <div className="flow-layout">
         <aside className="flow-sidebar">
           <label className="flow-field">

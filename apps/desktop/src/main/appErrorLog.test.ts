@@ -88,8 +88,11 @@ describe("appErrorLog store", () => {
 
     const listed = await listAppErrors({ limit: 10 });
     expect(listed.length).toBe(3);
-    expect(listed[0]?.message).toContain("sk-[REDACTED]");
-    expect(listed[0]?.detail).toContain("[REDACTED]");
+    // Entries written in the same millisecond share createdAtMs; stable sort keeps
+    // file order among ties, so locate the leaked entry instead of assuming [0].
+    const leaked = listed.find((entry) => entry.message.includes("sk-"));
+    expect(leaked?.message).toContain("sk-[REDACTED]");
+    expect(leaked?.detail).toContain("[REDACTED]");
     expect(listed.map((e) => e.message)).toContain("second");
     expect(listed[0]!.createdAtMs).toBeGreaterThanOrEqual(listed[2]!.createdAtMs);
 

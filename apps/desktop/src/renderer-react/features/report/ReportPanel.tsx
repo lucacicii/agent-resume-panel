@@ -385,18 +385,24 @@ export function ReportPanel(): ReactPortal | null {
   const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} status={previewStatus} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
   const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
   const hasMonthDigest = index.has(`monthly:${monthKey}`);
-  return createPortal(
-    <section className="panel active react-report-panel" hidden={!active}>
-      <div className="toolbar report-toolbar">
-        <div className="cal-nav-left">
-          <button type="button" className="tool-btn" onClick={() => navigate(-1)} title={t("desktop.report.prevMonth")}>‹</button>
-          <select className="quiet-select tool-select cal-year-select" value={view.year} onChange={(event) => { const year = Number(event.target.value); setView({ ...view, year }); selectFocus({ type: "month", key: viewMonthKey(year, view.month) }); }}>{Array.from({ length: 18 }, (_, index) => today.getFullYear() + 2 - index).map((year) => <option key={year} value={year}>{t("desktop.common.yearSuffix", year)}</option>)}</select>
-          <select className="quiet-select tool-select cal-month-select" value={view.month} onChange={(event) => { const month = Number(event.target.value); setView({ ...view, month }); selectFocus({ type: "month", key: viewMonthKey(view.year, month) }); }}>{MONTH_KEYS.map((key, month) => <option key={key} value={month}>{t(key)}</option>)}</select>
-          <button type="button" className="tool-btn" onClick={() => navigate(1)} title={t("desktop.report.nextMonth")}>›</button>
-          <button type="button" className="tool-btn" onClick={() => { const now = new Date(); setView({ year: now.getFullYear(), month: now.getMonth() }); selectFocus({ type: "day", key: dayKeyFromDate(now) }); }}>{t("desktop.common.today")}</button>
+  // The toolbar lives in the app header while the Report view is active.
+  const headerSlot = document.getElementById("app-header-slot");
+  const toolbar = (
+    <div className="toolbar report-toolbar">
+      <div className="cal-nav-left">
+        <button type="button" className="tool-btn" onClick={() => navigate(-1)} title={t("desktop.report.prevMonth")}>‹</button>
+        <select className="quiet-select tool-select cal-year-select" value={view.year} onChange={(event) => { const year = Number(event.target.value); setView({ ...view, year }); selectFocus({ type: "month", key: viewMonthKey(year, view.month) }); }}>{Array.from({ length: 18 }, (_, index) => today.getFullYear() + 2 - index).map((year) => <option key={year} value={year}>{t("desktop.common.yearSuffix", year)}</option>)}</select>
+        <select className="quiet-select tool-select cal-month-select" value={view.month} onChange={(event) => { const month = Number(event.target.value); setView({ ...view, month }); selectFocus({ type: "month", key: viewMonthKey(view.year, month) }); }}>{MONTH_KEYS.map((key, month) => <option key={key} value={month}>{t(key)}</option>)}</select>
+        <button type="button" className="tool-btn" onClick={() => navigate(1)} title={t("desktop.report.nextMonth")}>›</button>
+        <button type="button" className="tool-btn" onClick={() => { const now = new Date(); setView({ year: now.getFullYear(), month: now.getMonth() }); selectFocus({ type: "day", key: dayKeyFromDate(now) }); }}>{t("desktop.common.today")}</button>
         </div>
         <div className="cal-nav-right"><button type="button" className="tool-btn ghost-btn" disabled={monthLoading} onClick={() => void loadMonth()}>{monthLoading ? t("desktop.common.loading") : t("desktop.common.refresh")}</button></div>
-      </div>
+    </div>
+  );
+
+  return createPortal(
+    <section className="panel active react-report-panel" hidden={!active}>
+      {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
       <div className="report-layout">
         <aside className="report-cal-pane"><div className="cal-main">
           <div className="cal-weekdays"><span>{t("desktop.report.weekdayMon")}</span><span>{t("desktop.report.weekdayTue")}</span><span>{t("desktop.report.weekdayWed")}</span><span>{t("desktop.report.weekdayThu")}</span><span>{t("desktop.report.weekdayFri")}</span><span>{t("desktop.report.weekdaySat")}</span><span>{t("desktop.report.weekdaySun")}</span><span className="cal-week-col-head">{t("desktop.report.weekCol")}</span></div>

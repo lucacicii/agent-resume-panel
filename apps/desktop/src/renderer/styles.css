@@ -308,20 +308,31 @@ textarea:focus-visible,
   -webkit-app-region: no-drag;
 }
 
-/* Host for per-tab toolbars rendered into the app header (e.g. Kanban). */
+/* Host for per-tab toolbars rendered into the app header
+   (Report / Ask / Flow / Kanban / Workbench portal their chrome here while active). */
 .mac-top #app-header-slot {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
-.mac-top .kanban-toolbar {
+.mac-top #app-header-slot > .toolbar,
+.mac-top #app-header-slot > .kanban-toolbar,
+.mac-top #app-header-slot > .flow-toolbar,
+.mac-top #app-header-slot > .wb-detail-head {
   flex: 1 1 auto;
   min-width: 0;
+  margin: 0;
   padding: 0;
   border-bottom: none;
   background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.mac-top #app-header-slot > .sidebar-collapse-toggle {
+  flex: 0 0 auto;
   -webkit-app-region: no-drag;
 }
 
@@ -2519,6 +2530,7 @@ main {
 #react-workbench,
 #react-notes,
 #react-flow,
+#react-kanban,
 #react-settings {
   display: contents;
 }
@@ -14295,10 +14307,10 @@ body::before {
   display: none !important;
 }
 
-#react-flow { flex: 1 1 auto; min-width: 0; min-height: 0; }
 #react-flow .react-flow-panel.panel:not([hidden]) {
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) 24px;
+  grid-template-rows: minmax(0, 1fr) 24px;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -14388,10 +14400,10 @@ body::before {
   display: none !important;
 }
 
-#react-kanban { flex: 1 1 auto; min-width: 0; min-height: 0; }
 #react-kanban .react-kanban-panel.panel:not([hidden]) {
   display: grid;
   grid-template-rows: minmax(0, 1fr) 24px;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
