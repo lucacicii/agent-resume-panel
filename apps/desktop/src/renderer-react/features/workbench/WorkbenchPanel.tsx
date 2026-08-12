@@ -2024,9 +2024,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageBoolean(FOLDERS_COLLAPSED_KEY));
-  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 400));
-  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 520));
-  const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 600));
+  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 560));
+  const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 720));
+  const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 840));
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [pendingSessions, setPendingSessions] = useState<PendingWorkbenchSession[]>([]);
   const [terminalCreating, setTerminalCreating] = useState(false);
@@ -5620,7 +5620,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const searchMatchCount = searchMatches.length;
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
-    const limits = kind === "folders" ? [140, 400] : kind === "list" ? [240, 520] : [240, 600];
+    const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
     const next = Math.max(limits[0], Math.min(limits[1], current + delta));
     if (kind === "folders") { setFoldersWidth(next); localStorage.setItem(FOLDERS_WIDTH_KEY, String(next)); }
     else if (kind === "list") { setListWidth(next); localStorage.setItem(LIST_WIDTH_KEY, String(next)); }
