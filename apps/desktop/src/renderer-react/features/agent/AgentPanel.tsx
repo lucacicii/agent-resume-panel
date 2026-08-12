@@ -799,8 +799,14 @@ export function AgentPanel(): ReactPortal | null {
 
   if (!host) return null;
   const sidebarLabel = sidebarCollapsed ? t("desktop.common.showSidebar") : t("desktop.common.hideSidebar");
-  // The toolbar lives in the app header while the Ask view is active.
+  // The toolbar and the folders-header buttons live in the app header while Ask is active.
   const headerSlot = document.getElementById("app-header-slot");
+  const foldersHeaderButtons = (
+    <>
+      <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><ThemeIcon name="message-square-plus" size={17} /></button>
+      <button type="button" className="sidebar-collapse-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}><ThemeIcon name="panel-right" size={17} /></button>
+    </>
+  );
   const toolbar = (
     <div className="toolbar ask-toolbar">
       {editingThread ? <form className="agent-title-editor" onSubmit={(event) => { event.preventDefault(); void rename(); }}><input value={titleInput} aria-label={t("desktop.agent.renameDialogTitle")} onChange={(event) => setTitleInput(event.target.value)} autoFocus /><button type="submit" className="icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="check" size={16} /></button></form> : <h2 className="quiet-title">{activeThread?.title || t("desktop.tabs.agent")}</h2>}
@@ -814,12 +820,9 @@ export function AgentPanel(): ReactPortal | null {
 
 return createPortal(
     <section className="panel active agent-panel react-agent-panel" hidden={!active} onClick={() => setContext(null)}>
+      {active && headerSlot ? createPortal(foldersHeaderButtons, headerSlot) : null}
       <div className="agent-layout">
         <aside className={`sidebar-folders-pane agent-sidebar-pane${sidebarCollapsed ? " is-collapsed" : ""}`}>
-          <div className="sidebar-folders-header">
-            <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><ThemeIcon name="message-square-plus" size={17} /></button>
-            <button type="button" className="sidebar-collapse-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}><ThemeIcon name="panel-right" size={17} /></button>
-          </div>
           <div className="agent-sidebar-list">{threads.map((thread) => <div className={`ask-thread-row${thread.id === threadId ? " active" : ""}`} key={thread.id}>
             <button type="button" className="ask-thread-row-select" onClick={() => void selectThread(thread.id)}><span className="ask-thread-row-label" title={thread.title}>{thread.title}</span></button>
             <button type="button" className="ask-thread-row-delete" title={t("desktop.agent.deleteThreadTitle")} aria-label={t("desktop.agent.deleteThreadTitle")} onClick={() => void deleteThread(thread.id)}><ThemeIcon name="trash" size={15} /></button>

@@ -299,10 +299,10 @@ textarea:focus-visible,
 .mac-top {
   align-items: center;
   min-height: 52px;
-  margin-left: 80px;
+  margin-left: 51px;
   /* Keep the header inside the app width: margin + width = 100%. */
-  width: calc(100% - 80px);
-  padding: 10px 16px;
+  width: calc(100% - 51px);
+  padding: 10px 16px 10px 36px;
   -webkit-app-region: drag;
 }
 
@@ -334,7 +334,8 @@ textarea:focus-visible,
   -webkit-app-region: no-drag;
 }
 
-.mac-top #app-header-slot > .sidebar-collapse-toggle {
+.mac-top #app-header-slot > .sidebar-collapse-toggle,
+.mac-top #app-header-slot > .notes-icon-btn {
   flex: 0 0 auto;
   -webkit-app-region: no-drag;
 }
@@ -5880,7 +5881,6 @@ code {
   flex: 1;
   min-height: 0;
   gap: 0;
-  border-top: 1px solid var(--border);
 }
 
 .wb-detail {
