@@ -10,6 +10,9 @@ import { isNoteSessionResumable } from "./noteSessionResume";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "../notes/noteProject";
 
+/** Max time to wait for the delete IPC before bailing out of the deleting state. */
+const DELETE_TIMEOUT_MS = 45_000;
+
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type Session = Awaited<ReturnType<ReturnType<typeof desktopApi>["listSessions"]>>[number];
 
@@ -254,12 +257,26 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
       : t("desktop.notes.deleteConfirm", title);
     if (!window.confirm(message)) return;
     setDeleting(true);
+    // The IPC can stall under sqlite3 lock contention / process exhaustion; never
+    // leave the button stuck in the deleting state. Time out and surface an error.
+    let timeoutId: number | undefined;
     try {
-      const result = await desktopApi().notesDelete({ noteId: note.noteId });
+      const result = await Promise.race([
+        desktopApi().notesDelete({ noteId: note.noteId }),
+        new Promise<never>((_resolve, reject) => {
+          timeoutId = window.setTimeout(
+            () => reject(new Error(t("desktop.notes.deleteTimeout"))),
+            DELETE_TIMEOUT_MS
+          );
+        })
+      ]);
+      window.clearTimeout(timeoutId);
       if (!result.ok) throw new Error("Note deletion failed.");
+      setDeleting(false);
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
       onClose();
     } catch (error) {
+      window.clearTimeout(timeoutId);
       setDeleting(false);
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     }

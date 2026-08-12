@@ -147,6 +147,7 @@ function renderKanban(options: {
         "desktop.workbench.floatingNoteUnsaved": "Unsaved changes",
         "desktop.notes.deleteNote": "Delete note",
         "desktop.notes.deletingNote": "Deleting…",
+        "desktop.notes.deleteTimeout": "Deletion is taking too long. Please try again.",
         "desktop.notes.deleteConfirm": "Delete note \"{0}\"?",
         "desktop.notes.deleteWithChildren": "Delete note \"{0}\" and its {1} linked child note(s)?",
         "desktop.workbench.setGtdStatus": "Set GTD status",
@@ -495,6 +496,35 @@ describe("KanbanPanel", () => {
     );
     await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "note-1" }));
     stub.mockRestore();
+  });
+
+  it("bails out of the deleting state when the delete never settles", async () => {
+    const stub = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderKanban();
+    activate();
+    const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
+    fireEvent.click(noteCard);
+    const dialog = await screen.findByRole("dialog", { name: /Quarterly plan/ });
+
+    const stalledDelete = vi.fn(async ({ noteId }: { noteId: string }) =>
+      new Promise<{ ok: boolean; deletedNoteIds: string[] }>(() => { /* never settles */ })
+    );
+    window.agentResume.notesDelete = stalledDelete;
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete note" }));
+      // Flush the child-count microtask so the deleting state paints.
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(stalledDelete).toHaveBeenCalledWith({ noteId: "note-1" });
+      expect(within(dialog).getByText("Deleting…")).toBeTruthy();
+      // The delete never resolves; the timeout must restore the button.
+      await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
+      expect(within(dialog).getByText("Delete note")).toBeTruthy();
+      expect(within(dialog).getByText("Deletion is taking too long. Please try again.")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      stub.mockRestore();
+    }
   });
 
   it("opens a session in a centered modal showing only the clicked session's detail", async () => {

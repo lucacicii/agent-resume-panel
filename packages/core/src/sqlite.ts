@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 /** Wait for locks (ms) when VS Code extension / other processes hold catalog.db */
 const SQLITE_BUSY_TIMEOUT_MS = 15_000;
 const SQLITE_MAX_ATTEMPTS = 10;
+/** Hard cap on a single sqlite3 invocation so a wedged child can never hang an IPC forever. */
+const SQLITE_EXEC_TIMEOUT_MS = 60_000;
 
 export function escapeSqlLiteral(value: string): string {
   return value.replaceAll("'", "''");
@@ -41,9 +43,16 @@ function runSqlite3Once(
     const child = spawn("sqlite3", args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    // A child that never exits (e.g. stuck on a lock or a wedged FS) would leave
+    // the enclosing IPC promise pending forever; kill it so the caller can recover.
+    const killTimer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(stderr.trim() || `sqlite3 timed out after ${SQLITE_EXEC_TIMEOUT_MS / 1000}s.`));
+    }, SQLITE_EXEC_TIMEOUT_MS);
     child.stdout.on("data", (chunk: Buffer | string) => {
       stdout += String(chunk);
       if (stdout.length > maxBuffer) {
+        clearTimeout(killTimer);
         child.kill();
         reject(new Error("sqlite3 stdout exceeded maxBuffer."));
       }
@@ -51,15 +60,22 @@ function runSqlite3Once(
     child.stderr.on("data", (chunk: Buffer | string) => {
       stderr += String(chunk);
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      clearTimeout(killTimer);
+      reject(error);
+    });
     child.on("close", (code) => {
+      clearTimeout(killTimer);
       if (code === 0) {
         resolve(stdout);
         return;
       }
       reject(new Error(stderr.trim() || `sqlite3 exited with code ${code ?? "unknown"}.`));
     });
-    child.stdin.on("error", reject);
+    child.stdin.on("error", (error) => {
+      clearTimeout(killTimer);
+      reject(error);
+    });
     child.stdin.end(sql);
   });
 }
