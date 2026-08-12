@@ -9107,7 +9107,7 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-jump.is-bottom {
-  bottom: 10px;
+  bottom: 100px;
 }
 
 .wb-terminal-jump:hover {
