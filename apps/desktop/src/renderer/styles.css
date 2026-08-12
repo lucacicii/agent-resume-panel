@@ -12944,6 +12944,10 @@ body::before {
   background-color: rgba(10,8,23,.91);
   background-image: linear-gradient(135deg, rgba(0,240,255,.075), transparent 28%, rgba(255,43,214,.07) 100%);
 }
+/* The app header sits at the window's top edge — no border at all. */
+[data-visual-theme="cyberpunk"] .top {
+  border: none;
+}
 [data-visual-theme="cyberpunk"] .top::after,
 [data-visual-theme="cyberpunk"] .toolbar::after,
 [data-visual-theme="cyberpunk"] .sheet-panel::after,
