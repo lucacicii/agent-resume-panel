@@ -1,5 +1,5 @@
 import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow" | "kanban";
@@ -20,6 +20,21 @@ function eventDetail<T>(event: Event): T | undefined {
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
   const [activeTab, setActiveTab] = useState<PrimaryTab>("report");
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    // Size the nav rail to the area below the app header (header height can
+    // change once its contents are planned, so measure it live).
+    const header = headerRef.current;
+    if (!header || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      document.documentElement.style.setProperty("--app-header-height", `${header.offsetHeight}px`);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const onTabChange = (event: Event) => {
@@ -70,7 +85,7 @@ export function AppChrome(): React.JSX.Element {
       </nav>
       {/* Header is intentionally empty for now — its contents are planned later.
           Per-tab toolbars (e.g. Kanban) portal into #app-header-slot while active. */}
-      <header className="top mac-top">
+      <header ref={headerRef} className="top mac-top">
         <div id="app-header-slot" />
       </header>
     </>

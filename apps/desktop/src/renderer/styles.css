@@ -299,6 +299,9 @@ textarea:focus-visible,
 .mac-top {
   align-items: center;
   min-height: 52px;
+  margin-left: 80px;
+  /* Keep the header inside the app width: margin + width = 100%. */
+  width: calc(100% - 80px);
   padding: 10px 16px;
   -webkit-app-region: drag;
 }
@@ -341,14 +344,16 @@ textarea:focus-visible,
   position: fixed;
   top: 0;
   left: 0;
-  bottom: 0;
   z-index: 100;
   width: 52px;
+  /* The rail occupies the app height minus the top header height. */
+  height: calc(100% - var(--app-header-height, 52px));
+  margin-top: var(--app-header-height, 52px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 56px 0 12px;
+  padding: 12px 0;
   box-sizing: border-box;
   -webkit-app-region: drag;
   background: var(--color-window-bg, var(--panel));
@@ -396,10 +401,11 @@ textarea:focus-visible,
   height: 22px;
 }
 
-/* Main window content sits to the right of the fixed rail. */
-html[data-window-mode="main"] #react-chrome,
+/* Main window content sits to the right of the fixed rail; the width must
+   shrink by the same amount so the content never overflows the app width. */
 html[data-window-mode="main"] main {
   margin-left: 52px;
+  width: calc(100% - 52px);
 }
 
 .quiet-title {
