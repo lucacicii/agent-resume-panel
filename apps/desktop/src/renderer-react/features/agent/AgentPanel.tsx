@@ -803,8 +803,8 @@ export function AgentPanel(): ReactPortal | null {
   const headerSlot = document.getElementById("app-header-slot");
   const foldersHeaderButtons = (
     <>
-      <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><ThemeIcon name="message-square-plus" size={17} /></button>
       <button type="button" className="sidebar-collapse-toggle" title={sidebarLabel} aria-label={sidebarLabel} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}><ThemeIcon name="panel-right" size={17} /></button>
+      <button id="btnAgentNewChat" type="button" className="notes-icon-btn" title={t("desktop.agent.newChat")} aria-label={t("desktop.agent.newChat")} onClick={() => void createThread()}><ThemeIcon name="message-square-plus" size={17} /></button>
     </>
   );
   const toolbar = (

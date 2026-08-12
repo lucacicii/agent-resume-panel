@@ -403,8 +403,11 @@ textarea:focus-visible,
 }
 
 /* Main window content sits to the right of the fixed rail; the width must
-   shrink by the same amount so the content never overflows the app width. */
-html[data-window-mode="main"] main {
+   shrink by the same amount so the content never overflows the app width.
+   Scope to the top-level <main> (direct body child) — inner panels also use
+   <main> tags (ask-main-pane, wb-detail, notes-detail, report-detail-pane)
+   and must not receive this offset. */
+html[data-window-mode="main"] body > main {
   margin-left: 52px;
   width: calc(100% - 52px);
 }
