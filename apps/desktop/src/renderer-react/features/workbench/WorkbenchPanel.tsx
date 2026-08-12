@@ -2148,6 +2148,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const activeRef = useRef(active);
   const activePanesRef = useRef<Record<string, string>>(activePanes);
+  const sessionsRef = useRef<AgentSession[]>(sessions);
   const acpChatsRef = useRef<AcpChatPane[]>(acpChats);
   const autoRenameTimersRef = useRef(new Map<string, number>());
   const deferredAutoRenameKeysRef = useRef(new Set<string>());
@@ -2180,6 +2181,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { acpChatsRef.current = acpChats; }, [acpChats]);
   useEffect(() => () => {
     for (const timer of autoRenameTimersRef.current.values()) window.clearTimeout(timer);
@@ -2270,10 +2272,11 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const performAutoRenameSession = useCallback(async (provider: string, id: string) => {
     deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
+    const session = sessionsRef.current.find((item) => item.provider === provider && item.id === id);
+    if (!session) return; // Session was hidden/deleted — nothing left to auto-rename.
     if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
     try {
-      const session = sessions.find((item) => item.provider === provider && item.id === id);
-      const projectName = session?.projectPath ? basename(session.projectPath) : "";
+      const projectName = session.projectPath ? basename(session.projectPath) : "";
       const folderPath = sessionFolderPath(workbenchFolderData, provider, id);
       let result: { title: string; nativeRenamed: boolean; nativeError?: string };
       if (projectName) {
@@ -2294,9 +2297,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
     } catch (error) {
-      if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
+      const message = statusError(error);
+      // Session was hidden/deleted while the delayed rename was pending — treat as a no-op.
+      if (/Session not found/.test(message)) return;
+      if (activeRef.current) setStatus({ text: message, kind: "error" });
     }
-  }, [loadSessions, sessions, setStatus, t, workbenchFolderData]);
+  }, [loadSessions, setStatus, t, workbenchFolderData]);
 
   const cancelSessionAutoRename = useCallback((key: string) => {
     const timer = autoRenameTimersRef.current.get(key);
@@ -4261,6 +4267,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       await performAutoRenameSession(session.provider, session.id);
     }
     if (action === "remove" && window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id))) {
+      const removeKey = sessionKey(session);
+      cancelSessionAutoRename(removeKey);
+      deferredAutoRenameKeysRef.current.delete(removeKey);
       try {
         await desktopApi().hideSession({ provider: session.provider, id: session.id });
         await loadSessions();
