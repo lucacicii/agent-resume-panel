@@ -1822,7 +1822,7 @@ html[data-window-mode="main"] body > main {
    Report sessions read as a magenta time-range data feed; Ask threads read as
    a cyan/magenta communications uplink. These rules only alter presentation.
    -------------------------------------------------------------------------- */
-[data-visual-theme="cyberpunk"] .report-session-pane {
+[data-visual-theme="cyberpunk"] .report-left-col {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -1832,6 +1832,32 @@ html[data-window-mode="main"] body > main {
     repeating-linear-gradient(0deg, transparent 0 25px, rgba(255,43,214,.035) 25px 26px),
     linear-gradient(122deg, #07050f 0%, #130918 72%, #1b091a 100%);
   box-shadow: inset -5px 0 19px rgba(255,43,214,.08), 7px 0 22px rgba(255,43,214,.07);
+}
+
+[data-visual-theme="cyberpunk"] .report-left-col::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 49px;
+  right: 4px;
+  bottom: 12px;
+  width: 2px;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
+  box-shadow: 0 0 9px rgba(255,43,214,.7);
+}
+
+[data-visual-theme="cyberpunk"] .report-left-col > * {
+  position: relative;
+  z-index: 1;
+}
+
+[data-visual-theme="cyberpunk"] .report-session-pane {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent;
+  border-top: 0;
 }
 
 [data-visual-theme="cyberpunk"] .report-session-pane::before {
@@ -1845,19 +1871,6 @@ html[data-window-mode="main"] body > main {
   pointer-events: none;
   background: linear-gradient(90deg, var(--cyber-magenta) 0 61%, transparent 61% 84%, var(--cyber-hazard) 84% 100%);
   box-shadow: 0 0 15px rgba(255,43,214,.52);
-}
-
-[data-visual-theme="cyberpunk"] .report-session-pane::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  top: 49px;
-  right: 4px;
-  bottom: 12px;
-  width: 2px;
-  pointer-events: none;
-  background: repeating-linear-gradient(180deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
-  box-shadow: 0 0 9px rgba(255,43,214,.7);
 }
 
 [data-visual-theme="cyberpunk"] .report-session-pane > * {
@@ -2203,7 +2216,7 @@ html[data-window-mode="main"] body > main {
   box-shadow: 0 0 12px rgba(255,59,92,.4);
 }
 
-[data-visual-theme="cyberpunk"][data-theme-effects="full"] .report-session-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .report-left-col::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .agent-sidebar-pane::after {
   animation: cyber-sidebar-rail-pulse 3.1s ease-in-out infinite;
 }
@@ -2213,7 +2226,7 @@ html[data-window-mode="main"] body > main {
   animation: cyber-sidebar-data-scan 520ms steps(4, end) both;
 }
 
-[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .report-session-pane::after,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .report-left-col::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .agent-sidebar-pane::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .cal-session-row::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .ask-thread-row::after {
@@ -2244,13 +2257,13 @@ html[data-window-mode="main"] body > main {
 }
 
 @media (max-width: 899px) {
-  [data-visual-theme="cyberpunk"] .report-session-pane {
+  [data-visual-theme="cyberpunk"] .report-left-col {
     border-right: 0;
     border-bottom: 1px solid rgba(255,43,214,.74);
     box-shadow: inset 0 -5px 19px rgba(255,43,214,.08), 0 7px 22px rgba(255,43,214,.07);
   }
 
-  [data-visual-theme="cyberpunk"] .report-session-pane::after {
+  [data-visual-theme="cyberpunk"] .report-left-col::after {
     top: auto;
     right: 14px;
     bottom: 4px;
@@ -2258,6 +2271,10 @@ html[data-window-mode="main"] body > main {
     width: auto;
     height: 2px;
     background: repeating-linear-gradient(90deg, var(--cyber-magenta) 0 6px, transparent 6px 13px);
+  }
+
+  [data-visual-theme="cyberpunk"] .report-session-pane {
+    border-bottom: 0;
   }
 }
 
@@ -2616,6 +2633,18 @@ main {
   overflow: hidden;
 }
 
+.report-left-col {
+  width: min(340px, 30vw);
+  max-width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
+}
+
 .report-cal-pane {
   --cal-cell-border: var(--border);
   --cal-mark-daily-fg: #93c5fd;
@@ -2644,29 +2673,34 @@ main {
   --cal-dot-weekly: #a855f7;
   --cal-dot-monthly: #14b8a6;
 
-  width: min(340px, 30vw);
-  max-width: 360px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
   padding: 6px;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
   overflow: auto;
   overscroll-behavior: contain;
 }
 
 .report-session-pane {
-  width: min(260px, 26vw);
-  max-width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  border-right: 1px solid var(--border);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 94%, var(--panel));
+  overflow: hidden;
+}
+
+.report-session-pane.collapsed {
+  flex: 0 0 auto;
+}
+
+.report-session-pane.collapsed .cal-session-list {
+  display: none;
 }
 
 .report-detail-pane {
@@ -3070,14 +3104,9 @@ legend {
 }
 
 @media (max-width: 1099px) {
-  .report-cal-pane {
+  .report-left-col {
     width: min(300px, 32vw);
     max-width: 320px;
-  }
-
-  .report-session-pane {
-    width: min(240px, 24vw);
-    max-width: 260px;
   }
 }
 
@@ -3087,19 +3116,18 @@ legend {
     overflow: auto;
   }
 
-  .report-cal-pane {
+  .report-left-col {
     width: 100%;
     max-width: none;
-    max-height: 42vh;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+  }
+
+  .report-cal-pane {
+    max-height: 42vh;
   }
 
   .report-session-pane {
-    width: 100%;
-    max-width: none;
     max-height: 32vh;
-    border-right: none;
     border-bottom: 1px solid var(--border);
   }
 
@@ -3178,10 +3206,37 @@ legend {
   flex: 0 0 auto;
   margin-bottom: 6px;
   font-size: 12px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .cal-session-panel-head strong {
   font-size: 12px;
+}
+
+.cal-session-head-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cal-session-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted);
+  transform: rotate(0deg);
+  transition: transform 0.16s ease;
+}
+
+.cal-session-toggle.open {
+  transform: rotate(90deg);
 }
 
 .cal-session-list {
