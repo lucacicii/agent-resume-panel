@@ -228,6 +228,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   notificationMocks.notifyDesktop.mockClear();
   xtermMocks.instances.length = 0;
@@ -1630,7 +1631,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
   });
 
-  it("shows terminal jump controls for normal scrollback and mouse-tracking TUIs", async () => {
+  it("keeps normal scrollback controls and replaces the alternate-buffer rail with a TUI waterdrop", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -1639,7 +1640,7 @@ describe("WorkbenchPanel", () => {
     const terminalResize = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalScrollTop": "Scroll to terminal top", "desktop.workbench.terminalScrollBottom": "Scroll to terminal bottom", "desktop.workbench.terminalScrollPosition": "Terminal scroll position"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalScrollTop": "Scroll to terminal top", "desktop.workbench.terminalScrollBottom": "Scroll to terminal bottom", "desktop.workbench.terminalScrollPosition": "Terminal scroll position", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -1666,59 +1667,95 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     const terminal = xtermMocks.instances[0];
-    expect(terminal.options.allowTransparency).toBe(true);
-    expect((terminal.options.theme as { background?: string }).background).toBe("rgba(0, 0, 0, 0)");
-    // Spawn resolved: pty id registered so TUI mode can read mouse-tracking state.
     await waitFor(() => expect(terminalResize).toHaveBeenCalled());
 
-    // Normal-buffer scrollback: only the top control shows at the bottom of history.
     act(() => terminal.setBuffer("normal", 5, 10));
-    fireEvent.click(await screen.findByRole("button", { name: "Scroll to terminal top" }));
+    expect(screen.getByRole("slider", { name: "Terminal scroll position" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to terminal top" }));
     expect(terminal.scrollTopCalls).toBe(1);
-    expect(terminal.focusCalls).toBe(1);
-    expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Scroll to terminal bottom" })).toBeTruthy();
 
-    // Alternate buffer always shows the TUI rail; before mouse tracking it is disabled.
     act(() => terminal.setBuffer("alternate", 0, 0));
-    expect(document.querySelector(".wb-terminal-tui-nav .wb-terminal-tui-thumb")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Scroll to terminal top" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Scroll to terminal bottom" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("slider", { name: "Terminal scroll position" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to terminal top" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scroll to terminal bottom" })).toBeNull();
+    const waterdrop = screen.getByRole("button", { name: "TUI scroll control" });
+    expect(waterdrop.classList.contains("is-unavailable")).toBe(true);
+    expect(waterdrop.getAttribute("aria-disabled")).toBe("true");
 
-    // TUI enables mouse tracking: both controls become available and scroll in small steps.
-    act(() => {
-      terminalDataHandler?.({ id: 1, data: "\x1b[?1002h\x1b[?1006h" });
-    });
-    expect(screen.getByRole("button", { name: "Scroll to terminal top" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Scroll to terminal bottom" })).toBeTruthy();
-    const tuiRail = screen.getByRole("slider", { name: "Terminal scroll position" });
-    expect(tuiRail.getAttribute("aria-valuenow")).toBe("50");
-    Object.defineProperty(tuiRail, "getBoundingClientRect", { value: () => ({ top: 0, height: 200 }) });
-    fireEvent(tuiRail, new MouseEvent("pointerdown", { bubbles: true, clientY: 50 }));
-    expect(tuiRail.getAttribute("aria-valuenow")).toBe("25");
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(8) });
-    fireEvent.pointerUp(tuiRail);
-    expect(tuiRail.getAttribute("aria-valuenow")).toBe("50");
-    fireEvent(tuiRail, new MouseEvent("pointerdown", { bubbles: true, clientY: 150 }));
-    expect(tuiRail.getAttribute("aria-valuenow")).toBe("75");
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?1002h\x1b[?1006h" }));
+    terminalInput.mockClear();
+    expect(waterdrop.classList.contains("is-unavailable")).toBe(false);
+    expect(waterdrop.getAttribute("aria-disabled")).toBe("false");
+    fireEvent.keyDown(waterdrop, { key: "ArrowUp" });
+    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M" });
+    fireEvent.keyDown(waterdrop, { key: "PageDown" });
     expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(8) });
-    fireEvent.pointerUp(tuiRail);
-    expect(tuiRail.getAttribute("aria-valuenow")).toBe("50");
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Scroll to terminal top" }));
-    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(8) });
-    expect(terminal.scrollTopCalls).toBe(1);
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Scroll to terminal top" }));
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Scroll to terminal bottom" }));
-    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(8) });
-    expect(terminal.scrollBottomCalls).toBe(0);
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Scroll to terminal bottom" }));
 
-    // TUI disables mouse tracking again: the rail stays visible but becomes disabled.
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?1002l" }));
+    expect(waterdrop.classList.contains("is-unavailable")).toBe(true);
+    fireEvent.keyDown(waterdrop, { key: "ArrowDown" });
+    expect(terminalInput).toHaveBeenCalledTimes(2);
+  });
+
+  it("continuously scrolls a mouse-tracking TUI by waterdrop pull direction and strength", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     act(() => {
-      terminalDataHandler?.({ id: 1, data: "\x1b[?1002l" });
+      xtermMocks.instances[0].setBuffer("alternate", 0, 0);
+      terminalDataHandler?.({ id: 1, data: "\x1b[?1002h" });
     });
-    expect((screen.getByRole("button", { name: "Scroll to terminal top" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Scroll to terminal bottom" }) as HTMLButtonElement).disabled).toBe(true);
+    const waterdrop = screen.getByRole("button", { name: "TUI scroll control" });
+    terminalInput.mockClear();
+    vi.useFakeTimers();
+
+    fireEvent(waterdrop, new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }));
+    fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 95 }));
+    expect(terminalInput).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.stringContaining("\x1b[<") }));
+    expect(waterdrop.classList.contains("is-idle")).toBe(true);
+
+    fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 70 }));
+    expect(waterdrop.classList.contains("is-up")).toBe(true);
+    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(4) });
+    fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 10 }));
+    act(() => vi.advanceTimersByTime(80));
+    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(14) });
+
+    fireEvent(waterdrop, new MouseEvent("pointerup", { bubbles: true, clientY: 10 }));
+    expect(waterdrop.classList.contains("is-idle")).toBe(true);
+    const callsAfterRelease = terminalInput.mock.calls.length;
+    act(() => vi.advanceTimersByTime(240));
+    expect(terminalInput).toHaveBeenCalledTimes(callsAfterRelease);
+
+    fireEvent(waterdrop, new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }));
+    fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 150 }));
+    expect(waterdrop.classList.contains("is-down")).toBe(true);
+    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(7) });
+    act(() => window.dispatchEvent(new Event("blur")));
+    expect(waterdrop.classList.contains("is-idle")).toBe(true);
+    const callsAfterBlur = terminalInput.mock.calls.length;
+    act(() => vi.advanceTimersByTime(160));
+    expect(terminalInput).toHaveBeenCalledTimes(callsAfterBlur);
+    vi.useRealTimers();
   });
 
   it("maps the normal scroll rail and keyboard controls to xterm scrollback", async () => {
