@@ -9165,6 +9165,9 @@ textarea.wb-editor-host {
 
 .wb-terminal-tui-drop {
   --tui-pull: 0;
+  --tui-drop-color: #22d3ee;
+  --tui-drop-hover: #67e8f9;
+  --tui-drop-shadow: rgba(34, 211, 238, .32);
   appearance: none;
   position: absolute;
   top: 50%;
@@ -9177,7 +9180,7 @@ textarea.wb-editor-host {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--color-accent);
+  color: var(--tui-drop-color);
   cursor: ns-resize;
   place-items: center;
   touch-action: none;
@@ -9190,7 +9193,7 @@ textarea.wb-editor-host {
   height: 56px;
   overflow: visible;
   color: currentColor;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .34));
+  filter: drop-shadow(0 2px 4px var(--tui-drop-shadow));
   pointer-events: none;
   transform: scaleY(calc(1 + var(--tui-pull) * .08));
   transform-origin: center;
@@ -9222,7 +9225,7 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-tui-drop:hover:not(.is-unavailable) {
-  color: var(--color-accent-hover);
+  color: var(--tui-drop-hover);
 }
 
 .wb-terminal-tui-drop:focus-visible {
@@ -9235,6 +9238,18 @@ textarea.wb-editor-host {
   color: var(--color-label-tertiary);
   cursor: default;
   opacity: .45;
+}
+
+[data-visual-theme="cyberpunk"] .wb-terminal-tui-drop {
+  --tui-drop-color: var(--cyber-cyan);
+  --tui-drop-hover: var(--cyber-magenta);
+  --tui-drop-shadow: rgba(0, 240, 255, .52);
+}
+
+[data-visual-theme="dos"] .wb-terminal-tui-drop {
+  --tui-drop-color: #f3b94f;
+  --tui-drop-hover: #ffe2a0;
+  --tui-drop-shadow: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -12931,7 +12946,6 @@ body::before {
 [data-visual-theme="dos"] *::before,
 [data-visual-theme="dos"] *::after { border-radius: 0 !important; }
 [data-visual-theme="dos"] .wb-terminal-tui-drop-shape {
-  color: var(--color-accent);
   filter: none;
 }
 [data-visual-theme="dos"] body::before {
