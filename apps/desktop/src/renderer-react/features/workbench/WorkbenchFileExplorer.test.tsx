@@ -286,6 +286,44 @@ describe("WorkbenchFileExplorer", () => {
     expect(screen.queryByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" })).toBeNull();
   });
 
+  it("offers Preview only for Markdown file labels and opens them in preview mode", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [
+        { name: "src", path: "/work/app/src", isDirectory: true },
+        { name: "README.md", path: "/work/app/README.md", isDirectory: false },
+        { name: "package.json", path: "/work/app/package.json", isDirectory: false }
+      ]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    const onOpenPreview = vi.fn();
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onOpenPreview={onOpenPreview}
+      onError={() => undefined}
+    />);
+
+    // Directories and non-Markdown files never offer Preview.
+    const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Right-clicking the Markdown file label exposes Preview and opens it in preview mode.
+    const markdownLabel = screen.getByText("README.md");
+    fireEvent.contextMenu(markdownLabel, { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "desktop.workbench.preview" }));
+
+    expect(onOpenPreview).toHaveBeenCalledWith("/work/app/README.md");
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
+  });
+
   it("copies absolute file and directory paths as text from the context menu", async () => {
     apiMocks.workbenchListDirectory.mockResolvedValue({
       entries: [

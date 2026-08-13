@@ -10,6 +10,7 @@ import {
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
+import { startWorkbenchPathDrag } from "./workbenchDnd";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type DirectoryEntry = Awaited<ReturnType<DesktopApi["workbenchListDirectory"]>>["entries"][number];
@@ -173,6 +174,11 @@ function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
 }
 
+/** Case-insensitive `.md` files support inline preview; `.mdx` is out of scope. */
+function isMarkdownFilePath(path: string): boolean {
+  return path.toLowerCase().endsWith(".md");
+}
+
 function pathKey(value = ""): string {
   return value.replaceAll("\\", "/").replace(/\/+$/, "");
 }
@@ -211,9 +217,11 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   rootPath: string;
   activePath?: string;
   onOpenFile: (path: string) => void | Promise<void>;
+  /** Opens an `.md` file directly in preview mode. */
+  onOpenPreview?: (path: string) => void | Promise<void>;
   onShowGitHistory?: (path: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onShowGitHistory, onError }, ref) {
+}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onError }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -496,6 +504,12 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     await onShowGitHistory(target.path);
   };
 
+  const previewTarget = (target: ExplorerTarget) => {
+    if (target.isDirectory || !onOpenPreview) return;
+    setContextMenu(null);
+    void onOpenPreview(target.path);
+  };
+
   const openContextMenu = (event: React.MouseEvent<HTMLElement>, target: ExplorerTarget) => {
     event.preventDefault();
     event.stopPropagation();
@@ -544,8 +558,10 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         data-wb-entry-directory={String(entry.isDirectory)}
         aria-selected={highlighted}
         aria-expanded={entry.isDirectory ? expanded : undefined}
+        draggable
         onFocus={() => setSelectedPath(entry.path)}
         onClick={(event) => { event.currentTarget.focus(); activate(); }}
+        onDragStart={(event) => startWorkbenchPathDrag(event, entry.path)}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
@@ -582,8 +598,10 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
           data-wb-entry-path={rootPath}
           data-wb-entry-directory="true"
           aria-selected={selectedPath === rootPath}
+          draggable
           onFocus={() => setSelectedPath(rootPath)}
           onClick={(event) => event.currentTarget.focus()}
+          onDragStart={(event) => startWorkbenchPathDrag(event, rootPath)}
           onContextMenu={(event) => openContextMenu(event, { path: rootPath, isDirectory: true })}
         ><ThemeIcon name="folder-open" size={15} color="#dcb67a" className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(rootPath)}</span></div>
         {renderTree(rootPath, 1)}
@@ -599,6 +617,9 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {!contextMenu.target.isDirectory && isMarkdownFilePath(contextMenu.target.path) && onOpenPreview
+        ? <button type="button" role="menuitem" onClick={() => void previewTarget(contextMenu.target)}>{t("desktop.workbench.preview")}</button>
+        : null}
       <button type="button" role="menuitem" onClick={() => void copyTarget(contextMenu.target)}>{t("desktop.common.copy")}</button>
       <button type="button" role="menuitem" onClick={() => copyPathTarget(contextMenu.target)}>{t("desktop.common.copyPath")}</button>
       <button type="button" role="menuitem" disabled={!contextMenu.clipboardHasFiles} onClick={() => void pasteTarget(contextMenu.target)}>{t("desktop.common.paste")}</button>

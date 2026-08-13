@@ -8895,6 +8895,25 @@ textarea.wb-editor-host {
   overflow: auto;
 }
 
+.wb-editor-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 24px;
+  box-sizing: border-box;
+  background: var(--color-window-bg);
+  color: var(--color-label-primary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.wb-editor-preview img {
+  display: block;
+  max-width: 100%;
+  margin: 12px 0;
+  border-radius: 8px;
+}
+
 .wb-editor-status {
   min-height: 24px;
   flex: 0 0 auto;
@@ -9077,6 +9096,11 @@ textarea.wb-editor-host {
 .wb-terminal-host .xterm-rows,
 .wb-terminal-host .xterm-screen {
   letter-spacing: normal;
+}
+
+/* Lightweight drop indicator while an internal Explorer/Git path drag hovers. */
+.wb-terminal-host.is-drag-over {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
 .wb-terminal-jump {

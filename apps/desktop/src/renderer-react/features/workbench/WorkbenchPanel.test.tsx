@@ -9,6 +9,7 @@ import {
   findDiffSearchMatchIndex,
   workbenchActiveFilePath
 } from "./WorkbenchPanel";
+import { WB_PATH_DND_MIME } from "./workbenchDnd";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
 type MockBuffer = {
@@ -329,6 +330,149 @@ const FOLDER_FOCUS_TEST_MESSAGES: Record<string, string> = {
   "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
   "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent"
 };
+
+/** Opens a text file as a Workbench editor tab via the Quick Access (⌘P) file picker. */
+function setupWorkbenchEditorTest(filePath: string, content: string): { openQuickFiles: () => void } {
+  const host = document.createElement("div");
+  host.id = "react-workbench";
+  document.body.append(host);
+  localStorage.setItem("workbench-selected-project", "/work/app");
+  localStorage.setItem("workbench-quick-access-project", "/work/app");
+  let openQuickFiles: () => void = () => undefined;
+  const workbenchListFiles = vi.fn(async () => ({
+    files: [{ path: "/work/app/noise.ts", relativePath: "noise.ts", kind: "file" as const }],
+    truncated: true,
+    engine: "node" as const
+  }));
+  const workbenchSearchPaths = vi.fn(async () => ({
+    files: [{
+      path: filePath,
+      relativePath: filePath.split("/").at(-1) || filePath,
+      kind: "file" as const
+    }],
+    truncated: false,
+    engine: "rg" as const
+  }));
+  const workbenchInspectFile = vi.fn(async () => ({
+    kind: "text" as const,
+    content,
+    encoding: "utf8" as const,
+    version: "v1",
+    size: content.length,
+    mtimeMs: 1
+  }));
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    media: "",
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn()
+  }) as unknown as typeof window.matchMedia;
+  window.agentResume = {
+    getI18nBundle: async () => ({ locale: "en", messages: {
+      "desktop.notes.filterProjects": "Filter projects",
+      "desktop.notes.projectFilter": "Project filter",
+      "desktop.common.search": "Search",
+      "desktop.common.all": "All",
+      "desktop.common.active": "Active",
+      "desktop.common.pinned": "Pinned",
+      "desktop.common.close": "Close",
+      "desktop.common.refresh": "Refresh",
+      "desktop.common.save": "Save",
+      "desktop.common.edit": "Edit",
+      "desktop.workbench.allSessions": "All sessions",
+      "desktop.workbench.noSessionsInProject": "No sessions",
+      "desktop.workbench.noProjects": "No projects",
+      "desktop.workbench.sidePanelExplorer": "Explorer",
+      "desktop.workbench.sidePanelGit": "Git",
+      "desktop.workbench.newTerminal": "New terminal",
+      "desktop.workbench.newSession": "New session",
+      "desktop.workbench.selectSessionHint": "Select a session",
+      "desktop.workbench.selectProjectHint": "Select a project",
+      "desktop.workbench.closeFile": "Close file",
+      "desktop.workbench.preview": "Preview",
+      "desktop.workbench.fileSaved": "Saved",
+      "desktop.workbench.quickAccessDialog": "Quick Access",
+      "desktop.workbench.quickAccessFilePlaceholder": "Search files by path",
+      "desktop.workbench.quickAccessLoading": "Loading",
+      "desktop.workbench.quickAccessNoFiles": "No files",
+      "desktop.workbench.quickAccessNoProject": "No project",
+      "desktop.workbench.quickAccessClose": "Close",
+      "desktop.workbench.quickAccessTruncated": "Limited"
+    } }),
+    onLocaleChanged: () => () => undefined,
+    onWorkbenchCmdP: (callback: () => void) => { openQuickFiles = callback; return () => undefined; },
+    onWorkbenchCmdShiftP: () => () => undefined,
+    onWorkbenchCmdT: () => () => undefined,
+    onWorkbenchCmdW: () => () => undefined,
+    onTerminalData: () => () => undefined,
+    onTerminalExit: () => () => undefined,
+    onTerminalRespawned: () => () => undefined,
+    listProjectAliases: async () => ({}),
+    getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+    listSessions: async () => [],
+    workbenchListFiles,
+    workbenchListFilesCancel: async () => ({ ok: true }),
+    workbenchSearchPaths,
+    workbenchSearchPathsCancel: async () => ({ ok: true }),
+    workbenchInspectFile
+  } as unknown as typeof window.agentResume;
+  render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+  return { openQuickFiles };
+}
+
+const PATH_DND_MESSAGES: Record<string, string> = {
+  "desktop.notes.filterProjects": "Filter projects",
+  "desktop.notes.projectFilter": "Project filter",
+  "desktop.common.search": "Search",
+  "desktop.common.all": "All",
+  "desktop.common.active": "Active",
+  "desktop.common.pinned": "Pinned",
+  "desktop.common.refresh": "Refresh",
+  "desktop.workbench.allSessions": "All sessions",
+  "desktop.workbench.noSessionsInProject": "No sessions",
+  "desktop.workbench.noProjects": "No projects",
+  "desktop.workbench.sidePanelExplorer": "Explorer",
+  "desktop.workbench.sidePanelGit": "Git",
+  "desktop.workbench.newTerminal": "New terminal",
+  "desktop.workbench.newSession": "New session",
+  "desktop.workbench.selectSessionHint": "Select a session",
+  "desktop.workbench.selectProjectHint": "Select a project",
+  "desktop.workbench.externalTerminalHint": "Opened externally",
+  "desktop.workbench.terminalLabel": "Terminal {0}",
+  "desktop.workbench.closeTerminal": "Close terminal",
+  "desktop.workbench.terminalTabs": "Terminal tabs"
+};
+
+type PathDataTransfer = {
+  types: string[];
+  dropEffect: string;
+  effectAllowed: string;
+  setData: (type: string, value: string) => void;
+  getData: (type: string) => string;
+};
+
+/** Minimal DataTransfer stand-in with the same shape the renderer expects. */
+function createPathDataTransfer(init?: { types?: string[]; path?: string; mime?: string }): PathDataTransfer {
+  const values = new Map<string, string>();
+  const types: string[] = [...(init?.types || [])];
+  if (init?.path) values.set(init.mime || WB_PATH_DND_MIME, init.path);
+  return {
+    types,
+    dropEffect: "none",
+    effectAllowed: "none",
+    setData(type, value) {
+      values.set(type, value);
+      if (!types.includes(type)) types.push(type);
+    },
+    getData(type) {
+      return values.get(type) || "";
+    }
+  };
+}
 
 describe("WorkbenchPanel", () => {
   it("collects case-insensitive matches across both Git diff sides", () => {
@@ -1605,6 +1749,331 @@ describe("WorkbenchPanel", () => {
     act(() => xtermMocks.resizeObservers.forEach((notify) => notify()));
     await waitFor(() => expect(terminalResize).toHaveBeenCalledWith({ id: 1, cols: 110, rows: 32 }));
     expect(terminal.scrollBottomCalls).toBe(1);
+  });
+
+  it("drops an Explorer file into the terminal and writes its shell-escaped absolute path", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: PATH_DND_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [{ name: "src", path: "/work/app/src", isDirectory: true }]
+          : dirPath === "/work/app/src"
+            ? [{ name: "app.ts", path: "/work/app/src/app.ts", isDirectory: false }]
+            : []
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    const fileRow = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/src/app.ts"]');
+      if (!row) throw new Error("Explorer file row missing");
+      return row;
+    });
+    expect(fileRow.hasAttribute("draggable")).toBe(true);
+
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    const dataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(fileRow, { dataTransfer });
+    expect(dataTransfer.types).toContain(WB_PATH_DND_MIME);
+    expect(dataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/src/app.ts");
+
+    act(() => fireEvent.dragEnter(terminalHost, { dataTransfer }));
+    await waitFor(() => expect(terminalHost.classList.contains("is-drag-over")).toBe(true));
+    fireEvent.dragOver(terminalHost, { dataTransfer });
+    act(() => fireEvent.drop(terminalHost, { dataTransfer }));
+    await waitFor(() => expect(terminalHost.classList.contains("is-drag-over")).toBe(false));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app/src/app.ts'" });
+  });
+
+  it("drops an Explorer directory and the project root into the terminal", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: PATH_DND_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [{ name: "src", path: "/work/app/src", isDirectory: true }]
+          : dirPath === "/work/app/src"
+            ? [{ name: "app.ts", path: "/work/app/src/app.ts", isDirectory: false }]
+            : []
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    const directoryRow = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/src"]');
+      if (!row) throw new Error("Explorer directory row missing");
+      return row;
+    });
+    const rootRow = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app"]')!;
+    expect(directoryRow.hasAttribute("draggable")).toBe(true);
+    expect(rootRow.hasAttribute("draggable")).toBe(true);
+
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    const directoryDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(directoryRow, { dataTransfer: directoryDataTransfer });
+    expect(directoryDataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/src");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: directoryDataTransfer }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app/src'" });
+
+    const rootDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(rootRow, { dataTransfer: rootDataTransfer });
+    expect(rootDataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: rootDataTransfer }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app'" });
+  });
+
+  it("drops a Git file and a Git directory into the terminal", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/nested/one.ts",
+      repoPath: "src/nested/one.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [gitFile],
+      nestedRepos: [],
+      tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...PATH_DND_MESSAGES,
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
+    const gitFileRow = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('button[title="src/nested/one.ts"]')?.closest<HTMLElement>(".wb-git-tree-file");
+      if (!row) throw new Error("Git file row missing");
+      return row;
+    });
+    expect(gitFileRow.hasAttribute("draggable")).toBe(true);
+    const gitDirectoryRow = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('.wb-file-tree-label[title="src/nested"]')?.closest<HTMLElement>(".wb-git-tree-row");
+      if (!row) throw new Error("Git directory row missing");
+      return row;
+    });
+    expect(gitDirectoryRow.hasAttribute("draggable")).toBe(true);
+
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    const fileDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(gitFileRow, { dataTransfer: fileDataTransfer });
+    expect(fileDataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/src/nested/one.ts");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: fileDataTransfer }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app/src/nested/one.ts'" });
+
+    const directoryDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(gitDirectoryRow, { dataTransfer: directoryDataTransfer });
+    expect(directoryDataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/src/nested");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: directoryDataTransfer }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app/src/nested'" });
+  });
+
+  it("ignores a drop before the PTY is ready and a drop without the Workbench path MIME", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let resolveSpawn: (result: { id: number }) => void = () => undefined;
+    const terminalSpawn = vi.fn(() => new Promise<{ id: number }>((resolve) => { resolveSpawn = resolve; }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: PATH_DND_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchListDirectory: async () => ({
+        entries: [{ name: "app.ts", path: "/work/app/app.ts", isDirectory: false }]
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-host")).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    const fileRow = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/app.ts"]');
+      if (!row) throw new Error("Explorer file row missing");
+      return row;
+    });
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+
+    // The PTY has not spawned yet: the workbench drop must not write anything.
+    const earlyDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(fileRow, { dataTransfer: earlyDataTransfer });
+    expect(earlyDataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/app.ts");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: earlyDataTransfer }));
+    expect(terminalInput).not.toHaveBeenCalled();
+
+    // A drop without the Workbench path MIME (e.g. an external file) is ignored.
+    await act(async () => resolveSpawn({ id: 1 }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    const externalDataTransfer = createPathDataTransfer({ types: ["text/plain"], path: "/external/x.txt", mime: "text/plain" });
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: externalDataTransfer }));
+    expect(terminalInput).not.toHaveBeenCalled();
+
+    // The same workbench drop works once the PTY is bound.
+    const readyDataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(fileRow, { dataTransfer: readyDataTransfer });
+    act(() => fireEvent.drop(terminalHost, { dataTransfer: readyDataTransfer }));
+    expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "'/work/app/app.ts'" });
+  });
+
+  it("escapes spaces and single quotes in a dropped path without sending a carriage return", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: PATH_DND_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchListDirectory: async () => ({
+        entries: [
+          { name: "O'Brien.md", path: "/work/app/My Docs/O'Brien.md", isDirectory: false }
+        ]
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    const fileRow = await waitFor(() => {
+      const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-directory=false]")]
+        .find((candidate) => candidate.textContent?.includes("O'Brien.md"));
+      if (!row) throw new Error("Explorer file row missing");
+      return row;
+    });
+
+    const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
+    const dataTransfer = createPathDataTransfer();
+    fireEvent.dragStart(fileRow, { dataTransfer });
+    expect(dataTransfer.getData(WB_PATH_DND_MIME)).toBe("/work/app/My Docs/O'Brien.md");
+    act(() => fireEvent.drop(terminalHost, { dataTransfer }));
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledTimes(1));
+    const sent = terminalInput.mock.calls.map((call) => call[0]?.data as string).join("");
+    expect(sent).toBe("'/work/app/My Docs/O'\\''Brien.md'");
+    expect(sent).not.toContain("\r");
+    expect(sent).not.toContain("\n");
   });
 
   it("locates an already-open embedded session instead of reopening it", async () => {
@@ -4314,5 +4783,159 @@ describe("WorkbenchPanel", () => {
       });
     });
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(statusCallsBeforeChange), { timeout: 2000 });
+  });
+
+  it("toggles a Markdown editor tab between Preview and Edit from the tab context menu", async () => {
+    const { openQuickFiles } = setupWorkbenchEditorTest("/work/app/README.md", "# Guide\n\nSome **bold** text\n");
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => openQuickFiles());
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "README" } });
+    const option = await waitFor(() => {
+      const el = [...document.querySelectorAll('[role="option"]')].find((node) =>
+        (node as HTMLElement).textContent?.includes("README.md")
+      ) as HTMLElement | undefined;
+      expect(el).not.toBeUndefined();
+      return el!;
+    });
+    fireEvent.click(option);
+
+    const editorTab = await waitFor(() => {
+      const tab = document.querySelector<HTMLElement>('[data-pane-group="code"] .wb-terminal-tab.is-editor');
+      expect(tab).not.toBeNull();
+      return tab!;
+    });
+    expect(editorTab.textContent).toContain("README.md");
+    expect(editorTab.classList.contains("active")).toBe(true);
+
+    // Edit mode shows the CodeMirror surface (mocked as a textarea), not a preview.
+    expect(screen.getByPlaceholderText("/work/app/README.md")).toBeTruthy();
+    expect(document.querySelector(".wb-editor-preview")).toBeNull();
+
+    // Right-clicking the .md editor tab exposes Preview.
+    fireEvent.contextMenu(editorTab);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
+
+    // Preview replaces the editor surface with rendered Markdown in the same tab.
+    await waitFor(() => expect(document.querySelector(".wb-editor-preview")).not.toBeNull());
+    expect(screen.queryByPlaceholderText("/work/app/README.md")).toBeNull();
+    const preview = document.querySelector(".wb-editor-preview");
+    expect(preview?.querySelector("h1")?.textContent).toBe("Guide");
+    expect(preview?.querySelector("strong")?.textContent).toBe("bold");
+    // The editor status bar (save behavior) stays available while previewing.
+    expect(document.querySelector(".wb-editor-status")).toBeTruthy();
+
+    // Right-clicking again exposes Edit and restores the CodeMirror surface.
+    fireEvent.contextMenu(editorTab);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+    await waitFor(() => expect(screen.getByPlaceholderText("/work/app/README.md")).toBeTruthy());
+    expect(document.querySelector(".wb-editor-preview")).toBeNull();
+    // The same tab stays active.
+    expect(document.querySelector('[data-pane-group="code"] .wb-terminal-tab.is-editor.active')?.textContent).toContain("README.md");
+  });
+
+  it("does not expose a preview menu on a non-Markdown editor tab", async () => {
+    const { openQuickFiles } = setupWorkbenchEditorTest("/work/app/src/app.ts", "export const app = true;\n");
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => openQuickFiles());
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "app.ts" } });
+    fireEvent.click(await screen.findByRole("option", { name: "app.ts" }));
+
+    const editorTab = await waitFor(() => {
+      const tab = document.querySelector<HTMLElement>('[data-pane-group="code"] .wb-terminal-tab.is-editor');
+      expect(tab).not.toBeNull();
+      return tab!;
+    });
+    expect(editorTab.textContent).toContain("app.ts");
+
+    // Right-clicking the non-.md tab activates it but never opens a preview menu.
+    fireEvent.contextMenu(editorTab);
+    expect(document.querySelector(".wb-context-menu")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Preview" })).toBeNull();
+  });
+
+  it("opens a Markdown file in preview mode from the Explorer context menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    localStorage.setItem("workbench-selected-project", "/work/app");
+    const workbenchListDirectory = vi.fn(async () => ({
+      entries: [{ name: "README.md", path: "/work/app/README.md", isDirectory: false }]
+    }));
+    const workbenchInspectFile = vi.fn(async () => ({
+      kind: "text" as const,
+      content: "# Hello\n",
+      encoding: "utf8" as const,
+      version: "v1",
+      size: 8,
+      mtimeMs: 1
+    }));
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: "",
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }) as unknown as typeof window.matchMedia;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.refresh": "Refresh",
+        "desktop.common.copy": "Copy",
+        "desktop.common.copyPath": "Copy Path",
+        "desktop.common.paste": "Paste",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.closeFile": "Close file",
+        "desktop.workbench.preview": "Preview",
+        "desktop.workbench.fileSaved": "Saved",
+        "desktop.workbench.explorerRevealInFinder": "Reveal in Finder"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "App", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchListDirectory,
+      workbenchInspectFile,
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+
+    const markdownLabel = await waitFor(() => {
+      const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/README.md"] .wb-file-tree-label');
+      expect(row).not.toBeNull();
+      return row!;
+    });
+    fireEvent.contextMenu(markdownLabel, { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
+
+    // The file opens in the same editor tab directly in preview mode.
+    await waitFor(() => expect(document.querySelector(".wb-editor-preview")).not.toBeNull());
+    expect(document.querySelector(".wb-editor-preview")?.querySelector("h1")?.textContent).toBe("Hello");
+    expect(document.querySelector('[data-pane-group="code"] .wb-terminal-tab.is-editor.active')?.textContent).toContain("README.md");
+    expect(screen.queryByPlaceholderText("/work/app/README.md")).toBeNull();
   });
 });

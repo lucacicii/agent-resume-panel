@@ -32,6 +32,7 @@ import {
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
+import { renderMarkdown } from "../../components/Markdown";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -76,6 +77,7 @@ import {
 } from "./QuickAccess";
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
+import { WB_PATH_DND_MIME, hasWorkbenchPathDnd, shellQuotePath, startWorkbenchPathDrag } from "./workbenchDnd";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
 import {
   emitWorkbenchSessionLaunched,
@@ -129,6 +131,8 @@ type EditorPane = Extract<FileInspection, { kind: "text" }> & {
   dirty: boolean;
   saving?: boolean;
   diskState?: "changed" | "deleted" | "external";
+  /** In-memory display mode for the active tab; resets when the tab closes. */
+  view?: "edit" | "preview";
 };
 
 function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection): EditorPane {
@@ -242,7 +246,7 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "folder" | "session" | "session-tab";
+  kind: "project" | "folder" | "session" | "session-tab" | "editor-tab";
   x: number;
   y: number;
   projectPath?: string;
@@ -254,6 +258,8 @@ type WorkbenchContextMenu = {
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
   editorLabel?: string;
+  editorKey?: string;
+  editorPreview?: boolean;
 };
 type GitLogContextMenu = {
   x: number;
@@ -380,6 +386,11 @@ function paneProjectKey(projectPath: string | null): string {
 
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
+/** Case-insensitive `.md` files support tab preview; `.mdx` is out of scope. */
+function isMarkdownFilePath(path: string): boolean {
+  return path.toLowerCase().endsWith(".md");
 }
 
 function sessionKey(session: AgentSession): string {
@@ -692,6 +703,13 @@ function collectNodeChanges(node: GitTreeNode): GitChange[] {
   return node.children.flatMap(collectNodeChanges);
 }
 
+/** Absolute drag path for a Git tree node, or null when it cannot be resolved. */
+function gitNodeDragPath(node: GitTreeNode): string | null {
+  if (!node.isDirectory) return node.change ? gitChangeFilePath(node.change) : null;
+  const repoRoot = collectNodeChanges(node)[0]?.repoRoot || "";
+  return repoRoot ? gitChangeFilePath({ repoRoot, repoPath: node.path }) : null;
+}
+
 function collectNodeChangeKeys(node: GitTreeNode): string[] {
   return collectNodeChanges(node).map(gitChangeKey);
 }
@@ -782,7 +800,15 @@ function GitChangeTree({
       const directoryDiscarding = keys.some((key) => discarding.has(key));
       const repoRoot = nodeChanges[0]?.repoRoot || "";
       return <div key={node.path}>
-        <div className="wb-file-tree-row wb-git-tree-row" style={{ paddingLeft: `${8 + depth * 14}px` }}>
+        <div
+          className="wb-file-tree-row wb-git-tree-row"
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          draggable
+          onDragStart={(event) => {
+            if (!repoRoot) return;
+            startWorkbenchPathDrag(event, gitChangeFilePath({ repoRoot, repoPath: node.path }));
+          }}
+        >
           <GitTreeCheckbox state={state} ariaLabel={node.path} onChange={(checked) => onToggleKeys(keys, checked)} />
           <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(node.path)}>
             <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span>
@@ -813,6 +839,11 @@ function GitChangeTree({
       key={node.path}
       style={{ paddingLeft: `${8 + depth * 14}px` }}
       aria-selected={active}
+      draggable
+      onDragStart={(event) => {
+        const path = gitNodeDragPath(node);
+        if (path) startWorkbenchPathDrag(event, path);
+      }}
       onContextMenu={(event) => onContextMenu(event, node.change!)}
     >
       <GitTreeCheckbox state={selected.has(key)} ariaLabel={node.change.path} onChange={(checked) => onToggleKeys([key], checked)} />
@@ -1587,6 +1618,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [scrollState, setScrollState] = useState<{ canScrollTop: boolean; canScrollBottom: boolean; tuiMode: boolean }>(
     { canScrollTop: false, canScrollBottom: false, tuiMode: false }
   );
@@ -1889,8 +1921,53 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     requestAnimationFrame(() => searchInputRef.current?.focus());
   }, [searchOpen]);
 
+  // Accept only internal Workbench path drags. On drop, write the POSIX
+  // single-quote escaped absolute path to the current PTY without any trailing
+  // space, newline, or Enter, so it lands at the shell prompt or the active
+  // TUI input position without executing.
+  useEffect(() => {
+    const hostEl = host.current;
+    if (!hostEl) return;
+    let dragDepth = 0;
+    const onDragEnter = (event: DragEvent) => {
+      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
+      dragDepth += 1;
+      setDragOver(true);
+    };
+    const onDragOver = (event: DragEvent) => {
+      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setDragOver(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      setDragOver(false);
+      const path = event.dataTransfer?.getData(WB_PATH_DND_MIME) || "";
+      const id = ptyId.current;
+      if (!path || id === null) return;
+      void desktopApi().terminalInput({ id, data: shellQuotePath(path) });
+      terminalRef.current?.focus();
+    };
+    hostEl.addEventListener("dragenter", onDragEnter);
+    hostEl.addEventListener("dragover", onDragOver);
+    hostEl.addEventListener("dragleave", onDragLeave);
+    hostEl.addEventListener("drop", onDrop);
+    return () => {
+      hostEl.removeEventListener("dragenter", onDragEnter);
+      hostEl.removeEventListener("dragover", onDragOver);
+      hostEl.removeEventListener("dragleave", onDragLeave);
+      hostEl.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
-    <div className="wb-terminal-host" ref={host} />
+    <div className={`wb-terminal-host${dragOver ? " is-drag-over" : ""}`} ref={host} />
     {scrollState.canScrollTop ? (
       <button
         type="button"
@@ -3946,6 +4023,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     refreshFloatingNoteAvailability(target, menu);
   };
 
+  const editorTabMenu = (event: React.MouseEvent, pane: EditorPane) => {
+    event.preventDefault();
+    setActivePane(pane.key, selectedProject);
+    if (!isMarkdownFilePath(pane.path)) return;
+    setContextMenu({
+      kind: "editor-tab",
+      editorKey: pane.key,
+      editorPreview: pane.view === "preview",
+      x: event.clientX,
+      y: event.clientY
+    });
+  };
+
   const openFloatingNote = useCallback((target: FloatingSessionNoteTarget) => {
     setFloatingNoteTarget({ ...target });
   }, []);
@@ -4234,6 +4324,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
       return;
     }
+    if (menu.kind === "editor-tab") {
+      if (action === "toggleEditorPreview" && menu.editorKey) {
+        setEditors((current) => current.map((item) => item.key === menu.editorKey
+          ? { ...item, view: item.view === "preview" ? "edit" : "preview" }
+          : item));
+      }
+      return;
+    }
     const session = menu.session;
     if (!session) return;
     if (action === "moveFolder") {
@@ -4481,7 +4579,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   }, []);
 
-  const openFile = async (path: string, reveal?: SearchReveal, targetProject = selectedProject) => {
+  const openFile = async (
+    path: string,
+    reveal?: SearchReveal,
+    targetProject = selectedProject,
+    view: "edit" | "preview" = "edit"
+  ) => {
     if (!targetProject) return;
     try {
       const key = `editor:${path}`;
@@ -4489,6 +4592,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         || editorsRef.current.find((item) => item.path === path);
       if (existing) {
         await syncEditorFromDisk(existing);
+        if (view === "preview" && existing.view !== "preview") {
+          setEditors((current) => current.map((item) => item.key === existing.key ? { ...item, view: "preview" } : item));
+        }
         setActivePane(existing.key, targetProject);
         if (reveal) applyEditorReveal({ ...reveal, path: existing.path }, existing.path);
         return;
@@ -4497,7 +4603,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (inspected.kind === "missing") throw new Error(t("desktop.workbench.fileDeletedOnDisk"));
       if (inspected.kind === "external") { await desktopApi().workbenchOpenPath({ rootPath: targetProject, filePath: path }); return; }
       setEditors((current) => {
-        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false }];
+        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false, view }];
         editorsRef.current = next;
         return next;
       });
@@ -5650,13 +5756,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
-  const contextMenuHeight = contextMenu?.kind === "session-tab"
+  const contextMenuHeight = contextMenu?.kind === "session-tab" || contextMenu?.kind === "editor-tab"
     ? 64
     : contextMenu?.kind === "session"
-      ? 430
-      : contextMenu?.kind === "folder"
-        ? 160
-        : 320;
+        ? 430
+        : contextMenu?.kind === "folder"
+          ? 160
+          : 320;
   const contextMenuLeft = contextMenu
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
@@ -5973,7 +6079,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
       <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><ThemeIcon name="file-code" size={13} aria-hidden="true" /></div>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")}>
-        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
         {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={13} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
     </div> : null}
@@ -6177,7 +6283,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}<CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} /><div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -6195,7 +6301,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onSessionReady={refreshSessionsAfterAcpConnect}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onShowGitHistory={(path) => void loadGitFileHistory(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
             <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
             <div className="wb-search-pane">
               <div className="wb-search-form" role="search">
@@ -6444,7 +6550,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
-      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : <>
+      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
