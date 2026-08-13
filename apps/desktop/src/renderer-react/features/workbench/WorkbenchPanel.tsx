@@ -2497,6 +2497,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       });
     }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
+    // The active pending terminal just bound to a catalog session: move the
+    // list highlight from the (now removed) pending row to the bound row.
+    const activePaneKey = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] || "";
+    const boundSessionKey = assignments.get(activePaneKey);
+    if (boundSessionKey) setActiveSessionKey(boundSessionKey);
   }, [loadSessions, pendingSessions, sessions, terminals]);
 
   useEffect(() => {
@@ -2953,6 +2958,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     clearEditorFindSearch();
   }, [clearEditorFindSearch]);
 
+  /** Map a workbench pane key to the catalog session row it represents, so
+   *  activating a tab keeps the session-list highlight in sync (the reverse
+   *  direction of clicking a wb-list-item). ACP chat panes encode their
+   *  recordId in the key; session-group terminals carry their bound session,
+   *  or a pending row while awaiting the catalog bind. */
+  const workbenchPaneSessionKey = useCallback((paneKey: string): string => {
+    if (!paneKey) return "";
+    if (paneKey.startsWith("acp:")) return acpListSessionKey(paneKey.slice("acp:".length));
+    const terminalPane = terminalsRef.current.find((pane) => pane.key === paneKey);
+    if (terminalPane?.sessionKey) return terminalPane.sessionKey;
+    return terminalPane?.group === "session" ? `pending:${paneKey}` : "";
+  }, []);
+
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
     if (paneKey !== activePane && activePane.startsWith("editor:")) closeEditorFind();
     if (paneKey !== activePane) focusPaneAfterPtyRef.current = "";
@@ -2962,7 +2980,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       paneHistoryRef.current[projectKey] = [paneKey, ...previous.filter((key) => key !== paneKey)].slice(0, 32);
     }
     setActivePanes((current) => current[projectKey] === paneKey ? current : { ...current, [projectKey]: paneKey });
-  }, [activePane, closeEditorFind, selectedProject]);
+    setActiveSessionKey(workbenchPaneSessionKey(paneKey));
+  }, [activePane, closeEditorFind, selectedProject, workbenchPaneSessionKey]);
 
   const focusWorkbenchPane = useCallback((paneKey: string) => {
     if (!paneKey) return;
@@ -3359,8 +3378,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (nextPane) {
       paneHistoryRef.current[projectKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
     }
+    const wasActive = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] === closedKey;
     setActivePanes((current) => (current[projectKey] === closedKey ? { ...current, [projectKey]: nextPane } : current));
-  }, [acpChats, diffs, editors, terminals]);
+    // Closing the active pane switches which session row should be highlighted.
+    if (wasActive) setActiveSessionKey(workbenchPaneSessionKey(nextPane));
+  }, [acpChats, diffs, editors, terminals, workbenchPaneSessionKey]);
 
   const closeTerminal = useCallback((key: string) => {
     const pane = terminals.find((item) => item.key === key);

@@ -1889,6 +1889,115 @@ describe("WorkbenchPanel", () => {
     });
   });
 
+  it("highlights the matching session row when its terminal tab is activated (reverse binding)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let spawnSeq = 0;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      setWorkbenchActive: () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: ++spawnSeq }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const listItem = (title: string) => [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+      .find((item) => item.textContent?.includes(title));
+    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
+      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
+    );
+
+    // Opening a session from the list activates its tab and highlights its row.
+    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
+    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
+    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
+    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
+    expect(listItem("Session B")?.classList.contains("active")).toBe(true);
+    expect(listItem("Session A")?.classList.contains("active")).toBe(false);
+
+    // Reverse: activating Session A's tab must highlight its row.
+    fireEvent.click(tabByLabel("Session A")!.querySelector("button.wb-terminal-tab-label")!);
+    await waitFor(() => expect(listItem("Session A")?.classList.contains("active")).toBe(true));
+    expect(listItem("Session B")?.classList.contains("active")).toBe(false);
+
+    // A non-session pane (shell terminal) clears the session highlight.
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-terminal.active")?.textContent).toContain("Terminal 1"));
+    await waitFor(() => expect(document.querySelector(".wb-list-item.active")).toBeNull());
+  });
+
+  it("highlights the matching chat row when an ACP tab is activated", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let spawnSeq = 0;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.acpEmptyTitle": "ACP chat", "desktop.workbench.acpEmptyHint": "Send a message", "desktop.workbench.acpInputPlaceholder": "Message", "desktop.workbench.acpConnecting": "Connecting…", "desktop.workbench.acpReady": "Ready", "desktop.workbench.acpError": "Error", "desktop.workbench.acpProvider.claude": "Claude Code"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "record-1", title: "ACP task", projectPath: "/work/app", provider: "claude", acpSessionId: "native-1", createdAt: 1, updatedAt: 1 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "chat", id: "record-1", title: "ACP task", projectPath: "/work/app", acpProvider: "claude", updatedAt: 3 },
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      notesList: async () => [],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: ++spawnSeq }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const listItem = (title: string) => [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+      .find((item) => item.textContent?.includes(title));
+
+    fireEvent.click(await screen.findByRole("button", { name: /ACP task/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-acp.active")).toBeTruthy());
+    expect(listItem("ACP task")?.classList.contains("active")).toBe(true);
+
+    // Activate a CLI session tab, then switch back to the ACP tab: the row must follow.
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-acp.active")).toBeFalsy());
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".wb-terminal-tab.is-acp .wb-terminal-tab-label")!);
+    await waitFor(() => expect(listItem("ACP task")?.classList.contains("active")).toBe(true));
+    expect(listItem("Fix renderer")?.classList.contains("active")).toBe(false);
+  });
+
   it("shows loading until the new terminal PTY is ready", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -2106,6 +2215,9 @@ describe("WorkbenchPanel", () => {
 
     await waitFor(() => expect([...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
       .some((item) => item.textContent?.includes("Catalog session"))).toBe(true));
+    // The bound terminal was the active pane, so the highlight moves onto the row.
+    await waitFor(() => expect([...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+      .find((item) => item.textContent?.includes("Catalog session"))?.classList.contains("active")).toBe(true));
     await waitFor(() => expect([...document.querySelectorAll(".wb-list-item")].some((item) => item.textContent?.includes("New session app"))).toBe(false));
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
   });
