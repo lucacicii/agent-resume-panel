@@ -9185,69 +9185,40 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-tui-drop-shape {
-  position: relative;
   display: block;
-  width: 30px;
-  height: calc(30px + var(--tui-pull) * 12px);
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 2px 7px rgba(0, 0, 0, .34);
+  width: 38px;
+  height: 56px;
+  overflow: visible;
+  color: currentColor;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .34));
   pointer-events: none;
-  transition: transform 180ms ease, border-radius 180ms ease, opacity 180ms ease, height 180ms ease;
+  transform: scaleY(calc(1 + var(--tui-pull) * .08));
+  transform-origin: center;
+  transition: transform 180ms ease, opacity 180ms ease;
 }
 
-.wb-terminal-tui-drop-shape::before,
-.wb-terminal-tui-drop-shape::after {
-  position: absolute;
-  left: 50%;
-  width: 14px;
-  height: 14px;
-  background: currentColor;
-  content: "";
-  opacity: 1;
-  transition: transform 180ms ease, border-radius 180ms ease, opacity 180ms ease;
-}
-
-.wb-terminal-tui-drop-shape::before {
-  top: -5px;
-  border-radius: 3px 0 4px 0;
-  transform: translateX(-50%) rotate(45deg) scale(1);
-}
-
-.wb-terminal-tui-drop-shape::after {
-  bottom: -5px;
-  border-radius: 4px 0 3px 0;
-  transform: translateX(-50%) rotate(45deg) scale(1);
+.wb-terminal-tui-drop-shape path {
+  d: path("M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z");
+  fill: currentColor;
+  transition: d 180ms ease;
 }
 
 .wb-terminal-tui-drop.is-up .wb-terminal-tui-drop-shape {
-  border-radius: 50% 50% 42% 42%;
-  transform: translateY(calc(var(--tui-pull) * -4px));
+  transform: translateY(calc(var(--tui-pull) * -2px)) scaleY(calc(1 + var(--tui-pull) * .08));
+  transform-origin: center bottom;
 }
 
-.wb-terminal-tui-drop.is-up .wb-terminal-tui-drop-shape::before {
-  opacity: 0;
-  transform: translateX(-50%) rotate(45deg) scale(.45);
-}
-
-.wb-terminal-tui-drop.is-up .wb-terminal-tui-drop-shape::after {
-  border-radius: 5px 0 2px 0;
-  transform: translateX(-50%) translateY(calc(var(--tui-pull) * 8px)) rotate(45deg) scaleX(calc(1 + var(--tui-pull) * .3)) scaleY(calc(1 + var(--tui-pull) * .8));
+.wb-terminal-tui-drop.is-up .wb-terminal-tui-drop-shape path {
+  d: path("M 100 45 C 145 45, 165 90, 155 135 C 145 180, 110 215, 100 240 C 90 215, 55 180, 45 135 C 35 90, 55 45, 100 45 Z");
 }
 
 .wb-terminal-tui-drop.is-down .wb-terminal-tui-drop-shape {
-  border-radius: 42% 42% 50% 50%;
-  transform: translateY(calc(var(--tui-pull) * 4px));
+  transform: translateY(calc(var(--tui-pull) * 2px)) scaleY(calc(1 + var(--tui-pull) * .08));
+  transform-origin: center top;
 }
 
-.wb-terminal-tui-drop.is-down .wb-terminal-tui-drop-shape::before {
-  border-radius: 2px 0 5px 0;
-  transform: translateX(-50%) translateY(calc(var(--tui-pull) * -8px)) rotate(45deg) scaleX(calc(1 + var(--tui-pull) * .3)) scaleY(calc(1 + var(--tui-pull) * .8));
-}
-
-.wb-terminal-tui-drop.is-down .wb-terminal-tui-drop-shape::after {
-  opacity: 0;
-  transform: translateX(-50%) rotate(45deg) scale(.45);
+.wb-terminal-tui-drop.is-down .wb-terminal-tui-drop-shape path {
+  d: path("M 100 20 C 110 45, 145 80, 155 125 C 165 170, 145 215, 100 215 C 55 215, 35 170, 45 125 C 55 80, 90 45, 100 20 Z");
 }
 
 .wb-terminal-tui-drop:hover:not(.is-unavailable) {
@@ -9268,8 +9239,7 @@ textarea.wb-editor-host {
 
 @media (prefers-reduced-motion: reduce) {
   .wb-terminal-tui-drop-shape,
-  .wb-terminal-tui-drop-shape::before,
-  .wb-terminal-tui-drop-shape::after {
+  .wb-terminal-tui-drop-shape path {
     transition: none;
   }
 }
@@ -12960,6 +12930,10 @@ body::before {
 [data-visual-theme="dos"] *,
 [data-visual-theme="dos"] *::before,
 [data-visual-theme="dos"] *::after { border-radius: 0 !important; }
+[data-visual-theme="dos"] .wb-terminal-tui-drop-shape {
+  color: var(--color-accent);
+  filter: none;
+}
 [data-visual-theme="dos"] body::before {
   opacity: .28;
   background: repeating-linear-gradient(0deg, rgba(240, 215, 160, .035) 0 1px, transparent 1px 4px);

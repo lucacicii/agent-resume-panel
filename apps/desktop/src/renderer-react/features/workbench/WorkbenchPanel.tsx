@@ -2140,7 +2140,9 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         onLostPointerCapture={() => stopTuiScroll()}
         onKeyDown={onTuiControlKeyDown}
       >
-        <span className="wb-terminal-tui-drop-shape" aria-hidden="true" />
+        <svg className="wb-terminal-tui-drop-shape" viewBox="0 0 200 260" aria-hidden="true">
+          <path d="M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z" />
+        </svg>
       </button>
     ) : null}
     {!scrollState.tuiMode && scrollState.canScrollTop ? (

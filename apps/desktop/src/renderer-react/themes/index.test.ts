@@ -55,6 +55,14 @@ describe("built-in visual theme manifests", () => {
     expect(styles).not.toContain(':root[data-visual-theme="classic"] *::-webkit-scrollbar');
   });
 
+  it("preserves the terminal TUI waterdrop geometry in the DOS theme", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
+    expect(styles).toContain('[data-visual-theme="dos"] .wb-terminal-tui-drop-shape {');
+    expect(styles).toMatch(/\[data-visual-theme="dos"\] \.wb-terminal-tui-drop-shape \{[\s\S]*?filter:\s*none;/);
+    expect(styles).toContain('.wb-terminal-tui-drop.is-up .wb-terminal-tui-drop-shape path');
+    expect(styles).toContain('.wb-terminal-tui-drop.is-down .wb-terminal-tui-drop-shape path');
+  });
+
   it("uses the warm amber phosphor palette for DOS surfaces and terminal ANSI colors", () => {
     const dos = THEME_DEFINITIONS.dos;
     expect(dos.tokens["--theme-cut"]).toBe("0px");
