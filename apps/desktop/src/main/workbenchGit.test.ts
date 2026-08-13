@@ -350,3 +350,57 @@ describe("terminal:gitCommit", () => {
     expect(git(repo, "show", "--format=", "--name-only", "-z", "HEAD").split("\0").filter(Boolean)).toEqual(["newdir/inner.txt"]);
   });
 });
+
+describe("terminal:gitMerge", () => {
+  it("fast-forwards the current branch when the merged commit is an ancestor", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    git(repo, "checkout", "-b", "feature");
+    commitFile(repo, "feature.txt", "feature\n", "feature work");
+    const featureTip = git(repo, "rev-parse", "HEAD");
+    git(repo, "checkout", "main");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitMerge");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: featureTip }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    // main fast-forwarded onto the feature tip (no merge commit).
+    expect(git(repo, "rev-parse", "HEAD")).toBe(featureTip);
+    expect(git(repo, "branch", "--show-current")).toBe("main");
+  });
+
+  it("creates a merge commit for divergent histories", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    git(repo, "checkout", "-b", "feature");
+    commitFile(repo, "feature.txt", "feature\n", "feature work");
+    const featureTip = git(repo, "rev-parse", "HEAD");
+    git(repo, "checkout", "main");
+    commitFile(repo, "main.txt", "main\n", "main work");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitMerge");
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: featureTip }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    // A merge commit has two parents.
+    expect(git(repo, "show", "-s", "--format=%P", "HEAD").split(/\s+/).filter(Boolean)).toHaveLength(2);
+  });
+
+  it("rejects an invalid commit hash", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitMerge");
+    const handler = registration![1];
+
+    await expect(handler({} as never, { repoRoot: repo, hash: "not-a-hash!" })).rejects.toThrow(/无效的 commit hash/);
+  });
+});

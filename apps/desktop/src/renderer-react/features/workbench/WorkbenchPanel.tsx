@@ -5734,6 +5734,26 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
+  const mergeGitLogCommit = async (commit: GitLogCommit) => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
+    const label = commit.subject || commit.shortHash;
+    if (!window.confirm(t("desktop.workbench.gitMergeConfirm", label))) return;
+    setGitLogContextMenu(null);
+    try {
+      await desktopApi().terminalGitMerge({ repoRoot, hash: commit.hash });
+      notifyGitSuccess("desktop.workbench.gitMergeSucceeded");
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitMergeFailed", error);
+    }
+  };
+
   const closeGitHistory = () => {
     const returnToExplorer = gitHistoryContext?.kind === "file";
     gitLogRequestRef.current += 1;
@@ -6556,13 +6576,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       role="menu"
       style={{
         left: Math.max(8, Math.min(gitLogContextMenu.x, window.innerWidth - 220)),
-        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 148 : 104)))
+        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 192 : 148)))
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button type="button" role="menuitem" onClick={() => copyGitLogValue(gitLogContextMenu.commit.hash)}>{t("desktop.workbench.gitCopyCommitHash")}</button>
       {gitLogContextMenu.branchName ? <button type="button" role="menuitem" title={gitLogContextMenu.branchName} onClick={() => copyGitLogValue(gitLogContextMenu.branchName!)}>{t("desktop.workbench.gitCopyBranchName")}</button> : null}
       <div className="context-menu-separator" role="separator" />
+      <button type="button" role="menuitem" onClick={() => void mergeGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitMerge")}</button>
       <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void revertGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitRevert")}</button>
     </div> : null}
     {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>

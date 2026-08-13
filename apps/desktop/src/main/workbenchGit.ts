@@ -822,4 +822,21 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     }
     return { ok: true };
   });
+
+  safeHandle("terminal:gitMerge", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // --no-edit keeps the default merge message; a GUI merge must not block
+      // on an interactive editor. Conflicts leave git in its standard
+      // merge-in-progress state and surface a diagnostic to the caller.
+      await execFileAsync("git", ["-C", repoRoot, "merge", "--no-edit", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
 }

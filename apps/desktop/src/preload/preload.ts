@@ -540,6 +540,7 @@ export interface DesktopApi {
     path: string;
   }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
   terminalGitRevert(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
+  terminalGitMerge(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -1322,6 +1323,7 @@ const api: DesktopApi = {
   terminalGitShow: (args) => ipcRenderer.invoke("terminal:gitShow", args),
   terminalGitShowFileDiffSides: (args) => ipcRenderer.invoke("terminal:gitShowFileDiffSides", args),
   terminalGitRevert: (args) => ipcRenderer.invoke("terminal:gitRevert", args),
+  terminalGitMerge: (args) => ipcRenderer.invoke("terminal:gitMerge", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
