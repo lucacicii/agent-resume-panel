@@ -183,24 +183,18 @@ export function SessionsSheet(): React.JSX.Element {
 
   const resumeSession = useCallback(async () => {
     if (!previewState) return;
-    const { provider, id, title, projectPath } = previewState.session;
+    const { provider, id } = previewState.session;
     if (!provider || !id) return;
     try {
       const result = await desktopApi().workbenchOpenSession({ provider, id });
-      if (!result.external && result.command) {
-        close();
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
-          detail: {
-            provider,
-            id,
-            command: result.command,
-            cwd: result.cwd,
-            title: title || id,
-            projectPath: projectPath || result.cwd
-          }
-        }));
+      if (result.external) {
+        // External terminal/editor is opening; keep the sheet open and report.
+        setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+        return;
       }
+      close();
+      // Workbench decides: focus the already-open pane, or open the session fresh.
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: previewState.session }));
       setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });

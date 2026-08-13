@@ -745,19 +745,13 @@ export function AgentPanel(): ReactPortal | null {
     }
     try {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
-      if (!result.external && result.command) {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
-          detail: {
-            provider: session.provider,
-            id: session.id,
-            command: result.command,
-            cwd: result.cwd,
-            title: citation.title || session.id,
-            projectPath: session.projectPath || result.cwd
-          }
-        }));
+      if (result.external) {
+        // External terminal/editor is opening; report and stay.
+        setStatus({ text: t("desktop.agent.resumeStarted", session.provider, session.id), kind: "ok" });
+        return;
       }
+      // Workbench decides: focus the already-open pane, or open the session fresh.
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
       setStatus({ text: t("desktop.agent.resumeStarted", session.provider, session.id), kind: "ok" });
     } catch (error) {
       setStatus({ text: errorMessage(error), kind: "error" });

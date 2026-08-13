@@ -9298,6 +9298,339 @@ textarea.wb-editor-host {
   }
 }
 
+/* TUI composer — primary input for agent-session panes (floating bottom bar). */
+.wb-terminal-composer {
+  --tui-compose-bg: color-mix(in srgb, var(--color-elevated-bg) 92%, #000);
+  --tui-compose-border: var(--color-separator-opaque);
+  --tui-compose-text: var(--color-label-primary);
+  --tui-compose-muted: var(--color-label-secondary);
+  --tui-compose-accent: var(--color-accent);
+  --tui-compose-shadow: var(--shadow-popover);
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tui-compose-text);
+  transition: width var(--duration-normal) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.wb-terminal-composer.is-collapsed {
+  width: auto;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.wb-terminal-composer.is-expanded {
+  width: min(560px, calc(100% - 24px));
+  border-color: var(--tui-compose-border);
+  background: var(--tui-compose-bg);
+  box-shadow: var(--tui-compose-shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.wb-terminal-composer.is-expanded:focus-within {
+  border-color: var(--color-focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus-ring) 45%, transparent),
+    var(--tui-compose-shadow);
+}
+
+.wb-terminal-composer.is-drag-over {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.wb-terminal-composer-grip {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tui-compose-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.wb-terminal-composer-grip:hover {
+  color: var(--tui-compose-text);
+  background: color-mix(in srgb, var(--color-label-secondary) 10%, transparent);
+}
+
+.wb-terminal-composer-grip:active {
+  cursor: grabbing;
+}
+
+.wb-terminal-composer-grip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.wb-terminal-composer-grip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.wb-terminal-composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--tui-compose-text);
+  font-family: var(--font-family-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.wb-terminal-composer-input::placeholder {
+  color: var(--color-label-secondary);
+}
+
+.wb-terminal-composer.is-collapsed .wb-terminal-composer-input {
+  flex: 0 1 auto;
+  width: min(200px, 40vw);
+  height: 26px;
+  max-height: 26px;
+  padding: 3px 10px;
+  overflow: hidden;
+  opacity: .9;
+}
+
+.wb-terminal-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wb-terminal-composer.is-collapsed .wb-terminal-composer-tools {
+  display: none;
+}
+
+.wb-terminal-composer-hint {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--color-label-tertiary);
+  white-space: nowrap;
+}
+
+.wb-terminal-composer-send {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--tui-compose-accent);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.wb-terminal-composer-send:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.wb-terminal-composer-send:disabled {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-tertiary);
+  cursor: default;
+}
+
+.wb-terminal-composer-send:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.wb-terminal-composer-send svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.wb-terminal-composer-suggestions {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 12;
+  max-height: min(240px, 40vh);
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: 10px;
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+}
+
+.wb-terminal-composer-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--color-label-primary);
+  cursor: pointer;
+  font-family: var(--font-family-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.wb-terminal-composer-suggestion.is-active {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+}
+
+.wb-terminal-composer-suggestion-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-terminal-composer-suggestion-kbd {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+}
+
+.wb-terminal-composer-drop-hint {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.wb-terminal-composer-drop-hint.is-image {
+  color: var(--color-accent);
+}
+
+.wb-terminal-composer-drop-hint.is-image svg {
+  width: 13px;
+  height: 13px;
+}
+
+.wb-terminal-composer-images {
+  position: absolute;
+  left: 28px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: 10px;
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+}
+
+.wb-terminal-composer-image {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.wb-terminal-composer-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wb-terminal-composer-image-remove {
+  appearance: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.wb-terminal-composer-image-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.wb-terminal-composer-image-remove:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.wb-terminal-composer-image-remove svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Theme palettes (mirror .wb-terminal-tui-drop). */
+[data-visual-theme="cyberpunk"] .wb-terminal-composer {
+  --tui-compose-bg: color-mix(in srgb, rgba(10, 8, 23, .94) 90%, #000);
+  --tui-compose-border: rgba(0, 240, 255, .52);
+  --tui-compose-accent: var(--cyber-cyan);
+  --tui-compose-shadow: var(--theme-glow);
+}
+
+[data-visual-theme="dos"] .wb-terminal-composer {
+  --tui-compose-bg: #17120d;
+  --tui-compose-border: #f3b94f;
+  --tui-compose-accent: #f3b94f;
+  --tui-compose-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-terminal-composer {
+    transition: none;
+  }
+}
+
 .wb-terminal-search {
   position: absolute;
   top: 8px;

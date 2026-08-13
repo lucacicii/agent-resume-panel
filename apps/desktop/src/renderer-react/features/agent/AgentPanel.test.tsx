@@ -297,14 +297,11 @@ describe("AgentPanel", () => {
     }
   });
 
-  it("completes xterm resume by switching to Workbench with command payload", async () => {
+  it("routes a non-external session citation resume through workbench-open-session", async () => {
     const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
-    const tabs: string[] = [];
-    const resumes: unknown[] = [];
-    const onTab = (event: Event) => tabs.push((event as CustomEvent).detail);
-    const onResume = (event: Event) => resumes.push((event as CustomEvent).detail);
-    window.addEventListener("agent-resume:tab-request", onTab);
-    window.addEventListener("agent-resume:workbench-resume", onResume);
+    const opens: unknown[] = [];
+    const onOpen = (event: Event) => opens.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:workbench-open-session", onOpen);
     const workbenchOpenSession = vi.fn(async () => ({
       mode: "xterm",
       command: "codex resume --cd '/tmp/app' 'sess-xterm'",
@@ -347,19 +344,11 @@ describe("AgentPanel", () => {
       await screen.findByRole("button", { name: "Resume" });
       fireEvent.click(screen.getByRole("button", { name: "Resume" }));
       await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "sess-xterm" }));
-      await waitFor(() => expect(tabs).toContain("workbench"));
       await waitFor(() =>
-        expect(resumes[0]).toMatchObject({
-          provider: "codex",
-          id: "sess-xterm",
-          command: "codex resume --cd '/tmp/app' 'sess-xterm'",
-          cwd: "/tmp/app",
-          projectPath: "/tmp/app"
-        })
+        expect(opens[0]).toMatchObject({ provider: "codex", id: "sess-xterm", projectPath: "/tmp/app" })
       );
     } finally {
-      window.removeEventListener("agent-resume:tab-request", onTab);
-      window.removeEventListener("agent-resume:workbench-resume", onResume);
+      window.removeEventListener("agent-resume:workbench-open-session", onOpen);
     }
   });
 

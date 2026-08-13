@@ -79,6 +79,7 @@ import {
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 import { WB_PATH_DND_MIME, hasWorkbenchPathDnd, shellQuotePath, startWorkbenchPathDrag } from "./workbenchDnd";
+import { TerminalComposer } from "./TerminalComposer";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
 import {
   emitWorkbenchSessionLaunched,
@@ -1592,7 +1593,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking, onRegisterComposerFocus }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1604,6 +1605,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
+  /** Register an agent-session composer focus handle keyed by pane key. */
+  onRegisterComposerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -2160,6 +2163,14 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         <span>{t("desktop.common.loading")}</span>
       </div>
     ) : null}
+    {pane.group === "session" && ready ? (
+      <TerminalComposer
+        pane={{ key: pane.key, cwd: pane.cwd, group: pane.group }}
+        ptyId={ptyId.current}
+        active={active}
+        registerFocus={onRegisterComposerFocus}
+      />
+    ) : null}
   </div>;
 }
 
@@ -2323,7 +2334,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
   const paneHistoryRef = useRef<Record<string, string[]>>({});
   const focusPaneAfterPtyRef = useRef("");
+  /** Agent-session composer focus handles keyed by pane key (registered by TerminalComposer). */
+  const composerFocusRefs = useRef(new Map<string, () => void>());
   const openingSessionKeysRef = useRef(new Set<string>());
+  /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
+  const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const sessionSearchInputRef = useRef<HTMLInputElement>(null);
@@ -3161,6 +3176,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActiveSessionKey(workbenchPaneSessionKey(paneKey));
   }, [activePane, closeEditorFind, selectedProject, workbenchPaneSessionKey]);
 
+  const registerComposerFocus = useCallback((key: string, focus: () => void) => {
+    composerFocusRefs.current.set(key, focus);
+    return () => {
+      composerFocusRefs.current.delete(key);
+    };
+  }, []);
+
   const focusWorkbenchPane = useCallback((paneKey: string) => {
     if (!paneKey) return;
     if (focusPaneAfterPtyRef.current && focusPaneAfterPtyRef.current !== paneKey) {
@@ -3168,6 +3190,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     window.requestAnimationFrame(() => {
       const terminalPane = terminalsRef.current.find((pane) => pane.key === paneKey);
+      // Agent/TUI sessions route text entry to their composer; shell terminals
+      // keep raw xterm focus.
+      if (terminalPane?.group === "session" && terminalPane.ptyId != null) {
+        const focusComposer = composerFocusRefs.current.get(paneKey);
+        if (focusComposer) {
+          focusComposer();
+          return;
+        }
+        // Composer has not mounted yet — defer so onPty's PTY-ready focus
+        // (which retries the composer) wins instead of falling to xterm.
+        focusPaneAfterPtyRef.current = paneKey;
+        return;
+      }
       if (terminalPane?.ptyId != null) {
         terminalRefs.current.get(terminalPane.ptyId)?.focus();
         return;
@@ -3494,7 +3529,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTerminals((current) => current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane));
     if (focusPaneAfterPtyRef.current === key) {
       focusPaneAfterPtyRef.current = "";
-      window.requestAnimationFrame(() => terminal.focus());
+      const pane = terminalsRef.current.find((entry) => entry.key === key);
+      window.requestAnimationFrame(() => {
+        // Agent-session panes land in their composer once it has mounted
+        // (setReady commits before the next frame); shells focus xterm.
+        if (pane?.group === "session") {
+          const focusComposer = composerFocusRefs.current.get(key);
+          if (focusComposer) focusComposer();
+          // The composer may mount one frame late (React commit timing).
+          // Retry once instead of stealing focus to xterm.
+          else window.requestAnimationFrame(() => composerFocusRefs.current.get(key)?.());
+          return;
+        }
+        terminal.focus();
+      });
     }
     void refreshTerminalGit(key);
   }, [refreshTerminalGit]);
@@ -3995,11 +4043,17 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       // Prefer resolved cwd so terminal pane projectPath matches selection.
       selectProject(cwd, { keepSessionKey: true });
-      addTerminal(session.title || session.id, cwd, command, cwd, key);
+      const terminalKey = addTerminal(session.title || session.id, cwd, command, cwd, key);
+      // Box-primary: an agent session pane lands text entry in its composer
+      // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
+      focusWorkbenchPane(terminalKey);
       setActiveSessionKey(key);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { openingSessionKeysRef.current.delete(key); }
   };
+
+  // Keep the openSession listener attached to the latest closure (openSession is not memoized).
+  openSessionRef.current = openSession;
 
   /** Complete xterm resume from Agent citation/tool (command already resolved by main). */
   const openResumeFromAgent = useCallback((detail: {
@@ -6398,7 +6452,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} onRegisterComposerFocus={registerComposerFocus} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input

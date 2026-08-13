@@ -61,6 +61,12 @@ function renderKanban(options: {
   sessions?: AgentSession[];
   notes?: TestNote[];
   statuses?: Record<string, "inbox" | "next" | "waiting" | "someday" | "reference" | "done">;
+  workbenchOpenSession?: (args: { provider: string; id: string }) => Promise<{
+    external?: boolean;
+    mode?: string;
+    command?: string;
+    cwd?: string;
+  }>;
 } = {}) {
   const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
   const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note, noteId, gtdStatus: status || undefined }));
@@ -198,7 +204,7 @@ function renderKanban(options: {
     }),
     summarizeSession: async () => ({ summary: "A short summary" }),
     autoRenameSession: async () => ({ title: "Renamed session", nativeRenamed: true, nativeError: null }),
-    workbenchOpenSession: async () => ({ external: true }),
+    workbenchOpenSession: options.workbenchOpenSession ?? (async () => ({ external: true })),
     onSessionsSynced: () => () => undefined
   } as unknown as typeof window.agentResume;
 
@@ -598,5 +604,46 @@ describe("KanbanPanel", () => {
     fireEvent.click(runBtn);
     await waitFor(() => expect(notesResumeSession).toHaveBeenCalledWith({ provider: "codex", sessionId: "session-1" }));
     await waitFor(() => expect(document.querySelector(".sheet-modal-panel")).toBeNull());
+  });
+
+  it("session detail modal resume dispatches workbench-open-session and closes on xterm", async () => {
+    const opened: unknown[] = [];
+    const onOpen = (event: Event) => opened.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:workbench-open-session", onOpen);
+    try {
+      const workbenchOpenSession = vi.fn(async () => ({
+        mode: "xterm",
+        command: "codex resume session-1",
+        cwd: "/work/agent-resume-panel",
+        external: false
+      }));
+      renderKanban({ sessions: [session], workbenchOpenSession });
+      activate();
+      fireEvent.click(await screen.findByRole("button", { name: /Ship Kanban/ }));
+      const dialog = await screen.findByRole("dialog", { name: /Ship Kanban/ });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Resume" }));
+      await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
+      await waitFor(() => expect(opened[0]).toMatchObject({ provider: "codex", id: "session-1", projectPath: "/work/agent-resume-panel" }));
+      await waitFor(() => expect(document.querySelector(".sheet-modal-panel")).toBeNull());
+    } finally {
+      window.removeEventListener("agent-resume:workbench-open-session", onOpen);
+    }
+  });
+
+  it("session detail modal resume keeps the modal open for external resumes", async () => {
+    const opened: unknown[] = [];
+    const onOpen = (event: Event) => opened.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:workbench-open-session", onOpen);
+    try {
+      renderKanban({ sessions: [session] }); // default workbenchOpenSession => external
+      activate();
+      fireEvent.click(await screen.findByRole("button", { name: /Ship Kanban/ }));
+      const dialog = await screen.findByRole("dialog", { name: /Ship Kanban/ });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Resume" }));
+      await waitFor(() => expect(opened).toHaveLength(0));
+      expect(document.querySelector(".sheet-modal-panel")).toBeTruthy();
+    } finally {
+      window.removeEventListener("agent-resume:workbench-open-session", onOpen);
+    }
   });
 });

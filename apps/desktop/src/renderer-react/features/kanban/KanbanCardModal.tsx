@@ -215,23 +215,17 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
 
   const resumeSession = useCallback(async () => {
     if (!session) return;
-    const { provider, id, title, projectPath } = session;
+    const { provider, id } = session;
     try {
       const result = await desktopApi().workbenchOpenSession({ provider, id });
-      if (!result.external && result.command) {
-        onClose();
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-resume", {
-          detail: {
-            provider,
-            id,
-            command: result.command,
-            cwd: result.cwd,
-            title: title || id,
-            projectPath: projectPath || result.cwd
-          }
-        }));
+      if (result.external) {
+        // External terminal/editor is opening; keep the modal open and report.
+        setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+        return;
       }
+      onClose();
+      // Workbench decides: focus the already-open pane, or open the session fresh.
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
       setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });

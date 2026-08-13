@@ -1332,6 +1332,78 @@ describe("WorkbenchPanel", () => {
     }
   });
 
+  it("focuses the agent-session composer after spawn instead of xterm (box-primary)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
+        "desktop.workbench.terminalComposerHint": "Click to type a command.",
+        "desktop.workbench.terminalComposerSend": "Send command",
+        "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+        "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
+        "desktop.workbench.terminalComposerHintLine": "Enter sends"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: vi.fn(async () => ({ ok: true }))
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(document.activeElement?.classList.contains("wb-terminal-composer-input")).toBe(true);
+    });
+    expect(xtermMocks.instances[0].focusCalls).toBe(0);
+  });
+
+  it("shell terminals render no composer (session-gated)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      createScratchDir: async () => "/scratch/work",
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: vi.fn(async () => ({ ok: true }))
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    expect(document.querySelector(".wb-terminal-composer")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".wb-terminal-host")?.classList.contains("is-session")).toBe(false);
+  });
+
   it("auto renames a closed session after two minutes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const host = document.createElement("div");
@@ -4711,6 +4783,17 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
   });
 
+  /** True when real DOM focus is on an enabled composer textarea (box-primary). */
+  const activeComposer = () => {
+    const el = document.activeElement;
+    return el instanceof HTMLTextAreaElement
+      && el.classList.contains("wb-terminal-composer-input")
+      && !el.disabled;
+  };
+  const waitForComposerFocus = async () => {
+    await waitFor(() => expect(activeComposer()).toBe(true));
+  };
+
   it("focuses the session TUI after arrow navigation, including delayed PTY spawn", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -4776,14 +4859,14 @@ describe("WorkbenchPanel", () => {
 
     act(() => onWorkbenchCmdArrow?.("left"));
     await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
-    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(0));
+    await waitForComposerFocus();
 
     act(() => onWorkbenchCmdArrow?.("right"));
     await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
     expect(xtermMocks.instances[1]?.focusCalls).toBe(0);
 
     await act(async () => spawnResolvers.get("codex resume session-b")!({ id: ++spawnSeq }));
-    await waitFor(() => expect(xtermMocks.instances[1]?.focusCalls).toBeGreaterThan(0));
+    await waitForComposerFocus();
   });
 
   it("focuses the TUI after agent resume, including delayed PTY spawn", async () => {
@@ -4834,12 +4917,116 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     expect(xtermMocks.instances[0]?.focusCalls).toBe(0);
     await act(async () => spawnResolvers.get("codex resume session-c")!({ id: ++spawnSeq }));
-    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(0));
+    await waitForComposerFocus();
 
-    // Existing pane: a second resume focuses the already-open terminal immediately.
-    const before = xtermMocks.instances[0]!.focusCalls;
+    // Existing pane: a second resume re-focuses the already-open session's composer immediately.
     await act(async () => resume("session-c"));
-    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBeGreaterThan(before));
+    await waitForComposerFocus();
+  });
+
+  it("workbench-open-session focuses an open session terminal, else opens a fresh one", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let spawnSeq = 0;
+    const spawnResolvers = new Map<string, (result: { id: number }) => void>();
+    const terminalSpawn = vi.fn(({ command }: { command: string }) => new Promise<{ id: number }>((resolve) => {
+      spawnResolvers.set(command, resolve);
+    }));
+    const workbenchOpenSession = vi.fn(async ({ id }: { id: string }) => ({
+      mode: "xterm",
+      command: `codex resume ${id}`,
+      cwd: "/work/app"
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdArrow: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      workbenchOpenSession,
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const open = (id: string) => window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", {
+      detail: { provider: "codex", id, title: `Session ${id}`, projectPath: "/work/app", updatedAt: 1 }
+    }));
+
+    // Not open yet: spawns exactly one fresh terminal.
+    await act(async () => open("session-a"));
+    await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-a" }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await act(async () => spawnResolvers.get("codex resume session-a")!({ id: ++spawnSeq }));
+    await waitForComposerFocus();
+
+    // Already open: re-focuses the same pane without a second instance.
+    await act(async () => open("session-a"));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    await waitForComposerFocus();
+  });
+
+  it("workbench-open-session opens an ACP chat pane, or focuses it when already open", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const acpSession = { provider: "chat", id: "record-1", title: "ACP task", projectPath: "/work/app", acpProvider: "claude", updatedAt: 1 };
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.acpEmptyTitle": "ACP chat",
+        "desktop.workbench.acpEmptyHint": "Send a message",
+        "desktop.workbench.acpInputPlaceholder": "Message",
+        "desktop.workbench.acpConnecting": "Connecting…",
+        "desktop.workbench.acpReady": "Ready",
+        "desktop.workbench.acpError": "Error",
+        "desktop.workbench.acpProvider.claude": "Claude Code"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdArrow: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "record-1", title: "ACP task", projectPath: "/work/app", provider: "claude", acpSessionId: "native-1", createdAt: 1, updatedAt: 1 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [acpSession],
+      notesList: async () => [],
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const open = () => window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: acpSession }));
+
+    // Not open yet: adds a single ACP chat pane.
+    await act(async () => open());
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab.is-acp")).toHaveLength(1));
+    expect(document.querySelector(".wb-terminal-tab.is-acp.active")).toBeTruthy();
+
+    // Already open: re-focuses the same pane, still one ACP pane.
+    await act(async () => open());
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab.is-acp")).toHaveLength(1));
+    expect(document.querySelector(".wb-terminal-tab.is-acp.active")).toBeTruthy();
   });
 
   it("refreshes the git tree promptly when project files change on disk", async () => {
