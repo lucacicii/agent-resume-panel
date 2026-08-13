@@ -1625,15 +1625,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const tuiDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
   const tuiScrollIntentRef = useRef<{ direction: "up" | "down"; ticks: number } | null>(null);
   const [tuiPull, setTuiPull] = useState<{ direction: "idle" | "up" | "down"; strength: number }>({ direction: "idle", strength: 0 });
-  const [scrollState, setScrollState] = useState<{
-    canScrollTop: boolean;
-    canScrollBottom: boolean;
-    tuiMode: boolean;
-    tuiInteractive: boolean;
-    viewportY: number;
-    baseY: number;
-    thumbSize: number;
-  }>({ canScrollTop: false, canScrollBottom: false, tuiMode: false, tuiInteractive: false, viewportY: 0, baseY: 0, thumbSize: 1 });
+  const [scrollState, setScrollState] = useState({ tuiMode: false, tuiInteractive: false });
 
   const runSearch = useCallback((direction: "next" | "prev", term: string) => {
     const addon = searchAddonRef.current;
@@ -1741,26 +1733,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       const buffer = terminal.buffer.active;
       const tuiMode = buffer.type === "alternate" && ptyId.current !== null;
       const tuiInteractive = tuiMode && mouseTracking.current.get(ptyId.current!) === true;
-      const next = tuiMode
-        ? { canScrollTop: tuiInteractive, canScrollBottom: tuiInteractive, tuiMode: true, tuiInteractive, viewportY: 0, baseY: 0, thumbSize: 1 }
-        : buffer.type === "normal" && buffer.baseY > 0
-          ? {
-              canScrollTop: buffer.viewportY > 0,
-              canScrollBottom: buffer.viewportY < buffer.baseY,
-              tuiMode: false,
-              tuiInteractive: false,
-              viewportY: buffer.viewportY,
-              baseY: buffer.baseY,
-              thumbSize: Math.min(1, terminal.rows / Math.max(terminal.rows, buffer.length))
-            }
-          : { canScrollTop: false, canScrollBottom: false, tuiMode: false, tuiInteractive: false, viewportY: 0, baseY: 0, thumbSize: 1 };
-      setScrollState((current) => current.canScrollTop === next.canScrollTop
-        && current.canScrollBottom === next.canScrollBottom
-        && current.tuiMode === next.tuiMode
-        && current.tuiInteractive === next.tuiInteractive
-        && current.viewportY === next.viewportY
-        && current.baseY === next.baseY
-        && current.thumbSize === next.thumbSize ? current : next);
+      const next = { tuiMode, tuiInteractive };
+      setScrollState((current) => current.tuiMode === next.tuiMode && current.tuiInteractive === next.tuiInteractive ? current : next);
     };
 
     const resizePty = (cols: number, rows: number) => {
@@ -1777,9 +1751,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
     const onTermResize = terminal.onResize(({ cols, rows }) => {
       resizePty(cols, rows);
-      syncScrollState();
     });
-    const onTermScroll = terminal.onScroll(syncScrollState);
     const onWriteParsed = terminal.onWriteParsed(syncScrollState);
     const onBufferChange = terminal.buffer.onBufferChange(syncScrollState);
 
@@ -1870,7 +1842,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         tuiScrollTimer.current = null;
       }
       onTermResize.dispose();
-      onTermScroll.dispose();
       onWriteParsed.dispose();
       onBufferChange.dispose();
       input.dispose();
@@ -1993,29 +1964,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     };
   }, []);
 
-  const scrollNormalToRailPosition = (event: React.PointerEvent<HTMLDivElement>) => {
-    const terminal = terminalRef.current;
-    if (!terminal || scrollState.baseY <= 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    terminal.scrollToLine(Math.round(ratio * scrollState.baseY));
-    terminal.focus();
-  };
-
-  const onRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    if (event.key === "Home") terminal.scrollToTop();
-    else if (event.key === "End") terminal.scrollToBottom();
-    else if (event.key === "ArrowUp") terminal.scrollLines(-1);
-    else if (event.key === "ArrowDown") terminal.scrollLines(1);
-    else if (event.key === "PageUp") terminal.scrollPages(-1);
-    else if (event.key === "PageDown") terminal.scrollPages(1);
-    else return;
-    event.preventDefault();
-    terminal.focus();
-  };
-
   const sendTuiWheel = (direction: "up" | "down", ticks: number) => {
     const id = ptyId.current;
     if (id === null || ticks <= 0) return;
@@ -2099,32 +2047,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     terminalRef.current?.focus();
   };
 
-  const thumbTop = scrollState.baseY > 0 ? (scrollState.viewportY / scrollState.baseY) * (1 - scrollState.thumbSize) * 100 : 0;
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
-    <div className={`wb-terminal-host${dragOver ? " is-drag-over" : ""}`} ref={host} />
-    {!scrollState.tuiMode ? (
-      <div
-        className={`wb-terminal-scroll-rail${scrollState.baseY > 0 ? "" : " is-idle"}`}
-        role="slider"
-        tabIndex={scrollState.baseY > 0 ? 0 : -1}
-        aria-disabled={scrollState.baseY > 0 ? undefined : true}
-        aria-label={t("desktop.workbench.terminalScrollPosition")}
-        aria-valuemin={0}
-        aria-valuemax={scrollState.baseY}
-        aria-valuenow={scrollState.viewportY}
-        onPointerDown={(event) => {
-          if (scrollState.baseY <= 0) return;
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          scrollNormalToRailPosition(event);
-        }}
-        onPointerMove={(event) => {
-          if (scrollState.baseY > 0 && event.currentTarget.hasPointerCapture?.(event.pointerId)) scrollNormalToRailPosition(event);
-        }}
-        onKeyDown={onRailKeyDown}
-      >
-        <div className="wb-terminal-scroll-thumb" style={{ top: `${thumbTop}%`, height: `${scrollState.thumbSize * 100}%` }} />
-      </div>
-    ) : null}
+    <div className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`} ref={host} />
     {scrollState.tuiMode ? (
       <button
         type="button"
@@ -2143,28 +2067,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         <svg className="wb-terminal-tui-drop-shape" viewBox="0 0 200 260" aria-hidden="true">
           <path d="M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z" />
         </svg>
-      </button>
-    ) : null}
-    {!scrollState.tuiMode && scrollState.canScrollTop ? (
-      <button
-        type="button"
-        className={`wb-terminal-jump is-top${searchOpen ? " is-below-search" : ""}`}
-        aria-label={t("desktop.workbench.terminalScrollTop")}
-        title={t("desktop.workbench.terminalScrollTop")}
-        onClick={() => { terminalRef.current?.scrollToTop(); terminalRef.current?.focus(); }}
-      >
-        <ThemeIcon name="arrow-up-to-line" size={15} aria-hidden="true" />
-      </button>
-    ) : null}
-    {!scrollState.tuiMode && scrollState.canScrollBottom ? (
-      <button
-        type="button"
-        className="wb-terminal-jump is-bottom"
-        aria-label={t("desktop.workbench.terminalScrollBottom")}
-        title={t("desktop.workbench.terminalScrollBottom")}
-        onClick={() => { terminalRef.current?.scrollToBottom(); terminalRef.current?.focus(); }}
-      >
-        <ThemeIcon name="arrow-down-to-line" size={15} aria-hidden="true" />
       </button>
     ) : null}
     {searchOpen ? (
