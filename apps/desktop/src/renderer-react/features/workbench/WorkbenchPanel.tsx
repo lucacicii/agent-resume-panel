@@ -40,6 +40,7 @@ import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
+import { collectActiveSessionDots } from "./activeSessionDots";
 import {
   FloatingSessionNote,
   sessionNoteMatchesTarget,
@@ -2385,6 +2386,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return titles;
   }, [sessions]);
+  const activeSessionDots = useMemo(
+    () => collectActiveSessionDots(terminals, acpChats, sessionTitles),
+    [acpChats, sessionTitles, terminals]
+  );
+
+  // Broadcast the live session-dot set to the nav rail (sibling component).
+  // StrictMode double-invoke on mount is harmless: AppChrome just sets state
+  // to an identical payload. No loop: nothing listens back to this event here.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
+  }, [activeSessionDots]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -4047,6 +4059,35 @@ export function WorkbenchPanel(): ReactPortal | null {
       stopIpc();
     };
   }, [openResumeFromAgent]);
+
+  /** Kanban / Sessions / Agent resume: open the session, or focus it if already open. */
+  useEffect(() => {
+    const onOpenSession = (event: Event) => {
+      const detail = (event as CustomEvent<AgentSession>).detail;
+      if (!detail?.provider || !detail?.id) return;
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      openSessionRef.current(detail);
+    };
+    window.addEventListener("agent-resume:workbench-open-session", onOpenSession);
+    return () => window.removeEventListener("agent-resume:workbench-open-session", onOpenSession);
+  }, []);
+
+  /** Nav-rail dot clicked: switch project, activate the pane, focus it. */
+  const focusWorkbenchSessionFromRail = useCallback((paneKey: string, projectPath: string) => {
+    selectProject(projectPath, { keepSessionKey: true });
+    setActivePane(paneKey, projectPath);
+    focusWorkbenchPane(paneKey);
+  }, [focusWorkbenchPane, selectProject, setActivePane]);
+
+  useEffect(() => {
+    const onFocusSession = (event: Event) => {
+      const detail = (event as CustomEvent<{ paneKey?: string; projectPath?: string }>).detail;
+      if (!detail?.paneKey) return;
+      focusWorkbenchSessionFromRail(detail.paneKey, detail.projectPath || selectedProjectRef.current || "");
+    };
+    window.addEventListener("agent-resume:workbench-focus-session", onFocusSession);
+    return () => window.removeEventListener("agent-resume:workbench-focus-session", onFocusSession);
+  }, [focusWorkbenchSessionFromRail]);
 
   const projectMenu = (event: React.MouseEvent, project: WorkbenchProject) => {
     event.preventDefault();

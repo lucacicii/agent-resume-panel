@@ -1,6 +1,8 @@
 import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { type ActiveSessionDot } from "../features/workbench/activeSessionDots";
+import { Tooltip } from "./Tooltip";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow" | "kanban";
 
@@ -20,6 +22,7 @@ function eventDetail<T>(event: Event): T | undefined {
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
   const [activeTab, setActiveTab] = useState<PrimaryTab>("report");
+  const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const headerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -59,9 +62,25 @@ export function AppChrome(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const onActiveSessions = (event: Event) => {
+      const detail = eventDetail<ActiveSessionDot[]>(event);
+      if (Array.isArray(detail)) setSessionDots(detail);
+    };
+    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
+    return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+  }, []);
+
   const selectTab = (next: PrimaryTab) => {
     setActiveTab(next);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
+  };
+
+  const focusSessionFromRail = (dot: ActiveSessionDot) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:workbench-focus-session", {
+      detail: { paneKey: dot.paneKey, projectPath: dot.projectPath }
+    }));
   };
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
@@ -82,6 +101,22 @@ export function AppChrome(): React.JSX.Element {
             <ThemeIcon name={tab.icon} aria-hidden="true" />
           </button>
         ))}
+        {sessionDots.length > 0 && (
+          <div className="rail-session-dots">
+            {sessionDots.map((dot) => (
+              <Tooltip key={dot.paneKey} label={dot.title}>
+                <button
+                  type="button"
+                  className="rail-session-dot-btn"
+                  aria-label={dot.title}
+                  onClick={() => focusSessionFromRail(dot)}
+                >
+                  <span className="rail-session-dot" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            ))}
+          </div>
+        )}
       </nav>
       {/* Header is intentionally empty for now — its contents are planned later.
           Per-tab toolbars (e.g. Kanban) portal into #app-header-slot while active. */}

@@ -402,6 +402,91 @@ textarea:focus-visible,
   height: 22px;
 }
 
+/* Active-session dots cluster pinned to the bottom of the rail: one dot per
+   session with an open Workbench terminal tab (incl. ACP + pending panes). */
+.app-nav-rail .rail-session-dots {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--color-separator);
+  -webkit-app-region: no-drag;
+}
+
+.app-nav-rail .rail-session-dot-btn {
+  -webkit-app-region: no-drag;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.app-nav-rail .rail-session-dot-btn:hover {
+  background: var(--color-fill-tertiary);
+}
+
+.app-nav-rail .rail-session-dot-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-nav-rail .rail-session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent);
+  pointer-events: none;
+}
+
+/* Custom tooltip (portal at body): macOS elevated surface, never clipped by
+   the rail's scrolling dot cluster. */
+.tooltip-wrap {
+  display: inline-flex;
+  -webkit-app-region: no-drag;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 200;
+  max-width: 260px;
+  padding: 5px 9px;
+  border: 1px solid var(--color-separator-opaque, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--color-elevated-bg, var(--panel));
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-caption, 11px);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip {
+    animation: tooltip-fade var(--duration-fast, 150ms) var(--ease-out, ease-out);
+  }
+}
+
+@keyframes tooltip-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Main window content sits to the right of the fixed rail; the width must
    shrink by the same amount so the content never overflows the app width.
    Scope to the top-level <main> (direct body child) — inner panels also use
@@ -13725,7 +13810,8 @@ body::before {
 }
 
 [data-visual-theme="cyberpunk"] .wb-folder-activity-dot,
-[data-visual-theme="cyberpunk"] .wb-session-activity-dot {
+[data-visual-theme="cyberpunk"] .wb-session-activity-dot,
+[data-visual-theme="cyberpunk"] .rail-session-dot {
   width: 7px;
   height: 7px;
   border-radius: 0;
@@ -13945,7 +14031,8 @@ body::before {
 }
 
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-folder-activity-dot,
-[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-session-activity-dot {
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-session-activity-dot,
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .rail-session-dot {
   animation: cyber-sidebar-node-pulse 1.5s steps(2, end) infinite;
 }
 
@@ -13965,6 +14052,7 @@ body::before {
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-list-pane::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-folder-activity-dot,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-session-activity-dot,
+[data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .rail-session-dot,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .project-pin-icon,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .notes-folder-row::after,
 [data-visual-theme="cyberpunk"][data-theme-effects="reduced"] .wb-folder-row::after,

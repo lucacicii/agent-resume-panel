@@ -78,4 +78,55 @@ describe("AppChrome", () => {
     expect(listener).toHaveBeenCalled();
     window.removeEventListener("agent-resume:sessions-open", listener);
   });
+
+  it("renders one dot per active session and shows a tooltip with the full title on hover", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
+        { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1" },
+        { paneKey: "acp:abc", projectPath: "/proj/a", title: "Short", sessionKey: "chat:abc" }
+      ] }));
+    });
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-session-dot-btn")];
+    expect(dots).toHaveLength(2);
+    expect(dots[0].getAttribute("aria-label")).toBe("A very long session title here");
+    expect(dots[0].hasAttribute("title")).toBe(false);
+    expect(dots[1].getAttribute("aria-label")).toBe("Short");
+
+    fireEvent.mouseOver(dots[0]);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("A very long session title here");
+  });
+
+  it("renders no dots when no sessions are open", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [] }));
+    });
+    expect(document.querySelectorAll(".rail-session-dot-btn").length).toBe(0);
+  });
+
+  it("requests workbench and focuses the session when a dot is clicked", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    const tabReq = vi.fn();
+    const focusReq = vi.fn();
+    window.addEventListener("agent-resume:tab-request", tabReq);
+    window.addEventListener("agent-resume:workbench-focus-session", focusReq);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
+        { paneKey: "terminal:9", projectPath: "/proj/x", title: "Alpha", sessionKey: "cli:s9" }
+      ] }));
+    });
+    const dot = document.querySelector<HTMLButtonElement>(".rail-session-dot-btn");
+    expect(dot).not.toBeNull();
+    fireEvent.click(dot!);
+    expect(tabReq).toHaveBeenCalledWith(expect.objectContaining({ detail: "workbench" }));
+    expect(focusReq).toHaveBeenCalledWith(expect.objectContaining({
+      detail: { paneKey: "terminal:9", projectPath: "/proj/x" }
+    }));
+    window.removeEventListener("agent-resume:tab-request", tabReq);
+    window.removeEventListener("agent-resume:workbench-focus-session", focusReq);
+  });
 });
