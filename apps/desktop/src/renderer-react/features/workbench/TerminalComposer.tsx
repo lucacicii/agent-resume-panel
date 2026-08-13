@@ -35,92 +35,6 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 
 const MAX_SUGGESTIONS = 6;
 const MAX_ROWS = 6;
-const MAX_COMPOSER_IMAGES = 4;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-
-/** A pasted/dropped image staged in the composer before send. */
-export type PendingComposerImage = {
-  id: string;
-  name: string;
-  mimeType: string;
-  dataUrl: string;
-  base64: string;
-  bytes: number;
-};
-
-/**
- * iTerm2 inline-image OSC (`OSC 1337;File=…`), which the terminal's ImageAddon
- * renders as an inline picture and the agent CLI receives as image input.
- */
-export function inlineImageOsc(image: PendingComposerImage): string {
-  const args = [
-    `name=${encodeURIComponent(image.name || "image")}`,
-    `size=${image.bytes}`,
-    "inline=1",
-    "preserveAspectRatio=1"
-  ].join(";");
-  return `\x1b]1337;File=${args}:${image.base64}\x07`;
-}
-
-function readImageFile(file: File): Promise<PendingComposerImage | null> {
-  return new Promise((resolve) => {
-    if (!file.type.startsWith("image/") || file.size > MAX_IMAGE_BYTES) {
-      resolve(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      const comma = dataUrl.indexOf(",");
-      const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
-      if (!base64) {
-        resolve(null);
-        return;
-      }
-      resolve({
-        id: crypto.randomUUID(),
-        name: file.name || "image",
-        mimeType: file.type,
-        dataUrl,
-        base64,
-        bytes: file.size
-      });
-    };
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Extract image Files from a paste's clipboard data. Handles both a direct
- * `image/*` item and a copied file item (`kind: "file"`) whose File resolves to
- * an image mime — the latter is what Finder-style image copies produce.
- */
-function imageFilesFromClipboard(clipboardData: Pick<DataTransfer, "items" | "files"> | null | undefined): File[] {
-  if (!clipboardData) return [];
-  const files: File[] = [];
-  const push = (file: File | null | undefined) => {
-    if (file && file.type.startsWith("image/") && !files.includes(file)) files.push(file);
-  };
-  for (const item of Array.from(clipboardData.items ?? [])) {
-    if (item.type.startsWith("image/") || item.kind === "file") push(item.getAsFile());
-  }
-  for (const file of Array.from(clipboardData.files ?? [])) push(file);
-  return files;
-}
-
-const RENDERABLE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
-/**
- * Pick a single image from a paste's files. Screenshot tools (WeChat, macOS
- * Shift+Cmd+4) expose several representations of the same capture (PNG + TIFF,
- * or an image item + a file item); a single paste should stage exactly one.
- * Prefers a renderable raster; falls back to the first image.
- */
-function primaryImageFile(files: File[]): File | null {
-  if (!files.length) return null;
-  return files.find((file) => RENDERABLE_IMAGE_TYPES.has(file.type)) || files[0] || null;
-}
 
 /**
  * Prefix matches before substring matches (case-insensitive), history recency
@@ -180,7 +94,6 @@ export function TerminalComposer(props: {
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [dragOver, setDragOver] = useState(false);
-  const [imageDragOver, setImageDragOver] = useState(false);
   const dragDepth = useRef(0);
   const [position, setPosition] = useState(() => loadTerminalComposerPosition(pane.cwd));
   const positionRef = useRef(position);
@@ -194,9 +107,6 @@ export function TerminalComposer(props: {
     origX: number;
     origY: number;
   } | null>(null);
-  const [pendingImages, setPendingImages] = useState<PendingComposerImage[]>([]);
-  /** Guards against a re-delivered paste of the same image within a short window. */
-  const lastImagePasteRef = useRef<{ at: number; signature: string } | null>(null);
 
   const disabled = ptyId === null || !active;
 
@@ -240,28 +150,17 @@ export function TerminalComposer(props: {
 
   const send = useCallback(() => {
     const text = value.trim();
-    if (ptyId === null || !active) return;
-    if (!text && pendingImages.length === 0) return;
-    let data = "";
-    for (const image of pendingImages) {
-      data += inlineImageOsc(image);
-    }
-    if (text) {
-      data += `${text}\r`;
-    } else if (pendingImages.length) {
-      data += "\r";
-    }
-    void desktopApi().terminalInput({ id: ptyId, data });
-    setHistory((current) => text ? pushTerminalComposerHistory(pane.cwd, text) : current);
+    if (!text || ptyId === null || !active) return;
+    void desktopApi().terminalInput({ id: ptyId, data: `${text}\r` });
+    setHistory((current) => pushTerminalComposerHistory(pane.cwd, text));
     setValue("");
     setRows(1);
     setHistoryIndex(-1);
     draftRef.current = "";
-    setPendingImages([]);
     setSuggestionsDismissed(false);
     setActiveSuggestion(0);
     inputRef.current?.focus();
-  }, [active, pane.cwd, pendingImages, ptyId, value]);
+  }, [active, pane.cwd, ptyId, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
     setValue(command);
@@ -280,77 +179,6 @@ export function TerminalComposer(props: {
     setSuggestionsDismissed(false);
     setActiveSuggestion(0);
   }, [resizeRows]);
-
-  const addPendingImages = useCallback(async (files: FileList | File[] | null) => {
-    if (!files || !("length" in files) || !files.length) return;
-    const staged: PendingComposerImage[] = [];
-    for (const file of Array.from(files as ArrayLike<File>)) {
-      const image = await readImageFile(file);
-      if (image) staged.push(image);
-    }
-    if (!staged.length) return;
-    setPendingImages((current) => {
-      const room = Math.max(0, MAX_COMPOSER_IMAGES - current.length);
-      const fresh = staged.filter(
-        (image) =>
-          !current.some(
-            (existing) =>
-              existing.name === image.name && existing.bytes === image.bytes && existing.mimeType === image.mimeType
-          )
-      );
-      return [...current, ...fresh.slice(0, room)];
-    });
-  }, []);
-
-  const removeImage = useCallback((id: string) => {
-    setPendingImages((current) => current.filter((image) => image.id !== id));
-  }, []);
-
-  const onPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const file = primaryImageFile(imageFilesFromClipboard(event.clipboardData));
-    if (!file) return;
-    event.preventDefault();
-    void addPendingImages([file]);
-  }, [addPendingImages]);
-
-  // Box-primary image paste: when a session pane is active, catch image pastes
-  // at the window (capture phase) even when focus is on the terminal itself —
-  // otherwise xterm pastes the image's text/base64 straight into the PTY.
-  // Text pastes pass through untouched; pastes aimed at other inputs are left
-  // alone. Focus is moved to the composer only AFTER the paste event settles
-  // (rAF): focusing synchronously inside a paste handler makes Chromium/Electron
-  // re-deliver the paste to the newly focused element, looping forever.
-  useEffect(() => {
-    if (disabled) return;
-    const onWindowPaste = (event: ClipboardEvent) => {
-      const files = imageFilesFromClipboard(event.clipboardData);
-      if (!files.length) return;
-      const target = event.target as HTMLElement | null;
-      const isComposerTarget = target === inputRef.current;
-      const isTerminalTarget = Boolean(target?.closest(".wb-terminal-host"));
-      if (!isComposerTarget && !isTerminalTarget) return;
-      // Cooldown: a browser/Electron re-delivery of the same paste (same image
-      // set within ~1s) must not re-enter staging/focus.
-      const signature = files.map((file) => `${file.name}:${file.size}:${file.type}`).join("|");
-      const now = Date.now();
-      if (lastImagePasteRef.current) {
-        const previous = lastImagePasteRef.current;
-        if (previous.signature === signature && now - previous.at < 1000) return;
-      }
-      lastImagePasteRef.current = { at: now, signature };
-      event.preventDefault();
-      event.stopPropagation();
-      requestAnimationFrame(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          setFocused(true);
-        }
-      });
-      void addPendingImages(files);
-    };
-    window.addEventListener("paste", onWindowPaste, true);
-    return () => window.removeEventListener("paste", onWindowPaste, true);
-  }, [addPendingImages, disabled]);
 
   // --- Floating position drag ---
 
@@ -492,69 +320,47 @@ export function TerminalComposer(props: {
     }
   }, [acceptSuggestion, disabled, history, historyIndex, send, suggestions, suggestionsOpen, activeSuggestion, value]);
 
-  const hasImageFiles = (event: React.DragEvent) =>
-    [...(event.dataTransfer?.files ?? [])].some((file) => file.type.startsWith("image/"));
-
   const onDragEnter = (event: React.DragEvent) => {
-    const hasPath = hasWorkbenchPathDnd(event.dataTransfer);
-    if (!hasPath && !hasImageFiles(event)) return;
+    if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
     dragDepth.current += 1;
-    setDragOver(hasPath);
-    setImageDragOver(!hasPath && hasImageFiles(event));
+    setDragOver(true);
   };
   const onDragOver = (event: React.DragEvent) => {
-    const hasPath = hasWorkbenchPathDnd(event.dataTransfer);
-    const hasImage = hasImageFiles(event);
-    if (!hasPath && !hasImage) return;
+    if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    setDragOver(hasPath);
-    setImageDragOver(!hasPath && hasImage);
   };
   const onDragLeave = () => {
     dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) {
-      setDragOver(false);
-      setImageDragOver(false);
-    }
+    if (dragDepth.current === 0) setDragOver(false);
   };
   const onDrop = (event: React.DragEvent) => {
+    if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
     event.preventDefault();
     dragDepth.current = 0;
     setDragOver(false);
-    setImageDragOver(false);
-    // Workbench path drag → insert the quoted path at the textarea cursor.
-    if (hasWorkbenchPathDnd(event.dataTransfer)) {
-      const path = event.dataTransfer.getData(WB_PATH_DND_MIME);
-      if (!path) return;
-      const quoted = shellQuotePath(path);
-      const el = inputRef.current;
-      const start = el ? el.selectionStart ?? value.length : value.length;
-      const end = el ? el.selectionEnd ?? value.length : value.length;
-      const next = `${value.slice(0, start)}${quoted}${value.slice(end)}`;
-      setValue(next);
-      resizeRows(next);
-      setSuggestionsDismissed(false);
-      setActiveSuggestion(0);
-      requestAnimationFrame(() => {
-        const input = inputRef.current;
-        if (input) input.setSelectionRange(start + quoted.length, start + quoted.length);
-      });
-      el?.focus();
-      return;
-    }
-    // Image file drop → stage as pending attachments.
-    const files = event.dataTransfer?.files;
-    if (files && files.length && hasImageFiles(event)) {
-      void addPendingImages(files);
-      inputRef.current?.focus();
-    }
+    const path = event.dataTransfer.getData(WB_PATH_DND_MIME);
+    if (!path) return;
+    const quoted = shellQuotePath(path);
+    const el = inputRef.current;
+    const start = el ? el.selectionStart ?? value.length : value.length;
+    const end = el ? el.selectionEnd ?? value.length : value.length;
+    const next = `${value.slice(0, start)}${quoted}${value.slice(end)}`;
+    setValue(next);
+    resizeRows(next);
+    setSuggestionsDismissed(false);
+    setActiveSuggestion(0);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input) input.setSelectionRange(start + quoted.length, start + quoted.length);
+    });
+    el?.focus();
   };
 
   return (
     <div
       ref={composerRef}
-      className={`wb-terminal-composer${focused ? " is-expanded" : " is-collapsed"}${dragOver ? " is-drag-over" : ""}${imageDragOver ? " is-image-drag" : ""}`}
+      className={`wb-terminal-composer${focused ? " is-expanded" : " is-collapsed"}${dragOver ? " is-drag-over" : ""}`}
       style={{ left: position.x, bottom: position.y }}
       title={t("desktop.workbench.terminalComposerHint")}
       onDragEnter={onDragEnter}
@@ -593,27 +399,9 @@ export function TerminalComposer(props: {
         enterKeyHint="send"
         onChange={onInputChange}
         onKeyDown={onKeyDown}
-        onPaste={onPaste}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       />
-      {pendingImages.length ? (
-        <div className="wb-terminal-composer-images" aria-label={t("desktop.workbench.terminalComposerImages")}>
-          {pendingImages.map((image) => (
-            <div className="wb-terminal-composer-image" key={image.id} title={image.name}>
-              <img src={image.dataUrl} alt={image.name} />
-              <button
-                type="button"
-                className="wb-terminal-composer-image-remove"
-                aria-label={t("desktop.common.close")}
-                onClick={() => removeImage(image.id)}
-              >
-                <ThemeIcon name="close" size={12} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
       <div className="wb-terminal-composer-tools">
         <span className="wb-terminal-composer-hint" aria-hidden="true">
           {t("desktop.workbench.terminalComposerHintLine")}
@@ -623,7 +411,7 @@ export function TerminalComposer(props: {
           className="wb-terminal-composer-send"
           aria-label={t("desktop.workbench.terminalComposerSend")}
           title={t("desktop.workbench.terminalComposerSend")}
-          disabled={disabled || (!value.trim() && pendingImages.length === 0)}
+          disabled={disabled || !value.trim()}
           onMouseDown={(event) => event.preventDefault()}
           onClick={send}
         >
@@ -656,12 +444,6 @@ export function TerminalComposer(props: {
       {dragOver ? (
         <div className="wb-terminal-composer-drop-hint" aria-hidden="true">
           {t("desktop.workbench.terminalComposerDropHint")}
-        </div>
-      ) : null}
-      {imageDragOver ? (
-        <div className="wb-terminal-composer-drop-hint is-image" aria-hidden="true">
-          <ThemeIcon name="image" size={13} aria-hidden="true" />
-          {t("desktop.workbench.terminalComposerImageDrop")}
         </div>
       ) : null}
     </div>

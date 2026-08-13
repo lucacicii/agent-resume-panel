@@ -15,9 +15,7 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
   "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
   "desktop.workbench.terminalComposerHintLine": "Enter sends · Shift+Enter newline",
-  "desktop.workbench.terminalComposerMove": "Move input box",
-  "desktop.workbench.terminalComposerImageDrop": "Drop image to attach",
-  "desktop.workbench.terminalComposerImages": "Images"
+  "desktop.workbench.terminalComposerMove": "Move input box"
 };
 
 const terminalInputMock = vi.fn(async () => ({ ok: true }));
@@ -315,84 +313,5 @@ describe("TerminalComposer", () => {
     const { container } = await renderComposer();
     expect(composerEl(container).style.left).toBe("120px");
     expect(composerEl(container).style.bottom).toBe("60px");
-  });
-
-  it("pastes an image into a thumbnail and sends it inline via OSC 1337", async () => {
-    const { container } = await renderComposer();
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const file = new File([bytes], "shot.png", { type: "image/png" });
-    fireEvent.paste(textbox(), {
-      clipboardData: { items: [{ type: "image/png", getAsFile: () => file }] }
-    });
-    await waitFor(() => expect(container.querySelector(".wb-terminal-composer-image")).toBeTruthy());
-    expect(terminalInputMock).not.toHaveBeenCalled();
-    fireEvent.keyDown(textbox(), { key: "Enter" });
-    const base64 = Buffer.from(bytes).toString("base64");
-    expect(terminalInputMock).toHaveBeenCalledWith({
-      id: 7,
-      data: `\x1b]1337;File=name=shot.png;size=8;inline=1;preserveAspectRatio=1:${base64}\x07\r`
-    });
-    expect(container.querySelector(".wb-terminal-composer-image")).toBeNull();
-  });
-
-  it("routes an image paste made while the terminal is focused into the composer", async () => {
-    const { container } = await renderComposer();
-    // Simulate focus sitting on xterm's helper textarea (raw-input mode).
-    const host = document.createElement("div");
-    host.className = "wb-terminal-host";
-    const termTextarea = document.createElement("textarea");
-    termTextarea.className = "xterm-helper-textarea";
-    host.appendChild(termTextarea);
-    document.body.appendChild(host);
-    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "term.png", { type: "image/png" });
-    fireEvent.paste(termTextarea, {
-      clipboardData: { items: [{ type: "image/png", getAsFile: () => file }] }
-    });
-    await waitFor(() => expect(container.querySelector(".wb-terminal-composer-image")).toBeTruthy());
-    expect(terminalInputMock).not.toHaveBeenCalled();
-    host.remove();
-  });
-
-  it("does not hijack text-only pastes", async () => {
-    const { container } = await renderComposer();
-    fireEvent.paste(textbox(), {
-      clipboardData: { items: [{ type: "text/plain", getAsFile: () => null }], files: [] }
-    });
-    expect(container.querySelector(".wb-terminal-composer-image")).toBeNull();
-    expect(terminalInputMock).not.toHaveBeenCalled();
-  });
-
-  it("drops an image file to attach and send it", async () => {
-    const { container } = await renderComposer();
-    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "drop.png", { type: "image/png" });
-    fireEvent.drop(composerEl(container), {
-      dataTransfer: { types: ["Files"], files: [file], getData: () => "" }
-    });
-    await waitFor(() => expect(container.querySelector(".wb-terminal-composer-image")).toBeTruthy());
-    fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).toHaveBeenCalledTimes(1);
-    expect(terminalInputMock).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.stringContaining("1337;File=name=drop.png;size=4;inline=1") })
-    );
-  });
-
-  it("shows the image drop hint while an image drags over", async () => {
-    const { container } = await renderComposer();
-    const file = new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" });
-    fireEvent.dragOver(composerEl(container), {
-      dataTransfer: { types: ["Files"], files: [file], dropEffect: "" }
-    });
-    expect(container.querySelector(".wb-terminal-composer-drop-hint.is-image")).toBeTruthy();
-  });
-
-  it("removes a pending image via its close button", async () => {
-    const { container } = await renderComposer();
-    const file = new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" });
-    fireEvent.paste(textbox(), {
-      clipboardData: { items: [{ type: "image/png", getAsFile: () => file }] }
-    });
-    await waitFor(() => expect(container.querySelector(".wb-terminal-composer-image")).toBeTruthy());
-    fireEvent.click(container.querySelector(".wb-terminal-composer-image-remove")!);
-    expect(container.querySelector(".wb-terminal-composer-image")).toBeNull();
   });
 });
