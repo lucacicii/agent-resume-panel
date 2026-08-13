@@ -31,6 +31,7 @@ type MockTerminalInstance = {
   scrollLineCalls: number[];
   scrollLinesCalls: number[];
   scrollPagesCalls: number[];
+  wheelDeltas: number[];
   setBuffer: (type: "normal" | "alternate", viewportY: number, baseY: number) => void;
 };
 const xtermMocks = vi.hoisted(() => ({
@@ -120,12 +121,23 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   scrollLineCalls: number[] = [];
   scrollLinesCalls: number[] = [];
   scrollPagesCalls: number[] = [];
+  wheelDeltas: number[] = [];
   constructor(options: Record<string, unknown>) {
     this.options = options;
     xtermMocks.instances.push(this);
   }
   loadAddon(addon: { activate?: (terminal: unknown) => void }) { addon.activate?.(this); }
-  open() {}
+  open(host: HTMLElement) {
+    const root = document.createElement("div");
+    root.className = "xterm";
+    const viewport = document.createElement("div");
+    viewport.className = "xterm-viewport";
+    const screen = document.createElement("div");
+    screen.className = "xterm-screen";
+    root.append(viewport, screen);
+    host.append(root);
+    viewport.addEventListener("wheel", (event) => this.wheelDeltas.push(event.deltaY));
+  }
   focus() { this.focusCalls += 1; }
   write() { this.writeListeners.forEach((listener) => listener()); }
   getSelection() { return ""; }
@@ -1671,33 +1683,37 @@ describe("WorkbenchPanel", () => {
 
     const terminalHost = document.querySelector<HTMLElement>(".wb-terminal-host")!;
     expect(terminalHost.classList.contains("is-session")).toBe(true);
-    expect(terminalHost.classList.contains("is-tui-mode")).toBe(false);
+    expect(terminalHost.classList.contains("is-tui-mode")).toBe(true);
     expect(screen.queryByRole("slider")).toBeNull();
+    const startupWaterdrop = screen.getByRole("button", { name: "TUI scroll control" });
+    expect(startupWaterdrop.classList.contains("is-unavailable")).toBe(false);
 
     act(() => terminal.setBuffer("normal", 5, 10));
     expect(screen.queryByRole("slider")).toBeNull();
-    expect(document.querySelector(".wb-terminal-tui-drop")).toBeNull();
+    const normalBufferWaterdrop = screen.getByRole("button", { name: "TUI scroll control" });
+    expect(normalBufferWaterdrop.classList.contains("is-unavailable")).toBe(false);
+    expect(terminalHost.classList.contains("is-tui-mode")).toBe(true);
 
     act(() => terminal.setBuffer("alternate", 0, 0));
     expect(terminalHost.classList.contains("is-tui-mode")).toBe(true);
     expect(screen.queryByRole("slider")).toBeNull();
     const waterdrop = screen.getByRole("button", { name: "TUI scroll control" });
-    expect(waterdrop.classList.contains("is-unavailable")).toBe(true);
-    expect(waterdrop.getAttribute("aria-disabled")).toBe("true");
+    expect(waterdrop.classList.contains("is-unavailable")).toBe(false);
+    expect(waterdrop.getAttribute("aria-disabled")).toBe("false");
 
     act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?1002h\x1b[?1006h" }));
     terminalInput.mockClear();
     expect(waterdrop.classList.contains("is-unavailable")).toBe(false);
     expect(waterdrop.getAttribute("aria-disabled")).toBe("false");
     fireEvent.keyDown(waterdrop, { key: "ArrowUp" });
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M" });
+    expect(terminal.wheelDeltas).toEqual([-1]);
     fireEvent.keyDown(waterdrop, { key: "PageDown" });
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(8) });
+    expect(terminal.wheelDeltas).toEqual([-1, ...Array(8).fill(1)]);
 
     act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?1002l" }));
-    expect(waterdrop.classList.contains("is-unavailable")).toBe(true);
+    expect(waterdrop.classList.contains("is-unavailable")).toBe(false);
     fireEvent.keyDown(waterdrop, { key: "ArrowDown" });
-    expect(terminalInput).toHaveBeenCalledTimes(2);
+    expect(terminal.wheelDeltas.at(-1)).toBe(1);
   });
 
   it("continuously scrolls a mouse-tracking TUI by waterdrop pull direction and strength", async () => {
@@ -1733,31 +1749,31 @@ describe("WorkbenchPanel", () => {
 
     fireEvent(waterdrop, new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }));
     fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 95 }));
-    expect(terminalInput).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.stringContaining("\x1b[<") }));
+    expect(xtermMocks.instances[0].wheelDeltas).toEqual([]);
     expect(waterdrop.classList.contains("is-idle")).toBe(true);
 
     fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 70 }));
     expect(waterdrop.classList.contains("is-up")).toBe(true);
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(4) });
+    expect(xtermMocks.instances[0].wheelDeltas).toEqual(Array(4).fill(-1));
     fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 10 }));
     act(() => vi.advanceTimersByTime(80));
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<64;1;1M".repeat(14) });
+    expect(xtermMocks.instances[0].wheelDeltas.slice(-14)).toEqual(Array(14).fill(-1));
 
     fireEvent(waterdrop, new MouseEvent("pointerup", { bubbles: true, clientY: 10 }));
     expect(waterdrop.classList.contains("is-idle")).toBe(true);
-    const callsAfterRelease = terminalInput.mock.calls.length;
+    const wheelsAfterRelease = xtermMocks.instances[0].wheelDeltas.length;
     act(() => vi.advanceTimersByTime(240));
-    expect(terminalInput).toHaveBeenCalledTimes(callsAfterRelease);
+    expect(xtermMocks.instances[0].wheelDeltas).toHaveLength(wheelsAfterRelease);
 
     fireEvent(waterdrop, new MouseEvent("pointerdown", { bubbles: true, clientY: 100 }));
     fireEvent(waterdrop, new MouseEvent("pointermove", { bubbles: true, clientY: 150 }));
     expect(waterdrop.classList.contains("is-down")).toBe(true);
-    expect(terminalInput).toHaveBeenLastCalledWith({ id: 1, data: "\x1b[<65;1;1M".repeat(7) });
+    expect(xtermMocks.instances[0].wheelDeltas.slice(-7)).toEqual(Array(7).fill(1));
     act(() => window.dispatchEvent(new Event("blur")));
     expect(waterdrop.classList.contains("is-idle")).toBe(true);
-    const callsAfterBlur = terminalInput.mock.calls.length;
+    const wheelsAfterBlur = xtermMocks.instances[0].wheelDeltas.length;
     act(() => vi.advanceTimersByTime(160));
-    expect(terminalInput).toHaveBeenCalledTimes(callsAfterBlur);
+    expect(xtermMocks.instances[0].wheelDeltas).toHaveLength(wheelsAfterBlur);
     vi.useRealTimers();
   });
 

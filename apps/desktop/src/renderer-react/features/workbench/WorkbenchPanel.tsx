@@ -1474,8 +1474,6 @@ const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = 
  * buffer, which has no xterm scrollback. They enable mouse tracking and scroll
  * their own viewport, so the waterdrop control emulates wheel bursts through the PTY.
  */
-const TUI_WHEEL_UP = "\x1b[<64;1;1M";
-const TUI_WHEEL_DOWN = "\x1b[<65;1;1M";
 /** A small, controllable movement for an in-app TUI viewport. */
 const TUI_WHEEL_STEP = 8;
 const TUI_WHEEL_REPEAT_MS = 80;
@@ -1731,8 +1729,16 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     const syncScrollState = () => {
       if (!alive) return;
       const buffer = terminal.buffer.active;
-      const tuiMode = buffer.type === "alternate" && ptyId.current !== null;
-      const tuiInteractive = tuiMode && mouseTracking.current.get(ptyId.current!) === true;
+      // Alternate-buffer activation can happen before terminalSpawn resolves.
+      // Detect the buffer independently so the TUI affordance is not missed
+      // during the Codex startup handshake.
+      const mouseTrackingActive = ptyId.current !== null && mouseTracking.current.get(ptyId.current) === true;
+      // Agent session panes are TUI surfaces even when the CLI keeps xterm's
+      // normal buffer. Once their PTY exists, allow the waterdrop to send
+      // wheel events; some Codex startup paths do not expose DEC mouse modes
+      // in a single parseable chunk, which must not leave the control inert.
+      const tuiMode = pane.group === "session" || buffer.type === "alternate";
+      const tuiInteractive = tuiMode && (pane.group === "session" || mouseTrackingActive);
       const next = { tuiMode, tuiInteractive };
       setScrollState((current) => current.tuiMode === next.tuiMode && current.tuiInteractive === next.tuiInteractive ? current : next);
     };
@@ -1810,6 +1816,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
         ptyId.current = id;
         onPty(pane.key, id, terminal);
+        syncScrollState();
         setReady(true);
         // Re-fit after attach in case layout settled during spawn.
         scheduleFit();
@@ -1964,11 +1971,30 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     };
   }, []);
 
+  const tuiControlVisible = pane.group === "session" || scrollState.tuiMode;
+
   const sendTuiWheel = (direction: "up" | "down", ticks: number) => {
-    const id = ptyId.current;
-    if (id === null || ticks <= 0) return;
-    const wheel = direction === "up" ? TUI_WHEEL_UP : TUI_WHEEL_DOWN;
-    void desktopApi().terminalInput({ id, data: wheel.repeat(ticks) }).catch(() => stopTuiScroll());
+    const hostEl = host.current;
+    if (!hostEl || ticks <= 0) return;
+    // Send real wheel events through xterm instead of assuming SGR mouse
+    // encoding. xterm translates each event using the active TUI protocol
+    // (SGR/default/pixel), or scrolls its own normal buffer when appropriate.
+    const target = hostEl.querySelector<HTMLElement>(".xterm-viewport")
+      || hostEl.querySelector<HTMLElement>(".xterm")
+      || hostEl;
+    const screen = hostEl.querySelector<HTMLElement>(".xterm-screen");
+    const rect = (screen || target).getBoundingClientRect();
+    const deltaY = direction === "up" ? -1 : 1;
+    for (let index = 0; index < ticks; index += 1) {
+      target.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        deltaMode: WheelEvent.DOM_DELTA_LINE,
+        deltaY
+      }));
+    }
   };
 
   const stopTuiScroll = (resetShape = true) => {
@@ -2049,7 +2075,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`} ref={host} />
-    {scrollState.tuiMode ? (
+    {tuiControlVisible ? (
       <button
         type="button"
         className={`wb-terminal-tui-drop${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"} is-${tuiPull.direction}`}
