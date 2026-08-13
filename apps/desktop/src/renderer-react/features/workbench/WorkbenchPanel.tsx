@@ -1476,10 +1476,11 @@ const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = 
  */
 const TUI_WHEEL_UP = "\x1b[<64;1;1M";
 const TUI_WHEEL_DOWN = "\x1b[<65;1;1M";
-/** Wheel ticks sent per jump click; TUIs scroll a few lines per tick. */
-const TUI_WHEEL_BURST = 400;
-const TUI_WHEEL_JUMP_TOP = TUI_WHEEL_UP.repeat(TUI_WHEEL_BURST);
-const TUI_WHEEL_JUMP_BOTTOM = TUI_WHEEL_DOWN.repeat(TUI_WHEEL_BURST);
+/** A small, controllable movement for an in-app TUI viewport. */
+const TUI_WHEEL_STEP = 8;
+const TUI_WHEEL_REPEAT_MS = 80;
+const TUI_DRAG_PIXELS_PER_TICK = 6;
+const TUI_DRAG_MAX_TICKS = 32;
 /** DEC private modes whose enablement makes the app own wheel scrolling. */
 const TUI_MOUSE_TRACKING_MODES = new Set([1000, 1002, 1003]);
 const MOUSE_TRACKING_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g;
@@ -1619,9 +1620,20 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [scrollState, setScrollState] = useState<{ canScrollTop: boolean; canScrollBottom: boolean; tuiMode: boolean }>(
-    { canScrollTop: false, canScrollBottom: false, tuiMode: false }
-  );
+  const tuiScrollTimer = useRef<number | null>(null);
+  const tuiThumbPositionRef = useRef(50);
+  const tuiDragRef = useRef<{ lastY: number; remainder: number } | null>(null);
+  const previousTuiModeRef = useRef(false);
+  const [tuiThumbPosition, setTuiThumbPosition] = useState(50);
+  const [scrollState, setScrollState] = useState<{
+    canScrollTop: boolean;
+    canScrollBottom: boolean;
+    tuiMode: boolean;
+    tuiInteractive: boolean;
+    viewportY: number;
+    baseY: number;
+    thumbSize: number;
+  }>({ canScrollTop: false, canScrollBottom: false, tuiMode: false, tuiInteractive: false, viewportY: 0, baseY: 0, thumbSize: 1 });
 
   const runSearch = useCallback((direction: "next" | "prev", term: string) => {
     const addon = searchAddonRef.current;
@@ -1727,17 +1739,28 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     const syncScrollState = () => {
       if (!alive) return;
       const buffer = terminal.buffer.active;
-      const tuiMode = buffer.type === "alternate"
-        && ptyId.current !== null
-        && mouseTracking.current.get(ptyId.current) === true;
+      const tuiMode = buffer.type === "alternate" && ptyId.current !== null;
+      const tuiInteractive = tuiMode && mouseTracking.current.get(ptyId.current!) === true;
       const next = tuiMode
-        ? { canScrollTop: true, canScrollBottom: true, tuiMode: true }
+        ? { canScrollTop: tuiInteractive, canScrollBottom: tuiInteractive, tuiMode: true, tuiInteractive, viewportY: 0, baseY: 0, thumbSize: 1 }
         : buffer.type === "normal" && buffer.baseY > 0
-          ? { canScrollTop: buffer.viewportY > 0, canScrollBottom: buffer.viewportY < buffer.baseY, tuiMode: false }
-          : { canScrollTop: false, canScrollBottom: false, tuiMode: false };
+          ? {
+              canScrollTop: buffer.viewportY > 0,
+              canScrollBottom: buffer.viewportY < buffer.baseY,
+              tuiMode: false,
+              tuiInteractive: false,
+              viewportY: buffer.viewportY,
+              baseY: buffer.baseY,
+              thumbSize: Math.min(1, terminal.rows / Math.max(terminal.rows, buffer.length))
+            }
+          : { canScrollTop: false, canScrollBottom: false, tuiMode: false, tuiInteractive: false, viewportY: 0, baseY: 0, thumbSize: 1 };
       setScrollState((current) => current.canScrollTop === next.canScrollTop
         && current.canScrollBottom === next.canScrollBottom
-        && current.tuiMode === next.tuiMode ? current : next);
+        && current.tuiMode === next.tuiMode
+        && current.tuiInteractive === next.tuiInteractive
+        && current.viewportY === next.viewportY
+        && current.baseY === next.baseY
+        && current.thumbSize === next.thumbSize ? current : next);
     };
 
     const resizePty = (cols: number, rows: number) => {
@@ -1842,6 +1865,10 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       window.removeEventListener("resize", scheduleFit);
       viewport?.removeEventListener("resize", scheduleFit);
       hostEl.removeEventListener("copy", onCopySelection);
+      if (tuiScrollTimer.current !== null) {
+        window.clearInterval(tuiScrollTimer.current);
+        tuiScrollTimer.current = null;
+      }
       onTermResize.dispose();
       onTermScroll.dispose();
       onWriteParsed.dispose();
@@ -1966,42 +1993,189 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     };
   }, []);
 
+  const scrollNormalToRailPosition = (event: React.PointerEvent<HTMLDivElement>) => {
+    const terminal = terminalRef.current;
+    if (!terminal || scrollState.baseY <= 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    terminal.scrollToLine(Math.round(ratio * scrollState.baseY));
+    terminal.focus();
+  };
+
+  const onRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    if (event.key === "Home") terminal.scrollToTop();
+    else if (event.key === "End") terminal.scrollToBottom();
+    else if (event.key === "ArrowUp") terminal.scrollLines(-1);
+    else if (event.key === "ArrowDown") terminal.scrollLines(1);
+    else if (event.key === "PageUp") terminal.scrollPages(-1);
+    else if (event.key === "PageDown") terminal.scrollPages(1);
+    else return;
+    event.preventDefault();
+    terminal.focus();
+  };
+
+  const setTuiThumb = (position: number) => {
+    const next = Math.max(0, Math.min(100, position));
+    tuiThumbPositionRef.current = next;
+    setTuiThumbPosition(next);
+  };
+
+  const sendTuiWheel = (direction: "up" | "down", ticks: number) => {
+    const id = ptyId.current;
+    if (id === null || ticks <= 0) return;
+    const wheel = direction === "up" ? TUI_WHEEL_UP : TUI_WHEEL_DOWN;
+    void desktopApi().terminalInput({ id, data: wheel.repeat(ticks) }).catch(() => stopTuiScroll());
+  };
+
+  const stopTuiScroll = () => {
+    if (tuiScrollTimer.current === null) return;
+    window.clearInterval(tuiScrollTimer.current);
+    tuiScrollTimer.current = null;
+  };
+
+  useEffect(() => {
+    if (scrollState.tuiMode && !previousTuiModeRef.current) setTuiThumb(50);
+    previousTuiModeRef.current = scrollState.tuiMode;
+  }, [scrollState.tuiMode]);
+
+  useEffect(() => {
+    const onWindowBlur = () => stopTuiScroll();
+    window.addEventListener("blur", onWindowBlur);
+    return () => window.removeEventListener("blur", onWindowBlur);
+  }, []);
+
+  const startTuiScroll = (event: React.PointerEvent<HTMLButtonElement>, direction: "up" | "down") => {
+    if (ptyId.current === null) return;
+    const send = () => sendTuiWheel(direction, TUI_WHEEL_STEP);
+    stopTuiScroll();
+    send();
+    tuiScrollTimer.current = window.setInterval(send, TUI_WHEEL_REPEAT_MS);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    terminalRef.current?.focus();
+  };
+
+  const scrubTuiToPointer = (event: React.PointerEvent<HTMLDivElement>, begin = false) => {
+    if (!scrollState.tuiInteractive) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    const visualPosition = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
+    const drag = tuiDragRef.current ?? { lastY: rect.top + rect.height / 2, remainder: 0 };
+    const delta = event.clientY - drag.lastY;
+    const distance = Math.abs(delta) + (begin ? 0 : drag.remainder);
+    const ticks = Math.min(TUI_DRAG_MAX_TICKS, Math.floor(distance / TUI_DRAG_PIXELS_PER_TICK));
+    if (ticks > 0) sendTuiWheel(delta < 0 ? "up" : "down", ticks);
+    tuiDragRef.current = {
+      lastY: event.clientY,
+      remainder: ticks === TUI_DRAG_MAX_TICKS ? 0 : distance - ticks * TUI_DRAG_PIXELS_PER_TICK
+    };
+    setTuiThumb(visualPosition);
+    terminalRef.current?.focus();
+  };
+
+  const finishTuiScrub = () => {
+    tuiDragRef.current = null;
+    setTuiThumb(50);
+  };
+
+  const onTuiRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!scrollState.tuiInteractive) return;
+    let direction: "up" | "down";
+    let ticks: number;
+    if (event.key === "ArrowUp") { direction = "up"; ticks = 1; }
+    else if (event.key === "ArrowDown") { direction = "down"; ticks = 1; }
+    else if (event.key === "PageUp") { direction = "up"; ticks = TUI_WHEEL_STEP; }
+    else if (event.key === "PageDown") { direction = "down"; ticks = TUI_WHEEL_STEP; }
+    else if (event.key === "Home") { direction = "up"; ticks = TUI_DRAG_MAX_TICKS; }
+    else if (event.key === "End") { direction = "down"; ticks = TUI_DRAG_MAX_TICKS; }
+    else return;
+    event.preventDefault();
+    sendTuiWheel(direction, ticks);
+    terminalRef.current?.focus();
+  };
+
+  const thumbTop = scrollState.baseY > 0 ? (scrollState.viewportY / scrollState.baseY) * (1 - scrollState.thumbSize) * 100 : 0;
+  const tuiThumbTop = `calc(${tuiThumbPosition}% - ${tuiThumbPosition * 0.4}px)`;
+
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className={`wb-terminal-host${dragOver ? " is-drag-over" : ""}`} ref={host} />
-    {scrollState.canScrollTop ? (
+    {!scrollState.tuiMode ? (
+      <div
+        className={`wb-terminal-scroll-rail${scrollState.baseY > 0 ? "" : " is-idle"}`}
+        role="slider"
+        tabIndex={scrollState.baseY > 0 ? 0 : -1}
+        aria-disabled={scrollState.baseY > 0 ? undefined : true}
+        aria-label={t("desktop.workbench.terminalScrollPosition")}
+        aria-valuemin={0}
+        aria-valuemax={scrollState.baseY}
+        aria-valuenow={scrollState.viewportY}
+        onPointerDown={(event) => {
+          if (scrollState.baseY <= 0) return;
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          scrollNormalToRailPosition(event);
+        }}
+        onPointerMove={(event) => {
+          if (scrollState.baseY > 0 && event.currentTarget.hasPointerCapture?.(event.pointerId)) scrollNormalToRailPosition(event);
+        }}
+        onKeyDown={onRailKeyDown}
+      >
+        <div className="wb-terminal-scroll-thumb" style={{ top: `${thumbTop}%`, height: `${scrollState.thumbSize * 100}%` }} />
+      </div>
+    ) : null}
+    {scrollState.tuiMode ? (
+      <div
+        className={`wb-terminal-tui-nav${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"}`}
+        role="slider"
+        tabIndex={scrollState.tuiInteractive ? 0 : -1}
+        aria-disabled={!scrollState.tuiInteractive}
+        aria-label={t("desktop.workbench.terminalScrollPosition")}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(tuiThumbPosition)}
+        onPointerDown={(event) => {
+          if (!scrollState.tuiInteractive || (event.target as Element).closest("button")) return;
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          scrubTuiToPointer(event, true);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) scrubTuiToPointer(event);
+        }}
+        onPointerUp={finishTuiScrub}
+        onPointerCancel={finishTuiScrub}
+        onKeyDown={onTuiRailKeyDown}
+      >
+        <div className="wb-terminal-tui-thumb" style={{ top: tuiThumbTop }} aria-hidden="true" />
+        <button type="button" className="wb-terminal-jump is-top is-tui" aria-label={t("desktop.workbench.terminalScrollTop")} title={t("desktop.workbench.terminalScrollTop")}
+          disabled={!scrollState.tuiInteractive}
+          onPointerDown={(event) => startTuiScroll(event, "up")} onPointerUp={stopTuiScroll} onPointerCancel={stopTuiScroll} onPointerLeave={stopTuiScroll}>
+          <ThemeIcon name="arrow-up" size={15} aria-hidden="true" />
+        </button>
+        <button type="button" className="wb-terminal-jump is-bottom is-tui" aria-label={t("desktop.workbench.terminalScrollBottom")} title={t("desktop.workbench.terminalScrollBottom")}
+          disabled={!scrollState.tuiInteractive}
+          onPointerDown={(event) => startTuiScroll(event, "down")} onPointerUp={stopTuiScroll} onPointerCancel={stopTuiScroll} onPointerLeave={stopTuiScroll}>
+          <ThemeIcon name="arrow-down" size={15} aria-hidden="true" />
+        </button>
+      </div>
+    ) : null}
+    {!scrollState.tuiMode && scrollState.canScrollTop ? (
       <button
         type="button"
-        className={`wb-terminal-jump is-top${scrollState.tuiMode ? " is-tui" : ""}${searchOpen ? " is-below-search" : ""}`}
+        className={`wb-terminal-jump is-top${searchOpen ? " is-below-search" : ""}`}
         aria-label={t("desktop.workbench.terminalScrollTop")}
         title={t("desktop.workbench.terminalScrollTop")}
-        onClick={() => {
-          if (scrollState.tuiMode && ptyId.current !== null) {
-            void desktopApi().terminalInput({ id: ptyId.current, data: TUI_WHEEL_JUMP_TOP });
-            terminalRef.current?.focus();
-            return;
-          }
-          terminalRef.current?.scrollToTop();
-          terminalRef.current?.focus();
-        }}
+        onClick={() => { terminalRef.current?.scrollToTop(); terminalRef.current?.focus(); }}
       >
         <ThemeIcon name="arrow-up-to-line" size={15} aria-hidden="true" />
       </button>
     ) : null}
-    {scrollState.canScrollBottom ? (
+    {!scrollState.tuiMode && scrollState.canScrollBottom ? (
       <button
         type="button"
-        className={`wb-terminal-jump is-bottom${scrollState.tuiMode ? " is-tui" : ""}`}
+        className="wb-terminal-jump is-bottom"
         aria-label={t("desktop.workbench.terminalScrollBottom")}
         title={t("desktop.workbench.terminalScrollBottom")}
-        onClick={() => {
-          if (scrollState.tuiMode && ptyId.current !== null) {
-            void desktopApi().terminalInput({ id: ptyId.current, data: TUI_WHEEL_JUMP_BOTTOM });
-            terminalRef.current?.focus();
-            return;
-          }
-          terminalRef.current?.scrollToBottom();
-          terminalRef.current?.focus();
-        }}
+        onClick={() => { terminalRef.current?.scrollToBottom(); terminalRef.current?.focus(); }}
       >
         <ThemeIcon name="arrow-down-to-line" size={15} aria-hidden="true" />
       </button>

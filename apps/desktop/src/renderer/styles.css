@@ -9122,6 +9122,93 @@ textarea.wb-editor-host {
   cursor: pointer;
 }
 
+.wb-terminal-scroll-rail {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 10;
+  width: 14px;
+  min-height: 48px;
+  border: 1px solid color-mix(in srgb, var(--color-label-primary) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-label-primary) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-window-bg) 60%, transparent);
+  cursor: pointer;
+}
+
+.wb-terminal-scroll-rail.is-idle {
+  cursor: default;
+  opacity: .7;
+}
+
+.wb-terminal-scroll-rail:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.wb-terminal-scroll-thumb {
+  position: absolute;
+  right: 0;
+  left: 0;
+  min-height: 20px;
+  border-radius: inherit;
+  background: var(--color-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .38);
+  pointer-events: none;
+}
+
+.wb-terminal-scroll-rail:hover .wb-terminal-scroll-thumb,
+.wb-terminal-scroll-rail:focus-visible .wb-terminal-scroll-thumb {
+  background: var(--color-accent);
+}
+
+.wb-terminal-tui-nav {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 10;
+  display: flex;
+  width: 14px;
+  min-height: 48px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--color-label-primary) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-label-primary) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-window-bg) 60%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.wb-terminal-tui-thumb {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 40px;
+  min-height: 20px;
+  border-radius: inherit;
+  background: var(--color-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .38);
+  cursor: grab;
+  pointer-events: none;
+}
+
+.wb-terminal-tui-nav:active .wb-terminal-tui-thumb { cursor: grabbing; }
+.wb-terminal-tui-nav:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wb-terminal-tui-nav.is-below-search { top: 56px; }
+.wb-terminal-tui-nav .wb-terminal-jump { position: static; flex: 0 0 auto; pointer-events: auto; }
+.wb-terminal-tui-nav.is-unavailable { cursor: default; opacity: .7; pointer-events: none; }
+.wb-terminal-tui-nav.is-unavailable .wb-terminal-tui-thumb { opacity: .45; }
+.wb-terminal-tui-nav .wb-terminal-jump:disabled { cursor: not-allowed; }
+
 .wb-terminal-jump.is-top {
   top: 10px;
 }
