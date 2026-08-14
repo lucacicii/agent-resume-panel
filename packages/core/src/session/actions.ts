@@ -1,3 +1,5 @@
+import { deleteAcpSessionRecord } from "../acp/store";
+import { deleteAcpSessionFromCatalog } from "../catalog/acpCatalog";
 import { hideSessionsInCatalog, setSessionSummaryInCatalog, setUserTitleInCatalog } from "../catalog/mutations";
 import { hideProjectInCatalog } from "../catalog/projects";
 import { getSessionById } from "../catalog/query";
@@ -6,7 +8,7 @@ import { AgentProvider, AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
-import { catalogDbFromSettings, loadSettings } from "../settings/store";
+import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { loadSessionPreview } from "../transcript/load";
 import { resolvePreviewHomes } from "../transcript/homes";
 import { recordLlmUsage } from "../usage/store";
@@ -239,6 +241,26 @@ export async function hideSessionAction(opts: SessionActionOptions): Promise<voi
   const settings = await loadSettings();
   const dbPath = catalogDbFromSettings(settings);
   await ensureExtensionCatalogSchema(dbPath);
+
+  // ACP chats (provider "chat") are sourced from the JSONL store and only mirrored
+  // into catalog. sessions:list merges both, so a catalog-only hide leaves the row
+  // visible (or fails entirely when the mirror never landed). Remove the store
+  // record + catalog mirror instead of requiring a catalog lookup.
+  if (opts.provider === "chat") {
+    const panelHome = effectivePanelHome(settings);
+    const id = opts.id.trim();
+    if (!id) {
+      throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
+    }
+    await deleteAcpSessionRecord(panelHome, id);
+    try {
+      await deleteAcpSessionFromCatalog(dbPath, id);
+    } catch {
+      // Catalog mirror is optional; store removal is enough for list disappearance.
+    }
+    return;
+  }
+
   const session = await getSessionById(dbPath, opts.provider, opts.id);
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);

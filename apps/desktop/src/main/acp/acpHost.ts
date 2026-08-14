@@ -1003,9 +1003,7 @@ export function registerAcpIpc(deps: {
   });
 
   safeHandle("acp:deleteSession", async (_event, args: { chatId: string }) => {
-    const controller = controllers.get(args.chatId);
-    controller?.dispose();
-    controllers.delete(args.chatId);
+    disposeAcpController(args.chatId);
     const settings = await loadSettings();
     await deleteAcpRecord(effectivePanelHome(settings), args.chatId);
     return { ok: true };
@@ -1159,6 +1157,19 @@ export function registerAcpIpc(deps: {
     controllers.delete(args.chatId);
     return { ok: true };
   });
+}
+
+/** Dispose a live ACP controller for a chat id (e.g. before store delete on remove). */
+export function disposeAcpController(chatId: string): void {
+  const id = chatId.trim();
+  if (!id) return;
+  const controller = controllers.get(id);
+  if (!controller) return;
+  controller.dispose();
+  controllers.delete(id);
+  if (lastActiveChatId === id) {
+    lastActiveChatId = null;
+  }
 }
 
 export function disposeAllAcpControllers(): void {

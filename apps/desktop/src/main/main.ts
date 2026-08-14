@@ -126,7 +126,7 @@ import {
   type McpClientId
 } from "./mcpRegistration";
 import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
-import { disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
+import { disposeAcpController, disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
 import { acpRecordToAgentSession, excludeCodexAcpNativeSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
 import { getAcpRecord, loadAcpRecords } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
@@ -1986,6 +1986,10 @@ function registerIpc(): void {
   ipcMain.handle(
     "sessions:hide",
     async (_event, args: { provider: AgentProvider; id: string }) => {
+      // Drop live ACP process before deleting store/catalog so remove cannot race reconnect.
+      if (args.provider === "chat") {
+        disposeAcpController(args.id);
+      }
       await hideSessionAction({ provider: args.provider, id: args.id });
       return { ok: true };
     }
