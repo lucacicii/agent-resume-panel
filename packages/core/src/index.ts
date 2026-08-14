@@ -17,7 +17,8 @@ export {
   desktopDataDir,
   desktopDbPath,
   defaultScratchDir,
-  desktopLogsDir
+  desktopLogsDir,
+  browserMcpEndpointPath
 } from "./panelHome";
 export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";
 export type { PanelDbPaths } from "./dbPaths";
@@ -41,6 +42,11 @@ export type {
   SessionEmbeddingIndexSettings,
   AutoTaggingSettings,
   DesktopSettings,
+  DesktopBrowserSettings,
+  DesktopBrowserPolicy,
+  DesktopBrowserPartitionMode,
+  DesktopBrowserDefaultSurface,
+  DesktopBrowserSnapshotMode,
   NotesSettings,
   DesktopTheme,
   DesktopVisualThemeId,
@@ -68,6 +74,7 @@ export type {
 } from "./settings/types";
 export {
   DEFAULT_SETTINGS,
+  DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   WORKBENCH_TERMINAL_THEME_IDS,

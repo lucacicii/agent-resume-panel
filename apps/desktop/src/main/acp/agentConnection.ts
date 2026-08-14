@@ -195,10 +195,11 @@ export class AcpAgentConnection {
     return new Error(`${baseMessage}: ${details.join(" — ")}`);
   }
 
-  async startSession(projectPath: string): Promise<StartSessionResult> {
+  async startSession(projectPath: string, recordId?: string): Promise<StartSessionResult> {
     const agent = await this.connect();
     const cwd = path.resolve(projectPath);
-    const response = await agent.buildSession(cwd).start();
+    const mcpServers = await this.resolveMcpServers(projectPath, recordId);
+    const response = await agent.buildSession({ cwd, mcpServers }).start();
     const raw = (response.newSessionResponse || {}) as Record<string, unknown>;
     const meta = parseSessionMeta(raw);
     return {
@@ -208,11 +209,16 @@ export class AcpAgentConnection {
     };
   }
 
-  async restoreSession(acpSessionId: string, projectPath: string): Promise<RestoreSessionResult> {
+  async restoreSession(
+    acpSessionId: string,
+    projectPath: string,
+    recordId?: string
+  ): Promise<RestoreSessionResult> {
     const agent = await this.connect();
     const acp = await getAcpSdk();
     const cwd = path.resolve(projectPath);
-    const params = { sessionId: acpSessionId, cwd, mcpServers: [] as [] };
+    const mcpServers = await this.resolveMcpServers(projectPath, recordId);
+    const params = { sessionId: acpSessionId, cwd, mcpServers };
 
     const restoreMethods: Array<"load" | "resume"> = [];
     if (this.agentCapabilities?.loadSession) restoreMethods.push("load");
@@ -242,7 +248,7 @@ export class AcpAgentConnection {
       }
     }
 
-    const response = await agent.buildSession(cwd).start();
+    const response = await agent.buildSession({ cwd, mcpServers }).start();
     const raw = (response.newSessionResponse || {}) as Record<string, unknown>;
     return {
       sessionId: response.sessionId,
@@ -250,6 +256,25 @@ export class AcpAgentConnection {
       method: "new",
       raw
     };
+  }
+
+  private async resolveMcpServers(projectPath: string, recordId?: string) {
+    try {
+      const { buildSessionMcpServers } = await import("../browser/sessionMcp");
+      const { getBrowserController } = await import("../browser");
+      return await buildSessionMcpServers({
+        projectPath,
+        recordId: recordId || "unknown",
+        settings: this.settings,
+        controller: getBrowserController()
+      });
+    } catch (error) {
+      console.warn(
+        `[ACP ${this.provider}] buildSessionMcpServers failed:`,
+        error instanceof Error ? error.message : String(error)
+      );
+      return [];
+    }
   }
 
   supportsImageUpload(): boolean {

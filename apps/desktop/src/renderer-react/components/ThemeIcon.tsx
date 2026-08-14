@@ -1,11 +1,11 @@
 import type { JSX } from "react";
 import {
-  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Bot, Check,
+  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
   Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
   FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
-  FolderTree, GitBranch, GripVertical, History, LoaderCircle,
+  FolderTree, GitBranch, Globe, GripVertical, History, LoaderCircle,
   MessageSquarePlus, MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play,
   Quote, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
   SquareKanban, TerminalSquare, Trash2, Undo2, Upload, Waypoints, Wrench, X,
@@ -16,6 +16,7 @@ import {
 /** Semantic icon registry. A missing built-in icon is a compile-time error. */
 const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
+  "arrow-left": ArrowLeft, "arrow-right": ArrowRight,
   "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bot: Bot, check: Check,
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
@@ -24,7 +25,7 @@ const ICONS = {
   "file-cog": FileCog, "file-diff": FileDiff, "file-image": FileImage, "file-json": FileJson,
   "file-plus": FilePlus2, "file-spreadsheet": FileSpreadsheet, "file-terminal": FileTerminal,
   "file-text": FileText, "file-video": FileVideo, folder: Folder, "folder-open": FolderOpen,
-  "folder-tree": FolderTree, "git-branch": GitBranch, "grip-vertical": GripVertical,
+  "folder-tree": FolderTree, "git-branch": GitBranch, globe: Globe, "grip-vertical": GripVertical,
   history: History, loader: LoaderCircle,
   "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
   "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play,

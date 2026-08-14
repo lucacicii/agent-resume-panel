@@ -9,6 +9,7 @@ import {
 import { sanitizeAgentHomes } from "../transcript/homes";
 import {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
+  DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   DESKTOP_VISUAL_THEME_IDS,
@@ -196,7 +197,32 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       theme: normalizeDesktopTheme(
         partial.desktop?.theme ?? base.desktop?.theme,
         normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme)
-      )
+      ),
+      browser: {
+        ...DEFAULT_DESKTOP_BROWSER_SETTINGS,
+        ...base.desktop?.browser,
+        ...(partial.desktop?.browser || {}),
+        defaultPolicy: {
+          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy,
+          ...base.desktop?.browser?.defaultPolicy,
+          ...(partial.desktop?.browser?.defaultPolicy || {}),
+          allowHosts: [
+            ...(partial.desktop?.browser?.defaultPolicy?.allowHosts
+              ?? base.desktop?.browser?.defaultPolicy?.allowHosts
+              ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.allowHosts)
+          ],
+          blockHosts: [
+            ...(partial.desktop?.browser?.defaultPolicy?.blockHosts
+              ?? base.desktop?.browser?.defaultPolicy?.blockHosts
+              ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts)
+          ]
+        },
+        chromeCookieImport: {
+          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport,
+          ...base.desktop?.browser?.chromeCookieImport,
+          ...(partial.desktop?.browser?.chromeCookieImport || {})
+        }
+      }
     },
     notes: {
       ...base.notes,

@@ -7,6 +7,9 @@ import { spawn } from "node:child_process";
 
 export const EXTERNAL_MCP_SERVICE_ID = "agent-resume";
 export const EXTERNAL_MCP_SERVICE_NAME = "Agent Resume";
+/** In-app browser tools (requires Desktop running). */
+export const EXTERNAL_BROWSER_MCP_SERVICE_ID = "agent-resume-browser";
+export const EXTERNAL_BROWSER_MCP_SERVICE_NAME = "Agent Resume Browser";
 
 export type McpClientId = "codex" | "claude" | "gemini" | "antigravity" | "opencode" | "cursor" | "pi" | "grok";
 export type McpClientMode = "automatic" | "manual";
@@ -131,12 +134,35 @@ export function resolveExternalMcpCliPath(options: {
   resourcesPath: string;
   appPath: string;
 }): string {
+  return resolveCoreMcpCliPath(options, "cli.js");
+}
+
+/**
+ * Resolve the browser MCP stdio proxy (`dist/mcp/browserCli.js`).
+ * Proxies JSON-RPC to Desktop's loopback browser MCP via endpoint file.
+ */
+export function resolveExternalBrowserMcpCliPath(options: {
+  isPackaged: boolean;
+  resourcesPath: string;
+  appPath: string;
+}): string {
+  return resolveCoreMcpCliPath(options, "browserCli.js");
+}
+
+function resolveCoreMcpCliPath(
+  options: {
+    isPackaged: boolean;
+    resourcesPath: string;
+    appPath: string;
+  },
+  fileName: "cli.js" | "browserCli.js"
+): string {
   const candidates: string[] = [];
 
   try {
     const require = createRequire(__filename);
     const coreMain = require.resolve("@agent-resume/core");
-    candidates.push(path.join(path.dirname(coreMain), "mcp", "cli.js"));
+    candidates.push(path.join(path.dirname(coreMain), "mcp", fileName));
   } catch {
     // fall through to filesystem candidates
   }
@@ -151,7 +177,7 @@ export function resolveExternalMcpCliPath(options: {
         "core",
         "dist",
         "mcp",
-        "cli.js"
+        fileName
       ),
       path.join(
         options.resourcesPath,
@@ -161,7 +187,7 @@ export function resolveExternalMcpCliPath(options: {
         "core",
         "dist",
         "mcp",
-        "cli.js"
+        fileName
       ),
       path.join(
         options.appPath,
@@ -170,14 +196,14 @@ export function resolveExternalMcpCliPath(options: {
         "core",
         "dist",
         "mcp",
-        "cli.js"
+        fileName
       )
     );
   } else {
     // monorepo: apps/desktop → packages/core
     candidates.push(
-      path.join(options.appPath, "..", "..", "packages", "core", "dist", "mcp", "cli.js"),
-      path.join(options.appPath, "node_modules", "@agent-resume", "core", "dist", "mcp", "cli.js")
+      path.join(options.appPath, "..", "..", "packages", "core", "dist", "mcp", fileName),
+      path.join(options.appPath, "node_modules", "@agent-resume", "core", "dist", "mcp", fileName)
     );
   }
 
@@ -192,7 +218,7 @@ export function resolveExternalMcpCliPath(options: {
   }
 
   throw new Error(
-    "Unable to resolve Agent Resume MCP CLI (packages/core dist/mcp/cli.js). Rebuild @agent-resume/core and Desktop."
+    `Unable to resolve Agent Resume MCP CLI (packages/core dist/mcp/${fileName}). Rebuild @agent-resume/core and Desktop.`
   );
 }
 
@@ -212,6 +238,28 @@ export function createExternalMcpLaunchConfig(input: {
       ELECTRON_RUN_AS_NODE: "1",
       AGENT_RESUME_PANEL_HOME: input.panelHome
     }
+  };
+}
+
+/** Launch config for agent-resume-browser stdio proxy (same ELECTRON_RUN_AS_NODE pattern). */
+export function createExternalBrowserMcpLaunchConfig(input: {
+  executablePath: string;
+  cliPath: string;
+  panelHome: string;
+  /** Optional stable client label for ownership (e.g. claude, codex). */
+  clientName?: string;
+}): McpLaunchConfig {
+  const env: Record<string, string> = {
+    ELECTRON_RUN_AS_NODE: "1",
+    AGENT_RESUME_PANEL_HOME: input.panelHome
+  };
+  if (input.clientName?.trim()) {
+    env.AGENT_RESUME_BROWSER_CLIENT = input.clientName.trim();
+  }
+  return {
+    command: path.resolve(input.executablePath),
+    args: [path.resolve(input.cliPath)],
+    env
   };
 }
 
@@ -405,6 +453,159 @@ export function manualMcpConfig(launch: McpLaunchConfig): string {
       }
     }
   }, null, 2);
+}
+
+/** Manual JSON snippet for agent-resume-browser (Desktop must be running). */
+export function manualBrowserMcpConfig(launch: McpLaunchConfig): string {
+  return JSON.stringify({
+    mcpServers: {
+      [EXTERNAL_BROWSER_MCP_SERVICE_ID]: {
+        command: launch.command,
+        args: launch.args,
+        env: launch.env
+      }
+    }
+  }, null, 2);
+}
+
+function withClientName(launch: McpLaunchConfig, clientId: string): McpLaunchConfig {
+  return {
+    ...launch,
+    env: {
+      ...launch.env,
+      AGENT_RESUME_BROWSER_CLIENT: clientId
+    }
+  };
+}
+
+async function registerBrowserJsonClient(
+  definition: McpClientDefinition,
+  launch: McpLaunchConfig,
+  replace: boolean
+): Promise<void> {
+  if (!definition.configPath) throw new Error("MCP config path is unavailable.");
+  const config = await readMcpJsonConfig(definition.configPath);
+  const rootKey = definition.id === "opencode" ? "mcp" : "mcpServers";
+  const servers = asObject(config[rootKey]);
+  const existing = servers[EXTERNAL_BROWSER_MCP_SERVICE_ID];
+  if (existing && !replace) {
+    throw new Error(
+      `${definition.label} already has an Agent Resume Browser MCP entry. Use update to replace it.`
+    );
+  }
+  const named = withClientName(launch, definition.id);
+  servers[EXTERNAL_BROWSER_MCP_SERVICE_ID] =
+    definition.id === "opencode"
+      ? { type: "local", command: [named.command, ...named.args], environment: named.env, enabled: true }
+      : { command: named.command, args: named.args, env: named.env };
+  await writeJsonAtomically(definition.configPath, { ...config, [rootKey]: servers });
+}
+
+async function removeBrowserJsonClient(definition: McpClientDefinition): Promise<void> {
+  if (!definition.configPath) return;
+  const config = await readMcpJsonConfig(definition.configPath);
+  const rootKey = definition.id === "opencode" ? "mcp" : "mcpServers";
+  const servers = asObject(config[rootKey]);
+  if (!(EXTERNAL_BROWSER_MCP_SERVICE_ID in servers)) return;
+  delete servers[EXTERNAL_BROWSER_MCP_SERVICE_ID];
+  await writeJsonAtomically(definition.configPath, { ...config, [rootKey]: servers });
+}
+
+export function buildBrowserCliRegistrationArgs(
+  id: Extract<McpClientId, "codex" | "claude">,
+  launch: McpLaunchConfig
+): string[] {
+  const named = withClientName(launch, id);
+  if (id === "claude") {
+    const envArgs = Object.entries(named.env).flatMap(([key, value]) => ["-e", `${key}=${value}`]);
+    return [
+      "mcp",
+      "add",
+      "--scope",
+      "user",
+      EXTERNAL_BROWSER_MCP_SERVICE_ID,
+      ...envArgs,
+      "--",
+      named.command,
+      ...named.args
+    ];
+  }
+  const envArgs = Object.entries(named.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]);
+  return [
+    "mcp",
+    "add",
+    ...envArgs,
+    EXTERNAL_BROWSER_MCP_SERVICE_ID,
+    "--",
+    named.command,
+    ...named.args
+  ];
+}
+
+async function registerBrowserCliClient(
+  id: Extract<McpClientId, "codex" | "claude">,
+  definition: McpClientDefinition,
+  launch: McpLaunchConfig,
+  replace: boolean
+): Promise<void> {
+  const executable = await resolveExecutableOnPath(definition.executable);
+  if (!executable) {
+    throw new Error(
+      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+    );
+  }
+  if (replace) {
+    const removeArgs =
+      definition.id === "claude"
+        ? ["mcp", "remove", "--scope", "user", EXTERNAL_BROWSER_MCP_SERVICE_ID]
+        : ["mcp", "remove", EXTERNAL_BROWSER_MCP_SERVICE_ID];
+    await run(executable, removeArgs).catch(() => {});
+  }
+  await run(executable, buildBrowserCliRegistrationArgs(id, launch));
+}
+
+/**
+ * Register agent-resume-browser stdio proxy on an automatic MCP client.
+ * Distinct from data MCP (`agent-resume`); requires Desktop for live tools.
+ */
+export async function registerBrowserMcpClient(
+  id: McpClientId,
+  launch: McpLaunchConfig,
+  replace = false
+): Promise<void> {
+  const definition = definitionFor(id);
+  if (definition.mode !== "automatic") {
+    throw new Error(`${definition.label} requires manual MCP configuration.`);
+  }
+  if (
+    (definition.id === "codex" || definition.id === "claude") &&
+    !(await resolveExecutableOnPath(definition.executable))
+  ) {
+    throw new Error(
+      `${definition.label} was not found on this Mac. Checked PATH, ~/.local/bin, ~/.volta/bin, /opt/homebrew/bin, and /usr/local/bin.`
+    );
+  }
+  if (definition.id === "codex" || definition.id === "claude") {
+    await registerBrowserCliClient(definition.id, definition, launch, replace);
+  } else {
+    await registerBrowserJsonClient(definition, launch, replace);
+  }
+}
+
+export async function removeBrowserMcpClient(id: McpClientId): Promise<void> {
+  const definition = definitionFor(id);
+  if (definition.mode !== "automatic") return;
+  if (definition.id === "codex" || definition.id === "claude") {
+    const executable = await resolveExecutableOnPath(definition.executable);
+    if (!executable) return;
+    const args =
+      definition.id === "claude"
+        ? ["mcp", "remove", "--scope", "user", EXTERNAL_BROWSER_MCP_SERVICE_ID]
+        : ["mcp", "remove", EXTERNAL_BROWSER_MCP_SERVICE_ID];
+    await run(executable, args).catch(() => {});
+    return;
+  }
+  await removeBrowserJsonClient(definition);
 }
 
 /** True when a stored launch would start full GUI Electron (Dock spam). */

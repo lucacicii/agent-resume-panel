@@ -2,7 +2,8 @@
 
 > 产品 / 架构讨论结论（the product owner × 助手）  
 > 性质：愿景与决策文档，**非实现规格**。  
-> 相关现状：本仓库 VS Code 扩展 **Agent Resume Panel**（local-first 多 CLI 会话管理）。
+> 相关现状：本仓库 VS Code 扩展 **Agent Resume Panel**（local-first 多 CLI 会话管理）。  
+> 相关实现向设计：Workbench 内嵌可被 LLM 操作的浏览器见 [`docs/design/browser-pane.md`](design/browser-pane.md)（2026-08-14 接受方向；v1 登录态 = agent partition 内手动登录，不做 Chrome Cookie 自动同步）。
 
 ---
 

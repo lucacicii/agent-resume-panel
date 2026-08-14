@@ -15873,3 +15873,173 @@ body::before {
   font-size: 12px;
   line-height: 1.4;
 }
+
+
+/* agent-browser-pane */
+.browser-chrome {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-bottom: 1px solid var(--border, rgba(127,127,127,.25));
+  background: var(--panel-bg, var(--bg-elevated, #1b1b1f));
+  flex: 0 0 auto;
+}
+.browser-chrome.is-window {
+  padding-top: 8px;
+  -webkit-app-region: drag;
+}
+.browser-chrome.is-window .browser-chrome-toolbar,
+.browser-chrome.is-window .browser-chrome-tabs,
+.browser-chrome.is-window button,
+.browser-chrome.is-window input {
+  -webkit-app-region: no-drag;
+}
+.browser-chrome-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 0;
+  min-height: 30px;
+  overflow-x: auto;
+}
+.browser-chrome-tab {
+  display: inline-flex;
+  align-items: center;
+  max-width: 180px;
+  min-width: 72px;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted, #999);
+}
+.browser-chrome-tab.is-active {
+  background: var(--bg, #111);
+  color: var(--fg, #eee);
+}
+.browser-chrome-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px 4px 6px 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.browser-chrome-tab-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-chrome-tab-close,
+.browser-chrome-new-tab,
+.browser-chrome-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.browser-chrome-tab-close:hover,
+.browser-chrome-new-tab:hover,
+.browser-chrome-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.browser-chrome-btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.browser-chrome-btn.is-primary {
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
+  background: color-mix(in srgb, var(--accent, #5b8cff) 18%, transparent);
+}
+.browser-chrome-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 8px;
+}
+.browser-chrome-nav,
+.browser-chrome-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.browser-chrome-url-form {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.browser-chrome-url {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.browser-pane,
+.browser-standalone-window {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100%;
+}
+.browser-pane[hidden] { display: none !important; }
+.browser-pane-host,
+.browser-standalone-host {
+  flex: 1 1 auto;
+  min-height: 120px;
+  min-width: 0;
+  position: relative;
+}
+.browser-pane-error {
+  padding: 6px 10px;
+  color: var(--danger, #ff6b6b);
+  font-size: 12px;
+}
+.browser-pane-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.browser-pane-placeholder-card {
+  max-width: 360px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.browser-pane-placeholder-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.wb-terminal-tabs.is-browser-group .wb-terminal-tab.is-popped-out .wb-terminal-tab-label {
+  opacity: .75;
+  font-style: italic;
+}
+html[data-window-mode="browser"] body,
+html[data-window-mode="browser"] #react-chrome {
+  height: 100%;
+  margin: 0;
+}

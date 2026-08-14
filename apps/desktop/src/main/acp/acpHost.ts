@@ -202,7 +202,11 @@ class AcpChatController {
         this.activeAcpSessionId = previousSessionId;
         this.isReplayingLoadedHistory = false;
         try {
-          const result = await this.connection.restoreSession(previousSessionId, this.record.projectPath);
+          const result = await this.connection.restoreSession(
+            previousSessionId,
+            this.record.projectPath,
+            this.record.id
+          );
           if (result.sessionId !== previousSessionId) {
             clearSessionUpdateListeners(previousSessionId);
             this.record.acpSessionId = result.sessionId;
@@ -220,7 +224,7 @@ class AcpChatController {
           this.historyReplayDone = undefined;
         }
       } else {
-        const result = await this.connection.startSession(this.record.projectPath);
+        const result = await this.connection.startSession(this.record.projectPath, this.record.id);
         this.record.acpSessionId = result.sessionId;
         this.activeAcpSessionId = result.sessionId;
         this.applySessionMetaFromResult(result);

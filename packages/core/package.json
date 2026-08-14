@@ -16,7 +16,8 @@
     }
   },
   "bin": {
-    "agent-resume-mcp": "./dist/mcp/cli.js"
+    "agent-resume-mcp": "./dist/mcp/cli.js",
+    "agent-resume-browser-mcp": "./dist/mcp/browserCli.js"
   },
   "engines": {
     "node": ">=18"

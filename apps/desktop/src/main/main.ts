@@ -134,6 +134,13 @@ import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workben
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
+  disposeBrowserController,
+  disposeBrowserMcpServer,
+  ensureBrowserMcpReadyForExternal,
+  registerBrowserIpc,
+  syncBrowserExternalMcpRegistration
+} from "./browser";
+import {
   DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
   isQuickAccessShortcut,
@@ -359,6 +366,7 @@ let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
 let settingsWindow: BrowserWindow | null = null;
+let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
 
 function showMainWindowIfReady(): void {
   if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
@@ -748,6 +756,8 @@ function performQuitCleanup(): void {
     registeredRecentStandaloneNoteShortcut = "";
   }
   disposeWorkbenchWatchers();
+  disposeBrowserController();
+  void disposeBrowserMcpServer();
   stopMemoryScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();
@@ -1489,6 +1499,28 @@ function registerIpc(): void {
       invalidateNotesStore();
       const schedulerEnabled = await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
+      browserSettingsCache = saved.desktop?.browser || null;
+      try {
+        await ensureBrowserMcpReadyForExternal(saved);
+        const browserMcp = await syncBrowserExternalMcpRegistration(saved);
+        if (browserMcp.registered.length) {
+          console.log(
+            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+          );
+        }
+        for (const failure of browserMcp.failed) {
+          void recordAppError({
+            source: "browser-mcp",
+            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "browser-mcp",
+          message: "Browser MCP external sync failed after settings save.",
+          error
+        });
+      }
       if ((previous.report?.maxDigestLlmCalls ?? 100) !== (saved.report?.maxDigestLlmCalls ?? 100)) {
         const paths = await loadPanelDbPaths(saved);
         await clearReportJobsByStatus(paths.desktopDb, "deferred_budget");
@@ -2993,6 +3025,19 @@ app.whenReady().then(async () => {
   registerWorkbenchWatcherIpc(() => mainWindow);
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
+  registerBrowserIpc({
+    getMainWindow: () => mainWindow,
+    getPreloadPath: () => path.join(__dirname, "..", "preload", "preload.js"),
+    getIcon: () => loadAppIcon(),
+    getPartitionMode: () => browserSettingsCache?.partitionMode || "per-project",
+    getDefaultPolicy: () => browserSettingsCache?.defaultPolicy,
+    getDefaultSurface: () => browserSettingsCache?.defaultSurface || "workbench"
+  });
+  void loadSettings()
+    .then((settings) => {
+      browserSettingsCache = settings.desktop?.browser || null;
+    })
+    .catch(() => undefined);
   registerFlowIpc();
   registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
@@ -3031,6 +3076,30 @@ app.whenReady().then(async () => {
     void recordAppError({
       source: "mcp-migrate",
       message: "MCP legacy migration failed.",
+      error
+    });
+  }
+  // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
+  try {
+    const settings = await loadSettings();
+    browserSettingsCache = settings.desktop?.browser || null;
+    await ensureBrowserMcpReadyForExternal(settings);
+    const browserMcp = await syncBrowserExternalMcpRegistration(settings);
+    if (browserMcp.registered.length) {
+      console.log(
+        `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+      );
+    }
+    for (const failure of browserMcp.failed) {
+      void recordAppError({
+        source: "browser-mcp",
+        message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+      });
+    }
+  } catch (error) {
+    void recordAppError({
+      source: "browser-mcp",
+      message: "Browser MCP external startup failed.",
       error
     });
   }

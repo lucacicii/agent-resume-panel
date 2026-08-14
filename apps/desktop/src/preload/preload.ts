@@ -38,6 +38,19 @@ import type {
 } from "../shared/linkGraphTypes";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 
+export type {
+  BrowserIpcEvent,
+  BrowserPolicyState,
+  BrowserSessionState,
+  BrowserSurfaceState,
+  BrowserTabStateDto
+} from "../shared/browserTypes";
+import type {
+  BrowserIpcEvent,
+  BrowserPolicyState,
+  BrowserSessionState
+} from "../shared/browserTypes";
+
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
@@ -78,6 +91,38 @@ export interface DesktopApi {
   standaloneNoteClose(): Promise<{ ok: boolean }>;
   standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   onStandaloneNoteCloseRequested(callback: () => void): () => void;
+  browserCreate(args: {
+    projectPath: string;
+    startUrl?: string;
+    boundRecordId?: string;
+    surface?: "workbench" | "window";
+  }): Promise<BrowserSessionState>;
+  browserDestroy(args: { browserId: string }): Promise<{ ok: boolean }>;
+  browserList(): Promise<BrowserSessionState[]>;
+  browserGet(args: { browserId: string }): Promise<BrowserSessionState | null>;
+  browserAttachBounds(args: {
+    browserId: string;
+    rect: { x: number; y: number; width: number; height: number };
+    windowId?: number;
+  }): Promise<{ ok: boolean }>;
+  browserSetVisible(args: { browserId: string; visible: boolean }): Promise<{ ok: boolean }>;
+  browserSetSurface(args: {
+    browserId: string;
+    surface: "workbench" | "window";
+    bounds?: { x: number; y: number; width: number; height: number };
+  }): Promise<BrowserSessionState>;
+  browserFocus(args: { browserId: string }): Promise<{ ok: boolean }>;
+  browserNavigate(args: { browserId: string; url: string; tabId?: string }): Promise<BrowserSessionState>;
+  browserBack(args: { browserId: string; tabId?: string }): Promise<BrowserSessionState>;
+  browserForward(args: { browserId: string; tabId?: string }): Promise<BrowserSessionState>;
+  browserReload(args: { browserId: string; tabId?: string }): Promise<BrowserSessionState>;
+  browserStop(args: { browserId: string; tabId?: string }): Promise<BrowserSessionState>;
+  browserNewTab(args: { browserId: string; url?: string }): Promise<BrowserSessionState>;
+  browserCloseTab(args: { browserId: string; tabId: string }): Promise<{ session: BrowserSessionState | null; destroyed: boolean }>;
+  browserActivateTab(args: { browserId: string; tabId: string }): Promise<BrowserSessionState>;
+  browserSetPolicy(args: { browserId: string; policy: Partial<BrowserPolicyState> }): Promise<BrowserSessionState>;
+  browserClearCookies(args: { browserId: string; hosts?: string[] }): Promise<BrowserSessionState>;
+  onBrowserEvent(callback: (event: BrowserIpcEvent) => void): () => void;
   onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
   onSettingsChanged(
     callback: (payload: {
@@ -1280,6 +1325,29 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("standalone-note:requestClose", handler);
     return () => ipcRenderer.removeListener("standalone-note:requestClose", handler);
+  },
+  browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
+  browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
+  browserList: () => ipcRenderer.invoke("browser:list"),
+  browserGet: (args) => ipcRenderer.invoke("browser:get", args),
+  browserAttachBounds: (args) => ipcRenderer.invoke("browser:attachBounds", args),
+  browserSetVisible: (args) => ipcRenderer.invoke("browser:setVisible", args),
+  browserSetSurface: (args) => ipcRenderer.invoke("browser:setSurface", args),
+  browserFocus: (args) => ipcRenderer.invoke("browser:focus", args),
+  browserNavigate: (args) => ipcRenderer.invoke("browser:navigate", args),
+  browserBack: (args) => ipcRenderer.invoke("browser:back", args),
+  browserForward: (args) => ipcRenderer.invoke("browser:forward", args),
+  browserReload: (args) => ipcRenderer.invoke("browser:reload", args),
+  browserStop: (args) => ipcRenderer.invoke("browser:stop", args),
+  browserNewTab: (args) => ipcRenderer.invoke("browser:newTab", args),
+  browserCloseTab: (args) => ipcRenderer.invoke("browser:closeTab", args),
+  browserActivateTab: (args) => ipcRenderer.invoke("browser:activateTab", args),
+  browserSetPolicy: (args) => ipcRenderer.invoke("browser:setPolicy", args),
+  browserClearCookies: (args) => ipcRenderer.invoke("browser:clearCookies", args),
+  onBrowserEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: BrowserIpcEvent) => callback(payload);
+    ipcRenderer.on("browser:event", handler);
+    return () => ipcRenderer.removeListener("browser:event", handler);
   },
   onSettingsNavigate: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);

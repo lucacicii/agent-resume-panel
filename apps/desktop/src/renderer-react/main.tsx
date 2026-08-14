@@ -11,6 +11,7 @@ import { ReportPanel } from "./features/report/ReportPanel";
 import { AgentPanel } from "./features/agent/AgentPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
 import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
+import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { FlowPanel } from "./features/flow/FlowPanel";
 import { KanbanPanel } from "./features/kanban/KanbanPanel";
@@ -36,11 +37,12 @@ function applyAppearanceState(state: DesktopAppearanceState): void {
   if (dark) dark.disabled = state.appearance !== "dark";
 }
 
-export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" {
+export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" | "browser" {
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get("mode") === "settings") return "settings";
     if (params.get("mode") === "standalone-note") return "standalone-note";
+    if (params.get("mode") === "browser") return "browser";
     return "main";
   } catch {
     return "main";
@@ -50,6 +52,14 @@ export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" 
 export function getStandaloneNoteId(): string {
   try {
     return new URLSearchParams(window.location.search).get("noteId") || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getBrowserId(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("browserId") || "";
   } catch {
     return "";
   }
@@ -198,6 +208,15 @@ function StandaloneNoteDesktopRuntime(): React.JSX.Element {
   );
 }
 
+function BrowserDesktopRuntime(): React.JSX.Element {
+  return (
+    <I18nProvider>
+      <SettingsRuntimeBootstrap />
+      <BrowserStandaloneWindow />
+    </I18nProvider>
+  );
+}
+
 // Mode flag before first paint — drives settings-window CSS
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
@@ -205,6 +224,8 @@ if (windowMode === "settings") {
   document.title = "Settings";
 } else if (windowMode === "standalone-note") {
   document.title = "Standalone Note";
+} else if (windowMode === "browser") {
+  document.title = "Browser";
 }
 
 const host = document.getElementById("react-chrome");
@@ -223,7 +244,9 @@ if (host) {
           ? <SettingsDesktopRuntime />
           : windowMode === "standalone-note"
             ? <StandaloneNoteDesktopRuntime />
-            : <MainDesktopRuntime />}
+            : windowMode === "browser"
+              ? <BrowserDesktopRuntime />
+              : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

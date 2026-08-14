@@ -53,6 +53,65 @@ export const DESKTOP_VISUAL_THEME_IDS: readonly DesktopVisualThemeId[] = [
 /** Decorative effects preference. The OS reduced-motion preference always wins at runtime. */
 export type DesktopThemeEffects = "full" | "reduced";
 
+export type DesktopBrowserPartitionMode = "per-project" | "shared";
+export type DesktopBrowserDefaultSurface = "workbench" | "window" | "last-used";
+export type DesktopBrowserSnapshotMode = "a11y" | "dom-lite" | "screenshot";
+
+export type DesktopBrowserPolicy = {
+  allowHosts: string[];
+  blockHosts: string[];
+  allowDownloads: boolean;
+  allowPopups: boolean;
+  snapshotMode: DesktopBrowserSnapshotMode;
+  maxTabs: number;
+};
+
+export type DesktopBrowserSettings = {
+  enabled: boolean;
+  partitionMode: DesktopBrowserPartitionMode;
+  defaultPolicy: DesktopBrowserPolicy;
+  /** Inject agent-resume-browser into ACP session/new + restore (P1). */
+  injectIntoAcpSessions: boolean;
+  /**
+   * Register `agent-resume-browser` stdio proxy for external CLI/TUI agents
+   * (Claude Code, Codex, …). Proxy talks to Desktop's loopback browser MCP;
+   * requires Desktop running. Default true so Workbench TUI sessions can use the pane.
+   */
+  exposeExternalMcp: boolean;
+  /** status/snapshot/screenshot/wait auto-allow. */
+  autoAllowReadTools: boolean;
+  defaultSurface: DesktopBrowserDefaultSurface;
+  restoreWindowBounds: boolean;
+  chromeCookieImport: {
+    enabled: boolean;
+    maxHostsPerImport: number;
+    allowSessionCookies: boolean;
+  };
+};
+
+export const DEFAULT_DESKTOP_BROWSER_SETTINGS: DesktopBrowserSettings = {
+  enabled: true,
+  partitionMode: "per-project",
+  injectIntoAcpSessions: true,
+  exposeExternalMcp: true,
+  autoAllowReadTools: true,
+  defaultSurface: "workbench",
+  restoreWindowBounds: true,
+  chromeCookieImport: {
+    enabled: false,
+    maxHostsPerImport: 5,
+    allowSessionCookies: true
+  },
+  defaultPolicy: {
+    allowHosts: [],
+    blockHosts: ["*.paypal.com", "*.alipay.com", "*.stripe.com"],
+    allowDownloads: false,
+    allowPopups: false,
+    snapshotMode: "a11y",
+    maxTabs: 6
+  }
+};
+
 export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
@@ -66,6 +125,8 @@ export interface DesktopSettings {
   alwaysAllowAgentWriteOperations?: boolean;
   /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
   alwaysAllowAgentNonDestructiveOperations?: boolean;
+  /** In-app agent browser (Workbench + standalone window). */
+  browser?: DesktopBrowserSettings;
 }
 
 /** Notes-specific desktop behavior. */
@@ -480,7 +541,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     visualTheme: "classic",
     themeEffects: "full",
     alwaysAllowAgentWriteOperations: false,
-    alwaysAllowAgentNonDestructiveOperations: false
+    alwaysAllowAgentNonDestructiveOperations: false,
+    browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] }, chromeCookieImport: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport } }
   },
   notes: {
     newStandaloneNoteShortcut: "CommandOrControl+D",
