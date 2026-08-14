@@ -765,6 +765,40 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     return { ok: true };
   });
 
+  safeHandle("terminal:gitStage", async (_event, args: { repoRoot: string; paths: string[] }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const paths = normalizeCommitPaths(args.paths);
+    if (!paths.length) {
+      throw new Error("请选择要暂存的文件");
+    }
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle("terminal:gitUnstage", async (_event, args: { repoRoot: string; paths: string[] }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const paths = normalizeCommitPaths(args.paths);
+    if (!paths.length) {
+      throw new Error("请选择要取消暂存的文件");
+    }
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", ...paths], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
   safeHandle("terminal:gitLog", async (_event, args: { repoRoot: string; limit?: number }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const commits = await queryGitLog(repoRoot, args.limit);

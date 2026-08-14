@@ -1257,6 +1257,8 @@
   "desktop.workbench.gitDiscardDirectoryConfirm": "「{0}」配下のステージ済み、作業ツリー、未追跡の変更（{1} ファイル）をすべて破棄しますか？この操作は元に戻せません。",
   "desktop.workbench.gitDiscardDirectoryPartial": "「{2}」配下の変更を {1} 件中 {0} 件破棄しました。残りは失敗しました: {3}",
   "desktop.workbench.gitDiscardFailed": "変更を破棄できませんでした: {0}",
+  "desktop.workbench.gitStageFailed": "変更をステージできませんでした: {0}",
+  "desktop.workbench.gitUnstageFailed": "ステージを解除できませんでした: {0}",
   "desktop.workbench.gitDiscardHunk": "変更ブロックを破棄",
   "desktop.workbench.gitDiscardHunkConfirm": "作業ツリーからこの変更ブロックを破棄しますか？元に戻せません。",
   "desktop.workbench.gitDiscardHunkStagedConfirm": "インデックスからこの変更ブロックを破棄しますか？作業ツリーは変更しません。",

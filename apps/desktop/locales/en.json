@@ -1257,6 +1257,8 @@
   "desktop.workbench.gitDiscardDirectoryConfirm": "Discard all staged, working tree, and untracked changes under \"{0}\" ({1} files)? This cannot be undone.",
   "desktop.workbench.gitDiscardDirectoryPartial": "Discarded {0} of {1} changes under {2}; the remaining changes failed: {3}",
   "desktop.workbench.gitDiscardFailed": "Could not discard changes: {0}",
+  "desktop.workbench.gitStageFailed": "Could not stage changes: {0}",
+  "desktop.workbench.gitUnstageFailed": "Could not unstage changes: {0}",
   "desktop.workbench.gitDiscardHunk": "Discard hunk",
   "desktop.workbench.gitDiscardHunkConfirm": "Discard this hunk from the working tree? This cannot be undone.",
   "desktop.workbench.gitDiscardHunkStagedConfirm": "Discard this hunk from the index? The working tree will be left unchanged.",

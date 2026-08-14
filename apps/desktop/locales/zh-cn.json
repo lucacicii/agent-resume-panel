@@ -1257,6 +1257,8 @@
   "desktop.workbench.gitDiscardDirectoryConfirm": "要回退「{0}」目录下全部暂存、工作区和未跟踪修改（{1} 个文件）吗？此操作无法撤销。",
   "desktop.workbench.gitDiscardDirectoryPartial": "已回退「{2}」目录下 {0}/{1} 个文件，其余修改回退失败：{3}",
   "desktop.workbench.gitDiscardFailed": "无法回退修改：{0}",
+  "desktop.workbench.gitStageFailed": "无法暂存更改：{0}",
+  "desktop.workbench.gitUnstageFailed": "无法取消暂存：{0}",
   "desktop.workbench.gitDiscardHunk": "丢弃变更块",
   "desktop.workbench.gitDiscardHunkConfirm": "丢弃工作区中的此变更块？此操作无法撤销。",
   "desktop.workbench.gitDiscardHunkStagedConfirm": "从暂存区丢弃此变更块？工作区文件不会改变。",

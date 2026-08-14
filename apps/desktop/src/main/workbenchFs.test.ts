@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
 
-import { discardGitChange, discardGitHunk, discardGitLine } from "./workbenchFs";
+import { discardGitChange, discardGitHunk, discardGitLine, gitStatusForRepo } from "./workbenchFs";
 import { toGitDiffHunkMetadata } from "./workbenchGitDiff";
 
 const repos: string[] = [];
@@ -78,6 +78,26 @@ describe("discardGitChange", () => {
   it("rejects paths outside the selected repository", async () => {
     const repo = createRepo();
     await expect(discardGitChange(repo, "../outside.txt")).rejects.toThrow("无效的文件路径");
+  });
+});
+
+describe("gitStatusForRepo", () => {
+  it("lists files inside an untracked (newly created) directory individually", async () => {
+    const repo = createRepo();
+    fs.mkdirSync(path.join(repo, "newdir", "sub"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "newdir", "a.txt"), "a\n");
+    fs.writeFileSync(path.join(repo, "newdir", "sub", "b.txt"), "b\n");
+
+    const { staged, unstaged } = await gitStatusForRepo(repo);
+
+    expect(staged).toEqual([]);
+    const untrackedPaths = unstaged.map((change) => change.repoPath);
+    // Files under the untracked directory must be reported individually so the
+    // workbench git tree can display them (not collapsed to a single `newdir/`).
+    expect(untrackedPaths).toContain("newdir/a.txt");
+    expect(untrackedPaths).toContain("newdir/sub/b.txt");
+    expect(untrackedPaths).not.toContain("newdir");
+    expect(untrackedPaths).not.toContain("newdir/");
   });
 });
 

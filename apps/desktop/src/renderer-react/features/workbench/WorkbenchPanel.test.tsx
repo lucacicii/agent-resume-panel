@@ -3036,14 +3036,17 @@ describe("WorkbenchPanel", () => {
       staged: false,
       unstaged: true
     };
+    let stagedNow = true;
     const terminalGitStatus = vi.fn(async () => ({
       isRepo: true,
       root: "/work/app",
-      staged: [],
-      unstaged: [gitFile],
+      staged: stagedNow ? [gitFile] : [],
+      unstaged: stagedNow ? [] : [gitFile],
       nestedRepos: [],
       tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 1, behind: 2 }]
     }));
+    const terminalGitStage = vi.fn(async () => { stagedNow = true; return { ok: true }; });
+    const terminalGitUnstage = vi.fn(async () => { stagedNow = false; return { ok: true }; });
     const terminalGitFetch = vi.fn(async () => ({ ok: true }));
     let failPush = false;
     const terminalGitPush = vi.fn(async () => {
@@ -3094,6 +3097,8 @@ describe("WorkbenchPanel", () => {
       terminalGitPull,
       terminalGitCommit,
       terminalGitSuggestCommit,
+      terminalGitStage,
+      terminalGitUnstage,
       terminalGitBranches,
       terminalGitCheckout
     } as unknown as typeof window.agentResume;
@@ -3207,10 +3212,14 @@ describe("WorkbenchPanel", () => {
     expect(autoGenerate.getAttribute("aria-busy")).toBe("false");
     expect(autoGenerate.classList.contains("is-loading")).toBe(false);
 
+    // Unchecking a staged file un-stages it immediately; with nothing staged the
+    // auto-generate action is disabled. Re-checking the file stages it again.
     fireEvent.click(changeCheckbox);
-    expect((autoGenerate as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(changeCheckbox);
-    expect((autoGenerate as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(terminalGitUnstage).toHaveBeenCalledWith({ repoRoot: "/work/app", paths: [gitFilePath] }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Auto generate" }) as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(screen.getByRole("checkbox", { name: gitFilePath }));
+    await waitFor(() => expect(terminalGitStage).toHaveBeenCalledWith({ repoRoot: "/work/app", paths: [gitFilePath] }));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Auto generate" }) as HTMLButtonElement).disabled).toBe(false));
 
     fireEvent.change(messageField, { target: { value: "draft before standalone push" } });
     fireEvent.click(document.querySelector<HTMLButtonElement>(".wb-git-tracking-btn")!);
@@ -3266,8 +3275,8 @@ describe("WorkbenchPanel", () => {
     const terminalGitStatus = vi.fn(async () => ({
       isRepo: true,
       root: "/work/app",
-      staged: [],
-      unstaged: [gitFile],
+      staged: [gitFile],
+      unstaged: [],
       nestedRepos: [],
       tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
     }));

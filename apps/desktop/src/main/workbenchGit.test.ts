@@ -351,6 +351,50 @@ describe("terminal:gitCommit", () => {
   });
 });
 
+describe("terminal:gitStage / terminal:gitUnstage", () => {
+  it("stages an unstaged file and unstages it back", async () => {
+    const repo = createRepo();
+    commitFile(repo, "tracked.txt", "base\n", "initial");
+    fs.writeFileSync(path.join(repo, "tracked.txt"), "changed\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const stageHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitStage")?.[1];
+    const unstageHandler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitUnstage")?.[1];
+    expect(stageHandler).toBeTruthy();
+    expect(unstageHandler).toBeTruthy();
+
+    await stageHandler!({} as never, { repoRoot: repo, paths: ["tracked.txt"] });
+    expect(git(repo, "status", "--porcelain")).toBe("M  tracked.txt");
+
+    await unstageHandler!({} as never, { repoRoot: repo, paths: ["tracked.txt"] });
+    expect(git(repo, "status", "--porcelain")).toBe("M tracked.txt");
+  });
+
+  it("stages files inside an untracked (newly created) directory individually", async () => {
+    const repo = createRepo();
+    fs.mkdirSync(path.join(repo, "newdir", "sub"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "newdir", "a.txt"), "a\n");
+    fs.writeFileSync(path.join(repo, "newdir", "sub", "b.txt"), "b\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitStage")?.[1];
+    expect(handler).toBeTruthy();
+
+    await handler!({} as never, { repoRoot: repo, paths: ["newdir/a.txt", "newdir/sub/b.txt"] });
+    const status = git(repo, "status", "--porcelain");
+    expect(status).toContain("A  newdir/a.txt");
+    expect(status).toContain("A  newdir/sub/b.txt");
+  });
+
+  it("rejects an empty path list", async () => {
+    const repo = createRepo();
+    registerWorkbenchGitIpc(() => "en");
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitStage")?.[1];
+    expect(handler).toBeTruthy();
+    await expect(handler!({} as never, { repoRoot: repo, paths: [] })).rejects.toThrow("请选择要暂存的文件");
+  });
+});
+
 describe("terminal:gitMerge", () => {
   it("fast-forwards the current branch when the merged commit is an ancestor", async () => {
     const repo = createRepo();

@@ -582,6 +582,8 @@ export interface DesktopApi {
   terminalGitPush(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitPull(args: { repoRoot: string }): Promise<{ ok: boolean }>;
   terminalGitFetch(args: { repoRoot: string }): Promise<{ ok: boolean }>;
+  terminalGitStage(args: { repoRoot: string; paths: string[] }): Promise<{ ok: boolean }>;
+  terminalGitUnstage(args: { repoRoot: string; paths: string[] }): Promise<{ ok: boolean }>;
   terminalGitLog(args: {
     repoRoot: string;
     limit?: number;
@@ -1493,6 +1495,8 @@ const api: DesktopApi = {
   },
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
+  terminalGitStage: (args) => ipcRenderer.invoke("terminal:gitStage", args),
+  terminalGitUnstage: (args) => ipcRenderer.invoke("terminal:gitUnstage", args),
   terminalGitDiffSides: (args) => ipcRenderer.invoke("terminal:gitDiffSides", args),
   terminalGitDiscardChange: (args) => ipcRenderer.invoke("terminal:gitDiscardChange", args),
   terminalGitDiscardHunk: (args) => ipcRenderer.invoke("terminal:gitDiscardHunk", args),

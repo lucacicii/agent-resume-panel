@@ -225,11 +225,18 @@ function prefixGitChanges(
   }));
 }
 
-async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitFileChange[]; unstaged: GitFileChange[] }> {
-  const { stdout } = await execFileAsync("git", ["-C", repoRoot, "status", "--porcelain=v1", "-z"], {
-    timeout: 10000,
-    maxBuffer: 1024 * 1024
-  });
+export async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitFileChange[]; unstaged: GitFileChange[] }> {
+  // `--untracked-files=all` reports each file under an untracked (newly created)
+  // directory individually instead of collapsing the directory to a single
+  // `?? newdir/` entry, so the workbench git tree can show the files inside it.
+  const { stdout } = await execFileAsync(
+    "git",
+    ["-C", repoRoot, "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    {
+      timeout: 10000,
+      maxBuffer: 1024 * 1024
+    }
+  );
   return parseGitStatusPorcelain(stdout);
 }
 
