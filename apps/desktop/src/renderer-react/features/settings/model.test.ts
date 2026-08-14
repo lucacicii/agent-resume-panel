@@ -73,9 +73,21 @@ describe("settings model", () => {
   it("defaults and persists the global standalone note shortcut", () => {
     const draft = notesDraftFromSettings(settings);
     expect(draft.newStandaloneNoteShortcut).toBe("CommandOrControl+D");
-    const patch = notesPatch(settings, { newStandaloneNoteShortcut: " CommandOrControl+Shift+D " });
+    expect(draft.recentStandaloneNoteShortcut).toBe("CommandOrControl+Shift+D");
+    const patch = notesPatch(settings, {
+      newStandaloneNoteShortcut: " CommandOrControl+Shift+D ",
+      recentStandaloneNoteShortcut: " CommandOrControl+Alt+D "
+    });
     expect(patch.notes?.newStandaloneNoteShortcut).toBe("CommandOrControl+Shift+D");
-    expect(notesPatch(settings, { newStandaloneNoteShortcut: "" }).notes?.newStandaloneNoteShortcut).toBe("");
+    expect(patch.notes?.recentStandaloneNoteShortcut).toBe("CommandOrControl+Alt+D");
+    expect(notesPatch(settings, {
+      newStandaloneNoteShortcut: "",
+      recentStandaloneNoteShortcut: ""
+    }).notes?.newStandaloneNoteShortcut).toBe("");
+    expect(notesPatch(settings, {
+      newStandaloneNoteShortcut: "",
+      recentStandaloneNoteShortcut: ""
+    }).notes?.recentStandaloneNoteShortcut).toBe("");
     expect(formatShortcutForDisplay("CommandOrControl+Shift+D", "MacIntel")).toBe("⌘⇧D");
     expect(formatShortcutForDisplay("CommandOrControl+Shift+D", "Win32")).toBe("Ctrl+Shift+D");
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
   isQuickAccessShortcut,
   isValidGlobalShortcut,
@@ -30,6 +31,7 @@ describe("desktop Quick Access shortcuts", () => {
 describe("global standalone note shortcut", () => {
   it("accepts modifier-plus-key Electron accelerators", () => {
     expect(isValidGlobalShortcut("CommandOrControl+D")).toBe(true);
+    expect(isValidGlobalShortcut("CommandOrControl+Shift+D")).toBe(true);
     expect(isValidGlobalShortcut("CommandOrControl+Shift+F12")).toBe(true);
     expect(isValidGlobalShortcut("D")).toBe(false);
     expect(isValidGlobalShortcut("CommandOrControl")).toBe(false);
@@ -39,6 +41,14 @@ describe("global standalone note shortcut", () => {
     expect(normalizeGlobalShortcut("")).toBe("");
     expect(normalizeGlobalShortcut(undefined)).toBe("");
     expect(normalizeGlobalShortcut("not-an-accelerator")).toBe(DEFAULT_STANDALONE_NOTE_SHORTCUT);
+    expect(normalizeGlobalShortcut("not-an-accelerator", DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT)).toBe(
+      DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT
+    );
+  });
+
+  it("exports the recent standalone note default", () => {
+    expect(DEFAULT_STANDALONE_NOTE_SHORTCUT).toBe("CommandOrControl+D");
+    expect(DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT).toBe("CommandOrControl+Shift+D");
   });
 });
 

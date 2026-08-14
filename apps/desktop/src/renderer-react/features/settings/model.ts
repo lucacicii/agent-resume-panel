@@ -177,6 +177,7 @@ export interface StorageDraft {
 
 export interface NotesDraft {
   newStandaloneNoteShortcut: string;
+  recentStandaloneNoteShortcut: string;
 }
 
 export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
@@ -596,7 +597,10 @@ export function notesDraftFromSettings(settings: PanelSettings): NotesDraft {
   return {
     newStandaloneNoteShortcut:
       settings.notes?.newStandaloneNoteShortcut ??
-      "CommandOrControl+D"
+      "CommandOrControl+D",
+    recentStandaloneNoteShortcut:
+      settings.notes?.recentStandaloneNoteShortcut ??
+      "CommandOrControl+Shift+D"
   };
 }
 
@@ -604,7 +608,8 @@ export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<
   return {
     notes: {
       ...settings.notes,
-      newStandaloneNoteShortcut: draft.newStandaloneNoteShortcut.trim()
+      newStandaloneNoteShortcut: draft.newStandaloneNoteShortcut.trim(),
+      recentStandaloneNoteShortcut: draft.recentStandaloneNoteShortcut.trim()
     }
   };
 }

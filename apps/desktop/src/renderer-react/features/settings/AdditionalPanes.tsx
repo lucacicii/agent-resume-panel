@@ -1,5 +1,5 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -525,9 +525,27 @@ export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: Stora
   </>;
 }
 
+function captureShortcutFromKeyDown(event: KeyboardEvent<HTMLInputElement>): string | null {
+  if (event.key === "Tab" || event.key === "Escape") return null;
+  event.preventDefault();
+  if (event.repeat || ["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
+  const modifiers: string[] = [];
+  if (event.metaKey || event.ctrlKey) modifiers.push("CommandOrControl");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+  if (!modifiers.length) return null;
+  const code = event.code || "";
+  const key = /^Key([A-Z])$/.exec(code)?.[1]
+    || /^Digit([0-9])$/.exec(code)?.[1]
+    || (/^F([1-9]|1[0-9]|2[0-4])$/.test(code) ? code : "")
+    || (event.key.length === 1 ? event.key.toUpperCase() : "");
+  if (!key) return null;
+  return [...modifiers, key].join("+");
+}
+
 export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
-  const updateShortcut = (value: string) => {
-    const next = { ...draft, newStandaloneNoteShortcut: value };
+  const updateField = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => {
+    const next = { ...draft, [key]: value };
     setDraft(next);
     scheduleSave(next);
   };
@@ -542,24 +560,23 @@ export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDr
           readOnly
           aria-label={t("desktop.settings.standaloneNoteShortcut")}
           onKeyDown={(event) => {
-            if (event.key === "Tab" || event.key === "Escape") return;
-            event.preventDefault();
-            if (event.repeat || ["Meta", "Control", "Alt", "Shift"].includes(event.key)) return;
-            const modifiers: string[] = [];
-            if (event.metaKey || event.ctrlKey) modifiers.push("CommandOrControl");
-            if (event.altKey) modifiers.push("Alt");
-            if (event.shiftKey) modifiers.push("Shift");
-            if (!modifiers.length) return;
-            const code = event.code || "";
-            const key = /^Key([A-Z])$/.exec(code)?.[1]
-              || /^Digit([0-9])$/.exec(code)?.[1]
-              || (/^F([1-9]|1[0-9]|2[0-4])$/.test(code) ? code : "")
-              || (event.key.length === 1 ? event.key.toUpperCase() : "");
-            if (!key) return;
-            updateShortcut([...modifiers, key].join("+"));
+            const next = captureShortcutFromKeyDown(event);
+            if (next) updateField("newStandaloneNoteShortcut", next);
           }}
         /></label>
-        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateShortcut("CommandOrControl+D")}>{t("desktop.settings.standaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateShortcut("")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
+        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateField("newStandaloneNoteShortcut", "CommandOrControl+D")}>{t("desktop.settings.standaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateField("newStandaloneNoteShortcut", "")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
+        <p className="settings-footnote">{t("desktop.settings.recentStandaloneNoteShortcutDesc")}</p>
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.recentStandaloneNoteShortcut")}</span><input
+          value={formatShortcutForDisplay(draft.recentStandaloneNoteShortcut)}
+          placeholder="⌘⇧D"
+          readOnly
+          aria-label={t("desktop.settings.recentStandaloneNoteShortcut")}
+          onKeyDown={(event) => {
+            const next = captureShortcutFromKeyDown(event);
+            if (next) updateField("recentStandaloneNoteShortcut", next);
+          }}
+        /></label>
+        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateField("recentStandaloneNoteShortcut", "CommandOrControl+Shift+D")}>{t("desktop.settings.recentStandaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateField("recentStandaloneNoteShortcut", "")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
       </div></section>
     </>
   );

@@ -11,6 +11,7 @@ export interface DesktopShortcutInput {
 }
 
 export const DEFAULT_STANDALONE_NOTE_SHORTCUT = "CommandOrControl+D";
+export const DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT = "CommandOrControl+Shift+D";
 
 const SHORTCUT_MODIFIERS = new Set([
   "CommandOrControl",
@@ -73,10 +74,13 @@ export function isValidGlobalShortcut(value: string): boolean {
   return SHORTCUT_KEYS.has(key);
 }
 
-export function normalizeGlobalShortcut(value: unknown): string {
+export function normalizeGlobalShortcut(
+  value: unknown,
+  fallback: string = DEFAULT_STANDALONE_NOTE_SHORTCUT
+): string {
   const candidate = typeof value === "string" ? value.trim() : "";
   if (!candidate) return "";
-  return isValidGlobalShortcut(candidate) ? candidate : DEFAULT_STANDALONE_NOTE_SHORTCUT;
+  return isValidGlobalShortcut(candidate) ? candidate : fallback;
 }
 
 export function isQuickAccessShortcut(input: DesktopShortcutInput, commandMode: boolean): boolean {

@@ -134,6 +134,7 @@ import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workben
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
+  DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
   isQuickAccessShortcut,
   normalizeGlobalShortcut,
@@ -377,7 +378,9 @@ type StandaloneNoteWindowState = {
 const standaloneNoteWindows = new Map<string, StandaloneNoteWindowState>();
 const STANDALONE_NOTE_CLOSE_TIMEOUT_MS = 15_000;
 const STANDALONE_NOTE_WINDOW_SIZE = { width: 560, height: 640 } as const;
+const RECENT_STANDALONE_NOTES_LIMIT = 15;
 let registeredStandaloneNoteShortcut = "";
+let registeredRecentStandaloneNoteShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
@@ -436,7 +439,23 @@ function closeSettingsWindowIfOpen(): void {
 
 function configuredStandaloneNoteShortcut(settings: PanelSettings): string {
   const raw = settings.notes?.newStandaloneNoteShortcut;
-  return normalizeGlobalShortcut(raw === undefined ? DEFAULT_STANDALONE_NOTE_SHORTCUT : raw);
+  return normalizeGlobalShortcut(
+    raw === undefined ? DEFAULT_STANDALONE_NOTE_SHORTCUT : raw,
+    DEFAULT_STANDALONE_NOTE_SHORTCUT
+  );
+}
+
+function configuredRecentStandaloneNoteShortcut(settings: PanelSettings): string {
+  const raw = settings.notes?.recentStandaloneNoteShortcut;
+  return normalizeGlobalShortcut(
+    raw === undefined ? DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT : raw,
+    DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT
+  );
+}
+
+function recentStandaloneNoteMenuLabel(note: { title?: string; filename: string }): string {
+  const title = note.title?.trim();
+  return title || note.filename;
 }
 
 function standaloneNoteStateForSender(sender: Electron.WebContents): StandaloneNoteWindowState | undefined {
@@ -556,6 +575,78 @@ async function openStandaloneNoteWindow(): Promise<void> {
   }
 }
 
+async function openStandaloneNoteById(noteId: string): Promise<void> {
+  const existing = standaloneNoteWindows.get(noteId);
+  if (existing && !existing.window.isDestroyed()) {
+    if (existing.window.isMinimized()) existing.window.restore();
+    existing.window.show();
+    existing.window.focus();
+    return;
+  }
+  try {
+    const { record } = await notesRead(noteId);
+    createStandaloneNoteWindow(record);
+  } catch (error) {
+    let settings: PanelSettings | undefined;
+    try {
+      settings = await loadSettings();
+    } catch {
+      // Use the catalog fallback when settings are unavailable.
+    }
+    try {
+      await dialog.showMessageBox({
+        type: "error",
+        title: desktopT(settings, "desktop.standaloneNote.title"),
+        message: desktopT(settings, "desktop.standaloneNote.loadError", error instanceof Error ? error.message : String(error)),
+        buttons: ["OK"]
+      });
+    } catch {
+      // The error is also recorded by the global shortcut callback below.
+    }
+    throw error;
+  }
+}
+
+async function showRecentStandaloneNotesMenu(): Promise<void> {
+  let settings: PanelSettings | undefined;
+  try {
+    settings = await loadSettings();
+  } catch {
+    // Use the catalog fallback when settings are unavailable.
+  }
+  let notes: Awaited<ReturnType<typeof notesList>> = [];
+  try {
+    notes = await notesList();
+  } catch (error) {
+    void recordAppError({ source: "standalone-note", message: "Could not list recent notes.", error });
+    try {
+      await dialog.showMessageBox({
+        type: "error",
+        title: desktopT(settings, "desktop.standaloneNote.title"),
+        message: desktopT(settings, "desktop.standaloneNote.loadFailed"),
+        buttons: ["OK"]
+      });
+    } catch {
+      // Listing failure is already recorded above.
+    }
+    return;
+  }
+  const recent = notes.slice(0, RECENT_STANDALONE_NOTES_LIMIT);
+  const template: Electron.MenuItemConstructorOptions[] = recent.length
+    ? recent.map((note) => ({
+        label: recentStandaloneNoteMenuLabel(note),
+        click: () => {
+          void openStandaloneNoteById(note.noteId).catch((error) => {
+            void recordAppError({ source: "standalone-note", message: "Could not open standalone note.", error });
+          });
+        }
+      }))
+    : [{ label: desktopT(settings, "desktop.standaloneNote.noRecent"), enabled: false }];
+  const menu = Menu.buildFromTemplate(template);
+  const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  menu.popup(owner ? { window: owner } : undefined);
+}
+
 async function closeAllStandaloneNoteWindows(): Promise<boolean> {
   const states = [...standaloneNoteWindows.values()].filter((state) => !state.window.isDestroyed());
   const results = await Promise.all(states.map((state) => requestStandaloneNoteClose(state)));
@@ -563,7 +654,7 @@ async function closeAllStandaloneNoteWindows(): Promise<boolean> {
 }
 
 function applyStandaloneNoteShortcut(value: unknown): void {
-  const next = normalizeGlobalShortcut(value);
+  const next = normalizeGlobalShortcut(value, DEFAULT_STANDALONE_NOTE_SHORTCUT);
   const previous = registeredStandaloneNoteShortcut;
   if (next === previous) return;
   if (previous) globalShortcut.unregister(previous);
@@ -597,11 +688,51 @@ function applyStandaloneNoteShortcut(value: unknown): void {
   }
 }
 
+function applyRecentStandaloneNoteShortcut(value: unknown): void {
+  const next = normalizeGlobalShortcut(value, DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT);
+  const previous = registeredRecentStandaloneNoteShortcut;
+  if (next === previous) return;
+  if (previous) globalShortcut.unregister(previous);
+  if (!next) {
+    registeredRecentStandaloneNoteShortcut = "";
+    return;
+  }
+  try {
+    const registered = globalShortcut.register(next, () => {
+      void showRecentStandaloneNotesMenu().catch((error) => {
+        void recordAppError({ source: "standalone-note", message: "Could not open recent notes menu.", error });
+      });
+    });
+    if (!registered) throw new Error(`Global shortcut is unavailable: ${next}`);
+    registeredRecentStandaloneNoteShortcut = next;
+  } catch (error) {
+    if (previous) {
+      try {
+        if (globalShortcut.register(previous, () => {
+          void showRecentStandaloneNotesMenu().catch((retryError) => {
+            void recordAppError({ source: "standalone-note", message: "Could not open recent notes menu.", error: retryError });
+          });
+        })) {
+          registeredRecentStandaloneNoteShortcut = previous;
+        }
+      } catch {
+        registeredRecentStandaloneNoteShortcut = "";
+      }
+    }
+    throw error;
+  }
+}
+
 function initializeStandaloneNoteShortcut(settings: PanelSettings): void {
   try {
     applyStandaloneNoteShortcut(configuredStandaloneNoteShortcut(settings));
   } catch (error) {
     void recordAppError({ source: "standalone-note", message: "Global standalone note shortcut could not be registered.", error });
+  }
+  try {
+    applyRecentStandaloneNoteShortcut(configuredRecentStandaloneNoteShortcut(settings));
+  } catch (error) {
+    void recordAppError({ source: "standalone-note", message: "Global recent standalone note shortcut could not be registered.", error });
   }
 }
 
@@ -611,6 +742,10 @@ function performQuitCleanup(): void {
   if (registeredStandaloneNoteShortcut) {
     globalShortcut.unregister(registeredStandaloneNoteShortcut);
     registeredStandaloneNoteShortcut = "";
+  }
+  if (registeredRecentStandaloneNoteShortcut) {
+    globalShortcut.unregister(registeredRecentStandaloneNoteShortcut);
+    registeredRecentStandaloneNoteShortcut = "";
   }
   disposeWorkbenchWatchers();
   stopMemoryScheduler();
@@ -1312,17 +1447,24 @@ function registerIpc(): void {
       const previous = await loadSettings();
       const prevLocale = buildI18nBundle(previous).locale;
       const normalizedShortcut = configuredStandaloneNoteShortcut(settings);
+      const normalizedRecentShortcut = configuredRecentStandaloneNoteShortcut(settings);
       const settingsToSave: PanelSettings = {
         ...settings,
         notes: {
           ...settings.notes,
-          newStandaloneNoteShortcut: normalizedShortcut
+          newStandaloneNoteShortcut: normalizedShortcut,
+          recentStandaloneNoteShortcut: normalizedRecentShortcut
         }
       };
       const previousShortcut = configuredStandaloneNoteShortcut(previous);
+      const previousRecentShortcut = configuredRecentStandaloneNoteShortcut(previous);
       const shortcutChanged = normalizedShortcut !== previousShortcut;
+      const recentShortcutChanged = normalizedRecentShortcut !== previousRecentShortcut;
       if (shortcutChanged) {
         applyStandaloneNoteShortcut(normalizedShortcut);
+      }
+      if (recentShortcutChanged) {
+        applyRecentStandaloneNoteShortcut(normalizedRecentShortcut);
       }
       let file: string;
       try {
@@ -1331,6 +1473,13 @@ function registerIpc(): void {
         if (shortcutChanged) {
           try {
             applyStandaloneNoteShortcut(previousShortcut);
+          } catch {
+            // Keep the already-registered shortcut when the settings write fails.
+          }
+        }
+        if (recentShortcutChanged) {
+          try {
+            applyRecentStandaloneNoteShortcut(previousRecentShortcut);
           } catch {
             // Keep the already-registered shortcut when the settings write fails.
           }

@@ -72,6 +72,8 @@ export interface DesktopSettings {
 export interface NotesSettings {
   /** Global shortcut used to create a new Library Note window. Empty disables it. */
   newStandaloneNoteShortcut?: string;
+  /** Global shortcut used to open a recent-notes picker as a floating window. Empty disables it. */
+  recentStandaloneNoteShortcut?: string;
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
@@ -481,6 +483,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     alwaysAllowAgentNonDestructiveOperations: false
   },
   notes: {
-    newStandaloneNoteShortcut: "CommandOrControl+D"
+    newStandaloneNoteShortcut: "CommandOrControl+D",
+    recentStandaloneNoteShortcut: "CommandOrControl+Shift+D"
   }
 };
