@@ -451,6 +451,38 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
+.app-nav-rail .rail-session-dot.is-awaiting {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning) 22%, transparent);
+  animation: rail-session-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.app-nav-rail .rail-session-dot.is-running {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.app-nav-rail .rail-session-dot.is-connecting {
+  background: var(--color-label-tertiary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 20%, transparent);
+}
+
+.app-nav-rail .rail-session-dot.is-error {
+  background: var(--color-destructive);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 22%, transparent);
+}
+
+@keyframes rail-session-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.72; transform: scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-nav-rail .rail-session-dot.is-awaiting {
+    animation: none;
+  }
+}
+
 /* Custom tooltip (portal at body): macOS elevated surface, never clipped by
    the rail's scrolling dot cluster. */
 .tooltip-wrap {
@@ -14246,6 +14278,27 @@ body::before {
   box-shadow: 0 0 3px #63f7b4, 0 0 10px rgba(99,247,180,.68);
 }
 
+/* Runtime status keeps diamond shape; neon maps to cyber tokens. */
+[data-visual-theme="cyberpunk"] .rail-session-dot.is-awaiting {
+  background: var(--color-warning);
+  box-shadow: 0 0 3px var(--color-warning), 0 0 12px rgba(255, 212, 0, .72);
+}
+
+[data-visual-theme="cyberpunk"] .rail-session-dot.is-running {
+  background: var(--color-accent);
+  box-shadow: 0 0 3px var(--color-accent), 0 0 12px rgba(0, 240, 255, .72);
+}
+
+[data-visual-theme="cyberpunk"] .rail-session-dot.is-connecting {
+  background: var(--color-label-tertiary);
+  box-shadow: 0 0 3px var(--color-label-tertiary), 0 0 8px rgba(101, 95, 128, .45);
+}
+
+[data-visual-theme="cyberpunk"] .rail-session-dot.is-error {
+  background: var(--color-destructive);
+  box-shadow: 0 0 3px var(--color-destructive), 0 0 12px rgba(255, 59, 92, .72);
+}
+
 [data-visual-theme="cyberpunk"] .project-pin-icon {
   color: var(--cyber-hazard);
   filter: drop-shadow(0 0 5px rgba(255,212,0,.62));
@@ -14458,8 +14511,24 @@ body::before {
 
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-folder-activity-dot,
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .wb-session-activity-dot,
-[data-visual-theme="cyberpunk"][data-theme-effects="full"] .rail-session-dot {
+[data-visual-theme="cyberpunk"][data-theme-effects="full"] .rail-session-dot:not(.is-awaiting):not(.is-running):not(.is-connecting):not(.is-error) {
   animation: cyber-sidebar-node-pulse 1.5s steps(2, end) infinite;
+}
+
+/* Awaiting keeps diamond orientation while pulsing. */
+[data-visual-theme="cyberpunk"] .rail-session-dot.is-awaiting {
+  animation: cyber-rail-session-await-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cyber-rail-session-await-pulse {
+  0%, 100% { opacity: 1; transform: rotate(45deg) scale(1); }
+  50% { opacity: 0.72; transform: rotate(45deg) scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-visual-theme="cyberpunk"] .rail-session-dot.is-awaiting {
+    animation: none;
+  }
 }
 
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .project-pin-icon {

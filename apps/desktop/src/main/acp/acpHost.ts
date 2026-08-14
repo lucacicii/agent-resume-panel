@@ -116,6 +116,10 @@ class AcpChatController {
     return this.record;
   }
 
+  getActiveAcpSessionId(): string | undefined {
+    return this.activeAcpSessionId;
+  }
+
   /** Agent process is up and we have an ACP session id (safe to reuse across tab switches). */
   isLive(): boolean {
     return Boolean(
@@ -852,6 +856,23 @@ function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void
   }
 }
 
+function findControllerChatIdByAcpSessionId(sessionId: string | undefined): string | null {
+  if (!sessionId) return null;
+  for (const [chatId, controller] of controllers) {
+    if (controller.getActiveAcpSessionId() === sessionId) return chatId;
+  }
+  return null;
+}
+
+function resolveChatIdForSession(sessionId: string | undefined): string | null {
+  return (
+    findControllerChatIdByAcpSessionId(sessionId) ||
+    (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
+    controllers.keys().next().value ||
+    null
+  );
+}
+
 export function registerAcpIpc(deps: {
   loadSettings: LoadSettings;
   getMainWindow: GetMainWindow;
@@ -867,9 +888,7 @@ export function registerAcpIpc(deps: {
       }
     }
 
-    const chatId =
-      (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
-      controllers.keys().next().value;
+    const chatId = resolveChatIdForSession(params.sessionId);
     if (!chatId) {
       return { outcome: { outcome: "cancelled" } };
     }
@@ -889,24 +908,26 @@ export function registerAcpIpc(deps: {
     });
 
     return await new Promise<RequestPermissionResponse>((resolve) => {
-      const timer = setTimeout(() => {
+      const finish = (value: RequestPermissionResponse) => {
         permissionWaiters.delete(requestId);
-        resolve({ outcome: { outcome: "cancelled" } });
+        emitToWindow(getMainWindow, { type: "permissionResolved", chatId, requestId });
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        finish({ outcome: { outcome: "cancelled" } });
       }, 120_000);
       permissionWaiters.set(requestId, {
         chatId,
         resolve: (value) => {
           clearTimeout(timer);
-          resolve(value);
+          finish(value);
         }
       });
     });
   });
 
   setAskUserQuestionHandler(async (params: AskUserQuestionRequest): Promise<AskUserQuestionResponse> => {
-    const chatId =
-      (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
-      controllers.keys().next().value;
+    const chatId = resolveChatIdForSession(params.sessionId);
     if (!chatId) {
       return makeCancelledQuestionResponse();
     }
@@ -920,15 +941,19 @@ export function registerAcpIpc(deps: {
     });
 
     return await new Promise<AskUserQuestionResponse>((resolve) => {
-      const timer = setTimeout(() => {
+      const finish = (value: AskUserQuestionResponse) => {
         questionWaiters.delete(requestId);
-        resolve(makeCancelledQuestionResponse());
+        emitToWindow(getMainWindow, { type: "userQuestionResolved", chatId, requestId });
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        finish(makeCancelledQuestionResponse());
       }, QUESTION_TIMEOUT_MS);
       questionWaiters.set(requestId, {
         chatId,
         resolve: (value) => {
           clearTimeout(timer);
-          resolve(value);
+          finish(value);
         }
       });
     });
@@ -936,9 +961,7 @@ export function registerAcpIpc(deps: {
 
   // Grok (and similar) write session plan.md via fs/write_text_file — surface to UI.
   setPlanWriteListener(({ path: planPath, content }) => {
-    const chatId =
-      (lastActiveChatId && controllers.has(lastActiveChatId) ? lastActiveChatId : null) ||
-      controllers.keys().next().value;
+    const chatId = resolveChatIdForSession(undefined);
     if (!chatId) return;
     emitToWindow(getMainWindow, {
       type: "planFile",

@@ -158,6 +158,16 @@ export type AcpStreamEvent =
       }>;
     }
   | {
+      type: "permissionResolved";
+      chatId: string;
+      requestId: string;
+    }
+  | {
+      type: "userQuestionResolved";
+      chatId: string;
+      requestId: string;
+    }
+  | {
       type: "planFile";
       chatId: string;
       path: string;

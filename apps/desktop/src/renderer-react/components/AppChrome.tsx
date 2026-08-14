@@ -1,7 +1,7 @@
 import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
-import { type ActiveSessionDot } from "../features/workbench/activeSessionDots";
+import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbench/activeSessionDots";
 import { Tooltip } from "./Tooltip";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow" | "kanban";
@@ -85,6 +85,25 @@ export function AppChrome(): React.JSX.Element {
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
 
+  const statusLabel = (dot: ActiveSessionDot): string => {
+    const status: SessionDotStatus = dot.status || "open";
+    if (status === "awaiting_user") {
+      if (dot.awaitingConfidence === "possible") {
+        return text("desktop.workbench.sessionDot.possiblyAwaiting", "May need attention");
+      }
+      return text("desktop.workbench.sessionDot.awaiting", "Waiting for you");
+    }
+    if (status === "running") return text("desktop.workbench.sessionDot.running", "Running");
+    if (status === "connecting") return text("desktop.workbench.sessionDot.connecting", "Connecting");
+    if (status === "error") return text("desktop.workbench.sessionDot.error", "Error");
+    return "";
+  };
+
+  const dotLabel = (dot: ActiveSessionDot): string => {
+    const status = statusLabel(dot);
+    return status ? `${dot.title} · ${status}` : dot.title;
+  };
+
   return (
     <>
       <nav className="app-nav-rail" aria-label="Primary navigation">
@@ -103,18 +122,26 @@ export function AppChrome(): React.JSX.Element {
         ))}
         {sessionDots.length > 0 && (
           <div className="rail-session-dots">
-            {sessionDots.map((dot) => (
-              <Tooltip key={dot.paneKey} label={dot.title}>
-                <button
-                  type="button"
-                  className="rail-session-dot-btn"
-                  aria-label={dot.title}
-                  onClick={() => focusSessionFromRail(dot)}
-                >
-                  <span className="rail-session-dot" aria-hidden="true" />
-                </button>
-              </Tooltip>
-            ))}
+            {sessionDots.map((dot) => {
+              const status: SessionDotStatus = dot.status || "open";
+              const label = dotLabel(dot);
+              return (
+                <Tooltip key={dot.paneKey} label={label}>
+                  <button
+                    type="button"
+                    className="rail-session-dot-btn"
+                    data-status={status}
+                    aria-label={label}
+                    onClick={() => focusSessionFromRail(dot)}
+                  >
+                    <span
+                      className={`rail-session-dot${status !== "open" ? ` is-${status === "awaiting_user" ? "awaiting" : status}` : ""}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </Tooltip>
+              );
+            })}
           </div>
         )}
       </nav>

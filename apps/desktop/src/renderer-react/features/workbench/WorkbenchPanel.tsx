@@ -40,7 +40,17 @@ import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
-import { collectActiveSessionDots } from "./activeSessionDots";
+import {
+  acpRuntimeToStatus,
+  collectActiveSessionDots,
+  type SessionDotRuntime
+} from "./activeSessionDots";
+import {
+  applyTuiDebounce,
+  createTuiDebounceState,
+  detectTuiSessionStatus,
+  type TuiDebounceState
+} from "./tuiSessionStatus";
 import {
   FloatingSessionNote,
   sessionNoteMatchesTarget,
@@ -2349,6 +2359,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
+  /** ACP chat runtime keyed by pane key (`acp:${recordId}`). */
+  const [acpRuntimeByPaneKey, setAcpRuntimeByPaneKey] = useState<Record<string, SessionDotRuntime>>({});
+  /** TUI session-pane runtime keyed by terminal pane key. */
+  const [tuiRuntimeByPaneKey, setTuiRuntimeByPaneKey] = useState<Record<string, SessionDotRuntime>>({});
+  const acpPendingRequestsRef = useRef(new Map<string, Set<string>>());
+  const acpFlagsRef = useRef(new Map<string, { isRunning: boolean; isConnecting: boolean; status: string }>());
+  const tuiLastOutputAtRef = useRef(new Map<string, number>());
+  const tuiDebounceRef = useRef(new Map<string, TuiDebounceState>());
+  const tuiSampleTimerRef = useRef(0);
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
   const draggedSessionRef = useRef<AgentSession | null>(null);
   const folderExpandTimerRef = useRef(0);
@@ -2441,9 +2460,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return titles;
   }, [sessions]);
+  const sessionRuntimeByPaneKey = useMemo(() => {
+    const map = new Map<string, SessionDotRuntime>();
+    for (const [key, runtime] of Object.entries(tuiRuntimeByPaneKey)) map.set(key, runtime);
+    for (const [key, runtime] of Object.entries(acpRuntimeByPaneKey)) map.set(key, runtime);
+    return map;
+  }, [acpRuntimeByPaneKey, tuiRuntimeByPaneKey]);
   const activeSessionDots = useMemo(
-    () => collectActiveSessionDots(terminals, acpChats, sessionTitles),
-    [acpChats, sessionTitles, terminals]
+    () => collectActiveSessionDots(terminals, acpChats, sessionTitles, sessionRuntimeByPaneKey),
+    [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
 
   // Broadcast the live session-dot set to the nav rail (sibling component).
@@ -2452,6 +2477,190 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
   }, [activeSessionDots]);
+
+  // Drop runtime rows for panes that are no longer open.
+  useEffect(() => {
+    const openTerminalKeys = new Set(terminals.filter((pane) => pane.group === "session").map((pane) => pane.key));
+    const openAcpKeys = new Set(acpChats.map((pane) => pane.key));
+    setTuiRuntimeByPaneKey((current) => {
+      let changed = false;
+      const next: Record<string, SessionDotRuntime> = {};
+      for (const [key, value] of Object.entries(current)) {
+        if (openTerminalKeys.has(key)) next[key] = value;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+    setAcpRuntimeByPaneKey((current) => {
+      let changed = false;
+      const next: Record<string, SessionDotRuntime> = {};
+      for (const [key, value] of Object.entries(current)) {
+        if (openAcpKeys.has(key)) next[key] = value;
+        else {
+          changed = true;
+          const recordId = key.startsWith("acp:") ? key.slice(4) : "";
+          if (recordId) {
+            acpPendingRequestsRef.current.delete(recordId);
+            acpFlagsRef.current.delete(recordId);
+          }
+        }
+      }
+      return changed ? next : current;
+    });
+    for (const key of [...tuiLastOutputAtRef.current.keys()]) {
+      if (!openTerminalKeys.has(key)) {
+        tuiLastOutputAtRef.current.delete(key);
+        tuiDebounceRef.current.delete(key);
+      }
+    }
+  }, [acpChats, terminals]);
+
+  const publishAcpRuntime = useCallback((recordId: string) => {
+    const paneKey = `acp:${recordId}`;
+    const flags = acpFlagsRef.current.get(recordId) || { isRunning: false, isConnecting: false, status: "ready" };
+    const pendingRequestCount = acpPendingRequestsRef.current.get(recordId)?.size ?? 0;
+    const status = acpRuntimeToStatus({ ...flags, pendingRequestCount });
+    const runtime: SessionDotRuntime = {
+      status,
+      awaitingConfidence: status === "awaiting_user" ? "confirmed" : undefined
+    };
+    setAcpRuntimeByPaneKey((current) => {
+      const prev = current[paneKey];
+      if (prev?.status === runtime.status && prev?.awaitingConfidence === runtime.awaitingConfidence) return current;
+      return { ...current, [paneKey]: runtime };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof desktopApi().onAcpStream !== "function") return;
+    const off = desktopApi().onAcpStream((raw) => {
+      const event = raw as {
+        type?: string;
+        chatId?: string;
+        requestId?: string;
+        status?: string;
+        isRunning?: boolean;
+        isConnecting?: boolean;
+        init?: { status?: string; isRunning?: boolean; isConnecting?: boolean };
+      };
+      const chatId = typeof event.chatId === "string" ? event.chatId : "";
+      if (!chatId) return;
+      const open = acpChatsRef.current.some((pane) => pane.recordId === chatId);
+      // Still track flags for chats that may open momentarily; publish only when present.
+      const ensurePending = () => {
+        let set = acpPendingRequestsRef.current.get(chatId);
+        if (!set) {
+          set = new Set();
+          acpPendingRequestsRef.current.set(chatId, set);
+        }
+        return set;
+      };
+
+      switch (event.type) {
+        case "status": {
+          acpFlagsRef.current.set(chatId, {
+            isRunning: Boolean(event.isRunning),
+            isConnecting: Boolean(event.isConnecting),
+            status: event.status || "ready"
+          });
+          if (open) publishAcpRuntime(chatId);
+          break;
+        }
+        case "init": {
+          if (event.init) {
+            acpFlagsRef.current.set(chatId, {
+              isRunning: Boolean(event.init.isRunning),
+              isConnecting: Boolean(event.init.isConnecting),
+              status: event.init.status || "ready"
+            });
+            if (open) publishAcpRuntime(chatId);
+          }
+          break;
+        }
+        case "permissionRequest":
+        case "userQuestion": {
+          if (event.requestId) ensurePending().add(event.requestId);
+          if (open) publishAcpRuntime(chatId);
+          break;
+        }
+        case "permissionResolved":
+        case "userQuestionResolved": {
+          if (event.requestId) ensurePending().delete(event.requestId);
+          if (open) publishAcpRuntime(chatId);
+          break;
+        }
+        default:
+          break;
+      }
+    });
+    return () => off();
+  }, [publishAcpRuntime]);
+
+  const sampleTuiSessionStatus = useCallback(() => {
+    const now = Date.now();
+    const updates: Record<string, SessionDotRuntime> = {};
+    for (const pane of terminalsRef.current) {
+      if (pane.group !== "session" || pane.ptyId == null) continue;
+      const terminal = terminalRefs.current.get(pane.ptyId);
+      if (!terminal) continue;
+      const buffer = terminal.buffer.active;
+      // Read the bottom of the visible viewport (permission dialogs sit near the prompt).
+      const rows = Math.min(30, terminal.rows);
+      const start = Math.max(0, buffer.viewportY + terminal.rows - rows);
+      const lines: string[] = [];
+      for (let i = 0; i < rows; i += 1) {
+        const line = buffer.getLine(start + i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      const lastOutputAt = tuiLastOutputAtRef.current.get(pane.key) ?? now;
+      const sample = detectTuiSessionStatus({
+        visibleText: lines.join("\n"),
+        lastOutputAt,
+        now,
+        isAlternateBuffer: buffer.type === "alternate",
+        isSessionPane: true
+      });
+      const debounced = applyTuiDebounce(tuiDebounceRef.current.get(pane.key) || createTuiDebounceState(), sample);
+      tuiDebounceRef.current.set(pane.key, debounced.state);
+      updates[pane.key] = {
+        status: debounced.status,
+        awaitingConfidence: debounced.awaitingConfidence
+      };
+    }
+    if (!Object.keys(updates).length) return;
+    setTuiRuntimeByPaneKey((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [key, runtime] of Object.entries(updates)) {
+        const prev = current[key];
+        if (prev?.status !== runtime.status || prev?.awaitingConfidence !== runtime.awaitingConfidence) {
+          next[key] = runtime;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
+  const scheduleTuiSample = useCallback(() => {
+    if (tuiSampleTimerRef.current) return;
+    tuiSampleTimerRef.current = window.setTimeout(() => {
+      tuiSampleTimerRef.current = 0;
+      sampleTuiSessionStatus();
+    }, 500);
+  }, [sampleTuiSessionStatus]);
+
+  useEffect(() => {
+    // Keep idle/awaiting timers advancing even without further PTY output.
+    const timer = window.setInterval(() => sampleTuiSessionStatus(), 2_000);
+    return () => {
+      window.clearInterval(timer);
+      if (tuiSampleTimerRef.current) {
+        window.clearTimeout(tuiSampleTimerRef.current);
+        tuiSampleTimerRef.current = 0;
+      }
+    };
+  }, [sampleTuiSessionStatus]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -3628,6 +3837,16 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRefreshTimers.current.delete(key);
       void refreshTerminalGit(key);
     }, 500));
+    // User typing into a session TUI: treat as active, clear weak awaiting promptly.
+    const pane = terminalsRef.current.find((item) => item.key === key);
+    if (pane?.group === "session") {
+      tuiLastOutputAtRef.current.set(key, Date.now());
+      tuiDebounceRef.current.set(key, createTuiDebounceState());
+      setTuiRuntimeByPaneKey((current) => {
+        if (current[key]?.status === "running" && !current[key]?.awaitingConfidence) return current;
+        return { ...current, [key]: { status: "running" } };
+      });
+    }
   }, [refreshTerminalGit]);
 
   const onPty = useCallback((key: string, id: number, terminal: Terminal) => {
@@ -6029,6 +6248,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (!terminal) return;
       trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
       terminal.write(value);
+      const pane = terminalsRef.current.find((item) => item.ptyId === id);
+      if (pane?.group === "session") {
+        tuiLastOutputAtRef.current.set(pane.key, Date.now());
+        scheduleTuiSample();
+      }
     });
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
@@ -6037,7 +6261,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
     return () => { data(); exited(); respawned(); };
-  }, [scheduleSessionPaneAutoRename, t]);
+  }, [scheduleSessionPaneAutoRename, scheduleTuiSample, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
   const searchGroups = useMemo(() => {

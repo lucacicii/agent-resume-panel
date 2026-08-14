@@ -14,7 +14,12 @@ function renderChrome() {
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.flow": "Flow",
-        "desktop.tabs.kanban": "Kanban"
+        "desktop.tabs.kanban": "Kanban",
+        "desktop.workbench.sessionDot.awaiting": "Waiting for you",
+        "desktop.workbench.sessionDot.possiblyAwaiting": "May need attention",
+        "desktop.workbench.sessionDot.running": "Running",
+        "desktop.workbench.sessionDot.connecting": "Connecting",
+        "desktop.workbench.sessionDot.error": "Error"
       }
     }),
     onLocaleChanged: () => () => undefined,
@@ -84,8 +89,8 @@ describe("AppChrome", () => {
     await screen.findByRole("button", { name: "Report" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1" },
-        { paneKey: "acp:abc", projectPath: "/proj/a", title: "Short", sessionKey: "chat:abc" }
+        { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1", status: "open" },
+        { paneKey: "acp:abc", projectPath: "/proj/a", title: "Short", sessionKey: "chat:abc", status: "open" }
       ] }));
     });
     const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-session-dot-btn")];
@@ -96,6 +101,45 @@ describe("AppChrome", () => {
 
     fireEvent.mouseOver(dots[0]);
     expect((await screen.findByRole("tooltip")).textContent).toBe("A very long session title here");
+  });
+
+  it("applies status classes and tooltip suffixes for runtime states", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
+        {
+          paneKey: "acp:await",
+          projectPath: "/p",
+          title: "Needs you",
+          sessionKey: "chat:await",
+          status: "awaiting_user",
+          awaitingConfidence: "confirmed"
+        },
+        {
+          paneKey: "terminal:run",
+          projectPath: "/p",
+          title: "Busy",
+          sessionKey: "cli:run",
+          status: "running"
+        },
+        {
+          paneKey: "terminal:maybe",
+          projectPath: "/p",
+          title: "Quiet TUI",
+          sessionKey: "cli:maybe",
+          status: "awaiting_user",
+          awaitingConfidence: "possible"
+        }
+      ] }));
+    });
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-session-dot-btn")];
+    expect(dots).toHaveLength(3);
+    expect(dots[0].querySelector(".rail-session-dot")?.classList.contains("is-awaiting")).toBe(true);
+    expect(dots[1].querySelector(".rail-session-dot")?.classList.contains("is-running")).toBe(true);
+    expect(dots[0].getAttribute("aria-label")).toContain("Waiting for you");
+    expect(dots[1].getAttribute("aria-label")).toContain("Running");
+    expect(dots[2].getAttribute("aria-label")).toContain("May need attention");
   });
 
   it("renders no dots when no sessions are open", async () => {
@@ -116,7 +160,7 @@ describe("AppChrome", () => {
     window.addEventListener("agent-resume:workbench-focus-session", focusReq);
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        { paneKey: "terminal:9", projectPath: "/proj/x", title: "Alpha", sessionKey: "cli:s9" }
+        { paneKey: "terminal:9", projectPath: "/proj/x", title: "Alpha", sessionKey: "cli:s9", status: "open" }
       ] }));
     });
     const dot = document.querySelector<HTMLButtonElement>(".rail-session-dot-btn");
