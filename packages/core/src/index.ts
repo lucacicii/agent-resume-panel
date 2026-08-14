@@ -39,6 +39,7 @@ export type {
   SessionSummaryAutoSettings,
   SessionTranscriptIndexSettings,
   SessionEmbeddingIndexSettings,
+  AutoTaggingSettings,
   DesktopSettings,
   NotesSettings,
   DesktopTheme,
@@ -809,3 +810,98 @@ export type {
   NativeConversationCollection,
   CollectNativeConversationsOptions
 } from "./backup/nativeConversations";
+
+// Auto-tagging engine
+export {
+  TAG_CATEGORIES
+} from "./tagging/types";
+export type {
+  TagCategory,
+  TagStatus,
+  TagSource,
+  TagEntityType,
+  EntityTagRow,
+  TagDefinitionRow,
+  ExtractedTag,
+  TagExtractionResult,
+  TagFilterOptions,
+  EntityTagSummary,
+  TagEntityHitItem
+} from "./tagging/types";
+export {
+  DEFAULT_HALF_LIFE_DAYS,
+  DEFAULT_PRUNE_THRESHOLD,
+  DEFAULT_HIT_BOOST,
+  DEFAULT_CONSENSUS_FACTOR,
+  DEFAULT_GRACE_PERIOD_DAYS,
+  normalizeTagName,
+  normalizeCategory,
+  computeConsensusBoost,
+  computeDecayedWeight,
+  determineTagStatus
+} from "./tagging/decay";
+export type { DecayedWeightParams, TagStatusParams } from "./tagging/decay";
+export {
+  buildTagSystemPrompt,
+  buildSessionTagUserPrompt,
+  buildNoteTagUserPrompt,
+  TAG_CATEGORY_DESCRIPTIONS,
+  TAG_CATEGORY_EXAMPLES
+} from "./tagging/prompts";
+export {
+  extractTagsFromSession,
+  extractTagsFromNote,
+  isKnownTagCategory
+} from "./tagging/extract";
+export type { ExtractSessionTagsInput, ExtractNoteTagsInput } from "./tagging/extract";
+export {
+  applyExtractedTags,
+  addManualTag,
+  removeEntityTag,
+  recordEntityTagHits,
+  recordSearchResultTagHits,
+  sweepTagDecay,
+  listEntityTags,
+  listTagDefinitions,
+  searchTagDefinitions,
+  listEntitiesByTag,
+  sessionEntityId,
+  parseSessionEntityId,
+  newEntityTagRowId
+} from "./tagging/store";
+export type { TagStoreSettings, ListEntityTagsOptions } from "./tagging/store";
+export {
+  resolveAutoTaggingSettings,
+  toTagStoreSettings,
+  listSessionsNeedingTags,
+  listNotesNeedingTags,
+  selectTaggingCandidates,
+  runAutoTagging,
+  tagEntityNow,
+  getEntityTagsForUi,
+  DEFAULT_AUTO_TAG_CONCURRENCY,
+  DEFAULT_AUTO_TAG_MAX_PER_TICK,
+  DEFAULT_AUTO_TAG_MAX_TAGS,
+  DEFAULT_AUTO_TAG_QUIET_DELAY_MINUTES
+} from "./tagging/autoTag";
+export type {
+  ResolvedAutoTaggingSettings,
+  TaggingCandidate,
+  RunAutoTaggingOptions,
+  RunAutoTaggingResult
+} from "./tagging/autoTag";
+export {
+  tagListSchema,
+  tagSearchSchema,
+  tagEntitiesListSchema,
+  entityTagsGetSchema,
+  entityTagAddSchema,
+  entityTagRemoveSchema,
+  handleTagList,
+  handleTagSearch,
+  handleTagEntitiesList,
+  handleEntityTagsGet,
+  handleEntityTagAdd,
+  handleEntityTagRemove
+} from "./mcp/tagTools";
+export type { TagToolContext } from "./mcp/tagTools";

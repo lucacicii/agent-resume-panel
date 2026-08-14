@@ -3,11 +3,15 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   effectivePanelHome,
+  ensureDesktopDbSchema,
   expandHome,
   loadSettings,
   noteAssetsDirName,
   NotesStore,
   notesRoot,
+  recordEntityTagHits,
+  resolveAutoTaggingSettings,
+  toTagStoreSettings,
   type AgentProvider,
   type GtdStatus,
   type ImportNotesResult,
@@ -51,6 +55,19 @@ export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null
     : store.setNoteGtdStatus(noteId, status);
 }
 
+async function trackNoteTagHit(noteId: string): Promise<void> {
+  try {
+    const settings = await loadSettings();
+    const paths = await loadPanelDbPaths(settings);
+    await ensureDesktopDbSchema(paths.desktopDb);
+    const auto = resolveAutoTaggingSettings(settings);
+    if (!auto.enabled) return;
+    await recordEntityTagHits(paths.desktopDb, "note", noteId, toTagStoreSettings(auto));
+  } catch {
+    // hit tracking is best-effort
+  }
+}
+
 export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
   const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
@@ -58,6 +75,7 @@ export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRe
     throw new Error("Note not found.");
   }
   const content = await store.readNoteContent(noteId);
+  void trackNoteTagHit(noteId);
   return { record, content };
 }
 

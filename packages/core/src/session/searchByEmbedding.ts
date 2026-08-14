@@ -13,6 +13,8 @@ import { PanelSettings } from "../settings/types";
 import { cosineSimilarity, parseEmbeddingJson } from "../report/cosine";
 import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
 import { recordLlmUsage } from "../usage/store";
+import { resolveAutoTaggingSettings, toTagStoreSettings } from "../tagging/autoTag";
+import { recordSearchResultTagHits, sessionEntityId } from "../tagging/store";
 import { listSessionEmbeddingRows, sessionEmbeddingKey } from "./embedStore";
 
 export interface SearchSessionsByEmbeddingOptions {
@@ -204,6 +206,20 @@ export async function searchSessionsByEmbedding(
       hit.gtdStatus = row.gtd_status;
     }
     hits.push(hit);
+  }
+
+  if (hits.length) {
+    const auto = resolveAutoTaggingSettings(options.settings);
+    if (auto.enabled) {
+      void recordSearchResultTagHits(
+        options.desktopDb,
+        hits.map((hit) => ({
+          entityType: "session" as const,
+          entityId: sessionEntityId(hit.provider, hit.sessionId)
+        })),
+        toTagStoreSettings(auto)
+      );
+    }
   }
 
   return hits;

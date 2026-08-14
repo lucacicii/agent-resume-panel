@@ -524,5 +524,45 @@ function SessionsPane({ draft, setDraft, scheduleSave, t }: { draft: SessionsDra
         </label>
       </div>
     </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.autoTagging")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.autoTaggingEnabled")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.autoTaggingEnabledDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.autoTaggingEnabled} onChange={(event) => update("autoTaggingEnabled", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.autoTagHalfLifeDays")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.autoTagHalfLifeDaysHint")}</span>
+          <input type="number" min="1" max="90" disabled={!draft.autoTaggingEnabled} value={draft.autoTagHalfLifeDays} onChange={(event) => update("autoTagHalfLifeDays", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.autoTagPruneThreshold")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.autoTagPruneThresholdHint")}</span>
+          <input type="number" min="0.01" max="1" step="0.01" disabled={!draft.autoTaggingEnabled} value={draft.autoTagPruneThreshold} onChange={(event) => update("autoTagPruneThreshold", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.autoTagMaxTagsPerItem")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.autoTagMaxTagsPerItemHint")}</span>
+          <input type="number" min="3" max="10" disabled={!draft.autoTaggingEnabled} value={draft.autoTagMaxTagsPerItem} onChange={(event) => update("autoTagMaxTagsPerItem", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.autoTagHitBoost")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.autoTagHitBoostHint")}</span>
+          <input type="number" min="0.1" max="5" step="0.1" disabled={!draft.autoTaggingEnabled} value={draft.autoTagHitBoost} onChange={(event) => update("autoTagHitBoost", Number(event.target.value))} />
+        </label>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.autoTagConsensusFactor")}</span>
+          <span className="settings-field-hint">{t("desktop.settings.autoTagConsensusFactorHint")}</span>
+          <input type="number" min="0.1" max="2" step="0.1" disabled={!draft.autoTaggingEnabled} value={draft.autoTagConsensusFactor} onChange={(event) => update("autoTagConsensusFactor", Number(event.target.value))} />
+        </label>
+      </div>
+    </section>
   </>;
 }

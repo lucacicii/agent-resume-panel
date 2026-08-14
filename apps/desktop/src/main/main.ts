@@ -87,6 +87,19 @@ import {
   syncAgentSessions,
   setSessionGtdStatus,
   summarizeSessionAction,
+  listTagDefinitions,
+  searchTagDefinitions,
+  listEntitiesByTag,
+  listEntityTags,
+  addManualTag,
+  removeEntityTag,
+  recordEntityTagHits,
+  sweepTagDecay,
+  tagEntityNow,
+  sessionEntityId,
+  resolveAutoTaggingSettings,
+  toTagStoreSettings,
+  ensureDesktopDbSchema,
   type AgentProvider,
   type AgentNoteAuditStatus,
   type DigestProgressEvent,
@@ -94,7 +107,10 @@ import {
   type NoteRecord,
   type PanelSettings,
   type WorkbenchProjectEditor,
-  type AgentSessionSyncResult
+  type AgentSessionSyncResult,
+  type TagCategory,
+  type TagEntityType,
+  type TagStatus
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerFlowIpc } from "./flow/flowIpc";
@@ -171,6 +187,11 @@ import {
   startSessionEmbeddingIndexAuto,
   stopSessionEmbeddingIndexAuto
 } from "./sessionEmbeddingIndexAuto";
+import {
+  scheduleAutoTagging,
+  startAutoTaggingService,
+  stopAutoTaggingService
+} from "./taggingService";
 import {
   exportBackup,
   exportIcloudBackup,
@@ -597,6 +618,7 @@ function performQuitCleanup(): void {
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
+  stopAutoTaggingService();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
 }
@@ -649,10 +671,29 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   scheduleSessionSummaryAuto(2_000);
   scheduleSessionTranscriptIndexAuto(3_000);
   scheduleSessionEmbeddingIndexAuto(4_000);
+  scheduleAutoTagging(5_000);
   return result;
 }
 
 /** Shared resume entry for Workbench IPC and Agent session_resume tool. */
+async function trackSessionTagHit(provider: string, sessionId: string): Promise<void> {
+  try {
+    const settings = await loadSettings();
+    const paths = await loadPanelDbPaths(settings);
+    await ensureDesktopDbSchema(paths.desktopDb);
+    const auto = resolveAutoTaggingSettings(settings);
+    if (!auto.enabled) return;
+    await recordEntityTagHits(
+      paths.desktopDb,
+      "session",
+      sessionEntityId(provider, sessionId),
+      toTagStoreSettings(auto)
+    );
+  } catch {
+    // hit tracking is best-effort
+  }
+}
+
 async function resumeCatalogSession(
   provider: AgentProvider,
   id: string
@@ -674,6 +715,7 @@ async function resumeCatalogSession(
     const record = await getAcpRecord(panelHome, id);
     const catalogSession = await getSessionById(paths.catalogDb, "chat", id);
     if (record || catalogSession) {
+      void trackSessionTagHit("chat", record?.id || catalogSession!.id);
       return {
         mode: "acp",
         command: "",
@@ -701,6 +743,7 @@ async function resumeCatalogSession(
   if (!session) {
     throw new Error(`Session not found: ${provider} ${id}`);
   }
+  void trackSessionTagHit(session.provider, session.id);
   const mode = resolveWorkbenchTerminalMode(settings);
   const cwd = await resolveSessionCwd(session.projectPath, settings);
 
@@ -1223,6 +1266,7 @@ function registerIpc(): void {
       stopSessionSummaryAuto();
       stopSessionTranscriptIndexAuto();
       stopSessionEmbeddingIndexAuto();
+      stopAutoTaggingService();
       try {
         const result = await importBackup(await loadSettings(), importToken, getAppVersion(), {
           includeCredentials: args?.includeCredentials === true,
@@ -1239,6 +1283,7 @@ function registerIpc(): void {
         startSessionSummaryAuto();
         startSessionTranscriptIndexAuto();
         startSessionEmbeddingIndexAuto();
+        startAutoTaggingService();
         broadcastToRenderers("settings:changed", { settings: saved, section: "storage" });
         broadcastToRenderers("i18n:localeChanged", bundle);
         broadcastToRenderers("backup:imported", result);
@@ -1251,6 +1296,7 @@ function registerIpc(): void {
         startSessionSummaryAuto();
         startSessionTranscriptIndexAuto();
         startSessionEmbeddingIndexAuto();
+        startAutoTaggingService();
         throw error;
       }
     }
@@ -1306,6 +1352,7 @@ function registerIpc(): void {
       scheduleSessionSummaryAuto(options?.section === "sessions" ? 0 : 2_000);
       scheduleSessionTranscriptIndexAuto(options?.section === "sessions" ? 500 : 3_000);
       scheduleSessionEmbeddingIndexAuto(options?.section === "sessions" ? 800 : 4_000);
+      scheduleAutoTagging(options?.section === "sessions" ? 1_000 : 5_000);
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,
@@ -1374,6 +1421,329 @@ function registerIpc(): void {
       return { ok: true as const };
     }
   );
+
+  ipcMain.handle(
+    "tags:list",
+    async (
+      _event,
+      args?: {
+        category?: TagCategory;
+        status?: TagStatus | "all";
+        entityType?: TagEntityType | "all";
+        minWeight?: number;
+        query?: string;
+        sortBy?: "weight" | "count" | "recency" | "alpha";
+        limit?: number;
+        offset?: number;
+      }
+    ) => {
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const rows = await listTagDefinitions(paths.desktopDb, {
+        category: args?.category,
+        status: args?.status,
+        entityType: args?.entityType,
+        minWeight: args?.minWeight,
+        query: args?.query,
+        sortBy: args?.sortBy,
+        limit: args?.limit,
+        offset: args?.offset
+      });
+      return rows.map((r) => ({
+        tag: r.display_name,
+        normalizedTag: r.normalized_tag,
+        category: r.category as TagCategory,
+        sessionCount: r.session_count,
+        noteCount: r.note_count,
+        activeEntityCount: r.active_entity_count,
+        totalHits: r.total_hits,
+        globalWeight: r.global_weight,
+        status: r.status as TagStatus,
+        pinned: !!r.pinned,
+        updatedAtMs: r.updated_at_ms
+      }));
+    }
+  );
+
+  ipcMain.handle(
+    "tags:search",
+    async (
+      _event,
+      args?: { query?: string; category?: TagCategory; status?: TagStatus | "all"; limit?: number }
+    ) => {
+      const query = String(args?.query || "").trim();
+      if (!query) return [];
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const rows = await searchTagDefinitions(paths.desktopDb, query, {
+        category: args?.category,
+        status: args?.status ?? "active",
+        limit: args?.limit
+      });
+      return rows.map((r) => ({
+        tag: r.display_name,
+        normalizedTag: r.normalized_tag,
+        category: r.category as TagCategory,
+        activeEntityCount: r.active_entity_count,
+        globalWeight: r.global_weight,
+        status: r.status as TagStatus
+      }));
+    }
+  );
+
+  ipcMain.handle(
+    "tags:listEntities",
+    async (
+      _event,
+      args?: {
+        tag?: string;
+        entityType?: TagEntityType | "all";
+        includeObsolete?: boolean;
+        limit?: number;
+      }
+    ) => {
+      const tag = String(args?.tag || "").trim();
+      if (!tag) return [];
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      return listEntitiesByTag(paths.desktopDb, tag, {
+        entityType: args?.entityType,
+        includeObsolete: args?.includeObsolete === true,
+        limit: args?.limit
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "tags:getEntityTags",
+    async (
+      _event,
+      args?: {
+        entityType?: TagEntityType;
+        entityId?: string;
+        provider?: string;
+        sessionId?: string;
+        noteId?: string;
+        includeObsolete?: boolean;
+      }
+    ) => {
+      const entityType = args?.entityType;
+      if (entityType !== "session" && entityType !== "note") {
+        throw new Error("entityType must be session or note");
+      }
+      let entityId = String(args?.entityId || "").trim();
+      if (!entityId) {
+        if (entityType === "session") {
+          const provider = String(args?.provider || "").trim();
+          const sessionId = String(args?.sessionId || "").trim();
+          if (!provider || !sessionId) throw new Error("provider and sessionId are required");
+          entityId = sessionEntityId(provider, sessionId);
+        } else {
+          entityId = String(args?.noteId || "").trim();
+          if (!entityId) throw new Error("noteId is required");
+        }
+      }
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      return listEntityTags(paths.desktopDb, entityType, entityId, {
+        includeObsolete: args?.includeObsolete === true
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "tags:addEntityTag",
+    async (
+      _event,
+      args?: {
+        entityType?: TagEntityType;
+        entityId?: string;
+        provider?: string;
+        sessionId?: string;
+        noteId?: string;
+        tag?: string;
+        category?: TagCategory;
+      }
+    ) => {
+      const entityType = args?.entityType;
+      if (entityType !== "session" && entityType !== "note") {
+        throw new Error("entityType must be session or note");
+      }
+      let entityId = String(args?.entityId || "").trim();
+      if (!entityId) {
+        if (entityType === "session") {
+          const provider = String(args?.provider || "").trim();
+          const sessionId = String(args?.sessionId || "").trim();
+          if (!provider || !sessionId) throw new Error("provider and sessionId are required");
+          entityId = sessionEntityId(provider, sessionId);
+        } else {
+          entityId = String(args?.noteId || "").trim();
+          if (!entityId) throw new Error("noteId is required");
+        }
+      }
+      const tag = String(args?.tag || "").trim();
+      if (!tag) throw new Error("tag is required");
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const auto = resolveAutoTaggingSettings(settings);
+      const result = await addManualTag(
+        paths.desktopDb,
+        entityType,
+        entityId,
+        tag,
+        args?.category,
+        toTagStoreSettings(auto)
+      );
+      return { ok: true as const, tag: result };
+    }
+  );
+
+  ipcMain.handle(
+    "tags:removeEntityTag",
+    async (
+      _event,
+      args?: {
+        entityType?: TagEntityType;
+        entityId?: string;
+        provider?: string;
+        sessionId?: string;
+        noteId?: string;
+        tag?: string;
+        hardDelete?: boolean;
+      }
+    ) => {
+      const entityType = args?.entityType;
+      if (entityType !== "session" && entityType !== "note") {
+        throw new Error("entityType must be session or note");
+      }
+      let entityId = String(args?.entityId || "").trim();
+      if (!entityId) {
+        if (entityType === "session") {
+          const provider = String(args?.provider || "").trim();
+          const sessionId = String(args?.sessionId || "").trim();
+          if (!provider || !sessionId) throw new Error("provider and sessionId are required");
+          entityId = sessionEntityId(provider, sessionId);
+        } else {
+          entityId = String(args?.noteId || "").trim();
+          if (!entityId) throw new Error("noteId is required");
+        }
+      }
+      const tag = String(args?.tag || "").trim();
+      if (!tag) throw new Error("tag is required");
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const auto = resolveAutoTaggingSettings(settings);
+      const removed = await removeEntityTag(
+        paths.desktopDb,
+        entityType,
+        entityId,
+        tag,
+        args?.hardDelete === true,
+        toTagStoreSettings(auto)
+      );
+      return { ok: true as const, removed };
+    }
+  );
+
+  ipcMain.handle(
+    "tags:recordHits",
+    async (
+      _event,
+      args?: {
+        entityType?: TagEntityType;
+        entityId?: string;
+        provider?: string;
+        sessionId?: string;
+        noteId?: string;
+      }
+    ) => {
+      const entityType = args?.entityType;
+      if (entityType !== "session" && entityType !== "note") {
+        throw new Error("entityType must be session or note");
+      }
+      let entityId = String(args?.entityId || "").trim();
+      if (!entityId) {
+        if (entityType === "session") {
+          const provider = String(args?.provider || "").trim();
+          const sessionId = String(args?.sessionId || "").trim();
+          if (!provider || !sessionId) throw new Error("provider and sessionId are required");
+          entityId = sessionEntityId(provider, sessionId);
+        } else {
+          entityId = String(args?.noteId || "").trim();
+          if (!entityId) throw new Error("noteId is required");
+        }
+      }
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const auto = resolveAutoTaggingSettings(settings);
+      const count = await recordEntityTagHits(
+        paths.desktopDb,
+        entityType,
+        entityId,
+        toTagStoreSettings(auto)
+      );
+      return { ok: true as const, count };
+    }
+  );
+
+  ipcMain.handle(
+    "tags:retagEntity",
+    async (
+      _event,
+      args?: {
+        entityType?: TagEntityType;
+        entityId?: string;
+        provider?: string;
+        sessionId?: string;
+        noteId?: string;
+      }
+    ) => {
+      const entityType = args?.entityType;
+      if (entityType !== "session" && entityType !== "note") {
+        throw new Error("entityType must be session or note");
+      }
+      let entityId = String(args?.entityId || "").trim();
+      if (!entityId) {
+        if (entityType === "session") {
+          const provider = String(args?.provider || "").trim();
+          const sessionId = String(args?.sessionId || "").trim();
+          if (!provider || !sessionId) throw new Error("provider and sessionId are required");
+          entityId = sessionEntityId(provider, sessionId);
+        } else {
+          entityId = String(args?.noteId || "").trim();
+          if (!entityId) throw new Error("noteId is required");
+        }
+      }
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      const tags = await tagEntityNow({
+        catalogDb: paths.catalogDb,
+        desktopDb: paths.desktopDb,
+        settings,
+        panelHome: effectivePanelHome(settings),
+        systemLocale: app.getLocale(),
+        entityType,
+        entityId
+      });
+      return { ok: true as const, tags };
+    }
+  );
+
+  ipcMain.handle("tags:sweepDecay", async () => {
+    const settings = await loadSettings();
+    const paths = await loadPanelDbPaths(settings);
+    await ensureDesktopDbSchema(paths.desktopDb);
+    const auto = resolveAutoTaggingSettings(settings);
+    const result = await sweepTagDecay(paths.desktopDb, toTagStoreSettings(auto));
+    return { ok: true as const, ...result };
+  });
 
   ipcMain.handle(
     "sessions:listInRange",
@@ -2518,6 +2888,7 @@ app.whenReady().then(async () => {
   startSessionSummaryAuto();
   startSessionTranscriptIndexAuto();
   startSessionEmbeddingIndexAuto();
+  startAutoTaggingService();
   await refreshMemorySchedulerFromSettings();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -2528,6 +2899,7 @@ app.whenReady().then(async () => {
       startSessionSummaryAuto();
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
+      startAutoTaggingService();
       // Closing the last window on macOS used to stop the scheduler; restore it with the window.
       void refreshMemorySchedulerFromSettings();
       return;
@@ -2563,6 +2935,7 @@ app.on("window-all-closed", () => {
     stopSessionSummaryAuto();
     stopSessionTranscriptIndexAuto();
     stopSessionEmbeddingIndexAuto();
+    stopAutoTaggingService();
     tryDestroyPtyOnQuit();
     app.quit();
   } else {

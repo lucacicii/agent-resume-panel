@@ -217,7 +217,39 @@ type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["match
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned" | "active";
 type SessionFilter = "all" | "active";
-type WorkbenchSidebarView = "projects" | "gtd";
+type WorkbenchSidebarView = "projects" | "gtd" | "tags";
+type TagCategoryFilter =
+  | "all"
+  | "tech_stack"
+  | "business_domain"
+  | "architecture"
+  | "task_type"
+  | "problem_domain"
+  | "concept_knowledge"
+  | "context_env";
+type WorkbenchTagItem = {
+  tag: string;
+  normalizedTag: string;
+  category: string;
+  sessionCount: number;
+  noteCount: number;
+  activeEntityCount: number;
+  totalHits: number;
+  globalWeight: number;
+  status: string;
+  pinned: boolean;
+  updatedAtMs: number;
+};
+const TAG_CATEGORY_FILTERS = [
+  "all",
+  "tech_stack",
+  "business_domain",
+  "architecture",
+  "task_type",
+  "problem_domain",
+  "concept_knowledge",
+  "context_env"
+] as const satisfies readonly TagCategoryFilter[];
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
@@ -2189,11 +2221,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
-  const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(
-    () => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "projects"
-  );
+  const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(() => {
+    const stored = storageString(SIDEBAR_VIEW_KEY);
+    if (stored === "gtd" || stored === "tags" || stored === "projects") return stored;
+    return "projects";
+  });
   const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus>("inbox");
   const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
+  const [tagItems, setTagItems] = useState<WorkbenchTagItem[]>([]);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tagCategoryFilter, setTagCategoryFilter] = useState<TagCategoryFilter>("all");
+  const [showObsoleteTags, setShowObsoleteTags] = useState(false);
+  const [tagEntityKeys, setTagEntityKeys] = useState<Set<string>>(new Set());
+  const [tagsLoading, setTagsLoading] = useState(false);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
@@ -2987,6 +3027,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         return matchesQuery && effectiveGtdStatus(gtdStatuses, session) === selectedGtdStatus;
       });
     }
+    if (sidebarView === "tags") {
+      if (!selectedTag || tagEntityKeys.size === 0) return [];
+      return sessions.filter((session) => tagEntityKeys.has(sessionKey(session)));
+    }
     if (!selectedProject) return sessions;
     let projectSessions: AgentSession[];
     if (selectedProjectMeta) {
@@ -3008,7 +3052,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     return projectSessions.filter((session) => selectedFolderId === UNCLASSIFIED_FOLDER_ID
       ? !assignments.has(sessionKey(session))
       : assignments.get(sessionKey(session)) === selectedFolderId);
-  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
+  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, selectedTag, sessions, sidebarView, tagEntityKeys]);
   const gtdStatusCounts = useMemo(() => {
     const query = projectQuery.trim().toLowerCase();
     const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
@@ -3023,15 +3067,17 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [gtdStatuses, projectQuery, sessions]);
   const selectedSessionScope = sidebarView === "gtd"
     ? t(`desktop.workbench.gtdStatus.${selectedGtdStatus}`)
-    : selectedFolderId === UNCLASSIFIED_FOLDER_ID
-      ? t("desktop.workbench.unclassifiedSessions")
-      : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
+    : sidebarView === "tags"
+      ? (selectedTag || t("desktop.workbench.tagsView"))
+      : selectedFolderId === UNCLASSIFIED_FOLDER_ID
+        ? t("desktop.workbench.unclassifiedSessions")
+        : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
   const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
     const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
     return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
   }).sort((a, b) => b.updatedAt - a.updatedAt), [openSessionKeys, selectedSessions, sessionFilter, sessionQuery]);
   const selectedPendingSessions = useMemo(() => pendingSessions.filter((pending) => {
-    if (sidebarView === "gtd") return false;
+    if (sidebarView === "gtd" || sidebarView === "tags") return false;
     if (!selectedProject) return true;
     const selectedPath = selectedProjectMeta?.path || selectedProject;
     return projectPathKey(pending.projectPath) === projectPathKey(selectedPath);
@@ -3299,7 +3345,67 @@ export function WorkbenchPanel(): ReactPortal | null {
   const selectSidebarView = (view: WorkbenchSidebarView) => {
     setSidebarView(view);
     try { localStorage.setItem(SIDEBAR_VIEW_KEY, view); } catch { /* persistence is optional */ }
+    if (view === "tags") {
+      void loadTagItems();
+    }
   };
+
+  const loadTagItems = useCallback(async () => {
+    setTagsLoading(true);
+    try {
+      const api = desktopApi();
+      if (!api.listTags) {
+        setTagItems([]);
+        return;
+      }
+      const rows = await api.listTags({
+        status: showObsoleteTags ? "all" : "active",
+        entityType: "session",
+        category: tagCategoryFilter === "all" ? undefined : tagCategoryFilter,
+        query: projectQuery.trim() || undefined,
+        sortBy: "weight",
+        limit: 200
+      });
+      setTagItems((rows || []) as WorkbenchTagItem[]);
+    } catch {
+      setTagItems([]);
+    } finally {
+      setTagsLoading(false);
+    }
+  }, [projectQuery, showObsoleteTags, tagCategoryFilter]);
+
+  const selectTag = useCallback(async (tag: WorkbenchTagItem) => {
+    setSelectedTag(tag.normalizedTag || tag.tag);
+    try {
+      const api = desktopApi();
+      if (!api.listTagEntities) {
+        setTagEntityKeys(new Set());
+        return;
+      }
+      const entities = await api.listTagEntities({
+        tag: tag.normalizedTag || tag.tag,
+        entityType: "session",
+        includeObsolete: showObsoleteTags,
+        limit: 500
+      });
+      const keys = new Set<string>();
+      for (const entity of entities || []) {
+        const id = String(entity.entityId || "");
+        const colon = id.indexOf(":");
+        if (colon > 0) {
+          keys.add(`${id.slice(0, colon)}:${id.slice(colon + 1)}`);
+        }
+      }
+      setTagEntityKeys(keys);
+    } catch {
+      setTagEntityKeys(new Set());
+    }
+  }, [showObsoleteTags]);
+
+  useEffect(() => {
+    if (sidebarView !== "tags") return;
+    void loadTagItems();
+  }, [loadTagItems, sidebarView]);
 
   const togglePinnedProject = async (path: string, projectId?: string) => {
     const currentlyPinned = pinnedProjects.has(path)
@@ -6352,8 +6458,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
-          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
-          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
+          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd", "tags"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : view === "gtd" ? "desktop.workbench.gtdView" : "desktop.workbench.tagsView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
+          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : sidebarView === "gtd" ? "desktop.workbench.filterGtdSessions" : "desktop.workbench.filterTags")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : sidebarView === "gtd" ? "desktop.workbench.filterGtdSessions" : "desktop.workbench.filterTags")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
           {sidebarView === "projects" ? <SegmentedControl
               aria-label={t("desktop.notes.projectFilter")}
               value={projectFilter}
@@ -6361,6 +6467,18 @@ export function WorkbenchPanel(): ReactPortal | null {
               onChange={setProjectFilter}
               getLabel={(filter) => t(`desktop.common.${filter}`)}
             /> : null}
+          {sidebarView === "tags" ? <div className="wb-tag-category-pills" role="listbox" aria-label={t("desktop.workbench.allTagCategories")}>
+            {TAG_CATEGORY_FILTERS.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                className={`wb-tag-category-pill${tagCategoryFilter === cat ? " active" : ""}`}
+                onClick={() => setTagCategoryFilter(cat)}
+              >
+                {cat === "all" ? t("desktop.workbench.allTagCategories") : t(`desktop.tagging.category.${cat}`)}
+              </button>
+            ))}
+          </div> : null}
         </div>
         <div className="wb-folders">
           {sidebarView === "projects" ? <>
@@ -6381,7 +6499,35 @@ export function WorkbenchPanel(): ReactPortal | null {
                 {renderProjectFolderRows(project, null)}
               </Fragment>;
             })}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
-          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
+          </> : sidebarView === "gtd" ? <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>
+          : <div className="wb-folder-section wb-tags-folder-section">
+            <div className="wb-folder-section-label">{t("desktop.workbench.tagsView")}</div>
+            <label className="wb-tags-obsolete-toggle">
+              <input type="checkbox" checked={showObsoleteTags} onChange={(event) => setShowObsoleteTags(event.target.checked)} />
+              <span>{t("desktop.workbench.showObsoleteTags")}</span>
+            </label>
+            {tagsLoading ? <p className="muted wb-folders-empty">{t("desktop.common.loading")}</p>
+              : tagItems.length ? tagItems.map((tag) => (
+                <button
+                  type="button"
+                  key={tag.normalizedTag}
+                  className={`wb-folder-row wb-tag-row${selectedTag === tag.normalizedTag ? " active" : ""}${tag.status === "obsolete" ? " is-obsolete" : ""}`}
+                  onClick={() => void selectTag(tag)}
+                  title={t("desktop.tagging.consensusBadge", tag.activeEntityCount)}
+                >
+                  <span className={`wb-tag-category-dot is-${tag.category}`} aria-hidden="true" />
+                  <span className="wb-folder-row-text">
+                    <span className="wb-folder-row-label">#{tag.tag}</span>
+                    <span className="wb-folder-row-desc">
+                      {t(`desktop.tagging.category.${tag.category}`)}
+                      {tag.activeEntityCount > 1 ? ` · 🔗${tag.activeEntityCount}` : ""}
+                      {tag.globalWeight >= 2 ? " · 🔥" : ""}
+                    </span>
+                  </span>
+                  <span className="wb-folder-row-count">{tag.sessionCount}</span>
+                </button>
+              )) : <p className="muted wb-folders-empty">{t("desktop.workbench.noTags")}</p>}
+          </div>}
         </div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />

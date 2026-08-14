@@ -30,7 +30,49 @@ type Owner = { scope: "library" | "project" | "session"; projectPath?: string; p
 type Folder = { kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string };
 type ProjectFilter = "all" | "pinned" | "active";
 type ListFilter = "all" | "pinned";
-type NotesSidebarView = "notes" | "gtd";
+type NotesSidebarView = "notes" | "gtd" | "tags";
+type TagCategoryFilter =
+  | "all"
+  | "tech_stack"
+  | "business_domain"
+  | "architecture"
+  | "task_type"
+  | "problem_domain"
+  | "concept_knowledge"
+  | "context_env";
+type NotesTagItem = {
+  tag: string;
+  normalizedTag: string;
+  category: string;
+  sessionCount: number;
+  noteCount: number;
+  activeEntityCount: number;
+  totalHits: number;
+  globalWeight: number;
+  status: string;
+  pinned: boolean;
+  updatedAtMs: number;
+};
+type EntityTagChip = {
+  tag: string;
+  normalizedTag: string;
+  category: string;
+  weight: number;
+  hitCount: number;
+  consensusCount: number;
+  status: string;
+  source: string;
+};
+const TAG_CATEGORY_FILTERS = [
+  "all",
+  "tech_stack",
+  "business_domain",
+  "architecture",
+  "task_type",
+  "problem_domain",
+  "concept_knowledge",
+  "context_env"
+] as const satisfies readonly TagCategoryFilter[];
 type TargetState = { action: "create" | "import" | "move"; owner: Owner; note?: Note };
 type CatalogProject = {
   projectId: string;
@@ -293,10 +335,23 @@ export function NotesPanel(): ReactPortal | null {
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("all");
-  const [sidebarView, setSidebarView] = useState<NotesSidebarView>(() => storageString(SIDEBAR_VIEW_KEY) === "gtd" ? "gtd" : "notes");
+  const [sidebarView, setSidebarView] = useState<NotesSidebarView>(() => {
+    const stored = storageString(SIDEBAR_VIEW_KEY);
+    if (stored === "gtd" || stored === "tags" || stored === "notes") return stored;
+    return "notes";
+  });
   const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus | "all">("all");
   const [gtdQuery, setGtdQuery] = useState("");
   const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
+  const [tagItems, setTagItems] = useState<NotesTagItem[]>([]);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tagCategoryFilter, setTagCategoryFilter] = useState<TagCategoryFilter>("all");
+  const [showObsoleteTags, setShowObsoleteTags] = useState(false);
+  const [tagNoteIds, setTagNoteIds] = useState<Set<string>>(new Set());
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [entityTags, setEntityTags] = useState<EntityTagChip[]>([]);
+  const [entityTagsLoading, setEntityTagsLoading] = useState(false);
   const [listQuery, setListQuery] = useState("");
   const [listSearchOpen, setListSearchOpen] = useState(false);
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageString(FOLDERS_COLLAPSED_KEY) === "true");
@@ -844,6 +899,19 @@ export function NotesPanel(): ReactPortal | null {
       .sort((left, right) => Number(right.gtdStatus === "done") - Number(left.gtdStatus === "done") || right.updatedAtMs - left.updatedAtMs || titleFor(left).localeCompare(titleFor(right)));
   }, [gtdQuery, notes, selectedGtdStatus]);
 
+  const visibleTagNotes = useMemo(() => {
+    if (!selectedTag || tagNoteIds.size === 0) return [] as Note[];
+    const query = tagQuery.trim().toLocaleLowerCase();
+    return notes
+      .filter((note) => tagNoteIds.has(note.noteId))
+      .filter((note) => {
+        if (!query) return true;
+        const searchable = `${titleFor(note)} ${note.filename} ${note.relMdPath} ${note.contentPreview || ""}`.toLocaleLowerCase();
+        return searchable.includes(query);
+      })
+      .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+  }, [notes, selectedTag, tagNoteIds, tagQuery]);
+
   const targetProjects = useMemo(() => projects.filter((project) => `${project.label} ${project.path}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [projects, targetQuery]);
   const targetSessions = useMemo(() => folderSessions.filter((session) => `${session.title} ${session.id} ${session.provider}`.toLocaleLowerCase().includes(targetQuery.trim().toLocaleLowerCase())), [folderSessions, targetQuery]);
 
@@ -895,7 +963,117 @@ export function NotesPanel(): ReactPortal | null {
   const selectSidebarView = (next: NotesSidebarView) => {
     setSidebarView(next);
     try { localStorage.setItem(SIDEBAR_VIEW_KEY, next); } catch { /* persistence is optional */ }
+    if (next === "tags") {
+      void loadTagItems();
+    }
   };
+
+  const loadTagItems = useCallback(async () => {
+    setTagsLoading(true);
+    try {
+      const api = desktopApi();
+      if (!api.listTags) {
+        setTagItems([]);
+        return;
+      }
+      const rows = await api.listTags({
+        status: showObsoleteTags ? "all" : "active",
+        entityType: "note",
+        category: tagCategoryFilter === "all" ? undefined : tagCategoryFilter,
+        query: projectQuery.trim() || undefined,
+        sortBy: "weight",
+        limit: 200
+      });
+      setTagItems((rows || []) as NotesTagItem[]);
+    } catch {
+      setTagItems([]);
+    } finally {
+      setTagsLoading(false);
+    }
+  }, [projectQuery, showObsoleteTags, tagCategoryFilter]);
+
+  const selectTag = useCallback(async (tag: NotesTagItem) => {
+    setSelectedTag(tag.normalizedTag || tag.tag);
+    try {
+      const api = desktopApi();
+      if (!api.listTagEntities) {
+        setTagNoteIds(new Set());
+        return;
+      }
+      const entities = await api.listTagEntities({
+        tag: tag.normalizedTag || tag.tag,
+        entityType: "note",
+        includeObsolete: showObsoleteTags,
+        limit: 500
+      });
+      setTagNoteIds(new Set((entities || []).map((entity) => String(entity.entityId || "")).filter(Boolean)));
+    } catch {
+      setTagNoteIds(new Set());
+    }
+  }, [showObsoleteTags]);
+
+  useEffect(() => {
+    if (sidebarView !== "tags") return;
+    void loadTagItems();
+  }, [loadTagItems, sidebarView]);
+
+  const loadEntityTags = useCallback(async (noteId: string) => {
+    setEntityTagsLoading(true);
+    try {
+      const api = desktopApi();
+      if (!api.getEntityTags) {
+        setEntityTags([]);
+        return;
+      }
+      const tags = await api.getEntityTags({ entityType: "note", noteId, includeObsolete: false });
+      setEntityTags((tags || []) as EntityTagChip[]);
+    } catch {
+      setEntityTags([]);
+    } finally {
+      setEntityTagsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selected?.noteId) {
+      setEntityTags([]);
+      return;
+    }
+    void loadEntityTags(selected.noteId);
+  }, [loadEntityTags, selected?.noteId]);
+
+  const retagSelectedNote = useCallback(async () => {
+    if (!selected?.noteId) return;
+    try {
+      const api = desktopApi();
+      if (!api.retagEntity) return;
+      setEntityTagsLoading(true);
+      const result = await api.retagEntity({ entityType: "note", noteId: selected.noteId });
+      setEntityTags(((result as { tags?: EntityTagChip[] })?.tags || []) as EntityTagChip[]);
+      if (sidebarView === "tags") void loadTagItems();
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setEntityTagsLoading(false);
+    }
+  }, [loadTagItems, selected?.noteId, sidebarView]);
+
+  const removeEntityTagChip = useCallback(async (tag: EntityTagChip) => {
+    if (!selected?.noteId) return;
+    try {
+      const api = desktopApi();
+      if (!api.removeEntityTag) return;
+      await api.removeEntityTag({
+        entityType: "note",
+        noteId: selected.noteId,
+        tag: tag.normalizedTag || tag.tag
+      });
+      setEntityTags((current) => current.filter((item) => item.normalizedTag !== tag.normalizedTag));
+      if (sidebarView === "tags") void loadTagItems();
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [loadTagItems, selected?.noteId, sidebarView]);
 
   const openGtdNote = (note: Note) => {
     selectSidebarView("notes");
@@ -1164,9 +1342,9 @@ export function NotesPanel(): ReactPortal | null {
           <SegmentedControl
             aria-label={t("desktop.notes.sidebarView")}
             value={sidebarView}
-            options={["notes", "gtd"] as const satisfies readonly NotesSidebarView[]}
+            options={["notes", "gtd", "tags"] as const satisfies readonly NotesSidebarView[]}
             onChange={selectSidebarView}
-            getLabel={(item) => t(item === "notes" ? "desktop.tabs.notes" : "desktop.workbench.gtdView")}
+            getLabel={(item) => t(item === "notes" ? "desktop.tabs.notes" : item === "gtd" ? "desktop.workbench.gtdView" : "desktop.notes.tagsView")}
             className="sidebar-project-filter-segmented wb-sidebar-view-segmented"
           />
           {sidebarView === "notes" ? <>
@@ -1179,6 +1357,21 @@ export function NotesPanel(): ReactPortal | null {
               getLabel={(filter) => t(`desktop.common.${filter}`)}
             />
           </> : null}
+          {sidebarView === "tags" ? <>
+            <label className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t("desktop.notes.filterTags")} placeholder={t("desktop.notes.filterTags")} value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} /></label>
+            <div className="wb-tag-category-pills" role="listbox" aria-label={t("desktop.workbench.allTagCategories")}>
+              {TAG_CATEGORY_FILTERS.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`wb-tag-category-pill${tagCategoryFilter === cat ? " active" : ""}`}
+                  onClick={() => setTagCategoryFilter(cat)}
+                >
+                  {cat === "all" ? t("desktop.workbench.allTagCategories") : t(`desktop.tagging.category.${cat}`)}
+                </button>
+              ))}
+            </div>
+          </> : null}
           </div>
           {sidebarView === "notes" ? <>
           <div className="notes-folders">
@@ -1189,10 +1382,36 @@ export function NotesPanel(): ReactPortal | null {
             </button>) : <p className="muted notes-folders-empty">{t("desktop.notes.noMatchingProjects")}</p>}</section>
             <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.sessionsSection")}</div>{folderSessions.map((session) => <button type="button" key={sessionKey(session)} className={`notes-folder-row${folder.kind === "session" && folder.provider === session.provider && folder.sessionId === session.id ? " active" : ""}`} onClick={() => selectFolder({ kind: "session", provider: session.provider, sessionId: session.id })}><span className="notes-folder-row-text"><span className="notes-folder-row-label">{session.title || session.id}</span><span className="notes-folder-row-desc">{session.provider}</span></span></button>)}</section>
           </div>
-          </> : <div className="notes-gtd-folders">
+          </> : sidebarView === "gtd" ? <div className="notes-gtd-folders">
             <button type="button" className={`notes-folder-row${selectedGtdStatus === "all" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("all")}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.gtdStatus).length}</span></button>
             {GTD_STATUSES.filter((status) => status !== "done").map((gtdStatus) => <button type="button" className={`notes-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="notes-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="notes-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}
             <div className="wb-gtd-completed-group"><button type="button" className="notes-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`notes-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="notes-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="notes-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div>
+          </div> : <div className="notes-gtd-folders notes-tags-folder-section">
+            <label className="wb-tags-obsolete-toggle">
+              <input type="checkbox" checked={showObsoleteTags} onChange={(event) => setShowObsoleteTags(event.target.checked)} />
+              <span>{t("desktop.notes.showObsoleteTags")}</span>
+            </label>
+            {tagsLoading ? <p className="muted notes-folders-empty">{t("desktop.common.loading")}</p>
+              : tagItems.length ? tagItems.map((tag) => (
+                <button
+                  type="button"
+                  key={tag.normalizedTag}
+                  className={`notes-folder-row wb-tag-row${selectedTag === tag.normalizedTag ? " active" : ""}${tag.status === "obsolete" ? " is-obsolete" : ""}`}
+                  onClick={() => void selectTag(tag)}
+                  title={t("desktop.tagging.consensusBadge", tag.activeEntityCount)}
+                >
+                  <span className={`wb-tag-category-dot is-${tag.category}`} aria-hidden="true" />
+                  <span className="notes-folder-row-text">
+                    <span className="notes-folder-row-label">#{tag.tag}</span>
+                    <span className="notes-folder-row-desc">
+                      {t(`desktop.tagging.category.${tag.category}`)}
+                      {tag.activeEntityCount > 1 ? ` · 🔗${tag.activeEntityCount}` : ""}
+                      {tag.globalWeight >= 2 ? " · 🔥" : ""}
+                    </span>
+                  </span>
+                  <span className="notes-folder-row-count">{tag.noteCount}</span>
+                </button>
+              )) : <p className="muted notes-folders-empty">{t("desktop.notes.noTags")}</p>}
           </div>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
@@ -1226,10 +1445,14 @@ export function NotesPanel(): ReactPortal | null {
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
           <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
-          </> : <>
+          </> : sidebarView === "gtd" ? <>
             <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtdNotes")} placeholder={t("desktop.notes.searchGtdNotes")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
             <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdNotesListMeta", visibleGtdNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
             <div className="notes-list notes-gtd-list">{visibleGtdNotes.length ? visibleGtdNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item notes-gtd-list-item is-${note.gtdStatus}${note.gtdStatus === "done" ? " is-completed" : ""}`} onClick={() => openGtdNote(note)}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap"><span className={`wb-gtd-status-dot is-${note.gtdStatus}`} aria-hidden="true" /><span className="notes-list-item-title">{titleFor(note)}</span></span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.relMdPath} · {t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)}</span></button>) : <p className="muted notes-list-empty">{t("desktop.notes.noGtdNotes")}</p>}</div>
+          </> : <>
+            <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
+            <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.tagCount", visibleTagNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadTagItems()}><ThemeIcon name="refresh" size={12} /></button></div>
+            <div className="notes-list notes-gtd-list">{visibleTagNotes.length ? visibleTagNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${selected?.noteId === note.noteId ? " active" : ""}`} onClick={() => void open(note)}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap"><span className="notes-list-item-title">{titleFor(note)}</span></span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relMdPath}</span></button>) : <p className="muted notes-list-empty">{selectedTag ? t("desktop.notes.noMatchingNotes") : t("desktop.notes.noTags")}</p>}</div>
           </>}
         </aside>
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
@@ -1276,6 +1499,22 @@ export function NotesPanel(): ReactPortal | null {
               </>
             ) : null}
             <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
+            <div className="entity-tag-bar" aria-label={t("desktop.notes.entityTags")}>
+              <div className="entity-tag-bar-chips">
+                {entityTagsLoading && !entityTags.length ? <span className="muted entity-tag-bar-empty">{t("desktop.common.loading")}</span>
+                  : entityTags.length ? entityTags.map((tag) => (
+                    <span key={tag.normalizedTag} className={`entity-tag-chip is-${tag.category}`} title={t(`desktop.tagging.category.${tag.category}`)}>
+                      <span className={`wb-tag-category-dot is-${tag.category}`} aria-hidden="true" />
+                      <span className="entity-tag-chip-label">#{tag.tag}</span>
+                      {tag.consensusCount > 1 ? <span className="entity-tag-chip-meta">🔗{tag.consensusCount}</span> : null}
+                      <button type="button" className="entity-tag-chip-remove" aria-label={t("desktop.common.close")} onClick={() => void removeEntityTagChip(tag)}>×</button>
+                    </span>
+                  )) : <span className="muted entity-tag-bar-empty">{t("desktop.notes.noEntityTags")}</span>}
+              </div>
+              <button type="button" className="notes-icon-btn entity-tag-bar-retag" aria-label={t("desktop.notes.retagEntity")} title={t("desktop.notes.retagEntity")} disabled={entityTagsLoading} onClick={() => void retagSelectedNote()}>
+                <ThemeIcon name="refresh" size={12} />
+              </button>
+            </div>
             <div className="notes-editor-body">
             {findOpen ? (
               <div className="notes-find-bar app-inline-search" role="search">

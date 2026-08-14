@@ -102,6 +102,112 @@ export interface DesktopApi {
     id: string;
     status: GtdStatus | null;
   }): Promise<{ ok: boolean }>;
+  listTags(args?: {
+    category?: string;
+    status?: "active" | "obsolete" | "all";
+    entityType?: "session" | "note" | "all";
+    minWeight?: number;
+    query?: string;
+    sortBy?: "weight" | "count" | "recency" | "alpha";
+    limit?: number;
+    offset?: number;
+  }): Promise<
+    Array<{
+      tag: string;
+      normalizedTag: string;
+      category: string;
+      sessionCount: number;
+      noteCount: number;
+      activeEntityCount: number;
+      totalHits: number;
+      globalWeight: number;
+      status: string;
+      pinned: boolean;
+      updatedAtMs: number;
+    }>
+  >;
+  searchTags(args: {
+    query: string;
+    category?: string;
+    status?: "active" | "obsolete" | "all";
+    limit?: number;
+  }): Promise<
+    Array<{
+      tag: string;
+      normalizedTag: string;
+      category: string;
+      activeEntityCount: number;
+      globalWeight: number;
+      status: string;
+    }>
+  >;
+  listTagEntities(args: {
+    tag: string;
+    entityType?: "session" | "note" | "all";
+    includeObsolete?: boolean;
+    limit?: number;
+  }): Promise<
+    Array<{
+      entityType: "session" | "note";
+      entityId: string;
+      weight: number;
+      hitCount: number;
+      status: string;
+      updatedAtMs: number;
+    }>
+  >;
+  getEntityTags(args: {
+    entityType: "session" | "note";
+    entityId?: string;
+    provider?: string;
+    sessionId?: string;
+    noteId?: string;
+    includeObsolete?: boolean;
+  }): Promise<
+    Array<{
+      tag: string;
+      normalizedTag: string;
+      category: string;
+      weight: number;
+      hitCount: number;
+      consensusCount: number;
+      status: string;
+      source: string;
+    }>
+  >;
+  addEntityTag(args: {
+    entityType: "session" | "note";
+    entityId?: string;
+    provider?: string;
+    sessionId?: string;
+    noteId?: string;
+    tag: string;
+    category?: string;
+  }): Promise<{ ok: boolean; tag?: unknown }>;
+  removeEntityTag(args: {
+    entityType: "session" | "note";
+    entityId?: string;
+    provider?: string;
+    sessionId?: string;
+    noteId?: string;
+    tag: string;
+    hardDelete?: boolean;
+  }): Promise<{ ok: boolean; removed: boolean }>;
+  recordEntityTagHits(args: {
+    entityType: "session" | "note";
+    entityId?: string;
+    provider?: string;
+    sessionId?: string;
+    noteId?: string;
+  }): Promise<{ ok: boolean; count: number }>;
+  retagEntity(args: {
+    entityType: "session" | "note";
+    entityId?: string;
+    provider?: string;
+    sessionId?: string;
+    noteId?: string;
+  }): Promise<{ ok: boolean; tags: unknown[] }>;
+  sweepTagDecay(): Promise<{ ok: boolean; scanned: number; markedObsolete: number }>;
   listSessionsInRange(args: {
     fromMs: number;
     toMs: number;
@@ -1210,6 +1316,15 @@ const api: DesktopApi = {
   listSessions: () => ipcRenderer.invoke("sessions:list"),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
+  listTags: (args) => ipcRenderer.invoke("tags:list", args),
+  searchTags: (args) => ipcRenderer.invoke("tags:search", args),
+  listTagEntities: (args) => ipcRenderer.invoke("tags:listEntities", args),
+  getEntityTags: (args) => ipcRenderer.invoke("tags:getEntityTags", args),
+  addEntityTag: (args) => ipcRenderer.invoke("tags:addEntityTag", args),
+  removeEntityTag: (args) => ipcRenderer.invoke("tags:removeEntityTag", args),
+  recordEntityTagHits: (args) => ipcRenderer.invoke("tags:recordHits", args),
+  retagEntity: (args) => ipcRenderer.invoke("tags:retagEntity", args),
+  sweepTagDecay: () => ipcRenderer.invoke("tags:sweepDecay"),
   listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),

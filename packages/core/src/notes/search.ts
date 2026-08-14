@@ -8,6 +8,8 @@ import { escapeSqlLiteral } from "../sqlite";
 import { queryNoteChunksWithProjects } from "../sqliteAttach";
 import { recordLlmUsage } from "../usage/store";
 import { cosineSimilarity, parseEmbeddingJson } from "../report/cosine";
+import { resolveAutoTaggingSettings, toTagStoreSettings } from "../tagging/autoTag";
+import { recordSearchResultTagHits } from "../tagging/store";
 import { listAllNotes } from "./catalogNotes";
 import { parseNoteDocument } from "./frontmatter";
 import { absFromRelMdPath } from "./paths";
@@ -210,7 +212,15 @@ export async function searchNotesByEmbedding(options: {
   const plan = options.plan ?? planNoteSearchDeterministically(query);
   if (plan.mode === "exact") {
     const exactLimit = Math.max(1, Math.min(options.limit ?? DEFAULT_EXACT_LIMIT, MAX_EXACT_LIMIT));
-    return searchExactNotesFromDisk(catalogDb, panelHome, plan, exactLimit, options.projectPath);
+    const exactHits = await searchExactNotesFromDisk(
+      catalogDb,
+      panelHome,
+      plan,
+      exactLimit,
+      options.projectPath
+    );
+    void trackNoteSearchTagHits(desktopDb, settings, exactHits);
+    return exactHits;
   }
 
   const embedding = embeddingConfigFromSettings(settings);
@@ -296,5 +306,21 @@ export async function searchNotesByEmbedding(options: {
       break;
     }
   }
+  void trackNoteSearchTagHits(desktopDb, settings, selected);
   return selected;
+}
+
+function trackNoteSearchTagHits(
+  desktopDb: string,
+  settings: Awaited<ReturnType<typeof loadSettings>>,
+  hits: NoteSearchHit[]
+): void {
+  if (!hits.length) return;
+  const auto = resolveAutoTaggingSettings(settings);
+  if (!auto.enabled) return;
+  void recordSearchResultTagHits(
+    desktopDb,
+    hits.map((hit) => ({ entityType: "note" as const, entityId: hit.noteId })),
+    toTagStoreSettings(auto)
+  );
 }

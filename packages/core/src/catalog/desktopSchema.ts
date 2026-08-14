@@ -292,4 +292,45 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS entity_tags (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  normalized_tag TEXT NOT NULL,
+  category TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  consensus_count INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active',
+  source TEXT NOT NULL DEFAULT 'auto',
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  last_hit_at_ms INTEGER NOT NULL,
+  last_decay_at_ms INTEGER NOT NULL,
+  obsolete_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_entity_tags_entity ON entity_tags(entity_type, entity_id, status);
+CREATE INDEX IF NOT EXISTS idx_entity_tags_tag ON entity_tags(normalized_tag, status, weight DESC);
+CREATE INDEX IF NOT EXISTS idx_entity_tags_category ON entity_tags(category, status, normalized_tag);
+CREATE INDEX IF NOT EXISTS idx_entity_tags_weight ON entity_tags(status, weight DESC, updated_at_ms DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_tags_unique ON entity_tags(entity_type, entity_id, normalized_tag);
+
+CREATE TABLE IF NOT EXISTS tag_definitions (
+  normalized_tag TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  session_count INTEGER NOT NULL DEFAULT 0,
+  note_count INTEGER NOT NULL DEFAULT 0,
+  active_entity_count INTEGER NOT NULL DEFAULT 0,
+  total_hits INTEGER NOT NULL DEFAULT 0,
+  global_weight REAL NOT NULL DEFAULT 1.0,
+  status TEXT NOT NULL DEFAULT 'active',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tag_defs_counts ON tag_definitions(status, active_entity_count DESC);
+CREATE INDEX IF NOT EXISTS idx_tag_defs_category ON tag_definitions(category, status, global_weight DESC);
 `;

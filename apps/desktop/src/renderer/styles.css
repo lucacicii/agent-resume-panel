@@ -10805,6 +10805,72 @@ textarea.wb-floating-note-editor {
   padding-block: 5px;
 }
 
+.wb-tag-category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+
+.wb-tag-category-pill {
+  border: 1px solid var(--color-separator);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.wb-tag-category-pill.active {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.wb-tags-obsolete-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wb-tag-row {
+  min-height: 36px;
+  align-items: flex-start;
+}
+
+.wb-tag-row.is-obsolete {
+  opacity: 0.55;
+}
+
+.wb-tag-category-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--color-label-secondary);
+}
+
+.wb-tag-category-dot.is-tech_stack { background: #3b82f6; }
+.wb-tag-category-dot.is-business_domain { background: #f59e0b; }
+.wb-tag-category-dot.is-architecture { background: #8b5cf6; }
+.wb-tag-category-dot.is-task_type { background: #10b981; }
+.wb-tag-category-dot.is-problem_domain { background: #ef4444; }
+.wb-tag-category-dot.is-concept_knowledge { background: #06b6d4; }
+.wb-tag-category-dot.is-context_env { background: #64748b; }
+
+.notes-tags-folder-section .wb-tag-row,
+.wb-tags-folder-section .wb-tag-row {
+  gap: 8px;
+}
+
 .wb-gtd-completed-group {
   margin-top: 4px;
   border-top: 1px solid var(--color-separator);
@@ -11877,6 +11943,74 @@ body.is-pane-resizing-row * {
 .notes-detail-title-input:focus {
   border-bottom-color: var(--accent);
 }
+
+.entity-tag-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 0 20px 10px;
+  min-height: 28px;
+}
+
+.entity-tag-bar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.entity-tag-bar-empty {
+  font-size: 12px;
+}
+
+.entity-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px 2px 5px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--panel-elevated, var(--bg)) 88%, transparent);
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.entity-tag-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-tag-chip-meta {
+  opacity: 0.72;
+  font-size: 10px;
+}
+
+.entity-tag-chip-remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted, var(--text));
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 1px;
+  opacity: 0.55;
+}
+
+.entity-tag-chip-remove:hover {
+  opacity: 1;
+  color: var(--danger, #ef4444);
+}
+
+.entity-tag-bar-retag {
+  flex-shrink: 0;
+}
+
 
 .notes-segmented {
   display: inline-flex;

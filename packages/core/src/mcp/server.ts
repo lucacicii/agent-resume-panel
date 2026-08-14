@@ -76,6 +76,20 @@ import {
   sessionMoveSchema
 } from "./projectTools";
 import { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
+import {
+  entityTagAddSchema,
+  entityTagRemoveSchema,
+  entityTagsGetSchema,
+  handleEntityTagAdd,
+  handleEntityTagRemove,
+  handleEntityTagsGet,
+  handleTagEntitiesList,
+  handleTagList,
+  handleTagSearch,
+  tagEntitiesListSchema,
+  tagListSchema,
+  tagSearchSchema
+} from "./tagTools";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.6.0";
@@ -553,6 +567,68 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       }
     );
   }
+
+  const tagCtx = { dbPath: ctx.dbPath };
+
+  server.registerTool(
+    "tag_list",
+    {
+      description:
+        "List knowledge tags extracted from sessions and notes. Filter by dimension (tech_stack, business_domain, architecture, task_type, problem_domain, concept_knowledge, context_env), lifecycle status, weight, or entity type. Read-only.",
+      inputSchema: tagListSchema
+    },
+    async (args) => handleTagList(args, tagCtx)
+  );
+
+  server.registerTool(
+    "tag_search",
+    {
+      description:
+        "Search knowledge tags by keyword against display/normalized names. Use when looking for a theme across sessions and notes. Read-only.",
+      inputSchema: tagSearchSchema
+    },
+    async (args) => handleTagSearch(args, tagCtx)
+  );
+
+  server.registerTool(
+    "tag_entities_list",
+    {
+      description:
+        "List sessions and notes bound to a given tag, ordered by weight. Use after tag_list/tag_search to drill into entities. Read-only.",
+      inputSchema: tagEntitiesListSchema
+    },
+    async (args) => handleTagEntitiesList(args, tagCtx)
+  );
+
+  server.registerTool(
+    "entity_tags_get",
+    {
+      description:
+        "Get all tags on one session or note, including weight, hit count, consensus, and status. Read-only.",
+      inputSchema: entityTagsGetSchema
+    },
+    async (args) => handleEntityTagsGet(args, tagCtx)
+  );
+
+  server.registerTool(
+    "entity_tag_add",
+    {
+      description:
+        "Manually add (or boost) a tag on a session or note. Manual tags do not auto-decay. Use when the user explicitly labels an entity.",
+      inputSchema: entityTagAddSchema
+    },
+    async (args) => handleEntityTagAdd(args, tagCtx)
+  );
+
+  server.registerTool(
+    "entity_tag_remove",
+    {
+      description:
+        "Remove a tag from a session or note. Default soft-obsoletes (status=obsolete); hardDelete permanently deletes the binding.",
+      inputSchema: entityTagRemoveSchema
+    },
+    async (args) => handleEntityTagRemove(args, tagCtx)
+  );
 
   return server;
 }

@@ -7,8 +7,8 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../dist/index.js";
 
 /**
  * Regression: mergeSettings used to drop sessionSummaryAuto / sessionEmbeddingIndex /
- * sessionTranscriptIndex, so Settings → Sessions saved with a success toast but values
- * never landed in settings.desktop.json (always fell back to defaults on reload).
+ * sessionTranscriptIndex / autoTagging, so Settings → Sessions saved with a success toast
+ * but values never landed in settings.desktop.json (always fell back to defaults on reload).
  */
 test("session auto settings persist through saveSettings and loadSettings", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-session-auto-settings-"));
@@ -35,6 +35,14 @@ test("session auto settings persist through saveSettings and loadSettings", asyn
           quietDelayMinutes: 45,
           concurrency: 2,
           maxPerTick: 4
+        },
+        autoTagging: {
+          enabled: false,
+          halfLifeDays: 14,
+          pruneThreshold: 0.2,
+          maxTagsPerItem: 8,
+          hitBoost: 0.75,
+          consensusFactor: 0.8
         }
       },
       panelHome
@@ -60,6 +68,14 @@ test("session auto settings persist through saveSettings and loadSettings", asyn
       concurrency: 2,
       maxPerTick: 4
     });
+    assert.deepEqual(loaded.autoTagging, {
+      enabled: false,
+      halfLifeDays: 14,
+      pruneThreshold: 0.2,
+      maxTagsPerItem: 8,
+      hitBoost: 0.75,
+      consensusFactor: 0.8
+    });
 
     // File on disk must contain the blocks (not only in-memory defaults).
     const raw = JSON.parse(
@@ -68,6 +84,8 @@ test("session auto settings persist through saveSettings and loadSettings", asyn
     assert.equal(raw.sessionSummaryAuto?.enabled, false);
     assert.equal(raw.sessionEmbeddingIndex?.maxPerTick, 11);
     assert.equal(raw.sessionTranscriptIndex?.quietDelayMinutes, 45);
+    assert.equal(raw.autoTagging?.enabled, false);
+    assert.equal(raw.autoTagging?.halfLifeDays, 14);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
@@ -82,7 +100,8 @@ test("session auto settings deep-merge partial overrides onto defaults", async (
         panelHome,
         sessionSummaryAuto: { maxPerTick: 12 },
         sessionEmbeddingIndex: { enabled: false },
-        sessionTranscriptIndex: { quietDelayMinutes: 1 }
+        sessionTranscriptIndex: { quietDelayMinutes: 1 },
+        autoTagging: { halfLifeDays: 21, enabled: false }
       },
       panelHome
     );
@@ -94,6 +113,10 @@ test("session auto settings deep-merge partial overrides onto defaults", async (
     assert.equal(loaded.sessionEmbeddingIndex?.maxPerTick, 5);
     assert.equal(loaded.sessionTranscriptIndex?.quietDelayMinutes, 1);
     assert.equal(loaded.sessionTranscriptIndex?.enabled, true);
+    assert.equal(loaded.autoTagging?.halfLifeDays, 21);
+    assert.equal(loaded.autoTagging?.enabled, false);
+    assert.equal(loaded.autoTagging?.maxTagsPerItem, 6);
+    assert.equal(loaded.autoTagging?.hitBoost, 0.5);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

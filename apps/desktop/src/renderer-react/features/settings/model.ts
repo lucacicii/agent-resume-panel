@@ -93,6 +93,13 @@ export interface SessionsDraft {
   embeddingQuietDelayMinutes: number;
   embeddingIndexConcurrency: number;
   embeddingIndexMaxPerTick: number;
+  /** Auto-tag sessions/notes with LLM + weight decay. */
+  autoTaggingEnabled: boolean;
+  autoTagHalfLifeDays: number;
+  autoTagPruneThreshold: number;
+  autoTagMaxTagsPerItem: number;
+  autoTagHitBoost: number;
+  autoTagConsensusFactor: number;
 }
 
 /** Composite target: `cli:codex` | `acp:claude` | … */
@@ -235,6 +242,7 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
   const auto = settings.sessionSummaryAuto;
   const tx = settings.sessionTranscriptIndex;
   const embIdx = settings.sessionEmbeddingIndex;
+  const tag = settings.autoTagging;
   return {
     maxItems: Math.max(1, Math.min(50_000, Number(source?.maxItems) || 10_000)),
     stalePolicy: source?.stalePolicy === "purge" ? "purge" : "off",
@@ -254,7 +262,22 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
     embeddingIndexEnabled: embIdx?.enabled !== false,
     embeddingQuietDelayMinutes: clampDraftInt(embIdx?.quietDelayMinutes, 0, 0, 1440),
     embeddingIndexConcurrency: clampDraftInt(embIdx?.concurrency, 2, 1, 4),
-    embeddingIndexMaxPerTick: clampDraftInt(embIdx?.maxPerTick, 5, 1, 50)
+    embeddingIndexMaxPerTick: clampDraftInt(embIdx?.maxPerTick, 5, 1, 50),
+    autoTaggingEnabled: tag?.enabled !== false,
+    autoTagHalfLifeDays: clampDraftInt(tag?.halfLifeDays, 7, 1, 90),
+    autoTagPruneThreshold:
+      Number.isFinite(tag?.pruneThreshold) && Number(tag?.pruneThreshold) > 0
+        ? Math.min(1, Math.max(0.01, Number(tag?.pruneThreshold)))
+        : 0.1,
+    autoTagMaxTagsPerItem: clampDraftInt(tag?.maxTagsPerItem, 6, 3, 10),
+    autoTagHitBoost:
+      Number.isFinite(tag?.hitBoost) && Number(tag?.hitBoost) > 0
+        ? Math.min(5, Math.max(0.1, Number(tag?.hitBoost)))
+        : 0.5,
+    autoTagConsensusFactor:
+      Number.isFinite(tag?.consensusFactor) && Number(tag?.consensusFactor) > 0
+        ? Math.min(2, Math.max(0.1, Number(tag?.consensusFactor)))
+        : 0.5
   };
 }
 
@@ -354,6 +377,24 @@ export function sessionsPatch(settings: PanelSettings, draft: SessionsDraft): Pa
       quietDelayMinutes: clampDraftInt(draft.embeddingQuietDelayMinutes, 0, 0, 1440),
       concurrency: clampDraftInt(draft.embeddingIndexConcurrency, 2, 1, 4),
       maxPerTick: clampDraftInt(draft.embeddingIndexMaxPerTick, 5, 1, 50)
+    },
+    autoTagging: {
+      ...settings.autoTagging,
+      enabled: draft.autoTaggingEnabled,
+      halfLifeDays: clampDraftInt(draft.autoTagHalfLifeDays, 7, 1, 90),
+      pruneThreshold:
+        Number.isFinite(draft.autoTagPruneThreshold) && draft.autoTagPruneThreshold > 0
+          ? Math.min(1, Math.max(0.01, Number(draft.autoTagPruneThreshold)))
+          : 0.1,
+      maxTagsPerItem: clampDraftInt(draft.autoTagMaxTagsPerItem, 6, 3, 10),
+      hitBoost:
+        Number.isFinite(draft.autoTagHitBoost) && draft.autoTagHitBoost > 0
+          ? Math.min(5, Math.max(0.1, Number(draft.autoTagHitBoost)))
+          : 0.5,
+      consensusFactor:
+        Number.isFinite(draft.autoTagConsensusFactor) && draft.autoTagConsensusFactor > 0
+          ? Math.min(2, Math.max(0.1, Number(draft.autoTagConsensusFactor)))
+          : 0.5
     },
     sessionSync: {
       ...settings.sessionSync,

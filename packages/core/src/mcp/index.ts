@@ -74,3 +74,18 @@ export {
 export type { ProjectToolContext } from "./projectTools";
 export { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
 export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./linkGraphTools";
+export {
+  tagListSchema,
+  tagSearchSchema,
+  tagEntitiesListSchema,
+  entityTagsGetSchema,
+  entityTagAddSchema,
+  entityTagRemoveSchema,
+  handleTagList,
+  handleTagSearch,
+  handleTagEntitiesList,
+  handleEntityTagsGet,
+  handleEntityTagAdd,
+  handleEntityTagRemove
+} from "./tagTools";
+export type { TagToolContext } from "./tagTools";

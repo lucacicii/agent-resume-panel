@@ -882,7 +882,7 @@ return createPortal(
   );
 }
 
-const TOOL_CATEGORY_ORDER: AgentToolCategory[] = ["notes", "flow", "reports", "sessions", "projects", "link_graph"];
+const TOOL_CATEGORY_ORDER: AgentToolCategory[] = ["notes", "flow", "reports", "sessions", "projects", "link_graph", "tags"];
 
 function ToolSettingsPopover({ prefs, tools, onPrefsChange, onClose, t }: {
   prefs: AskToolPrefs;
@@ -909,7 +909,8 @@ function ToolSettingsPopover({ prefs, tools, onPrefsChange, onClose, t }: {
     reports: t("desktop.agent.toolCategory.reports"),
     sessions: t("desktop.agent.toolCategory.sessions"),
     projects: t("desktop.agent.toolCategory.projects"),
-    link_graph: t("desktop.agent.toolCategory.link_graph")
+    link_graph: t("desktop.agent.toolCategory.link_graph"),
+    tags: t("desktop.agent.toolCategory.tags")
   };
   return (
     <div className="chat-tools-popover" role="dialog" aria-label={t("desktop.agent.toolsDialogTitle")}>

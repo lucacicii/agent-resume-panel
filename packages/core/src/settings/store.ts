@@ -162,7 +162,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.report,
       ...(partial.report || {})
     },
-    // Desktop session auto jobs (summary / embeddings / transcript index).
+    // Desktop session auto jobs (summary / embeddings / transcript index / tagging).
     // Must be merged or Settings → Sessions saves report success but never persist.
     sessionSummaryAuto: {
       ...base.sessionSummaryAuto,
@@ -175,6 +175,10 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     sessionTranscriptIndex: {
       ...base.sessionTranscriptIndex,
       ...(partial.sessionTranscriptIndex || {})
+    },
+    autoTagging: {
+      ...base.autoTagging,
+      ...(partial.autoTagging || {})
     },
     agentHomes: sanitizeAgentHomes({
       ...base.agentHomes,

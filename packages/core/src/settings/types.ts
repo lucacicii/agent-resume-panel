@@ -348,6 +348,24 @@ export interface SessionEmbeddingIndexSettings {
   maxPerTick?: number;
 }
 
+/**
+ * Desktop-only: auto-tagging, hit tracking, and weight decay for Sessions and Notes.
+ */
+export interface AutoTaggingSettings {
+  /** Master switch. Default true. */
+  enabled?: boolean;
+  /** Half-life for exponential weight decay in days. Default 7. */
+  halfLifeDays?: number;
+  /** Weight threshold below which tags are marked obsolete. Default 0.1. */
+  pruneThreshold?: number;
+  /** Max tags extracted per item. Default 6. */
+  maxTagsPerItem?: number;
+  /** Weight boost added on recall / search hit. Default 0.5. */
+  hitBoost?: number;
+  /** Multi-entity consensus boost coefficient. Default 0.5. */
+  consensusFactor?: number;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -365,6 +383,8 @@ export interface PanelSettings {
   sessionEmbeddingIndex?: SessionEmbeddingIndexSettings;
   /** Auto transcript-chunk index (Desktop main; independent of summaries). */
   sessionTranscriptIndex?: SessionTranscriptIndexSettings;
+  /** Auto tagging and weight decay for Sessions and Notes. */
+  autoTagging?: AutoTaggingSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
@@ -417,6 +437,14 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     quietDelayMinutes: 15,
     concurrency: 1,
     maxPerTick: 3
+  },
+  autoTagging: {
+    enabled: true,
+    halfLifeDays: 7,
+    pruneThreshold: 0.1,
+    maxTagsPerItem: 6,
+    hitBoost: 0.5,
+    consensusFactor: 0.5
   },
   sessionSync: {
     maxItems: 10_000,

@@ -12,7 +12,8 @@ export type AgentToolCategory =
   | "reports"
   | "sessions"
   | "projects"
-  | "link_graph";
+  | "link_graph"
+  | "tags";
 
 export interface AgentToolDescriptor {
   name: string;
@@ -63,7 +64,15 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "project_reconcile", description: "Reconcile projects from catalog sessions", category: "projects" },
 
   // link_graph
-  { name: "link_graph_trace", description: "Trace a symbol across frontend → API → backend", category: "link_graph" }
+  { name: "link_graph_trace", description: "Trace a symbol across frontend → API → backend", category: "link_graph" },
+
+  // tags
+  { name: "tag_list", description: "List knowledge tags with dimension/status/weight filters", category: "tags" },
+  { name: "tag_search", description: "Search knowledge tags by keyword", category: "tags" },
+  { name: "tag_entities_list", description: "List sessions and notes bound to a tag", category: "tags" },
+  { name: "entity_tags_get", description: "Get all tags on a session or note", category: "tags" },
+  { name: "entity_tag_add", description: "Manually add a tag to a session or note", category: "tags" },
+  { name: "entity_tag_remove", description: "Remove or soft-obsolete a tag on a session or note", category: "tags" }
 ];
 
 /** Read-only set of all catalog tool names for quick membership checks. */
