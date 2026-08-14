@@ -146,12 +146,12 @@ describe("TerminalComposer", () => {
     expect(textbox().value).toBe("git commit -m \"wip\"");
   });
 
-  it("auto-grows rows up to the cap", async () => {
+  it("auto-grows rows with no upper cap", async () => {
     await renderComposer();
     fireEvent.change(textbox(), { target: { value: "a\nb\nc" } });
     expect(textbox().rows).toBe(3);
     fireEvent.change(textbox(), { target: { value: Array(10).fill("line").join("\n") } });
-    expect(textbox().rows).toBe(6);
+    expect(textbox().rows).toBe(10);
   });
 
   it("disables input while the PTY is unavailable or the pane is inactive", async () => {

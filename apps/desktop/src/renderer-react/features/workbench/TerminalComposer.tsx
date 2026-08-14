@@ -34,7 +34,6 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 ] as const;
 
 const MAX_SUGGESTIONS = 6;
-const MAX_ROWS = 6;
 
 /**
  * Prefix matches before substring matches (case-insensitive), history recency
@@ -144,8 +143,25 @@ export function TerminalComposer(props: {
     [pane.key, registerFocus]
   );
 
+  /** Grow the textarea to fit content (newlines + soft wraps); no row cap. */
   const resizeRows = useCallback((text: string) => {
-    setRows(Math.min(MAX_ROWS, Math.max(1, text.split("\n").length)));
+    const newlineRows = Math.max(1, text.split("\n").length);
+    const el = inputRef.current;
+    if (!el) {
+      setRows(newlineRows);
+      return;
+    }
+    // Temporarily apply text so scrollHeight reflects soft wraps even when the
+    // controlled value hasn't re-rendered yet (e.g. history restore).
+    const previous = el.value;
+    if (previous !== text) el.value = text;
+    el.rows = newlineRows;
+    while (el.scrollHeight > el.clientHeight + 1) {
+      el.rows += 1;
+    }
+    const nextRows = el.rows;
+    if (previous !== text) el.value = previous;
+    setRows(nextRows);
   }, []);
 
   const send = useCallback(() => {
@@ -290,8 +306,10 @@ export function TerminalComposer(props: {
         event.preventDefault();
         const nextIndex = historyIndex + 1;
         if (historyIndex === -1) draftRef.current = value;
+        const nextValue = history[nextIndex] || "";
         setHistoryIndex(nextIndex);
-        setValue(history[nextIndex] || "");
+        setValue(nextValue);
+        resizeRows(nextValue);
         setSuggestionsDismissed(true);
         requestAnimationFrame(() => {
           const el = inputRef.current;
@@ -303,13 +321,10 @@ export function TerminalComposer(props: {
     if (event.key === "ArrowDown" && plainArrow && atEnd) {
       if (historyIndex >= 0) {
         event.preventDefault();
-        if (historyIndex === 0) {
-          setHistoryIndex(-1);
-          setValue(draftRef.current);
-        } else {
-          setHistoryIndex(historyIndex - 1);
-          setValue(history[historyIndex - 1] || "");
-        }
+        const nextValue = historyIndex === 0 ? draftRef.current : history[historyIndex - 1] || "";
+        setHistoryIndex(historyIndex === 0 ? -1 : historyIndex - 1);
+        setValue(nextValue);
+        resizeRows(nextValue);
         setSuggestionsDismissed(true);
         requestAnimationFrame(() => {
           const el = inputRef.current;
@@ -318,7 +333,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptSuggestion, disabled, history, historyIndex, send, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptSuggestion, disabled, history, historyIndex, resizeRows, send, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
