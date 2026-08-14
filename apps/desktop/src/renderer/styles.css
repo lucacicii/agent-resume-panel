@@ -9359,6 +9359,9 @@ textarea.wb-editor-host {
 
 .wb-terminal-composer.is-collapsed {
   width: auto;
+  /* Grow with the draft so a long input stays fully readable; capped at the
+     same width as the expanded composer, wrapping past that. */
+  max-width: min(560px, calc(100% - 24px));
   padding: 0;
   align-items: center;
   border-color: transparent;
@@ -9466,15 +9469,19 @@ textarea.wb-editor-host {
 
 .wb-terminal-composer.is-collapsed .wb-terminal-composer-input {
   flex: 0 1 auto;
-  width: min(200px, 40vw);
-  height: 26px;
+  /* Fit the whole draft instead of clipping it at a fixed width: the strip
+     sizes to the text and only wraps (growing in height) past the cap above. */
+  width: auto;
+  min-width: min(200px, 40vw);
+  max-width: 100%;
+  height: auto;
   min-height: 26px;
-  max-height: 26px;
+  max-height: none;
   padding: 3px 10px;
   overflow: hidden;
-  white-space: nowrap;
+  white-space: pre-wrap;
   opacity: .9;
-  field-sizing: fixed;
+  field-sizing: content;
 }
 
 .wb-terminal-composer-tools {

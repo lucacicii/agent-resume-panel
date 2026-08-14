@@ -126,6 +126,16 @@ describe("TerminalComposer", () => {
     expect(composerEl(container).classList.contains("is-expanded")).toBe(true);
   });
 
+  it("keeps the full draft value visible when collapsed (no truncation)", async () => {
+    const { container } = await renderComposer();
+    focusInput();
+    const longDraft = "git commit -m \"a very long message that would overflow the slim collapsed strip\" --no-verify";
+    fireEvent.change(textbox(), { target: { value: longDraft } });
+    fireEvent.blur(textbox());
+    expect(composerEl(container).classList.contains("is-collapsed")).toBe(true);
+    expect(textbox().value).toBe(longDraft);
+  });
+
   it("sends the full line on Enter and keeps focus", async () => {
     const { container } = await renderComposer();
     focusInput();
