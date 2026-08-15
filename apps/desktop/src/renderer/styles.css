@@ -408,11 +408,11 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   width: 100%;
   max-height: 40vh;
   overflow-y: auto;
-  padding: 8px 0 0;
+  padding: 10px 0 2px;
   border-top: 1px solid var(--color-separator);
   -webkit-app-region: no-drag;
 }
@@ -423,14 +423,65 @@ textarea:focus-visible,
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  width: 100%;
+  width: calc(100% - 10px);
+  padding: 5px 0 4px;
+  border-radius: var(--radius-md);
   -webkit-app-region: no-drag;
 }
 
+/* Notes cluster: accent-tinted chip so it reads as a separate zone. */
+.app-nav-rail .rail-notes-dots {
+  background: color-mix(in srgb, var(--accent, var(--color-accent)) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--color-accent)) 18%, transparent);
+}
+
+/* Session cluster: neutral fill; stronger divider when notes sit above. */
+.app-nav-rail .rail-session-dots {
+  background: color-mix(in srgb, var(--color-fill-tertiary, var(--muted)) 35%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-separator, var(--border)) 70%, transparent);
+}
+
 .app-nav-rail .rail-session-dots:not(:first-child) {
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid var(--color-separator);
+  position: relative;
+  margin-top: 2px;
+}
+
+.app-nav-rail .rail-session-dots:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--color-separator, var(--border));
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.app-nav-rail .rail-dots-heading {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 14px;
+  margin-bottom: 1px;
+  color: var(--muted);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.app-nav-rail .rail-notes-dots .rail-dots-heading {
+  color: var(--accent, var(--color-accent));
+  opacity: 1;
+}
+
+.app-nav-rail .rail-session-dots .rail-dots-heading {
+  color: var(--color-success, var(--muted));
+  opacity: 1;
+}
+
+.app-nav-rail .rail-dots-heading svg {
+  width: 12px;
+  height: 12px;
 }
 
 .app-nav-rail .rail-note-dot-btn,
@@ -460,12 +511,13 @@ textarea:focus-visible,
   outline-offset: -2px;
 }
 
+/* Squircle note markers vs circular session markers. */
 .app-nav-rail .rail-note-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 2.5px;
   background: var(--accent, var(--color-accent));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--color-accent)) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--color-accent)) 22%, transparent);
   pointer-events: none;
 }
 
@@ -14402,6 +14454,33 @@ body::before {
   color: #05040d;
   background: var(--cyber-hazard);
   text-shadow: none;
+}
+
+[data-visual-theme="cyberpunk"] .app-nav-rail .rail-notes-dots {
+  background: rgba(0, 240, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.28);
+}
+
+[data-visual-theme="cyberpunk"] .app-nav-rail .rail-session-dots {
+  background: rgba(99, 247, 180, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(99, 247, 180, 0.22);
+}
+
+[data-visual-theme="cyberpunk"] .app-nav-rail .rail-notes-dots .rail-dots-heading {
+  color: var(--color-accent);
+}
+
+[data-visual-theme="cyberpunk"] .app-nav-rail .rail-session-dots .rail-dots-heading {
+  color: #63f7b4;
+}
+
+[data-visual-theme="cyberpunk"] .rail-note-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 0;
+  transform: none;
+  background: var(--color-accent);
+  box-shadow: 0 0 3px var(--color-accent), 0 0 10px rgba(0, 240, 255, 0.68);
 }
 
 [data-visual-theme="cyberpunk"] .wb-folder-activity-dot,

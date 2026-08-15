@@ -20,6 +20,8 @@ function renderChrome(options?: {
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.flow": "Flow",
         "desktop.tabs.kanban": "Kanban",
+        "desktop.notes.floatingDots": "Floating notes",
+        "desktop.workbench.sessionDots": "Active sessions",
         "desktop.workbench.sessionDot.awaiting": "Waiting for you",
         "desktop.workbench.sessionDot.possiblyAwaiting": "May need attention",
         "desktop.workbench.sessionDot.running": "Running",
@@ -209,6 +211,10 @@ describe("AppChrome", () => {
     const sessionsCluster = bottom!.querySelector(".rail-session-dots");
     expect(notesCluster).not.toBeNull();
     expect(sessionsCluster).not.toBeNull();
+    expect(notesCluster!.getAttribute("aria-label")).toBe("Floating notes");
+    expect(sessionsCluster!.getAttribute("aria-label")).toBe("Active sessions");
+    expect(notesCluster!.querySelector(".rail-dots-heading")).not.toBeNull();
+    expect(sessionsCluster!.querySelector(".rail-dots-heading")).not.toBeNull();
     expect(
       Boolean(notesCluster!.compareDocumentPosition(sessionsCluster!) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);

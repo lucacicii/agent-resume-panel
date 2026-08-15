@@ -151,7 +151,14 @@ export function AppChrome(): React.JSX.Element {
         {(noteDots.length > 0 || sessionDots.length > 0) && (
           <div className="rail-bottom-dots">
             {noteDots.length > 0 && (
-              <div className="rail-notes-dots">
+              <div
+                className="rail-notes-dots"
+                role="group"
+                aria-label={text("desktop.notes.floatingDots", "Floating notes")}
+              >
+                <span className="rail-dots-heading" aria-hidden="true" title={text("desktop.notes.floatingDots", "Floating notes")}>
+                  <ThemeIcon name="file-text" size={12} />
+                </span>
                 {noteDots.map((dot) => (
                   <Tooltip key={dot.noteId} label={dot.title}>
                     <button
@@ -167,7 +174,14 @@ export function AppChrome(): React.JSX.Element {
               </div>
             )}
             {sessionDots.length > 0 && (
-              <div className="rail-session-dots">
+              <div
+                className="rail-session-dots"
+                role="group"
+                aria-label={text("desktop.workbench.sessionDots", "Active sessions")}
+              >
+                <span className="rail-dots-heading" aria-hidden="true" title={text("desktop.workbench.sessionDots", "Active sessions")}>
+                  <ThemeIcon name="terminal" size={12} />
+                </span>
                 {sessionDots.map((dot) => {
                   const status: SessionDotStatus = dot.status || "open";
                   const label = dotLabel(dot);
