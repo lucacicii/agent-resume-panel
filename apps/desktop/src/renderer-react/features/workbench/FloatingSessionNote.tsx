@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CodeEditor, type CodeEditorHandle } from "../../components/CodeEditor";
+import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { ThemeIcon } from "../../components/ThemeIcon";
@@ -133,7 +133,13 @@ export function FloatingSessionNote({
   const [error, setError] = useState("");
   const [position, setPosition] = useState<FloatingNotePosition | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const editorRef = useRef<CodeEditorHandle>(null);
+  const findRef = useRef<HTMLInputElement>(null);
+  const findQueryRef = useRef(findQuery);
+  const previousFindContentRef = useRef(content);
   const noteRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<FloatingNoteDrag | null>(null);
   const contentRef = useRef(content);
@@ -148,6 +154,7 @@ export function FloatingSessionNote({
   contentRef.current = content;
   noteIdRef.current = noteId;
   dirtyRef.current = dirty;
+  findQueryRef.current = findQuery;
 
   const reportFocused = useCallback((focused: boolean) => {
     if (typeof window.agentResume.setFloatingNoteFocused === "function") {
@@ -245,6 +252,11 @@ export function FloatingSessionNote({
     setNoteId("");
     noteIdRef.current = "";
     setGtdStatus(undefined);
+    setFindOpen(false);
+    setFindQuery("");
+    findQueryRef.current = "";
+    setFindResult(null);
+    previousFindContentRef.current = "";
     closingRef.current = false;
 
     const load = async () => {
@@ -328,8 +340,89 @@ export function FloatingSessionNote({
     };
   }, [clearSaveTimer, t, target]);
 
+  const clearFindSearch = useCallback(() => {
+    editorRef.current?.clearSearch();
+    setFindResult(null);
+  }, []);
+
+  const runFind = useCallback((
+    direction: "forward" | "backward",
+    query = findQueryRef.current,
+    reset = false
+  ) => {
+    const q = query.trim();
+    if (!q) {
+      clearFindSearch();
+      return { current: 0, total: 0 };
+    }
+    const result = reset
+      ? (editorRef.current?.setSearchQuery(q) ?? { current: 0, total: 0 })
+      : (editorRef.current?.navigateSearch(direction) ?? { current: 0, total: 0 });
+    setFindResult(result);
+    // Keep keyboard focus on the find field so Enter is not handled by CodeMirror.
+    window.requestAnimationFrame(() => findRef.current?.focus());
+    return result;
+  }, [clearFindSearch]);
+
+  const openFind = useCallback(() => {
+    if (loading || !noteIdRef.current) return;
+    const selectedText = editorRef.current?.getSelectedText() || "";
+    const query = selectedText.trim();
+    if (query) {
+      setFindQuery(query);
+      findQueryRef.current = query;
+      runFind("forward", query, true);
+    } else if (findQueryRef.current.trim()) {
+      runFind("forward", findQueryRef.current, true);
+    }
+    setFindOpen(true);
+  }, [loading, runFind]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindQuery("");
+    findQueryRef.current = "";
+    clearFindSearch();
+  }, [clearFindSearch]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    window.requestAnimationFrame(() => findRef.current?.focus());
+  }, [findOpen]);
+
+  useEffect(() => {
+    if (previousFindContentRef.current === content) return;
+    previousFindContentRef.current = content;
+    if (!findOpen || !findQueryRef.current.trim()) return;
+    window.requestAnimationFrame(() => {
+      setFindResult(editorRef.current?.getSearchResult() ?? { current: 0, total: 0 });
+    });
+  }, [content, findOpen]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        openFind();
+        return;
+      }
+      if (findOpen) {
+        if (event.key === "Enter" && !event.isComposing) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          runFind(event.shiftKey ? "backward" : "forward");
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closeFind();
+          return;
+        }
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
@@ -337,7 +430,7 @@ export function FloatingSessionNote({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [close]);
+  }, [close, closeFind, findOpen, openFind, runFind]);
 
   useEffect(() => () => {
     clearSaveTimer();
@@ -476,6 +569,16 @@ export function FloatingSessionNote({
         </select>
         <button
           type="button"
+          className="wb-floating-note-close"
+          aria-label={t("desktop.notes.findInNote")}
+          title={t("desktop.notes.findInNote")}
+          disabled={!noteId || loading || creating || deleting}
+          onClick={openFind}
+        >
+          <ThemeIcon name="search" size={15} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           className="wb-floating-note-close wb-floating-note-delete"
           aria-label={t("desktop.notes.deleteNote")}
           title={t("desktop.notes.deleteNote")}
@@ -500,16 +603,84 @@ export function FloatingSessionNote({
       <ThemeIcon name="loader" size={15} className="spin" aria-hidden="true" />
       <span>{creating ? t("desktop.workbench.floatingNoteCreating") : t("desktop.workbench.floatingNoteLoading")}</span>
     </div> : noteId ? <>
-      <CodeEditor
-        ref={editorRef}
-        className="wb-floating-note-editor"
-        value={content}
-        onChange={updateContent}
-        ariaLabel={t("desktop.workbench.floatingNoteEditor")}
-        language="markdown"
-        fontSize={13}
-        wordWrap
-      />
+      <div className="wb-floating-note-body">
+        {findOpen ? (
+          <div className="notes-find-bar app-inline-search" role="search">
+            <ThemeIcon name="search" size={14} aria-hidden="true" />
+            <input
+              ref={findRef}
+              className="notes-find-input app-inline-search-input"
+              type="text"
+              value={findQuery}
+              placeholder={t("desktop.notes.findInNote")}
+              aria-label={t("desktop.notes.findInNote")}
+              autoComplete="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              onChange={(event) => {
+                const value = event.target.value;
+                setFindQuery(value);
+                findQueryRef.current = value;
+                runFind("forward", value, true);
+              }}
+              onPaste={(event) => {
+                const value = event.clipboardData.getData("text/plain");
+                if (!value) return;
+                event.preventDefault();
+                setFindQuery(value);
+                findQueryRef.current = value;
+                runFind("forward", value, true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeFind();
+                }
+              }}
+            />
+            <span className={`notes-find-count app-inline-search-meta${findResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
+              {findQuery.trim() && findResult
+                ? t("desktop.common.findCount", findResult.current, findResult.total)
+                : ""}
+            </span>
+            <button
+              type="button"
+              className="notes-find-btn app-inline-search-btn"
+              aria-label={t("desktop.common.findPrev")}
+              onClick={() => runFind("backward")}
+            >
+              <ThemeIcon name="arrow-up" size={14} />
+            </button>
+            <button
+              type="button"
+              className="notes-find-btn app-inline-search-btn"
+              aria-label={t("desktop.common.findNext")}
+              onClick={() => runFind("forward")}
+            >
+              <ThemeIcon name="arrow-down" size={14} />
+            </button>
+            <button
+              type="button"
+              className="notes-find-btn app-inline-search-btn"
+              aria-label={t("desktop.common.closeFind")}
+              onClick={closeFind}
+            >
+              <ThemeIcon name="close" size={14} />
+            </button>
+          </div>
+        ) : null}
+        <CodeEditor
+          ref={editorRef}
+          className="wb-floating-note-editor"
+          value={content}
+          onChange={updateContent}
+          ariaLabel={t("desktop.workbench.floatingNoteEditor")}
+          language="markdown"
+          fontSize={13}
+          wordWrap
+        />
+      </div>
       <footer className="wb-floating-note-foot">
         <span className={error ? "is-error" : undefined} role={error ? "alert" : "status"} aria-live="polite">
           {error || (deleting

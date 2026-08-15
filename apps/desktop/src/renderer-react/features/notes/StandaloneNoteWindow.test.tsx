@@ -4,9 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { StandaloneNoteWindow } from "./StandaloneNoteWindow";
 
+const editorHandle = {
+  focus: vi.fn(),
+  setSearchQuery: vi.fn((query: string) => ({ current: query.trim() ? 1 : 0, total: query.trim() ? 2 : 0 })),
+  navigateSearch: vi.fn((direction: "forward" | "backward") => ({ current: direction === "forward" ? 2 : 1, total: 2 })),
+  clearSearch: vi.fn(),
+  getSearchResult: vi.fn(() => ({ current: 1, total: 2 })),
+  getSelectedText: vi.fn(() => "")
+};
+
 vi.mock("../../components/CodeEditor", () => ({
   CodeEditor: forwardRef(({ value, onChange, ariaLabel }: { value: string; onChange: (value: string) => void; ariaLabel: string }, ref) => {
-    useImperativeHandle(ref, () => ({ focus: vi.fn() }));
+    useImperativeHandle(ref, () => editorHandle);
     return <textarea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />;
   })
 }));
@@ -28,10 +37,15 @@ const messages = {
   "desktop.standaloneNote.deleteFailed": "Delete failed: {0}",
   "desktop.notes.deleteNote": "Delete note",
   "desktop.notes.deleteConfirm": "Delete note \"{0}\"? Its assets folder will also be removed.",
+  "desktop.notes.findInNote": "Find in note",
   "desktop.notes.gtdStatusLabel": "Note GTD status",
   "desktop.notes.clearGtdStatus": "Clear GTD status",
   "desktop.notes.projectLabel": "Project",
   "desktop.notes.targetLibrary": "Standalone",
+  "desktop.common.findCount": "{0} / {1}",
+  "desktop.common.findPrev": "Previous match",
+  "desktop.common.findNext": "Next match",
+  "desktop.common.closeFind": "Close find",
   "desktop.workbench.gtdStatus.inbox": "Inbox",
   "desktop.workbench.gtdStatus.next": "Next",
   "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -128,6 +142,13 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  editorHandle.focus.mockClear();
+  editorHandle.setSearchQuery.mockClear();
+  editorHandle.navigateSearch.mockClear();
+  editorHandle.clearSearch.mockClear();
+  editorHandle.getSearchResult.mockClear();
+  editorHandle.getSelectedText.mockReset();
+  editorHandle.getSelectedText.mockReturnValue("");
 });
 
 describe("StandaloneNoteWindow", () => {
@@ -142,6 +163,44 @@ describe("StandaloneNoteWindow", () => {
     expect(meta?.querySelector(".standalone-note-window-status")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Keep note above all apps" }));
     await waitFor(() => expect(standaloneNoteSetAlwaysOnTop).toHaveBeenCalledWith({ pinned: true }));
+  });
+
+  it("opens find with Cmd+F, seeds from selection, and Escape closes find before the window", async () => {
+    editorHandle.getSelectedText.mockReturnValue("Standalone");
+    const { standaloneNoteClose } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    const input = await screen.findByRole("textbox", { name: "Find in note" });
+    expect((input as HTMLInputElement).value).toBe("Standalone");
+    expect(editorHandle.setSearchQuery).toHaveBeenCalledWith("Standalone");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(editorHandle.navigateSearch).toHaveBeenCalledWith("forward");
+    fireEvent.keyDown(window, { key: "Enter", shiftKey: true });
+    expect(editorHandle.navigateSearch).toHaveBeenCalledWith("backward");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find in note" })).toBeNull());
+    expect(editorHandle.clearSearch).toHaveBeenCalled();
+    expect(standaloneNoteClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(standaloneNoteClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens find from the toolbar button and updates the match count while typing", async () => {
+    installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Find in note" }));
+    const input = await screen.findByRole("textbox", { name: "Find in note" });
+    fireEvent.change(input, { target: { value: "note" } });
+    expect(editorHandle.setSearchQuery).toHaveBeenCalledWith("note");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
   });
 
   it("moves the Library note to the selected project", async () => {
