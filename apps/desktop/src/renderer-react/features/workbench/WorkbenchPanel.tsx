@@ -1551,6 +1551,86 @@ function trackTerminalMouseModes(id: number, chunk: string, tracking: Map<number
   if (next !== previous) tracking.set(id, next);
 }
 
+/**
+ * Inline agent TUIs (prime agent, codex, …) repaint the transcript with a
+ * synchronized full-screen clear (`\x1b[?2026h … \x1b[2J … \x1b[?2026l`)
+ * whenever content above the visible viewport changes or the transcript
+ * shrinks (e.g. compaction). xterm keeps the viewport at the old baseY after
+ * that, so the repainted content lands at the top of the screen — the terminal
+ * appears to "jump to the top" mid-output. Track those redraw bursts per
+ * terminal so TerminalView can re-anchor the viewport to the bottom.
+ */
+type TuiRedrawTracker = {
+  /** Rolling tail of the previous chunk so split escape sequences are seen whole. */
+  tail: string;
+  /** Inside a `\x1b[?2026h` … `\x1b[?2026l` synchronized-output block. */
+  inSync: boolean;
+  /** A full-screen erase happened inside the block (redraw pending). */
+  pending: boolean;
+  /** The synchronized block closed after a pending erase (redraw complete). */
+  blockClosed: boolean;
+};
+
+/** Longest tracked sequence is `\x1b[?2026h` (7 bytes); keep a bit of slack. */
+const TUI_REDRAW_TAIL_LENGTH = 10;
+const tuiRedrawTrackers = new WeakMap<Terminal, TuiRedrawTracker>();
+
+function trackTuiRedraw(chunk: string, terminal: Terminal): void {
+  let tracker = tuiRedrawTrackers.get(terminal);
+  if (!tracker) {
+    tracker = { tail: "", inSync: false, pending: false, blockClosed: false };
+    tuiRedrawTrackers.set(terminal, tracker);
+  }
+  const scan = tracker.tail + chunk;
+  tracker.tail = scan.slice(-TUI_REDRAW_TAIL_LENGTH);
+  if (scan.includes("\x1b[?2026h")) tracker.inSync = true;
+  if (tracker.inSync && scan.includes("\x1b[2J")) tracker.pending = true;
+  if (scan.includes("\x1b[?2026l")) {
+    tracker.inSync = false;
+    if (tracker.pending) tracker.blockClosed = true;
+  }
+}
+
+/**
+ * Re-anchor a session pane's normal-buffer viewport after the agent TUI
+ * repainted the transcript from the top. `scrollToBottom` alone is not enough:
+ * xterm's viewport is already at baseY, so a transcript shorter than the
+ * screen renders at the top. Pull the viewport up by the trailing blank rows
+ * so the transcript tail stays at the bottom of the screen.
+ */
+function reanchorTuiViewport(terminal: Terminal): void {
+  try {
+    const buffer = terminal.buffer.active;
+    if (buffer.type !== "normal") return;
+    terminal.scrollToBottom();
+    const rows = terminal.rows;
+    let lastContent = -1;
+    for (let i = rows - 1; i >= 0; i -= 1) {
+      const line = buffer.getLine(buffer.viewportY + i);
+      if (line && line.translateToString(true).trim()) {
+        lastContent = i;
+        break;
+      }
+    }
+    if (lastContent >= 0 && lastContent < rows - 1) {
+      const gap = rows - 1 - lastContent;
+      // The public IBuffer typings only expose viewportY/baseY getters. Set the
+      // internal Buffer field directly instead of scrollLines: a negative
+      // scrollLines flips xterm's "user is scrolling" flag, which would freeze
+      // follow-on output instead of staying anchored.
+      const internal = (terminal as unknown as {
+        _core?: { _bufferService?: { buffer?: { ydisp: number; ybase: number } } };
+      })._core?._bufferService?.buffer;
+      if (internal) {
+        internal.ydisp = Math.max(0, internal.ybase - gap);
+        terminal.refresh(0, rows - 1);
+      }
+    }
+  } catch {
+    /* terminal disposed mid-redraw */
+  }
+}
+
 type TerminalRendererMode = "webgl" | "canvas";
 
 /**
@@ -1667,6 +1747,10 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
   const ptyId = useRef<number | null>(null);
   const initialPromptRef = useRef(pane.initialPrompt);
+  /** Whether the user is anchored at the bottom of the normal buffer (session
+   *  panes only). Updated solely from user scroll input; write-side re-anchors
+   *  read it so they never fight an intentional scroll-up. */
+  const followOutputRef = useRef(true);
   const [ready, setReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1811,7 +1895,28 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     const onTermResize = terminal.onResize(({ cols, rows }) => {
       resizePty(cols, rows);
     });
-    const onWriteParsed = terminal.onWriteParsed(syncScrollState);
+    followOutputRef.current = true;
+    const onWriteParsed = terminal.onWriteParsed(() => {
+      syncScrollState();
+      if (pane.group !== "session") return;
+      const buffer = terminal.buffer.active;
+      if (buffer.type !== "normal") return;
+      const tracker = tuiRedrawTrackers.get(terminal);
+      const redrawCompleted = tracker?.pending === true && tracker?.blockClosed === true;
+      if (redrawCompleted && tracker) {
+        tracker.pending = false;
+        tracker.blockClosed = false;
+      }
+      // Inline agent TUIs repaint the transcript from the top; xterm then
+      // leaves the viewport at the old baseY so the content appears at the top
+      // of the screen mid-output. Re-anchor the bottom for the user.
+      if (!followOutputRef.current) return;
+      if (redrawCompleted) {
+        reanchorTuiViewport(terminal);
+      } else if (buffer.viewportY < buffer.baseY) {
+        terminal.scrollToBottom();
+      }
+    });
     const onBufferChange = terminal.buffer.onBufferChange(syncScrollState);
 
     let lastFitKey = "";
@@ -1864,6 +1969,18 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
       onInput(pane.key);
     });
+    // Wheel, scrollbar drags, and PageUp/PageDown move xterm's viewport. Track
+    // whether the user stays anchored to the bottom so output re-anchoring
+    // (above) never yanks them back while they are reading history. These run
+    // in the bubble phase, after xterm's own handlers applied the scroll.
+    const syncFollowState = () => {
+      const buffer = terminal.buffer.active;
+      if (buffer.type !== "normal") return;
+      followOutputRef.current = buffer.viewportY >= buffer.baseY;
+    };
+    hostEl.addEventListener("wheel", syncFollowState);
+    hostEl.addEventListener("pointerup", syncFollowState);
+    hostEl.addEventListener("keyup", syncFollowState);
     void desktopApi().terminalSpawn({ cwd: pane.cwd, command: pane.command, cols: terminal.cols, rows: terminal.rows })
       .then(({ id }) => {
         if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
@@ -1897,6 +2014,9 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       window.removeEventListener("resize", scheduleFit);
       viewport?.removeEventListener("resize", scheduleFit);
       hostEl.removeEventListener("copy", onCopySelection);
+      hostEl.removeEventListener("wheel", syncFollowState);
+      hostEl.removeEventListener("pointerup", syncFollowState);
+      hostEl.removeEventListener("keyup", syncFollowState);
       if (tuiScrollTimer.current !== null) {
         window.clearInterval(tuiScrollTimer.current);
         tuiScrollTimer.current = null;
@@ -6475,6 +6595,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const terminal = terminalRefs.current.get(id);
       if (!terminal) return;
       trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
+      trackTuiRedraw(value, terminal);
       terminal.write(value);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane?.group === "session") {

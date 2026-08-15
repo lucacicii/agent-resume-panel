@@ -19,6 +19,12 @@ type MockBuffer = {
   cursorY: number;
   cursorX: number;
   length: number;
+  /** Buffer content by absolute line index (used by the TUI redraw scan). */
+  lines: string[];
+  getLine: (y: number) => { translateToString: () => string } | undefined;
+  /** Internal fields mirrored from viewportY/baseY (xterm exposes these on the core buffer only). */
+  ydisp: number;
+  ybase: number;
 };
 type MockTerminalInstance = {
   cols: number;
@@ -32,6 +38,8 @@ type MockTerminalInstance = {
   scrollLinesCalls: number[];
   scrollPagesCalls: number[];
   wheelDeltas: number[];
+  refreshCalls: number;
+  _core: { _bufferService: { buffer: MockBuffer } };
   setBuffer: (type: "normal" | "alternate", viewportY: number, baseY: number) => void;
 };
 const xtermMocks = vi.hoisted(() => ({
@@ -100,8 +108,26 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   rows = 24;
   options: Record<string, unknown>;
   unicode = { activeVersion: "6" };
-  private normalBuffer: MockBuffer = { type: "normal", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
-  private alternateBuffer: MockBuffer = { type: "alternate", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24 };
+  refreshCalls = 0;
+  /** Mirrors the runtime layout: the public `buffer.active` view and xterm's
+   *  internal `_core._bufferService.buffer` share one object per buffer. */
+  _core: { _bufferService: { buffer: MockBuffer } };
+  private normalBuffer: MockBuffer = {
+    type: "normal", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24,
+    lines: [], ydisp: 0, ybase: 0,
+    getLine: (y) => {
+      const text = this.normalBuffer.lines[y];
+      return text === undefined ? undefined : { translateToString: () => text };
+    }
+  };
+  private alternateBuffer: MockBuffer = {
+    type: "alternate", viewportY: 0, baseY: 0, cursorY: 0, cursorX: 0, length: 24,
+    lines: [], ydisp: 0, ybase: 0,
+    getLine: (y) => {
+      const text = this.alternateBuffer.lines[y];
+      return text === undefined ? undefined : { translateToString: () => text };
+    }
+  };
   private resizeListeners = new Set<(event: { cols: number; rows: number }) => void>();
   private scrollListeners = new Set<(position: number) => void>();
   private writeListeners = new Set<() => void>();
@@ -124,6 +150,7 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   wheelDeltas: number[] = [];
   constructor(options: Record<string, unknown>) {
     this.options = options;
+    this._core = { _bufferService: { buffer: this.normalBuffer } };
     xtermMocks.instances.push(this);
   }
   loadAddon(addon: { activate?: (terminal: unknown) => void }) { addon.activate?.(this); }
@@ -142,7 +169,6 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   write() { this.writeListeners.forEach((listener) => listener()); }
   getSelection() { return ""; }
   clearTextureAtlas() {}
-  refresh() {}
   onData() { return { dispose() {} }; }
   onResize(listener: (event: { cols: number; rows: number }) => void) {
     this.resizeListeners.add(listener);
@@ -178,10 +204,14 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
     const target = type === "normal" ? this.normalBuffer : this.alternateBuffer;
     target.viewportY = viewportY;
     target.baseY = baseY;
+    target.ydisp = viewportY;
+    target.ybase = baseY;
     this.buffer.active = target;
+    if (type === "normal") this._core._bufferService.buffer = target;
     this.bufferListeners.forEach((listener) => listener(target));
     this.scrollListeners.forEach((listener) => listener(viewportY));
   }
+  refresh() { this.refreshCalls += 1; }
   dispose() {}
 } }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {
@@ -1786,6 +1816,195 @@ describe("WorkbenchPanel", () => {
     expect(waterdrop.classList.contains("is-unavailable")).toBe(false);
     fireEvent.keyDown(waterdrop, { key: "ArrowDown" });
     expect(terminal.wheelDeltas.at(-1)).toBe(1);
+  });
+
+  it("re-anchors the session TUI viewport after a synchronized full-screen redraw", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    // Following at the bottom of the normal buffer; the repainted transcript
+    // tail occupies buffer rows 50..59 (screen rows 0..9), rows 60..73 blank.
+    terminal.setBuffer("normal", 50, 50);
+    const lines = Array.from({ length: 74 }, () => "");
+    for (let i = 50; i < 60; i += 1) lines[i] = `content-${i}`;
+    terminal.buffer.active.lines = lines;
+
+    act(() => terminalDataHandler?.({
+      id: 1,
+      data: "\x1b[?2026h\x1b[2J\x1b[H redraw \x1b[?2026l"
+    }));
+
+    // scrollToBottom() then pull the viewport up by the trailing blank rows
+    // (24 rows - 10 content rows = 14) so the tail stays at the screen bottom.
+    expect(terminal.scrollBottomCalls).toBe(1);
+    expect(terminal._core._bufferService.buffer.ydisp).toBe(36);
+    expect(terminal.refreshCalls).toBeGreaterThan(0);
+  });
+
+  it("detects a TUI redraw split across PTY chunks and still re-anchors", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    terminal.setBuffer("normal", 50, 50);
+    const lines = Array.from({ length: 74 }, () => "");
+    for (let i = 50; i < 60; i += 1) lines[i] = `content-${i}`;
+    terminal.buffer.active.lines = lines;
+
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?2026" }));
+    act(() => terminalDataHandler?.({ id: 1, data: "h\x1b[2" }));
+    act(() => terminalDataHandler?.({ id: 1, data: "J redraw \x1b[?2026l" }));
+    expect(terminal.scrollBottomCalls).toBe(1);
+    expect(terminal._core._bufferService.buffer.ydisp).toBe(36);
+  });
+
+  it("does not re-anchor when the user scrolled up to read history", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    // User scrolled up: viewport sits above baseY; a wheel then marks the
+    // follow state as off so the redraw must not yank them back down.
+    terminal.setBuffer("normal", 5, 10);
+    fireEvent.wheel(document.querySelector<HTMLElement>(".wb-terminal-host")!, { deltaY: -100 });
+
+    act(() => terminalDataHandler?.({
+      id: 1,
+      data: "\x1b[?2026h\x1b[2J\x1b[H redraw \x1b[?2026l"
+    }));
+    expect(terminal.scrollBottomCalls).toBe(0);
+  });
+
+  it("restores the bottom anchor when plain output detaches a following session viewport", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    // Following, but the buffer detaches (viewportY < baseY) without a 2J.
+    terminal.setBuffer("normal", 40, 50);
+    act(() => terminalDataHandler?.({ id: 1, data: "plain output" }));
+    expect(terminal.scrollBottomCalls).toBe(1);
+
+    // A redraw while scrolled up stays put (wheel marks follow as off first).
+    terminal.scrollBottomCalls = 0;
+    terminal.setBuffer("normal", 40, 50);
+    fireEvent.wheel(document.querySelector<HTMLElement>(".wb-terminal-host")!, { deltaY: -100 });
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?2026h\x1b[2J\x1b[H redraw \x1b[?2026l" }));
+    expect(terminal.scrollBottomCalls).toBe(0);
+  });
+
+  it("ignores non-redraw writes and alternate buffers for the follow anchor", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let terminalDataHandler: ((payload: { id: number; data: string }) => void) | null = null;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.terminalTuiScrollControl": "TUI scroll control"
+      } }),
+      onLocaleChanged: () => () => undefined, onWorkbenchCmdT: () => () => undefined, onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: (callback: (payload: { id: number; data: string }) => void) => { terminalDataHandler = callback; return () => { terminalDataHandler = null; }; },
+      onTerminalExit: () => () => undefined, onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}), getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }), terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }), terminalDestroy: async () => ({ ok: true }), terminalResize: async () => ({ ok: true }), terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+    const terminal = xtermMocks.instances[0];
+
+    // A shell-style `clear` (2J outside a synchronized block) must not trigger
+    // the TUI re-anchor; a plain append at the bottom must not either.
+    terminal.setBuffer("normal", 20, 20);
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[2J\x1b[H" }));
+    act(() => terminalDataHandler?.({ id: 1, data: "appended line" }));
+    expect(terminal.scrollBottomCalls).toBe(0);
+
+    // Alternate-buffer TUIs are skipped entirely (they own their viewport).
+    terminal.setBuffer("alternate", 0, 0);
+    act(() => terminalDataHandler?.({ id: 1, data: "\x1b[?2026h\x1b[2J\x1b[H redraw \x1b[?2026l" }));
+    expect(terminal.scrollBottomCalls).toBe(0);
   });
 
   it("continuously scrolls a mouse-tracking TUI by waterdrop pull direction and strength", async () => {
