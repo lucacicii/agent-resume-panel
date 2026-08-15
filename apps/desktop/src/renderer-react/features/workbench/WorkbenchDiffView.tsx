@@ -148,12 +148,20 @@ export function WorkbenchDiffView({
   diff,
   appearance,
   onDiscardHunk,
-  onDiscardLine
+  onDiscardLine,
+  onStageHunk,
+  onUnstageHunk,
+  onStageLine,
+  onUnstageLine
 }: {
   diff: WorkbenchDiffPane;
   appearance: CodeMirrorAppearance;
   onDiscardHunk?: (target: WorkbenchDiffHunkTarget) => void;
   onDiscardLine?: (target: WorkbenchDiffLineTarget) => void;
+  onStageHunk?: (target: WorkbenchDiffHunkTarget) => void;
+  onUnstageHunk?: (target: WorkbenchDiffHunkTarget) => void;
+  onStageLine?: (target: WorkbenchDiffLineTarget) => void;
+  onUnstageLine?: (target: WorkbenchDiffLineTarget) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const codeViewRef = useRef<CodeViewHandle<undefined> | null>(null);
@@ -165,6 +173,7 @@ export function WorkbenchDiffView({
   const [themeType, setThemeType] = useState(() => resolveThemeType(appearance));
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const lineDiscardButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lineStageButtonRef = useRef<HTMLButtonElement | null>(null);
   const itemId = diff.key;
   const itemVersion = useMemo(
     () => diffItemVersion(diff),
@@ -302,28 +311,68 @@ export function WorkbenchDiffView({
 
   const canDiscardHunk = Boolean(onDiscardHunk) && diff.source !== "commit" && diff.source !== "untracked";
   const canDiscardLine = Boolean(onDiscardLine) && diff.source !== "commit" && diff.source !== "untracked";
+  const canStageHunk = Boolean(onStageHunk) && diff.source === "working-tree";
+  const canUnstageHunk = Boolean(onUnstageHunk) && diff.source === "staged";
+  const canStageLine = Boolean(onStageLine) && diff.source === "working-tree";
+  const canUnstageLine = Boolean(onUnstageLine) && diff.source === "staged";
+  const canLineAction = canDiscardLine || canStageLine || canUnstageLine;
   const discardHunk = () => {
     if (!selectedHunk || !onDiscardHunk || !canDiscardHunk) return;
     onDiscardHunk(selectedHunk);
     setSelectedLines(null);
   };
-  const renderLineDiscard = canDiscardLine ? ((getHoveredLine: () => { lineNumber: number; side?: "additions" | "deletions" } | undefined) => <button
-    ref={lineDiscardButtonRef}
-    type="button"
-    className="wb-diff-line-discard-btn"
-    aria-label={t("desktop.workbench.gitDiscardLine")}
-    title={t("desktop.workbench.gitDiscardLine")}
-    hidden
-    onPointerDown={(event) => event.stopPropagation()}
-    onClick={(event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const hovered = getHoveredLine();
-      if (!hovered?.side || !onDiscardLine) return;
-      lineDiscardButtonRef.current?.setAttribute("hidden", "");
-      onDiscardLine({ side: hovered.side, lineNumber: hovered.lineNumber });
-    }}
-  ><ThemeIcon name="undo" size={12} /></button>) : undefined;
+  const stageHunk = () => {
+    if (!selectedHunk || !onStageHunk || !canStageHunk) return;
+    onStageHunk(selectedHunk);
+    setSelectedLines(null);
+  };
+  const unstageHunk = () => {
+    if (!selectedHunk || !onUnstageHunk || !canUnstageHunk) return;
+    onUnstageHunk(selectedHunk);
+    setSelectedLines(null);
+  };
+  const setLineActionButtonsHidden = (hidden: boolean) => {
+    if (lineDiscardButtonRef.current) lineDiscardButtonRef.current.hidden = hidden;
+    if (lineStageButtonRef.current) lineStageButtonRef.current.hidden = hidden;
+  };
+  const renderLineActions = canLineAction ? ((getHoveredLine: () => { lineNumber: number; side?: "additions" | "deletions" } | undefined) => <span className="wb-diff-line-actions">
+    {canStageLine || canUnstageLine ? <button
+      ref={lineStageButtonRef}
+      type="button"
+      className="wb-diff-line-stage-btn"
+      aria-label={canUnstageLine ? t("desktop.workbench.gitUnstageLine") : t("desktop.workbench.gitStageLine")}
+      title={canUnstageLine ? t("desktop.workbench.gitUnstageLine") : t("desktop.workbench.gitStageLine")}
+      hidden
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const hovered = getHoveredLine();
+        if (!hovered?.side) return;
+        setLineActionButtonsHidden(true);
+        const target = { side: hovered.side, lineNumber: hovered.lineNumber };
+        if (canUnstageLine) onUnstageLine?.(target);
+        else onStageLine?.(target);
+      }}
+    ><ThemeIcon name={canUnstageLine ? "arrow-down-to-line" : "arrow-up-to-line"} size={12} /></button> : null}
+    {canDiscardLine ? <button
+      ref={lineDiscardButtonRef}
+      type="button"
+      className="wb-diff-line-discard-btn"
+      aria-label={t("desktop.workbench.gitDiscardLine")}
+      title={t("desktop.workbench.gitDiscardLine")}
+      hidden
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const hovered = getHoveredLine();
+        if (!hovered?.side || !onDiscardLine) return;
+        setLineActionButtonsHidden(true);
+        onDiscardLine({ side: hovered.side, lineNumber: hovered.lineNumber });
+      }}
+    ><ThemeIcon name="undo" size={12} /></button> : null}
+  </span>) : undefined;
 
   return <div className="wb-diff-view" onCopy={() => {
     const selected = window.getSelection()?.toString();
@@ -335,6 +384,8 @@ export function WorkbenchDiffView({
         <button type="button" className={`wb-diff-mode-btn${viewMode === "unified" ? " active" : ""}`} aria-pressed={viewMode === "unified"} onClick={() => setViewMode("unified")}>{t("desktop.workbench.diffUnified")}</button>
       </div>
       {selectedHunk ? <span className="wb-diff-selection-status">{t("desktop.workbench.diffHunkSelected")}</span> : null}
+      {canStageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={stageHunk} aria-label={t("desktop.workbench.gitStageHunk")} title={t("desktop.workbench.gitStageHunk")}><ThemeIcon name="arrow-up-to-line" size={14} />{t("desktop.workbench.gitStageHunk")}</button> : null}
+      {canUnstageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={unstageHunk} aria-label={t("desktop.workbench.gitUnstageHunk")} title={t("desktop.workbench.gitUnstageHunk")}><ThemeIcon name="arrow-down-to-line" size={14} />{t("desktop.workbench.gitUnstageHunk")}</button> : null}
       {canDiscardHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-discard-btn" onClick={discardHunk} aria-label={t("desktop.workbench.gitDiscardHunk")} title={t("desktop.workbench.gitDiscardHunk")}><ThemeIcon name="trash" size={14} />{t("desktop.workbench.gitDiscardHunk")}</button> : null}
       <button type="button" className="wb-diff-find-open-btn" aria-label={t("desktop.common.search")} title={t("desktop.common.search")} onClick={() => openFind(false)}><ThemeIcon name="search" size={14} /></button>
     </div>
@@ -371,7 +422,7 @@ export function WorkbenchDiffView({
         items={items}
         selectedLines={activeSelectedLines}
         onSelectedLinesChange={setSelectedLines}
-        renderGutterUtility={renderLineDiscard}
+        renderGutterUtility={renderLineActions}
         options={{
           theme: { dark: "pierre-dark", light: "pierre-light" },
           themeType,
@@ -383,16 +434,15 @@ export function WorkbenchDiffView({
           expansionLineCount: 3,
           lineDiffType: "word",
           lineHoverHighlight: "both",
-          enableGutterUtility: canDiscardLine,
+          enableGutterUtility: canLineAction,
           enableLineSelection: true,
           onLineEnter: (line) => {
-            if (lineDiscardButtonRef.current) {
-              lineDiscardButtonRef.current.hidden = !("lineType" in line)
-                || (line.lineType !== "change-addition" && line.lineType !== "change-deletion");
-            }
+            const hide = !("lineType" in line)
+              || (line.lineType !== "change-addition" && line.lineType !== "change-deletion");
+            setLineActionButtonsHidden(hide);
           },
           onLineLeave: () => {
-            if (lineDiscardButtonRef.current) lineDiscardButtonRef.current.hidden = true;
+            setLineActionButtonsHidden(true);
           },
           hunkSeparators: "line-info"
         }}

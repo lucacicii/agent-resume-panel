@@ -6,7 +6,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
 
-import { discardGitChange, discardGitHunk, discardGitLine, gitStatusForRepo } from "./workbenchFs";
+import {
+  discardGitChange,
+  discardGitHunk,
+  discardGitLine,
+  gitStatusForRepo,
+  stageGitHunk,
+  stageGitLine,
+  unstageGitHunk,
+  unstageGitLine
+} from "./workbenchFs";
 import { toGitDiffHunkMetadata } from "./workbenchGitDiff";
 
 const repos: string[] = [];
@@ -216,5 +225,103 @@ describe("discardGitLine", () => {
       side: "additions",
       lineNumber: 99
     })).rejects.toThrow("已不是可回退的 Git 改动");
+  });
+});
+
+describe("stageGitHunk / unstageGitHunk", () => {
+  function fixtureContent(first: string, second: string): string {
+    const lines = Array.from({ length: 24 }, (_value, index) => `line ${index + 1}`);
+    lines[1] = first;
+    lines[20] = second;
+    return `${lines.join("\n")}\n`;
+  }
+
+  it("stages only the selected working-tree hunk into the index", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 2", "line 21"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add long fixture");
+    fs.writeFileSync(tracked, fixtureContent("working first", "working second"));
+    const patch = git(repo, "diff", "--no-color", "--unified=3", "--", "tracked.txt");
+    const hunks = toGitDiffHunkMetadata(patch);
+    expect(hunks.length).toBeGreaterThanOrEqual(2);
+
+    await stageGitHunk(repo, "tracked.txt", hunks[0]);
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[1]).toBe("working first");
+    expect(worktreeLines[20]).toBe("working second");
+    expect(indexLines[1]).toBe("working first");
+    expect(indexLines[20]).toBe("line 21");
+  });
+
+  it("unstages only the selected staged hunk from the index", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 2", "line 21"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add long fixture");
+    fs.writeFileSync(tracked, fixtureContent("staged first", "staged second"));
+    git(repo, "add", "tracked.txt");
+    const patch = git(repo, "diff", "--cached", "--no-color", "--unified=3", "--", "tracked.txt");
+    const hunks = toGitDiffHunkMetadata(patch);
+    expect(hunks.length).toBeGreaterThanOrEqual(2);
+
+    await unstageGitHunk(repo, "tracked.txt", hunks[0]);
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[1]).toBe("staged first");
+    expect(worktreeLines[20]).toBe("staged second");
+    expect(indexLines[1]).toBe("line 2");
+    expect(indexLines[20]).toBe("staged second");
+  });
+});
+
+describe("stageGitLine / unstageGitLine", () => {
+  function fixtureContent(first: string, second: string): string {
+    const lines = Array.from({ length: 16 }, (_value, index) => `line ${index + 1}`);
+    lines[3] = first;
+    lines[8] = second;
+    return `${lines.join("\n")}\n`;
+  }
+
+  it("stages only the selected change block into the index", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 4", "line 9"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add line fixture");
+    fs.writeFileSync(tracked, fixtureContent("working first", "working second"));
+
+    await stageGitLine(repo, "tracked.txt", { side: "additions", lineNumber: 4 });
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[3]).toBe("working first");
+    expect(worktreeLines[8]).toBe("working second");
+    expect(indexLines[3]).toBe("working first");
+    expect(indexLines[8]).toBe("line 9");
+  });
+
+  it("unstages only the selected change block from the index", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, fixtureContent("line 4", "line 9"));
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "add staged line fixture");
+    fs.writeFileSync(tracked, fixtureContent("staged first", "staged second"));
+    git(repo, "add", "tracked.txt");
+
+    await unstageGitLine(repo, "tracked.txt", { side: "deletions", lineNumber: 4 });
+
+    const worktreeLines = fs.readFileSync(tracked, "utf8").split("\n");
+    const indexLines = git(repo, "show", ":tracked.txt").split("\n");
+    expect(worktreeLines[3]).toBe("staged first");
+    expect(worktreeLines[8]).toBe("staged second");
+    expect(indexLines[3]).toBe("line 4");
+    expect(indexLines[8]).toBe("staged second");
   });
 });

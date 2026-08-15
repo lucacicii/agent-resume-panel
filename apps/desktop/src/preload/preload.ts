@@ -86,6 +86,14 @@ export interface DesktopApi {
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
   onOpenSessions(callback: () => void): () => void;
+  /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
+  standaloneNoteOpen(args: {
+    noteId: string;
+    x?: number;
+    y?: number;
+    /** When true, ignore drops that end inside the main window (used by list drag-out). */
+    requireOutsideMainWindow?: boolean;
+  }): Promise<{ ok: true } | { ok: false; reason: "inside-window" }>;
   standaloneNoteGetState(): Promise<{ noteId: string; pinned: boolean }>;
   standaloneNoteSetAlwaysOnTop(args: { pinned: boolean }): Promise<{ pinned: boolean }>;
   standaloneNoteClose(): Promise<{ ok: boolean }>;
@@ -866,6 +874,26 @@ export interface DesktopApi {
     staged?: boolean;
     target: GitDiffLineTarget;
   }): Promise<{ ok: boolean }>;
+  terminalGitStageHunk(args: {
+    repoRoot: string;
+    path: string;
+    target: GitDiffHunkTarget;
+  }): Promise<{ ok: boolean }>;
+  terminalGitUnstageHunk(args: {
+    repoRoot: string;
+    path: string;
+    target: GitDiffHunkTarget;
+  }): Promise<{ ok: boolean }>;
+  terminalGitStageLine(args: {
+    repoRoot: string;
+    path: string;
+    target: GitDiffLineTarget;
+  }): Promise<{ ok: boolean }>;
+  terminalGitUnstageLine(args: {
+    repoRoot: string;
+    path: string;
+    target: GitDiffLineTarget;
+  }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
@@ -1319,6 +1347,7 @@ const api: DesktopApi = {
   testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
+  standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),
   standaloneNoteGetState: () => ipcRenderer.invoke("standalone-note:getState"),
   standaloneNoteSetAlwaysOnTop: (args) => ipcRenderer.invoke("standalone-note:setAlwaysOnTop", args),
   standaloneNoteClose: () => ipcRenderer.invoke("standalone-note:close"),
@@ -1501,6 +1530,10 @@ const api: DesktopApi = {
   terminalGitDiscardChange: (args) => ipcRenderer.invoke("terminal:gitDiscardChange", args),
   terminalGitDiscardHunk: (args) => ipcRenderer.invoke("terminal:gitDiscardHunk", args),
   terminalGitDiscardLine: (args) => ipcRenderer.invoke("terminal:gitDiscardLine", args),
+  terminalGitStageHunk: (args) => ipcRenderer.invoke("terminal:gitStageHunk", args),
+  terminalGitUnstageHunk: (args) => ipcRenderer.invoke("terminal:gitUnstageHunk", args),
+  terminalGitStageLine: (args) => ipcRenderer.invoke("terminal:gitStageLine", args),
+  terminalGitUnstageLine: (args) => ipcRenderer.invoke("terminal:gitUnstageLine", args),
   terminalGitSuggestCommit: (args) => ipcRenderer.invoke("terminal:gitSuggestCommit", args),
   terminalGitCommit: (args) => ipcRenderer.invoke("terminal:gitCommit", args),
   terminalGitPush: (args) => ipcRenderer.invoke("terminal:gitPush", args),

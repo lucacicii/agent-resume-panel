@@ -540,10 +540,16 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
   }
 }
 
-function applyGitPatch(repoRoot: string, patch: string, staged: boolean): Promise<void> {
+type ApplyGitPatchOptions = {
+  reverse: boolean;
+  cached: boolean;
+};
+
+function applyGitPatch(repoRoot: string, patch: string, options: ApplyGitPatchOptions): Promise<void> {
   return new Promise((resolve, reject) => {
-    const args = ["-C", repoRoot, "apply", "--reverse", "--whitespace=nowarn"];
-    if (staged) args.push("--cached");
+    const args = ["-C", repoRoot, "apply", "--whitespace=nowarn"];
+    if (options.reverse) args.push("--reverse");
+    if (options.cached) args.push("--cached");
     const child = spawn("git", args, { stdio: ["pipe", "ignore", "pipe"] });
     let stderr = "";
     let settled = false;
@@ -568,18 +574,25 @@ function applyGitPatch(repoRoot: string, patch: string, staged: boolean): Promis
   });
 }
 
-export async function discardGitHunk(
-  repoRootRaw: string,
-  repoPathRaw: string,
-  staged: boolean,
-  target: GitDiffHunkTarget
-): Promise<void> {
+function assertGitHunkTarget(target: GitDiffHunkTarget): void {
   if (!target || ![target.oldStart, target.oldLines, target.newStart, target.newLines].every(Number.isInteger)) {
     throw new Error("无效的 Git hunk");
   }
   if (target.oldStart < 0 || target.oldLines < 0 || target.newStart < 0 || target.newLines < 0) {
     throw new Error("无效的 Git hunk");
   }
+}
+
+function assertGitLineTarget(target: GitDiffLineTarget): void {
+  if (!target || !Number.isInteger(target.lineNumber) || target.lineNumber < 1) {
+    throw new Error("无效的 Git 行号");
+  }
+  if (target.side !== "additions" && target.side !== "deletions") {
+    throw new Error("无效的 Git diff 侧");
+  }
+}
+
+async function resolveRepoPath(repoRootRaw: string, repoPathRaw: string): Promise<{ repoRoot: string; repoPath: string }> {
   const requestedRoot = resolveCwd(repoRootRaw);
   if (!(await isGitRepo(requestedRoot))) {
     throw new Error("当前目录不是 Git 仓库");
@@ -587,12 +600,59 @@ export async function discardGitHunk(
   const repoRoot = (await queryGitRoot(requestedRoot)) || requestedRoot;
   const repoPath = normalizeRepoRelativePath(repoPathRaw);
   resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
+  return { repoRoot, repoPath };
+}
+
+async function applyGitHunkPatch(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  staged: boolean,
+  target: GitDiffHunkTarget,
+  options: ApplyGitPatchOptions,
+  missingMessage: string
+): Promise<void> {
+  assertGitHunkTarget(target);
+  const { repoRoot, repoPath } = await resolveRepoPath(repoRootRaw, repoPathRaw);
   const patch = await queryGitDiffPatch(repoRoot, repoPath, staged);
   const hunk = findGitDiffHunk(patch, target);
   if (!hunk) {
-    throw new Error("文件内容已变化，请重新打开 diff 后再试");
+    throw new Error(missingMessage);
   }
-  await applyGitPatch(repoRoot, hunk.patch, staged);
+  await applyGitPatch(repoRoot, hunk.patch, options);
+}
+
+async function applyGitLinePatch(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  staged: boolean,
+  target: GitDiffLineTarget,
+  options: ApplyGitPatchOptions,
+  missingMessage: string
+): Promise<void> {
+  assertGitLineTarget(target);
+  const { repoRoot, repoPath } = await resolveRepoPath(repoRootRaw, repoPathRaw);
+  const patch = await queryGitDiffPatch(repoRoot, repoPath, staged);
+  const linePatch = findGitDiffLinePatch(patch, target);
+  if (!linePatch) {
+    throw new Error(missingMessage);
+  }
+  await applyGitPatch(repoRoot, linePatch, options);
+}
+
+export async function discardGitHunk(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  staged: boolean,
+  target: GitDiffHunkTarget
+): Promise<void> {
+  await applyGitHunkPatch(
+    repoRootRaw,
+    repoPathRaw,
+    staged,
+    target,
+    { reverse: true, cached: staged },
+    "文件内容已变化，请重新打开 diff 后再试"
+  );
 }
 
 export async function discardGitLine(
@@ -601,25 +661,78 @@ export async function discardGitLine(
   staged: boolean,
   target: GitDiffLineTarget
 ): Promise<void> {
-  if (!target || !Number.isInteger(target.lineNumber) || target.lineNumber < 1) {
-    throw new Error("无效的 Git 行号");
-  }
-  if (target.side !== "additions" && target.side !== "deletions") {
-    throw new Error("无效的 Git diff 侧");
-  }
-  const requestedRoot = resolveCwd(repoRootRaw);
-  if (!(await isGitRepo(requestedRoot))) {
-    throw new Error("当前目录不是 Git 仓库");
-  }
-  const repoRoot = (await queryGitRoot(requestedRoot)) || requestedRoot;
-  const repoPath = normalizeRepoRelativePath(repoPathRaw);
-  resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
-  const patch = await queryGitDiffPatch(repoRoot, repoPath, staged);
-  const linePatch = findGitDiffLinePatch(patch, target);
-  if (!linePatch) {
-    throw new Error("该行已不是可回退的 Git 改动，请重新打开 diff 后再试");
-  }
-  await applyGitPatch(repoRoot, linePatch, staged);
+  await applyGitLinePatch(
+    repoRootRaw,
+    repoPathRaw,
+    staged,
+    target,
+    { reverse: true, cached: staged },
+    "该行已不是可回退的 Git 改动，请重新打开 diff 后再试"
+  );
+}
+
+/** Stage a working-tree hunk into the index without changing the worktree. */
+export async function stageGitHunk(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  target: GitDiffHunkTarget
+): Promise<void> {
+  await applyGitHunkPatch(
+    repoRootRaw,
+    repoPathRaw,
+    false,
+    target,
+    { reverse: false, cached: true },
+    "文件内容已变化，请重新打开 diff 后再试"
+  );
+}
+
+/** Unstage a staged hunk from the index without changing the worktree. */
+export async function unstageGitHunk(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  target: GitDiffHunkTarget
+): Promise<void> {
+  await applyGitHunkPatch(
+    repoRootRaw,
+    repoPathRaw,
+    true,
+    target,
+    { reverse: true, cached: true },
+    "文件内容已变化，请重新打开 diff 后再试"
+  );
+}
+
+/** Stage a working-tree change block into the index without changing the worktree. */
+export async function stageGitLine(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  target: GitDiffLineTarget
+): Promise<void> {
+  await applyGitLinePatch(
+    repoRootRaw,
+    repoPathRaw,
+    false,
+    target,
+    { reverse: false, cached: true },
+    "该行已不是可暂存的 Git 改动，请重新打开 diff 后再试"
+  );
+}
+
+/** Unstage a staged change block from the index without changing the worktree. */
+export async function unstageGitLine(
+  repoRootRaw: string,
+  repoPathRaw: string,
+  target: GitDiffLineTarget
+): Promise<void> {
+  await applyGitLinePatch(
+    repoRootRaw,
+    repoPathRaw,
+    true,
+    target,
+    { reverse: true, cached: true },
+    "该行已不是可取消暂存的 Git 改动，请重新打开 diff 后再试"
+  );
 }
 
 export function registerWorkbenchFsIpc(): void {
@@ -859,6 +972,38 @@ export function registerWorkbenchFsIpc(): void {
     "terminal:gitDiscardLine",
     async (_event, args: { repoRoot: string; path: string; staged?: boolean; target: GitDiffLineTarget }) => {
       await discardGitLine(args.repoRoot, args.path, Boolean(args.staged), args.target);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitStageHunk",
+    async (_event, args: { repoRoot: string; path: string; target: GitDiffHunkTarget }) => {
+      await stageGitHunk(args.repoRoot, args.path, args.target);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitUnstageHunk",
+    async (_event, args: { repoRoot: string; path: string; target: GitDiffHunkTarget }) => {
+      await unstageGitHunk(args.repoRoot, args.path, args.target);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitStageLine",
+    async (_event, args: { repoRoot: string; path: string; target: GitDiffLineTarget }) => {
+      await stageGitLine(args.repoRoot, args.path, args.target);
+      return { ok: true };
+    }
+  );
+
+  safeHandle(
+    "terminal:gitUnstageLine",
+    async (_event, args: { repoRoot: string; path: string; target: GitDiffLineTarget }) => {
+      await unstageGitLine(args.repoRoot, args.path, args.target);
       return { ok: true };
     }
   );

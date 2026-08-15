@@ -116,6 +116,46 @@ describe("WorkbenchDiffView", () => {
     });
   });
 
+  it("stages the selected working-tree hunk", () => {
+    const onStageHunk = vi.fn();
+    render(<WorkbenchDiffView diff={diff} appearance="light" onStageHunk={onStageHunk} />);
+    fireEvent.click(screen.getByRole("button", { name: "select hunk" }));
+    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.gitStageHunk" }));
+    expect(onStageHunk).toHaveBeenCalledWith({
+      oldStart: 1,
+      oldLines: 2,
+      newStart: 1,
+      newLines: 2
+    });
+  });
+
+  it("unstages the selected staged hunk", () => {
+    const onUnstageHunk = vi.fn();
+    render(<WorkbenchDiffView
+      diff={{ ...diff, source: "staged", newLabel: "Staged" }}
+      appearance="light"
+      onUnstageHunk={onUnstageHunk}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "select hunk" }));
+    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.gitUnstageHunk" }));
+    expect(onUnstageHunk).toHaveBeenCalledWith({
+      oldStart: 1,
+      oldLines: 2,
+      newStart: 1,
+      newLines: 2
+    });
+  });
+
+  it("does not show stage action for staged diffs", () => {
+    render(<WorkbenchDiffView
+      diff={{ ...diff, source: "staged", newLabel: "Staged" }}
+      appearance="light"
+      onStageHunk={vi.fn()}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "select hunk" }));
+    expect(screen.queryByRole("button", { name: "desktop.workbench.gitStageHunk" })).toBeNull();
+  });
+
   it("publishes a fresh CodeView item when the active diff changes", () => {
     const { rerender } = render(<WorkbenchDiffView diff={diff} appearance="light" />);
     const first = screen.getByTestId("code-view");
@@ -163,5 +203,31 @@ describe("WorkbenchDiffView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "hover context line" }));
     expect(rollback.hidden).toBe(true);
+  });
+
+  it("shows a stage gutter action for working-tree line changes", () => {
+    const onStageLine = vi.fn();
+    render(<WorkbenchDiffView diff={diff} appearance="light" onStageLine={onStageLine} />);
+    const stage = document.querySelector<HTMLButtonElement>(".wb-diff-line-stage-btn")!;
+    expect(stage.hidden).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "hover changed line" }));
+    expect(stage.hidden).toBe(false);
+    fireEvent.click(stage);
+    expect(onStageLine).toHaveBeenCalledWith({ side: "additions", lineNumber: 2 });
+  });
+
+  it("shows an unstage gutter action for staged line changes", () => {
+    const onUnstageLine = vi.fn();
+    render(<WorkbenchDiffView
+      diff={{ ...diff, source: "staged", newLabel: "Staged" }}
+      appearance="light"
+      onUnstageLine={onUnstageLine}
+    />);
+    const unstage = document.querySelector<HTMLButtonElement>(".wb-diff-line-stage-btn")!;
+    fireEvent.click(screen.getByRole("button", { name: "hover changed line" }));
+    expect(unstage.hidden).toBe(false);
+    fireEvent.click(unstage);
+    expect(onUnstageLine).toHaveBeenCalledWith({ side: "additions", lineNumber: 2 });
   });
 });

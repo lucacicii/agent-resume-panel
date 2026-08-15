@@ -5947,6 +5947,62 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
+  const stageGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
+    if (pane.source !== "working-tree") return;
+    try {
+      await desktopApi().terminalGitStageHunk({
+        repoRoot: pane.repoRoot,
+        path: pane.repoPath,
+        target
+      });
+      await refreshGitDiffAfterDiscard(pane);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitStageHunkFailed", error);
+    }
+  };
+
+  const unstageGitHunk = async (pane: DiffPane, target: WorkbenchDiffHunkTarget) => {
+    if (pane.source !== "staged") return;
+    try {
+      await desktopApi().terminalGitUnstageHunk({
+        repoRoot: pane.repoRoot,
+        path: pane.repoPath,
+        target
+      });
+      await refreshGitDiffAfterDiscard(pane);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitUnstageHunkFailed", error);
+    }
+  };
+
+  const stageGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
+    if (pane.source !== "working-tree") return;
+    try {
+      await desktopApi().terminalGitStageLine({
+        repoRoot: pane.repoRoot,
+        path: pane.repoPath,
+        target
+      });
+      await refreshGitDiffAfterDiscard(pane);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitStageLineFailed", error);
+    }
+  };
+
+  const unstageGitLine = async (pane: DiffPane, target: WorkbenchDiffLineTarget) => {
+    if (pane.source !== "staged") return;
+    try {
+      await desktopApi().terminalGitUnstageLine({
+        repoRoot: pane.repoRoot,
+        path: pane.repoPath,
+        target
+      });
+      await refreshGitDiffAfterDiscard(pane);
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitUnstageLineFailed", error);
+    }
+  };
+
   const openGitShowFileDiff = async (hash: string, path: string) => {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
@@ -6914,7 +6970,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}

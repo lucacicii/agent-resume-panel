@@ -7805,25 +7805,50 @@ code {
   color: var(--color-destructive);
 }
 
-.wb-diff-line-discard-btn {
+.wb-diff-stage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--color-label-primary);
+}
+
+.wb-diff-line-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 calc(-1lh + 1ch) 0 0;
+  position: relative;
+  z-index: 4;
+}
+
+.wb-diff-line-discard-btn,
+.wb-diff-line-stage-btn {
   appearance: none;
   width: 1lh;
   height: 1lh;
-  margin: 0 calc(-1lh + 1ch) 0 0;
+  margin: 0;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  position: relative;
-  z-index: 4;
   border: 0;
   border-radius: 4px;
-  color: var(--color-destructive);
   fill: currentColor;
-  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
   cursor: pointer;
   touch-action: none;
+}
+
+.wb-diff-line-discard-btn {
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
+}
+
+.wb-diff-line-stage-btn {
+  color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-label-primary) 10%, var(--color-window-bg));
 }
 
 .wb-diff-line-discard-btn:hover,
@@ -7832,7 +7857,14 @@ code {
   background: var(--color-destructive);
 }
 
-.wb-diff-line-discard-btn:focus-visible {
+.wb-diff-line-stage-btn:hover,
+.wb-diff-line-stage-btn:focus-visible {
+  color: var(--color-window-bg);
+  background: var(--color-label-primary);
+}
+
+.wb-diff-line-discard-btn:focus-visible,
+.wb-diff-line-stage-btn:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
@@ -11387,6 +11419,15 @@ body.is-pane-resizing-row * {
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+.notes-list-item[draggable="true"] {
+  cursor: grab;
+}
+
+.notes-list-item.is-dragging-out {
+  opacity: 0.55;
+  cursor: grabbing;
 }
 
 .notes-list-item.is-pinned:not(.active) {
