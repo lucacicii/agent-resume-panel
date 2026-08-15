@@ -402,14 +402,13 @@ textarea:focus-visible,
   height: 22px;
 }
 
-/* Active-session dots cluster pinned to the bottom of the rail: one dot per
-   session with an open Workbench terminal tab (incl. ACP + pending panes). */
-.app-nav-rail .rail-session-dots {
+/* Bottom-pinned rail clusters: floating notes above active Workbench sessions. */
+.app-nav-rail .rail-bottom-dots {
   margin-top: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   width: 100%;
   max-height: 40vh;
   overflow-y: auto;
@@ -418,6 +417,23 @@ textarea:focus-visible,
   -webkit-app-region: no-drag;
 }
 
+.app-nav-rail .rail-notes-dots,
+.app-nav-rail .rail-session-dots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.app-nav-rail .rail-session-dots:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-separator);
+}
+
+.app-nav-rail .rail-note-dot-btn,
 .app-nav-rail .rail-session-dot-btn {
   -webkit-app-region: no-drag;
   appearance: none;
@@ -433,13 +449,24 @@ textarea:focus-visible,
   transition: background var(--duration-fast) var(--ease-out);
 }
 
+.app-nav-rail .rail-note-dot-btn:hover,
 .app-nav-rail .rail-session-dot-btn:hover {
   background: var(--color-fill-tertiary);
 }
 
+.app-nav-rail .rail-note-dot-btn:focus-visible,
 .app-nav-rail .rail-session-dot-btn:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
+}
+
+.app-nav-rail .rail-note-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, var(--color-accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--color-accent)) 20%, transparent);
+  pointer-events: none;
 }
 
 .app-nav-rail .rail-session-dot {
@@ -9852,6 +9879,68 @@ textarea.wb-editor-host {
   padding: 10px;
   font-size: 12px;
   text-align: center;
+}
+
+.wb-git-log-dialog {
+  position: fixed;
+  z-index: 2150;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: min(320px, calc(100vw - 32px));
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--color-elevated-bg, var(--bg));
+  border: 1px solid var(--color-separator, var(--border));
+  border-radius: 10px;
+  box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.18));
+}
+
+.wb-git-log-dialog-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-label-primary, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-git-log-dialog-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wb-git-log-dialog-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid var(--color-separator, var(--border));
+  border-radius: 6px;
+  background: var(--color-fill-primary, var(--bg));
+  color: var(--text);
+  font-size: 12px;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  padding: 5px 8px;
+}
+
+.wb-git-log-dialog-input:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.wb-git-log-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wb-git-log-dialog-reset-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .wb-terminal-hint {

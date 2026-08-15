@@ -448,3 +448,154 @@ describe("terminal:gitMerge", () => {
     await expect(handler({} as never, { repoRoot: repo, hash: "not-a-hash!" })).rejects.toThrow(/无效的 commit hash/);
   });
 });
+
+describe("terminal:gitCherryPick", () => {
+  it("applies the picked commit onto the current branch", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    git(repo, "checkout", "-b", "feature");
+    commitFile(repo, "feature1.txt", "one\n", "feature one");
+    commitFile(repo, "feature2.txt", "two\n", "feature two");
+    const featureTwo = git(repo, "rev-parse", "HEAD");
+    git(repo, "checkout", "main");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCherryPick");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: featureTwo }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "branch", "--show-current")).toBe("main");
+    // Only the second commit's change is replayed: feature2.txt exists, feature1.txt does not.
+    expect(fs.readFileSync(path.join(repo, "feature2.txt"), "utf8")).toBe("two\n");
+    expect(fs.existsSync(path.join(repo, "feature1.txt"))).toBe(false);
+    // The replay has a different parent (main tip), so it is a new commit.
+    expect(git(repo, "rev-parse", "HEAD")).not.toBe(featureTwo);
+  });
+});
+
+describe("terminal:gitReset", () => {
+  it("soft reset moves the branch without touching the index or worktree", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    commitFile(repo, "second.txt", "second\n", "second commit");
+    const first = git(repo, "rev-parse", "HEAD~1");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitReset");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: first, mode: "soft" }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "rev-parse", "HEAD")).toBe(first);
+    // second.txt is still staged after a soft reset.
+    expect(git(repo, "status", "--porcelain")).toContain("A  second.txt");
+    expect(fs.readFileSync(path.join(repo, "second.txt"), "utf8")).toBe("second\n");
+  });
+
+  it("mixed reset unstages changes but keeps the worktree", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    commitFile(repo, "second.txt", "second\n", "second commit");
+    const first = git(repo, "rev-parse", "HEAD~1");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitReset");
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: first, mode: "mixed" }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "status", "--porcelain")).toContain("?? second.txt");
+    expect(fs.readFileSync(path.join(repo, "second.txt"), "utf8")).toBe("second\n");
+  });
+
+  it("hard reset discards index and worktree changes", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    commitFile(repo, "second.txt", "second\n", "second commit");
+    const first = git(repo, "rev-parse", "HEAD~1");
+    fs.writeFileSync(path.join(repo, "second.txt"), "dirty\n");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitReset");
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: first, mode: "hard" }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "rev-parse", "HEAD")).toBe(first);
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
+
+  it("rejects an unknown reset mode", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    const first = git(repo, "rev-parse", "HEAD");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitReset");
+    const handler = registration![1];
+
+    await expect(handler({} as never, { repoRoot: repo, hash: first, mode: "extreme" })).rejects.toThrow(/无效的 reset 模式/);
+  });
+});
+
+describe("terminal:gitCheckoutCommit", () => {
+  it("checks out the commit with a detached HEAD", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    const first = git(repo, "rev-parse", "HEAD");
+    commitFile(repo, "second.txt", "second\n", "second commit");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitCheckoutCommit");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: first }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "rev-parse", "HEAD")).toBe(first);
+    // Detached: no current branch; the worktree no longer has second.txt.
+    expect(() => git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")).toThrow();
+    expect(fs.existsSync(path.join(repo, "second.txt"))).toBe(false);
+  });
+});
+
+describe("terminal:gitBranchFromCommit", () => {
+  it("creates and checks out a branch at the commit", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    const first = git(repo, "rev-parse", "HEAD");
+    commitFile(repo, "second.txt", "second\n", "second commit");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitBranchFromCommit");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+
+    const result = await handler({} as never, { repoRoot: repo, hash: first, branch: "fix/from-commit" }) as { ok: boolean };
+
+    expect(result.ok).toBe(true);
+    expect(git(repo, "branch", "--show-current")).toBe("fix/from-commit");
+    expect(git(repo, "rev-parse", "HEAD")).toBe(first);
+    expect(fs.existsSync(path.join(repo, "second.txt"))).toBe(false);
+  });
+
+  it("rejects an invalid branch name", async () => {
+    const repo = createRepo();
+    commitFile(repo, "base.txt", "base\n", "initial commit");
+    const first = git(repo, "rev-parse", "HEAD");
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitBranchFromCommit");
+    const handler = registration![1];
+
+    await expect(handler({} as never, { repoRoot: repo, hash: first, branch: "-evil" })).rejects.toThrow(/无效的分支名/);
+  });
+});

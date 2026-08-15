@@ -3963,6 +3963,185 @@ describe("WorkbenchPanel", () => {
     }
   });
 
+  it("cherry-picks and checks out a commit from the git graph context menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const commit = {
+      hash: "1234567890abcdef1234567890abcdef12345678",
+      shortHash: "1234567",
+      author: "Developer",
+      date: 1,
+      subject: "Update app",
+      parents: [],
+      decorations: "feature, origin/feature",
+      refs: { heads: ["feature"], remotes: ["origin/feature"], tags: [], isHead: true, primaryLabel: "feature" },
+      pathAtCommit: ""
+    };
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [],
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitLog = vi.fn(async () => ({
+      commits: [commit],
+      layout: {
+        laneWidth: 18,
+        rowHeight: 52,
+        maxColumns: 1,
+        columnColors: [0],
+        rows: [{
+          index: 0,
+          commitColumn: 0,
+          incomingTracks: [],
+          outgoingTracks: [],
+          curves: [],
+          colorIndex: 0,
+          isHead: true
+        }]
+      }
+    }));
+    const terminalGitCherryPick = vi.fn(async () => ({ ok: true }));
+    const terminalGitCheckoutCommit = vi.fn(async () => ({ ok: true }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitLogTitle": "Git log", "desktop.workbench.gitLogBackToChanges": "Back to changes", "desktop.workbench.gitLogUntitled": "(untitled)", "desktop.workbench.gitLogLoadFailed": "Could not load commit history: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitCopyCommitHash": "Copy commit hash", "desktop.workbench.gitCopyBranchName": "Copy branch name", "desktop.workbench.gitCherryPick": "Cherry-pick commit", "desktop.workbench.gitCherryPickConfirm": "Cherry-pick commit {0} onto the current branch?", "desktop.workbench.gitCherryPickFailed": "Could not cherry-pick commit: {0}", "desktop.workbench.gitCherryPickSucceeded": "Cherry-picked commit {0}.", "desktop.workbench.gitCheckoutCommit": "Checkout commit", "desktop.workbench.gitCheckoutCommitConfirm": "Checkout commit {0} (detached HEAD)? Your worktree will move to that revision.", "desktop.workbench.gitCheckoutCommitFailed": "Could not checkout commit: {0}", "desktop.workbench.gitCheckoutCommitSucceeded": "Checked out commit {0}.", "desktop.workbench.gitRevert": "Revert", "desktop.workbench.gitRevertConfirm": "Revert commit {0}? This creates a new commit that undoes its changes.", "desktop.workbench.gitRevertSucceeded": "Reverted commit {0}.", "desktop.workbench.gitRevertFailed": "Could not revert commit: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitLog,
+      terminalGitCherryPick,
+      terminalGitCheckoutCommit
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByTitle("/work/app"));
+      fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+      fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
+      await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
+      const branchPill = await screen.findByText("feature");
+      fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Cherry-pick commit" }));
+      expect(confirm).toHaveBeenCalledWith("Cherry-pick commit Update app onto the current branch?");
+      await waitFor(() => expect(terminalGitCherryPick).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
+
+      // Checkout commit is also reachable from the same context menu.
+      fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Checkout commit" }));
+      expect(confirm).toHaveBeenCalledWith("Checkout commit Update app (detached HEAD)? Your worktree will move to that revision.");
+      await waitFor(() => expect(terminalGitCheckoutCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("resets the branch and creates a branch from the git graph context menu dialogs", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const commit = {
+      hash: "1234567890abcdef1234567890abcdef12345678",
+      shortHash: "1234567",
+      author: "Developer",
+      date: 1,
+      subject: "Update app",
+      parents: [],
+      decorations: "feature, origin/feature",
+      refs: { heads: ["feature"], remotes: ["origin/feature"], tags: [], isHead: true, primaryLabel: "feature" },
+      pathAtCommit: ""
+    };
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [],
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitLog = vi.fn(async () => ({
+      commits: [commit],
+      layout: {
+        laneWidth: 18,
+        rowHeight: 52,
+        maxColumns: 1,
+        columnColors: [0],
+        rows: [{
+          index: 0,
+          commitColumn: 0,
+          incomingTracks: [],
+          outgoingTracks: [],
+          curves: [],
+          colorIndex: 0,
+          isHead: true
+        }]
+      }
+    }));
+    const terminalGitReset = vi.fn(async () => ({ ok: true }));
+    const terminalGitBranchFromCommit = vi.fn(async () => ({ ok: true }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitLogTitle": "Git log", "desktop.workbench.gitLogBackToChanges": "Back to changes", "desktop.workbench.gitLogUntitled": "(untitled)", "desktop.workbench.gitLogLoadFailed": "Could not load commit history: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitCopyCommitHash": "Copy commit hash", "desktop.workbench.gitCopyBranchName": "Copy branch name", "desktop.workbench.gitReset": "Reset…", "desktop.workbench.gitResetTitle": "Reset current branch to commit {0}", "desktop.workbench.gitResetModeSoft": "Soft (keep changes)", "desktop.workbench.gitResetModeMixed": "Mixed (unstage changes)", "desktop.workbench.gitResetModeHard": "Hard (discard changes)", "desktop.workbench.gitResetConfirm": "Reset the current branch to {0} ({1})?", "desktop.workbench.gitResetFailed": "Could not reset: {0}", "desktop.workbench.gitResetSucceeded": "Reset to commit {0}.", "desktop.workbench.gitNewBranchFromCommit": "New Branch from Commit…", "desktop.workbench.gitBranchFromCommitTitle": "New branch from commit {0}", "desktop.workbench.gitBranchFromCommitPlaceholder": "Branch name", "desktop.workbench.gitBranchFromCommitCreate": "Create", "desktop.workbench.gitBranchFromCommitFailed": "Could not create branch: {0}", "desktop.workbench.gitBranchFromCommitSucceeded": "Created branch {0}.", "desktop.workbench.gitRevert": "Revert", "desktop.workbench.gitRevertConfirm": "Revert commit {0}? This creates a new commit that undoes its changes.", "desktop.workbench.gitRevertSucceeded": "Reverted commit {0}.", "desktop.workbench.gitRevertFailed": "Could not revert commit: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitLog,
+      terminalGitReset,
+      terminalGitBranchFromCommit
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      fireEvent.click(await screen.findByTitle("/work/app"));
+      fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+      fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
+      await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
+      const branchPill = await screen.findByText("feature");
+
+      // Reset dialog: pick the mixed mode.
+      fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Reset…" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Mixed (unstage changes)" }));
+      expect(confirm).toHaveBeenCalledWith("Reset the current branch to Update app (Mixed (unstage changes))?");
+      await waitFor(() => expect(terminalGitReset).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash, mode: "mixed" }));
+
+      // Branch dialog: type a name and create.
+      fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "New Branch from Commit…" }));
+      fireEvent.change(await screen.findByPlaceholderText("Branch name"), { target: { value: "fix/from-commit" } });
+      fireEvent.click(await screen.findByRole("button", { name: "Create" }));
+      await waitFor(() => expect(terminalGitBranchFromCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash, branch: "fix/from-commit" }));
+      await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Created branch fix/from-commit.", kind: "ok" }));
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
   it("opens a Git change from its context menu in Workbench or the default app", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

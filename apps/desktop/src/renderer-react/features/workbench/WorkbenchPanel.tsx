@@ -322,6 +322,9 @@ type GitLogContextMenu = {
   commit: GitLogCommit;
   branchName: string | null;
 };
+type GitLogDialog =
+  | { kind: "branch"; commit: GitLogCommit }
+  | { kind: "reset"; commit: GitLogCommit };
 type WorkbenchNewSessionTarget =
   | { channel: "cli"; provider: AgentProvider }
   | { channel: "acp"; provider: string };
@@ -2354,6 +2357,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
   const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
   const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
+  const [gitLogDialog, setGitLogDialog] = useState<GitLogDialog | null>(null);
+  const gitLogDialogBusyRef = useRef(false);
+  const gitLogDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
   const [folderDialog, setFolderDialog] = useState<WorkbenchFolderDialog | null>(null);
@@ -3027,6 +3033,30 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [gitLogContextMenu]);
+
+  useEffect(() => {
+    if (!gitLogDialog) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-log-dialog")) closeGitLogDialog();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeGitLogDialog();
+      }
+    };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    window.requestAnimationFrame(() => {
+      gitLogDialogInputRef.current?.focus();
+      gitLogDialogInputRef.current?.select();
+    });
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gitLogDialog?.kind, gitLogDialog?.commit?.hash]);
 
   useEffect(() => {
     if (!newSessionPicker) return;
@@ -6281,6 +6311,97 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
+  const cherryPickGitLogCommit = async (commit: GitLogCommit) => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
+    const label = commit.subject || commit.shortHash;
+    if (!window.confirm(t("desktop.workbench.gitCherryPickConfirm", label))) return;
+    setGitLogContextMenu(null);
+    try {
+      await desktopApi().terminalGitCherryPick({ repoRoot, hash: commit.hash });
+      notifyGitSuccess("desktop.workbench.gitCherryPickSucceeded", commit.shortHash);
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitCherryPickFailed", error);
+    }
+  };
+
+  const checkoutGitLogCommit = async (commit: GitLogCommit) => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot) return;
+    const label = commit.subject || commit.shortHash;
+    if (!window.confirm(t("desktop.workbench.gitCheckoutCommitConfirm", label))) return;
+    setGitLogContextMenu(null);
+    try {
+      await desktopApi().terminalGitCheckoutCommit({ repoRoot, hash: commit.hash });
+      notifyGitSuccess("desktop.workbench.gitCheckoutCommitSucceeded", commit.shortHash);
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitCheckoutCommitFailed", error);
+    }
+  };
+
+  const resetGitLogCommit = async (commit: GitLogCommit, mode: "soft" | "mixed" | "hard") => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot || gitLogDialogBusyRef.current) return;
+    const label = commit.subject || commit.shortHash;
+    if (!window.confirm(t("desktop.workbench.gitResetConfirm", label, t(`desktop.workbench.gitResetMode${mode === "soft" ? "Soft" : mode === "mixed" ? "Mixed" : "Hard"}`)))) return;
+    gitLogDialogBusyRef.current = true;
+    setGitLogDialog(null);
+    try {
+      await desktopApi().terminalGitReset({ repoRoot, hash: commit.hash, mode });
+      notifyGitSuccess("desktop.workbench.gitResetSucceeded", commit.shortHash);
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitResetFailed", error);
+    } finally {
+      gitLogDialogBusyRef.current = false;
+    }
+  };
+
+  const createBranchFromGitLogCommit = async (commit: GitLogCommit, rawName: string) => {
+    const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
+    if (!repoRoot || gitLogDialogBusyRef.current) return;
+    const branch = rawName.trim();
+    if (!branch) return;
+    gitLogDialogBusyRef.current = true;
+    setGitLogDialog(null);
+    try {
+      await desktopApi().terminalGitBranchFromCommit({ repoRoot, hash: commit.hash, branch });
+      notifyGitSuccess("desktop.workbench.gitBranchFromCommitSucceeded", branch);
+      await refreshGit();
+      if (gitHistoryContext?.kind === "file") {
+        await loadGitFileHistory(gitHistoryContext.filePath);
+      } else {
+        await loadGitLog();
+      }
+    } catch (error) {
+      notifyGitFailure("desktop.workbench.gitBranchFromCommitFailed", error);
+    } finally {
+      gitLogDialogBusyRef.current = false;
+    }
+  };
+
+  const closeGitLogDialog = () => {
+    if (gitLogDialogBusyRef.current) return;
+    setGitLogDialog(null);
+  };
+
   const closeGitHistory = () => {
     const returnToExplorer = gitHistoryContext?.kind === "file";
     gitLogRequestRef.current += 1;
@@ -7172,15 +7293,45 @@ export function WorkbenchPanel(): ReactPortal | null {
       role="menu"
       style={{
         left: Math.max(8, Math.min(gitLogContextMenu.x, window.innerWidth - 220)),
-        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 192 : 148)))
+        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 336 : 292)))
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button type="button" role="menuitem" onClick={() => copyGitLogValue(gitLogContextMenu.commit.hash)}>{t("desktop.workbench.gitCopyCommitHash")}</button>
       {gitLogContextMenu.branchName ? <button type="button" role="menuitem" title={gitLogContextMenu.branchName} onClick={() => copyGitLogValue(gitLogContextMenu.branchName!)}>{t("desktop.workbench.gitCopyBranchName")}</button> : null}
       <div className="context-menu-separator" role="separator" />
+      <button type="button" role="menuitem" onClick={() => void cherryPickGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitCherryPick")}</button>
+      <button type="button" role="menuitem" onClick={() => { setGitLogDialog({ kind: "branch", commit: gitLogContextMenu.commit }); setGitLogContextMenu(null); }}>{t("desktop.workbench.gitNewBranchFromCommit")}</button>
+      <button type="button" role="menuitem" onClick={() => void checkoutGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitCheckoutCommit")}</button>
+      <button type="button" role="menuitem" onClick={() => { setGitLogDialog({ kind: "reset", commit: gitLogContextMenu.commit }); setGitLogContextMenu(null); }}>{t("desktop.workbench.gitReset")}</button>
+      <div className="context-menu-separator" role="separator" />
       <button type="button" role="menuitem" onClick={() => void mergeGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitMerge")}</button>
       <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void revertGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitRevert")}</button>
+    </div> : null}
+    {gitLogDialog ? <div className="wb-git-log-dialog" role="dialog" aria-modal="true">
+      {gitLogDialog.kind === "branch" ? <>
+        <div className="wb-git-log-dialog-title">{t("desktop.workbench.gitBranchFromCommitTitle", gitLogDialog.commit.subject || gitLogDialog.commit.shortHash)}</div>
+        <form className="wb-git-log-dialog-row" onSubmit={(event) => {
+          event.preventDefault();
+          void createBranchFromGitLogCommit(gitLogDialog.commit, gitLogDialogInputRef.current?.value || "");
+        }}>
+          <input ref={gitLogDialogInputRef} className="wb-git-log-dialog-input" type="text" placeholder={t("desktop.workbench.gitBranchFromCommitPlaceholder")} autoComplete="off" spellCheck={false} />
+          <button type="submit" className="ghost-btn">{t("desktop.workbench.gitBranchFromCommitCreate")}</button>
+        </form>
+        <div className="wb-git-log-dialog-actions">
+          <button type="button" className="ghost-btn" onClick={closeGitLogDialog}>{t("desktop.common.cancel")}</button>
+        </div>
+      </> : <>
+        <div className="wb-git-log-dialog-title">{t("desktop.workbench.gitResetTitle", gitLogDialog.commit.subject || gitLogDialog.commit.shortHash)}</div>
+        <div className="wb-git-log-dialog-actions wb-git-log-dialog-reset-actions">
+          <button type="button" className="ghost-btn" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "soft")}>{t("desktop.workbench.gitResetModeSoft")}</button>
+          <button type="button" className="ghost-btn" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "mixed")}>{t("desktop.workbench.gitResetModeMixed")}</button>
+          <button type="button" className="ghost-btn context-menu-item-danger" onClick={() => void resetGitLogCommit(gitLogDialog.commit, "hard")}>{t("desktop.workbench.gitResetModeHard")}</button>
+        </div>
+        <div className="wb-git-log-dialog-actions">
+          <button type="button" className="ghost-btn" onClick={closeGitLogDialog}>{t("desktop.common.cancel")}</button>
+        </div>
+      </>}
     </div> : null}
     {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
       <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>

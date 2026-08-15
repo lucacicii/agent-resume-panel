@@ -185,6 +185,16 @@ function assertValidGitHash(hash: string): string {
   return trimmed;
 }
 
+function isValidGitBranchName(branch: string): boolean {
+  const trimmed = branch.trim();
+  if (!trimmed || trimmed.startsWith("-")) return false;
+  if (/[\0\r\n]/.test(trimmed)) return false;
+  // Reject Git's built-in disallowed names so `git checkout -b` cannot be
+  // abused to overwrite refs (HEAD, tags, etc.).
+  if (/^(HEAD|\.|\/)/i.test(trimmed)) return false;
+  return !trimmed.split("/").some((part) => /^\.{1,2}$/.test(part));
+}
+
 function assertValidGitFilePath(filePath: string): string {
   const normalized = filePath.trim();
   if (!normalized || normalized.includes("\0")) {
@@ -873,4 +883,79 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     }
     return { ok: true };
   });
+
+  safeHandle("terminal:gitCherryPick", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // Conflicts leave git in its standard cherry-pick-in-progress state and
+      // surface a diagnostic to the caller; the user resolves them in the editor.
+      await execFileAsync("git", ["-C", repoRoot, "cherry-pick", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  const GIT_RESET_MODES = new Set(["soft", "mixed", "hard"]);
+  safeHandle(
+    "terminal:gitReset",
+    async (_event, args: { repoRoot: string; hash: string; mode: "soft" | "mixed" | "hard" }) => {
+      const repoRoot = await resolveRepoRoot(args.repoRoot);
+      const commit = assertValidGitHash(args.hash);
+      if (!GIT_RESET_MODES.has(args.mode)) {
+        throw new Error(`无效的 reset 模式: ${args.mode}`);
+      }
+      try {
+        await execFileAsync("git", ["-C", repoRoot, "reset", `--${args.mode}`, commit], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
+    }
+  );
+
+  safeHandle("terminal:gitCheckoutCommit", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // Detach HEAD at the commit so the worktree matches the log selection
+      // without moving any branch ref.
+      await execFileAsync("git", ["-C", repoRoot, "checkout", "--detach", commit], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle(
+    "terminal:gitBranchFromCommit",
+    async (_event, args: { repoRoot: string; hash: string; branch: string }) => {
+      const repoRoot = await resolveRepoRoot(args.repoRoot);
+      const commit = assertValidGitHash(args.hash);
+      if (!isValidGitBranchName(args.branch)) {
+        throw new Error(`无效的分支名: ${args.branch}`);
+      }
+      try {
+        // Create the branch at the commit and check it out, matching IDEA's
+        // "New Branch from Commit" default behavior.
+        await execFileAsync("git", ["-C", repoRoot, "checkout", "-b", args.branch.trim(), commit], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
+    }
+  );
 }

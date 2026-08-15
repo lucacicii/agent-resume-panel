@@ -94,6 +94,9 @@ export interface DesktopApi {
     /** When true, ignore drops that end inside the main window (used by list drag-out). */
     requireOutsideMainWindow?: boolean;
   }): Promise<{ ok: true } | { ok: false; reason: "inside-window" }>;
+  /** Currently open floating note windows (for the nav-rail dots). */
+  standaloneNoteList(): Promise<Array<{ noteId: string; title: string }>>;
+  onStandaloneNotesChanged(callback: (notes: Array<{ noteId: string; title: string }>) => void): () => void;
   standaloneNoteGetState(): Promise<{ noteId: string; pinned: boolean }>;
   standaloneNoteSetAlwaysOnTop(args: { pinned: boolean }): Promise<{ pinned: boolean }>;
   standaloneNoteClose(): Promise<{ ok: boolean }>;
@@ -702,6 +705,10 @@ export interface DesktopApi {
   }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
   terminalGitRevert(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
   terminalGitMerge(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
+  terminalGitCherryPick(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
+  terminalGitReset(args: { repoRoot: string; hash: string; mode: "soft" | "mixed" | "hard" }): Promise<{ ok: boolean }>;
+  terminalGitCheckoutCommit(args: { repoRoot: string; hash: string }): Promise<{ ok: boolean }>;
+  terminalGitBranchFromCommit(args: { repoRoot: string; hash: string; branch: string }): Promise<{ ok: boolean }>;
   workbenchListDirectory(args: {
     rootPath: string;
     dirPath: string;
@@ -1348,6 +1355,12 @@ const api: DesktopApi = {
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),
+  standaloneNoteList: () => ipcRenderer.invoke("standalone-note:list"),
+  onStandaloneNotesChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, notes: Array<{ noteId: string; title: string }>) => callback(notes);
+    ipcRenderer.on("standalone-note:changed", handler);
+    return () => ipcRenderer.removeListener("standalone-note:changed", handler);
+  },
   standaloneNoteGetState: () => ipcRenderer.invoke("standalone-note:getState"),
   standaloneNoteSetAlwaysOnTop: (args) => ipcRenderer.invoke("standalone-note:setAlwaysOnTop", args),
   standaloneNoteClose: () => ipcRenderer.invoke("standalone-note:close"),
@@ -1544,6 +1557,10 @@ const api: DesktopApi = {
   terminalGitShowFileDiffSides: (args) => ipcRenderer.invoke("terminal:gitShowFileDiffSides", args),
   terminalGitRevert: (args) => ipcRenderer.invoke("terminal:gitRevert", args),
   terminalGitMerge: (args) => ipcRenderer.invoke("terminal:gitMerge", args),
+  terminalGitCherryPick: (args) => ipcRenderer.invoke("terminal:gitCherryPick", args),
+  terminalGitReset: (args) => ipcRenderer.invoke("terminal:gitReset", args),
+  terminalGitCheckoutCommit: (args) => ipcRenderer.invoke("terminal:gitCheckoutCommit", args),
+  terminalGitBranchFromCommit: (args) => ipcRenderer.invoke("terminal:gitBranchFromCommit", args),
   onTerminalData: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; data: string }) =>
       callback(payload);
