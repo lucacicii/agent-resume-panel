@@ -86,6 +86,9 @@ const messages = {
   "desktop.notes.unpinProject": "Unpin project",
   "desktop.notes.pinNote": "Pin note",
   "desktop.notes.unpinNote": "Unpin note",
+  "desktop.notes.openAsFloating": "Open as floating note",
+  "desktop.notes.dragOutToFloat": "Drag outside the window to open as a floating note",
+  "desktop.notes.openStandaloneUnavailable": "Floating notes require a rebuilt Desktop app.",
   "desktop.notes.renameProject": "Rename project",
   "desktop.notes.changeOwner": "Change owner",
   "desktop.common.all": "All",
@@ -136,6 +139,7 @@ function installBridge() {
   const notesWrite = vi.fn(async () => ({ noteId: "note-1", filename: "renderer.md", updatedAtMs: 3 }));
   const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...libraryNote, noteId, gtdStatus: status || undefined }));
   const notesCreate = vi.fn(async () => ({ noteId: "note-3", filename: "new-note.md" }));
+  const standaloneNoteOpen = vi.fn(async () => ({ ok: true as const }));
   const listSessions = vi.fn(async () => [{ provider: "codex" as const, id: "session-1", title: "Panel session", projectPath: "/work/panel", updatedAt: Date.now() }]);
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
@@ -174,9 +178,9 @@ function installBridge() {
     notesCopyPath: async () => ({ path: "/notes/renderer.md" }),
     notesReveal: async () => ({ ok: true }),
     notesOpenFolder: async () => ({ ok: true }),
-
+    standaloneNoteOpen,
   } as unknown as typeof window.agentResume;
-  return { notesWrite, notesCreate, listSessions };
+  return { notesWrite, notesCreate, listSessions, standaloneNoteOpen };
 }
 
 describe("NotesPanel", () => {
@@ -291,5 +295,49 @@ describe("NotesPanel", () => {
     expect(screen.getByText("0 / 0").classList.contains("is-empty")).toBe(true);
   });
 
+  it("opens a note as a floating window from the context menu and toolbar", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    const { standaloneNoteOpen } = installBridge();
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    const note = await screen.findByRole("button", { name: /Renderer plan/ });
+    fireEvent.contextMenu(note);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open as floating note" }));
+    await waitFor(() => expect(standaloneNoteOpen).toHaveBeenCalledWith({
+      noteId: "note-1",
+      x: undefined,
+      y: undefined,
+      requireOutsideMainWindow: undefined
+    }));
 
+    fireEvent.click(note);
+    fireEvent.click(await screen.findByRole("button", { name: "Open as floating note" }));
+    await waitFor(() => expect(standaloneNoteOpen).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens a floating note when a list item is dragged outside the main window", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    const { standaloneNoteOpen } = installBridge();
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    const note = await screen.findByRole("button", { name: /Renderer plan/ });
+    expect(note.hasAttribute("draggable")).toBe(true);
+    const dataTransfer = {
+      effectAllowed: "none",
+      setData: vi.fn(),
+      getData: vi.fn()
+    };
+    fireEvent.dragStart(note, { dataTransfer });
+    const dragEnd = new Event("dragend", { bubbles: true }) as DragEvent;
+    Object.defineProperty(dragEnd, "dataTransfer", { value: dataTransfer });
+    Object.defineProperty(dragEnd, "screenX", { value: 1800 });
+    Object.defineProperty(dragEnd, "screenY", { value: 200 });
+    note.dispatchEvent(dragEnd);
+    await waitFor(() => expect(standaloneNoteOpen).toHaveBeenCalledWith({
+      noteId: "note-1",
+      x: 1800,
+      y: 200,
+      requireOutsideMainWindow: true
+    }));
+  });
 });

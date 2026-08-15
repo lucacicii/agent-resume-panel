@@ -1,6 +1,6 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactPortal } from "react";
 import type { AgentSession, GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
@@ -499,6 +499,55 @@ export function NotesPanel(): ReactPortal | null {
     },
     [notes]
   );
+
+  /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
+  const openStandalone = useCallback(async (
+    noteId: string,
+    options?: { x?: number; y?: number; requireOutsideMainWindow?: boolean }
+  ) => {
+    const api = desktopApi();
+    if (typeof api.standaloneNoteOpen !== "function") {
+      setStatus({ text: t("desktop.notes.openStandaloneUnavailable"), kind: "error" });
+      return;
+    }
+    try {
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        await save();
+      }
+      const result = await api.standaloneNoteOpen({
+        noteId,
+        x: options?.x,
+        y: options?.y,
+        requireOutsideMainWindow: options?.requireOutsideMainWindow
+      });
+      if (result.ok === false) return;
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [save, t]);
+
+  const onNoteListDragStart = useCallback((event: ReactDragEvent<HTMLButtonElement>, noteId: string) => {
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("text/plain", noteId);
+    event.dataTransfer.setData("application/x-agent-resume-note-id", noteId);
+    event.currentTarget.classList.add("is-dragging-out");
+  }, []);
+
+  const onNoteListDragEnd = useCallback((event: ReactDragEvent<HTMLButtonElement>, noteId: string) => {
+    event.currentTarget.classList.remove("is-dragging-out");
+    const native = event.nativeEvent as DragEvent;
+    const x = Number.isFinite(native.screenX) ? native.screenX : event.screenX;
+    const y = Number.isFinite(native.screenY) ? native.screenY : event.screenY;
+    // Dropped outside the main window → open as a floating note (⌘/Ctrl+D surface).
+    // Main process rejects drops that end inside the main window.
+    void openStandalone(noteId, {
+      x,
+      y,
+      requireOutsideMainWindow: true
+    });
+  }, [openStandalone]);
 
   const open = useCallback(async (note: Note, options?: { asTreeRoot?: boolean; treeRootId?: string }) => {
     if (saveTimer.current) {
@@ -1444,7 +1493,7 @@ export function NotesPanel(): ReactPortal | null {
             </div> : null}
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} draggable onDragStart={(event) => onNoteListDragStart(event, note.noteId)} onDragEnd={(event) => onNoteListDragEnd(event, note.noteId)} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }} title={t("desktop.notes.dragOutToFloat")}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
           </> : sidebarView === "gtd" ? <>
             <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtdNotes")} placeholder={t("desktop.notes.searchGtdNotes")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
             <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdNotesListMeta", visibleGtdNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
@@ -1498,7 +1547,7 @@ export function NotesPanel(): ReactPortal | null {
                 />
               </>
             ) : null}
-            <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
+            <div className="notes-detail-head">{editingTitle ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}><input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /><button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button></form> : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)}>{title}</h1>}<div className="notes-segmented" role="tablist"><button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button><button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void save(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.openAsFloating")} title={t("desktop.notes.openAsFloating")} onClick={() => void openStandalone(selected.noteId)}><ThemeIcon name="external-link" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove()}><ThemeIcon name="trash" size={15} /></button></div></div>
             <div className="entity-tag-bar" aria-label={t("desktop.notes.entityTags")}>
               <div className="entity-tag-bar-chips">
                 {entityTagsLoading && !entityTags.length ? <span className="muted entity-tag-bar-empty">{t("desktop.common.loading")}</span>
@@ -1615,6 +1664,7 @@ export function NotesPanel(): ReactPortal | null {
           }}>{t("desktop.workbench.removeProjectFromPanel")}</button></> : null}
         </> : <>
           <button type="button" role="menuitem" onClick={() => { togglePinnedNote(contextMenu.note.noteId); setContextMenu(null); }}>{t(pinnedNotes.has(contextMenu.note.noteId) ? "desktop.notes.unpinNote" : "desktop.notes.pinNote")}</button>
+          <button type="button" role="menuitem" onClick={() => { void openStandalone(contextMenu.note.noteId); setContextMenu(null); }}>{t("desktop.notes.openAsFloating")}</button>
           <div className="context-menu-separator" role="separator" />
           <div className="notes-context-menu-label">{t("desktop.notes.gtdStatusLabel")}</div>
           {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitem" key={gtdStatus} className={contextMenu.note.gtdStatus === gtdStatus ? "is-active" : ""} onClick={() => void setNoteGtdStatus(contextMenu.note, gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" />{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}

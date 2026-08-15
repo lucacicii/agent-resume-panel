@@ -375,6 +375,7 @@ function showMainWindowIfReady(): void {
 }
 type StandaloneNoteWindowState = {
   noteId: string;
+  title: string;
   window: BrowserWindow;
   allowClose: boolean;
   closeRequest?: {
@@ -383,6 +384,7 @@ type StandaloneNoteWindowState = {
   };
   closePromise?: Promise<boolean>;
 };
+type OpenStandaloneNoteDot = { noteId: string; title: string };
 const standaloneNoteWindows = new Map<string, StandaloneNoteWindowState>();
 const STANDALONE_NOTE_CLOSE_TIMEOUT_MS = 15_000;
 const STANDALONE_NOTE_WINDOW_SIZE = { width: 560, height: 640 } as const;
@@ -470,6 +472,19 @@ function standaloneNoteStateForSender(sender: Electron.WebContents): StandaloneN
   return [...standaloneNoteWindows.values()].find((state) => state.window.webContents === sender);
 }
 
+function listOpenStandaloneNotes(): OpenStandaloneNoteDot[] {
+  const open: OpenStandaloneNoteDot[] = [];
+  for (const state of standaloneNoteWindows.values()) {
+    if (state.window.isDestroyed()) continue;
+    open.push({ noteId: state.noteId, title: state.title });
+  }
+  return open;
+}
+
+function broadcastOpenStandaloneNotes(): void {
+  broadcastToRenderers("standalone-note:changed", listOpenStandaloneNotes());
+}
+
 function settleStandaloneNoteCloseRequest(state: StandaloneNoteWindowState, closed: boolean): void {
   const request = state.closeRequest;
   if (!request) return;
@@ -510,11 +525,12 @@ function setStandaloneNoteAlwaysOnTop(state: StandaloneNoteWindowState, pinned: 
 
 function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowState {
   const icon = loadAppIcon();
+  const title = recentStandaloneNoteMenuLabel(record) || desktopT(undefined, "desktop.standaloneNote.title");
   const win = new BrowserWindow({
     ...STANDALONE_NOTE_WINDOW_SIZE,
     minWidth: 420,
     minHeight: 360,
-    title: record.title || desktopT(undefined, "desktop.standaloneNote.title"),
+    title,
     show: false,
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
@@ -528,8 +544,9 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
   });
   if (process.platform !== "darwin") win.setMenuBarVisibility(false);
 
-  const state: StandaloneNoteWindowState = { noteId: record.noteId, window: win, allowClose: false };
+  const state: StandaloneNoteWindowState = { noteId: record.noteId, title, window: win, allowClose: false };
   standaloneNoteWindows.set(record.noteId, state);
+  broadcastOpenStandaloneNotes();
   win.on("close", (event) => {
     if (state.allowClose || allowAppQuit) return;
     event.preventDefault();
@@ -544,6 +561,7 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
   win.on("closed", () => {
     settleStandaloneNoteCloseRequest(state, true);
     if (standaloneNoteWindows.get(record.noteId) === state) standaloneNoteWindows.delete(record.noteId);
+    broadcastOpenStandaloneNotes();
   });
   void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
     query: { mode: "standalone-note", noteId: record.noteId }
@@ -583,17 +601,60 @@ async function openStandaloneNoteWindow(): Promise<void> {
   }
 }
 
-async function openStandaloneNoteById(noteId: string): Promise<void> {
+function positionStandaloneNoteWindow(
+  win: BrowserWindow,
+  point?: { x?: number; y?: number }
+): void {
+  if (win.isDestroyed()) return;
+  if (typeof point?.x !== "number" || typeof point?.y !== "number" || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return;
+  }
+  const { width, height } = STANDALONE_NOTE_WINDOW_SIZE;
+  const display = screen.getDisplayNearestPoint({ x: Math.round(point.x), y: Math.round(point.y) });
+  const work = display.workArea;
+  const x = Math.min(
+    Math.max(Math.round(point.x - width / 2), work.x),
+    Math.max(work.x, work.x + work.width - width)
+  );
+  const y = Math.min(
+    Math.max(Math.round(point.y - 24), work.y),
+    Math.max(work.y, work.y + work.height - height)
+  );
+  win.setPosition(x, y);
+}
+
+function isScreenPointOutsideMainWindow(x: number, y: number): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return true;
+  const bounds = mainWindow.getBounds();
+  return x < bounds.x || y < bounds.y || x > bounds.x + bounds.width || y > bounds.y + bounds.height;
+}
+
+async function openStandaloneNoteById(
+  noteId: string,
+  options?: { x?: number; y?: number; requireOutsideMainWindow?: boolean }
+): Promise<{ ok: true } | { ok: false; reason: "inside-window" }> {
+  if (
+    options?.requireOutsideMainWindow === true
+    && typeof options.x === "number"
+    && typeof options.y === "number"
+    && !isScreenPointOutsideMainWindow(options.x, options.y)
+  ) {
+    return { ok: false, reason: "inside-window" };
+  }
+
   const existing = standaloneNoteWindows.get(noteId);
   if (existing && !existing.window.isDestroyed()) {
+    positionStandaloneNoteWindow(existing.window, options);
     if (existing.window.isMinimized()) existing.window.restore();
     existing.window.show();
     existing.window.focus();
-    return;
+    return { ok: true };
   }
   try {
     const { record } = await notesRead(noteId);
-    createStandaloneNoteWindow(record);
+    const state = createStandaloneNoteWindow(record);
+    positionStandaloneNoteWindow(state.window, options);
+    return { ok: true };
   } catch (error) {
     let settings: PanelSettings | undefined;
     try {
@@ -2716,6 +2777,18 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
+  ipcMain.handle("standalone-note:open", async (_event, args: { noteId?: unknown; x?: unknown; y?: unknown; requireOutsideMainWindow?: unknown }) => {
+    const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
+    if (!noteId) throw new Error("Standalone note id is required.");
+    const x = typeof args?.x === "number" && Number.isFinite(args.x) ? args.x : undefined;
+    const y = typeof args?.y === "number" && Number.isFinite(args.y) ? args.y : undefined;
+    return openStandaloneNoteById(noteId, {
+      x,
+      y,
+      requireOutsideMainWindow: args?.requireOutsideMainWindow === true
+    });
+  });
+  ipcMain.handle("standalone-note:list", async () => listOpenStandaloneNotes());
   ipcMain.handle("standalone-note:getState", async (event) => {
     const state = standaloneNoteStateForSender(event.sender);
     if (!state || state.window.isDestroyed()) throw new Error("Standalone note window not found.");

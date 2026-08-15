@@ -1,10 +1,12 @@
 import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
 import { useEffect, useRef, useState } from "react";
+import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbench/activeSessionDots";
 import { Tooltip } from "./Tooltip";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow" | "kanban";
+type FloatingNoteDot = { noteId: string; title: string };
 
 const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
   { id: "report", icon: "activity", key: "desktop.tabs.report", fallback: "Report" },
@@ -23,6 +25,7 @@ export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
   const [activeTab, setActiveTab] = useState<PrimaryTab>("report");
   const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
+  const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
   const headerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -71,6 +74,25 @@ export function AppChrome(): React.JSX.Element {
     return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
   }, []);
 
+  useEffect(() => {
+    const api = desktopApi();
+    let cancelled = false;
+    if (typeof api.standaloneNoteList === "function") {
+      void api.standaloneNoteList().then((notes) => {
+        if (!cancelled && Array.isArray(notes)) setNoteDots(notes);
+      }).catch(() => undefined);
+    }
+    const stop = typeof api.onStandaloneNotesChanged === "function"
+      ? api.onStandaloneNotesChanged((notes) => {
+          if (Array.isArray(notes)) setNoteDots(notes);
+        })
+      : undefined;
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+
   const selectTab = (next: PrimaryTab) => {
     setActiveTab(next);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
@@ -81,6 +103,12 @@ export function AppChrome(): React.JSX.Element {
     window.dispatchEvent(new CustomEvent("agent-resume:workbench-focus-session", {
       detail: { paneKey: dot.paneKey, projectPath: dot.projectPath }
     }));
+  };
+
+  const focusNoteFromRail = (dot: FloatingNoteDot) => {
+    const api = desktopApi();
+    if (typeof api.standaloneNoteOpen !== "function") return;
+    void api.standaloneNoteOpen({ noteId: dot.noteId }).catch(() => undefined);
   };
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
@@ -120,28 +148,48 @@ export function AppChrome(): React.JSX.Element {
             <ThemeIcon name={tab.icon} aria-hidden="true" />
           </button>
         ))}
-        {sessionDots.length > 0 && (
-          <div className="rail-session-dots">
-            {sessionDots.map((dot) => {
-              const status: SessionDotStatus = dot.status || "open";
-              const label = dotLabel(dot);
-              return (
-                <Tooltip key={dot.paneKey} label={label}>
-                  <button
-                    type="button"
-                    className="rail-session-dot-btn"
-                    data-status={status}
-                    aria-label={label}
-                    onClick={() => focusSessionFromRail(dot)}
-                  >
-                    <span
-                      className={`rail-session-dot${status !== "open" ? ` is-${status === "awaiting_user" ? "awaiting" : status}` : ""}`}
-                      aria-hidden="true"
-                    />
-                  </button>
-                </Tooltip>
-              );
-            })}
+        {(noteDots.length > 0 || sessionDots.length > 0) && (
+          <div className="rail-bottom-dots">
+            {noteDots.length > 0 && (
+              <div className="rail-notes-dots">
+                {noteDots.map((dot) => (
+                  <Tooltip key={dot.noteId} label={dot.title}>
+                    <button
+                      type="button"
+                      className="rail-note-dot-btn"
+                      aria-label={dot.title}
+                      onClick={() => focusNoteFromRail(dot)}
+                    >
+                      <span className="rail-note-dot" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
+            {sessionDots.length > 0 && (
+              <div className="rail-session-dots">
+                {sessionDots.map((dot) => {
+                  const status: SessionDotStatus = dot.status || "open";
+                  const label = dotLabel(dot);
+                  return (
+                    <Tooltip key={dot.paneKey} label={label}>
+                      <button
+                        type="button"
+                        className="rail-session-dot-btn"
+                        data-status={status}
+                        aria-label={label}
+                        onClick={() => focusSessionFromRail(dot)}
+                      >
+                        <span
+                          className={`rail-session-dot${status !== "open" ? ` is-${status === "awaiting_user" ? "awaiting" : status}` : ""}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </nav>

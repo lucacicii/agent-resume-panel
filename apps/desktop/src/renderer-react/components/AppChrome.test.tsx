@@ -3,8 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../i18n";
 import { AppChrome } from "./AppChrome";
 
-function renderChrome() {
+function renderChrome(options?: {
+  standaloneNoteList?: Array<{ noteId: string; title: string }>;
+}) {
   let openSessionsHandler: (() => void) | undefined;
+  let notesChangedHandler: ((notes: Array<{ noteId: string; title: string }>) => void) | undefined;
+  const standaloneNoteOpen = vi.fn(async () => ({ ok: true as const }));
+  const standaloneNoteList = vi.fn(async () => options?.standaloneNoteList ?? []);
   window.agentResume = {
     getI18nBundle: async () => ({
       locale: "en",
@@ -26,7 +31,13 @@ function renderChrome() {
     onOpenSessions: (callback: () => void) => {
       openSessionsHandler = callback;
       return () => undefined;
-    }
+    },
+    standaloneNoteList,
+    onStandaloneNotesChanged: (callback: (notes: Array<{ noteId: string; title: string }>) => void) => {
+      notesChangedHandler = callback;
+      return () => undefined;
+    },
+    standaloneNoteOpen
   } as unknown as typeof window.agentResume;
 
   render(
@@ -34,7 +45,12 @@ function renderChrome() {
       <AppChrome />
     </I18nProvider>
   );
-  return { getOpenSessionsHandler: () => openSessionsHandler };
+  return {
+    getOpenSessionsHandler: () => openSessionsHandler,
+    pushNoteDots: (notes: Array<{ noteId: string; title: string }>) => notesChangedHandler?.(notes),
+    standaloneNoteOpen,
+    standaloneNoteList
+  };
 }
 
 describe("AppChrome", () => {
@@ -172,5 +188,60 @@ describe("AppChrome", () => {
     }));
     window.removeEventListener("agent-resume:tab-request", tabReq);
     window.removeEventListener("agent-resume:workbench-focus-session", focusReq);
+  });
+
+  it("renders floating note dots above session dots and focuses a note on click", async () => {
+    const { standaloneNoteOpen, pushNoteDots } = renderChrome({
+      standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
+    });
+    await screen.findByRole("button", { name: "Report" });
+    await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
+        { paneKey: "terminal:1", projectPath: "/p", title: "Session A", sessionKey: "cli:s1", status: "open" }
+      ] }));
+    });
+
+    const bottom = document.querySelector(".rail-bottom-dots");
+    expect(bottom).not.toBeNull();
+    const notesCluster = bottom!.querySelector(".rail-notes-dots");
+    const sessionsCluster = bottom!.querySelector(".rail-session-dots");
+    expect(notesCluster).not.toBeNull();
+    expect(sessionsCluster).not.toBeNull();
+    expect(
+      Boolean(notesCluster!.compareDocumentPosition(sessionsCluster!) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true);
+
+    const noteDot = document.querySelector<HTMLButtonElement>(".rail-note-dot-btn");
+    expect(noteDot?.getAttribute("aria-label")).toBe("Scratch pad");
+    const tabReq = vi.fn();
+    window.addEventListener("agent-resume:tab-request", tabReq);
+    fireEvent.click(noteDot!);
+    await waitFor(() => expect(standaloneNoteOpen).toHaveBeenCalledWith({ noteId: "n1" }));
+    expect(tabReq).not.toHaveBeenCalled();
+    window.removeEventListener("agent-resume:tab-request", tabReq);
+
+    await act(async () => {
+      pushNoteDots([]);
+    });
+    expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
+    expect(document.querySelector(".rail-session-dots")).not.toBeNull();
+  });
+
+  it("updates floating note dots when the open-notes list changes", async () => {
+    const { pushNoteDots } = renderChrome();
+    await screen.findByRole("button", { name: "Report" });
+    expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
+
+    await act(async () => {
+      pushNoteDots([
+        { noteId: "a", title: "Alpha note" },
+        { noteId: "b", title: "Beta note" }
+      ]);
+    });
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-note-dot-btn")];
+    expect(dots).toHaveLength(2);
+    expect(dots.map((dot) => dot.getAttribute("aria-label"))).toEqual(["Alpha note", "Beta note"]);
   });
 });
