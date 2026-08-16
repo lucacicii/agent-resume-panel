@@ -1745,6 +1745,61 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
   });
 
+  it("docks the session transcript beside the live TUI without destroying the terminal", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    const previewSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+      preview: {
+        title: "Fix renderer",
+        messages: [
+          { role: "user", text: "Add a transcript pane" },
+          { role: "assistant", text: "Keep the TUI visible." }
+        ]
+      }
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loadingPreview": "Loading preview…", "desktop.sessions.noMessages": "No messages", "desktop.sessions.truncated": "(truncated)", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelTranscript": "Transcript", "desktop.workbench.transcriptOutline": "Turns", "desktop.workbench.transcriptSearchPlaceholder": "Search this conversation", "desktop.workbench.transcriptNeedSession": "Open a session", "desktop.workbench.transcriptNoMatches": "No matching turns", "desktop.workbench.transcriptRoleUser": "User", "desktop.workbench.transcriptRoleAssistant": "Assistant", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.resizeSidePanel": "Resize side panel"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      previewSession,
+      terminalSpawn,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy,
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    expect(screen.queryByRole("button", { name: "Transcript" })).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: /Add a transcript pane/ })).toBeTruthy();
+    expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Keep the TUI visible.");
+    expect(document.querySelector(".wb-git-pane-head")).toBeNull();
+    expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
+    expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
+    expect(document.querySelector(".wb-side-panel")).not.toBeNull();
+    expect(document.querySelector(".sheet")).toBeNull();
+    expect(terminalDestroy).not.toHaveBeenCalled();
+    expect(xtermMocks.instances).toHaveLength(1);
+    expect(localStorage.getItem("wb-side-panel-width")).toBe("420");
+  });
+
   it("hides session scrollbars from launch and shows only the TUI waterdrop in the alternate buffer", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

@@ -73,6 +73,7 @@ import {
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
 import { LinkGraphSidePane } from "./LinkGraphSidePane";
+import { SessionTranscriptPane } from "./SessionTranscriptPane";
 import type {
   LinkGraphAnalyzeArgs,
   LinkGraphAnalyzeResult,
@@ -233,7 +234,7 @@ type BrowserPane = {
   startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | "transcript" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned" | "active";
@@ -428,6 +429,8 @@ const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
+const DEFAULT_SIDE_WIDTH = 320;
+const TRANSCRIPT_SIDE_WIDTH = 420;
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 const UNCLASSIFIED_FOLDER_ID = "__workbench_unclassified__";
 
@@ -2391,6 +2394,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
+  const lastAutoTranscriptKey = useRef("");
   const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState("");
@@ -3469,6 +3473,28 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
+  const activeTranscriptTarget = useMemo(() => {
+    if (currentAcpChat) {
+      return { provider: "chat", sessionId: currentAcpChat.recordId, iconProvider: currentAcpChat.provider };
+    }
+    const identity = sessionIdentityFromKey(activeTerminal?.sessionKey);
+    return identity ? { ...identity, iconProvider: identity.provider } : null;
+  }, [activeTerminal?.sessionKey, currentAcpChat]);
+  useEffect(() => {
+    if (!activeTranscriptTarget) {
+      lastAutoTranscriptKey.current = "";
+      if (side === "transcript") setSide(null);
+      return;
+    }
+    const key = `${activeTranscriptTarget.provider}:${activeTranscriptTarget.sessionId}`;
+    if (lastAutoTranscriptKey.current === key) return;
+    lastAutoTranscriptKey.current = key;
+    if (sideWidth === DEFAULT_SIDE_WIDTH) {
+      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
+      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
+    }
+    setSide("transcript");
+  }, [activeTranscriptTarget, side, sideWidth]);
   const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
     {
       group: "session",
@@ -6629,6 +6655,17 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [searchMatches]);
   const searchFileCount = searchGroups.length;
   const searchMatchCount = searchMatches.length;
+  const openTranscriptSide = (forceOpen = false) => {
+    if (!forceOpen && side === "transcript") {
+      setSide(null);
+      return;
+    }
+    if (sideWidth === DEFAULT_SIDE_WIDTH) {
+      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
+      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
+    }
+    setSide("transcript");
+  };
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
     const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
@@ -7027,6 +7064,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
+          {activeTranscriptTarget ? <button type="button" className={`wb-detail-tool${side === "transcript" ? " active" : ""}`} aria-pressed={side === "transcript"} aria-label={t("desktop.workbench.sidePanelTranscript")} title={t("desktop.workbench.sidePanelTranscript")} onClick={() => openTranscriptSide()}><ThemeIcon name="history" size={16} /></button> : null}
           <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
         </div>
       </div>
@@ -7343,7 +7381,21 @@ export function WorkbenchPanel(): ReactPortal | null {
                 }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
               </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><p className="wb-search-meta" aria-live="polite">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><button type="button" className="wb-search-file-row" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span><ThemeIcon name="file-code" size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <button type="button" className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key} onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>; })}</div> : null}</div>; })}</div></>}
             </div>
-          </div> : <div className="wb-side-pane">
+          </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
+              const root = selectedProject || "";
+              const raw = target.path.replaceAll("\\", "/");
+              const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
+              const hit = linkGraphResult?.hits.find((item) => item.path === target.path || item.relativePath === raw);
+              const absolute = isAbs
+                ? target.path
+                : hit?.path || (root ? `${root.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}` : target.path);
+              void openFile(absolute, {
+                path: absolute,
+                line: target.line,
+                column: target.column || 1,
+                endColumn: target.endColumn || (target.column || 1) + 1
+              });
+            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>
@@ -7382,21 +7434,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                   </>
                     : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
                       : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
-            </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
-              const root = selectedProject || "";
-              const raw = target.path.replaceAll("\\", "/");
-              const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
-              const hit = linkGraphResult?.hits.find((item) => item.path === target.path || item.relativePath === raw);
-              const absolute = isAbs
-                ? target.path
-                : hit?.path || (root ? `${root.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}` : target.path);
-              void openFile(absolute, {
-                path: absolute,
-                line: target.line,
-                column: target.column || 1,
-                endColumn: target.endColumn || (target.column || 1) + 1
-              });
-            }} /> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
+            </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
               {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
               {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
               {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}

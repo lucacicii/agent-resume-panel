@@ -6328,6 +6328,207 @@ code {
   min-height: 0;
 }
 
+.wb-transcript-pane {
+  min-height: 0;
+}
+
+.wb-transcript-toolbar {
+  flex: 0 0 auto;
+  padding: 8px 10px 6px;
+}
+
+.wb-transcript-status {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.wb-transcript-outline {
+  flex: 0 0 auto;
+  max-height: 38%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-transcript-outline-toggle {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-transcript-outline-toggle:hover {
+  color: var(--color-label-primary, var(--text));
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
+}
+
+.wb-transcript-outline-toggle:focus-visible {
+  outline: 2px solid var(--color-accent, var(--accent));
+  outline-offset: -2px;
+}
+
+.wb-transcript-outline-list {
+  margin: 0;
+  padding: 0 6px 8px;
+  list-style: none;
+  overflow: auto;
+  min-height: 0;
+}
+
+.wb-transcript-outline-item {
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--color-label-primary, var(--text));
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-transcript-outline-item:hover {
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+.wb-transcript-outline-item.is-selected,
+.wb-transcript-outline-item:focus-visible {
+  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 14%, transparent));
+}
+
+.wb-transcript-outline-item:focus-visible {
+  outline: 2px solid var(--color-accent, var(--accent));
+  outline-offset: -2px;
+}
+
+.wb-transcript-outline-index {
+  flex: 0 0 auto;
+  color: var(--color-label-tertiary, var(--muted));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-transcript-outline-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-transcript-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 12px;
+}
+
+.wb-transcript-body .preview-msg .role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-transcript-body .wb-transcript-role-icon {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+}
+
+.wb-transcript-pane .wb-git-action-btn.is-active {
+  color: var(--color-accent, var(--accent));
+  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 14%, transparent));
+}
+
+.wb-transcript-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wb-transcript-md.markdown-body {
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.wb-transcript-md.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.wb-transcript-md.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.wb-transcript-md.markdown-body h1,
+.wb-transcript-md.markdown-body h2,
+.wb-transcript-md.markdown-body h3,
+.wb-transcript-md.markdown-body h4,
+.wb-transcript-md.markdown-body h5,
+.wb-transcript-md.markdown-body h6 {
+  margin: 0.7em 0 0.3em;
+}
+
+.wb-transcript-md.markdown-body p,
+.wb-transcript-md.markdown-body ul,
+.wb-transcript-md.markdown-body ol,
+.wb-transcript-md.markdown-body blockquote,
+.wb-transcript-md.markdown-body pre,
+.wb-transcript-md.markdown-body table,
+.wb-transcript-md.markdown-body hr {
+  margin: 0 0 0.45em;
+}
+
+.wb-transcript-md.markdown-body li + li,
+.wb-transcript-md.markdown-body li > ul,
+.wb-transcript-md.markdown-body li > ol {
+  margin-top: 0.12em;
+}
+
+.wb-transcript-body .preview-msg.user {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 14%, var(--color-control-bg, var(--panel)));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 38%, var(--color-separator, var(--border)));
+}
+
+.wb-transcript-body .preview-msg.assistant {
+  background: var(--color-secondary-bg, var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, var(--panel))));
+  border-color: var(--color-separator, var(--border));
+}
+
+.wb-transcript-body .preview-msg.user.is-selected {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 22%, var(--color-control-bg, var(--panel)));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 62%, var(--color-separator, var(--border)));
+}
+
+.wb-transcript-body .preview-msg.assistant.is-selected {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 10%, var(--color-secondary-bg, var(--panel)));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 42%, var(--color-separator, var(--border)));
+}
+
+@media (max-width: 300px) {
+  .wb-transcript-outline {
+    max-height: 28%;
+  }
+}
+
 .wb-explorer-file-tree {
   flex: 1 1 auto;
   min-height: 80px;
@@ -15116,6 +15317,26 @@ body::before {
 [data-visual-theme="cyberpunk"] .preview-msg.user {
   border-color: rgba(0,240,255,.44);
   box-shadow: inset 2px 0 0 var(--cyber-cyan);
+}
+
+[data-visual-theme="cyberpunk"] .wb-transcript-body .preview-msg.user {
+  background: rgba(0,240,255,.10);
+  border-color: rgba(0,240,255,.44);
+  box-shadow: inset 2px 0 0 var(--cyber-cyan);
+}
+
+[data-visual-theme="cyberpunk"] .wb-transcript-body .preview-msg.assistant {
+  background: rgba(255,43,214,.08);
+  border-color: rgba(255,43,214,.28);
+  box-shadow: inset 2px 0 0 var(--cyber-magenta);
+}
+
+[data-visual-theme="cyberpunk"] .wb-transcript-body .preview-msg.user.is-selected {
+  background: rgba(0,240,255,.18);
+}
+
+[data-visual-theme="cyberpunk"] .wb-transcript-body .preview-msg.assistant.is-selected {
+  background: rgba(255,43,214,.14);
 }
 
 [data-visual-theme="cyberpunk"][data-theme-effects="full"] .sheet-body.sessions-split::after {

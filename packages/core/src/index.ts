@@ -386,6 +386,13 @@ export {
   formatTranscript,
   truncateTranscript
 } from "./transcript/load";
+export {
+  extractTextFromContent,
+  finalizePreviewMessages,
+  isConversationPreviewText,
+  isUserOrAssistantRole,
+  normalizePreviewText
+} from "./transcript/text";
 
 export type {
   AgentCitation,
