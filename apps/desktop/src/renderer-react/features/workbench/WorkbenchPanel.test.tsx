@@ -314,7 +314,27 @@ const ARROW_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.externalTerminalHint": "Opened externally",
   "desktop.workbench.terminalLabel": "Terminal {0}",
   "desktop.workbench.closeTerminal": "Close terminal",
-  "desktop.workbench.terminalTabs": "Terminal tabs"
+  "desktop.workbench.terminalTabs": "Terminal tabs",
+  "desktop.workbench.sidePanelTranscript": "Transcript",
+  "desktop.workbench.transcriptOutline": "Turns",
+  "desktop.workbench.transcriptSearchPlaceholder": "Search this conversation",
+  "desktop.workbench.transcriptNeedSession": "Open a session",
+  "desktop.workbench.transcriptNoMatches": "No matching turns",
+  "desktop.workbench.transcriptRoleUser": "User",
+  "desktop.workbench.transcriptRoleAssistant": "Assistant",
+  "desktop.workbench.transcriptShowMarkdown": "Show Markdown preview",
+  "desktop.workbench.transcriptShowOriginal": "Show original text",
+  "desktop.workbench.transcriptThinking": "Thinking",
+  "desktop.common.loadingPreview": "Loading preview…",
+  "desktop.sessions.noMessages": "No messages",
+  "desktop.sessions.truncated": "(truncated)",
+  "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
+  "desktop.workbench.terminalComposerHint": "Click to type a command.",
+  "desktop.workbench.terminalComposerSend": "Send command",
+  "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+  "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
+  "desktop.workbench.terminalComposerHintLine": "Enter sends",
+  "desktop.workbench.resizeSidePanel": "Resize side panel"
 };
 
 const FOLDER_DRAG_TEST_MESSAGES: Record<string, string> = {
@@ -489,6 +509,7 @@ const PATH_DND_MESSAGES: Record<string, string> = {
   "desktop.workbench.noProjects": "No projects",
   "desktop.workbench.sidePanelExplorer": "Explorer",
   "desktop.workbench.sidePanelGit": "Git",
+  "desktop.workbench.sidePanelTranscript": "Transcript",
   "desktop.workbench.newTerminal": "New terminal",
   "desktop.workbench.newSession": "New session",
   "desktop.workbench.selectSessionHint": "Select a session",
@@ -1400,6 +1421,8 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       expect(document.activeElement?.classList.contains("wb-terminal-composer-input")).toBe(true);
     });
+    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer.is-docked")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(xtermMocks.instances[0].focusCalls).toBe(0);
   });
 
@@ -1793,6 +1816,8 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-pane-head")).toBeNull();
     expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
     expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
+    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer.is-docked")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-side-panel")).not.toBeNull();
     expect(document.querySelector(".sheet")).toBeNull();
     expect(terminalDestroy).not.toHaveBeenCalled();
@@ -2275,8 +2300,10 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    await screen.findByRole("button", { name: "Transcript" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
+    await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
     const directoryRow = await waitFor(() => {
       const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/src"]');
       if (!row) throw new Error("Explorer directory row missing");
@@ -2355,6 +2382,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByTitle("/work/app"));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    await screen.findByRole("button", { name: "Transcript" });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
@@ -2483,8 +2511,10 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
+    await screen.findByRole("button", { name: "Transcript" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
+    await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
     const fileRow = await waitFor(() => {
       const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-directory=false]")]
         .find((candidate) => candidate.textContent?.includes("O'Brien.md"));
@@ -5352,6 +5382,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
+      previewSession: async () => ({ session: { provider: "codex", id: "session-c", title: "Session C", projectPath: "/work/app", updatedAt: 1 }, preview: { title: "Session C", messages: [] } }),
       terminalSpawn,
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalGitStatus: async () => ({
@@ -5412,6 +5443,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
+      previewSession: async ({ id }: { id: string }) => ({ session: { provider: "codex", id, title: `Session ${id}`, projectPath: "/work/app", updatedAt: 1 }, preview: { title: `Session ${id}`, messages: [] } }),
       workbenchOpenSession,
       terminalSpawn,
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),

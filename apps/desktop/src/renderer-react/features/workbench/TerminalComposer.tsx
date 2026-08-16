@@ -77,8 +77,10 @@ export function TerminalComposer(props: {
   ptyId: number | null;
   active: boolean;
   registerFocus: (key: string, focus: () => void) => () => void;
+  variant?: "floating" | "docked";
 }): React.JSX.Element {
-  const { pane, ptyId, active, registerFocus } = props;
+  const { pane, ptyId, active, registerFocus, variant = "floating" } = props;
+  const docked = variant === "docked";
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -375,14 +377,15 @@ export function TerminalComposer(props: {
   return (
     <div
       ref={composerRef}
-      className={`wb-terminal-composer${focused ? " is-expanded" : " is-collapsed"}${dragOver ? " is-drag-over" : ""}`}
-      style={{ left: position.x, bottom: position.y }}
+      className={`wb-terminal-composer${docked ? " is-docked" : focused ? " is-expanded" : " is-collapsed"}${dragOver ? " is-drag-over" : ""}`}
+      style={docked ? undefined : { left: position.x, bottom: position.y }}
       title={t("desktop.workbench.terminalComposerHint")}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      {docked ? null : (
       <button
         type="button"
         className="wb-terminal-composer-grip"
@@ -396,6 +399,7 @@ export function TerminalComposer(props: {
       >
         <ThemeIcon name="grip-vertical" size={14} aria-hidden="true" />
       </button>
+      )}
       <textarea
         ref={inputRef}
         className="wb-terminal-composer-input"

@@ -27,6 +27,7 @@ async function renderComposer(options: {
   active?: boolean;
   group?: "session" | "terminal";
   cwd?: string;
+  variant?: "floating" | "docked";
 } = {}): Promise<{ map: RegisterMap; container: HTMLElement; registerSpy: ReturnType<typeof vi.fn> }> {
   const map: RegisterMap = new Map();
   const registerSpy = vi.fn((key: string, fn: () => void) => {
@@ -45,6 +46,7 @@ async function renderComposer(options: {
         ptyId={options.ptyId !== undefined ? options.ptyId : 7}
         active={options.active !== undefined ? options.active : true}
         registerFocus={registerSpy}
+        variant={options.variant}
       />
     </I18nProvider>
   );
@@ -108,6 +110,14 @@ describe("computeSuggestions", () => {
 });
 
 describe("TerminalComposer", () => {
+  it("docks without the floating grip or collapsed strip", async () => {
+    const { container } = await renderComposer({ variant: "docked" });
+    expect(composerEl(container).classList.contains("is-docked")).toBe(true);
+    expect(composerEl(container).classList.contains("is-collapsed")).toBe(false);
+    expect(container.querySelector(".wb-terminal-composer-grip")).toBeNull();
+    expect(screen.getByRole("button", { name: COMPOSER_MESSAGES["desktop.workbench.terminalComposerSend"] })).toBeTruthy();
+  });
+
   it("renders collapsed when not active and registers its focus handle", async () => {
     const { map, container, registerSpy } = await renderComposer({ active: false });
     expect(composerEl(container).classList.contains("is-collapsed")).toBe(true);

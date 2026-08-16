@@ -91,7 +91,6 @@ import {
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 import { WB_PATH_DND_MIME, hasWorkbenchPathDnd, shellQuotePath, startWorkbenchPathDrag } from "./workbenchDnd";
-import { TerminalComposer } from "./TerminalComposer";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
 import {
   emitWorkbenchSessionLaunched,
@@ -1725,7 +1724,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking, onRegisterComposerFocus }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1737,8 +1736,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
-  /** Register an agent-session composer focus handle keyed by pane key. */
-  onRegisterComposerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -2335,14 +2332,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
         <span>{t("desktop.common.loading")}</span>
       </div>
     ) : null}
-    {pane.group === "session" && ready ? (
-      <TerminalComposer
-        pane={{ key: pane.key, cwd: pane.cwd, group: pane.group }}
-        ptyId={ptyId.current}
-        active={active}
-        registerFocus={onRegisterComposerFocus}
-      />
-    ) : null}
   </div>;
 }
 
@@ -2837,6 +2826,12 @@ export function WorkbenchPanel(): ReactPortal | null {
           if (match) return match.localPath || match.portableKey || current;
           if (next.some((item) => item.projectPath === current)) return current;
           if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) return current;
+          if (
+            terminalsRef.current.some((pane) => pane.projectPath === current)
+            || acpChatsRef.current.some((pane) => pane.projectPath === current)
+            || editorsRef.current.some((pane) => pane.projectPath === current)
+            || diffsRef.current.some((pane) => pane.projectPath === current)
+          ) return current;
         }
         const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
         if (firstProject) return firstProject.localPath || firstProject.portableKey;
@@ -3494,7 +3489,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
     }
     setSide("transcript");
-  }, [activeTranscriptTarget, side, sideWidth]);
+  }, [activeTranscriptTarget, sideWidth]);
   const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
     {
       group: "session",
@@ -3616,6 +3611,13 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const registerComposerFocus = useCallback((key: string, focus: () => void) => {
     composerFocusRefs.current.set(key, focus);
+    if (focusPaneAfterPtyRef.current === key) {
+      const pane = terminalsRef.current.find((entry) => entry.key === key);
+      if (pane?.ptyId != null) {
+        focusPaneAfterPtyRef.current = "";
+        window.requestAnimationFrame(() => focus());
+      }
+    }
     return () => {
       composerFocusRefs.current.delete(key);
     };
@@ -3700,6 +3702,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [activePane, navigateToWorkbenchPane, selectedProject, workbenchPaneGroups]);
 
   const selectProject = (project: string | null, options?: { keepSessionKey?: boolean; keepSide?: boolean }) => {
+    const projectChanged = selectedProject !== project;
     setSelectedProject((current) => {
       if (current === project) return current;
       return project;
@@ -3713,7 +3716,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       else localStorage.removeItem(PROJECT_KEY);
     } catch { /* persistence is optional */ }
     if (!options?.keepSessionKey) setActiveSessionKey("");
-    if (!options?.keepSide) setSide(null);
+    if (!options?.keepSide && projectChanged) setSide(null);
     setGit(null);
     setGitLog(null);
     setGitShow(null);
@@ -4036,19 +4039,24 @@ export function WorkbenchPanel(): ReactPortal | null {
     terminalRefs.current.set(id, terminal);
     setTerminals((current) => current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane));
     if (focusPaneAfterPtyRef.current === key) {
-      focusPaneAfterPtyRef.current = "";
       const pane = terminalsRef.current.find((entry) => entry.key === key);
       window.requestAnimationFrame(() => {
         // Agent-session panes land in their composer once it has mounted
         // (setReady commits before the next frame); shells focus xterm.
         if (pane?.group === "session") {
-          const focusComposer = composerFocusRefs.current.get(key);
-          if (focusComposer) focusComposer();
-          // The composer may mount one frame late (React commit timing).
-          // Retry once instead of stealing focus to xterm.
-          else window.requestAnimationFrame(() => composerFocusRefs.current.get(key)?.());
+          const tryFocus = (attempt = 0) => {
+            const focusComposer = composerFocusRefs.current.get(key);
+            if (focusComposer) {
+              focusPaneAfterPtyRef.current = "";
+              focusComposer();
+              return;
+            }
+            if (attempt < 8) window.requestAnimationFrame(() => tryFocus(attempt + 1));
+          };
+          tryFocus();
           return;
         }
+        focusPaneAfterPtyRef.current = "";
         terminal.focus();
       });
     }
@@ -7215,7 +7223,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} onRegisterComposerFocus={registerComposerFocus} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
@@ -7395,7 +7403,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} /> : <div className="wb-side-pane">
+            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} composer={activeTerminal?.group === "session" ? { pane: { key: activeTerminal.key, cwd: activeTerminal.cwd, group: "session" }, ptyId: activeTerminal.ptyId ?? null, registerFocus: registerComposerFocus } : undefined} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>
