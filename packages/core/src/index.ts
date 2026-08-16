@@ -628,7 +628,7 @@ export {
   DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
-export { buildResumeCommand, buildNewSessionCommand, resumeProjectPath } from "./terminal/commands";
+export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,
@@ -710,6 +710,8 @@ export type {
 } from "./session/autoEmbeddingIndex";
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
+export { updateNativeSessionCwd } from "./session/nativeCwd";
+export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
 
 // Link graph engine (domain — no Notes/Session/Flow deps; MCP + Desktop both call this)
 export { runLinkGraphTrace } from "./linkgraph/agent";

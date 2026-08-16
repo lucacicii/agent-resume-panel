@@ -7,7 +7,7 @@ export async function renameClaudeSession(claudeHome: string, session: AgentSess
   await appendJsonLine(historyPath, {
     display: title,
     timestamp: Date.now(),
-    project: session.nativeProjectPath?.trim() || session.projectPath,
+    project: session.projectPath,
     sessionId: session.id
   });
 }

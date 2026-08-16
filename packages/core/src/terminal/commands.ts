@@ -1,16 +1,13 @@
 import { AgentProvider, AgentSession } from "../catalog/types";
 
 /**
- * Resume/operations must run in the provider's native cwd (where agent data
- * lives), not a user-reassigned display path. Falls back to projectPath for
- * legacy rows without a native path.
+ * Resume runs in the session's assigned project (user-move aware). Providers
+ * restore conversations by session id, so the working directory is where the
+ * user expects the agent to keep working — the new project after a move.
+ * Sessions are resumed in projectPath (effective), not the native path.
  */
-export function resumeProjectPath(session: AgentSession): string {
-  return session.nativeProjectPath?.trim() || session.projectPath;
-}
-
 export function buildResumeCommand(session: AgentSession): string {
-  const cwd = resumeProjectPath(session);
+  const cwd = session.projectPath;
   if (session.provider === "codex") {
     return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
   }

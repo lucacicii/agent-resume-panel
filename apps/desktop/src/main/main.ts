@@ -20,7 +20,7 @@ import {
   backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
-  resumeProjectPath,
+  updateNativeSessionCwd,
   effectivePanelHome,
   estimateDigestRun,
   expandHome,
@@ -953,7 +953,7 @@ async function resumeCatalogSession(
   }
   void trackSessionTagHit(session.provider, session.id);
   const mode = resolveWorkbenchTerminalMode(settings);
-  const cwd = await resolveSessionCwd(resumeProjectPath(session), settings);
+  const cwd = await resolveSessionCwd(session.projectPath, settings);
 
   // Only provider "chat" is ACP. Do not use source/acpProvider alone — that must never hijack CLI resume.
   if (session.provider === "chat") {
@@ -2101,6 +2101,18 @@ function registerIpc(): void {
       }
       const settings = await loadSettings();
       const paths = await loadPanelDbPaths(settings);
+      // Physical move first: rewrite the provider's native cwd so the next sync
+      // converges native_project_path (and project_path) onto the target.
+      // Best-effort — any failure falls back to the catalog-only move below and
+      // the two-layer value rule keeps the user assignment sticky.
+      let nativeUpdated = false;
+      try {
+        const homes = resolvePreviewHomes(settings);
+        const native = await updateNativeSessionCwd(provider, id, targetProjectPath, homes);
+        nativeUpdated = native.ok;
+      } catch {
+        nativeUpdated = false;
+      }
       const result = await moveSessionToProjectInCatalog(
         paths.catalogDb,
         provider,
@@ -2127,7 +2139,7 @@ function registerIpc(): void {
           // Desktop workbench tables may be absent — catalog move is already done.
         }
       }
-      return result;
+      return { ...result, nativeUpdated };
     }
   );
 

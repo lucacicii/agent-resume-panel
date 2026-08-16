@@ -41,6 +41,7 @@ import { VirtualList } from "../../components/VirtualList";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
+import type { BrowserSessionState } from "../../../shared/browserTypes";
 import {
   acpRuntimeToStatus,
   collectActiveSessionDots,
@@ -4279,6 +4280,56 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [selectedProject, setActivePane, t]);
 
+  // Auto-register browser panes created outside the Workbench UI (MCP browser_open,
+  // agent-driven sessions, standalone window dock-back). Without this the pane has no
+  // host/bounds reporting, so the live WebContentsView never attaches and the group is blank.
+  useEffect(() => {
+    if (typeof desktopApi().onBrowserEvent !== "function") return;
+    const upsertPane = (session: BrowserSessionState) => {
+      setBrowsers((current) => {
+        const key = `browser:${session.id}`;
+        const title =
+          session.tabs.find((tab) => tab.tabId === session.activeTabId)?.title ||
+          session.tabs[0]?.title ||
+          t("desktop.browser.newTab");
+        const existing = current.find((pane) => pane.key === key);
+        if (!existing) {
+          return [
+            ...current,
+            {
+              key,
+              title,
+              group: "browser" as const,
+              browserId: session.id,
+              projectPath: session.projectPath,
+              surfaceKind: session.surface.kind
+            }
+          ];
+        }
+        return current.map((pane) =>
+          pane.key === key
+            ? { ...pane, title, surfaceKind: session.surface.kind }
+            : pane
+        );
+      });
+    };
+    const off = desktopApi().onBrowserEvent((event) => {
+      if (event.type === "state") {
+        upsertPane(event.session);
+        return;
+      }
+      if (event.type === "surface") {
+        void desktopApi()
+          .browserGet({ browserId: event.browserId })
+          .then((session) => {
+            if (session) upsertPane(session);
+          })
+          .catch(() => undefined);
+      }
+    });
+    return off;
+  }, [t]);
+
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
     if (activePane.startsWith("terminal:")) {
@@ -4616,7 +4667,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
       // Main may return ACP for chat rows when opened via generic resume path.
       if (result.mode === "acp" && result.acp) {
-        const acpProject = result.cwd || session.projectPath || "";
+        const acpProject = session.projectPath || result.cwd || "";
         if (acpProject) selectProject(acpProject, { keepSessionKey: true });
         addAcpChat({
           id: result.acp.chatId,
@@ -4641,9 +4692,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         setStatus({ text: t("desktop.workbench.resumeCommandMissing"), kind: "error" });
         return;
       }
-      // Prefer resolved cwd so terminal pane projectPath matches selection.
-      selectProject(cwd, { keepSessionKey: true });
-      const terminalKey = addTerminal(session.title || session.id, cwd, command, cwd, key);
+      // UI activation follows the assigned project (user-move aware); the shell
+      // still runs in the native cwd where the agent's data lives.
+      const projectPath = session.projectPath?.trim() || cwd;
+      selectProject(projectPath, { keepSessionKey: true });
+      const terminalKey = addTerminal(session.title || session.id, cwd, command, projectPath, key);
       // Box-primary: an agent session pane lands text entry in its composer
       // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
       focusWorkbenchPane(terminalKey);

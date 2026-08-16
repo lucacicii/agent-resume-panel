@@ -15,6 +15,6 @@ export async function runOpenCodeSessionDelete(sessionId: string): Promise<void>
 export async function runCodexArchive(session: AgentSession): Promise<void> {
   await execFileAsync("codex", ["archive", session.id], {
     maxBuffer: 1024 * 1024,
-    cwd: session.nativeProjectPath?.trim() || session.projectPath || undefined
+    cwd: session.projectPath || undefined
   });
 }

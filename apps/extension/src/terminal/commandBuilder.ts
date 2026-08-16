@@ -1,12 +1,8 @@
 import { AgentProvider, AgentSession } from "../history";
 
-/** Resume must run in the provider's native cwd, not a user-reassigned display path. */
-function resumeProjectPath(session: AgentSession): string {
-  return session.nativeProjectPath?.trim() || session.projectPath;
-}
-
+/** Resume runs in the assigned project (user-move aware); providers restore by session id. */
 export function buildResumeCommand(session: AgentSession): string {
-  const cwd = resumeProjectPath(session);
+  const cwd = session.projectPath;
   if (session.provider === "codex") {
     return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
   }

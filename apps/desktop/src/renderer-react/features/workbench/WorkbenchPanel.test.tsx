@@ -741,6 +741,53 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
 
+  it("activates the assigned project when resuming a moved session", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    // Session was moved: assigned project /work/docs, native cwd /work/app.
+    const workbenchOpenSession = vi.fn(async () => ({
+      mode: "embedded",
+      cwd: "/work/app",
+      command: "codex resume --cd /work/app session-1"
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.resumeCommandMissing": "Could not build a resume command", "desktop.workbench.pathMissingHint": "Local folder not found on this machine"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex" as const, id: "session-1", title: "Moved work", projectPath: "/work/docs", nativeProjectPath: "/work/app", projectOverridden: true, updatedAt: 2 },
+        { provider: "claude" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", updatedAt: 1 }
+      ],
+      listProjects: async () => [
+        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
+        { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
+      ],
+      listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalDestroy: async () => ({ ok: true }),
+      workbenchOpenSession
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(screen.getByTitle("/work/docs"));
+    const moved = await screen.findByRole("button", { name: /Moved work/ });
+    fireEvent.click(moved);
+    await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
+    // Sidebar activates the assigned project, not the native cwd.
+    expect(screen.getByTitle("/work/docs").classList.contains("active")).toBe(true);
+    expect(screen.getByTitle("/work/app").classList.contains("active")).toBe(false);
+  });
+
   it("renders nested Workbench folders and filters sessions by the selected folder", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

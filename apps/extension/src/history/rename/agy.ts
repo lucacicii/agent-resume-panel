@@ -32,7 +32,7 @@ export async function renameAgySession(
   await appendJsonLine(path.join(root, "history.jsonl"), {
     display: title,
     timestamp: Date.now(),
-    workspace: session.nativeProjectPath?.trim() || session.projectPath,
+    workspace: session.projectPath,
     conversationId: session.id
   });
 }

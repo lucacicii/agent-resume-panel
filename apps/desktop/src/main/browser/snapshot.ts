@@ -161,7 +161,23 @@ async function captureA11ySnapshot(
         return null;
       }
       const node = byId.get(nodeId);
-      if (!node || node.ignored) return null;
+      if (!node) return null;
+      // Ignored nodes are non-semantic structural wrappers (Chromium marks them
+      // "ignored"). Inline their descendants into the nearest emitted ancestor
+      // instead of dropping the whole subtree.
+      if (node.ignored) {
+        const inline: SnapshotNode[] = [];
+        for (const childId of node.childIds || []) {
+          const child = visit(childId, depth + 1);
+          if (child) inline.push(child);
+        }
+        if (inline.length === 1) return inline[0];
+        if (inline.length === 0) return null;
+        counter += 1;
+        const out: SnapshotNode = { ref: `e${counter}`, role: "generic" };
+        out.children = inline;
+        return out;
+      }
       const role = axString(node.role) || "unknown";
       const name = axString(node.name);
       const rawValue = axString(node.value);

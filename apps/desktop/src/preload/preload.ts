@@ -325,6 +325,8 @@ export interface DesktopApi {
     toProjectId: string;
     oldPath: string;
     newPath: string;
+    /** True when the provider's native cwd was also rewritten (physical move). */
+    nativeUpdated: boolean;
   }>;
   createScratchDir(): Promise<string>;
   workbenchGetProjectEditor(): Promise<{

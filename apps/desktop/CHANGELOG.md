@@ -17,7 +17,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Fixed
 
-- **Session moves to another project now stick**: reassigning a session to a different project keeps the assignment across provider syncs — the catalog tracks the provider's native path separately, so sync no longer snaps the session back. Resuming a moved session still uses the native working directory where the agent's data lives. Moving a session back to its native project restores automatic path tracking.
+- **Session moves to another project now stick**: reassigning a session to a different project keeps the assignment across provider syncs — the catalog tracks the provider's native path separately, so sync no longer snaps the session back. Moving a session back to its native project restores automatic path tracking.
+- **Resuming a moved session starts the agent in the new project**: the resume command (and terminal cwd) now follow the assigned project for every provider, so the agent keeps working in the directory you moved it to. For Codex, Grok, OpenCode, Antigravity, Cursor CLI, Claude, Pi, and Prime Agent the provider's stored cwd is rewritten too, so even a plain `resume` outside the panel starts in the new project (best-effort; remaining providers stay sticky via the catalog's native-path tracking).
 
 ### [0.2.13]
 
@@ -364,7 +365,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 修复
 
-- **会话跨项目移动不再被同步回退**：将会话重新分配到其他项目后，归属会在多次同步后保持 —— catalog 单独记录 provider 的原生路径，同步不再把会话弹回原项目。恢复（resume）被移动的会话时仍使用原生工作目录（agent 数据所在位置）。把会话移回其原生项目即恢复自动路径跟随。
+- **会话跨项目移动不再被同步回退**：将会话重新分配到其他项目后，归属会在多次同步后保持 —— catalog 单独记录 provider 的原生路径，同步不再把会话弹回原项目。把会话移回其原生项目即恢复自动路径跟随。
+- **恢复被移动的会话时，agent 直接在新项目目录启动**：所有 provider 的恢复命令与终端工作目录都跟随归属项目，agent 在你移到的目录继续工作。Codex、Grok、OpenCode、Antigravity、Cursor CLI、Claude、Pi 与 Prime Agent 还会改写 provider 存储的 cwd，即使绕过面板直接 resume 也会在新项目启动（尽力而为；其余 provider 靠原生路径跟踪保持归属）。
 
 ### [0.2.13]
 

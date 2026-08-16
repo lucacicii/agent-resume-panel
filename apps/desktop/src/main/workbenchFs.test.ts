@@ -4,13 +4,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("electron", () => ({ shell: { openPath: vi.fn() } }));
+vi.mock("electron", () => ({
+  shell: { openPath: vi.fn() },
+  ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }
+}));
+
+import { ipcMain } from "electron";
 
 import {
   discardGitChange,
   discardGitHunk,
   discardGitLine,
   gitStatusForRepo,
+  registerWorkbenchFsIpc,
   stageGitHunk,
   stageGitLine,
   unstageGitHunk,
@@ -323,5 +329,25 @@ describe("stageGitLine / unstageGitLine", () => {
     expect(worktreeLines[8]).toBe("staged second");
     expect(indexLines[3]).toBe("line 4");
     expect(indexLines[8]).toBe("staged second");
+  });
+});
+
+describe("terminal:gitDiffSides", () => {
+  it("opens a staged file diff via the index ref (:path), not the invalid ::path", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, "staged content\n");
+    git(repo, "add", "tracked.txt");
+    fs.writeFileSync(tracked, "working tree content\n");
+
+    registerWorkbenchFsIpc();
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitDiffSides")?.[1];
+    expect(handler).toBeTruthy();
+
+    const result = await handler!({} as never, { cwd: repo, path: "tracked.txt", staged: true });
+
+    expect(result.newText).toBe("staged content\n");
+    expect(result.oldText).toBe("base\n");
+    expect(result.newLabel).toBe("Staged");
   });
 });

@@ -433,7 +433,9 @@ async function queryGitDiffSides(
   const [patch, headText, stagedText] = await Promise.all([
     queryGitDiffPatch(root, relPath, staged),
     gitShowAtRef(root, "HEAD", relPath),
-    staged ? gitShowAtRef(root, ":", relPath) : Promise.resolve("")
+    // Staged content lives in the index; `git show :<path>` reads stage 0.
+    // An empty ref yields exactly `:<path>` — never the invalid `::<path>`.
+    staged ? gitShowAtRef(root, "", relPath) : Promise.resolve("")
   ]);
   let oldText = headText;
   let newText = "";
