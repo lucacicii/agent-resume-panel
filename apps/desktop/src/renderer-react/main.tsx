@@ -13,6 +13,7 @@ import { NotesPanel } from "./features/notes/NotesPanel";
 import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
+import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
 import { FlowPanel } from "./features/flow/FlowPanel";
 import { KanbanPanel } from "./features/kanban/KanbanPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
@@ -173,7 +174,9 @@ function MainRendererRuntime(): React.JSX.Element {
       <ReportPanel />
       <GtdSheet />
       <AgentPanel />
-      <WorkbenchPanel />
+      <DiffWorkerPool>
+        <WorkbenchPanel />
+      </DiffWorkerPool>
       <NotesPanel />
       <FlowPanel />
       <KanbanPanel />

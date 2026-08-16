@@ -428,16 +428,20 @@ async function queryGitDiffSides(
   }
   const absPath = path.resolve(root, relPath);
   resolvePathWithinRoot(absPath, root);
-  const patch = await queryGitDiffPatch(root, relPath, staged);
-
-  const headText = await gitShowAtRef(root, "HEAD", relPath);
+  // The patch and the HEAD/"staged" contents are independent git queries:
+  // run them concurrently to cut open-diff latency by one subprocess round.
+  const [patch, headText, stagedText] = await Promise.all([
+    queryGitDiffPatch(root, relPath, staged),
+    gitShowAtRef(root, "HEAD", relPath),
+    staged ? gitShowAtRef(root, ":", relPath) : Promise.resolve("")
+  ]);
   let oldText = headText;
   let newText = "";
   let oldLabel = "HEAD";
   let newLabel = staged ? "Staged" : "Working Tree";
 
   if (staged) {
-    newText = await gitShowAtRef(root, ":", relPath);
+    newText = stagedText;
     if (oldText === "" && newText !== "") {
       oldLabel = "(empty)";
     }

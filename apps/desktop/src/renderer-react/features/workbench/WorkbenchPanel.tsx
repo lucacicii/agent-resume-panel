@@ -5991,7 +5991,10 @@ export function WorkbenchPanel(): ReactPortal | null {
             const projectKey = paneProjectKey(selectedProject);
             return current[projectKey] === pane.key ? { ...current, [projectKey]: "" } : current;
           });
-        } else {
+        } else if (refreshed.oldText !== pane.oldText || refreshed.newText !== pane.newText) {
+          // Skip state updates when the content is unchanged (e.g. a save that
+          // wrote identical bytes) so the diff pane is not re-parsed and
+          // re-highlighted on every filesystem event.
           setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
         }
       } catch {

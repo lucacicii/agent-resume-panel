@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
+import { useFileDiffParse } from "./useFileDiffParse";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 
 export type WorkbenchDiffSource = "working-tree" | "staged" | "untracked" | "commit";
@@ -186,18 +187,18 @@ export function WorkbenchDiffView({
   const newFile = diff.newLabel === "(deleted)"
     ? null
     : toFileContents(diff.path, diff.newText, `${itemId}:${itemVersion}:new`);
-  const fileDiff = useMemo(
-    () => parseDiffFromFile(oldFile, newFile),
-    [diff.key, diff.oldLabel, diff.oldText, diff.newLabel, diff.newText, diff.path]
-  );
-  const items = useMemo<readonly CodeViewItem[]>(() => [{
+  const { fileDiff, pending } = useFileDiffParse(oldFile, newFile);
+  const items = useMemo<readonly CodeViewItem[]>(() => fileDiff ? [{
     id: itemId,
     type: "diff",
     fileDiff,
     version: itemVersion
-  }], [fileDiff, itemId, itemVersion]);
+  }] : [], [fileDiff, itemId, itemVersion]);
   const activeSelectedLines = selectedLines?.id === itemId ? selectedLines : null;
-  const selectedHunk = useMemo(() => hunkForSelection(fileDiff, activeSelectedLines), [activeSelectedLines, fileDiff]);
+  const selectedHunk = useMemo(
+    () => fileDiff ? hunkForSelection(fileDiff, activeSelectedLines) : null,
+    [activeSelectedLines, fileDiff]
+  );
   const matches = useMemo(
     () => matchesWithLines(diff.oldText, diff.newText, findQuery),
     [diff.oldText, diff.newText, findQuery]
@@ -416,7 +417,7 @@ export function WorkbenchDiffView({
       <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}><ThemeIcon name="close" size={14} /></button>
     </div> : null}
     <div className="wb-diff-code-view">
-      <CodeView
+      {pending ? <div className="wb-diff-loading" role="status"><span className="wb-diff-loading-spinner" aria-hidden="true" /></div> : <CodeView
         key={diff.key}
         ref={codeViewRef}
         items={items}
@@ -446,7 +447,6 @@ export function WorkbenchDiffView({
           },
           hunkSeparators: "line-info"
         }}
-      />
-    </div>
+      />}</div>
   </div>;
 }
