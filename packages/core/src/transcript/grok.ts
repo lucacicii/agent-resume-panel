@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { readJsonLines } from "./jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { findFilesByName } from "./fs";
 
 interface GrokChatRow {
@@ -33,14 +33,15 @@ export async function previewGrokSession(
         continue;
       }
 
-      const text = extractTextFromContent(row.content);
-      if (!text) {
+      const extracted = extractPreviewContent(row.content);
+      if (!extracted.text && !extracted.thinking) {
         continue;
       }
 
       messages.push({
         role,
-        text,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined,
         timestamp: row.timestamp
       });
     }

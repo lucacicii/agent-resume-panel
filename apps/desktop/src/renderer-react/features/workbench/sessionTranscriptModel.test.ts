@@ -48,6 +48,14 @@ describe("filterSessionTranscript", () => {
     expect(filtered.outline).toEqual([]);
   });
 
+  it("keeps thinking on assistant messages and can match search against it", () => {
+    const model = buildSessionTranscriptModel([
+      { role: "assistant", text: "The folder is empty because git drops it.", thinking: "Inspect status parsing." }
+    ]);
+    expect(model.messages[0]?.thinking).toBe("Inspect status parsing.");
+    expect(filterSessionTranscript(model, "status parsing").messages).toHaveLength(1);
+  });
+
   it("keeps a user outline item when the query matches that prompt", () => {
     const filtered = filterSessionTranscript(model, "original");
     expect(filtered.outline.map((item) => item.title)).toEqual(["Show the original transcript instead."]);

@@ -387,12 +387,14 @@ export {
   truncateTranscript
 } from "./transcript/load";
 export {
+  extractPreviewContent,
   extractTextFromContent,
   finalizePreviewMessages,
   isConversationPreviewText,
   isUserOrAssistantRole,
   normalizePreviewText
 } from "./transcript/text";
+export type { ExtractedPreviewContent } from "./transcript/text";
 
 export type {
   AgentCitation,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  extractPreviewContent,
   extractTextFromContent,
   finalizePreviewMessages,
   isConversationPreviewText
@@ -21,6 +22,29 @@ test("isConversationPreviewText drops slash-command and token wrappers", () => {
   assert.equal(isConversationPreviewText("<total_tokens>14968810 tokens left</total_tokens>"), false);
   assert.equal(isConversationPreviewText("[Request interrupted by user for tool use]"), false);
   assert.equal(isConversationPreviewText("commit(中文) and push"), true);
+});
+
+test("extractPreviewContent separates thinking from visible answer text", () => {
+  const extracted = extractPreviewContent([
+    { type: "thinking", thinking: "Need to inspect the git tree." },
+    { type: "text", text: "The empty folder is a status parser bug." }
+  ]);
+  assert.deepEqual(extracted, {
+    thinking: "Need to inspect the git tree.",
+    text: "The empty folder is a status parser bug."
+  });
+});
+
+test("finalizePreviewMessages keeps thinking when merging assistant fragments", () => {
+  const result = finalizePreviewMessages("Fix renderer", [
+    { role: "user", text: "Why is the folder empty?" },
+    { role: "assistant", text: "", thinking: "Check git status parsing." },
+    { role: "assistant", text: "It drops empty directories." }
+  ]);
+  assert.deepEqual(result.messages, [
+    { role: "user", text: "Why is the folder empty?" },
+    { role: "assistant", text: "It drops empty directories.", thinking: "Check git status parsing." }
+  ]);
 });
 
 test("finalizePreviewMessages merges consecutive assistant fragments and ignores command noise", () => {

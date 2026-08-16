@@ -9,7 +9,14 @@ const TOOL_BLOCK_TYPES = new Set([
   "function_call_output"
 ]);
 
+const THINKING_BLOCK_TYPES = new Set(["thinking", "reasoning", "reason"]);
+
 const NOISE_TEXT = /^(?:<(?:tool_result|tool-use|command-name|command-message|command-args|local-command-stdout|local-command-stderr|total_tokens|task-notification)\b|\[Request interrupted\b)/i;
+
+export type ExtractedPreviewContent = {
+  text: string;
+  thinking: string;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
@@ -22,28 +29,50 @@ function isToolishBlock(block: Record<string, unknown>): boolean {
   return false;
 }
 
-function collectTextParts(content: unknown, parts: string[]): void {
+function blockType(block: Record<string, unknown>): string {
+  return typeof block.type === "string" ? block.type : "";
+}
+
+function collectParts(content: unknown, textParts: string[], thinkingParts: string[]): void {
   if (typeof content === "string") {
-    if (content.trim()) parts.push(content);
+    if (content.trim()) textParts.push(content);
     return;
   }
   if (!Array.isArray(content)) return;
   for (const block of content) {
     if (typeof block === "string") {
-      if (block.trim()) parts.push(block);
+      if (block.trim()) textParts.push(block);
       continue;
     }
     if (!isRecord(block) || isToolishBlock(block)) continue;
-    if (typeof block.text === "string" && block.text.trim()) {
-      parts.push(block.text);
+    const type = blockType(block);
+    const thinkingText = typeof block.thinking === "string"
+      ? block.thinking
+      : type && THINKING_BLOCK_TYPES.has(type) && typeof block.text === "string"
+        ? block.text
+        : "";
+    if (thinkingText.trim()) {
+      thinkingParts.push(thinkingText);
+      continue;
+    }
+    if (typeof block.text === "string" && block.text.trim() && !THINKING_BLOCK_TYPES.has(type)) {
+      textParts.push(block.text);
     }
   }
 }
 
+export function extractPreviewContent(content: unknown): ExtractedPreviewContent {
+  const textParts: string[] = [];
+  const thinkingParts: string[] = [];
+  collectParts(content, textParts, thinkingParts);
+  return {
+    text: normalizePreviewText(textParts.join("\n")),
+    thinking: normalizePreviewText(thinkingParts.join("\n\n"))
+  };
+}
+
 export function extractTextFromContent(content: unknown): string {
-  const parts: string[] = [];
-  collectTextParts(content, parts);
-  return normalizePreviewText(parts.join("\n"));
+  return extractPreviewContent(content).text;
 }
 
 export function normalizePreviewText(input: string): string {
@@ -67,27 +96,41 @@ export function finalizePreviewMessages(
   const merged: PreviewMessage[] = [];
   for (const message of messages) {
     const text = message.text.trim();
-    if (!isConversationPreviewText(text) || !isUserOrAssistantRole(message.role)) continue;
+    const thinking = message.thinking?.trim() || "";
+    if (!isUserOrAssistantRole(message.role)) continue;
+    if (message.role === "user") {
+      if (!isConversationPreviewText(text)) continue;
+      merged.push(message.timestamp ? { role: "user", text, timestamp: message.timestamp } : { role: "user", text });
+      continue;
+    }
+    if (!isConversationPreviewText(text) && !thinking) continue;
     const previous = merged.at(-1);
-    if (previous && previous.role === "assistant" && message.role === "assistant") {
-      previous.text = `${previous.text}\n\n${text}`;
+    if (previous && previous.role === "assistant") {
+      if (text && isConversationPreviewText(text)) {
+        previous.text = previous.text ? `${previous.text}\n\n${text}` : text;
+      }
+      if (thinking) {
+        previous.thinking = previous.thinking ? `${previous.thinking}\n\n${thinking}` : thinking;
+      }
       if (!previous.timestamp && message.timestamp) previous.timestamp = message.timestamp;
       continue;
     }
     merged.push({
-      role: message.role,
-      text,
-      timestamp: message.timestamp
+      role: "assistant",
+      text: isConversationPreviewText(text) ? text : "",
+      ...(thinking ? { thinking } : {}),
+      ...(message.timestamp ? { timestamp: message.timestamp } : {})
     });
   }
 
-  if (merged.length <= MAX_PREVIEW_MESSAGES) {
-    return { title, messages: merged, warning };
+  const visible = merged.filter((message) => message.role === "user" || message.text || message.thinking);
+  if (visible.length <= MAX_PREVIEW_MESSAGES) {
+    return { title, messages: visible, warning };
   }
 
   return {
     title,
-    messages: merged.slice(-MAX_PREVIEW_MESSAGES),
+    messages: visible.slice(-MAX_PREVIEW_MESSAGES),
     truncated: true,
     warning
   };

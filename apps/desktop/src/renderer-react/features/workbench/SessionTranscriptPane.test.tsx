@@ -114,6 +114,37 @@ describe("SessionTranscriptPane", () => {
     expect(document.querySelector(".wb-transcript-md strong")?.textContent).toBe("bold");
   });
 
+  it("keeps thinking collapsed until the user expands it", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "claude", id: "session-think" },
+      preview: {
+        title: "Think",
+        messages: [{
+          role: "assistant",
+          text: "The folder is empty because git drops it.",
+          thinking: "Inspect status parsing."
+        }]
+      }
+    });
+    render(<SessionTranscriptPane provider="claude" sessionId="session-think" active />);
+    expect(await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" })).toBeTruthy();
+    expect(screen.queryByText("Inspect status parsing.")).toBeNull();
+    expect(screen.getByText("The folder is empty because git drops it.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.transcriptThinking" }));
+    expect(screen.getByText("Inspect status parsing.")).toBeTruthy();
+  });
+
+  it("silently refreshes an active transcript on the auto-refresh interval", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-1" },
+      preview: { title: "Fix renderer", messages: [{ role: "user", text: "Add a transcript pane" }] }
+    });
+    render(<SessionTranscriptPane provider="codex" sessionId="session-1" active autoRefreshMs={20} />);
+    expect(await screen.findByRole("button", { name: /Add a transcript pane/ })).toBeTruthy();
+    expect(apiMocks.previewSession).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1));
+  });
+
   it("does not fetch while inactive", async () => {
     render(<SessionTranscriptPane provider="codex" sessionId="session-1" active={false} />);
     await act(async () => undefined);

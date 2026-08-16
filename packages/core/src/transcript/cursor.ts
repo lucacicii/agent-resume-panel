@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { isNodeError, readJsonLines } from "./jsonl";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 
 export interface CursorChatMeta {
@@ -77,9 +77,13 @@ export async function previewCursorSession(
     if (!isUserOrAssistantRole(row.role)) {
       continue;
     }
-    const text = extractTextFromContent(row.message?.content);
-    if (text) {
-      messages.push({ role: row.role, text });
+    const extracted = extractPreviewContent(row.message?.content);
+    if (extracted.text || extracted.thinking) {
+      messages.push({
+        role: row.role,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined
+      });
     }
   }
   if (!messages.length) {

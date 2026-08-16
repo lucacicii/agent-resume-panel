@@ -1,4 +1,5 @@
 export {
+  extractPreviewContent,
   extractTextFromContent,
   finalizePreviewMessages,
   isConversationPreviewText,

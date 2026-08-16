@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 export interface PreviewMessage {
   role: "user" | "assistant";
   text: string;
+  thinking?: string;
   timestamp?: string;
 }
 

@@ -19,16 +19,20 @@ type TranscriptPreview = {
   warning?: string;
 };
 
+const TRANSCRIPT_AUTO_REFRESH_MS = 5_000;
+
 export function SessionTranscriptPane({
   provider,
   sessionId,
   iconProvider,
-  active
+  active,
+  autoRefreshMs = TRANSCRIPT_AUTO_REFRESH_MS
 }: {
   provider: string;
   sessionId: string;
   iconProvider?: string;
   active: boolean;
+  autoRefreshMs?: number;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -39,25 +43,29 @@ export function SessionTranscriptPane({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
+  const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef(0);
 
-  const loadPreview = useCallback(async () => {
+  const loadPreview = useCallback(async (silent = false) => {
     if (!provider || !sessionId) return;
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
-    setLoading(true);
-    setError("");
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const result = await desktopApi().previewSession({ provider, id: sessionId });
       if (requestRef.current !== requestId) return;
       setPreview(result.preview);
+      if (silent) setError("");
     } catch (caught) {
       if (requestRef.current !== requestId) return;
-      setPreview(null);
+      if (!silent) setPreview(null);
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      if (requestRef.current === requestId) setLoading(false);
+      if (requestRef.current === requestId && !silent) setLoading(false);
     }
   }, [provider, sessionId]);
 
@@ -66,9 +74,19 @@ export function SessionTranscriptPane({
     setSelectedId(null);
     setPreview(null);
     setError("");
+    setExpandedThinking({});
     if (!active || !provider || !sessionId) return;
     void loadPreview();
   }, [active, loadPreview, provider, sessionId]);
+
+  useEffect(() => {
+    if (!active || !provider || !sessionId) return;
+    if (autoRefreshMs <= 0) return;
+    const timer = window.setInterval(() => {
+      void loadPreview(true);
+    }, autoRefreshMs);
+    return () => window.clearInterval(timer);
+  }, [active, autoRefreshMs, loadPreview, provider, sessionId]);
 
   const model = useMemo(
     () => buildSessionTranscriptModel(preview?.messages || []),
@@ -213,14 +231,42 @@ export function SessionTranscriptPane({
                     {roleLabel(message)}
                     {stamp ? ` · ${stamp}` : ""}
                   </div>
-                  {renderMarkdownView ? (
-                    <div
-                      className="wb-transcript-md markdown-body"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
-                    />
-                  ) : (
-                    <div className="wb-transcript-plain">{message.text}</div>
-                  )}
+                  {message.thinking ? (
+                    <div className="wb-transcript-thinking">
+                      <button
+                        type="button"
+                        className="wb-transcript-thinking-toggle"
+                        aria-expanded={expandedThinking[message.id] === true}
+                        onClick={() => setExpandedThinking((current) => ({
+                          ...current,
+                          [message.id]: !current[message.id]
+                        }))}
+                      >
+                        <ThemeIcon name="chevron-right" className={expandedThinking[message.id] ? "is-expanded" : ""} size={12} />
+                        <span>{t("desktop.workbench.transcriptThinking")}</span>
+                      </button>
+                      {expandedThinking[message.id] ? (
+                        renderMarkdownView ? (
+                          <div
+                            className="wb-transcript-thinking-body wb-transcript-md markdown-body"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking) }}
+                          />
+                        ) : (
+                          <div className="wb-transcript-thinking-body wb-transcript-plain">{message.thinking}</div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {message.text ? (
+                    renderMarkdownView ? (
+                      <div
+                        className="wb-transcript-md markdown-body"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
+                      />
+                    ) : (
+                      <div className="wb-transcript-plain">{message.text}</div>
+                    )
+                  ) : null}
                 </article>
               );
             }) : (

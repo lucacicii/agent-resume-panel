@@ -5,6 +5,7 @@ export type TranscriptMessageRole = "user" | "assistant";
 export type TranscriptPreviewMessage = {
   role: string;
   text: string;
+  thinking?: string;
   timestamp?: string;
 };
 
@@ -12,6 +13,7 @@ export type TranscriptMessage = {
   id: string;
   role: TranscriptMessageRole;
   text: string;
+  thinking?: string;
   timestamp?: string;
 };
 
@@ -46,15 +48,17 @@ export function buildSessionTranscriptModel(
 
   for (const [index, message] of messages.entries()) {
     const text = message.text.trim();
-    if (!text || !isTranscriptRole(message.role)) continue;
+    const thinking = message.thinking?.trim() || "";
+    if (!isTranscriptRole(message.role) || (!text && !thinking)) continue;
     const id = `transcript-msg-${index}`;
     nextMessages.push({
       id,
       role: message.role,
       text,
+      thinking: thinking || undefined,
       timestamp: message.timestamp
     });
-    if (message.role === "user") {
+    if (message.role === "user" && text) {
       outline.push({
         id: `transcript-turn-${outline.length + 1}`,
         messageId: id,
@@ -76,7 +80,9 @@ export function filterSessionTranscript(
 
   const matchedIds = new Set<string>();
   for (const message of model.messages) {
-    if (message.text.toLowerCase().includes(needle)) matchedIds.add(message.id);
+    if (message.text.toLowerCase().includes(needle) || message.thinking?.toLowerCase().includes(needle)) {
+      matchedIds.add(message.id);
+    }
   }
   if (!matchedIds.size) {
     return { messages: [], outline: [] };

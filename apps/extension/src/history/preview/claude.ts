@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { AgentSession } from "../types";
 import { readJsonLines } from "../jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface ClaudeProjectRow {
@@ -43,14 +43,15 @@ export async function previewClaudeSession(
         continue;
       }
 
-      const text = extractTextFromContent(row.message?.content);
-      if (!text) {
+      const extracted = extractPreviewContent(row.message?.content);
+      if (!extracted.text && !extracted.thinking) {
         continue;
       }
 
       messages.push({
         role: row.type,
-        text,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined,
         timestamp: row.timestamp
       });
     }

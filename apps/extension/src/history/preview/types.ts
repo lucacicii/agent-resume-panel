@@ -4,6 +4,7 @@ import { RenameHomes } from "../rename";
 export interface PreviewMessage {
   role: "user" | "assistant";
   text: string;
+  thinking?: string;
   timestamp?: string;
 }
 

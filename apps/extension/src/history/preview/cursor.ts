@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { findFilesByName } from "./fs";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 
 interface CursorTranscriptEntry {
@@ -39,9 +39,13 @@ export async function previewCursorSession(
       if (!isUserOrAssistantRole(entry.role)) {
         continue;
       }
-      const text = extractTextFromContent(entry.message?.content);
-      if (text) {
-        messages.push({ role: entry.role, text });
+      const extracted = extractPreviewContent(entry.message?.content);
+      if (extracted.text || extracted.thinking) {
+        messages.push({
+          role: entry.role,
+          text: extracted.text,
+          thinking: extracted.thinking || undefined
+        });
       }
     }
     if (messages.length) {

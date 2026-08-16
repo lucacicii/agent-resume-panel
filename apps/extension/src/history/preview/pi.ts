@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { PreviewHomes, SessionPreviewResult } from "./types";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface JsonlSessionHeader {
@@ -73,14 +73,15 @@ async function previewJsonlSession(session: AgentSession, sessionsRoot: string):
         continue;
       }
 
-      const text = extractTextFromContent(entry.message.content);
-      if (!text) {
+      const extracted = extractPreviewContent(entry.message.content);
+      if (!extracted.text && !extracted.thinking) {
         continue;
       }
 
       messages.push({
         role: entry.message.role,
-        text,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined,
         timestamp: entry.timestamp
       });
     }
