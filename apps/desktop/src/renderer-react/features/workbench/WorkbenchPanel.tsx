@@ -1533,6 +1533,8 @@ const TUI_WHEEL_REPEAT_MS = 80;
 const TUI_DRAG_DEAD_ZONE_PX = 8;
 const TUI_DRAG_PIXELS_PER_TICK = 6;
 const TUI_DRAG_MAX_TICKS = 32;
+/** Wheel ticks sent by Home / End; TUIs scroll a few lines per tick. */
+const TUI_WHEEL_JUMP = 400;
 /** DEC private modes whose enablement makes the app own wheel scrolling. */
 const TUI_MOUSE_TRACKING_MODES = new Set([1000, 1002, 1003]);
 const MOUSE_TRACKING_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g;
@@ -2238,8 +2240,8 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     else if (event.key === "ArrowDown") { direction = "down"; ticks = 1; }
     else if (event.key === "PageUp") { direction = "up"; ticks = TUI_WHEEL_STEP; }
     else if (event.key === "PageDown") { direction = "down"; ticks = TUI_WHEEL_STEP; }
-    else if (event.key === "Home") { direction = "up"; ticks = TUI_DRAG_MAX_TICKS; }
-    else if (event.key === "End") { direction = "down"; ticks = TUI_DRAG_MAX_TICKS; }
+    else if (event.key === "Home") { direction = "up"; ticks = TUI_WHEEL_JUMP; }
+    else if (event.key === "End") { direction = "down"; ticks = TUI_WHEEL_JUMP; }
     else return;
     event.preventDefault();
     sendTuiWheel(direction, ticks);
@@ -2249,24 +2251,46 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`} ref={host} />
     {tuiControlVisible ? (
-      <button
-        type="button"
-        className={`wb-terminal-tui-drop${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"} is-${tuiPull.direction}`}
-        aria-disabled={!scrollState.tuiInteractive}
-        aria-label={t("desktop.workbench.terminalTuiScrollControl")}
-        title={t("desktop.workbench.terminalTuiScrollControl")}
-        style={{ "--tui-pull": tuiPull.strength } as CSSProperties}
-        onPointerDown={beginTuiDrag}
-        onPointerMove={updateTuiDrag}
-        onPointerUp={() => stopTuiScroll()}
-        onPointerCancel={() => stopTuiScroll()}
-        onLostPointerCapture={() => stopTuiScroll()}
-        onKeyDown={onTuiControlKeyDown}
-      >
-        <svg className="wb-terminal-tui-drop-shape" viewBox="0 0 200 260" aria-hidden="true">
-          <path d="M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z" />
-        </svg>
-      </button>
+      <div className={`wb-terminal-tui-nav${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"}`}>
+        <button
+          type="button"
+          className="wb-terminal-jump is-top"
+          aria-label={t("desktop.workbench.terminalScrollTop")}
+          title={t("desktop.workbench.terminalScrollTop")}
+          disabled={!scrollState.tuiInteractive}
+          onClick={() => { sendTuiWheel("up", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
+        >
+          <ThemeIcon name="arrow-up-to-line" size={15} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`wb-terminal-tui-drop is-${tuiPull.direction}`}
+          aria-disabled={!scrollState.tuiInteractive}
+          aria-label={t("desktop.workbench.terminalTuiScrollControl")}
+          title={t("desktop.workbench.terminalTuiScrollControl")}
+          style={{ "--tui-pull": tuiPull.strength } as CSSProperties}
+          onPointerDown={beginTuiDrag}
+          onPointerMove={updateTuiDrag}
+          onPointerUp={() => stopTuiScroll()}
+          onPointerCancel={() => stopTuiScroll()}
+          onLostPointerCapture={() => stopTuiScroll()}
+          onKeyDown={onTuiControlKeyDown}
+        >
+          <svg className="wb-terminal-tui-drop-shape" viewBox="0 0 200 260" aria-hidden="true">
+            <path d="M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="wb-terminal-jump is-bottom"
+          aria-label={t("desktop.workbench.terminalScrollBottom")}
+          title={t("desktop.workbench.terminalScrollBottom")}
+          disabled={!scrollState.tuiInteractive}
+          onClick={() => { sendTuiWheel("down", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
+        >
+          <ThemeIcon name="arrow-down-to-line" size={15} aria-hidden="true" />
+        </button>
+      </div>
     ) : null}
     {searchOpen ? (
       <div className="wb-terminal-search" role="search">

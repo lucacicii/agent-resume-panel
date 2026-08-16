@@ -65,9 +65,9 @@ describe("built-in visual theme manifests", () => {
 
   it("gives the terminal TUI waterdrop a theme-specific palette", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/renderer/styles.css"), "utf8");
-    expect(styles).toMatch(/\.wb-terminal-tui-drop \{[\s\S]*?--tui-drop-color:\s*#22d3ee;/);
-    expect(styles).toMatch(/\[data-visual-theme="cyberpunk"\] \.wb-terminal-tui-drop \{[\s\S]*?--tui-drop-color:\s*var\(--cyber-cyan\);[\s\S]*?--tui-drop-hover:\s*var\(--cyber-magenta\);/);
-    expect(styles).toMatch(/\[data-visual-theme="dos"\] \.wb-terminal-tui-drop \{[\s\S]*?--tui-drop-color:\s*#f3b94f;[\s\S]*?--tui-drop-hover:\s*#ffe2a0;/);
+    expect(styles).toMatch(/\.wb-terminal-tui-nav \{[\s\S]*?--tui-drop-color:\s*#22d3ee;/);
+    expect(styles).toMatch(/\[data-visual-theme="cyberpunk"\] \.wb-terminal-tui-nav,[\s\S]*?\.wb-terminal-tui-drop \{[\s\S]*?--tui-drop-color:\s*var\(--cyber-cyan\);[\s\S]*?--tui-drop-hover:\s*var\(--cyber-magenta\);/);
+    expect(styles).toMatch(/\[data-visual-theme="dos"\] \.wb-terminal-tui-nav,[\s\S]*?\.wb-terminal-tui-drop \{[\s\S]*?--tui-drop-color:\s*#f3b94f;[\s\S]*?--tui-drop-hover:\s*#ffe2a0;/);
   });
 
   it("uses the warm amber phosphor palette for DOS surfaces and terminal ANSI colors", () => {
