@@ -1,14 +1,20 @@
 import { AgentProvider, AgentSession } from "../history";
 
+/** Resume must run in the provider's native cwd, not a user-reassigned display path. */
+function resumeProjectPath(session: AgentSession): string {
+  return session.nativeProjectPath?.trim() || session.projectPath;
+}
+
 export function buildResumeCommand(session: AgentSession): string {
+  const cwd = resumeProjectPath(session);
   if (session.provider === "codex") {
-    return `codex resume --cd ${shellQuote(session.projectPath)} ${shellQuote(session.id)}`;
+    return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
   }
   if (session.provider === "agy") {
     return `agy --conversation ${shellQuote(session.id)}`;
   }
   if (session.provider === "grok") {
-    return `grok --cwd ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
+    return `grok --cwd ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
   }
   if (session.provider === "opencode") {
     return `opencode --session ${shellQuote(session.id)}`;
@@ -20,7 +26,7 @@ export function buildResumeCommand(session: AgentSession): string {
     return `prime-agent --resume ${shellQuote(session.id)}`;
   }
   if (session.provider === "cursor") {
-    return `cursor-agent --workspace ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
+    return `cursor-agent --workspace ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
   }
   if (session.provider === "cursor-ide") {
     throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");

@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   listSessions,
   loadAllAgentSessions,
+  moveSessionToProjectInCatalog,
   runSqliteJson,
   sessionSyncOptionsFromSettings,
   syncAgentSessions
@@ -146,11 +147,42 @@ test("syncs nine providers, preserves local enhancements, and isolates provider 
   assert.equal(rows[0].title, "Codex native updated");
   assert.equal(rows[0].user_title, "Pinned title");
 
+  // Not yet moved: a native cwd change must still follow into project_path.
+  sqlite(codexDb, "UPDATE threads SET cwd='/tmp/codex-new' WHERE id='codex-1';");
+  await syncAgentSessions(options);
+  const tracking = await runSqliteJson(options.dbPath, "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
+  assert.equal(tracking[0].project_path, "/tmp/codex-new");
+  assert.equal(tracking[0].native_project_path, "/tmp/codex-new");
+  sqlite(codexDb, "UPDATE threads SET cwd='/tmp/codex' WHERE id='codex-1';");
+  await syncAgentSessions(options);
+
   sqlite(options.dbPath, "UPDATE sessions SET hidden=1 WHERE provider='codex' AND agent_session_id='codex-1';");
   await syncAgentSessions(options);
   assert.ok(!(await listSessions(options.dbPath, 100)).some((item) => item.id === "codex-1"));
   const hiddenRows = await runSqliteJson(options.dbPath, "SELECT hidden FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
   assert.equal(hiddenRows[0].hidden, 1);
+
+  sqlite(options.dbPath, "UPDATE sessions SET hidden=0 WHERE provider='codex' AND agent_session_id='codex-1';");
+  const moved = await moveSessionToProjectInCatalog(options.dbPath, "codex", "codex-1", "/tmp/moved-project");
+  assert.equal(moved.moved, true);
+  assert.equal(moved.newPath, "/tmp/moved-project");
+  await syncAgentSessions(options);
+  const afterMove = await listSessions(options.dbPath, 100);
+  const movedCodex = afterMove.find((item) => item.provider === "codex" && item.id === "codex-1");
+  assert.equal(movedCodex?.projectPath, "/tmp/moved-project");
+  const overrideRows = await runSqliteJson(options.dbPath, "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
+  assert.equal(overrideRows[0].project_path, "/tmp/moved-project");
+  assert.equal(overrideRows[0].native_project_path, "/tmp/codex");
+  assert.equal(movedCodex?.nativeProjectPath, "/tmp/codex");
+  assert.equal(movedCodex?.projectOverridden, true);
+
+  // User moves the session back to its native path: the value rule resets and
+  // the session starts tracking the native path again.
+  await moveSessionToProjectInCatalog(options.dbPath, "codex", "codex-1", "/tmp/codex");
+  await syncAgentSessions(options);
+  const resetRows = await runSqliteJson(options.dbPath, "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='codex-1';");
+  assert.equal(resetRows[0].project_path, "/tmp/codex");
+  assert.equal(resetRows[0].native_project_path, "/tmp/codex");
 
   await writeFile(opencodeDb, "not a sqlite database", "utf8");
   const failed = await syncAgentSessions(options);
@@ -306,7 +338,7 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
       updated_at_ms INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, message_count INTEGER, model TEXT, branch TEXT,
       source TEXT, acp_provider TEXT, user_title TEXT, hidden INTEGER NOT NULL DEFAULT 0, last_synced_at_ms INTEGER,
       transcript_kind TEXT, transcript_refs TEXT, session_summary TEXT, session_summary_language TEXT, session_summary_at_ms INTEGER,
-      project_id TEXT, PRIMARY KEY (provider, agent_session_id)
+      project_id TEXT, native_project_path TEXT, PRIMARY KEY (provider, agent_session_id)
     );
     CREATE TABLE projects(project_id TEXT PRIMARY KEY, portable_key TEXT NOT NULL UNIQUE, alias TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0, last_seen_at_ms INTEGER, updated_at_ms INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE project_local_paths(project_id TEXT NOT NULL, machine_id TEXT NOT NULL, absolute_path TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(project_id, machine_id));
@@ -315,9 +347,9 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
     INSERT INTO projects VALUES('proj-alma-only','~/Library/Application Support/alma/workspaces/temp-x','',0,1,1,0);
     INSERT INTO projects VALUES('proj-mixed','~/wb/mixed','',0,1,1,0);
     INSERT INTO project_local_paths VALUES('proj-alma-only','m1','/tmp/alma-only',1);
-    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only');
-    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed');
-    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed');
+    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only',NULL);
+    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL);
+    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL);
     INSERT INTO session_gtd VALUES('alma','a1','doing',1);
     INSERT INTO sync_state VALUES('alma',1);`
   );

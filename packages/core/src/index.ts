@@ -628,7 +628,7 @@ export {
   DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
-export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export { buildResumeCommand, buildNewSessionCommand, resumeProjectPath } from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,

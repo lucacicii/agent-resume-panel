@@ -509,7 +509,7 @@ export async function searchSessionsByTranscriptEmbedding(
       options.catalogDb,
       `SELECT s.provider, s.agent_session_id, s.title, s.project_path, s.updated_at_ms, s.archived,
         s.message_count, s.model, s.branch, s.source, s.acp_provider, s.user_title, s.hidden, s.last_synced_at_ms,
-        s.session_summary, s.session_summary_language, s.session_summary_at_ms, s.project_id,
+        s.session_summary, s.session_summary_language, s.session_summary_at_ms, s.project_id, s.native_project_path,
         g.status AS gtd_status
        FROM sessions s
        LEFT JOIN session_gtd g

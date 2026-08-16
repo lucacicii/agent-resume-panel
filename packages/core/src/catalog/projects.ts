@@ -126,6 +126,27 @@ export async function ensureProjectsCatalogSchema(dbPath: string): Promise<void>
     // ignore
   }
 
+  try {
+    await runSqlite(dbPath, `ALTER TABLE sessions ADD COLUMN native_project_path TEXT;`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("duplicate column name") && !message.includes("no such table")) {
+      throw error;
+    }
+  }
+
+  // One-time backfill: existing rows start "tracking native" so the value rule
+  // (project_path == native_project_path ⇒ follow native) keeps current behavior.
+  try {
+    await runSqlite(
+      dbPath,
+      `UPDATE sessions SET native_project_path = project_path
+       WHERE native_project_path IS NULL AND project_path IS NOT NULL AND TRIM(project_path) != '';`
+    );
+  } catch {
+    // native_project_path may not exist yet on empty ensure order — ignore
+  }
+
   if (projectsSchemaReady.has(dbPath)) {
     // Still apply additive columns for rolling upgrades within a process lifetime.
     if (await tableExists(dbPath, "projects")) {

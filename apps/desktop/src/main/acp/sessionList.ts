@@ -58,13 +58,22 @@ export function mergeCatalogAndAcpSessions(
     const key = `${session.provider}:${session.id}`;
     const existing = byKey.get(key);
     if (!existing || session.updatedAt >= existing.updatedAt) {
-      byKey.set(key, {
+      const merged = {
         ...existing,
         ...session,
         // Preserve acpProvider if catalog row had it and store mapping is same id
         acpProvider: session.acpProvider || existing?.acpProvider,
         source: session.source || existing?.source || "acp"
-      });
+      };
+      // A user-moved chat (projectOverridden) must keep the catalog's effective
+      // project path even when the ACP store (possibly rewritten by another
+      // product) carries the original path and a fresher timestamp.
+      if (existing?.projectOverridden) {
+        merged.projectPath = existing.projectPath;
+        merged.projectOverridden = true;
+        merged.nativeProjectPath = session.nativeProjectPath || existing.nativeProjectPath;
+      }
+      byKey.set(key, merged);
     } else if (existing && !existing.acpProvider && session.acpProvider) {
       byKey.set(key, { ...existing, acpProvider: session.acpProvider, source: existing.source || "acp" });
     }

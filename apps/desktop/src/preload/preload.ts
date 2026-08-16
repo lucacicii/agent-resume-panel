@@ -313,6 +313,19 @@ export interface DesktopApi {
     nativeError?: string;
   }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
+  moveSessionToProject(args: {
+    provider: string;
+    id: string;
+    targetProjectPath: string;
+  }): Promise<{
+    provider: string;
+    sessionId: string;
+    moved: boolean;
+    fromProjectId: string | null;
+    toProjectId: string;
+    oldPath: string;
+    newPath: string;
+  }>;
   createScratchDir(): Promise<string>;
   workbenchGetProjectEditor(): Promise<{
     selected: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
@@ -1444,6 +1457,7 @@ const api: DesktopApi = {
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
+  moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
   workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),

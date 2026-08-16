@@ -15,6 +15,7 @@ import {
   setProjectLocalPath,
   setProjectPinnedInCatalog,
   mergeProjectsInCatalog,
+  moveSessionToProjectInCatalog,
   splitProjectPathInCatalog,
   isForeignUserPath,
   toPortableKey
@@ -429,6 +430,36 @@ test("legacy projects(project_path) table migrates to project_id schema", async 
     assert.ok(projects.some((p) => p.alias === "Legacy" || p.portableKey === toPortableKey(homePath)));
     const id = await ensureProjectForPath(dbPath, homePath);
     assert.ok(id);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("moveSessionToProjectInCatalog reassigns path and keeps native path", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-move-override-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const source = path.join(os.tmpdir(), "move-source");
+    const target = path.join(os.tmpdir(), "move-target");
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES ('codex', 'move-1', 'Move me', '${source.replaceAll("'", "''")}', ${Date.now()}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const result = await moveSessionToProjectInCatalog(dbPath, "codex", "move-1", target);
+    assert.equal(result.moved, true);
+    assert.equal(result.newPath, path.resolve(target));
+    const { runSqliteJson } = await import("../dist/index.js");
+    const rows = await runSqliteJson(
+      dbPath,
+      "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='move-1';"
+    );
+    assert.equal(rows[0].project_path, path.resolve(target));
+    // Idempotent backfill gave the raw-inserted row a native path equal to its
+    // original project_path; move leaves native untouched (sync converges later).
+    assert.equal(rows[0].native_project_path, path.resolve(source));
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

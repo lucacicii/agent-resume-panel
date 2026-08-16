@@ -17,7 +17,12 @@ export interface AgentSession {
   provider: AgentProvider;
   id: string;
   title: string;
+  /** Effective display/grouping path — user-moved when it differs from nativeProjectPath. */
   projectPath: string;
+  /** Sync-owned canonical path from the provider (resume/operations should use this). */
+  nativeProjectPath?: string;
+  /** True when projectPath was reassigned by the user and sync must not revert it. */
+  projectOverridden?: boolean;
   /** Logical project id when catalog projects reconcile has run. */
   projectId?: string;
   updatedAt: number;
@@ -55,6 +60,7 @@ export interface CatalogSessionRow {
   session_summary_language?: string | null;
   session_summary_at_ms?: number | null;
   project_id?: string | null;
+  native_project_path?: string | null;
 }
 
 export function toAgentSession(row: CatalogSessionRow): AgentSession {
@@ -66,6 +72,12 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
     projectPath: row.project_path,
     updatedAt: row.updated_at_ms
   };
+
+  const native = row.native_project_path?.trim();
+  if (native) {
+    session.nativeProjectPath = native;
+    session.projectOverridden = row.project_path.trim() !== native;
+  }
 
   if (row.archived) {
     session.archived = true;

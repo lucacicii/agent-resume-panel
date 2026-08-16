@@ -374,6 +374,15 @@ type ProjectPickDialog =
       query: string;
       busy: boolean;
       status: string;
+    }
+  | {
+      kind: "moveSession";
+      session: AgentSession;
+      sourceLabel: string;
+      options: Array<{ id: string; label: string; path: string }>;
+      query: string;
+      busy: boolean;
+      status: string;
     };
 
 /**
@@ -4886,6 +4895,96 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
+  const sessionProjectIdentity = (session: AgentSession) => {
+    const project = allProjects.find((item) =>
+      (session.projectId && item.id === session.projectId)
+      || item.path === session.projectPath
+    );
+    return {
+      project,
+      sourceId: session.projectId || project?.id || "",
+      sourcePath: session.projectPath || project?.path || ""
+    };
+  };
+
+  const openMoveSessionToProjectDialog = (session: AgentSession) => {
+    const { project, sourceId, sourcePath } = sessionProjectIdentity(session);
+    const options = allProjects
+      .filter((item) => {
+        if (sourceId && item.id === sourceId) return false;
+        if (sourcePath && item.path === sourcePath) return false;
+        return Boolean(item.path);
+      })
+      .map((item) => ({ id: item.id, label: item.label, path: item.path }));
+    if (!options.length) {
+      setStatus({ text: t("desktop.workbench.moveToProjectNoTargets"), kind: "error" });
+      return;
+    }
+    setProjectPickDialog({
+      kind: "moveSession",
+      session,
+      sourceLabel: project?.label || aliases[session.projectPath] || basename(session.projectPath),
+      options,
+      query: "",
+      busy: false,
+      status: ""
+    });
+  };
+
+  const followSessionPanesToProject = (session: AgentSession, nextProjectPath: string) => {
+    const key = sessionKey(session);
+    const acpKey = isAcpSession(session) ? acpListSessionKey(session.id) : "";
+    const previousProjectPath = session.projectPath;
+    const movedPaneKeys = new Set<string>();
+    for (const pane of terminalsRef.current) {
+      if (pane.sessionKey === key) movedPaneKeys.add(pane.key);
+    }
+    for (const pane of acpChatsRef.current) {
+      if (acpKey && acpListSessionKey(pane.recordId) === acpKey) movedPaneKeys.add(pane.key);
+    }
+    if (movedPaneKeys.size) {
+      setTerminals((current) => current.map((pane) =>
+        movedPaneKeys.has(pane.key) ? { ...pane, projectPath: nextProjectPath } : pane
+      ));
+      setAcpChats((current) => current.map((pane) =>
+        movedPaneKeys.has(pane.key) ? { ...pane, projectPath: nextProjectPath } : pane
+      ));
+    }
+    if (!previousProjectPath || previousProjectPath === nextProjectPath || !movedPaneKeys.size) return;
+    const previousKey = paneProjectKey(previousProjectPath);
+    const nextKey = paneProjectKey(nextProjectPath);
+    setActivePanes((current) => {
+      const paneKey = current[previousKey];
+      if (!paneKey || !movedPaneKeys.has(paneKey)) return current;
+      const next = { ...current, [nextKey]: paneKey };
+      if (next[previousKey] === paneKey) delete next[previousKey];
+      return next;
+    });
+  };
+
+  const applyMoveSessionToProject = async (target: { id: string; label: string; path: string }) => {
+    if (!projectPickDialog || projectPickDialog.kind !== "moveSession") return;
+    const session = projectPickDialog.session;
+    setProjectPickDialog((current) => current ? { ...current, busy: true, status: t("desktop.workbench.moveToProjectRunning") } : current);
+    try {
+      const result = await desktopApi().moveSessionToProject({
+        provider: session.provider,
+        id: session.id,
+        targetProjectPath: target.path
+      });
+      const nextPath = result.newPath || target.path;
+      followSessionPanesToProject(session, nextPath);
+      setProjectPickDialog(null);
+      setStatus({ text: t("desktop.workbench.moveToProjectDone", target.label) });
+      selectProject(nextPath, { keepSessionKey: true });
+      setActiveSessionKey(sessionKey(session));
+      await loadSessions();
+      window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+    } catch (error) {
+      setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
+    }
+  };
+
   const applyFolderDialog = async () => {
     if (!folderDialog) return;
     const name = folderDialog.title.trim();
@@ -5113,6 +5212,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!session) return;
     if (action === "moveFolder") {
       openMoveSessionDialog(session);
+      return;
+    }
+    if (action === "moveProject") {
+      openMoveSessionToProjectDialog(session);
       return;
     }
     if (action === "removeFolder") {
@@ -6711,7 +6814,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const contextMenuHeight = contextMenu?.kind === "session-tab" || contextMenu?.kind === "editor-tab"
     ? 64
     : contextMenu?.kind === "session"
-        ? 430
+        ? 462
         : contextMenu?.kind === "folder"
           ? 160
           : 320;
@@ -7605,6 +7708,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("autoRename")}>{t("desktop.workbench.autoRename")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("moveFolder")}>{t("desktop.workbench.moveToFolder")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("moveProject")}>{t("desktop.workbench.moveToProject")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("removeFolder")}>{t("desktop.workbench.removeFromFolder")}</button>
         <div className="context-menu-separator" role="separator" />
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
@@ -7619,10 +7723,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.renameProject")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.renameProject")}</p></div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.renameProjectDisplay")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
     {folderDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderDialog.busy && setFolderDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")} onSubmit={(event) => { event.preventDefault(); void applyFolderDialog(); }}><p className="wb-note-created-title">{t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")}</p>{folderDialog.status ? <p className="wb-rename-status muted">{folderDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={folderDialog.title} disabled={folderDialog.busy} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.folderName")} placeholder={t("desktop.workbench.folderName")} onChange={(event) => setFolderDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderDialog.busy} onClick={() => setFolderDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={folderDialog.busy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
     {folderPickerDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderPickerDialog.busy && setFolderPickerDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToFolder")}><p className="wb-note-created-title">{t("desktop.workbench.moveSessionTitle", folderPickerDialog.session.title || folderPickerDialog.session.id)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveSessionHint")}</p><input type="search" className="wb-rename-input" value={folderPickerDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={folderPickerDialog.busy} onChange={(event) => setFolderPickerDialog((current) => current ? { ...current, query: event.target.value } : current)} />{folderPickerDialog.status ? <p className="wb-rename-status muted">{folderPickerDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox"><button type="button" className="wb-project-pick-item" disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(null)}><span className="wb-project-pick-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-project-pick-path">{folderPickerDialog.projectPath}</span></button>{folderPickerDialog.folders.filter((folder) => workbenchFolderPath(folder, folderPickerDialog.folders).toLowerCase().includes(folderPickerDialog.query.trim().toLowerCase())).map((folder) => <button type="button" className="wb-project-pick-item" key={folder.folderId} disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(folder.folderId)}><span className="wb-project-pick-label">{workbenchFolderPath(folder, folderPickerDialog.folders)}</span><span className="wb-project-pick-path">{folder.name}</span></button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderPickerDialog.busy} onClick={() => setFolderPickerDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
-    {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "merge"
-      ? projectPickDialog.options.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
-      : projectPickDialog.options.filter((item) => `${item.absolutePath} ${item.portableKey}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
+    {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : projectPickDialog.kind === "moveSession" ? "desktop.workbench.moveToProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : projectPickDialog.kind === "moveSession" ? t("desktop.workbench.moveToProjectTitle", projectPickDialog.session.title || projectPickDialog.session.id) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : projectPickDialog.kind === "moveSession" ? t("desktop.workbench.moveToProjectHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "split"
+      ? projectPickDialog.options.filter((item) => `${item.absolutePath} ${item.portableKey}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
+      : projectPickDialog.options.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
     ).map((item) => {
+      if (projectPickDialog.kind === "moveSession" && "id" in item && "path" in item) {
+        return <button type="button" className="wb-project-pick-item" key={item.id} disabled={projectPickDialog.busy} onClick={() => void applyMoveSessionToProject(item)}><span className="wb-project-pick-label">{item.label}</span><span className="wb-project-pick-path">{item.path}</span></button>;
+      }
       if (projectPickDialog.kind === "merge" && "id" in item) {
         return <button type="button" className="wb-project-pick-item" key={item.id} disabled={projectPickDialog.busy} onClick={() => {
           void (async () => {

@@ -741,6 +741,16 @@ class AcpChatController {
     return this.record;
   }
 
+  async setProjectPath(projectPath: string): Promise<AcpSessionRecord> {
+    const next = projectPath.trim();
+    if (!next || this.record.projectPath === next) return this.record;
+    this.record.projectPath = next;
+    this.record.updatedAt = Date.now();
+    await updateAcpRecord(this.panelHome, this.record);
+    this.postInit();
+    return this.record;
+  }
+
   private finalizeStreamingAssistant(): void {
     const turnId = this.streamingAssistantId ?? this.turnAssistantId;
     if (!turnId) {
@@ -1161,6 +1171,20 @@ export function registerAcpIpc(deps: {
     controllers.delete(args.chatId);
     return { ok: true };
   });
+}
+
+/** Persist a catalog project move onto a live ACP chat so later controller writes keep the new path. */
+export async function setAcpRecordProjectPath(
+  chatId: string,
+  projectPath: string
+): Promise<boolean> {
+  const id = chatId.trim();
+  const next = projectPath.trim();
+  if (!id || !next) return false;
+  const controller = controllers.get(id);
+  if (!controller) return false;
+  await controller.setProjectPath(next);
+  return true;
 }
 
 /** Dispose a live ACP controller for a chat id (e.g. before store delete on remove). */

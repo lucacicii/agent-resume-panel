@@ -940,6 +940,112 @@ describe("WorkbenchPanel", () => {
     expect(assignWorkbenchSessionToFolder).not.toHaveBeenCalled();
   });
 
+  it("moves a session to another project from the context menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let sessions = [
+      { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
+      { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
+    ];
+    const moveSessionToProject = vi.fn(async () => {
+      sessions = [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 2 },
+        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
+      ];
+      return {
+        provider: "codex",
+        sessionId: "session-1",
+        moved: true,
+        fromProjectId: "project-1",
+        toProjectId: "project-2",
+        oldPath: "/work/app",
+        newPath: "/work/docs"
+      };
+    });
+    const listSessions = vi.fn(async () => sessions);
+    const listProjects = vi.fn(async () => [
+      { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: sessions.filter((item) => item.projectId === "project-1").length },
+      { projectId: "project-2", portableKey: "/work/docs", alias: "Docs", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: sessions.filter((item) => item.projectId === "project-2").length }
+    ]);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.moveToProject": "Move to project…",
+        "desktop.workbench.moveToProjectTitle": "Move session {0} to…",
+        "desktop.workbench.moveToProjectHint": "Reassigns this session in the panel.",
+        "desktop.workbench.moveToProjectRunning": "Moving…",
+        "desktop.workbench.moveToProjectDone": "Moved session to {0}."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      listProjects,
+      listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
+      moveSessionToProject,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /App work/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to project…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move to project…" });
+    expect(within(dialog).queryByRole("button", { name: /app/i })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Docs/ }));
+    await waitFor(() => expect(moveSessionToProject).toHaveBeenCalledWith({
+      provider: "codex",
+      id: "session-1",
+      targetProjectPath: "/work/docs"
+    }));
+    fireEvent.click(screen.getByTitle("/work/docs"));
+    expect(await screen.findByRole("button", { name: /App work/ })).toBeTruthy();
+  });
+
+  it("shows an error when there is no other project to move into", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const moveSessionToProject = vi.fn();
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...FOLDER_DRAG_TEST_MESSAGES,
+        "desktop.workbench.moveToProject": "Move to project…",
+        "desktop.workbench.moveToProjectNoTargets": "No other projects available to move into."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ],
+      listProjects: async () => [
+        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
+      ],
+      listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
+      moveSessionToProject,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /App work/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to project…" }));
+    expect(await screen.findByText("No other projects available to move into.")).toBeTruthy();
+    expect(moveSessionToProject).not.toHaveBeenCalled();
+  });
+
   it("opens develop-equivalent project and session context actions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   session_summary_language TEXT,
   session_summary_at_ms INTEGER,
   project_id TEXT,
+  native_project_path TEXT,
   PRIMARY KEY (provider, agent_session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
@@ -112,6 +113,7 @@ ALTER TABLE sessions ADD COLUMN session_summary TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_language TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
 ALTER TABLE sessions ADD COLUMN project_id TEXT;
+ALTER TABLE sessions ADD COLUMN native_project_path TEXT;
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE TABLE IF NOT EXISTS project_local_paths (
   project_id TEXT NOT NULL,

@@ -87,6 +87,47 @@ test("syncAcpRecordsIntoCatalog is idempotent and preserves user_title", async (
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+test("upsertAcpSessionInCatalog keeps a user-moved project_path", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-override-"));
+  const dbPath = path.join(dir, "catalog.db");
+  await ensureExtensionCatalogSchema(dbPath);
+
+  await upsertAcpSessionInCatalog(dbPath, dir, {
+    id: "chat-move",
+    title: "Move me",
+    projectPath: "/tmp/original",
+    acpProvider: "claude",
+    updatedAt: 100,
+    messageCount: 1
+  });
+  const { runSqliteJson } = await import("../dist/sqlite.js");
+  const { moveSessionToProjectInCatalog } = await import("../dist/index.js");
+  const moved = await moveSessionToProjectInCatalog(dbPath, "chat", "chat-move", "/tmp/reassigned");
+  assert.equal(moved.newPath, "/tmp/reassigned");
+
+  await upsertAcpSessionInCatalog(dbPath, dir, {
+    id: "chat-move",
+    title: "Move me",
+    projectPath: "/tmp/original",
+    acpProvider: "claude",
+    updatedAt: 200,
+    messageCount: 2
+  });
+
+  const session = await getSessionById(dbPath, "chat", "chat-move");
+  assert.equal(session?.projectPath, "/tmp/reassigned");
+  assert.equal(session?.nativeProjectPath, "/tmp/original");
+  assert.equal(session?.projectOverridden, true);
+  const rows = await runSqliteJson(
+    dbPath,
+    "SELECT project_path, native_project_path FROM sessions WHERE provider='chat' AND agent_session_id='chat-move';"
+  );
+  assert.equal(rows[0].project_path, "/tmp/reassigned");
+  assert.equal(rows[0].native_project_path, "/tmp/original");
+
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test("listSessions without a limit returns every visible catalog session", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-unbounded-"));
   const dbPath = path.join(dir, "catalog.db");

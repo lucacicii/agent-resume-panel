@@ -294,14 +294,21 @@ async function loadProvider(
 async function upsertProvider(dbPath: string, provider: SyncableAgentProvider, sessions: LoadedSession[], syncTime: number): Promise<void> {
   for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
     await runSqliteTransaction(dbPath, sessions.slice(i, i + BATCH_SIZE).map((session) => `INSERT INTO sessions (
-      provider, agent_session_id, title, project_path, updated_at_ms, archived, message_count, model, branch,
+      provider, agent_session_id, title, project_path, native_project_path, updated_at_ms, archived, message_count, model, branch,
       source, hidden, last_synced_at_ms, transcript_kind, transcript_refs
-    ) VALUES (${sql(session.provider)}, ${sql(session.id)}, ${sql(session.title)}, ${sql(session.projectPath)},
+    ) VALUES (${sql(session.provider)}, ${sql(session.id)}, ${sql(session.title)}, ${sql(session.projectPath)}, ${sql(session.projectPath)},
       ${Math.floor(session.updatedAt || 0)}, ${session.archived ? 1 : 0}, ${numberOrNull(session.messageCount)},
       ${nullable(session.model)}, ${nullable(session.branch)}, ${nullable(session.source)}, 0, ${syncTime},
       ${nullable(session.transcriptKind)}, ${nullable(session.transcriptRefs)})
     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
-      title=excluded.title, project_path=excluded.project_path, updated_at_ms=excluded.updated_at_ms,
+      title=excluded.title,
+      native_project_path=excluded.project_path,
+      project_path=CASE
+        WHEN IFNULL(sessions.native_project_path, sessions.project_path) = sessions.project_path
+        THEN excluded.project_path
+        ELSE sessions.project_path
+      END,
+      updated_at_ms=excluded.updated_at_ms,
       archived=excluded.archived, message_count=excluded.message_count, model=excluded.model,
       branch=excluded.branch, source=excluded.source, last_synced_at_ms=excluded.last_synced_at_ms,
       transcript_kind=excluded.transcript_kind, transcript_refs=excluded.transcript_refs`));

@@ -15,6 +15,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Workbench session auto rename with project / folder context**: auto-renamed sessions now get the project name and folder path appended to the title (e.g. `Fix renderer · app / Campaign / Phase 1`; unclassified sessions get just `· app`), keeping project and folder context visible outside the tree; the suffix is deduplicated and capped at the 180-char native title limit
 - **Truncated session titles reveal full text on hover**: long session titles in the Workbench and Sessions lists show the complete title as a native tooltip when truncated
 
+#### Fixed
+
+- **Session moves to another project now stick**: reassigning a session to a different project keeps the assignment across provider syncs — the catalog tracks the provider's native path separately, so sync no longer snaps the session back. Resuming a moved session still uses the native working directory where the agent's data lives. Moving a session back to its native project restores automatic path tracking.
+
 ### [0.2.13]
 
 #### Fixed
@@ -357,6 +361,10 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **Workbench 会话自动重命名附带项目/目录上下文**：会话自动重命名时，标题末尾追加项目名与目录路径（如 `Fix renderer · app / Campaign / Phase 1`；未分类会话仅追加 `· app`），让项目与目录归属在树之外依然可见；后缀自动去重并按原生 180 字符上限截断
 - **会话列表长标题悬停显示完整内容**：Workbench 与会话列表中被截断的长标题，悬停时以原生提示显示完整标题
+
+#### 修复
+
+- **会话跨项目移动不再被同步回退**：将会话重新分配到其他项目后，归属会在多次同步后保持 —— catalog 单独记录 provider 的原生路径，同步不再把会话弹回原项目。恢复（resume）被移动的会话时仍使用原生工作目录（agent 数据所在位置）。把会话移回其原生项目即恢复自动路径跟随。
 
 ### [0.2.13]
 

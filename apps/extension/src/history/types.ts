@@ -7,6 +7,10 @@ export interface AgentSession {
   id: string;
   title: string;
   projectPath: string;
+  /** Sync-owned canonical path from the provider (resume/operations should use this). */
+  nativeProjectPath?: string;
+  /** True when projectPath was reassigned by the user and sync must not revert it. */
+  projectOverridden?: boolean;
   /** Logical catalog project id when projects schema v2 is available. */
   projectId?: string;
   updatedAt: number;

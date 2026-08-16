@@ -59,6 +59,39 @@ describe("mergeCatalogAndAcpSessions", () => {
     expect(merged[0]?.acpProvider).toBe("claude");
   });
 
+  it("keeps the catalog project path for a user-moved chat even when the store is fresher", () => {
+    const catalog: AgentSession[] = [
+      {
+        provider: "chat",
+        id: "moved",
+        title: "Moved chat",
+        projectPath: "/target",
+        nativeProjectPath: "/original",
+        projectOverridden: true,
+        updatedAt: 10
+      }
+    ];
+    // Simulate another product rewriting the ACP store back to the original path
+    // with a fresher timestamp.
+    const acp: AgentSession[] = [
+      {
+        provider: "chat",
+        id: "moved",
+        title: "Moved chat",
+        projectPath: "/original",
+        updatedAt: 500,
+        source: "acp",
+        acpProvider: "claude"
+      }
+    ];
+    const merged = mergeCatalogAndAcpSessions(catalog, acp);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.projectPath).toBe("/target");
+    expect(merged[0]?.projectOverridden).toBe(true);
+    expect(merged[0]?.nativeProjectPath).toBe("/original");
+    expect(merged[0]?.updatedAt).toBe(500);
+  });
+
   it("returns every merged session when no display limit is provided", () => {
     const catalog = Array.from({ length: 600 }, (_, index): AgentSession => ({
       provider: "codex",

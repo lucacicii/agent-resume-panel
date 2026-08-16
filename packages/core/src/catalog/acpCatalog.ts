@@ -46,7 +46,8 @@ function numberOrNull(value: number | undefined | null): string {
 
 /**
  * Upsert one ACP chat into catalog.sessions as provider=chat.
- * Does not overwrite user_title, hidden, session_summary, or project_id.
+ * Does not overwrite user_title, hidden, session_summary, project_id, or a
+ * user-moved project_path (project_path != native_project_path is kept).
  */
 export async function upsertAcpSessionInCatalog(
   dbPath: string,
@@ -67,16 +68,21 @@ export async function upsertAcpSessionInCatalog(
   await runSqlite(
     dbPath,
     `INSERT INTO sessions (
-      provider, agent_session_id, title, project_path, updated_at_ms, archived, message_count, model, branch,
+      provider, agent_session_id, title, project_path, native_project_path, updated_at_ms, archived, message_count, model, branch,
       source, acp_provider, hidden, last_synced_at_ms, transcript_kind, transcript_refs
     ) VALUES (
-      'chat', ${sql(id)}, ${sql(title)}, ${sql(projectPath)}, ${updatedAt}, 0,
+      'chat', ${sql(id)}, ${sql(title)}, ${sql(projectPath)}, ${sql(projectPath)}, ${updatedAt}, 0,
       ${numberOrNull(messageCount)}, ${nullable(model)}, NULL,
       'acp', ${sql(acpProvider)}, 0, ${syncTimeMs}, 'acp', ${sql(refs)}
     )
     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
       title=excluded.title,
-      project_path=excluded.project_path,
+      native_project_path=excluded.project_path,
+      project_path=CASE
+        WHEN IFNULL(sessions.native_project_path, sessions.project_path) = sessions.project_path
+        THEN excluded.project_path
+        ELSE sessions.project_path
+      END,
       updated_at_ms=excluded.updated_at_ms,
       message_count=excluded.message_count,
       model=excluded.model,

@@ -52,7 +52,7 @@ export function openResumeTerminal(session: AgentSession, context?: vscode.Exten
 
   const terminal = vscode.window.createTerminal({
     name: t("terminal.nameResume", providerLabel(session.provider), truncate(session.title, 32)),
-    cwd: session.projectPath || undefined,
+    cwd: session.nativeProjectPath?.trim() || session.projectPath || undefined,
     location: terminalLocation(),
     isTransient: false
   });

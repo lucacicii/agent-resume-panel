@@ -20,6 +20,7 @@ import {
   backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
+  resumeProjectPath,
   effectivePanelHome,
   estimateDigestRun,
   expandHome,
@@ -50,6 +51,7 @@ import {
   resolveProjectCwdForPath,
   listProjectPathVariants,
   mergeProjectsInCatalog,
+  moveSessionToProjectInCatalog,
   splitProjectPathInCatalog,
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
@@ -126,9 +128,9 @@ import {
   type McpClientId
 } from "./mcpRegistration";
 import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
-import { disposeAcpController, disposeAllAcpControllers, registerAcpIpc } from "./acp/acpHost";
+import { disposeAcpController, disposeAllAcpControllers, registerAcpIpc, setAcpRecordProjectPath } from "./acp/acpHost";
 import { acpRecordToAgentSession, excludeCodexAcpNativeSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
-import { getAcpRecord, loadAcpRecords } from "./acp/store";
+import { getAcpRecord, loadAcpRecords, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
@@ -951,7 +953,7 @@ async function resumeCatalogSession(
   }
   void trackSessionTagHit(session.provider, session.id);
   const mode = resolveWorkbenchTerminalMode(settings);
-  const cwd = await resolveSessionCwd(session.projectPath, settings);
+  const cwd = await resolveSessionCwd(resumeProjectPath(session), settings);
 
   // Only provider "chat" is ACP. Do not use source/acpProvider alone — that must never hijack CLI resume.
   if (session.provider === "chat") {
@@ -2085,6 +2087,47 @@ function registerIpc(): void {
       }
       await hideSessionAction({ provider: args.provider, id: args.id });
       return { ok: true };
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:moveToProject",
+    async (_event, args: { provider: AgentProvider; id: string; targetProjectPath: string }) => {
+      const provider = args.provider;
+      const id = String(args.id || "").trim();
+      const targetProjectPath = String(args.targetProjectPath || "").trim();
+      if (!provider || !id || !targetProjectPath) {
+        throw new Error("provider, id, and targetProjectPath are required.");
+      }
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      const result = await moveSessionToProjectInCatalog(
+        paths.catalogDb,
+        provider,
+        id,
+        targetProjectPath
+      );
+      if (provider === "chat") {
+        const updatedLive = await setAcpRecordProjectPath(id, result.newPath);
+        if (!updatedLive) {
+          const record = await getAcpRecord(effectivePanelHome(settings), id);
+          if (record && record.projectPath !== result.newPath) {
+            await updateAcpRecord(effectivePanelHome(settings), {
+              ...record,
+              projectPath: result.newPath,
+              updatedAt: Date.now()
+            });
+          }
+        }
+      }
+      if (result.moved && result.fromProjectId && result.fromProjectId !== result.toProjectId) {
+        try {
+          await removeWorkbenchSessionFromFolder(paths.desktopDb, provider, id);
+        } catch {
+          // Desktop workbench tables may be absent — catalog move is already done.
+        }
+      }
+      return result;
     }
   );
 
