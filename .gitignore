@@ -10,6 +10,7 @@ packages/core/dist/
 apps/desktop/dist/
 apps/desktop/release/
 apps/desktop/.dev-app-stamp
+apps/desktop/.dev-app-stamp-*
 apps/desktop/.electron-zips/
 apps/desktop/.pack-staging/
 
