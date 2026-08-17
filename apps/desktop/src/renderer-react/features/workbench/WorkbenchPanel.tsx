@@ -1734,14 +1734,15 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onInput, onInitialPromptSubmitted, mouseTracking }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
   appearance: DesktopAppearanceState;
   /** webgl (default) or force canvas — hot-swapped without killing the PTY. */
   rendererMode: TerminalRendererMode;
-  onPty: (key: string, id: number, terminal: Terminal) => void;
+  onPty: (key: string, id: number, terminal: Terminal | null) => void;
+  onDetach: (id: number) => void;
   onInput: (key: string) => void;
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
@@ -1991,31 +1992,79 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
     hostEl.addEventListener("wheel", syncFollowState);
     hostEl.addEventListener("pointerup", syncFollowState);
     hostEl.addEventListener("keyup", syncFollowState);
-    void desktopApi().terminalSpawn({ cwd: pane.cwd, command: pane.command, cols: terminal.cols, rows: terminal.rows })
-      .then(({ id }) => {
-        if (!alive) { void desktopApi().terminalDestroy({ id }); return; }
-        ptyId.current = id;
-        onPty(pane.key, id, terminal);
-        syncScrollState();
-        setReady(true);
-        // Re-fit after attach in case layout settled during spawn.
-        scheduleFit();
-        resizePty(terminal.cols, terminal.rows);
-        if (initialPromptRef.current) {
-          window.setTimeout(() => {
-            const initialPrompt = initialPromptRef.current;
-            if (!alive || ptyId.current !== id || !initialPrompt) return;
-            void desktopApi().terminalInput({ id, data: `${initialPrompt}\r` })
-              .then(() => onInitialPromptSubmitted(pane.key))
-              .catch(() => undefined);
-          }, 600);
+
+    const bindPty = (id: number, replay: string, sendInitialPrompt: boolean) => {
+      if (!alive) return;
+      ptyId.current = id;
+      if (replay) terminal.write(replay);
+      onPty(pane.key, id, terminal);
+      syncScrollState();
+      setReady(true);
+      // Re-fit after attach in case layout settled during spawn.
+      scheduleFit();
+      resizePty(terminal.cols, terminal.rows);
+      if (sendInitialPrompt && initialPromptRef.current) {
+        window.setTimeout(() => {
+          const initialPrompt = initialPromptRef.current;
+          if (!alive || ptyId.current !== id || !initialPrompt) return;
+          void desktopApi().terminalInput({ id, data: `${initialPrompt}\r` })
+            .then(() => onInitialPromptSubmitted(pane.key))
+            .catch(() => undefined);
+        }, 600);
+      }
+    };
+
+    const persistOrBind = (id: number, replay: string, sendInitialPrompt: boolean) => {
+      if (!alive) {
+        // Project switch: keep the PTY on the pane and stop forwarding.
+        // Close tab: onPty destroys the orphan spawn because the pane is gone.
+        onPty(pane.key, id, null);
+        if (typeof desktopApi().terminalDetach === "function") {
+          void desktopApi().terminalDetach({ id });
         }
-      })
-      .catch((error: unknown) => {
-        if (!alive) return;
-        terminal.write(`\r\n${statusError(error)}\r\n`);
-        setReady(true);
-      });
+        return;
+      }
+      bindPty(id, replay, sendInitialPrompt);
+    };
+
+    const existingId = pane.ptyId;
+    const attachExisting = existingId != null && typeof desktopApi().terminalAttach === "function"
+      ? desktopApi().terminalAttach({ id: existingId }).then((result) => {
+          if (result.ok) {
+            persistOrBind(existingId, result.replay || "", false);
+            return;
+          }
+          throw new Error("terminal attach failed");
+        })
+      : existingId != null
+        ? Promise.resolve().then(() => persistOrBind(existingId, "", false))
+        : desktopApi().terminalSpawn({
+            cwd: pane.cwd,
+            command: pane.command,
+            cols: terminal.cols,
+            rows: terminal.rows
+          }).then(async (spawned) => {
+            const { id } = spawned;
+            if (spawned.warnSoftLimit) {
+              notifyDesktop({
+                text: t("desktop.workbench.ptySoftLimit", spawned.count || spawned.softLimit || 12),
+                kind: "info",
+                durationMs: 5000
+              });
+            }
+            let replay = "";
+            if (typeof desktopApi().terminalAttach === "function") {
+              const attached = await desktopApi().terminalAttach({ id });
+              if (attached.ok) replay = attached.replay || "";
+            }
+            persistOrBind(id, replay, true);
+          });
+
+    void attachExisting.catch((error: unknown) => {
+      if (!alive) return;
+      terminal.write(`\r\n${statusError(error)}\r\n`);
+      setReady(true);
+    });
     return () => {
       alive = false;
       observer.disconnect();
@@ -2040,12 +2089,19 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
       terminalRef.current = null;
       rendererRef.current?.dispose();
       rendererRef.current = null;
-      const currentPtyId = ptyId.current;
+      const currentPtyId = ptyId.current ?? pane.ptyId ?? null;
       ptyId.current = null;
-      if (currentPtyId !== null) void desktopApi().terminalDestroy({ id: currentPtyId });
+      if (currentPtyId !== null) {
+        onDetach(currentPtyId);
+        if (typeof desktopApi().terminalDetach === "function") {
+          void desktopApi().terminalDetach({ id: currentPtyId });
+        }
+      }
       terminal.dispose();
     };
-  }, [mouseTracking, onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key]);
+    // pane.ptyId is intentionally omitted: the first spawn writes it via onPty
+    // and must not remount/detach the same view.
+  }, [mouseTracking, onDetach, onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key, t]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {
@@ -2823,6 +2879,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
       const listFolderData = (projects: CatalogProject[]) => {
+        if (typeof desktopApi().listAllWorkbenchSessionFolders === "function") {
+          return desktopApi().listAllWorkbenchSessionFolders();
+        }
         if (typeof desktopApi().listWorkbenchSessionFolders !== "function") {
           return Promise.resolve({} as Record<string, {
             folders: WorkbenchSessionFolder[];
@@ -4067,9 +4126,25 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [refreshTerminalGit]);
 
-  const onPty = useCallback((key: string, id: number, terminal: Terminal) => {
-    terminalRefs.current.set(id, terminal);
-    setTerminals((current) => current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane));
+  const onPtyDetach = useCallback((id: number) => {
+    terminalRefs.current.delete(id);
+  }, []);
+
+  const onPty = useCallback((key: string, id: number, terminal: Terminal | null) => {
+    const livePane = terminalsRef.current.find((item) => item.key === key);
+    if (!livePane) {
+      // Spawn resolved after the tab was closed — kill the orphan PTY.
+      void desktopApi().terminalDestroy({ id });
+      return;
+    }
+    if (terminal) terminalRefs.current.set(id, terminal);
+    else terminalRefs.current.delete(id);
+    setTerminals((current) => {
+      const next = current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane);
+      terminalsRef.current = next;
+      return next;
+    });
+    if (!terminal) return;
     if (focusPaneAfterPtyRef.current === key) {
       const pane = terminalsRef.current.find((entry) => entry.key === key);
       window.requestAnimationFrame(() => {
@@ -4166,21 +4241,23 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [acpChats, browsers, diffs, editors, terminals, workbenchPaneSessionKey]);
 
   const closeTerminal = useCallback((key: string) => {
-    const pane = terminals.find((item) => item.key === key);
+    const pane = terminalsRef.current.find((item) => item.key === key);
     if (pane?.ptyId) {
       terminalRefs.current.delete(pane.ptyId);
       terminalMouseTrackingRef.current.delete(pane.ptyId);
+      void desktopApi().terminalDestroy({ id: pane.ptyId });
     }
-    terminalsRef.current = terminalsRef.current.filter((item) => item.key !== key);
-    setTerminals((current) => current.filter((item) => item.key !== key));
+    const remaining = terminalsRef.current.filter((item) => item.key !== key);
+    terminalsRef.current = remaining;
+    setTerminals(remaining);
     setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== key));
     if (pane) {
       deferSessionPaneAutoRename(pane);
       nextPaneAfterClose(pane.projectPath, key, {
-        remainingTerminals: terminals.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
+        remainingTerminals: remaining.filter((item) => item.projectPath === pane.projectPath)
       });
     }
-  }, [deferSessionPaneAutoRename, nextPaneAfterClose, terminals]);
+  }, [deferSessionPaneAutoRename, nextPaneAfterClose]);
 
   const closeAcpChat = useCallback((key: string) => {
     const pane = acpChats.find((item) => item.key === key);
@@ -7402,9 +7479,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       <main className="wb-detail">
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
-          <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.map((pane) => {
-            const visible = pane.projectPath === selectedProject && activePane === pane.key;
-            return <div key={pane.key} className="wb-terminal-pane-wrap" hidden={!visible}><TerminalView pane={pane} active={active && visible} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+          <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
+            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input

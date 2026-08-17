@@ -55,6 +55,8 @@ import {
   splitProjectPathInCatalog,
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
+  listAllWorkbenchSessionFolders,
+  listAllWorkbenchSessionFolderAssignments,
   createWorkbenchSessionFolder,
   renameWorkbenchSessionFolder,
   deleteWorkbenchSessionFolder,
@@ -1634,13 +1636,14 @@ function registerIpc(): void {
     return { restored, restoredProjects, counts };
   });
 
-  ipcMain.handle("sessions:list", async () => {
+  ipcMain.handle("sessions:list", async (_event, args?: { limit?: number }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
     const records = await loadAcpRecords(effectivePanelHome(settings));
-    const catalog = excludeCodexAcpNativeSessions(await listSessions(paths.catalogDb), records);
+    const maxItems = Math.max(1, Math.min(Number(args?.limit) || settings.sessionSync?.maxItems || 10_000, 50_000));
+    const catalog = excludeCodexAcpNativeSessions(await listSessions(paths.catalogDb, maxItems), records);
     const acp = records.map(acpRecordToAgentSession);
-    return mergeCatalogAndAcpSessions(catalog, acp);
+    return mergeCatalogAndAcpSessions(catalog, acp).slice(0, maxItems);
   });
 
   ipcMain.handle("gtd:listSessionStatuses", async () => {
@@ -2256,6 +2259,29 @@ function registerIpc(): void {
       };
     }
   );
+
+  safeHandle("workbench:listAllSessionFolders", async () => {
+    const paths = await loadPanelDbPaths();
+    const [folders, assignments] = await Promise.all([
+      listAllWorkbenchSessionFolders(paths.desktopDb),
+      listAllWorkbenchSessionFolderAssignments(paths.desktopDb)
+    ]);
+    const byProject: Record<string, {
+      folders: typeof folders;
+      assignments: typeof assignments;
+    }> = {};
+    for (const folder of folders) {
+      const bucket = byProject[folder.projectId] || { folders: [], assignments: [] };
+      bucket.folders.push(folder);
+      byProject[folder.projectId] = bucket;
+    }
+    for (const assignment of assignments) {
+      const bucket = byProject[assignment.projectId] || { folders: [], assignments: [] };
+      bucket.assignments.push(assignment);
+      byProject[assignment.projectId] = bucket;
+    }
+    return byProject;
+  });
 
   safeHandle(
     "workbench:createSessionFolder",

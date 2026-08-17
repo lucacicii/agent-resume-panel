@@ -10,6 +10,8 @@ import {
   ensureDesktopDbSchema,
   listWorkbenchSessionFolderAssignments,
   listWorkbenchSessionFolders,
+  listAllWorkbenchSessionFolders,
+  listAllWorkbenchSessionFolderAssignments,
   mergeWorkbenchSessionFolders,
   removeWorkbenchSessionFromFolder,
   renameWorkbenchSessionFolder
@@ -71,6 +73,11 @@ test("Workbench folders survive catalog project merges without sibling name coll
     const assignment = (await listWorkbenchSessionFolderAssignments(dbPath, "target"))[0];
     assert.equal(assignment.folderId, folders.find((folder) => folder.name === "Campaign (2)").folderId);
     assert.deepEqual(await listWorkbenchSessionFolders(dbPath, "source"), []);
+    const allFolders = await listAllWorkbenchSessionFolders(dbPath);
+    const allAssignments = await listAllWorkbenchSessionFolderAssignments(dbPath);
+    assert.equal(allFolders.length, 2);
+    assert.equal(allAssignments.length, 1);
+    assert.equal(allAssignments[0].projectId, "target");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

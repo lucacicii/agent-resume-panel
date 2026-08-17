@@ -21,11 +21,110 @@ interface PtySession {
   lastRows: number;
   shell: string;
   startedAt: number;
+  attached: boolean;
+  replayChunks: string[];
+  replayBytes: number;
+  pendingForward: string[];
+  pendingForwardBytes: number;
+  flushTimer: NodeJS.Timeout | null;
 }
+
+/** Tail of PTY output kept while xterm is unmounted. Always drain onData. */
+export const PTY_REPLAY_LIMIT = 256 * 1024;
+/** Soft cap on concurrent PTY sessions. Spawn still succeeds. */
+export const PTY_SOFT_LIMIT = 12;
+const FORWARD_FLUSH_MS = 16;
+const FORWARD_FLUSH_BYTES = 64 * 1024;
 
 const ptySessions = new Map<number, PtySession>();
 let nextTerminalId = 0;
 let materializedIntegrationScript: string | null | undefined;
+let warnedSoftLimit = false;
+
+function appendReplay(session: PtySession, data: string): void {
+  if (!data) return;
+  session.replayChunks.push(data);
+  session.replayBytes += data.length;
+  while (session.replayBytes > PTY_REPLAY_LIMIT && session.replayChunks.length > 1) {
+    const first = session.replayChunks.shift();
+    if (first) session.replayBytes -= first.length;
+  }
+  if (session.replayBytes > PTY_REPLAY_LIMIT && session.replayChunks.length === 1) {
+    const last = session.replayChunks[0] || "";
+    session.replayChunks[0] = last.slice(-PTY_REPLAY_LIMIT);
+    session.replayBytes = session.replayChunks[0].length;
+  }
+}
+
+function replayText(session: PtySession): string {
+  return session.replayChunks.join("");
+}
+
+function createPtySession(
+  ptyInstance: pty.IPty,
+  cwd: string,
+  cols: number,
+  rows: number,
+  shell: string,
+  attached: boolean
+): PtySession {
+  return {
+    pty: ptyInstance,
+    respawnOnExit: true,
+    lastSpawnCwd: cwd,
+    lastCols: cols,
+    lastRows: rows,
+    shell,
+    startedAt: Date.now(),
+    attached,
+    replayChunks: [],
+    replayBytes: 0,
+    pendingForward: [],
+    pendingForwardBytes: 0,
+    flushTimer: null
+  };
+}
+
+function clearForwardQueue(session: PtySession): void {
+  if (session.flushTimer) {
+    clearTimeout(session.flushTimer);
+    session.flushTimer = null;
+  }
+  session.pendingForward = [];
+  session.pendingForwardBytes = 0;
+}
+
+function flushForward(id: number, win: BrowserWindow | null): void {
+  const session = ptySessions.get(id);
+  if (!session) return;
+  session.flushTimer = null;
+  if (!session.attached || !session.pendingForward.length) {
+    session.pendingForward = [];
+    session.pendingForwardBytes = 0;
+    return;
+  }
+  const data = session.pendingForward.join("");
+  session.pendingForward = [];
+  session.pendingForwardBytes = 0;
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("terminal:data", { id, data });
+  }
+}
+
+function queueForward(id: number, data: string, win: BrowserWindow | null): void {
+  const session = ptySessions.get(id);
+  if (!session || !session.attached || !data) return;
+  session.pendingForward.push(data);
+  session.pendingForwardBytes += data.length;
+  if (session.pendingForwardBytes >= FORWARD_FLUSH_BYTES) {
+    flushForward(id, win);
+    return;
+  }
+  if (!session.flushTimer) {
+    session.flushTimer = setTimeout(() => flushForward(id, win), FORWARD_FLUSH_MS);
+    session.flushTimer.unref?.();
+  }
+}
 
 function ensureSpawnHelperExecutable(): void {
   if (process.platform !== "darwin" && process.platform !== "linux") return;
@@ -304,32 +403,27 @@ function attachPtyHandlers(
   win: BrowserWindow | null
 ): void {
   ptyInstance.onData((data) => {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("terminal:data", { id, data });
-    }
+    const session = ptySessions.get(id);
+    if (!session) return;
+    // Always drain. Pause means "don't forward to xterm", never "stop reading".
+    appendReplay(session, data);
+    if (session.attached) queueForward(id, data, win);
   });
   ptyInstance.onExit(() => {
     const session = ptySessions.get(id);
     if (!session) return;
 
-    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt } = session;
+    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached } = session;
     ptySessions.delete(id);
 
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
       try {
         const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows);
-        ptySessions.set(id, {
-          pty: newPty,
-          respawnOnExit: true,
-          lastSpawnCwd,
-          lastCols,
-          lastRows,
-          shell,
-          startedAt: Date.now()
-        });
+        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached);
+        ptySessions.set(id, next);
         attachPtyHandlers(newPty, id, win);
-        if (win && !win.isDestroyed()) {
+        if (attached && win && !win.isDestroyed()) {
           win.webContents.send("terminal:respawned", { id });
         }
         return;
@@ -350,12 +444,14 @@ function destroyPtyById(id: number): void {
   const session = ptySessions.get(id);
   if (!session) return;
   session.respawnOnExit = false;
+  clearForwardQueue(session);
   try {
     session.pty.kill();
   } catch {
     // ignore
   }
   ptySessions.delete(id);
+  if (ptySessions.size < PTY_SOFT_LIMIT) warnedSoftLimit = false;
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
@@ -380,20 +476,36 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
         throw new Error(`无法启动终端 (shell=${shell}, cwd=${cwd}): ${detail}`);
       }
 
-      ptySessions.set(id, {
-        pty: ptyInstance,
-        respawnOnExit: true,
-        lastSpawnCwd: cwd,
-        lastCols: cols,
-        lastRows: rows,
-        shell,
-        startedAt: Date.now()
-      });
+      // Start detached so boot output lands in the replay buffer until xterm attaches.
+      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false));
       attachPtyHandlers(ptyInstance, id, win);
+      const softLimitReached = ptySessions.size >= PTY_SOFT_LIMIT;
+      const warnSoftLimit = softLimitReached && !warnedSoftLimit;
+      if (warnSoftLimit) warnedSoftLimit = true;
 
-      return { id };
+      return { id, count: ptySessions.size, softLimit: PTY_SOFT_LIMIT, warnSoftLimit };
     }
   );
+
+  safeHandle("terminal:attach", (_event, args: { id: number }) => {
+    const session = ptySessions.get(Math.floor(args.id));
+    if (!session) return { ok: false as const, replay: "" };
+    session.attached = true;
+    const replay = replayText(session);
+    session.replayChunks = replay ? [replay] : [];
+    session.replayBytes = replay.length;
+    return { ok: true as const, replay };
+  });
+
+  safeHandle("terminal:detach", (_event, args: { id: number }) => {
+    const session = ptySessions.get(Math.floor(args.id));
+    if (session) {
+      flushForward(Math.floor(args.id), getWindow());
+      session.attached = false;
+      clearForwardQueue(session);
+    }
+    return { ok: true };
+  });
 
   safeHandle("terminal:input", (_event, args: { id: number; data: string }) => {
     const session = ptySessions.get(Math.floor(args.id));

@@ -225,6 +225,8 @@ export type { ProjectRow, ResolveProjectCwdResult } from "./catalog/projects";
 export {
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
+  listAllWorkbenchSessionFolders,
+  listAllWorkbenchSessionFolderAssignments,
   createWorkbenchSessionFolder,
   renameWorkbenchSessionFolder,
   deleteWorkbenchSessionFolder,

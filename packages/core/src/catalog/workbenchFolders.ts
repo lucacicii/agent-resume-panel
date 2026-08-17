@@ -153,6 +153,31 @@ export async function listWorkbenchSessionFolderAssignments(
   return rows.map(toAssignment);
 }
 
+export async function listAllWorkbenchSessionFolders(
+  dbPath: string
+): Promise<WorkbenchSessionFolder[]> {
+  const rows = await runSqliteJson<WorkbenchSessionFolderSqlRow>(
+    dbPath,
+    `SELECT folder_id, project_id, parent_id, name, created_at_ms, updated_at_ms
+     FROM workbench_session_folders
+     ORDER BY project_id ASC, name COLLATE NOCASE ASC, created_at_ms ASC, folder_id ASC;`
+  );
+  return rows.map(toFolder);
+}
+
+export async function listAllWorkbenchSessionFolderAssignments(
+  dbPath: string
+): Promise<WorkbenchSessionFolderAssignment[]> {
+  const rows = await runSqliteJson<WorkbenchSessionFolderAssignmentSqlRow>(
+    dbPath,
+    `SELECT project_id, provider, agent_session_id, folder_id, updated_at_ms
+     FROM workbench_session_folder_items
+     WHERE folder_id IS NOT NULL
+     ORDER BY project_id ASC, updated_at_ms DESC, provider ASC, agent_session_id ASC;`
+  );
+  return rows.map(toAssignment);
+}
+
 export async function createWorkbenchSessionFolder(
   dbPath: string,
   projectId: string,

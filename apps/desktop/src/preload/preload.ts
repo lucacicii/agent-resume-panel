@@ -151,7 +151,7 @@ export interface DesktopApi {
     restored: number;
     counts: { total: number; visible: number; hidden: number };
   }>;
-  listSessions(): Promise<AgentSession[]>;
+  listSessions(opts?: { limit?: number }): Promise<AgentSession[]>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
   setSessionGtdStatus(args: {
     provider: string;
@@ -397,6 +397,10 @@ export interface DesktopApi {
     folders: WorkbenchSessionFolder[];
     assignments: WorkbenchSessionFolderAssignment[];
   }>;
+  listAllWorkbenchSessionFolders(): Promise<Record<string, {
+    folders: WorkbenchSessionFolder[];
+    assignments: WorkbenchSessionFolderAssignment[];
+  }>>;
   createWorkbenchSessionFolder(args: {
     projectId: string;
     parentId?: string | null;
@@ -552,7 +556,9 @@ export interface DesktopApi {
     command?: string;
     cols?: number;
     rows?: number;
-  }): Promise<{ id: number }>;
+  }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
+  terminalAttach(args: { id: number }): Promise<{ ok: boolean; replay: string }>;
+  terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
@@ -1440,7 +1446,7 @@ const api: DesktopApi = {
     ipcRenderer.on("sessions:syncFailed", handler);
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
-  listSessions: () => ipcRenderer.invoke("sessions:list"),
+  listSessions: (opts) => ipcRenderer.invoke("sessions:list", opts),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   listTags: (args) => ipcRenderer.invoke("tags:list", args),
@@ -1488,6 +1494,7 @@ const api: DesktopApi = {
   workbenchOpenCodexApp: (args) => ipcRenderer.invoke("workbench:openCodexApp", args),
   workbenchNewSession: (args) => ipcRenderer.invoke("workbench:newSession", args),
   listWorkbenchSessionFolders: (args) => ipcRenderer.invoke("workbench:listSessionFolders", args),
+  listAllWorkbenchSessionFolders: () => ipcRenderer.invoke("workbench:listAllSessionFolders"),
   createWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:createSessionFolder", args),
   renameWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:renameSessionFolder", args),
   deleteWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:deleteSessionFolder", args),
@@ -1515,6 +1522,8 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("acp:stream", handler);
   },
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
+  terminalAttach: (args) => ipcRenderer.invoke("terminal:attach", args),
+  terminalDetach: (args) => ipcRenderer.invoke("terminal:detach", args),
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),

@@ -1893,6 +1893,8 @@ describe("WorkbenchPanel", () => {
       ],
       workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: "/work/app" }),
       terminalSpawn,
+      terminalAttach: async ({ id }: { id: number }) => ({ ok: true, replay: `replay-${id}` }),
+      terminalDetach: async () => ({ ok: true }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy,
       terminalResize: async () => ({ ok: true })
@@ -1907,8 +1909,10 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
     fireEvent.click(sessionButton("Review tests")!);
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(2));
 
     fireEvent.click(document.querySelector<HTMLButtonElement>(".wb-terminal-tab-label")!);
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(3));
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" })));
     expect(terminalDestroy).not.toHaveBeenCalled();
@@ -1919,6 +1923,94 @@ describe("WorkbenchPanel", () => {
     expect(terminalSpawn).toHaveBeenCalledTimes(2);
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
+  });
+
+  it("detaches xterm when leaving a project and reattaches without spawning", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 11 }));
+    const terminalAttach = vi.fn(async () => ({ ok: true, replay: "hidden-output" }));
+    const terminalDetach = vi.fn(async () => ({ ok: true }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+        { provider: "codex", id: "session-3", title: "Write docs", projectPath: "/work/docs", updatedAt: 3 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: id === "session-3" ? "/work/docs" : "/work/app" }),
+      terminalSpawn,
+      terminalAttach,
+      terminalDetach,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy,
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/docs"]')!);
+    await waitFor(() => expect(terminalDetach).toHaveBeenCalledWith({ id: 11 }));
+    expect(terminalDestroy).not.toHaveBeenCalled();
+    expect(xtermMocks.instances).toHaveLength(1);
+
+    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')!);
+    await waitFor(() => expect(terminalAttach).toHaveBeenCalledWith({ id: 11 }));
+    expect(terminalSpawn).toHaveBeenCalledTimes(1);
+    expect(terminalDestroy).not.toHaveBeenCalled();
+    expect(xtermMocks.instances).toHaveLength(2);
+  });
+
+  it("destroys the PTY only when the terminal tab is closed", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 21 }));
+    const terminalDetach = vi.fn(async () => ({ ok: true }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalAttach: async () => ({ ok: true, replay: "" }),
+      terminalDetach,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy,
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Close terminal" }));
+    await waitFor(() => expect(terminalDestroy).toHaveBeenCalledWith({ id: 21 }));
   });
 
   it("docks the session transcript beside the live TUI without destroying the terminal", async () => {
@@ -2905,6 +2997,8 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn: async () => ({ id: 1 }),
+      terminalAttach: async () => ({ ok: true, replay: "" }),
+      terminalDetach: async () => ({ ok: true }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy,
       terminalResize: async () => ({ ok: true })
@@ -2914,10 +3008,11 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await screen.findByRole("button", { name: "Close terminal" });
+    await waitFor(() => expect(xtermMocks.instances.length).toBeGreaterThan(0));
     expect(setWorkbenchActive).toHaveBeenCalledWith(true);
     act(() => onWorkbenchCmdW?.());
     await waitFor(() => expect(screen.queryByRole("button", { name: "Close terminal" })).toBeNull());
-    expect(terminalDestroy).toHaveBeenCalledWith({ id: 1 });
+    await waitFor(() => expect(terminalDestroy).toHaveBeenCalledWith({ id: 1 }));
   });
 
   it("after Cmd+W activates the most recently used remaining terminal tab", async () => {
