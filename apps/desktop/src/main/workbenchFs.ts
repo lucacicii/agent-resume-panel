@@ -51,6 +51,29 @@ export { parseLeftRightCount } from "./gitTracking";
 
 const execFileAsync = promisify(execFile);
 
+async function execGitWithRetry(
+  args: string[],
+  options?: Parameters<typeof execFileAsync>[2],
+  maxRetries = 3,
+  initialDelayMs = 50
+): Promise<{ stdout: string | Buffer; stderr: string | Buffer }> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await execFileAsync("git", args, options);
+    } catch (error) {
+      attempt++;
+      const errStr = formatExecError(error);
+      const isLockError = errStr.includes("index.lock") || errStr.includes("File exists");
+      if (isLockError && attempt <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, initialDelayMs * Math.pow(2, attempt - 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 const DEFAULT_MAX_BYTES = 512 * 1024;
 const MAX_DIRECTORY_ENTRIES = 2000;
 const GIT_TRACKING_TIMEOUT_MS = 5000;
@@ -505,8 +528,7 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
   const repoPath = normalizeRepoRelativePath(repoPathRaw);
   resolvePathWithinRoot(path.resolve(repoRoot, repoPath), repoRoot);
 
-  const { stdout } = await execFileAsync(
-    "git",
+  const { stdout } = await execGitWithRetry(
     ["-C", repoRoot, "status", "--porcelain=v1", "--", repoPath],
     { timeout: 10000, maxBuffer: 64 * 1024 }
   );
@@ -517,7 +539,7 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
 
   try {
     if (status.startsWith("?? ")) {
-      await execFileAsync("git", ["-C", repoRoot, "clean", "-fd", "--", repoPath], {
+      await execGitWithRetry(["-C", repoRoot, "clean", "-fd", "--", repoPath], {
         timeout: 30000,
         maxBuffer: 1024 * 1024
       });
@@ -525,7 +547,7 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
     }
 
     if (await repoHasHeadPath(repoRoot, repoPath)) {
-      await execFileAsync("git", ["-C", repoRoot, "restore", "--source=HEAD", "--staged", "--worktree", "--", repoPath], {
+      await execGitWithRetry(["-C", repoRoot, "restore", "--source=HEAD", "--staged", "--worktree", "--", repoPath], {
         timeout: 30000,
         maxBuffer: 1024 * 1024
       });
@@ -533,11 +555,11 @@ export async function discardGitChange(repoRootRaw: string, repoPathRaw: string)
     }
 
     // A newly added index entry has no HEAD version. Remove it from the index, then clean its worktree path.
-    await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", repoPath], {
+    await execGitWithRetry(["-C", repoRoot, "restore", "--staged", "--", repoPath], {
       timeout: 30000,
       maxBuffer: 1024 * 1024
     });
-    await execFileAsync("git", ["-C", repoRoot, "clean", "-fd", "--", repoPath], {
+    await execGitWithRetry(["-C", repoRoot, "clean", "-fd", "--", repoPath], {
       timeout: 30000,
       maxBuffer: 1024 * 1024
     });
@@ -551,7 +573,7 @@ type ApplyGitPatchOptions = {
   cached: boolean;
 };
 
-function applyGitPatch(repoRoot: string, patch: string, options: ApplyGitPatchOptions): Promise<void> {
+function applyGitPatchOnce(repoRoot: string, patch: string, options: ApplyGitPatchOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = ["-C", repoRoot, "apply", "--whitespace=nowarn"];
     if (options.reverse) args.push("--reverse");
@@ -578,6 +600,25 @@ function applyGitPatch(repoRoot: string, patch: string, options: ApplyGitPatchOp
     }, 30000);
     child.stdin.end(patch);
   });
+}
+
+async function applyGitPatch(repoRoot: string, patch: string, options: ApplyGitPatchOptions, maxRetries = 3, initialDelayMs = 50): Promise<void> {
+  let attempt = 0;
+  while (true) {
+    try {
+      await applyGitPatchOnce(repoRoot, patch, options);
+      return;
+    } catch (error) {
+      attempt++;
+      const errStr = error instanceof Error ? error.message : String(error);
+      const isLockError = errStr.includes("index.lock") || errStr.includes("File exists");
+      if (isLockError && attempt <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, initialDelayMs * Math.pow(2, attempt - 1)));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 function assertGitHunkTarget(target: GitDiffHunkTarget): void {

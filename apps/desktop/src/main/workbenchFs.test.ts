@@ -94,6 +94,27 @@ describe("discardGitChange", () => {
     const repo = createRepo();
     await expect(discardGitChange(repo, "../outside.txt")).rejects.toThrow("无效的文件路径");
   });
+
+  it("retries and succeeds when .git/index.lock is transiently present", async () => {
+    const repo = createRepo();
+    const tracked = path.join(repo, "tracked.txt");
+    fs.writeFileSync(tracked, "modified\n");
+
+    const lockPath = path.join(repo, ".git", "index.lock");
+    fs.writeFileSync(lockPath, "");
+
+    // Remove the lock file after 80ms to simulate a transient git process finishing up
+    setTimeout(() => {
+      if (fs.existsSync(lockPath)) {
+        fs.unlinkSync(lockPath);
+      }
+    }, 80);
+
+    await discardGitChange(repo, "tracked.txt");
+
+    expect(fs.readFileSync(tracked, "utf8")).toBe("base\n");
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
 });
 
 describe("gitStatusForRepo", () => {
