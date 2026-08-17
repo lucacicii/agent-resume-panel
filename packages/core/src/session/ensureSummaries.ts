@@ -37,6 +37,12 @@ export interface EnsureSummariesOptions {
   onProgress?: DigestProgressCallback;
   /** OS / VS Code display locale when output language is auto. */
   systemLocale?: string;
+  /**
+   * Whether to enqueue derived embedding/transcript indexes after a summary.
+   * Auto-summary has dedicated background workers for these indexes, so it
+   * disables the side effects to avoid duplicate work.
+   */
+  indexDerivedData?: boolean;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
 }
@@ -77,6 +83,7 @@ export async function ensureSummariesForSessions(
   const periodLabel = options.progressPeriodLabel || "";
   const onProgress = options.onProgress;
   const progressText = createReportProgressText(options.settings, options.systemLocale);
+  const indexDerivedData = options.indexDerivedData !== false;
 
   const out: AgentSession[] = options.sessions.map((s) => ({ ...s }));
   let summarized = 0;
@@ -156,7 +163,8 @@ export async function ensureSummariesForSessions(
           homes,
           language,
           jobKey: `${prefix}:${key}`,
-          settings: options.settings
+          settings: options.settings,
+          indexDerivedData
         });
         out[index] = {
           ...session,
@@ -208,6 +216,7 @@ async function summarizeOneSession(input: {
   language: string;
   jobKey: string;
   settings: PanelSettings;
+  indexDerivedData: boolean;
 }): Promise<string> {
   const preview = await loadSessionPreview(input.session, input.homes);
   if (!preview.messages?.length) {
@@ -232,21 +241,23 @@ async function summarizeOneSession(input: {
       input.language,
       result.summary
     );
-    void upsertSessionEmbedding({
-      desktopDb: input.desktopDb,
-      settings: input.settings,
-      provider: input.session.provider,
-      sessionId: input.session.id,
-      title: input.session.title,
-      summary: result.summary,
-      jobKey: `session_embed:${input.jobKey}`
-    }).catch(() => undefined);
-    void indexSessionTranscript({
-      desktopDb: input.desktopDb,
-      settings: input.settings,
-      session: { ...input.session, sessionSummary: result.summary },
-      jobKey: `session_tx_embed:${input.jobKey}`
-    }).catch(() => undefined);
+    if (input.indexDerivedData) {
+      void upsertSessionEmbedding({
+        desktopDb: input.desktopDb,
+        settings: input.settings,
+        provider: input.session.provider,
+        sessionId: input.session.id,
+        title: input.session.title,
+        summary: result.summary,
+        jobKey: `session_embed:${input.jobKey}`
+      }).catch(() => undefined);
+      void indexSessionTranscript({
+        desktopDb: input.desktopDb,
+        settings: input.settings,
+        session: { ...input.session, sessionSummary: result.summary },
+        jobKey: `session_tx_embed:${input.jobKey}`
+      }).catch(() => undefined);
+    }
     return result.summary;
   } catch (error) {
     await recordLlmUsage(input.desktopDb, {

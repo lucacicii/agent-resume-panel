@@ -65,10 +65,15 @@ function sqlNullOrString(value: string | undefined): string {
   return `'${escapeSqlLiteral(value)}'`;
 }
 
-export async function listAllNotes(dbPath: string): Promise<NoteRecord[]> {
+export async function listAllNotes(dbPath: string, limit?: number): Promise<NoteRecord[]> {
+  const limitClause = limit == null
+    ? ""
+    : ` LIMIT ${Math.max(1, Math.min(Math.floor(Number(limit)) || 1, 50_000))}`;
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id ORDER BY n.updated_at_ms DESC;`
+    `SELECT n.*, g.status AS gtd_status
+     FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     ORDER BY n.updated_at_ms DESC${limitClause};`
   );
   return rows.map(mapRow);
 }

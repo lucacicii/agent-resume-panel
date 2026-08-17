@@ -1,6 +1,7 @@
 import {
   effectivePanelHome,
   loadSettings,
+  resolveSessionEmbeddingIndexSettings,
   runAutoSessionEmbeddings
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
@@ -12,10 +13,12 @@ const FAILURE_COOLDOWN_MS = 15 * 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 let inFlight: Promise<void> | null = null;
+let startGeneration = 0;
 /** provider:id → do-not-retry-until ms */
 const failureCooldown = new Map<string, number>();
 
 export function stopSessionEmbeddingIndexAuto(): void {
+  startGeneration += 1;
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -28,8 +31,12 @@ export function stopSessionEmbeddingIndexAuto(): void {
 
 export function startSessionEmbeddingIndexAuto(): void {
   stopSessionEmbeddingIndexAuto();
-  timer = setInterval(() => scheduleSessionEmbeddingIndexAuto(0), TICK_INTERVAL_MS);
-  scheduleSessionEmbeddingIndexAuto(20_000);
+  const generation = ++startGeneration;
+  void loadSettings().then((settings) => {
+    if (generation !== startGeneration || !resolveSessionEmbeddingIndexSettings(settings).enabled) return;
+    timer = setInterval(() => scheduleSessionEmbeddingIndexAuto(0), TICK_INTERVAL_MS);
+    scheduleSessionEmbeddingIndexAuto(20_000);
+  }).catch((error) => void recordAppError({ source: "session-embedding-index-auto", error }));
 }
 
 /** Debounced schedule after session sync or settings change. */

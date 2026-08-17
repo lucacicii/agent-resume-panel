@@ -2,22 +2,25 @@ import { app } from "electron";
 import {
   effectivePanelHome,
   loadSettings,
+  resolveAutoTaggingSettings,
   runAutoTagging
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
-/** Fixed cadence: every 5s, up to 3 items with concurrency 3. */
-const TICK_INTERVAL_MS = 5_000;
+/** Background cadence: tagging is intentionally not a foreground poll. */
+const TICK_INTERVAL_MS = 5 * 60_000;
 const FAILURE_COOLDOWN_MS = 20 * 60_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 let inFlight: Promise<void> | null = null;
+let startGeneration = 0;
 /** entityType:entityId → do-not-retry-until ms */
 const failureCooldown = new Map<string, number>();
 
 export function stopAutoTaggingService(): void {
+  startGeneration += 1;
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -30,8 +33,12 @@ export function stopAutoTaggingService(): void {
 
 export function startAutoTaggingService(): void {
   stopAutoTaggingService();
-  timer = setInterval(() => scheduleAutoTagging(0), TICK_INTERVAL_MS);
-  scheduleAutoTagging(8_000);
+  const generation = ++startGeneration;
+  void loadSettings().then((settings) => {
+    if (generation !== startGeneration || !resolveAutoTaggingSettings(settings).enabled) return;
+    timer = setInterval(() => scheduleAutoTagging(0), TICK_INTERVAL_MS);
+    scheduleAutoTagging(15_000);
+  }).catch((error) => void recordAppError({ source: "auto-tagging", error }));
 }
 
 /**

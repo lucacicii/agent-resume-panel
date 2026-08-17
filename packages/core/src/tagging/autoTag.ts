@@ -25,10 +25,13 @@ import type { EntityTagSummary, TagEntityType } from "./types";
 
 /** Fixed parallel LLM workers per tick (not user-facing). */
 export const DEFAULT_AUTO_TAG_CONCURRENCY = 3;
-/** Fixed entities processed per 5s tick (not user-facing). */
+/** Fixed entities processed per background tick (not user-facing). */
 export const DEFAULT_AUTO_TAG_MAX_PER_TICK = 3;
 export const DEFAULT_AUTO_TAG_MAX_TAGS = 6;
 export const DEFAULT_AUTO_TAG_QUIET_DELAY_MINUTES = 5;
+const TAG_DECAY_INTERVAL_MS = 60 * 60_000;
+
+const lastDecayAtByDb = new Map<string, number>();
 
 export interface ResolvedAutoTaggingSettings {
   enabled: boolean;
@@ -158,7 +161,7 @@ export async function listNotesNeedingTags(
   poolLimit = 200
 ): Promise<TaggingCandidate[]> {
   await ensureDesktopDbSchema(desktopDb);
-  const notes = await listAllNotes(catalogDb);
+  const notes = await listAllNotes(catalogDb, poolLimit);
   const tagged = await runSqliteJson<{ entity_id: string; last_tagged_at: number }>(
     desktopDb,
     `SELECT entity_id, MAX(updated_at_ms) AS last_tagged_at
@@ -167,7 +170,7 @@ export async function listNotesNeedingTags(
      GROUP BY entity_id;`
   );
   const lastMap = entityLastTaggedAt(tagged);
-  const sorted = [...notes].sort((a, b) => b.updatedAtMs - a.updatedAtMs).slice(0, poolLimit);
+  const sorted = notes;
   const out: TaggingCandidate[] = [];
   for (const note of sorted) {
     const last = lastMap.get(note.noteId) || 0;
@@ -427,8 +430,7 @@ export async function runAutoTagging(
     );
   }
   if (!candidates.length) {
-    // Still run a decay sweep occasionally when nothing to tag
-    const decay = await sweepTagDecay(options.desktopDb, toTagStoreSettings(auto));
+    const decay = await maybeSweepTagDecay(options.desktopDb, toTagStoreSettings(auto), nowMs);
     return {
       skippedReason: "none_eligible",
       candidates: [],
@@ -473,8 +475,19 @@ export async function runAutoTagging(
     }
   }
 
-  const decay = await sweepTagDecay(options.desktopDb, toTagStoreSettings(auto));
+  const decay = await maybeSweepTagDecay(options.desktopDb, toTagStoreSettings(auto), nowMs);
   return { candidates, tagged, failed, decay };
+}
+
+async function maybeSweepTagDecay(
+  desktopDb: string,
+  settings: TagStoreSettings,
+  nowMs: number
+): Promise<{ scanned: number; markedObsolete: number } | undefined> {
+  const lastDecayAtMs = lastDecayAtByDb.get(desktopDb) ?? 0;
+  if (nowMs - lastDecayAtMs < TAG_DECAY_INTERVAL_MS) return undefined;
+  lastDecayAtByDb.set(desktopDb, nowMs);
+  return sweepTagDecay(desktopDb, settings);
 }
 
 /** Force-tag a single entity (IPC / MCP manual refresh). */

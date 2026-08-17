@@ -15,8 +15,10 @@ const NOTES_INDEX_INTERVAL_MS = 5 * 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 let notifyProgress: ((event: NoteIndexProgressEvent) => void) | null = null;
+let startGeneration = 0;
 
 export function stopNotesIndexer(): void {
+  startGeneration += 1;
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -32,8 +34,12 @@ export function startNotesIndexer(
 ): void {
   stopNotesIndexer();
   notifyProgress = notify;
-  timer = setInterval(() => scheduleNotesIndex(0), NOTES_INDEX_INTERVAL_MS);
-  scheduleNotesIndex(1_000);
+  const generation = ++startGeneration;
+  void loadSettings().then((settings) => {
+    if (generation !== startGeneration || !embeddingConfigFromSettings(settings)) return;
+    timer = setInterval(() => scheduleNotesIndex(0), NOTES_INDEX_INTERVAL_MS);
+    scheduleNotesIndex(1_000);
+  }).catch((error) => void recordAppError({ source: "notes-indexer", error }));
 }
 
 export function scheduleNotesIndex(delayMs = 1_000): void {

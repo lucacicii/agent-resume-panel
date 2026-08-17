@@ -223,7 +223,8 @@ export async function runAutoSessionSummaries(
     refreshIfStale: true,
     concurrency: auto.concurrency,
     jobKeyPrefix: "summarize:auto",
-    systemLocale: options.systemLocale
+    systemLocale: options.systemLocale,
+    indexDerivedData: false
   });
 
   return { candidates, ensure };

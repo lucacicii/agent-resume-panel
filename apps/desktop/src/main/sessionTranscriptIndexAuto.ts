@@ -2,6 +2,7 @@ import { app } from "electron";
 import {
   effectivePanelHome,
   loadSettings,
+  resolveSessionTranscriptIndexSettings,
   runAutoTranscriptIndex
 } from "@agent-resume/core";
 import { loadPanelDbPaths } from "./panelDatabases";
@@ -13,10 +14,12 @@ const FAILURE_COOLDOWN_MS = 15 * 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 let inFlight: Promise<void> | null = null;
+let startGeneration = 0;
 /** provider:id → do-not-retry-until ms */
 const failureCooldown = new Map<string, number>();
 
 export function stopSessionTranscriptIndexAuto(): void {
+  startGeneration += 1;
   if (timer) {
     clearInterval(timer);
     timer = null;
@@ -29,8 +32,12 @@ export function stopSessionTranscriptIndexAuto(): void {
 
 export function startSessionTranscriptIndexAuto(): void {
   stopSessionTranscriptIndexAuto();
-  timer = setInterval(() => scheduleSessionTranscriptIndexAuto(0), TICK_INTERVAL_MS);
-  scheduleSessionTranscriptIndexAuto(15_000);
+  const generation = ++startGeneration;
+  void loadSettings().then((settings) => {
+    if (generation !== startGeneration || !resolveSessionTranscriptIndexSettings(settings).enabled) return;
+    timer = setInterval(() => scheduleSessionTranscriptIndexAuto(0), TICK_INTERVAL_MS);
+    scheduleSessionTranscriptIndexAuto(15_000);
+  }).catch((error) => void recordAppError({ source: "session-transcript-index-auto", error }));
 }
 
 /**

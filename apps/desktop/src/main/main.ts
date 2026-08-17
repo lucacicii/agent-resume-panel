@@ -1625,11 +1625,13 @@ function registerIpc(): void {
       const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
         ? await syncAndNotify()
         : undefined;
-      scheduleNotesIndex();
-      scheduleSessionSummaryAuto(options?.section === "sessions" ? 0 : 2_000);
-      scheduleSessionTranscriptIndexAuto(options?.section === "sessions" ? 500 : 3_000);
-      scheduleSessionEmbeddingIndexAuto(options?.section === "sessions" ? 800 : 4_000);
-      scheduleAutoTagging(options?.section === "sessions" ? 1_000 : 5_000);
+      // Reconfigure background services so disabled features own no timers and
+      // newly enabled features start immediately after settings are saved.
+      startDesktopNotesIndexer();
+      startSessionSummaryAuto();
+      startSessionTranscriptIndexAuto();
+      startSessionEmbeddingIndexAuto();
+      startAutoTaggingService();
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,

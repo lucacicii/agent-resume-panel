@@ -121,11 +121,11 @@ type GitHistoryContext =
 type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"]>>;
 
 /** Local porcelain status poll while Workbench is active. */
-const GIT_STATUS_POLL_MS = 4000;
+const GIT_STATUS_POLL_MS = 10_000;
 /** Debounce before re-running status after a watched file change. */
 const GIT_REFRESH_DEBOUNCE_MS = 300;
 /** Remote fetch cadence while Workbench is active. */
-const GIT_AUTO_FETCH_MS = 5_000;
+const GIT_AUTO_FETCH_MS = 60_000;
 /** Cap nested monorepo fetch fan-out per sweep. */
 const GIT_AUTO_FETCH_MAX_ROOTS = 8;
 /** Session tabs are auto-renamed after staying inactive this long. */
@@ -6210,7 +6210,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!active || !selectedProject) return;
     void refreshGit(false);
     const poll = window.setInterval(() => {
-      void refreshGit(false);
+      if (document.visibilityState === "visible") void refreshGit(false);
     }, GIT_STATUS_POLL_MS);
     return () => window.clearInterval(poll);
   }, [active, refreshGit, selectedProject]);
@@ -6220,7 +6220,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!active || !selectedProject) return;
     void autoFetchGit(true);
     const timer = window.setInterval(() => {
-      void autoFetchGit(false);
+      if (document.visibilityState === "visible") void autoFetchGit(false);
     }, GIT_AUTO_FETCH_MS);
     return () => window.clearInterval(timer);
   }, [active, autoFetchGit, selectedProject]);

@@ -3940,15 +3940,10 @@ describe("WorkbenchPanel", () => {
       await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
       await waitFor(() => expect(terminalGitFetch.mock.calls.length).toBeGreaterThanOrEqual(1));
       const afterActivate = terminalGitStatus.mock.calls.length;
-      const fetchesAfterActivate = terminalGitFetch.mock.calls.length;
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(4000);
+        await vi.advanceTimersByTimeAsync(10_000);
       });
       await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(afterActivate));
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1000);
-      });
-      await waitFor(() => expect(terminalGitFetch.mock.calls.length).toBeGreaterThan(fetchesAfterActivate));
       expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
       // Git side panel closed — tracking is stored but not rendered.
       expect(screen.queryByText("develop · no upstream")).toBeNull();

@@ -2,7 +2,7 @@ import { ensureDesktopDbSchema } from "../catalog/db";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import type { PanelSettings, SessionEmbeddingIndexSettings } from "../settings/types";
 import { DEFAULT_SETTINGS } from "../settings/types";
-import { runSqliteJson } from "../sqlite";
+import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
 import { clampInt } from "./autoSummary";
 import {
   buildSessionEmbedText,
@@ -112,14 +112,21 @@ export async function listSessionsNeedingEmbedding(
      LIMIT ${limit};`
   );
 
-  const embRows = await runSqliteJson<{
+  const sessionKeys = summaryRows.map((row) =>
+    `(provider='${escapeSqlLiteral(row.provider)}' AND agent_session_id='${escapeSqlLiteral(row.agent_session_id)}')`
+  );
+  const embRows = sessionKeys.length === 0
+    ? []
+    : await runSqliteJson<{
     provider: string;
     agent_session_id: string;
     content_hash: string;
     embedding_key: string;
   }>(
     desktopDb,
-    `SELECT provider, agent_session_id, content_hash, embedding_key FROM session_embeddings;`
+    `SELECT provider, agent_session_id, content_hash, embedding_key
+     FROM session_embeddings
+     WHERE ${sessionKeys.join(" OR ")};`
   ).catch(() => [] as Array<{
     provider: string;
     agent_session_id: string;
