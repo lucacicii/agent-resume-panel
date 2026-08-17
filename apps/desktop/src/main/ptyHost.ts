@@ -27,7 +27,17 @@ interface PtySession {
   pendingForward: string[];
   pendingForwardBytes: number;
   flushTimer: NodeJS.Timeout | null;
+  outputBytes: number;
+  forwardedBytes: number;
 }
+
+export type PtyRuntimeMetrics = {
+  count: number;
+  attachedCount: number;
+  replayBytes: number;
+  outputBytes: number;
+  forwardedBytes: number;
+};
 
 /** Tail of PTY output kept while xterm is unmounted. Always drain onData. */
 export const PTY_REPLAY_LIMIT = 256 * 1024;
@@ -81,7 +91,9 @@ function createPtySession(
     replayBytes: 0,
     pendingForward: [],
     pendingForwardBytes: 0,
-    flushTimer: null
+    flushTimer: null,
+    outputBytes: 0,
+    forwardedBytes: 0
   };
 }
 
@@ -107,6 +119,7 @@ function flushForward(id: number, win: BrowserWindow | null): void {
   session.pendingForward = [];
   session.pendingForwardBytes = 0;
   if (win && !win.isDestroyed()) {
+    session.forwardedBytes += data.length;
     win.webContents.send("terminal:data", { id, data });
   }
 }
@@ -407,6 +420,7 @@ function attachPtyHandlers(
     if (!session) return;
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
     appendReplay(session, data);
+    session.outputBytes += data.length;
     if (session.attached) queueForward(id, data, win);
   });
   ptyInstance.onExit(() => {
@@ -438,6 +452,20 @@ function attachPtyHandlers(
       win.webContents.send("terminal:exit", { id });
     }
   });
+}
+
+export function getPtyRuntimeMetrics(): PtyRuntimeMetrics {
+  let attachedCount = 0;
+  let replayBytes = 0;
+  let outputBytes = 0;
+  let forwardedBytes = 0;
+  for (const session of ptySessions.values()) {
+    if (session.attached) attachedCount += 1;
+    replayBytes += session.replayBytes;
+    outputBytes += session.outputBytes;
+    forwardedBytes += session.forwardedBytes;
+  }
+  return { count: ptySessions.size, attachedCount, replayBytes, outputBytes, forwardedBytes };
 }
 
 function destroyPtyById(id: number): void {

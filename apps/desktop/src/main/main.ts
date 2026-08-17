@@ -130,11 +130,22 @@ import {
   type McpClientId
 } from "./mcpRegistration";
 import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
-import { disposeAcpController, disposeAllAcpControllers, registerAcpIpc, setAcpRecordProjectPath } from "./acp/acpHost";
+import {
+  disposeAcpController,
+  disposeAllAcpControllers,
+  getAcpRuntimeMetrics,
+  registerAcpIpc,
+  setAcpRecordProjectPath
+} from "./acp/acpHost";
 import { acpRecordToAgentSession, excludeCodexAcpNativeSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
 import { getAcpRecord, loadAcpRecords, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
-import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
+import {
+  disposeWorkbenchWatchers,
+  getWorkbenchWatcherRuntimeMetrics,
+  registerWorkbenchWatcherIpc,
+  setWorkbenchWatcherActive
+} from "./workbenchWatcher";
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
@@ -1315,7 +1326,27 @@ function registerIpc(): void {
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
     if (event.sender === mainWindow?.webContents) {
       workbenchActive = active === true;
+      setWorkbenchWatcherActive(workbenchActive);
     }
+  });
+
+  safeHandle("workbench:getRuntimeMetrics", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("无效的窗口来源");
+    const pty = (() => {
+      try {
+        const host = require("./ptyHost") as typeof import("./ptyHost");
+        return host.getPtyRuntimeMetrics();
+      } catch {
+        return {
+          count: 0,
+          attachedCount: 0,
+          replayBytes: 0,
+          outputBytes: 0,
+          forwardedBytes: 0
+        };
+      }
+    })();
+    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics() };
   });
 
   ipcMain.on("workbench:setFloatingNoteFocused", (event, focused: unknown) => {

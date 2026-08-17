@@ -2863,6 +2863,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     // Keep idle/awaiting timers advancing even without further PTY output.
+    if (!active) return;
     const timer = window.setInterval(() => sampleTuiSessionStatus(), 2_000);
     return () => {
       window.clearInterval(timer);
@@ -2871,7 +2872,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         tuiSampleTimerRef.current = 0;
       }
     };
-  }, [sampleTuiSessionStatus]);
+  }, [active, sampleTuiSessionStatus]);
 
   const loadSessions = useCallback(async () => {
     try {

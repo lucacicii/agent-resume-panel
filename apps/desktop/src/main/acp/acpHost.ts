@@ -1200,6 +1200,14 @@ export function disposeAcpController(chatId: string): void {
   }
 }
 
+export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {
+  let liveCount = 0;
+  for (const controller of controllers.values()) {
+    if (controller.isLive()) liveCount += 1;
+  }
+  return { count: controllers.size, liveCount };
+}
+
 export function disposeAllAcpControllers(): void {
   for (const controller of controllers.values()) {
     controller.dispose();

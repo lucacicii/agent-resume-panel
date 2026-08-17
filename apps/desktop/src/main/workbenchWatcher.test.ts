@@ -17,7 +17,13 @@ vi.mock("./ipcUtils", () => ({
   safeHandle: (channel: string, handler: (...args: unknown[]) => unknown) => ipcMocks.handlers.set(channel, handler)
 }));
 
-import { disposeWorkbenchWatchers, registerWorkbenchWatcherIpc } from "./workbenchWatcher";
+import {
+  disposeWorkbenchWatchers,
+  getWorkbenchWatcherRuntimeMetrics,
+  registerWorkbenchWatcherIpc,
+  setWorkbenchWatcherActive,
+  WORKBENCH_POLL_INTERVALS_MS
+} from "./workbenchWatcher";
 
 type WatchCallback = (eventType: string, filename: string | Buffer | null) => void;
 type FakeWatcher = {
@@ -156,5 +162,33 @@ describe("workbench watcher fallback", () => {
     sender.send.mockClear();
     await vi.advanceTimersByTimeAsync(4_000);
     expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it("pauses fallback polling while Workbench is inactive and resumes from the fast interval", async () => {
+    vi.useFakeTimers();
+    const root = await makeRoot();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fsMocks.watch.mockImplementation(() => { throw new Error("recursive watch unavailable"); });
+    const sender = createSender();
+    registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
+
+    await getSetFileWatchHandler()({ sender }, { rootPath: root });
+    await vi.advanceTimersByTimeAsync(120);
+    sender.send.mockClear();
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 1, activeCount: 1 });
+
+    setWorkbenchWatcherActive(false);
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 0, activeCount: 0 });
+    await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_INTERVALS_MS[0] + 120);
+    expect(sender.send).not.toHaveBeenCalled();
+
+    setWorkbenchWatcherActive(true);
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 1, activeCount: 1 });
+    await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_INTERVALS_MS[0] + 120);
+    expect(sender.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
+      type: "change",
+      fullRescan: true,
+      rootPath: root
+    }));
   });
 });

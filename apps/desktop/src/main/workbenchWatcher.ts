@@ -6,7 +6,7 @@ import { safeHandle } from "./ipcUtils";
 
 const CHANGE_BATCH_MS = 120;
 const MAX_PENDING_PATHS = 512;
-const POLL_INTERVAL_MS = 2_000;
+export const WORKBENCH_POLL_INTERVALS_MS = [2_000, 5_000, 15_000] as const;
 
 export type WorkbenchFileSystemChangedEvent =
   | {
@@ -29,6 +29,8 @@ type WatchState = {
   recursiveWatcher: fs.FSWatcher | null;
   batchTimer: NodeJS.Timeout | null;
   pollTimer: NodeJS.Timeout | null;
+  pollIndex: number;
+  active: boolean;
   pendingPaths: Set<string>;
   fullRescan: boolean;
   sequence: number;
@@ -36,6 +38,12 @@ type WatchState = {
 };
 
 const watches = new Map<number, WatchState>();
+
+export type WorkbenchWatcherRuntimeMetrics = {
+  watcherCount: number;
+  pollingCount: number;
+  activeCount: number;
+};
 
 function isWithinRoot(target: string, root: string): boolean {
   return target === root || target.startsWith(root + path.sep);
@@ -60,7 +68,7 @@ function emit(state: WatchState, event: WorkbenchFileSystemChangedEvent): void {
 }
 
 function queueChange(state: WatchState, changedPath: string | null): void {
-  if (state.stopped) return;
+  if (state.stopped || !state.active) return;
   if (!changedPath) {
     state.fullRescan = true;
   } else {
@@ -93,7 +101,16 @@ function queueChange(state: WatchState, changedPath: string | null): void {
 
 function installPolling(state: WatchState): void {
   if (state.stopped || state.pollTimer) return;
-  state.pollTimer = setInterval(() => queueChange(state, null), POLL_INTERVAL_MS);
+  if (!state.active) return;
+  const delay = WORKBENCH_POLL_INTERVALS_MS[state.pollIndex]
+    || WORKBENCH_POLL_INTERVALS_MS[WORKBENCH_POLL_INTERVALS_MS.length - 1]!;
+  state.pollTimer = setTimeout(() => {
+    state.pollTimer = null;
+    if (state.stopped || !state.active) return;
+    queueChange(state, null);
+    state.pollIndex = Math.min(state.pollIndex + 1, WORKBENCH_POLL_INTERVALS_MS.length - 1);
+    installPolling(state);
+  }, delay);
   state.pollTimer.unref?.();
   queueChange(state, null);
 }
@@ -101,10 +118,39 @@ function installPolling(state: WatchState): void {
 function fallBackToPolling(state: WatchState, error: unknown): void {
   if (state.stopped || state.pollTimer) return;
   const message = error instanceof Error ? error.message : String(error);
-  console.warn(`[workbench] Recursive file watching unavailable; using ${POLL_INTERVAL_MS}ms polling: ${message}`);
+  console.warn(`[workbench] Recursive file watching unavailable; using adaptive polling: ${message}`);
   if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
   state.recursiveWatcher = null;
   installPolling(state);
+}
+
+export function setWorkbenchWatcherActive(active: boolean): void {
+  for (const state of watches.values()) {
+    const wasActive = state.active;
+    state.active = active;
+    if (!active) {
+      if (state.pollTimer) clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+      if (state.batchTimer) clearTimeout(state.batchTimer);
+      state.batchTimer = null;
+      state.pendingPaths.clear();
+      state.fullRescan = false;
+      continue;
+    }
+    state.pollIndex = 0;
+    if (!state.recursiveWatcher) installPolling(state);
+    if (!wasActive) queueChange(state, null);
+  }
+}
+
+export function getWorkbenchWatcherRuntimeMetrics(): WorkbenchWatcherRuntimeMetrics {
+  let pollingCount = 0;
+  let activeCount = 0;
+  for (const state of watches.values()) {
+    if (state.pollTimer) pollingCount += 1;
+    if (state.active) activeCount += 1;
+  }
+  return { watcherCount: watches.size, pollingCount, activeCount };
 }
 
 function installWatchers(state: WatchState): void {
@@ -123,7 +169,7 @@ function stopWatch(state: WatchState): void {
   if (state.stopped) return;
   state.stopped = true;
   if (state.batchTimer) clearTimeout(state.batchTimer);
-  if (state.pollTimer) clearInterval(state.pollTimer);
+  if (state.pollTimer) clearTimeout(state.pollTimer);
   if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
   state.pendingPaths.clear();
 }
@@ -153,6 +199,8 @@ export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow |
         recursiveWatcher: null,
         batchTimer: null,
         pollTimer: null,
+        pollIndex: 0,
+        active: true,
         pendingPaths: new Set(),
         fullRescan: false,
         sequence: 0,

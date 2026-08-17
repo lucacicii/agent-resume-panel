@@ -562,6 +562,22 @@ export interface DesktopApi {
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
+  workbenchGetRuntimeMetrics(): Promise<{
+    watcherCount: number;
+    pollingCount: number;
+    activeCount: number;
+    pty: {
+      count: number;
+      attachedCount: number;
+      replayBytes: number;
+      outputBytes: number;
+      forwardedBytes: number;
+    };
+    acp: {
+      count: number;
+      liveCount: number;
+    };
+  }>;
   terminalGitInfo(args: {
     cwd: string;
     nestedScan?: {
@@ -1527,6 +1543,7 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
+  workbenchGetRuntimeMetrics: () => ipcRenderer.invoke("workbench:getRuntimeMetrics"),
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
   terminalGitCheckout: (args) => ipcRenderer.invoke("terminal:gitCheckout", args),
