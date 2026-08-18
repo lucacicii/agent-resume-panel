@@ -293,6 +293,8 @@ type WorkbenchProject = {
   portableKey: string;
   pathMissing: boolean;
   sessions: AgentSession[];
+  /** Catalog aggregate; unlike `sessions`, this is not limited to loaded pages. */
+  sessionCount: number;
   folders: WorkbenchSessionFolder[];
   folderAssignments: WorkbenchSessionFolderAssignment[];
   pendingCount: number;
@@ -2432,6 +2434,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionsCursor, setSessionsCursor] = useState<{ updatedAt: number; provider: string; id: string }>();
   const [sessionsLoadingMore, setSessionsLoadingMore] = useState(false);
   const sessionQuerySequenceRef = useRef(0);
+  const projectMetadataLoadedRef = useRef(false);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [workbenchFolderData, setWorkbenchFolderData] = useState<Record<string, {
     folders: WorkbenchSessionFolder[];
@@ -2896,77 +2899,94 @@ export function WorkbenchPanel(): ReactPortal | null {
     return request;
   }, [selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
 
+  const loadProjectMetadata = useCallback(async () => {
+    const listProjects = typeof desktopApi().listProjects === "function"
+      ? desktopApi().listProjects()
+      : Promise.resolve([] as CatalogProject[]);
+    const listFolderData = (projects: CatalogProject[]) => {
+      if (typeof desktopApi().listAllWorkbenchSessionFolders === "function") {
+        return desktopApi().listAllWorkbenchSessionFolders();
+      }
+      if (typeof desktopApi().listWorkbenchSessionFolders !== "function") {
+        return Promise.resolve({} as Record<string, {
+          folders: WorkbenchSessionFolder[];
+          assignments: WorkbenchSessionFolderAssignment[];
+        }>);
+      }
+      return Promise.all(projects.map(async (project) => {
+        const result = await desktopApi().listWorkbenchSessionFolders({ projectId: project.projectId });
+        return [project.projectId, result] as const;
+      })).then((entries) => Object.fromEntries(entries));
+    };
+    const [nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
+      desktopApi().listProjectAliases(),
+      desktopApi().getSettings(),
+      listProjects,
+      typeof desktopApi().listSessionGtdStatuses === "function"
+        ? desktopApi().listSessionGtdStatuses()
+        : Promise.resolve({} as Record<string, GtdStatus>)
+    ]);
+    const nextFolderData = await listFolderData(nextProjects || []);
+    setAliases(nextAliases);
+    setSettings(nextSettings);
+    setCatalogProjects(nextProjects || []);
+    setWorkbenchFolderData(nextFolderData);
+    setGtdStatuses(nextGtdStatuses || {});
+    setSelectedProject((current) => {
+      const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
+      if (current) {
+        const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
+        if (match) return match.localPath || match.portableKey || current;
+        if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) return current;
+        if (
+          terminalsRef.current.some((pane) => pane.projectPath === current)
+          || acpChatsRef.current.some((pane) => pane.projectPath === current)
+          || editorsRef.current.some((pane) => pane.projectPath === current)
+          || diffsRef.current.some((pane) => pane.projectPath === current)
+        ) return current;
+      }
+      const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
+      return firstProject?.localPath || firstProject?.portableKey || current || null;
+    });
+  }, []);
+
   const loadSessions = useCallback(async () => {
     const sequence = ++sessionQuerySequenceRef.current;
     try {
-      const listProjects = typeof desktopApi().listProjects === "function"
-        ? desktopApi().listProjects()
-        : Promise.resolve([] as CatalogProject[]);
-      const listFolderData = (projects: CatalogProject[]) => {
-        if (typeof desktopApi().listAllWorkbenchSessionFolders === "function") {
-          return desktopApi().listAllWorkbenchSessionFolders();
-        }
-        if (typeof desktopApi().listWorkbenchSessionFolders !== "function") {
-          return Promise.resolve({} as Record<string, {
-            folders: WorkbenchSessionFolder[];
-            assignments: WorkbenchSessionFolderAssignment[];
-          }>);
-        }
-        return Promise.all(projects.map(async (project) => {
-          const result = await desktopApi().listWorkbenchSessionFolders({ projectId: project.projectId });
-          return [project.projectId, result] as const;
-        })).then((entries) => Object.fromEntries(entries));
-      };
-      const listGtdStatuses = typeof desktopApi().listSessionGtdStatuses === "function"
-        ? desktopApi().listSessionGtdStatuses()
-        : Promise.resolve({} as Record<string, GtdStatus>);
-      const [page, nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
-        desktopApi().querySessionsPage(sessionQueryRequest()),
-        desktopApi().listProjectAliases(),
-        desktopApi().getSettings(),
-        listProjects,
-        listGtdStatuses
-      ]);
-      const next = page.sessions;
-      const nextFolderData = await listFolderData(nextProjects || []);
+      const page = await desktopApi().querySessionsPage(sessionQueryRequest());
       if (sequence !== sessionQuerySequenceRef.current) return;
-      setSessions(next);
+      setSessions(page.sessions);
       setSessionsTotal(page.total);
       setSessionsCursor(page.nextCursor);
-      setAliases(nextAliases);
-      setSettings(nextSettings);
-      setCatalogProjects(nextProjects || []);
-      setWorkbenchFolderData(nextFolderData);
-      setGtdStatuses(nextGtdStatuses || {});
-      setSelectedProject((current) => {
-        const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
-        if (current) {
-          const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
-          if (match) return match.localPath || match.portableKey || current;
-          if (next.some((item) => item.projectPath === current)) return current;
-          if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) return current;
-          if (
-            terminalsRef.current.some((pane) => pane.projectPath === current)
-            || acpChatsRef.current.some((pane) => pane.projectPath === current)
-            || editorsRef.current.some((pane) => pane.projectPath === current)
-            || diffsRef.current.some((pane) => pane.projectPath === current)
-          ) return current;
-        }
-        const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
-        if (firstProject) return firstProject.localPath || firstProject.portableKey;
-        return next.find((item) => item.projectPath)?.projectPath || null;
-      });
       setStatus({ text: "" });
     } catch (error) {
       if (sequence === sessionQuerySequenceRef.current) setStatus({ text: statusError(error), kind: "error" });
     }
   }, [sessionQueryRequest]);
 
+  const reloadWorkbench = useCallback(async () => {
+    // Mark immediately so the first active render does not start a duplicate
+    // catalog aggregate while this full refresh is in flight.
+    projectMetadataLoadedRef.current = true;
+    try {
+      await loadProjectMetadata();
+      await loadSessions();
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [loadProjectMetadata, loadSessions]);
+
   useEffect(() => {
     if (!active) return;
+    // The Workbench can become active directly (for example, from a Flow
+    // launch) without a tab-change event. Load aggregates once in that case.
+    if (!projectMetadataLoadedRef.current) {
+      void reloadWorkbench();
+      return;
+    }
     const timer = window.setTimeout(() => { void loadSessions(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [active, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView]);
+  }, [active, loadSessions, reloadWorkbench, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
 
   const loadMoreSessions = useCallback(async () => {
     if (!sessionsCursor || sessionsLoadingMore) return;
@@ -3107,8 +3127,8 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     if (typeof desktopApi().onSessionsSynced !== "function") return;
-    return desktopApi().onSessionsSynced(() => { void loadSessions(); });
-  }, [loadSessions]);
+    return desktopApi().onSessionsSynced(() => { void reloadWorkbench(); });
+  }, [reloadWorkbench]);
 
   useEffect(() => {
     const onSessionsMutated = (event: Event) => {
@@ -3185,7 +3205,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           provider: catalogProvider,
           agentSessionId: sessionId,
           folderId: pending.folderId
-        }).then(() => loadSessions())
+        }).then(() => reloadWorkbench())
           .catch((error) => {
             if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
           });
@@ -3220,13 +3240,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     const activePaneKey = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] || "";
     const boundSessionKey = assignments.get(activePaneKey);
     if (boundSessionKey) setActiveSessionKey(boundSessionKey);
-  }, [loadSessions, pendingSessions, sessions, terminals]);
+  }, [loadSessions, pendingSessions, reloadWorkbench, sessions, terminals]);
 
   useEffect(() => {
     const onTab = (event: Event) => {
       const show = (event as CustomEvent<string>).detail === "workbench";
       setActive(show);
-      if (show) void loadSessions();
+      if (show) void reloadWorkbench();
     };
     const onSettingsSaved = (event: Event) => {
       const detail = (event as CustomEvent<{ settings?: PanelSettings; section?: string }>).detail;
@@ -3238,7 +3258,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:tab-change", onTab);
       window.removeEventListener("agent-resume:settings-saved", onSettingsSaved);
     };
-  }, [loadSessions]);
+  }, [reloadWorkbench]);
 
   useEffect(() => {
     const api = desktopApi();
@@ -3438,6 +3458,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           portableKey: project.portableKey,
           pathMissing: project.pathMissing,
           sessions: group,
+          sessionCount: project.sessionCount || 0,
           folders: folderData.folders,
           folderAssignments: folderData.assignments,
           pendingCount,
@@ -3462,6 +3483,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         portableKey: path,
         pathMissing: false,
         sessions: [],
+        sessionCount: 0,
         folders: [],
         folderAssignments: [],
         pendingCount: pending.length,
@@ -3497,6 +3519,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       portableKey: path,
       pathMissing: false,
       sessions: group.sessions,
+      sessionCount: group.sessions.length,
       folders: [],
       folderAssignments: [],
       pendingCount: group.pendingCount,
@@ -4555,7 +4578,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             });
           } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
         }
-        await loadSessions();
+        await reloadWorkbench();
       } else {
         const result = await desktopApi().workbenchNewSession({
           cwd,
@@ -4581,7 +4604,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, selectedFolderId, selectedProject, selectedProjectMeta, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, selectedFolderId, selectedProject, selectedProjectMeta, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
@@ -5162,7 +5185,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       setStatus({ text: t("desktop.workbench.moveToProjectDone", target.label) });
       selectProject(nextPath, { keepSessionKey: true });
       setActiveSessionKey(sessionKey(session));
-      await loadSessions();
+      await reloadWorkbench();
       window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
     } catch (error) {
       setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
@@ -5191,7 +5214,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         await desktopApi().renameWorkbenchSessionFolder({ folderId: folderDialog.folderId, name });
       }
       setFolderDialog(null);
-      await loadSessions();
+      await reloadWorkbench();
     } catch (error) {
       setFolderDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
     }
@@ -5215,7 +5238,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         });
       }
       setFolderPickerDialog(null);
-      await loadSessions();
+      await reloadWorkbench();
     } catch (error) {
       setFolderPickerDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
     }
@@ -5277,7 +5300,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           if (!result.ok) return;
           selectProject(result.absolutePath);
           setStatus({ text: t("desktop.workbench.localPathSet", result.absolutePath) });
-          await loadSessions();
+          await reloadWorkbench();
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
       if (action === "copyPath" && typeof desktopApi().copyProjectLocalPath === "function") {
@@ -5336,9 +5359,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       if (action === "remove") {
         const label = aliases[menu.projectPath] || basename(menu.projectPath);
-        const sessionCount = sessions.filter((session) =>
-          (menu.projectId && session.projectId === menu.projectId) || session.projectPath === menu.projectPath
-        ).length;
+        const sessionCount = allProjects.find((project) => project.id === menu.projectId || project.path === menu.projectPath)?.sessionCount || 0;
         if (!window.confirm(t("desktop.workbench.removeProjectConfirm", label, sessionCount))) return;
         try {
           if (typeof desktopApi().hideProject === "function") {
@@ -5354,7 +5375,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             savePinnedProjects(next);
             return next;
           });
-          await loadSessions();
+          await reloadWorkbench();
           window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
@@ -5373,7 +5394,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           if (selectedFolderId === folder.folderId) {
             setSelectedFolderId(folder.parentId || UNCLASSIFIED_FOLDER_ID);
           }
-          await loadSessions();
+          await reloadWorkbench();
         } catch (error) {
           setStatus({ text: statusError(error), kind: "error" });
         }
@@ -5408,7 +5429,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           provider: session.provider,
           agentSessionId: session.id
         });
-        await loadSessions();
+        await reloadWorkbench();
       } catch (error) {
         setStatus({ text: statusError(error), kind: "error" });
       }
@@ -5456,7 +5477,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       deferredAutoRenameKeysRef.current.delete(removeKey);
       try {
         await desktopApi().hideSession({ provider: session.provider, id: session.id });
-        await loadSessions();
+        await reloadWorkbench();
         window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
       } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     }
@@ -7222,7 +7243,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           agentSessionId: session.id
         });
       }
-      await loadSessions();
+      await reloadWorkbench();
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
@@ -7421,12 +7442,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
         <div className="wb-folders">
           {sidebarView === "projects" ? <>
-            <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessions.length + pendingSessions.length}</span></button>
+            <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span><span className="wb-folder-row-count">{sessionsTotal + pendingSessions.length}</span></button>
             {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => {
-              const assignedKeys = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId)));
-              const unclassifiedCount = project.sessions.filter((session) => !assignedKeys.has(sessionKey(session))).length + project.pendingCount;
+              const assignedCount = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId))).size;
+              const unclassifiedCount = Math.max(0, project.sessionCount - assignedCount) + project.pendingCount;
               return <Fragment key={project.id}>
-                <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessions.length + project.pendingCount}</span></button>
+                <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessionCount + project.pendingCount}</span></button>
                 <button
                   type="button"
                   className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}${dragTargetKey === `${project.id}:${UNCLASSIFIED_FOLDER_ID}` ? " is-drop-target" : ""}`}
@@ -7492,7 +7513,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             getLabel={(filter) => t(`desktop.common.${filter}`)}
           />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><ThemeIcon name="refresh" size={15} /></button></div>
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void reloadWorkbench()}><ThemeIcon name="refresh" size={15} /></button></div>
         {visibleSessionRows.length ? <VirtualList
           className="wb-list"
           items={visibleSessionRows}
@@ -7926,7 +7947,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               const result = await desktopApi().mergeProjects({ sourceProjectId: projectPickDialog.sourceId, targetProjectId: item.id });
               setProjectPickDialog(null);
               setStatus({ text: t("desktop.workbench.mergeDone", result.mergedSessions) });
-              await loadSessions();
+              await reloadWorkbench();
               window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
             } catch (error) {
               setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
@@ -7942,7 +7963,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               const result = await desktopApi().splitProjectPath({ sourceProjectId: projectPickDialog.sourceId, absolutePath: item.absolutePath });
               setProjectPickDialog(null);
               setStatus({ text: t("desktop.workbench.splitDone", result.movedSessions) });
-              await loadSessions();
+              await reloadWorkbench();
               window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
             } catch (error) {
               setProjectPickDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);

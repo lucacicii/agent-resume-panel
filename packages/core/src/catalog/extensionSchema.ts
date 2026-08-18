@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
+CREATE INDEX IF NOT EXISTS idx_sessions_visible_project_id ON sessions(hidden, project_id);
 CREATE TABLE IF NOT EXISTS sync_state (
   provider TEXT PRIMARY KEY,
   last_sync_at_ms INTEGER
@@ -118,6 +119,7 @@ ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
 ALTER TABLE sessions ADD COLUMN project_id TEXT;
 ALTER TABLE sessions ADD COLUMN native_project_path TEXT;
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_visible_project_id ON sessions(hidden, project_id);
 CREATE TABLE IF NOT EXISTS project_local_paths (
   project_id TEXT NOT NULL,
   machine_id TEXT NOT NULL,
