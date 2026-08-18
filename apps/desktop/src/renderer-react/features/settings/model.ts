@@ -120,6 +120,7 @@ export interface WorkbenchDraft {
   terminalRenderer: "webgl" | "canvas";
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
   cmdTAction: "newTerminal" | "newSession";
+  transcriptFontSize: number;
   editorEditable: boolean;
   editorFontSize: number;
   editorWordWrap: boolean;
@@ -463,6 +464,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
     cmdTAction: workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal",
+    transcriptFontSize: numberInRange(workbench?.transcriptFontSize, 14, 11, 24),
     editorEditable: editor?.editable !== false,
     editorFontSize: numberInRange(editor?.fontSize, 13, 11, 24),
     editorWordWrap: editor?.wordWrap === true,
@@ -513,6 +515,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
       externalLaunchMode: draft.externalLaunchMode,
       cmdTAction: draft.cmdTAction,
+      transcriptFontSize: numberInRange(draft.transcriptFontSize, 14, 11, 24),
       editor: {
         editable: draft.editorEditable,
         fontSize: numberInRange(draft.editorFontSize, 13, 11, 24),

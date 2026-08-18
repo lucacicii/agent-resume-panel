@@ -104,6 +104,7 @@ describe("SessionTranscriptPane", () => {
     render(<SessionTranscriptPane provider="codex" sessionId="session-md" active />);
     expect(await screen.findByRole("button", { name: "desktop.workbench.transcriptShowOriginal" })).toBeTruthy();
     expect(document.querySelector(".wb-transcript-md strong")?.textContent).toBe("bold");
+    expect((document.querySelector(".wb-transcript-body") as HTMLElement | null)?.style.getPropertyValue("--wb-transcript-font-size")).toBe("14px");
     expect(screen.queryByText("Use **bold** text.")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.transcriptShowOriginal" }));
@@ -112,6 +113,19 @@ describe("SessionTranscriptPane", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.transcriptShowMarkdown" }));
     expect(document.querySelector(".wb-transcript-md strong")?.textContent).toBe("bold");
+  });
+
+  it("applies the configured transcript markdown font size", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-md" },
+      preview: {
+        title: "Markdown",
+        messages: [{ role: "assistant", text: "Use **bold** text." }]
+      }
+    });
+    render(<SessionTranscriptPane provider="codex" sessionId="session-md" active fontSize={18} />);
+    expect(await screen.findByRole("button", { name: "desktop.workbench.transcriptShowOriginal" })).toBeTruthy();
+    expect((document.querySelector(".wb-transcript-body") as HTMLElement | null)?.style.getPropertyValue("--wb-transcript-font-size")).toBe("18px");
   });
 
   it("keeps thinking collapsed until the user expands it", async () => {

@@ -91,6 +91,12 @@ export function normalizeWorkbenchProjectContextMenu(
   return output;
 }
 
+function normalizeWorkbenchTranscriptFontSize(value: number | undefined): number {
+  const fallback = DEFAULT_SETTINGS.workbench?.transcriptFontSize ?? 14;
+  const fontSize = Math.round(Number(value ?? fallback));
+  return Math.min(24, Math.max(11, Number.isFinite(fontSize) ? fontSize : fallback));
+}
+
 function normalizeWorkbenchEditorSettings(
   settings: NonNullable<PanelSettings["workbench"]>["editor"]
 ) {
@@ -246,6 +252,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ),
       projectContextMenu: normalizeWorkbenchProjectContextMenu(
         partial.workbench?.projectContextMenu ?? base.workbench?.projectContextMenu
+      ),
+      transcriptFontSize: normalizeWorkbenchTranscriptFontSize(
+        partial.workbench?.transcriptFontSize ?? base.workbench?.transcriptFontSize
       ),
       editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },

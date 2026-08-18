@@ -299,6 +299,8 @@ export interface WorkbenchSettings {
   gitCommitMessageStyle?: CommitMessageStyle;
   /** Format rules used when gitCommitMessageStyle is custom. */
   gitCommitCustomInstructions?: string;
+  /** Session transcript markdown/plain body font size in pixels (11–24). Default 14. */
+  transcriptFontSize?: number;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
   /**
@@ -528,6 +530,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
+    transcriptFontSize: 14,
     editor: {
       editable: true,
       fontSize: 13,

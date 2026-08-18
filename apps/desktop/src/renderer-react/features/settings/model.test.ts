@@ -172,11 +172,26 @@ describe("settings model", () => {
     const invalidSettings = { ...settings, workbench: { editor: { fontSize: 99, tabSize: 3, autoSaveDelayMs: 50 } } } as unknown as PanelSettings;
     const draft = workbenchDraftFromSettings(invalidSettings);
     expect(draft.editorFontSize).toBe(24);
+    expect(draft.transcriptFontSize).toBe(14);
     expect(draft.editorTabSize).toBe(4);
     expect(draft.editorAutoSaveDelayMs).toBe(600);
 
     const patch = workbenchPatch(settings, { ...draft, gitNestedScanIgnoreDirs: "node_modules\n\ndist\n" });
     expect(patch.workbench?.gitNestedScanIgnoreDirs).toEqual(["node_modules", "dist"]);
+    expect(patch.workbench?.transcriptFontSize).toBe(14);
+  });
+
+  it("defaults and clamps workbench transcript markdown font size", () => {
+    expect(workbenchDraftFromSettings(settings).transcriptFontSize).toBe(14);
+
+    const oversized = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { transcriptFontSize: 99 }
+    } as unknown as PanelSettings);
+    expect(oversized.transcriptFontSize).toBe(24);
+
+    const persisted = workbenchPatch(settings, { ...oversized, transcriptFontSize: 18 });
+    expect(persisted.workbench?.transcriptFontSize).toBe(18);
   });
 
   it("migrates legacy defaultNewSessionProvider and persists ACP targets", () => {

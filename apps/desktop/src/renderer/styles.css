@@ -6464,8 +6464,12 @@ code {
   word-break: break-word;
 }
 
+.wb-transcript-md.markdown-body,
+.wb-transcript-plain {
+  font-size: var(--wb-transcript-font-size, 14px);
+}
+
 .wb-transcript-md.markdown-body {
-  font-size: 12px;
   line-height: 1.45;
   white-space: normal;
 }

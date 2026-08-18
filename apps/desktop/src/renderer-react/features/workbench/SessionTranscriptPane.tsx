@@ -28,6 +28,7 @@ export function SessionTranscriptPane({
   iconProvider,
   active,
   autoRefreshMs = TRANSCRIPT_AUTO_REFRESH_MS,
+  fontSize = 14,
   composer
 }: {
   provider: string;
@@ -35,6 +36,7 @@ export function SessionTranscriptPane({
   iconProvider?: string;
   active: boolean;
   autoRefreshMs?: number;
+  fontSize?: number;
   composer?: {
     pane: TerminalComposerPane;
     ptyId: number | null;
@@ -222,7 +224,11 @@ export function SessionTranscriptPane({
             ) : null}
           </section>
 
-          <div className="wb-transcript-body" ref={bodyRef}>
+          <div
+            className="wb-transcript-body"
+            ref={bodyRef}
+            style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
+          >
             {visible.messages.length ? visible.messages.map((message) => {
               const stamp = formatTimestamp(message.timestamp);
               return (
