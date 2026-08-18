@@ -422,12 +422,17 @@ export function NotesPanel(): ReactPortal | null {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
         : Promise.resolve([] as CatalogProject[]);
-      const [nextNotes, nextSessions, nextAliases, nextProjects] = await Promise.all([
+      const [nextNotes, nextAliases, nextProjects] = await Promise.all([
         desktopApi().notesList(),
-        desktopApi().listSessions(),
         desktopApi().listProjectAliases(),
         listProjects
       ]);
+      const sessionKeys = nextNotes.flatMap((note) => note.scope === "session" && note.provider && note.agentSessionId
+        ? [{ provider: note.provider, id: note.agentSessionId }]
+        : []);
+      const nextSessions = sessionKeys.length
+        ? (await desktopApi().querySessionsPage({ limit: Math.min(500, sessionKeys.length), keys: sessionKeys })).sessions
+        : [];
       setNotes(nextNotes);
       setSessions(nextSessions);
       setAliases(nextAliases);

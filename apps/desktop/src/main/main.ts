@@ -36,7 +36,7 @@ import {
   listReportLinks,
   listScheduleRuns,
   countSessions,
-  listSessions,
+  querySessionsPage,
   listSessionsInRange,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
@@ -137,8 +137,7 @@ import {
   registerAcpIpc,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
-import { acpRecordToAgentSession, excludeCodexAcpNativeSessions, mergeCatalogAndAcpSessions } from "./acp/sessionList";
-import { getAcpRecord, loadAcpRecords, updateAcpRecord } from "./acp/store";
+import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
   disposeWorkbenchWatchers,
@@ -1669,14 +1668,47 @@ function registerIpc(): void {
     return { restored, restoredProjects, counts };
   });
 
-  ipcMain.handle("sessions:list", async (_event, args?: { limit?: number }) => {
+  ipcMain.handle("sessions:queryPage", async (_event, args?: {
+    limit?: number;
+    cursor?: { updatedAt: number; provider: string; id: string };
+    search?: string;
+    provider?: string;
+    fromMs?: number;
+    toMs?: number;
+    projectPath?: string;
+    projectId?: string;
+    gtdStatus?: string;
+    tag?: string;
+    keys?: Array<{ provider: string; id: string }>;
+  }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const records = await loadAcpRecords(effectivePanelHome(settings));
-    const maxItems = Math.max(1, Math.min(Number(args?.limit) || settings.sessionSync?.maxItems || 10_000, 50_000));
-    const catalog = excludeCodexAcpNativeSessions(await listSessions(paths.catalogDb, maxItems), records);
-    const acp = records.map(acpRecordToAgentSession);
-    return mergeCatalogAndAcpSessions(catalog, acp).slice(0, maxItems);
+    const provider = args?.provider?.trim();
+    const validProviders = new Set<AgentProvider>(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide", "chat"]);
+    if (provider && !validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
+    if (args?.gtdStatus && !isGtdStatus(args.gtdStatus)) throw new Error("Invalid GTD status.");
+    let keys = args?.keys;
+    const tag = args?.tag?.trim();
+    if (tag) {
+      await ensureDesktopDbSchema(paths.desktopDb);
+      const tagged = await listEntitiesByTag(paths.desktopDb, tag, { entityType: "session", limit: 5000 });
+      keys = tagged.flatMap((entity) => {
+        const separator = entity.entityId.indexOf(":");
+        if (separator <= 0 || separator === entity.entityId.length - 1) return [];
+        return [{ provider: entity.entityId.slice(0, separator), id: entity.entityId.slice(separator + 1) }];
+      });
+    }
+    const request = {
+      ...args,
+      keys,
+      provider: provider as AgentProvider | undefined,
+      search: args?.search?.trim() || undefined,
+      projectPath: args?.projectPath?.trim() || undefined,
+      projectId: args?.projectId?.trim() || undefined,
+      gtdStatus: args?.gtdStatus?.trim() || undefined,
+      tag: undefined
+    };
+    return querySessionsPage(paths.catalogDb, request);
   });
 
   ipcMain.handle("gtd:listSessionStatuses", async () => {

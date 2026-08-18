@@ -152,8 +152,8 @@ export {
   syncStateHasExtendedColumns
 } from "./catalog/db";
 
-export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions } from "./catalog/query";
-export type { SessionRangeCursor } from "./catalog/query";
+export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";
+export type { SessionRangeCursor, SessionQueryCursor, SessionQueryRequest, SessionQueryPage } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
 export {
   searchCatalogSessions,

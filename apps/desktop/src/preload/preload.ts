@@ -151,7 +151,23 @@ export interface DesktopApi {
     restored: number;
     counts: { total: number; visible: number; hidden: number };
   }>;
-  listSessions(opts?: { limit?: number }): Promise<AgentSession[]>;
+  querySessionsPage(args?: {
+    limit?: number;
+    cursor?: { updatedAt: number; provider: string; id: string };
+    search?: string;
+    provider?: string;
+    fromMs?: number;
+    toMs?: number;
+    projectPath?: string;
+    projectId?: string;
+    gtdStatus?: GtdStatus;
+    tag?: string;
+    keys?: Array<{ provider: string; id: string }>;
+  }): Promise<{
+    sessions: AgentSession[];
+    total: number;
+    nextCursor?: { updatedAt: number; provider: string; id: string };
+  }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
   setSessionGtdStatus(args: {
     provider: string;
@@ -1462,7 +1478,7 @@ const api: DesktopApi = {
     ipcRenderer.on("sessions:syncFailed", handler);
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
-  listSessions: (opts) => ipcRenderer.invoke("sessions:list", opts),
+  querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   listTags: (args) => ipcRenderer.invoke("tags:list", args),

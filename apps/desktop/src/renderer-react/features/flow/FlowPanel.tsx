@@ -30,6 +30,7 @@ import type {
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
+import type { AgentSession } from "@agent-resume/core";
 
 interface CanvasNodeData extends Record<string, unknown> {
   flowNode: FlowNode;
@@ -105,7 +106,7 @@ export function FlowPanel(): ReactPortal | null {
   const [flow, setFlow] = useState<FlowDefinition | null>(null);
   const [run, setRun] = useState<FlowRun | null>(null);
   const [templates, setTemplates] = useState<FlowTemplate[]>([]);
-  const [sessions, setSessions] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["listSessions"]>>>([]);
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [status, setStatus] = useState<FlowPanelStatus>({ text: "" });
   const [busy, setBusy] = useState(false);
@@ -219,8 +220,10 @@ export function FlowPanel(): ReactPortal | null {
 
   useEffect(() => {
     if (!active) return;
-    void desktopApi().listSessions().then(setSessions).catch(() => setSessions([]));
-  }, [active]);
+    void desktopApi().querySessionsPage({ limit: 100, projectId: projectId || undefined })
+      .then((page) => setSessions(page.sessions))
+      .catch(() => setSessions([]));
+  }, [active, projectId]);
 
   const updateNode = useCallback((nodeId: string, patch: Partial<FlowNode>) => {
     setNodes((current) => current.map((node) => node.id === nodeId

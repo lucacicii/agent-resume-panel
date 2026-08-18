@@ -43,18 +43,24 @@ export async function findRecentCatalogSession(args: {
   notBeforeMs?: number;
 }): Promise<{ catalogProvider: string; sessionId: string } | null> {
   const api = desktopApi();
-  if (typeof api.listSessions !== "function") return null;
-  let list: Array<{ provider: string; id: string; title: string; projectPath: string; updatedAt: number }> = [];
-  try {
-    list = await api.listSessions();
-  } catch {
-    return null;
-  }
+  if (typeof api.querySessionsPage !== "function") return null;
   const cwdKey = projectPathKey(args.cwd);
   const known = args.knownKeys || new Set<string>();
   const notBefore = args.notBeforeMs ?? Date.now() - 120_000;
   const providerWanted = args.provider?.trim().toLowerCase();
   const noteId = args.noteId?.trim();
+
+  let list: Array<{ provider: string; id: string; title: string; projectPath: string; updatedAt: number }> = [];
+  try {
+    list = (await api.querySessionsPage({
+      limit: 100,
+      provider: providerWanted || undefined,
+      projectPath: args.cwd,
+      fromMs: notBefore
+    })).sessions;
+  } catch {
+    return null;
+  }
 
   const candidates = list
     .filter((session) => {

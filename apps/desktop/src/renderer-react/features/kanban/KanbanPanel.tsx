@@ -179,13 +179,16 @@ export function KanbanPanel(): ReactPortal | null {
       const listAliases = typeof desktopApi().listProjectAliases === "function"
         ? desktopApi().listProjectAliases()
         : Promise.resolve({} as Record<string, string>);
-      const [sessions, statuses, notes, nextProjects, nextAliases] = await Promise.all([
-        desktopApi().listSessions(),
-        desktopApi().listSessionGtdStatuses(),
+      const [sessionPages, notes, nextProjects, nextAliases] = await Promise.all([
+        Promise.all(GTD_STATUSES.map((gtdStatus) => desktopApi().querySessionsPage({ limit: 500, gtdStatus }))),
         desktopApi().notesList(),
         listProjects,
         listAliases
       ]);
+      const sessions = sessionPages.flatMap((page) => page.sessions);
+      const statuses = Object.fromEntries(sessionPages.flatMap((page, index) =>
+        page.sessions.map((session) => [sessionKey(session), GTD_STATUSES[index]] as const)
+      ));
       setProjects(nextProjects);
       setAliases(nextAliases);
       setSelectedProjectId((current) => {

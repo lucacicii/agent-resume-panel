@@ -2428,6 +2428,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const { t, locale } = useI18n();
   const [active, setActive] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [sessionsCursor, setSessionsCursor] = useState<{ updatedAt: number; provider: string; id: string }>();
+  const [sessionsLoadingMore, setSessionsLoadingMore] = useState(false);
+  const sessionQuerySequenceRef = useRef(0);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [workbenchFolderData, setWorkbenchFolderData] = useState<Record<string, {
     folders: WorkbenchSessionFolder[];
@@ -2874,7 +2878,26 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [active, sampleTuiSessionStatus]);
 
+  const sessionQueryRequest = useCallback((cursor?: { updatedAt: number; provider: string; id: string }) => {
+    const request: NonNullable<Parameters<DesktopApi["querySessionsPage"]>[0]> = {
+      limit: 100,
+      cursor,
+      search: sessionQuery.trim() || undefined
+    };
+    if (sidebarView === "gtd") request.gtdStatus = selectedGtdStatus;
+    else if (sidebarView === "tags" && selectedTag) request.tag = selectedTag;
+    else if (selectedProject) request.projectPath = selectedProject;
+    if (sidebarView === "projects" && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID) {
+      const keys = Object.values(workbenchFolderData).flatMap((data) => data.assignments
+        .filter((assignment) => assignment.folderId === selectedFolderId)
+        .map((assignment) => ({ provider: assignment.provider, id: assignment.agentSessionId })));
+      request.keys = keys;
+    }
+    return request;
+  }, [selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
+
   const loadSessions = useCallback(async () => {
+    const sequence = ++sessionQuerySequenceRef.current;
     try {
       const listProjects = typeof desktopApi().listProjects === "function"
         ? desktopApi().listProjects()
@@ -2897,15 +2920,19 @@ export function WorkbenchPanel(): ReactPortal | null {
       const listGtdStatuses = typeof desktopApi().listSessionGtdStatuses === "function"
         ? desktopApi().listSessionGtdStatuses()
         : Promise.resolve({} as Record<string, GtdStatus>);
-      const [next, nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
-        desktopApi().listSessions(),
+      const [page, nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
+        desktopApi().querySessionsPage(sessionQueryRequest()),
         desktopApi().listProjectAliases(),
         desktopApi().getSettings(),
         listProjects,
         listGtdStatuses
       ]);
+      const next = page.sessions;
       const nextFolderData = await listFolderData(nextProjects || []);
+      if (sequence !== sessionQuerySequenceRef.current) return;
       setSessions(next);
+      setSessionsTotal(page.total);
+      setSessionsCursor(page.nextCursor);
       setAliases(nextAliases);
       setSettings(nextSettings);
       setCatalogProjects(nextProjects || []);
@@ -2930,8 +2957,36 @@ export function WorkbenchPanel(): ReactPortal | null {
         return next.find((item) => item.projectPath)?.projectPath || null;
       });
       setStatus({ text: "" });
-    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-  }, []);
+    } catch (error) {
+      if (sequence === sessionQuerySequenceRef.current) setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [sessionQueryRequest]);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => { void loadSessions(); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [active, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView]);
+
+  const loadMoreSessions = useCallback(async () => {
+    if (!sessionsCursor || sessionsLoadingMore) return;
+    const sequence = sessionQuerySequenceRef.current;
+    setSessionsLoadingMore(true);
+    try {
+      const page = await desktopApi().querySessionsPage(sessionQueryRequest(sessionsCursor));
+      if (sequence !== sessionQuerySequenceRef.current) return;
+      setSessions((current) => {
+        const known = new Set(current.map(sessionKey));
+        return [...current, ...page.sessions.filter((session) => !known.has(sessionKey(session)))];
+      });
+      setSessionsTotal(page.total);
+      setSessionsCursor(page.nextCursor);
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    } finally {
+      setSessionsLoadingMore(false);
+    }
+  }, [sessionQueryRequest, sessionsCursor, sessionsLoadingMore]);
 
   const performAutoRenameSession = useCallback(async (provider: string, id: string) => {
     deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
@@ -7437,12 +7492,14 @@ export function WorkbenchPanel(): ReactPortal | null {
             getLabel={(filter) => t(`desktop.common.${filter}`)}
           />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${selectedSessions.length + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><ThemeIcon name="refresh" size={15} /></button></div>
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void loadSessions()}><ThemeIcon name="refresh" size={15} /></button></div>
         {visibleSessionRows.length ? <VirtualList
           className="wb-list"
           items={visibleSessionRows}
           itemHeight={WORKBENCH_SESSION_ROW_HEIGHT}
           scrollToIndex={activeSessionRowIndex}
+          onEndReached={() => void loadMoreSessions()}
+          endReachedThreshold={20}
           getKey={(row) => row.kind === "pending" ? row.pending.key : sessionKey(row.session)}
           renderItem={(row) => {
             if (row.kind === "pending") {

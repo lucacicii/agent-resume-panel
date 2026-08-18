@@ -16,6 +16,9 @@ interface VirtualListProps<T> {
   className?: string;
   overscan?: number;
   scrollToIndex?: number;
+  /** Called once when the viewport approaches the end of the rendered items. */
+  onEndReached?: () => void;
+  endReachedThreshold?: number;
 }
 
 /** Fixed-height virtual list used by the Desktop session surfaces. */
@@ -26,11 +29,14 @@ export function VirtualList<T>({
   renderItem,
   className = "",
   overscan = 6,
-  scrollToIndex
+  scrollToIndex,
+  onEndReached,
+  endReachedThreshold = 20
 }: VirtualListProps<T>): React.JSX.Element {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(itemHeight * 12);
+  const endTriggeredForLength = useRef(-1);
   const totalHeight = items.length * itemHeight;
 
   const measureViewport = useCallback((node: HTMLDivElement | null) => {
@@ -56,6 +62,10 @@ export function VirtualList<T>({
     observer.observe(node);
     return () => observer.disconnect();
   }, [measureViewport]);
+
+  useEffect(() => {
+    if (endTriggeredForLength.current > items.length) endTriggeredForLength.current = -1;
+  }, [items.length]);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -93,8 +103,17 @@ export function VirtualList<T>({
       className={`virtual-list-viewport${className ? ` ${className}` : ""}`}
       data-virtual-count={items.length}
       onScroll={(event) => {
-        setScrollTop(event.currentTarget.scrollTop);
-        measureViewport(event.currentTarget);
+        const node = event.currentTarget;
+        const nextScrollTop = node.scrollTop;
+        setScrollTop(nextScrollTop);
+        measureViewport(node);
+        const firstVisible = Math.floor(nextScrollTop / itemHeight);
+        if (onEndReached && items.length - (firstVisible + Math.ceil(node.clientHeight / itemHeight)) <= endReachedThreshold) {
+          if (endTriggeredForLength.current !== items.length) {
+            endTriggeredForLength.current = items.length;
+            onEndReached();
+          }
+        }
       }}
     >
       <div className="virtual-list-inner" style={{ height: totalHeight }}>

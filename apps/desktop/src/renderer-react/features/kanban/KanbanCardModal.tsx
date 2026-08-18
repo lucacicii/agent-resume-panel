@@ -9,12 +9,13 @@ import { renderMarkdown } from "../../components/Markdown";
 import { isNoteSessionResumable } from "./noteSessionResume";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "../notes/noteProject";
+import type { AgentSession } from "@agent-resume/core";
 
 /** Max time to wait for the delete IPC before bailing out of the deleting state. */
 const DELETE_TIMEOUT_MS = 45_000;
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
-type Session = Awaited<ReturnType<ReturnType<typeof desktopApi>["listSessions"]>>[number];
+type Session = AgentSession;
 
 interface SessionPreview {
   title: string;
