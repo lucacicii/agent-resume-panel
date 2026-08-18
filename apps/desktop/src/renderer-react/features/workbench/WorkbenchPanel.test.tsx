@@ -403,6 +403,34 @@ const FOLDER_FOCUS_TEST_MESSAGES: Record<string, string> = {
   "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent"
 };
 
+function expandWorkbenchProject(title: string) {
+  const project = screen.getByTitle(title);
+  const chevron = project.querySelector(".wb-session-folder-chevron");
+  if (!chevron) throw new Error(`project chevron missing for ${title}`);
+  fireEvent.click(chevron);
+}
+
+function querySessionsPageFromList(
+  listSessions: () => Promise<Array<{
+    provider: string;
+    id: string;
+    title: string;
+    projectPath: string;
+    projectId?: string;
+    updatedAt: number;
+  }>>
+) {
+  return async (args?: { keys?: Array<{ provider: string; id: string }>; projectPath?: string }) => {
+    let sessions = await listSessions();
+    if (args?.projectPath) sessions = sessions.filter((session) => session.projectPath === args.projectPath);
+    if (args?.keys) {
+      const keys = new Set(args.keys.map((key) => `${key.provider}:${key.id}`));
+      sessions = sessions.filter((session) => keys.has(`${session.provider}:${session.id}`));
+    }
+    return { sessions, total: sessions.length };
+  };
+}
+
 /** Opens a text file as a Workbench editor tab via the Quick Access (⌘P) file picker. */
 function setupWorkbenchEditorTest(filePath: string, content: string): { openQuickFiles: () => void } {
   const host = document.createElement("div");
@@ -817,6 +845,10 @@ describe("WorkbenchPanel", () => {
         { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
         { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
+      ]),
       listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
       listWorkbenchSessionFolders,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
@@ -824,7 +856,10 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByTitle("Campaign");
+    await screen.findByTitle("/work/app");
+    expect(screen.queryByText("Unclassified")).toBeNull();
+    expect(screen.queryByTitle("Campaign")).toBeNull();
+    expandWorkbenchProject("/work/app");
     expect(screen.queryByText("Phase 1")).toBeNull();
     const campaignButton = screen.getByTitle("Campaign");
     fireEvent.click(campaignButton);
@@ -866,6 +901,10 @@ describe("WorkbenchPanel", () => {
         { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
         { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
+      ]),
       listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
       listWorkbenchSessionFolders,
       assignWorkbenchSessionToFolder,
@@ -876,6 +915,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const session = await screen.findByRole("button", { name: /Unsorted work/ });
     expect(session.hasAttribute("draggable")).toBe(true);
+    expandWorkbenchProject("/work/app");
     const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
     fireEvent.dragStart(session, { dataTransfer });
     fireEvent.drop(screen.getByTitle("Campaign"), { dataTransfer });
@@ -914,6 +954,10 @@ describe("WorkbenchPanel", () => {
         { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
         { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
+        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
+      ]),
       listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
       listWorkbenchSessionFolders,
       removeWorkbenchSessionFromFolder,
@@ -923,6 +967,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const session = await screen.findByRole("button", { name: /Campaign work/ });
+    expandWorkbenchProject("/work/app");
     const unclassified = await waitFor(() => {
       const row = document.querySelector<HTMLElement>(".wb-session-folder-root");
       if (!row) throw new Error("unclassified row not rendered");
@@ -968,6 +1013,10 @@ describe("WorkbenchPanel", () => {
         { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
         { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
+        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
+      ]),
       listProjects: async () => [
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
         { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
@@ -980,6 +1029,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const session = await screen.findByRole("button", { name: /App work/ });
+    expandWorkbenchProject("/work/docs");
     const docsFolder = await screen.findByTitle("Docs");
     const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
     fireEvent.dragStart(session, { dataTransfer });
@@ -3434,6 +3484,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => catalogSessions,
+      querySessionsPage: querySessionsPageFromList(async () => catalogSessions),
       listProjects: async () => [
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
       ],
@@ -3453,6 +3504,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByTitle("/work/app"));
+    expandWorkbenchProject("/work/app");
     fireEvent.click(await screen.findByTitle("Campaign"));
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
@@ -3503,6 +3555,9 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [
         { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ]),
       listProjects: async () => [
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
       ],
@@ -3525,6 +3580,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByTitle("/work/app"));
+    expandWorkbenchProject("/work/app");
     fireEvent.click(await screen.findByTitle("Campaign"));
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     const menu = await screen.findByRole("menu", { name: "Default agent" });
@@ -3558,6 +3614,10 @@ describe("WorkbenchPanel", () => {
         { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
         { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
+        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
+      ]),
       listProjects: async () => [
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
         { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
@@ -3577,6 +3637,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByTitle("/work/app"));
+    expandWorkbenchProject("/work/app");
     fireEvent.click(await screen.findByTitle("Campaign"));
     fireEvent.contextMenu(await screen.findByTitle("/work/docs"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "New session" }));
