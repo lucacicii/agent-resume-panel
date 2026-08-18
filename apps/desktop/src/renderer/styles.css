@@ -11948,6 +11948,7 @@ body.is-pane-resizing-row * {
   gap: 4px;
   box-sizing: border-box;
   width: calc(100% - 16px);
+  min-width: 0;
   margin: 0 8px 4px;
   padding: 10px 12px;
   border: none;
@@ -12119,8 +12120,7 @@ body.is-pane-resizing-row * {
   color: var(--muted);
 }
 
-.notes-list-item-preview,
-.wb-list-item-preview {
+.notes-list-item-preview {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -12128,6 +12128,25 @@ body.is-pane-resizing-row * {
   font-size: 12px;
   line-height: 1.4;
   color: var(--muted);
+}
+
+.wb-list-item-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.wb-list-item-preview .wb-list-item-date {
+  margin-right: 6px;
+}
+
+.wb-list-item-preview .s-provider-tag,
+.wb-list-item-preview .wb-gtd-status-badge {
+  margin-right: 6px;
 }
 
 .notes-detail {
@@ -15048,6 +15067,10 @@ body::before {
   font-weight: 700;
   letter-spacing: .03em;
   text-shadow: 0 0 7px rgba(255,43,214,.38);
+}
+
+[data-visual-theme="cyberpunk"] .wb-list-item-preview .wb-list-item-date {
+  padding-left: 0;
 }
 
 [data-visual-theme="cyberpunk"] .notes-list-item-preview,
