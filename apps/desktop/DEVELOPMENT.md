@@ -2,14 +2,14 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2).
+Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2).
 
 | | Link |
 |---|------|
 | **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
 | **User docs** | [docs/desktop](../../docs/desktop/README.md) |
 | **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
-| **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
+| **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 
 Version: **0.2.7**
 
@@ -62,7 +62,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 
 ## 简体中文
 
-独立 **macOS Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) 共用同一份本机数据。
+独立 **macOS Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) 共用同一份本机数据。
 
 ### 主要视图
 

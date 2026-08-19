@@ -21,7 +21,7 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 
 | | VS Code extension | Desktop app (macOS) |
 |---|---|---|
-| **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [Download DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
+| **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [Download DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
 | **Docs** | [This folder](README.md) | [Desktop docs](../desktop/README.md) |
 
 Extension version: **2.7.0** · [Changelog](../../apps/extension/CHANGELOG.md) · Desktop: see [releases](https://github.com/thunder-luc/agent-resume-panel/releases)
@@ -49,7 +49,7 @@ Extension version: **2.7.0** · [Changelog](../../apps/extension/CHANGELOG.md) �
 
 ### Quick start
 
-1. Install from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) and open **Agent Resume** in the activity bar.
+1. Install from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) and open **Agent Resume** in the activity bar.
 2. Use the four sidebar views: **Sessions**, **ACP Chats**, **GTD**, and **Notes**.
 3. Click a session in **Sessions** to resume (default target is configurable).
 4. Use **Refresh** in a view’s title bar when lists look stale.
@@ -70,7 +70,7 @@ Extension version: **2.7.0** · [Changelog](../../apps/extension/CHANGELOG.md) �
 
 Typical combo: **extension** for day-to-day resume inside the editor → **Desktop** for weekly review and digests — without re-importing anything.
 
-[Install extension](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [Download Desktop (macOS)](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [Desktop docs](../desktop/README.md)
+[Install extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) · [Download Desktop (macOS)](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [Desktop docs](../desktop/README.md)
 
 ### Feedback & support
 
@@ -82,7 +82,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 - [Desktop App documentation](../desktop/README.md)
 - [Download Desktop (macOS)](https://github.com/thunder-luc/agent-resume-panel/releases/latest)
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2)
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)
 
 ---
 
@@ -94,7 +94,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 | | VS Code 扩展 | Desktop 桌面端（macOS） |
 |---|---|---|
-| **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [下载 DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
+| **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [下载 DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
 | **文档** | [本目录](README.md) | [Desktop 文档](../desktop/README.md) |
 
 扩展版本：**2.7.0** · [更新日志](../../apps/extension/CHANGELOG.md) · 桌面端版本见 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases)
@@ -117,7 +117,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 ### 快速开始
 
-1. 从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) 安装，并在活动栏打开 **Agent Resume**。
+1. 从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) 安装，并在活动栏打开 **Agent Resume**。
 2. 使用四个侧边栏视图：**Sessions**、**ACP Chats**、**GTD**、**Notes**。
 3. 在 **Sessions** 中点击会话即可恢复（默认目标可配置）。
 4. 列表过期时，点视图标题栏的 **Refresh**。
@@ -138,7 +138,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 常见搭配：**扩展**负责日常在编辑器里恢复会话 → **Desktop** 负责周报回顾与 Digest——无需重新导入。
 
-[安装扩展](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [下载 Desktop（macOS）](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [Desktop 文档](../desktop/README.md)
+[安装扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) · [下载 Desktop（macOS）](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [Desktop 文档](../desktop/README.md)
 
 ### 反馈与支持
 
@@ -150,4 +150,4 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 
 - [Desktop App 用户文档](../desktop/README.md)
 - [下载 Desktop（macOS）](https://github.com/thunder-luc/agent-resume-panel/releases/latest)
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2)
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2)

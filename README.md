@@ -4,7 +4,7 @@ Monorepo for two independent products that share local data under `~/.agent-resu
 
 | Product | Directory | Install | User docs |
 |---------|-----------|---------|-----------|
-| **VS Code extension** | [`apps/extension/`](apps/extension/) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [docs/panel](docs/panel/README.md) |
+| **VS Code extension** | [`apps/extension/`](apps/extension/) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [docs/panel](docs/panel/README.md) |
 | **Desktop app (macOS)** | [`apps/desktop/`](apps/desktop/) | [Download DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) | [docs/desktop](docs/desktop/README.md) |
 
 Shared library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
