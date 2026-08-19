@@ -4,12 +4,12 @@
 
 ## User-facing documentation
 
-对外用户文档在独立仓库，**不要**把仓库结构、构建命令、源码路径等开发信息写进 doc 仓库 README：
+对外用户文档在本仓库 `docs/`，**不要**把仓库结构、构建命令、源码路径等开发信息写进用户文档：
 
 | 产品 | 用户文档 | Issues |
 |------|----------|--------|
-| VS Code 扩展 | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
-| Desktop App | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) | [issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+| VS Code 扩展 | [docs/panel](docs/panel/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
+| Desktop App | [docs/desktop](docs/desktop/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
 
 Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.md)。
 
@@ -39,14 +39,15 @@ Never commit:
 
 ## Setup
 
-Install dependencies:
+This repo pins Node via **fnm** (`.node-version`) and pnpm via **Corepack** (`packageManager` in root `package.json`).
 
 ```sh
-./pnpm install --frozen-lockfile
+# fnm with --use-on-cd, or once per shell:
+fnm install          # installs the version in .node-version
+fnm use
+corepack enable      # once per Node install; shims pnpm@packageManager
+pnpm install --frozen-lockfile
 ```
-
-`./pnpm` uses this repository's `packageManager` version through Corepack without changing
-the pnpm version managed by Volta for other projects.
 
 **Do not copy `node_modules` between machines** (especially Intel Mac ↔ Apple Silicon). Sync git + lockfile only, then reinstall.
 
@@ -54,25 +55,25 @@ the pnpm version managed by Volta for other projects.
 
 | | Intel Mac | Apple Silicon |
 |--|-----------|---------------|
-| `./pnpm install` / `./pnpm run dev:desktop` | ✅ | ✅ |
-| `./pnpm run pack:desktop` (universal) | ✅ | ✅ |
+| `pnpm install` / `pnpm run dev:desktop` | ✅ | ✅ |
+| `pnpm run pack:desktop` (universal) | ✅ | ✅ |
 
 After install or when Electron / node-pty / pack fails with env-looking errors:
 
 ```sh
-./pnpm run doctor:desktop
+pnpm run doctor:desktop
 ```
 
 Compile the extension:
 
 ```sh
-./pnpm run compile
+pnpm run compile
 ```
 
 For active development, run the TypeScript watcher:
 
 ```sh
-./pnpm run watch
+pnpm run watch
 ```
 
 ## Local Install

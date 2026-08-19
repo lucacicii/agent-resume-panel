@@ -120,7 +120,11 @@ export function digestIndex(entries: ReportEntry[]): Map<string, ReportEntry> {
   for (const entry of entries) {
     const key = periodKeyFromEntry(entry);
     if (key && (entry.level === "daily" || entry.level === "weekly" || entry.level === "monthly")) {
-      index.set(`${entry.level}:${key}`, entry);
+      const indexKey = `${entry.level}:${key}`;
+      const existing = index.get(indexKey);
+      if (!existing || entry.createdAtMs >= existing.createdAtMs) {
+        index.set(indexKey, entry);
+      }
     }
   }
   return index;

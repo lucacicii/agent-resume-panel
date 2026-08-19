@@ -16,7 +16,9 @@ export {
   desktopSettingsPath,
   desktopDataDir,
   desktopDbPath,
-  defaultScratchDir
+  defaultScratchDir,
+  desktopLogsDir,
+  browserMcpEndpointPath
 } from "./panelHome";
 export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";
 export type { PanelDbPaths } from "./dbPaths";
@@ -27,7 +29,7 @@ export {
   preparePanelDatabases,
   preparePanelDatabasesFromSettings
 } from "./dbPaths";
-export { escapeSqlLiteral, runSqlite, runSqliteJson } from "./sqlite";
+export { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson } from "./sqlite";
 
 export type {
   PanelSettings,
@@ -35,16 +37,35 @@ export type {
   ChatLlmSettings,
   EmbeddingSettings,
   ReportSettings,
+  SessionSummaryAutoSettings,
+  SessionTranscriptIndexSettings,
+  SessionEmbeddingIndexSettings,
+  AutoTaggingSettings,
   DesktopSettings,
+  DesktopBrowserSettings,
+  DesktopBrowserPolicy,
+  DesktopBrowserPartitionMode,
+  DesktopBrowserDefaultSurface,
+  DesktopBrowserSnapshotMode,
+  NotesSettings,
   DesktopTheme,
+  DesktopVisualThemeId,
+  DesktopThemeEffects,
   WorkbenchSettings,
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
   WorkbenchProjectContextMenuAction,
+  WorkbenchNewSessionTarget,
+  AcpAgentProvider,
+  AcpAutoApprovePermissions,
+  AcpAgentLaunchConfig,
+  AcpSettings,
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
+  WorkbenchTerminalThemeId,
+  WorkbenchTerminalRenderer,
   GhosttyLaunchMode,
   AgentHomesSettings,
   AgentSessionSyncSettings,
@@ -53,10 +74,39 @@ export type {
 } from "./settings/types";
 export {
   DEFAULT_SETTINGS,
+  DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
-  ALL_WORKBENCH_PROJECT_CONTEXT_MENU
+  ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
+  WORKBENCH_TERMINAL_THEME_IDS,
+  WORKBENCH_TERMINAL_RENDERERS,
+  DESKTOP_VISUAL_THEME_IDS,
+  ACP_AGENT_PROVIDERS
 } from "./settings/types";
-export { normalizeWorkbenchProjectContextMenu } from "./settings/store";
+export {
+  normalizeWorkbenchProjectContextMenu,
+  normalizeWorkbenchTerminalTheme,
+  normalizeWorkbenchTerminalRenderer,
+  normalizeDesktopVisualTheme,
+  normalizeDesktopThemeEffects,
+  normalizeDesktopTheme,
+  normalizeWorkbenchEditorTheme
+} from "./settings/store";
+export {
+  formatCliNewSessionTarget,
+  formatAcpNewSessionTarget,
+  parseWorkbenchNewSessionTarget,
+  isAcpAgentProvider
+} from "./settings/newSessionTarget";
+export type { ParsedWorkbenchNewSessionTarget } from "./settings/newSessionTarget";
+export {
+  loadNoteGtdMap,
+  getNoteGtdStatus,
+  setNoteGtdStatus,
+  clearNoteGtdStatus
+} from "./notes/gtd";
+export * from "./flow/types";
+export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
+export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -93,6 +143,8 @@ export {
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
+export { cleanupRemovedSessionExecutionNotes } from "./catalog/legacyCleanup";
+export type { RemovedExecutionNotesCleanupOptions } from "./catalog/legacyCleanup";
 export {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
@@ -100,14 +152,52 @@ export {
   syncStateHasExtendedColumns
 } from "./catalog/db";
 
-export { listSessions, listSessionsInRange, getSessionById, countSessions } from "./catalog/query";
+export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";
+export type { SessionRangeCursor, SessionQueryCursor, SessionQueryRequest, SessionQueryPage } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
+export {
+  searchCatalogSessions,
+  mergeSessionSearchHits,
+  clampSessionSearchLimit,
+  clampSessionListLimit,
+  sanitizeLikeFragment
+} from "./catalog/search";
+export type {
+  SessionSearchFilters,
+  SessionSearchHit,
+  SessionSearchMatch
+} from "./catalog/search";
 export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
   hideSessionsInCatalog,
-  unhideAllSessionsInCatalog
+  unhideAllSessionsInCatalog,
+  unhideSessionInCatalog,
+  purgeRetiredAlmaCatalog
 } from "./catalog/mutations";
+export {
+  upsertAcpSessionInCatalog,
+  deleteAcpSessionFromCatalog,
+  syncAcpRecordsIntoCatalog,
+  buildAcpTranscriptRefs,
+  catalogDbForPanelHome,
+  countAcpCatalogSessions
+} from "./catalog/acpCatalog";
+export type { AcpCatalogRecordInput } from "./catalog/acpCatalog";
+export {
+  acpSessionsPath,
+  acpThreadPath,
+  acpStoreLockPath,
+  ensureAcpStoreDirs,
+  loadAcpSessionRecords,
+  getAcpSessionRecord,
+  insertAcpSessionRecord,
+  updateAcpSessionRecord,
+  deleteAcpSessionRecord,
+  loadAcpThreadMessages,
+  appendAcpThreadMessage
+} from "./acp/store";
+export type { AcpSessionStoreRecord, AcpThreadStoreMessage } from "./acp/store";
 export {
   loadProjectAliasesMap,
   getProjectAliasFromCatalog,
@@ -127,9 +217,27 @@ export {
   getProjectById,
   listProjectPathVariants,
   mergeProjectsInCatalog,
-  splitProjectPathInCatalog
+  splitProjectPathInCatalog,
+  tidyProjectsInCatalog,
+  moveSessionToProjectInCatalog
 } from "./catalog/projects";
 export type { ProjectRow, ResolveProjectCwdResult } from "./catalog/projects";
+export {
+  listWorkbenchSessionFolders,
+  listWorkbenchSessionFolderAssignments,
+  listAllWorkbenchSessionFolders,
+  listAllWorkbenchSessionFolderAssignments,
+  createWorkbenchSessionFolder,
+  renameWorkbenchSessionFolder,
+  deleteWorkbenchSessionFolder,
+  assignWorkbenchSessionToFolder,
+  removeWorkbenchSessionFromFolder,
+  mergeWorkbenchSessionFolders
+} from "./catalog/workbenchFolders";
+export type {
+  WorkbenchSessionFolder,
+  WorkbenchSessionFolderAssignment
+} from "./catalog/workbenchFolders";
 export {
   loadAllAgentSessions,
   syncAgentSessions,
@@ -153,6 +261,7 @@ export type { ChatStreamCallbacks, LlmToolCallResult } from "./llm/chat";
 export type { LlmCallResult } from "./llm/chat";
 export { embedTexts, embedTextsDetailed } from "./llm/embeddings";
 export type { EmbedCallResult } from "./llm/embeddings";
+export { testChatLlmConnection, testEmbeddingConnection } from "./llm/testConnection";
 export {
   llmConfigFromSettings,
   chatLlmConfigFromSettings,
@@ -183,10 +292,48 @@ export {
   insertReportEntry,
   upsertReportJob,
   getReportJobStatus,
+  clearReportJobsByStatus,
   listReportLinks,
-  getReportEntryById
+  getReportEntryById,
+  desktopReportDbExists,
+  readReportEntries,
+  readReportEntriesInRange,
+  readReportEntryById
 } from "./report/store";
 export type { ReportLinkRow } from "./report/store";
+export type {
+  ReportPeriodType,
+  CalendarPeriodRange,
+  CalendarCell
+} from "./report/calendar";
+export {
+  dayKeyFromDate,
+  dayKeyFromMs,
+  isoWeekLabelFromDate,
+  viewMonthKey,
+  parseDayRange,
+  parseWeekRange,
+  parseMonthRange,
+  rangeForPeriod,
+  paddedMonthRange,
+  calendarCells,
+  periodKeyFromEntry,
+  digestIndex,
+  isFuturePeriod
+} from "./report/calendar";
+export {
+  estimateDigestRun,
+  estimateDailyForSessions,
+  estimateHierarchicalCallCount,
+  digestCallBudget,
+  assertDigestCallBudget,
+  DigestBudgetExceededError
+} from "./report/digestBudget";
+export type {
+  DigestGenerationEstimate,
+  DigestRunLevel,
+  DigestRunTrigger
+} from "./report/digestBudget";
 export { runDailyDigest, localDayRange, needsDailyDigestRefresh } from "./report/daily";
 export type { PeriodDigestRefreshCheck } from "./report/digestRefresh";
 export { needsWeeklyDigestRefresh, needsMonthlyDigestRefresh } from "./report/digestRefresh";
@@ -230,7 +377,6 @@ export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./trans
 export {
   resolvePreviewHomes,
   DEFAULT_AGENT_HOMES,
-  defaultAlmaDataDir,
   defaultAgentHomeValue,
   agentHomeDiffersFromDefault,
   sanitizeAgentHomes
@@ -242,20 +388,45 @@ export {
   formatTranscript,
   truncateTranscript
 } from "./transcript/load";
+export {
+  extractPreviewContent,
+  extractTextFromContent,
+  finalizePreviewMessages,
+  isConversationPreviewText,
+  isUserOrAssistantRole,
+  normalizePreviewText
+} from "./transcript/text";
+export type { ExtractedPreviewContent } from "./transcript/text";
 
 export type {
   AgentCitation,
   AgentChatOptions,
   AgentChatResult,
+  AgentExecutionCapability,
+  AgentExecutionKind,
+  AgentExecutionSourceKind,
+  AgentExecutionStep,
   AgentStreamEvent,
-  AgentStreamPhase
+  AgentStreamPhase,
+  AgentToolImpact,
+  AgentToolTraceStatus,
+  AgentToolTraceStep
 } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
+export {
+  buildMetaAgentSystemPrompt,
+  buildMetaAgentSystemPromptWithTools,
+  buildMetaAgentUserPrompt,
+  formatNoteSourceBlock,
+  formatSessionSourceBlock,
+  formatSourceBlock
+} from "./agent/prompts";
 export { runAgentChat } from "./agent/agentChat";
 export {
   appendAgentTurn,
   clearAgentMessages,
+  deleteAgentMessagesFromSortOrder,
   listAgentMessages,
   listAgentMessagesForHistory,
   listOlderAgentMessages,
@@ -273,11 +444,19 @@ export {
 } from "./agent/noteAudit";
 export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudit";
 
-export type { GtdStatus, GtdProposal, GtdApplyItem } from "./gtd/types";
-export { GTD_STATUSES, isGtdStatus } from "./gtd/types";
+export type {
+  ActiveGtdStatus,
+  GtdStatus,
+  GtdEvidence,
+  GtdEvidenceQuote,
+  GtdProposal,
+  GtdApplyItem
+} from "./gtd/types";
+export { GTD_ACTIVE_STATUSES, GTD_STATUSES, isActiveGtdStatus, isGtdStatus } from "./gtd/types";
 export {
   getSessionGtdStatus,
   setSessionGtdStatus,
+  clearSessionGtdStatus,
   loadSessionGtdMap,
   sessionGtdKey
 } from "./gtd/store";
@@ -329,6 +508,21 @@ export {
   listLegacyProjectNotes
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
+export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
+export {
+  listAllNoteLinks,
+  getParentLink,
+  listChildLinks,
+  deleteLinksForNote,
+  clearParentLink,
+  listLinkedChildNoteIds,
+  listChildCounts,
+  collectDescendantIds,
+  wouldCreateCycle,
+  setParentLink,
+  getNoteSubtree,
+  resolveLinkRoot
+} from "./notes/links";
 export { ensureNotesVectorIndex, chunkNoteMarkdown } from "./notes/vectorIndex";
 export type {
   NoteIndexProgressCallback,
@@ -437,17 +631,18 @@ export {
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
 export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,
   projectEditorLabel,
   resolveProjectEditor
 } from "./terminal/projectEditor";
 export type { ProjectEditor, ProjectEditorId } from "./terminal/projectEditor";
-export { buildAlmaActivateCommand, openAlmaThreadInApp } from "./terminal/alma";
 export { openProjectInGhostty, openSessionInGhostty } from "./terminal/ghostty";
 export type { GhosttySettings } from "./terminal/ghostty";
 export {
   openProjectInSystemTerminal,
+  openCommandInSystemTerminal,
   openSessionInSystemTerminal
 } from "./terminal/systemTerminal";
 export type { SystemTerminalSettings, SystemTerminalLaunchMode } from "./terminal/systemTerminal";
@@ -464,8 +659,78 @@ export type {
   EnsureSummariesOptions,
   EnsureSummariesResult
 } from "./session/ensureSummaries";
+export {
+  resolveSessionSummaryAutoSettings,
+  listSessionsNeedingSummary,
+  selectAutoSummaryCandidates,
+  isEligibleForAutoSummary,
+  isMissingSummary,
+  isStaleSummary,
+  runAutoSessionSummaries,
+  clampInt,
+  DEFAULT_STALE_DELAY_MINUTES,
+  DEFAULT_MISSING_DELAY_MINUTES,
+  DEFAULT_AUTO_SUMMARY_CONCURRENCY,
+  DEFAULT_AUTO_SUMMARY_MAX_PER_TICK
+} from "./session/autoSummary";
+export type {
+  AutoSummaryCandidate,
+  AutoSummaryReason,
+  ResolvedSessionSummaryAutoSettings,
+  RunAutoSessionSummariesOptions,
+  RunAutoSessionSummariesResult
+} from "./session/autoSummary";
+export {
+  resolveSessionTranscriptIndexSettings,
+  selectTranscriptIndexCandidates,
+  listTranscriptIndexMeta,
+  runAutoTranscriptIndex,
+  DEFAULT_TX_QUIET_DELAY_MINUTES,
+  DEFAULT_TX_INDEX_CONCURRENCY,
+  DEFAULT_TX_INDEX_MAX_PER_TICK
+} from "./session/autoTranscriptIndex";
+export type {
+  ResolvedSessionTranscriptIndexSettings,
+  RunAutoTranscriptIndexOptions,
+  RunAutoTranscriptIndexResult,
+  TranscriptIndexMetaRow
+} from "./session/autoTranscriptIndex";
+export {
+  resolveSessionEmbeddingIndexSettings,
+  selectSessionEmbeddingCandidates,
+  listSessionsNeedingEmbedding,
+  runAutoSessionEmbeddings,
+  DEFAULT_EMB_INDEX_QUIET_DELAY_MINUTES,
+  DEFAULT_EMB_INDEX_CONCURRENCY,
+  DEFAULT_EMB_INDEX_MAX_PER_TICK
+} from "./session/autoEmbeddingIndex";
+export type {
+  ResolvedSessionEmbeddingIndexSettings,
+  SessionEmbeddingCandidate,
+  RunAutoSessionEmbeddingsOptions,
+  RunAutoSessionEmbeddingsResult
+} from "./session/autoEmbeddingIndex";
 export { renameSessionNative } from "./session/rename";
 export type { RenameHomes } from "./session/rename";
+export { updateNativeSessionCwd } from "./session/nativeCwd";
+export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
+
+// Link graph engine (domain — no Notes/Session/Flow deps; MCP + Desktop both call this)
+export { runLinkGraphTrace } from "./linkgraph/agent";
+export {
+  factsFromSteps,
+  reconcileOpenEnds,
+  sanitizeLinkGraphSummary
+} from "./linkgraph/evidence";
+export { normalizeLinkGraphSymbol } from "./linkgraph/symbol";
+export type {
+  LinkGraphTraceArgs,
+  LinkGraphTraceResult,
+  LinkGraphStep,
+  LinkGraphTimelineItem,
+  LinkGraphFacts,
+  LinkGraphOpenEnd
+} from "./linkgraph/types";
 
 // MCP server and tool-calling support
 export {
@@ -475,10 +740,188 @@ export {
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION
 } from "./mcp/server";
-export type { NoteToolContext } from "./mcp/tools";
+export {
+  handleLinkGraphTrace,
+  linkGraphTraceSchema
+} from "./mcp/linkGraphTools";
+export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphTools";
+export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
+export type { AgentMcpContext } from "./mcp/server";
+export {
+  AGENT_TOOL_CATALOG,
+  AGENT_TOOL_NAMES
+} from "./mcp/toolCatalog";
+export type { AgentToolCategory, AgentToolDescriptor } from "./mcp/toolCatalog";
+export {
+  handleSessionSearch,
+  handleSessionList,
+  handleSessionRead,
+  handleSessionReadTranscript,
+  handleSessionSetGtd,
+  handleSessionResume
+} from "./mcp/sessionTools";
+export type { SessionToolContext } from "./mcp/sessionTools";
+export {
+  projectListSchema,
+  projectMergeSchema,
+  projectTidySchema,
+  projectReconcileSchema,
+  sessionMoveSchema,
+  handleProjectList,
+  handleProjectMerge,
+  handleProjectTidy,
+  handleProjectReconcile,
+  handleSessionMove
+} from "./mcp/projectTools";
+export type { ProjectToolContext } from "./mcp/projectTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
 export { runToolLoop } from "./agent/toolLoop";
-export type { ToolLoopOptions, ToolLoopResult, TouchedNote, NoteOperation } from "./agent/toolLoop";
+export type {
+  ToolLoopOptions,
+  ToolLoopResult,
+  TouchedNote,
+  TouchedSession,
+  NoteOperation,
+  SessionOperation
+} from "./agent/toolLoop";
+export { extractTouchedSessions } from "./agent/toolLoop";
 export { resolveMcpServerCommand } from "./agent/mcpConfig";
 export type { McpServerCommand } from "./agent/mcpConfig";
+export {
+  upsertSessionEmbedding,
+  backfillSessionEmbeddings,
+  listSessionEmbeddingRows,
+  buildSessionEmbedText,
+  sessionEmbeddingKey
+} from "./session/embedStore";
+export type {
+  UpsertSessionEmbeddingOptions,
+  UpsertSessionEmbeddingResult,
+  BackfillSessionEmbeddingsOptions,
+  BackfillSessionEmbeddingsResult
+} from "./session/embedStore";
+export { searchSessionsByEmbedding } from "./session/searchByEmbedding";
+export type { SearchSessionsByEmbeddingOptions } from "./session/searchByEmbedding";
+export {
+  chunkTranscriptText,
+  rankSessionsByTranscriptChunks,
+  searchSessionsByTranscriptEmbedding,
+  indexSessionTranscript,
+  listTranscriptChunkRows,
+  deleteSessionTranscriptIndex,
+  transcriptSourceHash
+} from "./session/transcriptIndex";
+export type {
+  TranscriptChunkInput,
+  RankableTranscriptChunk,
+  RankedTranscriptSession,
+  IndexSessionTranscriptOptions,
+  IndexSessionTranscriptResult,
+  SearchSessionsByTranscriptOptions
+} from "./session/transcriptIndex";
+export {
+  buildNativeConversationArtifacts
+} from "./backup/nativeConversations";
+export type {
+  NativeConversationProvider,
+  NativeConversationFile,
+  NativeConversationProviderSummary,
+  NativeConversationCollection,
+  CollectNativeConversationsOptions
+} from "./backup/nativeConversations";
+
+// Auto-tagging engine
+export {
+  TAG_CATEGORIES
+} from "./tagging/types";
+export type {
+  TagCategory,
+  TagStatus,
+  TagSource,
+  TagEntityType,
+  EntityTagRow,
+  TagDefinitionRow,
+  ExtractedTag,
+  TagExtractionResult,
+  TagFilterOptions,
+  EntityTagSummary,
+  TagEntityHitItem
+} from "./tagging/types";
+export {
+  DEFAULT_HALF_LIFE_DAYS,
+  DEFAULT_PRUNE_THRESHOLD,
+  DEFAULT_HIT_BOOST,
+  DEFAULT_CONSENSUS_FACTOR,
+  DEFAULT_GRACE_PERIOD_DAYS,
+  normalizeTagName,
+  normalizeCategory,
+  computeConsensusBoost,
+  computeDecayedWeight,
+  determineTagStatus
+} from "./tagging/decay";
+export type { DecayedWeightParams, TagStatusParams } from "./tagging/decay";
+export {
+  buildTagSystemPrompt,
+  buildSessionTagUserPrompt,
+  buildNoteTagUserPrompt,
+  TAG_CATEGORY_DESCRIPTIONS,
+  TAG_CATEGORY_EXAMPLES
+} from "./tagging/prompts";
+export {
+  extractTagsFromSession,
+  extractTagsFromNote,
+  isKnownTagCategory
+} from "./tagging/extract";
+export type { ExtractSessionTagsInput, ExtractNoteTagsInput } from "./tagging/extract";
+export {
+  applyExtractedTags,
+  addManualTag,
+  removeEntityTag,
+  recordEntityTagHits,
+  recordSearchResultTagHits,
+  sweepTagDecay,
+  listEntityTags,
+  listTagDefinitions,
+  searchTagDefinitions,
+  listEntitiesByTag,
+  sessionEntityId,
+  parseSessionEntityId,
+  newEntityTagRowId
+} from "./tagging/store";
+export type { TagStoreSettings, ListEntityTagsOptions } from "./tagging/store";
+export {
+  resolveAutoTaggingSettings,
+  toTagStoreSettings,
+  listSessionsNeedingTags,
+  listNotesNeedingTags,
+  selectTaggingCandidates,
+  runAutoTagging,
+  tagEntityNow,
+  getEntityTagsForUi,
+  DEFAULT_AUTO_TAG_CONCURRENCY,
+  DEFAULT_AUTO_TAG_MAX_PER_TICK,
+  DEFAULT_AUTO_TAG_MAX_TAGS,
+  DEFAULT_AUTO_TAG_QUIET_DELAY_MINUTES
+} from "./tagging/autoTag";
+export type {
+  ResolvedAutoTaggingSettings,
+  TaggingCandidate,
+  RunAutoTaggingOptions,
+  RunAutoTaggingResult
+} from "./tagging/autoTag";
+export {
+  tagListSchema,
+  tagSearchSchema,
+  tagEntitiesListSchema,
+  entityTagsGetSchema,
+  entityTagAddSchema,
+  entityTagRemoveSchema,
+  handleTagList,
+  handleTagSearch,
+  handleTagEntitiesList,
+  handleEntityTagsGet,
+  handleEntityTagAdd,
+  handleEntityTagRemove
+} from "./mcp/tagTools";
+export type { TagToolContext } from "./mcp/tagTools";

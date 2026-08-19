@@ -13,12 +13,23 @@ let debounceTimer = null;
 
 function runCopy() {
   console.log("[watch-renderer] syncing renderer → dist/renderer");
-  execFileSync(process.execPath, [copyScript, "--renderer-only"], { cwd: root, stdio: "inherit" });
+  try {
+    execFileSync(process.execPath, [copyScript, "--renderer-only"], { cwd: root, stdio: "inherit" });
+  } catch (error) {
+    console.error("[watch-renderer] renderer copy failed (keeping watch alive):", error.message);
+  }
 }
 
 function runReactBuild() {
   console.log("[watch-renderer] building React renderer runtime");
-  execFileSync(process.execPath, [reactBuildScript], { cwd: root, stdio: "inherit" });
+  try {
+    execFileSync(process.execPath, [reactBuildScript], { cwd: root, stdio: "inherit" });
+  } catch (error) {
+    console.error("[watch-renderer] React renderer build failed (keeping watch alive):", error.message);
+    if (error && typeof error === "object" && "stderr" in error && Buffer.isBuffer(error.stderr)) {
+      console.error(error.stderr.toString());
+    }
+  }
 }
 
 function scheduleCopy() {

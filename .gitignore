@@ -10,6 +10,7 @@ packages/core/dist/
 apps/desktop/dist/
 apps/desktop/release/
 apps/desktop/.dev-app-stamp
+apps/desktop/.dev-app-stamp-*
 apps/desktop/.electron-zips/
 apps/desktop/.pack-staging/
 
@@ -27,6 +28,14 @@ Thumbs.db
 .env
 .env.*
 
+# Local agent / package-manager state
+.claude/
+.pnpm-store/
+
+# Accidental compile / i18n dumps at repo root
+/workbenchGit.js
+/en.json
+
 # Logs
 *.log
 npm-debug.log*
@@ -35,6 +44,6 @@ npm-debug.log*
 .idea/
 .cursor/
 
-# Vendored doc repos (track content only, not nested .git)
-agent-resume-desktop-doc/.git/
-agent-resume-panel-doc/.git/
+# Local clones of the retired standalone doc repos
+/agent-resume-desktop-doc/
+/agent-resume-panel-doc/

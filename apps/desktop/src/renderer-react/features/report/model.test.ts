@@ -35,4 +35,13 @@ describe("report model", () => {
     expect(index.get("daily:2024-02-01")?.id).toBe("daily:2024-02-01");
     expect(periodKeyFromEntry(entry("monthly", "other", Date.UTC(2024, 1, 1)))).toBe("2024-02");
   });
+
+  it("chooses the newest digest when legacy and canonical entries share a period", () => {
+    const period = new Date(2026, 6, 9).getTime();
+    const older = { ...entry("daily", "legacy-uuid", period), createdAtMs: period + 1 };
+    const newer = { ...entry("daily", "daily:2026-07-09", period), createdAtMs: period + 2 };
+    expect(digestIndex([newer, older]).get("daily:2026-07-09")?.id).toBe("daily:2026-07-09");
+    expect(digestIndex([older, newer]).get("daily:2026-07-09")?.id).toBe("daily:2026-07-09");
+  });
+
 });

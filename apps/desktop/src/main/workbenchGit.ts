@@ -11,9 +11,13 @@ import {
   suggestCommitMessageFromGitContext
 } from "@agent-resume/core";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
 import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+import { parseGitStatusPorcelainV1Z, stagedRepoPaths } from "./workbenchGitStatus";
+import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
+import { toGitDiffHunkMetadata, type GitDiffHunk } from "./workbenchGitDiff";
 
 export type { GitGraphLayout } from "./gitGraphLayout";
 
@@ -26,6 +30,7 @@ const GIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 export interface GitCommitRefs {
   heads: string[];
+  remotes: string[];
   tags: string[];
   isHead: boolean;
   primaryLabel: string | null;
@@ -40,11 +45,15 @@ export interface GitLogEntry {
   parents: string[];
   decorations: string;
   refs: GitCommitRefs;
+  /** Repo-relative path of the file as it existed in this commit (rename-aware). */
+  pathAtCommit: string;
 }
 
 export interface GitShowFileEntry {
   status: string;
   path: string;
+  /** Old path for rename/copy (R/C) entries, when the diff reports one. */
+  oldPath?: string;
 }
 
 export interface GitShowResult {
@@ -62,12 +71,31 @@ export interface GitCommitFileDiffSidesResult {
   newLabel: string;
   oldText: string;
   newText: string;
+  hunks: GitDiffHunk[];
+}
+
+export interface GitFileLogResult {
+  repoRoot: string;
+  repoPath: string;
+  commits: GitLogEntry[];
+  layout: GitGraphLayout;
 }
 
 function formatExecError(error: unknown): string {
-  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer };
+  const err = error as NodeJS.ErrnoException & { stderr?: string | Buffer; stdout?: string | Buffer };
   const stderr = err.stderr ? String(err.stderr).trim() : "";
   if (stderr) return stderr;
+  // Some git failures write their diagnostic to stdout and leave stderr empty
+  // (e.g. "nothing to commit"). Surface the actionable summary instead of the
+  // generic "Command failed: …" error message.
+  const stdout = err.stdout ? String(err.stdout).trim() : "";
+  if (stdout) {
+    const lines = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return lines[lines.length - 1] ?? stdout;
+  }
   if (error instanceof Error && error.message) return error.message;
   return String(error);
 }
@@ -104,6 +132,29 @@ function normalizeCommitMessage(raw: string): string {
   return message;
 }
 
+/** Repo-relative paths only; reject absolute paths and parent traversal. */
+function normalizeCommitPaths(raw?: string[]): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    // Porcelain status represents an untracked directory with a trailing slash
+    // (for example `newdir/`). Strip it so the directory (and its new files)
+    // is not dropped as an invalid empty path segment.
+    const normalized = String(item || "")
+      .replace(/\\/g, "/")
+      .replace(/^\.?\//, "")
+      .replace(/\/+$/, "")
+      .trim();
+    if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) continue;
+    if (normalized.split("/").some((part) => part === ".." || part === "")) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
 async function resolveRepoRoot(raw: string): Promise<string> {
   const resolved = resolveCwd(raw);
   if (!(await isGitRepo(resolved))) {
@@ -134,6 +185,16 @@ function assertValidGitHash(hash: string): string {
   return trimmed;
 }
 
+function isValidGitBranchName(branch: string): boolean {
+  const trimmed = branch.trim();
+  if (!trimmed || trimmed.startsWith("-")) return false;
+  if (/[\0\r\n]/.test(trimmed)) return false;
+  // Reject Git's built-in disallowed names so `git checkout -b` cannot be
+  // abused to overwrite refs (HEAD, tags, etc.).
+  if (/^(HEAD|\.|\/)/i.test(trimmed)) return false;
+  return !trimmed.split("/").some((part) => /^\.{1,2}$/.test(part));
+}
+
 function assertValidGitFilePath(filePath: string): string {
   const normalized = filePath.trim();
   if (!normalized || normalized.includes("\0")) {
@@ -149,7 +210,7 @@ function normalizeGitDecorations(raw: string): string {
 function parseGitRefs(decorations: string): GitCommitRefs {
   const normalized = normalizeGitDecorations(decorations);
   if (!normalized) {
-    return { heads: [], tags: [], isHead: false, primaryLabel: null };
+    return { heads: [], remotes: [], tags: [], isHead: false, primaryLabel: null };
   }
 
   const heads: string[] = [];
@@ -171,18 +232,29 @@ function parseGitRefs(decorations: string): GitCommitRefs {
       }
     }
 
-    if (/^tag:\s*/i.test(part)) {
-      const tagName = part.replace(/^tag:\s*/i, "").trim();
+    const remotePointerMatch = part.match(/^(refs\/remotes\/\S+)\s*->\s*(refs\/remotes\/\S+)$/);
+    if (remotePointerMatch) {
+      for (const ref of remotePointerMatch.slice(1)) {
+        const remoteName = ref.slice("refs/remotes/".length);
+        if (remoteName && !remotes.includes(remoteName)) remotes.push(remoteName);
+      }
+      continue;
+    }
+
+    if (/^tag:\s*/i.test(part) || part.startsWith("refs/tags/")) {
+      const tagName = part.replace(/^tag:\s*/i, "").replace(/^refs\/tags\//, "").trim();
       if (tagName && !tags.includes(tagName)) tags.push(tagName);
       continue;
     }
 
-    if (/^[a-zA-Z0-9_.-]+\//.test(part)) {
-      if (!remotes.includes(part)) remotes.push(part);
+    if (part.startsWith("refs/remotes/")) {
+      const remoteName = part.slice("refs/remotes/".length);
+      if (remoteName && !remotes.includes(remoteName)) remotes.push(remoteName);
       continue;
     }
 
-    if (!heads.includes(part)) heads.push(part);
+    const headName = part.replace(/^refs\/heads\//, "");
+    if (headName && !heads.includes(headName)) heads.push(headName);
   }
 
   let primaryLabel: string | null = null;
@@ -194,7 +266,7 @@ function parseGitRefs(decorations: string): GitCommitRefs {
     primaryLabel = slash >= 0 ? remote.slice(slash + 1) : remote;
   }
 
-  return { heads, tags, isHead, primaryLabel };
+  return { heads, remotes, tags, isHead, primaryLabel };
 }
 
 function parseParentsField(raw: string): string[] {
@@ -221,7 +293,8 @@ function parseGitLogOutput(stdout: string): GitLogEntry[] {
       subject: subjectParts.join("\x1f") || "",
       parents: parseParentsField(parentsRaw || ""),
       decorations: normalizedDecorations,
-      refs: parseGitRefs(normalizedDecorations)
+      refs: parseGitRefs(normalizedDecorations),
+      pathAtCommit: ""
     });
   }
   return entries;
@@ -234,13 +307,15 @@ function parseNameStatusOutput(stdout: string): GitShowFileEntry[] {
     const tab = line.indexOf("\t");
     if (tab < 0) continue;
     const status = line.slice(0, tab).trim();
-    let filePath = line.slice(tab + 1).trim();
-    const renameArrow = filePath.indexOf("\t");
-    if (renameArrow >= 0) {
-      filePath = filePath.slice(renameArrow + 1).trim() || filePath.slice(0, renameArrow).trim();
-    }
+    const paths = line
+      .slice(tab + 1)
+      .split("\t")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const oldPath = /^[RC]/.test(status) && paths.length > 1 ? paths[0] : undefined;
+    const filePath = oldPath !== undefined ? paths[1] : paths[0];
     if (!filePath) continue;
-    files.push({ status, path: filePath });
+    files.push(oldPath !== undefined ? { status, path: filePath, oldPath } : { status, path: filePath });
   }
   return files;
 }
@@ -253,6 +328,7 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
       [
         "log",
         "--all",
+        "--decorate=full",
         "--topo-order",
         `-n${n}`,
         "--date=unix",
@@ -262,6 +338,117 @@ async function queryGitLog(repoRoot: string, limit?: number): Promise<GitLogEntr
       2 * 1024 * 1024
     );
     return parseGitLogOutput(stdout);
+  } catch (error) {
+    throw new Error(formatExecError(error));
+  }
+}
+
+const GIT_FILE_STATUS_PATTERN = /^[MADRCUTX]$/;
+
+/**
+ * Parses `git log --name-status` output for a single pathspec. Each commit
+ * record (field-separated with \x1f) is followed by one or more name-status
+ * lines; rename/copy (R/C) entries report `old<TAB>new`, everything else
+ * reports a single path. `repoPath` seeds the file path for commits that
+ * carry no name-status lines (e.g. merge commits).
+ */
+function parseGitFileLogOutput(stdout: string, repoPath: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  let current: GitLogEntry | null = null;
+  let lastPath = repoPath;
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const parts = line.split("\x1f");
+    if (parts.length >= 7 && GIT_HASH_PATTERN.test(parts[0])) {
+      const [hash, shortHash, author, dateRaw, decorations, parentsRaw, ...subjectParts] = parts;
+      const date = Number.parseInt(dateRaw, 10);
+      if (!hash || !Number.isFinite(date)) continue;
+      const normalizedDecorations = normalizeGitDecorations(decorations || "");
+      const entry: GitLogEntry = {
+        hash,
+        shortHash: shortHash || hash.slice(0, 7),
+        author: author || "",
+        date,
+        subject: subjectParts.join("\x1f") || "",
+        parents: parseParentsField(parentsRaw || ""),
+        decorations: normalizedDecorations,
+        refs: parseGitRefs(normalizedDecorations),
+        pathAtCommit: lastPath
+      };
+      current = entry;
+      entries.push(entry);
+      continue;
+    }
+    if (!current) continue;
+    const tab = line.indexOf("\t");
+    if (tab <= 0) continue;
+    const status = line.slice(0, tab).trim();
+    if (!GIT_FILE_STATUS_PATTERN.test(status)) continue;
+    const paths = line
+      .slice(tab + 1)
+      .split("\t")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const newPath = /^[RC]/.test(status) && paths.length > 1 ? paths[1] : paths[0];
+    if (!newPath) continue;
+    lastPath = newPath;
+    current.pathAtCommit = newPath;
+  }
+  return entries;
+}
+
+export async function queryGitFileLog(
+  rawRootPath: string,
+  rawFilePath: string,
+  limit?: number
+): Promise<GitFileLogResult> {
+  const rootPath = resolveCwd(rawRootPath);
+  const filePath = resolveCanonicalWorkbenchPath(rootPath, rawFilePath);
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile()) {
+    throw new Error("不是文件");
+  }
+
+  const repoRoot = await queryGitRoot(path.dirname(filePath));
+  if (!repoRoot) {
+    throw new Error("文件不在 Git 仓库中");
+  }
+  const relativePath = path.relative(repoRoot, filePath);
+  if (!relativePath || path.isAbsolute(relativePath) || relativePath.split(path.sep).includes("..")) {
+    throw new Error("文件不在 Git 仓库中");
+  }
+  const repoPath = relativePath.split(path.sep).join("/");
+  const n = normalizeGitLogLimit(limit);
+
+  try {
+    const stdout = await gitExec(
+      repoRoot,
+      [
+        "log",
+        "--all",
+        "--decorate=full",
+        "--follow",
+        "--name-status",
+        "--topo-order",
+        `-n${n}`,
+        "--date=unix",
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%d%x1f%P%x1f%s",
+        "--",
+        repoPath
+      ],
+      30000,
+      4 * 1024 * 1024
+    );
+    const commits = parseGitFileLogOutput(stdout, repoPath);
+    const layout = buildGitGraphLayout(
+      commits.map((commit) => ({
+        hash: commit.hash,
+        parents: commit.parents,
+        decorations: commit.decorations,
+        refs: commit.refs
+      }))
+    );
+    return { repoRoot, repoPath, commits, layout };
   } catch (error) {
     throw new Error(formatExecError(error));
   }
@@ -286,7 +473,7 @@ async function queryGitShow(repoRoot: string, hash: string): Promise<GitShowResu
     if (!fullHash || !Number.isFinite(date)) {
       throw new Error("无法解析 commit 详情");
     }
-    const filesStdout = await gitExec(repoRoot, ["diff-tree", "--no-commit-id", "--name-status", "-r", commit]);
+    const filesStdout = await gitExec(repoRoot, ["diff-tree", "--no-commit-id", "--name-status", "-r", "-M", commit]);
     return {
       hash: fullHash,
       shortHash: shortHash || fullHash.slice(0, 7),
@@ -313,7 +500,7 @@ async function gitShowCommitFile(repoRoot: string, ref: string, filePath: string
   }
 }
 
-async function queryGitCommitFileDiffSides(
+export async function queryGitCommitFileDiffSides(
   repoRoot: string,
   hash: string,
   filePath: string
@@ -322,42 +509,86 @@ async function queryGitCommitFileDiffSides(
   const path = assertValidGitFilePath(filePath);
   const shortHash = commit.slice(0, 7);
 
+  // Rename/copy commits changed the file under its old path: resolve the old
+  // side via diff-tree so the parent content and patch are read from there.
+  let oldPath = path;
+  try {
+    const nameStatus = await gitExec(
+      repoRoot,
+      ["diff-tree", "--no-commit-id", "--name-status", "-r", "-M", commit],
+      15000,
+      1024 * 1024
+    );
+    for (const line of nameStatus.split("\n")) {
+      if (!line.trim()) continue;
+      const tab = line.indexOf("\t");
+      if (tab < 0) continue;
+      const status = line.slice(0, tab).trim();
+      if (!/^[RC]/.test(status)) continue;
+      const [oldCandidate, newCandidate] = line.slice(tab + 1).split("\t");
+      if (oldCandidate && newCandidate && (oldCandidate.trim() === path || newCandidate.trim() === path)) {
+        oldPath = oldCandidate.trim();
+        break;
+      }
+    }
+  } catch (error) {
+    // Root commits have no parent diff; the --root fallback below handles them.
+  }
+
   const [oldFile, newFile] = await Promise.all([
-    gitShowCommitFile(repoRoot, `${commit}^`, path),
+    gitShowCommitFile(repoRoot, `${commit}^`, oldPath),
     gitShowCommitFile(repoRoot, commit, path)
   ]);
+  let patch = "";
+  try {
+    const pathspec = oldPath === path ? [path] : [oldPath, path];
+    patch = await gitExec(repoRoot, ["diff", "--no-ext-diff", "--no-color", "--unified=3", "-M", `${commit}^`, commit, "--", ...pathspec], 15000, 2 * 1024 * 1024);
+  } catch (error) {
+    // Root commits do not have a parent; --root produces the same file patch.
+    if (oldFile === null) {
+      patch = await gitExec(repoRoot, ["diff", "--root", "--no-ext-diff", "--no-color", "--unified=3", commit, "--", path], 15000, 2 * 1024 * 1024);
+    } else {
+      throw error;
+    }
+  }
 
   return {
     oldLabel: oldFile === null ? "(empty)" : `${shortHash}^`,
     newLabel: newFile === null ? "(deleted)" : shortHash,
     oldText: oldFile ?? "",
-    newText: newFile ?? ""
+    newText: newFile ?? "",
+    hunks: toGitDiffHunkMetadata(patch)
   };
 }
 
-async function collectGitCommitContext(repoRoot: string): Promise<{ statusText: string; diffText: string }> {
-  const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1"], 10000);
-  let diffText = "";
-  try {
-    diffText = await gitExec(repoRoot, ["diff", "--cached"], 15000);
-  } catch {
-    diffText = "";
+export async function collectGitCommitContext(
+  repoRoot: string,
+  rawPaths: string[]
+): Promise<{ statusText: string; diffText: string }> {
+  const paths = normalizeCommitPaths(rawPaths);
+  if (!paths.length) {
+    throw new Error("请选择要生成提交信息的文件");
   }
-  if (!diffText.trim()) {
-    try {
-      diffText = await gitExec(repoRoot, ["diff"], 15000);
-    } catch {
-      diffText = "";
-    }
-  }
+
+  const pathspec = ["--", ...paths];
+  const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1", ...pathspec], 10000);
+  const [stagedDiff, unstagedDiff] = await Promise.all([
+    gitExec(repoRoot, ["diff", "--cached", ...pathspec], 15000).catch(() => ""),
+    gitExec(repoRoot, ["diff", ...pathspec], 15000).catch(() => "")
+  ]);
+  const diffText = [
+    stagedDiff.trim() ? `[staged changes]\n${stagedDiff.trim()}` : "",
+    unstagedDiff.trim() ? `[unstaged changes]\n${unstagedDiff.trim()}` : ""
+  ].filter(Boolean).join("\n\n");
   return { statusText, diffText };
 }
 
 async function suggestCommitMessage(
   repoRoot: string,
+  paths: string[],
   systemLocale?: string
 ): Promise<{ message: string; source: "llm" | "heuristic"; fallbackReason?: "unconfigured" | "request-failed" }> {
-  const { statusText, diffText } = await collectGitCommitContext(repoRoot);
+  const { statusText, diffText } = await collectGitCommitContext(repoRoot, paths);
   if (!statusText.trim()) {
     throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
   }
@@ -372,12 +603,12 @@ async function suggestCommitMessage(
     return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "unconfigured" };
   }
 
-  const paths = await preparePanelDatabasesFromSettings();
-  await ensureExtensionCatalogSchema(paths.catalogDb);
+  const databasePaths = await preparePanelDatabasesFromSettings();
+  await ensureExtensionCatalogSchema(databasePaths.catalogDb);
 
   try {
     const result = await suggestCommitMessageFromGitContext(llm, statusText, diffText, commitPrompt);
-    await recordLlmUsage(paths.desktopDb, {
+    await recordLlmUsage(databasePaths.desktopDb, {
       kind: "chat",
       source: "git-commit",
       jobKey: `git-commit:${repoRoot}`,
@@ -388,7 +619,7 @@ async function suggestCommitMessage(
     });
     return { message: result.message, source: "llm" };
   } catch (error) {
-    await recordLlmUsage(paths.desktopDb, {
+    await recordLlmUsage(databasePaths.desktopDb, {
       kind: "chat",
       source: "git-commit",
       jobKey: `git-commit:${repoRoot}`,
@@ -399,24 +630,78 @@ async function suggestCommitMessage(
   }
 }
 
+/**
+ * A submodule whose recorded gitlink equals its own HEAD but whose working
+ * tree is dirty cannot be staged or committed from the parent repo (`git add`
+ * is a no-op). Returns true for exactly that case so callers can skip it.
+ * Freshly-added gitlinks, missing submodule directories, and submodules whose
+ * HEAD moved are all considered committable (git handles them normally).
+ */
+async function isUncommittableSubmodule(repoRoot: string, repoPath: string): Promise<boolean> {
+  try {
+    const lsFiles = await gitExec(repoRoot, ["ls-files", "--stage", "--", repoPath], 10000, 64 * 1024);
+    if (!/^160000\s/.test(lsFiles.trim())) return false;
+
+    const lsTree = await gitExec(repoRoot, ["ls-tree", "HEAD", repoPath], 10000, 64 * 1024).catch(() => "");
+    const recorded = lsTree.match(/^160000 commit ([0-9a-f]{40})\t/);
+    if (!recorded) return false;
+
+    const submoduleDir = path.join(repoRoot, repoPath);
+    const [head, subStatus] = await Promise.all([
+      gitExec(submoduleDir, ["rev-parse", "HEAD"], 10000, 64 * 1024).catch(() => ""),
+      gitExec(submoduleDir, ["status", "--porcelain"], 10000, 64 * 1024).catch(() => "")
+    ]);
+    return head.trim() === recorded[1] && subStatus.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
-  safeHandle("terminal:gitSuggestCommit", async (_event, args: { repoRoot: string }) => {
+  safeHandle("terminal:gitSuggestCommit", async (_event, args: { repoRoot: string; paths: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
-    return suggestCommitMessage(repoRoot, getSystemLocale());
+    return suggestCommitMessage(repoRoot, args.paths, getSystemLocale());
   });
 
-  safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string }) => {
+  safeHandle("terminal:gitCommit", async (_event, args: { repoRoot: string; message: string; paths?: string[] }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const message = normalizeCommitMessage(args.message);
-    const { statusText } = await collectGitCommitContext(repoRoot);
-    if (!statusText.trim()) {
+    const rawPaths = normalizeCommitPaths(args.paths);
+    if (!rawPaths.length) {
+      throw new Error("请选择要提交的文件");
+    }
+    const statusText = await gitExec(repoRoot, ["status", "--porcelain=v1", "-z"], 10000);
+    if (!statusText) {
       throw new Error(`当前仓库没有可提交的改动：${repoRoot}`);
     }
+
+    // A submodule with an unchanged gitlink but a dirty working tree cannot be
+    // committed from the parent repo (`git add` is a no-op). Skip those paths
+    // and commit the rest; if nothing committable remains, fail with guidance.
+    const skipped: string[] = [];
+    const paths: string[] = [];
+    for (const rawPath of rawPaths) {
+      if (await isUncommittableSubmodule(repoRoot, rawPath)) skipped.push(rawPath);
+      else paths.push(rawPath);
+    }
+    if (!paths.length) {
+      throw new Error(`子模块 ${skipped.join("、")} 内部有未提交的改动，无法从父仓库提交；请先在子模块目录内提交后再提交引用更新`);
+    }
+
+    const previouslyStaged = stagedRepoPaths(parseGitStatusPorcelainV1Z(statusText));
+    const selected = new Set(rawPaths);
+    const toUnstage = previouslyStaged.filter((path) => !selected.has(path));
     try {
-      await execFileAsync("git", ["-C", repoRoot, "add", "-A"], {
+      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
         timeout: 30000,
         maxBuffer: 1024 * 1024
       });
+      if (toUnstage.length) {
+        await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", ...toUnstage], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
       await execFileAsync("git", ["-C", repoRoot, "commit", "-m", message], {
         timeout: 30000,
         maxBuffer: 1024 * 1024
@@ -424,7 +709,7 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     } catch (error) {
       throw new Error(formatExecError(error));
     }
-    return { ok: true };
+    return { ok: true, skipped };
   });
 
   safeHandle("terminal:gitPush", async (_event, args: { repoRoot: string }) => {
@@ -477,6 +762,53 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     return { ok: true };
   });
 
+  safeHandle("terminal:gitFetch", async (_event, args: { repoRoot: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
+        timeout: 60000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle("terminal:gitStage", async (_event, args: { repoRoot: string; paths: string[] }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const paths = normalizeCommitPaths(args.paths);
+    if (!paths.length) {
+      throw new Error("请选择要暂存的文件");
+    }
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle("terminal:gitUnstage", async (_event, args: { repoRoot: string; paths: string[] }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const paths = normalizeCommitPaths(args.paths);
+    if (!paths.length) {
+      throw new Error("请选择要取消暂存的文件");
+    }
+    try {
+      await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", ...paths], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
   safeHandle("terminal:gitLog", async (_event, args: { repoRoot: string; limit?: number }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     const commits = await queryGitLog(repoRoot, args.limit);
@@ -491,6 +823,20 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     return { commits, layout };
   });
 
+  safeHandle(
+    "workbench:gitFileLog",
+    async (_event, args: { rootPath: string; filePath: string; limit?: number }) => {
+      if (!args
+        || typeof args.rootPath !== "string"
+        || !args.rootPath.trim()
+        || typeof args.filePath !== "string"
+        || !args.filePath.trim()) {
+        throw new Error("无效的文件历史请求");
+      }
+      return queryGitFileLog(args.rootPath, args.filePath, args.limit);
+    }
+  );
+
   safeHandle("terminal:gitShow", async (_event, args: { repoRoot: string; hash: string }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
     return queryGitShow(repoRoot, args.hash);
@@ -501,6 +847,115 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     async (_event, args: { repoRoot: string; hash: string; path: string }) => {
       const repoRoot = await resolveRepoRoot(args.repoRoot);
       return queryGitCommitFileDiffSides(repoRoot, args.hash, args.path);
+    }
+  );
+
+  safeHandle("terminal:gitRevert", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // --no-edit keeps the default revert message; a GUI revert must not block
+      // on an interactive editor. Conflicts leave git in its standard
+      // revert-in-progress state and surface a diagnostic to the caller.
+      await execFileAsync("git", ["-C", repoRoot, "revert", "--no-edit", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle("terminal:gitMerge", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // --no-edit keeps the default merge message; a GUI merge must not block
+      // on an interactive editor. Conflicts leave git in its standard
+      // merge-in-progress state and surface a diagnostic to the caller.
+      await execFileAsync("git", ["-C", repoRoot, "merge", "--no-edit", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle("terminal:gitCherryPick", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // Conflicts leave git in its standard cherry-pick-in-progress state and
+      // surface a diagnostic to the caller; the user resolves them in the editor.
+      await execFileAsync("git", ["-C", repoRoot, "cherry-pick", commit], {
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  const GIT_RESET_MODES = new Set(["soft", "mixed", "hard"]);
+  safeHandle(
+    "terminal:gitReset",
+    async (_event, args: { repoRoot: string; hash: string; mode: "soft" | "mixed" | "hard" }) => {
+      const repoRoot = await resolveRepoRoot(args.repoRoot);
+      const commit = assertValidGitHash(args.hash);
+      if (!GIT_RESET_MODES.has(args.mode)) {
+        throw new Error(`无效的 reset 模式: ${args.mode}`);
+      }
+      try {
+        await execFileAsync("git", ["-C", repoRoot, "reset", `--${args.mode}`, commit], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
+    }
+  );
+
+  safeHandle("terminal:gitCheckoutCommit", async (_event, args: { repoRoot: string; hash: string }) => {
+    const repoRoot = await resolveRepoRoot(args.repoRoot);
+    const commit = assertValidGitHash(args.hash);
+    try {
+      // Detach HEAD at the commit so the worktree matches the log selection
+      // without moving any branch ref.
+      await execFileAsync("git", ["-C", repoRoot, "checkout", "--detach", commit], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024
+      });
+    } catch (error) {
+      throw new Error(formatExecError(error));
+    }
+    return { ok: true };
+  });
+
+  safeHandle(
+    "terminal:gitBranchFromCommit",
+    async (_event, args: { repoRoot: string; hash: string; branch: string }) => {
+      const repoRoot = await resolveRepoRoot(args.repoRoot);
+      const commit = assertValidGitHash(args.hash);
+      if (!isValidGitBranchName(args.branch)) {
+        throw new Error(`无效的分支名: ${args.branch}`);
+      }
+      try {
+        // Create the branch at the commit and check it out, matching IDEA's
+        // "New Branch from Commit" default behavior.
+        await execFileAsync("git", ["-C", repoRoot, "checkout", "-b", args.branch.trim(), commit], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
     }
   );
 }

@@ -211,6 +211,8 @@ function providerIcon(provider: AcpAgentProvider): string {
       return "terminal";
     case "pi":
       return "symbol-method";
+    case "prime":
+      return "sparkle";
     default:
       return "comment";
   }

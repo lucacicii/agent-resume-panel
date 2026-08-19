@@ -1,7 +1,9 @@
-import { createMacDmg, packMacApp, runDesktopBuild } from "./mac-app.mjs";
+import { createMacDmg, macTargetArches, packMacApp, runDesktopBuild } from "./mac-app.mjs";
 
 runDesktopBuild();
-const appBundle = await packMacApp();
-const dmgPath = createMacDmg(appBundle);
-console.log(`\nPackaged: ${appBundle}`);
-console.log(`DMG: ${dmgPath}`);
+for (const arch of macTargetArches) {
+  const appBundle = await packMacApp(arch);
+  const dmgPath = createMacDmg(appBundle, arch);
+  console.log(`\nPackaged (${arch}): ${appBundle}`);
+  console.log(`DMG (${arch}): ${dmgPath}`);
+}

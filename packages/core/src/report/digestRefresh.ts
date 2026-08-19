@@ -1,16 +1,23 @@
-import { listSessionsInRange } from "../catalog/query";
+import { listAllSessionsInRange } from "../catalog/query";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { loadSettings } from "../settings/store";
-import type { DailyDigestRefreshCheck } from "./daily";
-import { localDayRange, listDayLabelsInRange, localMonthRange, localWeekRange, PeriodRange } from "./period";
+import {
+  evaluateDailyDigestRefresh,
+  type DailyDigestRefreshCheck
+} from "./daily";
+import {
+  localMonthRange,
+  localWeekRange,
+  listDayLabelsInRange,
+  type PeriodRange
+} from "./period";
+import { dayKeyFromMs, digestIndex } from "./calendar";
 import { createReportProgressText, digestLevelLabelKey } from "./progressI18n";
-import { getReportEntryById, listReportEntriesInRange } from "./store";
+import { listReportEntriesInRange } from "./store";
 
 export type PeriodDigestRefreshCheck = DailyDigestRefreshCheck;
 
-/**
- * Weekly / monthly: stale when sessions updated after digest, or underlying dailies changed.
- */
+/** Weekly/monthly freshness follows the exact daily sources used by aggregation. */
 export async function needsPeriodDigestRefresh(
   period: PeriodRange,
   options: { panelHome?: string; level: "weekly" | "monthly"; systemLocale?: string }
@@ -18,14 +25,18 @@ export async function needsPeriodDigestRefresh(
   const settings = await loadSettings(options.panelHome);
   const pt = createReportProgressText(settings, options.systemLocale);
   const levelLabel = pt(digestLevelLabelKey(options.level));
-
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
   const desktopDb = paths.desktopDb;
-
-  const sessions = await listSessionsInRange(catalogDb, period.startMs, period.endMs);
+  const sessions = await listAllSessionsInRange(catalogDb, period.startMs, period.endMs);
   const sessionCount = sessions.length;
-  const entry = await getReportEntryById(desktopDb, period.entryId);
+  const periodEntries = await listReportEntriesInRange(desktopDb, {
+    level: options.level,
+    startMs: period.startMs,
+    endMs: period.endMs,
+    limit: 20
+  });
+  const entry = periodEntries.sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
 
   if (!entry?.content?.trim()) {
     if (!sessionCount) {
@@ -33,8 +44,10 @@ export async function needsPeriodDigestRefresh(
         needed: false,
         reason: "no_sessions",
         sessionCount: 0,
+        linkedSessionCount: 0,
         newSessionCount: 0,
         updatedSessionCount: 0,
+        omittedSessionCount: 0,
         message: pt("desktop.report.periodNoSessions", levelLabel)
       };
     }
@@ -42,55 +55,42 @@ export async function needsPeriodDigestRefresh(
       needed: true,
       reason: "missing",
       sessionCount,
+      linkedSessionCount: 0,
       newSessionCount: sessionCount,
       updatedSessionCount: 0,
+      omittedSessionCount: 0,
       message: pt("desktop.report.periodMissing", levelLabel, sessionCount)
     };
   }
 
-  let updatedSessionCount = 0;
-  for (const s of sessions) {
-    if (s.updatedAt > entry.createdAtMs) {
-      updatedSessionCount += 1;
-    }
-  }
-
+  const updatedSessionCount = sessions.reduce(
+    (count, session) => count + (session.updatedAt > entry.createdAtMs ? 1 : 0),
+    0
+  );
   const dailies = await listReportEntriesInRange(desktopDb, {
     level: "daily",
     startMs: period.startMs,
     endMs: period.endMs,
-    limit: 200
+    limit: 500
   });
-  let newDailyCount = 0;
-  for (const daily of dailies) {
-    if (daily.createdAtMs > entry.createdAtMs) {
-      newDailyCount += 1;
-    }
-  }
+  const newerDailyKeys = new Set(
+    [...digestIndex(dailies).values()]
+      .filter((daily) => daily.createdAtMs > entry.createdAtMs)
+      .map((daily) => daily.id.startsWith("daily:")
+        ? daily.id.slice("daily:".length)
+        : dayKeyFromMs(daily.periodStartMs))
+  );
+  const staleDailyKeys = new Set<string>();
 
-  let staleDailyCount = 0;
   for (const day of listDayLabelsInRange(period.startMs, period.endMs)) {
-    const dayPeriod = localDayRange(day);
-    const daySessions = await listSessionsInRange(
+    const check = await evaluateDailyDigestRefresh({
+      settings,
       catalogDb,
-      dayPeriod.startMs,
-      dayPeriod.endMs,
-      50
-    );
-    if (!daySessions.length) continue;
-
-    const dayEntry = await getReportEntryById(desktopDb, dayPeriod.entryId);
-    if (!dayEntry?.content?.trim()) {
-      staleDailyCount += 1;
-      continue;
-    }
-
-    for (const s of daySessions) {
-      if (s.updatedAt > dayEntry.createdAtMs) {
-        staleDailyCount += 1;
-        break;
-      }
-    }
+      desktopDb,
+      date: day,
+      systemLocale: options.systemLocale
+    });
+    if (check.needed) staleDailyKeys.add(day);
   }
 
   if (updatedSessionCount > 0) {
@@ -98,45 +98,46 @@ export async function needsPeriodDigestRefresh(
       needed: true,
       reason: "updated_sessions",
       sessionCount,
+      linkedSessionCount: sessionCount,
       newSessionCount: 0,
       updatedSessionCount,
+      omittedSessionCount: 0,
       digestCreatedAtMs: entry.createdAtMs,
       message: pt("desktop.report.periodUpdatedSessions", levelLabel, updatedSessionCount)
     };
   }
 
-  const underlyingChanges = newDailyCount + staleDailyCount;
-  if (underlyingChanges > 0) {
-    let message: string;
-    if (newDailyCount > 0 && staleDailyCount > 0) {
-      message = pt(
-        "desktop.report.periodUnderlyingBoth",
-        levelLabel,
-        newDailyCount,
-        staleDailyCount
-      );
-    } else if (newDailyCount > 0) {
-      message = pt("desktop.report.periodUnderlyingNewOnly", levelLabel, newDailyCount);
-    } else {
-      message = pt("desktop.report.periodUnderlyingStaleOnly", levelLabel, staleDailyCount);
-    }
+  const changedDailyKeys = new Set([...newerDailyKeys, ...staleDailyKeys]);
+  if (changedDailyKeys.size > 0) {
+    const newerCount = newerDailyKeys.size;
+    const staleOnlyCount = [...staleDailyKeys].filter((key) => !newerDailyKeys.has(key)).length;
+    const message = newerCount > 0 && staleOnlyCount > 0
+      ? pt("desktop.report.periodUnderlyingBoth", levelLabel, newerCount, staleOnlyCount)
+      : newerCount > 0
+        ? pt("desktop.report.periodUnderlyingNewOnly", levelLabel, newerCount)
+        : pt("desktop.report.periodUnderlyingStaleOnly", levelLabel, staleOnlyCount);
     return {
       needed: true,
       reason: "new_sessions",
       sessionCount,
-      newSessionCount: underlyingChanges,
+      linkedSessionCount: sessionCount,
+      newSessionCount: changedDailyKeys.size,
       updatedSessionCount: 0,
+      omittedSessionCount: 0,
       digestCreatedAtMs: entry.createdAtMs,
       message
     };
   }
 
+
   return {
     needed: false,
     reason: "up_to_date",
     sessionCount,
+    linkedSessionCount: sessionCount,
     newSessionCount: 0,
     updatedSessionCount: 0,
+    omittedSessionCount: 0,
     digestCreatedAtMs: entry.createdAtMs,
     message: pt("desktop.report.periodUpToDate", levelLabel)
   };
@@ -145,8 +146,7 @@ export async function needsPeriodDigestRefresh(
 export async function needsWeeklyDigestRefresh(
   options: { panelHome?: string; weekKey?: string; systemLocale?: string } = {}
 ): Promise<PeriodDigestRefreshCheck> {
-  const period = localWeekRange(options.weekKey);
-  return needsPeriodDigestRefresh(period, {
+  return needsPeriodDigestRefresh(localWeekRange(options.weekKey), {
     panelHome: options.panelHome,
     level: "weekly",
     systemLocale: options.systemLocale
@@ -156,8 +156,7 @@ export async function needsWeeklyDigestRefresh(
 export async function needsMonthlyDigestRefresh(
   options: { panelHome?: string; monthKey?: string; systemLocale?: string } = {}
 ): Promise<PeriodDigestRefreshCheck> {
-  const period = localMonthRange(options.monthKey);
-  return needsPeriodDigestRefresh(period, {
+  return needsPeriodDigestRefresh(localMonthRange(options.monthKey), {
     panelHome: options.panelHome,
     level: "monthly",
     systemLocale: options.systemLocale

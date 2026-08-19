@@ -12,7 +12,8 @@ const CLI_TARGETS = [
   { provider: "agy", label: "Antigravity CLI" },
   { provider: "grok", label: "Grok Build" },
   { provider: "opencode", label: "OpenCode" },
-  { provider: "pi", label: "Pi" }
+  { provider: "pi", label: "Pi" },
+  { provider: "prime", label: "Prime Agent" }
 ];
 
 const ACP_TARGETS = [
@@ -20,11 +21,12 @@ const ACP_TARGETS = [
   { provider: "claude", label: "Claude Code" },
   { provider: "grok", label: "Grok Build" },
   { provider: "opencode", label: "OpenCode" },
-  { provider: "pi", label: "Pi" }
+  { provider: "pi", label: "Pi" },
+  { provider: "prime", label: "Prime Agent" }
 ];
 
 const SESSION_SOURCE_WHEN =
-  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi)/";
+  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime)/";
 
 const ACP_SOURCE_WHEN = "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./";
 

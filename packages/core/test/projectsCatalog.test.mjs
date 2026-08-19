@@ -15,6 +15,7 @@ import {
   setProjectLocalPath,
   setProjectPinnedInCatalog,
   mergeProjectsInCatalog,
+  moveSessionToProjectInCatalog,
   splitProjectPathInCatalog,
   isForeignUserPath,
   toPortableKey
@@ -123,6 +124,177 @@ test("mergeProjectsInCatalog reassigns sessions and removes source", async () =>
     assert.equal(Number(linked[0].c), 2);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("merge survives reconcile: merged sessions stay in target, source not re-created", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-merge-reconcile-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const pathA = path.join(os.homedir(), "merge-a");
+  const pathB = path.join(os.homedir(), "merge-b");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'm-a', 'A', '${pathA.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'm-b', 'B', '${pathB.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
+    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    assert.ok(a && b && a.projectId !== b.projectId);
+
+    await mergeProjectsInCatalog(dbPath, a.projectId, b.projectId);
+
+    // Periodic session sync re-runs reconcile. The absorbed source path is now
+    // a local path of the target, so it must resolve back to the target instead
+    // of re-creating the merged-away project and pulling sessions back out.
+    await reconcileProjectsFromSessions(dbPath);
+    const after = await listProjects(dbPath);
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathA)), "source project must not be re-created");
+    assert.ok(after.some((p) => p.projectId === b.projectId));
+    const { runSqliteJson } = await import("../dist/index.js");
+    const linked = await runSqliteJson(
+      dbPath,
+      `SELECT COUNT(*) AS c FROM sessions WHERE project_id = '${b.projectId}';`
+    );
+    assert.equal(Number(linked[0].c), 2, "merged sessions must stay in target after reconcile");
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("chained merges keep every absorbed session in the final target", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-chain-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const pathA = path.join(os.homedir(), "chain-a");
+  const pathB = path.join(os.homedir(), "chain-b");
+  const pathC = path.join(os.homedir(), "chain-c");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'c-a', 'A', '${pathA.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'c-b', 'B', '${pathB.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'c-c', 'C', '${pathC.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
+    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
+    const c = projects.find((p) => p.portableKey === toPortableKey(pathC));
+    assert.ok(a && b && c);
+
+    // Two merges into the same target: the second must not clobber the first.
+    await mergeProjectsInCatalog(dbPath, a.projectId, b.projectId);
+    await mergeProjectsInCatalog(dbPath, c.projectId, b.projectId);
+    await reconcileProjectsFromSessions(dbPath);
+
+    const after = await listProjects(dbPath);
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathA)), "first source must not be re-created");
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(pathC)), "second source must not be re-created");
+    const { runSqliteJson } = await import("../dist/index.js");
+    const linked = await runSqliteJson(
+      dbPath,
+      `SELECT COUNT(*) AS c FROM sessions WHERE project_id = '${b.projectId}';`
+    );
+    assert.equal(Number(linked[0].c), 3, "all sessions must stay in the final target after reconcile");
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("merge + setLocalPath survives reconcile without absorbing subpath as cwd", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-merge-setlocal-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  // Real dirs under home so isDirectory checks pass for listProjects resolution.
+  const rootDir = await fs.mkdtemp(path.join(os.homedir(), "arp-merge-root-"));
+  const coreDir = await fs.mkdtemp(path.join(os.homedir(), "arp-merge-core-"));
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'msl-root', 'Root', '${rootDir.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'msl-core', 'Core', '${coreDir.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const root = projects.find((p) => p.portableKey === toPortableKey(rootDir));
+    const core = projects.find((p) => p.portableKey === toPortableKey(coreDir));
+    assert.ok(root && core && root.projectId !== core.projectId);
+
+    await mergeProjectsInCatalog(dbPath, core.projectId, root.projectId);
+    await setProjectLocalPath(dbPath, root.projectId, rootDir);
+
+    // Periodic sync re-runs reconcile; absorbed core path must not clobber local cwd.
+    await reconcileProjectsFromSessions(dbPath);
+    const after = await listProjects(dbPath);
+    const target = after.find((p) => p.projectId === root.projectId);
+    assert.ok(target);
+    assert.equal(path.resolve(target.localPath || ""), path.resolve(rootDir));
+    assert.equal(target.pathMissing, false);
+    assert.ok(!after.some((p) => p.portableKey === toPortableKey(coreDir)), "source must stay merged away");
+
+    const { runSqliteJson } = await import("../dist/index.js");
+    const linked = await runSqliteJson(
+      dbPath,
+      `SELECT COUNT(*) AS c FROM sessions WHERE project_id = '${root.projectId}';`
+    );
+    assert.equal(Number(linked[0].c), 2);
+    const local = await runSqliteJson(
+      dbPath,
+      `SELECT absolute_path FROM project_local_paths WHERE project_id = '${root.projectId}';`
+    );
+    assert.equal(path.resolve(local[0].absolute_path), path.resolve(rootDir));
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+    await fs.rm(rootDir, { recursive: true, force: true });
+    await fs.rm(coreDir, { recursive: true, force: true });
+  }
+});
+
+test("merge alone keeps target local path (absorbed path does not overwrite)", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-merge-keep-local-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const rootDir = await fs.mkdtemp(path.join(os.homedir(), "arp-keep-root-"));
+  const coreDir = await fs.mkdtemp(path.join(os.homedir(), "arp-keep-core-"));
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const now = Date.now();
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES
+         ('codex', 'mk-root', 'Root', '${rootDir.replaceAll("'", "''")}', ${now}, 0, 0),
+         ('codex', 'mk-core', 'Core', '${coreDir.replaceAll("'", "''")}', ${now}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const projects = await listProjects(dbPath);
+    const root = projects.find((p) => p.portableKey === toPortableKey(rootDir));
+    const core = projects.find((p) => p.portableKey === toPortableKey(coreDir));
+    assert.ok(root && core);
+
+    await mergeProjectsInCatalog(dbPath, core.projectId, root.projectId);
+    await reconcileProjectsFromSessions(dbPath);
+
+    const after = await listProjects(dbPath);
+    const target = after.find((p) => p.projectId === root.projectId);
+    assert.ok(target);
+    assert.equal(path.resolve(target.localPath || ""), path.resolve(rootDir));
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+    await fs.rm(rootDir, { recursive: true, force: true });
+    await fs.rm(coreDir, { recursive: true, force: true });
   }
 });
 
@@ -258,6 +430,36 @@ test("legacy projects(project_path) table migrates to project_id schema", async 
     assert.ok(projects.some((p) => p.alias === "Legacy" || p.portableKey === toPortableKey(homePath)));
     const id = await ensureProjectForPath(dbPath, homePath);
     assert.ok(id);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("moveSessionToProjectInCatalog reassigns path and keeps native path", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-move-override-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const source = path.join(os.tmpdir(), "move-source");
+    const target = path.join(os.tmpdir(), "move-target");
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden)
+       VALUES ('codex', 'move-1', 'Move me', '${source.replaceAll("'", "''")}', ${Date.now()}, 0, 0);`
+    );
+    await reconcileProjectsFromSessions(dbPath);
+    const result = await moveSessionToProjectInCatalog(dbPath, "codex", "move-1", target);
+    assert.equal(result.moved, true);
+    assert.equal(result.newPath, path.resolve(target));
+    const { runSqliteJson } = await import("../dist/index.js");
+    const rows = await runSqliteJson(
+      dbPath,
+      "SELECT project_path, native_project_path FROM sessions WHERE provider='codex' AND agent_session_id='move-1';"
+    );
+    assert.equal(rows[0].project_path, path.resolve(target));
+    // Idempotent backfill gave the raw-inserted row a native path equal to its
+    // original project_path; move leaves native untouched (sync converges later).
+    assert.equal(rows[0].native_project_path, path.resolve(source));
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

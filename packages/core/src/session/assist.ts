@@ -31,7 +31,7 @@ export async function summarizeSessionMessages(
       { role: "system", content: buildSummarizeSystemPrompt(lang) },
       { role: "user", content: buildSummarizeUserPrompt(transcript, lang) }
     ],
-    1500
+    4000
   );
   return {
     summary: result.content,
@@ -55,7 +55,7 @@ export async function suggestSessionTitleFromMessages(
       { role: "system", content: buildRenameSystemPrompt(lang) },
       { role: "user", content: buildRenameUserPrompt(transcript, currentTitle, lang) }
     ],
-    120
+    4000
   );
   const title = normalizeSuggestedTitle(result.content);
   if (!title) {

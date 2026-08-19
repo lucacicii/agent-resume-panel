@@ -10,7 +10,8 @@ const HANDOFF_SOURCE_PROVIDERS = new Set([
   "agy",
   "grok",
   "opencode",
-  "pi"
+  "pi",
+  "prime"
 ]);
 
 export function canHandoffSession(session: AgentSession): boolean {

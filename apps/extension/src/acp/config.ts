@@ -30,7 +30,8 @@ const ACP_AGENT_I18N_KEYS: Record<AcpAgentProvider, { label: string; description
   claude: { label: "quickpick.acpAgentClaudeLabel", description: "quickpick.acpAgentClaudeDescription" },
   grok: { label: "quickpick.acpAgentGrokLabel", description: "quickpick.acpAgentGrokDescription" },
   opencode: { label: "quickpick.acpAgentOpenCodeLabel", description: "quickpick.acpAgentOpenCodeDescription" },
-  pi: { label: "quickpick.acpAgentPiLabel", description: "quickpick.acpAgentPiDescription" }
+  pi: { label: "quickpick.acpAgentPiLabel", description: "quickpick.acpAgentPiDescription" },
+  prime: { label: "quickpick.acpAgentPrimeLabel", description: "quickpick.acpAgentPrimeDescription" }
 };
 
 function buildAcpAgentOptions(): Array<{

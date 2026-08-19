@@ -12,7 +12,7 @@ const session: AgentSession = {
   updatedAt: 1_700_000_000_000
 };
 
-function renderSessions() {
+function renderSessions(sessionList: AgentSession[] = [session]) {
   const summarizeSession = vi.fn(async () => ({ summary: "Migrated the application shell.", language: "en", session }));
   const autoRenameSession = vi.fn(async () => ({
     title: "Migrate Desktop renderer",
@@ -21,6 +21,7 @@ function renderSessions() {
     nativeRenamed: true
   }));
 
+  const listSessions = vi.fn(async () => sessionList);
   window.agentResume = {
     getI18nBundle: async () => ({
       locale: "en",
@@ -43,7 +44,7 @@ function renderSessions() {
       }
     }),
     onLocaleChanged: () => () => undefined,
-    listSessions: async () => [session],
+    listSessions,
     previewSession: async () => ({
       session,
       preview: { title: session.title, messages: [{ role: "user", text: "Please migrate the renderer." }] }
@@ -59,19 +60,20 @@ function renderSessions() {
       <SessionsSheet />
     </I18nProvider>
   );
-  return { summarizeSession, autoRenameSession };
+  return { summarizeSession, autoRenameSession, listSessions };
 }
 
 describe("SessionsSheet", () => {
   afterEach(() => cleanup());
 
   it("loads a session preview and supports summary and rename actions", async () => {
-    const { summarizeSession, autoRenameSession } = renderSessions();
+    const { summarizeSession, autoRenameSession, listSessions } = renderSessions();
 
     await act(async () => {
       window.dispatchEvent(new Event("agent-resume:sessions-open"));
     });
     const row = await screen.findByRole("button", { name: /Implement renderer migration/ });
+    expect(listSessions).toHaveBeenCalledWith();
     fireEvent.click(row);
     await screen.findByText("Please migrate the renderer.");
 
@@ -82,5 +84,32 @@ describe("SessionsSheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Auto Rename" }));
     await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
     await waitFor(() => expect(screen.getAllByText("Migrate Desktop renderer")).toHaveLength(2));
+  });
+
+  it("virtualizes a large unbounded session result", async () => {
+    const manySessions = Array.from({ length: 1_000 }, (_, index): AgentSession => ({
+      provider: "codex",
+      id: `session-${index}`,
+      title: `Session ${index}`,
+      projectPath: "/work/agent-resume-panel",
+      updatedAt: 1_700_000_000_000 - index
+    }));
+    const { listSessions } = renderSessions(manySessions);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("agent-resume:sessions-open"));
+    });
+    await screen.findByText("1000 sessions · sync every 1 min");
+    expect(listSessions).toHaveBeenCalledWith();
+
+    const viewport = document.querySelector<HTMLElement>(".sessions-list");
+    expect(viewport?.dataset.virtualCount).toBe("1000");
+    expect(document.querySelectorAll(".session-row").length).toBeLessThan(100);
+
+    if (!viewport) throw new Error("Sessions viewport was not rendered");
+    viewport.scrollTop = 999 * 58;
+    fireEvent.scroll(viewport);
+    await screen.findByRole("button", { name: /Session 999/ });
+    expect(document.querySelectorAll(".session-row").length).toBeLessThan(100);
   });
 });

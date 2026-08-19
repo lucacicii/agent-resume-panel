@@ -38,6 +38,8 @@ interface ProjectSqlRow {
   pinned?: number | null;
   last_seen_at_ms: number | null;
   updated_at_ms: number;
+  /** JSON array of portable keys absorbed into this project by merge. */
+  absorbed_keys?: string | null;
 }
 
 const PROJECTS_CREATE_SQL = `CREATE TABLE projects (
@@ -47,7 +49,8 @@ const PROJECTS_CREATE_SQL = `CREATE TABLE projects (
   hidden INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  absorbed_keys TEXT
 );`;
 
 async function ensureProjectsAdditiveColumns(dbPath: string): Promise<void> {
@@ -55,7 +58,8 @@ async function ensureProjectsAdditiveColumns(dbPath: string): Promise<void> {
     `ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN last_seen_at_ms INTEGER`,
-    `ALTER TABLE projects ADD COLUMN alias TEXT NOT NULL DEFAULT ''`
+    `ALTER TABLE projects ADD COLUMN alias TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE projects ADD COLUMN absorbed_keys TEXT`
   ]) {
     try {
       await runSqlite(dbPath, `${stmt};`);
@@ -120,6 +124,27 @@ export async function ensureProjectsCatalogSchema(dbPath: string): Promise<void>
     await runSqlite(dbPath, `CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);`);
   } catch {
     // ignore
+  }
+
+  try {
+    await runSqlite(dbPath, `ALTER TABLE sessions ADD COLUMN native_project_path TEXT;`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("duplicate column name") && !message.includes("no such table")) {
+      throw error;
+    }
+  }
+
+  // One-time backfill: existing rows start "tracking native" so the value rule
+  // (project_path == native_project_path ⇒ follow native) keeps current behavior.
+  try {
+    await runSqlite(
+      dbPath,
+      `UPDATE sessions SET native_project_path = project_path
+       WHERE native_project_path IS NULL AND project_path IS NOT NULL AND TRIM(project_path) != '';`
+    );
+  } catch {
+    // native_project_path may not exist yet on empty ensure order — ignore
   }
 
   if (projectsSchemaReady.has(dbPath)) {
@@ -213,6 +238,17 @@ function newProjectId(): string {
   return randomUUID();
 }
 
+/** Parse the JSON-array absorbed_keys column; tolerant of legacy/NULL values. */
+function parseAbsorbedKeys(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 async function upsertLocalPath(
   dbPath: string,
   projectId: string,
@@ -237,7 +273,7 @@ async function findProjectByPortableKey(
 ): Promise<ProjectSqlRow | undefined> {
   const rows = await runSqliteJson<ProjectSqlRow>(
     dbPath,
-    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms
+    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms, absorbed_keys
      FROM projects WHERE portable_key = '${escapeSqlLiteral(portableKey)}' LIMIT 1;`
   );
   return rows[0];
@@ -246,7 +282,7 @@ async function findProjectByPortableKey(
 async function findProjectById(dbPath: string, projectId: string): Promise<ProjectSqlRow | undefined> {
   const rows = await runSqliteJson<ProjectSqlRow>(
     dbPath,
-    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms
+    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms, absorbed_keys
      FROM projects WHERE project_id = '${escapeSqlLiteral(projectId)}' LIMIT 1;`
   );
   return rows[0];
@@ -268,13 +304,41 @@ async function findProjectIdForAbsolutePath(dbPath: string, absolutePath: string
 }
 
 /**
- * Ensure a logical project exists for an absolute path; record this machine's local path.
+ * Find a project that absorbed this portable key via a merge. Merged-away
+ * paths must keep resolving to the absorbing target so the periodic reconcile
+ * does not re-create the deleted source project and pull sessions back out.
+ */
+async function findAbsorberProjectId(dbPath: string, portableKey: string): Promise<string | undefined> {
+  const rows = await runSqliteJson<{ project_id: string }>(
+    dbPath,
+    `SELECT project_id FROM projects
+     WHERE absorbed_keys IS NOT NULL AND absorbed_keys != ''
+       AND EXISTS (
+         SELECT 1 FROM json_each(projects.absorbed_keys)
+         WHERE json_each.value = '${escapeSqlLiteral(portableKey)}'
+       )
+     LIMIT 1;`
+  );
+  return rows[0]?.project_id;
+}
+
+/**
+ * Ensure a logical project exists for an absolute path; optionally bind this machine's local path.
  * Returns project_id.
+ *
+ * Local-path binding rules (one primary path per project per machine):
+ * - New project: bind this path (it is the portable identity).
+ * - Path matches the project's portable_key: refresh the primary binding.
+ * - bindLocalPath: true: force bind (caller intent).
+ * - Absorbed / non-canonical paths that only resolve via owner or absorbed_keys:
+ *   link to the project but do **not** overwrite the primary local path.
+ *   Otherwise periodic reconcile after merge rewrites the cwd to a subfolder
+ *   (e.g. packages/core) and "Set local folder" never sticks.
  */
 export async function ensureProjectForPath(
   dbPath: string,
   projectPath: string,
-  options?: { machineId?: string; touchSeen?: boolean }
+  options?: { machineId?: string; touchSeen?: boolean; bindLocalPath?: boolean }
 ): Promise<string> {
   await ensureProjectsCatalogSchema(dbPath);
   const absolute = normalizeProjectPath(expandHome(projectPath.trim() || ""));
@@ -283,6 +347,25 @@ export async function ensureProjectForPath(
   const now = Date.now();
 
   let row = await findProjectByPortableKey(dbPath, portableKey);
+  if (!row) {
+    // A path already bound to a project as a local path resolves to that owner.
+    // After a merge the source path becomes a local path of the target, so the
+    // next reconcile must resolve it back to the target instead of re-creating
+    // the merged-away project (which would pull the merged sessions out again).
+    const ownerId = await findProjectIdForAbsolutePath(dbPath, absolute);
+    if (ownerId) {
+      row = await findProjectById(dbPath, ownerId);
+    }
+  }
+  if (!row) {
+    // Path absorbed by an earlier merge still belongs to the absorbing project,
+    // even after later merges overwrite the local-path binding on this machine.
+    const absorberId = await findAbsorberProjectId(dbPath, portableKey);
+    if (absorberId) {
+      row = await findProjectById(dbPath, absorberId);
+    }
+  }
+  let created = false;
   if (!row) {
     const projectId = newProjectId();
     await runSqlite(
@@ -299,6 +382,7 @@ export async function ensureProjectForPath(
       last_seen_at_ms: now,
       updated_at_ms: now
     };
+    created = true;
   } else if (options?.touchSeen !== false) {
     await runSqlite(
       dbPath,
@@ -306,7 +390,11 @@ export async function ensureProjectForPath(
     );
   }
 
-  await upsertLocalPath(dbPath, row.project_id, machineId, absolute, now);
+  const isCanonical = portableKey === row.portable_key;
+  const shouldBind = options?.bindLocalPath === true || created || isCanonical;
+  if (shouldBind) {
+    await upsertLocalPath(dbPath, row.project_id, machineId, absolute, now);
+  }
   return row.project_id;
 }
 
@@ -481,7 +569,10 @@ async function resolveExistingLocalPath(
     };
   }
 
-  // Session paths for this project (may not be in local_paths yet)
+  // Session paths for this project (may not be in local_paths yet).
+  // Prefer paths that match the project's portable identity so a merge that
+  // absorbed subfolder sessions (packages/core, apps/desktop) does not make
+  // listProjects pick those as the primary cwd.
   const sessionPaths = await runSqliteJson<{ project_path: string }>(
     dbPath,
     `SELECT DISTINCT project_path FROM sessions
@@ -489,7 +580,13 @@ async function resolveExistingLocalPath(
        AND project_path IS NOT NULL AND TRIM(project_path) != '';`
   ).catch(() => [] as Array<{ project_path: string }>);
 
-  for (const row of sessionPaths) {
+  const orderedSessionPaths = [...sessionPaths].sort((a, b) => {
+    const aCanon = toPortableKey(a.project_path) === portableKey ? 0 : 1;
+    const bCanon = toPortableKey(b.project_path) === portableKey ? 0 : 1;
+    return aCanon - bCanon;
+  });
+
+  for (const row of orderedSessionPaths) {
     const rehomed = expandHome(row.project_path);
     if (rehomed && (await isDirectory(rehomed))) {
       if (persist) {
@@ -914,7 +1011,10 @@ export async function mergeProjectsInCatalog(
     mergedSessions += Number(extra[0]?.changes) || 0;
   }
 
-  // Move local paths (replace conflicts for same machine)
+  // Move local paths. Keep the target's own path on this machine (INSERT OR
+  // IGNORE instead of overwriting) — the absorbed path stays reachable via
+  // absorbed_keys below — and add the source's rows for machines the target
+  // does not already cover.
   const locals = await runSqliteJson<LocalPathSqlRow>(
     dbPath,
     `SELECT project_id, machine_id, absolute_path, updated_at_ms FROM project_local_paths
@@ -923,18 +1023,25 @@ export async function mergeProjectsInCatalog(
   for (const row of locals) {
     await runSqlite(
       dbPath,
-      `INSERT INTO project_local_paths (project_id, machine_id, absolute_path, updated_at_ms)
+      `INSERT OR IGNORE INTO project_local_paths (project_id, machine_id, absolute_path, updated_at_ms)
        VALUES ('${escapeSqlLiteral(targetProjectId)}', '${escapeSqlLiteral(row.machine_id)}',
-               '${escapeSqlLiteral(row.absolute_path)}', ${now})
-       ON CONFLICT(project_id, machine_id) DO UPDATE SET
-         absolute_path = excluded.absolute_path,
-         updated_at_ms = excluded.updated_at_ms;`
+               '${escapeSqlLiteral(row.absolute_path)}', ${now});`
     );
   }
   await runSqlite(
     dbPath,
     `DELETE FROM project_local_paths WHERE project_id = '${escapeSqlLiteral(sourceProjectId)}';`
   );
+
+  // Record which portable keys this target has absorbed so the periodic
+  // reconcile keeps routing those paths back to it — even after later merges
+  // overwrite this machine's local-path binding — instead of re-creating the
+  // merged-away project and splitting its sessions back out.
+  const absorbed = new Set<string>(parseAbsorbedKeys(target.absorbed_keys));
+  for (const key of parseAbsorbedKeys(source.absorbed_keys)) absorbed.add(key);
+  absorbed.add(source.portable_key);
+  for (const row of locals) absorbed.add(toPortableKey(row.absolute_path));
+  const absorbedJson = absorbed.size ? JSON.stringify([...absorbed]) : null;
 
   // Merge personalization onto target
   const sourceAlias = (source.alias || "").trim();
@@ -948,6 +1055,7 @@ export async function mergeProjectsInCatalog(
        alias = '${escapeSqlLiteral(alias)}',
        pinned = ${pinned},
        hidden = ${hidden},
+       absorbed_keys = ${absorbedJson ? `'${escapeSqlLiteral(absorbedJson)}'` : "NULL"},
        updated_at_ms = ${now},
        last_seen_at_ms = ${now}
      WHERE project_id = '${escapeSqlLiteral(targetProjectId)}';
@@ -1030,6 +1138,18 @@ export async function splitProjectPathInCatalog(
        AND absolute_path = '${escapeSqlLiteral(absolute)}';`
   );
 
+  // This path is no longer absorbed: split gives it a real project again, so
+  // drop it from the source's absorbed_keys to keep reconcile routing it here.
+  if (source.absorbed_keys) {
+    const remaining = parseAbsorbedKeys(source.absorbed_keys).filter((key) => key !== portableKey);
+    await runSqlite(
+      dbPath,
+      `UPDATE projects SET
+         absorbed_keys = ${remaining.length ? `'${escapeSqlLiteral(JSON.stringify(remaining))}'` : "NULL"}
+       WHERE project_id = '${escapeSqlLiteral(sourceProjectId)}';`
+    );
+  }
+
   // If source has no remaining sessions and no local paths, hide empty shell (keep for alias history)
   const remaining = await runSqliteJson<{ c: number }>(
     dbPath,
@@ -1044,4 +1164,135 @@ export async function splitProjectPathInCatalog(
   }
 
   return { projectId, movedSessions, created };
+}
+
+export interface TidyProjectCandidate {
+  projectId: string;
+  portableKey: string;
+  alias: string;
+  localPath: string | null;
+  /** Number of visible sessions. */
+  sessionCount: number;
+}
+
+/**
+ * Tidy the projects catalog: hide stale/empty projects that are not pinned,
+ * have no visible sessions, and have no resolvable local directory. Hidden
+ * projects stay recoverable (unhide) — nothing is deleted. Dry-run by default.
+ */
+export async function tidyProjectsInCatalog(
+  dbPath: string,
+  options?: { dryRun?: boolean }
+): Promise<{ dryRun: boolean; hiddenProjects: number; candidates: TidyProjectCandidate[] }> {
+  await ensureProjectsCatalogSchema(dbPath);
+  const projects = await listProjects(dbPath, { includeHidden: true });
+  const candidates: TidyProjectCandidate[] = projects
+    .filter((p) => !p.pinned && !p.hidden && p.sessionCount === 0 && p.pathMissing)
+    .map((p) => ({
+      projectId: p.projectId,
+      portableKey: p.portableKey,
+      alias: (p.alias || "").trim(),
+      localPath: p.localPath,
+      sessionCount: p.sessionCount
+    }));
+
+  if (options?.dryRun !== false) {
+    return { dryRun: true, hiddenProjects: 0, candidates };
+  }
+
+  for (const candidate of candidates) {
+    await hideProjectInCatalog(dbPath, candidate.projectId);
+  }
+  return { dryRun: false, hiddenProjects: candidates.length, candidates };
+}
+
+/**
+ * Reassign one catalog session to a different project directory (catalog
+ * metadata only). The target project is reused when it already exists for the
+ * path, otherwise created. Session-scoped note catalog rows follow the new
+ * project path; on-disk session/note files are never moved.
+ */
+export async function moveSessionToProjectInCatalog(
+  dbPath: string,
+  provider: string,
+  sessionId: string,
+  targetProjectPath: string
+): Promise<{
+  provider: string;
+  sessionId: string;
+  moved: boolean;
+  fromProjectId: string | null;
+  toProjectId: string;
+  oldPath: string;
+  newPath: string;
+}> {
+  await ensureProjectsCatalogSchema(dbPath);
+  const providerT = provider?.trim();
+  const sessionIdT = sessionId?.trim();
+  const target = normalizeProjectPath(expandHome(targetProjectPath?.trim() || ""));
+  if (!providerT || !sessionIdT) {
+    throw new Error("provider and sessionId are required.");
+  }
+  if (!target) {
+    throw new Error("targetProjectPath is required.");
+  }
+
+  const rows = await runSqliteJson<{ project_id: string | null; project_path: string | null }>(
+    dbPath,
+    `SELECT project_id, project_path FROM sessions
+     WHERE provider = '${escapeSqlLiteral(providerT)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}' LIMIT 1;`
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`Session not found: ${providerT}:${sessionIdT}.`);
+  }
+
+  const now = Date.now();
+  const toProjectId = await ensureProjectForPath(dbPath, target, { touchSeen: true });
+  const oldPath = row.project_path || "";
+  const normalizedOld = oldPath ? normalizeProjectPath(expandHome(oldPath)) : "";
+  if (normalizedOld === target && row.project_id === toProjectId) {
+    return {
+      provider: providerT,
+      sessionId: sessionIdT,
+      moved: false,
+      fromProjectId: row.project_id,
+      toProjectId,
+      oldPath,
+      newPath: target
+    };
+  }
+
+  await runSqlite(
+    dbPath,
+    `UPDATE sessions SET project_path = '${escapeSqlLiteral(target)}',
+                         project_id = '${escapeSqlLiteral(toProjectId)}',
+                         updated_at_ms = ${now}
+     WHERE provider = '${escapeSqlLiteral(providerT)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}';`
+  );
+
+  // Session-scoped note catalog rows follow the session's new project path.
+  try {
+    await runSqlite(
+      dbPath,
+      `UPDATE notes SET project_path = '${escapeSqlLiteral(target)}'
+       WHERE scope = 'session'
+         AND provider = '${escapeSqlLiteral(providerT)}'
+         AND agent_session_id = '${escapeSqlLiteral(sessionIdT)}';`
+    );
+  } catch {
+    // Older catalogs may lack the notes table — ignore.
+  }
+
+  return {
+    provider: providerT,
+    sessionId: sessionIdT,
+    moved: true,
+    fromProjectId: row.project_id,
+    toProjectId,
+    oldPath,
+    newPath: target
+  };
 }

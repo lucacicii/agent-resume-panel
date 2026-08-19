@@ -21,6 +21,12 @@ for (const entry of localizedMain) {
   assert.match(entry.when, /agentResume\.uiLocale/);
 }
 
+assert.match(
+  blocks.sessionMenuPrefix[0].when,
+  /\(codex\|claude\|agy\|grok\|opencode\|pi\|prime\|cursor\|chat\)/
+);
+assert.doesNotMatch(blocks.sessionMenuPrefix[0].when, /cursor-ide/);
+
 const configureEntry = blocks.moreSessionMenu.find((entry) => entry.command === "agentResume.configureSessionMenu");
 assert.ok(configureEntry, "more menu should include configureSessionMenu");
 

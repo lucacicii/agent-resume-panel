@@ -9,7 +9,9 @@ interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
       content?: string;
+      reasoning_content?: string;
     };
+    finish_reason?: string;
   }>;
   error?: {
     message?: string;
@@ -45,8 +47,14 @@ export async function chatCompletion(config: LlmConfig, messages: ChatMessage[],
     throw new Error(`${message} (endpoint: ${url})`);
   }
 
-  const content = payload.choices?.[0]?.message?.content?.trim();
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content?.trim();
   if (!content) {
+    if (choice?.finish_reason === "length" || choice?.message?.reasoning_content) {
+      throw new Error(
+        "LLM returned an empty response: the output token limit was reached before any text was produced (common with reasoning models). Increase max_tokens or disable thinking mode."
+      );
+    }
     throw new Error("LLM returned an empty response.");
   }
 

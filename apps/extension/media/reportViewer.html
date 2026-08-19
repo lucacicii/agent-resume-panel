@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}' {{cspSource}}; img-src {{cspSource}} data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="{{styleUri}}" />
+  </head>
+  <body>
+    <div class="panel">
+      <div id="banner" class="banner" role="note"></div>
+      <header class="toolbar">
+        <div class="nav-left">
+          <button id="prev-month" type="button" class="btn" title="Previous month">‹</button>
+          <select id="year-select" class="select" aria-label="Year"></select>
+          <select id="month-select" class="select" aria-label="Month"></select>
+          <button id="next-month" type="button" class="btn" title="Next month">›</button>
+          <button id="today-btn" type="button" class="btn">Today</button>
+        </div>
+        <div class="nav-right">
+          <button id="refresh-btn" type="button" class="btn ghost">Refresh</button>
+        </div>
+      </header>
+      <div id="status" class="status" hidden></div>
+      <div class="layout">
+        <aside class="cal-pane">
+          <div class="weekdays" id="weekdays"></div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <button id="month-btn" type="button" class="month-btn"></button>
+          <p class="legend muted" id="legend"></p>
+        </aside>
+        <aside class="session-pane">
+          <div class="pane-head">
+            <strong id="sessions-title">Sessions</strong>
+            <span class="muted" id="sessions-meta"></span>
+          </div>
+          <div id="session-list" class="session-list"></div>
+        </aside>
+        <main class="detail-pane">
+          <div class="pane-head">
+            <strong id="detail-title">Digest</strong>
+          </div>
+          <div id="detail-body" class="detail-body"></div>
+        </main>
+      </div>
+    </div>
+    <script nonce="{{nonce}}" src="{{markedUri}}"></script>
+    <script nonce="{{nonce}}" src="{{purifyUri}}"></script>
+    <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+  </body>
+</html>

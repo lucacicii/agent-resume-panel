@@ -1,0 +1,27 @@
+name: Feature Request
+description: Suggest an improvement for the VS Code extension
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem you want solved and how the feature would help.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      placeholder: I'm always frustrated when …
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional

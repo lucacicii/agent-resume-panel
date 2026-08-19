@@ -17,6 +17,8 @@ export interface SearchReportsOptions {
   candidateLimit?: number;
   /** Reuse a query embedding already computed by a combined retrieval pipeline. */
   queryVector?: number[];
+  /** When set, only digests that link at least one session from this project are considered. */
+  projectPath?: string;
 }
 
 export interface ReportSearchHit {
@@ -51,7 +53,8 @@ export async function searchReportsByEmbedding(
   }
   const candidates = await listReportEntries(desktopDb, {
     level: options.level,
-    limit: options.candidateLimit ?? 200
+    limit: options.candidateLimit ?? 200,
+    projectPath: options.projectPath
   });
 
   const minScore = options.minScore ?? 0.15;

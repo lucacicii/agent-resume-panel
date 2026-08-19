@@ -41,7 +41,7 @@ export async function summarizeSession(
       { role: "system", content: buildSummarizeSystemPrompt(config.outputLanguage) },
       { role: "user", content: buildSummarizeUserPrompt(transcript, config.outputLanguage) }
     ],
-    1500
+    4000
   );
 }
 
@@ -59,7 +59,7 @@ export async function suggestSessionTitle(
       { role: "system", content: buildRenameSystemPrompt(config.outputLanguage) },
       { role: "user", content: buildRenameUserPrompt(transcript, session.title, config.outputLanguage) }
     ],
-    120
+    4000
   );
 
   return normalizeSuggestedTitle(raw);
@@ -81,7 +81,7 @@ export async function testLlmConnection(
       { role: "system", content: "Reply with exactly: OK" },
       { role: "user", content: "ping" }
     ],
-    16
+    256
   );
 
   return `Connected to ${endpoint} (${config.model}): ${reply}`;

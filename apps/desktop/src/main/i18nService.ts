@@ -5,6 +5,7 @@ import {
   getCatalogForLocale,
   loadCatalogs,
   normalizeUiLanguagePreference,
+  resetI18nCache,
   resolveUiLocale,
   setLocalesDir,
   translateKey,
@@ -49,6 +50,12 @@ export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLoc
 }
 
 export function buildI18nBundle(settings: PanelSettings | undefined): I18nBundle {
+  // Dev: locale JSON can change without a main-process restart (electronmon often
+  // only reloads renderer). Reload catalogs so new keys like terminalRenderer resolve.
+  if (process.env.AGENT_RESUME_DEV === "1" && localesDir) {
+    resetI18nCache();
+    loadCatalogs(localesDir);
+  }
   const locale = resolveDesktopLocale(settings);
   const messages = Object.fromEntries(
     Object.entries(getCatalogForLocale(locale)).filter(([key]) => key.startsWith("desktop."))

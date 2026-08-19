@@ -3,38 +3,51 @@ import * as path from "node:path";
 import { AgentSession } from "../types";
 import { isNodeError } from "../jsonl";
 
-interface PiSessionHeader {
+interface JsonlSessionHeader {
   type?: string;
   id?: string;
 }
 
-interface PiSessionInfoEntry {
+interface JsonlSessionInfoEntry {
   type?: string;
   name?: string;
   timestamp?: string;
 }
 
 export async function renamePiSession(piHome: string, session: AgentSession, title: string): Promise<void> {
-  const sessionPath = await findPiSessionFile(path.join(piHome, "sessions"), session.id);
+  await renameJsonlSession(path.join(piHome, "sessions"), session, title, "Pi");
+}
+
+export async function renamePrimeSession(primeHome: string, session: AgentSession, title: string): Promise<void> {
+  await renameJsonlSession(path.join(primeHome, "sessions"), session, title, "Prime Agent");
+}
+
+async function renameJsonlSession(
+  sessionsRoot: string,
+  session: AgentSession,
+  title: string,
+  providerLabel: string
+): Promise<void> {
+  const sessionPath = await findJsonlSessionFile(sessionsRoot, session.id);
   if (!sessionPath) {
-    throw new Error(`Pi session file not found for session ${session.id}.`);
+    throw new Error(`${providerLabel} session file not found for session ${session.id}.`);
   }
 
   const raw = await fs.readFile(sessionPath, "utf8");
   const lines = raw.split(/\r?\n/);
   if (!lines.length) {
-    throw new Error(`Pi session file is empty: ${sessionPath}`);
+    throw new Error(`${providerLabel} session file is empty: ${sessionPath}`);
   }
 
-  let header: PiSessionHeader;
+  let header: JsonlSessionHeader;
   try {
-    header = JSON.parse(lines[0].trim()) as PiSessionHeader;
+    header = JSON.parse(lines[0].trim()) as JsonlSessionHeader;
   } catch {
-    throw new Error(`Pi session header is invalid: ${sessionPath}`);
+    throw new Error(`${providerLabel} session header is invalid: ${sessionPath}`);
   }
 
   if (header.type !== "session" || header.id !== session.id) {
-    throw new Error(`Pi session header does not match ${session.id}.`);
+    throw new Error(`${providerLabel} session header does not match ${session.id}.`);
   }
 
   let updated = false;
@@ -44,9 +57,9 @@ export async function renamePiSession(piHome: string, session: AgentSession, tit
       return line;
     }
 
-    let entry: PiSessionInfoEntry;
+    let entry: JsonlSessionInfoEntry;
     try {
-      entry = JSON.parse(trimmed) as PiSessionInfoEntry;
+      entry = JSON.parse(trimmed) as JsonlSessionInfoEntry;
     } catch {
       return line;
     }
@@ -66,7 +79,7 @@ export async function renamePiSession(piHome: string, session: AgentSession, tit
   await fs.writeFile(sessionPath, `${nextLines.join("\n")}\n`, "utf8");
 }
 
-async function findPiSessionFile(root: string, sessionId: string): Promise<string | undefined> {
+async function findJsonlSessionFile(root: string, sessionId: string): Promise<string | undefined> {
   const sessionPaths = await listSessionFiles(root);
   for (const sessionPath of sessionPaths) {
     let content: string;
@@ -84,9 +97,9 @@ async function findPiSessionFile(root: string, sessionId: string): Promise<strin
       continue;
     }
 
-    let header: PiSessionHeader;
+    let header: JsonlSessionHeader;
     try {
-      header = JSON.parse(firstLine) as PiSessionHeader;
+      header = JSON.parse(firstLine) as JsonlSessionHeader;
     } catch {
       continue;
     }

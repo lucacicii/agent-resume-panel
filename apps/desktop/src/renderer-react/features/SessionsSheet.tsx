@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { Sheet } from "../components/Sheet";
 import { Status, type StatusKind } from "../components/Status";
+import { syncTruncationTitle } from "../components/truncationTitle";
+import { VirtualList } from "../components/VirtualList";
+
+const SESSION_ROW_HEIGHT = 58;
 
 interface SessionPreview {
   title: string;
@@ -44,6 +48,10 @@ export function SessionsSheet(): React.JSX.Element {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<{ updatedAt: number; provider: string; id: string }>();
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestSeq = useRef(0);
   const [selectedKey, setSelectedKey] = useState("");
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,16 +61,40 @@ export function SessionsSheet(): React.JSX.Element {
   const [status, setStatus] = useState<StatusState>({ text: "" });
 
   const loadSessions = useCallback(async () => {
+    const request = ++requestSeq.current;
     setLoading(true);
+    setNextCursor(undefined);
     try {
-      setSessions(await desktopApi().listSessions(500));
+      const page = await desktopApi().querySessionsPage({ limit: 100 });
+      if (request !== requestSeq.current) return;
+      setSessions(page.sessions);
+      setTotal(page.total);
+      setNextCursor(page.nextCursor);
       setStatus({ text: "" });
+    } catch (error) {
+      if (request === requestSeq.current) setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      if (request === requestSeq.current) setLoading(false);
+    }
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore || loading) return;
+    setLoadingMore(true);
+    try {
+      const page = await desktopApi().querySessionsPage({ limit: 100, cursor: nextCursor });
+      setSessions((current) => {
+        const seen = new Set(current.map(sessionKey));
+        return [...current, ...page.sessions.filter((session) => !seen.has(sessionKey(session)))];
+      });
+      setTotal(page.total);
+      setNextCursor(page.nextCursor);
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
-  }, []);
+  }, [loading, loadingMore, nextCursor]);
 
   const loadPreview = useCallback(async (session: AgentSession) => {
     setSelectedKey(sessionKey(session));
@@ -169,7 +201,7 @@ export function SessionsSheet(): React.JSX.Element {
       let text = t("desktop.sessions.renamed", result.title);
       if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
       setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
-      window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+      window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
@@ -177,11 +209,35 @@ export function SessionsSheet(): React.JSX.Element {
     }
   };
 
+  const resumeSession = useCallback(async () => {
+    if (!previewState) return;
+    const { provider, id } = previewState.session;
+    if (!provider || !id) return;
+    try {
+      const result = await desktopApi().workbenchOpenSession({ provider, id });
+      if (result.external) {
+        // External terminal/editor is opening; keep the sheet open and report.
+        setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+        return;
+      }
+      close();
+      // Workbench decides: focus the already-open pane, or open the session fresh.
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: previewState.session }));
+      setStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [previewState, close, t]);
+
   const meta = useMemo(() => {
     const interval = t("desktop.common.oneMinute");
     const synced = lastSyncedAt ? t("desktop.sessions.lastSynced", formatTime(lastSyncedAt, locale)) : "";
-    return t("desktop.sessions.meta", sessions.length, interval, synced);
+    return t("desktop.sessions.meta", `${sessions.length} / ${total}`, interval, synced);
   }, [lastSyncedAt, locale, sessions.length, t]);
+  const selectedIndex = useMemo(
+    () => sessions.findIndex((session) => sessionKey(session) === selectedKey),
+    [selectedKey, sessions]
+  );
 
   return (
     <Sheet open={open} title={t("desktop.sessions.sheetTitle")} onClose={close} wide bodyClassName="sessions-split">
@@ -192,8 +248,14 @@ export function SessionsSheet(): React.JSX.Element {
           </button>
         </div>
         <p className="muted">{loading && !sessions.length ? t("desktop.common.loading") : meta}</p>
-        <div className="sessions-list">
-          {sessions.map((session) => {
+        <VirtualList
+          className="sessions-list"
+          items={sessions}
+          itemHeight={SESSION_ROW_HEIGHT}
+          getKey={sessionKey}
+          scrollToIndex={selectedIndex}
+          onEndReached={() => void loadMore()}
+          renderItem={(session) => {
             const key = sessionKey(session);
             return (
               <button
@@ -202,15 +264,15 @@ export function SessionsSheet(): React.JSX.Element {
                 className={`session-row${key === selectedKey ? " active" : ""}`}
                 onClick={() => void loadPreview(session)}
               >
-                <div className="s-title">{session.title}</div>
+                <div className="s-title" ref={(el) => syncTruncationTitle(el)}>{session.title}</div>
                 <div className="s-meta">
                   <span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>
                   {" · "}{basename(session.projectPath)}{" · "}{formatTime(session.updatedAt, locale)}
                 </div>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       </div>
       <div className="session-preview-pane">
         {previewLoading && <p className="muted">{t("desktop.common.loadingPreview")}</p>}
@@ -225,6 +287,9 @@ export function SessionsSheet(): React.JSX.Element {
                 </button>
                 <button type="button" className="tool-btn" onClick={() => void autoRename()} disabled={assist !== null}>
                   {assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}
+                </button>
+                <button type="button" className="tool-btn" onClick={() => void resumeSession()}>
+                  {t("desktop.agent.resumeSession")}
                 </button>
               </div>
             </div>

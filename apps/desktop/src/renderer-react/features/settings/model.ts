@@ -1,4 +1,8 @@
-import type { PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import type { DesktopThemeEffects, DesktopVisualThemeId, PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import {
+  resolveTerminalThemeId,
+  type WorkbenchTerminalThemeId
+} from "../workbench/terminalThemes";
 
 /** Keep in sync with packages/core WorkbenchProjectContextMenuAction. */
 export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
@@ -45,6 +49,9 @@ export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
+  visualTheme: DesktopVisualThemeId;
+  themeEffects: DesktopThemeEffects;
+  alwaysAllowAgentNonDestructiveOperations: boolean;
 }
 
 export interface ModelsDraft {
@@ -52,6 +59,7 @@ export interface ModelsDraft {
   llmModel: string;
   llmApiKey: string;
   llmLang: UiLanguageValue;
+  llmDisableThinking: boolean;
   chatBaseUrl: string;
   chatModel: string;
   chatApiKey: string;
@@ -67,18 +75,52 @@ export interface SessionsDraft {
   showSubagentCodex: boolean;
   showArchivedOpenCode: boolean;
   showSubagentGrok: boolean;
-  hideCronAlma: boolean;
-  hideChannelAlma: boolean;
-  showIncognitoAlma: boolean;
+  /** Auto-generate session_summary after sync / quiet period. */
+  summaryAutoEnabled: boolean;
+  /** Minutes after last session update before re-summarizing (stale). Default 30. */
+  summaryStaleDelayMinutes: number;
+  /** Minutes after last update before first summary when missing. Default 0. */
+  summaryMissingDelayMinutes: number;
+  summaryAutoConcurrency: number;
+  summaryAutoMaxPerTick: number;
+  /** Transcript-chunk index independent of session_summary. */
+  transcriptIndexEnabled: boolean;
+  transcriptQuietDelayMinutes: number;
+  transcriptIndexConcurrency: number;
+  transcriptIndexMaxPerTick: number;
+  /** Embed title+summary for sessions that already have summaries. */
+  embeddingIndexEnabled: boolean;
+  embeddingQuietDelayMinutes: number;
+  embeddingIndexConcurrency: number;
+  embeddingIndexMaxPerTick: number;
+  /** Auto-tag sessions/notes with LLM + weight decay. */
+  autoTaggingEnabled: boolean;
+  autoTagHalfLifeDays: number;
+  autoTagPruneThreshold: number;
+  autoTagMaxTagsPerItem: number;
+  autoTagHitBoost: number;
+  autoTagConsensusFactor: number;
 }
+
+/** Composite target: `cli:codex` | `acp:claude` | … */
+export type WorkbenchNewSessionTargetDraft = string;
 
 export interface WorkbenchDraft {
   scratchDir: string;
-  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi";
+  /** @deprecated Prefer defaultNewSessionTarget; kept for older call sites */
+  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "prime" | "cursor";
+  /** Single-list Default Agent: CLI and ACP-prefixed options */
+  defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
+  newSessionYolo: boolean;
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
+  terminalTheme: WorkbenchTerminalThemeId;
+  editorTheme: "follow-app" | "light" | "dark";
+  /** webgl (default) or force canvas for CJK/GPU compatibility */
+  terminalRenderer: "webgl" | "canvas";
   externalLaunchMode: "executeCommand" | "pasteCommand" | "copyCommand";
   cmdTAction: "newTerminal" | "newSession";
+  transcriptFontSize: number;
   editorEditable: boolean;
   editorFontSize: number;
   editorWordWrap: boolean;
@@ -90,10 +132,32 @@ export interface WorkbenchDraft {
   gitNestedScanIgnoreDirs: string;
   /** Enabled Workbench project context-menu actions. */
   projectContextMenu: WorkbenchProjectContextMenuAction[];
+  /** ACP permission policy */
+  acpAutoApprovePermissions: "ask" | "allowAll";
+  /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
+  acpExperimentalGrokVendorUi: boolean;
 }
+
+export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group: "cli" | "acp" }> = [
+  { value: "cli:codex", group: "cli" },
+  { value: "cli:claude", group: "cli" },
+  { value: "cli:grok", group: "cli" },
+  { value: "cli:agy", group: "cli" },
+  { value: "cli:opencode", group: "cli" },
+  { value: "cli:pi", group: "cli" },
+  { value: "cli:prime", group: "cli" },
+  { value: "cli:cursor", group: "cli" },
+  { value: "acp:claude", group: "acp" },
+  { value: "acp:codex", group: "acp" },
+  { value: "acp:grok", group: "acp" },
+  { value: "acp:opencode", group: "acp" },
+  { value: "acp:pi", group: "acp" },
+  { value: "acp:prime", group: "acp" }
+];
 
 export interface ReportDraft {
   enabled: boolean;
+  maxDigestLlmCalls: number;
   dailyHour: number;
   weeklyHour: number;
   monthlyHour: number;
@@ -105,9 +169,26 @@ export interface StorageDraft {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
+}
+
+export interface NotesDraft {
+  newStandaloneNoteShortcut: string;
+  recentStandaloneNoteShortcut: string;
+}
+
+export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
+  const isMac = /mac/i.test(platform);
+  const parts = value.split("+").filter(Boolean);
+  if (!parts.length) return "";
+  if (isMac) {
+    return parts.map((part) => part === "CommandOrControl" || part === "Command" ? "⌘" : part === "Control" || part === "Ctrl" ? "⌃" : part === "Alt" || part === "Option" ? "⌥" : part === "Shift" ? "⇧" : part).join("");
+  }
+  return parts.map((part) => part === "CommandOrControl" ? "Ctrl" : part === "Option" ? "Alt" : part).join("+");
 }
 
 const UI_LANGUAGES = new Set<UiLanguageValue>(["auto", "en", "zh-cn", "ja"]);
@@ -124,7 +205,10 @@ export function normalizeOutputLanguage(value: string | undefined): UiLanguageVa
 export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft {
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
-    desktopTheme: settings.desktop?.theme || "system"
+    desktopTheme: settings.desktop?.theme || "system",
+    visualTheme: settings.desktop?.visualTheme === "cyberpunk" || settings.desktop?.visualTheme === "dos" ? settings.desktop.visualTheme : "classic",
+    themeEffects: settings.desktop?.themeEffects === "reduced" ? "reduced" : "full",
+    alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true
   };
 }
 
@@ -137,6 +221,7 @@ export function modelsDraftFromSettings(settings: PanelSettings): ModelsDraft {
     llmModel: toolModel,
     llmApiKey: toolKey,
     llmLang: normalizeOutputLanguage(settings.llm?.outputLanguage),
+    llmDisableThinking: Boolean(settings.llm?.disableThinking),
     chatBaseUrl: settings.chatLlm?.baseUrl?.trim() || toolBase,
     chatModel: settings.chatLlm?.model?.trim() || toolModel,
     chatApiKey: settings.chatLlm?.apiKey?.trim() || toolKey,
@@ -146,8 +231,20 @@ export function modelsDraftFromSettings(settings: PanelSettings): ModelsDraft {
   };
 }
 
+function clampDraftInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
 export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraft {
   const source = settings.sessionSync;
+  const auto = settings.sessionSummaryAuto;
+  const tx = settings.sessionTranscriptIndex;
+  const embIdx = settings.sessionEmbeddingIndex;
+  const tag = settings.autoTagging;
   return {
     maxItems: Math.max(1, Math.min(50_000, Number(source?.maxItems) || 10_000)),
     stalePolicy: source?.stalePolicy === "purge" ? "purge" : "off",
@@ -155,14 +252,49 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
     showSubagentCodex: Boolean(source?.showSubagentCodex),
     showArchivedOpenCode: Boolean(source?.showArchivedOpenCode),
     showSubagentGrok: Boolean(source?.showSubagentGrok),
-    hideCronAlma: source?.hideCronAlma !== false,
-    hideChannelAlma: source?.hideChannelAlma !== false,
-    showIncognitoAlma: Boolean(source?.showIncognitoAlma)
+    summaryAutoEnabled: auto?.enabled !== false,
+    summaryStaleDelayMinutes: clampDraftInt(auto?.staleDelayMinutes, 30, 0, 1440),
+    summaryMissingDelayMinutes: clampDraftInt(auto?.missingDelayMinutes, 0, 0, 1440),
+    summaryAutoConcurrency: clampDraftInt(auto?.concurrency, 1, 1, 3),
+    summaryAutoMaxPerTick: clampDraftInt(auto?.maxPerTick, 5, 1, 50),
+    transcriptIndexEnabled: tx?.enabled !== false,
+    transcriptQuietDelayMinutes: clampDraftInt(tx?.quietDelayMinutes, 15, 0, 1440),
+    transcriptIndexConcurrency: clampDraftInt(tx?.concurrency, 1, 1, 3),
+    transcriptIndexMaxPerTick: clampDraftInt(tx?.maxPerTick, 3, 1, 20),
+    embeddingIndexEnabled: embIdx?.enabled !== false,
+    embeddingQuietDelayMinutes: clampDraftInt(embIdx?.quietDelayMinutes, 0, 0, 1440),
+    embeddingIndexConcurrency: clampDraftInt(embIdx?.concurrency, 2, 1, 4),
+    embeddingIndexMaxPerTick: clampDraftInt(embIdx?.maxPerTick, 5, 1, 50),
+    autoTaggingEnabled: tag?.enabled !== false,
+    autoTagHalfLifeDays: clampDraftInt(tag?.halfLifeDays, 7, 1, 90),
+    autoTagPruneThreshold:
+      Number.isFinite(tag?.pruneThreshold) && Number(tag?.pruneThreshold) > 0
+        ? Math.min(1, Math.max(0.01, Number(tag?.pruneThreshold)))
+        : 0.1,
+    autoTagMaxTagsPerItem: clampDraftInt(tag?.maxTagsPerItem, 6, 3, 10),
+    autoTagHitBoost:
+      Number.isFinite(tag?.hitBoost) && Number(tag?.hitBoost) > 0
+        ? Math.min(5, Math.max(0.1, Number(tag?.hitBoost)))
+        : 0.5,
+    autoTagConsensusFactor:
+      Number.isFinite(tag?.consensusFactor) && Number(tag?.consensusFactor) > 0
+        ? Math.min(2, Math.max(0.1, Number(tag?.consensusFactor)))
+        : 0.5
   };
 }
 
 export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Partial<PanelSettings> {
-  return { uiLanguage: draft.uiLanguage, desktop: { ...settings.desktop, theme: draft.desktopTheme } };
+  return {
+    uiLanguage: draft.uiLanguage,
+    desktop: {
+      ...settings.desktop,
+      theme: draft.visualTheme === "cyberpunk" || draft.visualTheme === "dos" ? "dark" : draft.desktopTheme,
+      visualTheme: draft.visualTheme,
+      themeEffects: draft.themeEffects,
+      alwaysAllowAgentWriteOperations: false,
+      alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
+    }
+  };
 }
 
 export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partial<PanelSettings> {
@@ -172,7 +304,8 @@ export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partia
       baseUrl: draft.llmBaseUrl.trim(),
       model: draft.llmModel.trim(),
       apiKey: draft.llmApiKey,
-      outputLanguage: draft.llmLang
+      outputLanguage: draft.llmLang,
+      disableThinking: draft.llmDisableThinking
     },
     chatLlm: {
       ...settings.chatLlm,
@@ -189,12 +322,90 @@ export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partia
   };
 }
 
+/** Effective identity used for vector search (matches embedding_key inputs, without apiKey). */
+export function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
+  baseUrl: string;
+  model: string;
+} {
+  const emb = settings.embedding;
+  const llm = settings.llm;
+  return {
+    baseUrl: (emb?.baseUrl || llm?.baseUrl || "").trim(),
+    model: (emb?.model || "").trim() || "text-embedding-3-small"
+  };
+}
+
+export function embeddingSearchIdentityFromDraft(
+  settings: PanelSettings,
+  draft: ModelsDraft
+): { baseUrl: string; model: string } {
+  return {
+    // Empty emb base falls back to tool LLM base, same as runtime embeddingConfigFromSettings.
+    baseUrl: (draft.embBaseUrl.trim() || draft.llmBaseUrl.trim() || settings.llm?.baseUrl || "").trim(),
+    model: draft.embModel.trim() || "text-embedding-3-small"
+  };
+}
+
+/** True when changing models draft would switch the embedding space used for search/index. */
+export function embeddingSearchIdentityChanged(
+  settings: PanelSettings,
+  draft: ModelsDraft
+): boolean {
+  const before = embeddingSearchIdentityFromSettings(settings);
+  const after = embeddingSearchIdentityFromDraft(settings, draft);
+  return before.baseUrl !== after.baseUrl || before.model !== after.model;
+}
+
 export function sessionsPatch(settings: PanelSettings, draft: SessionsDraft): Partial<PanelSettings> {
   return {
+    sessionSummaryAuto: {
+      ...settings.sessionSummaryAuto,
+      enabled: draft.summaryAutoEnabled,
+      staleDelayMinutes: clampDraftInt(draft.summaryStaleDelayMinutes, 30, 0, 1440),
+      missingDelayMinutes: clampDraftInt(draft.summaryMissingDelayMinutes, 0, 0, 1440),
+      concurrency: clampDraftInt(draft.summaryAutoConcurrency, 1, 1, 3),
+      maxPerTick: clampDraftInt(draft.summaryAutoMaxPerTick, 5, 1, 50)
+    },
+    sessionTranscriptIndex: {
+      ...settings.sessionTranscriptIndex,
+      enabled: draft.transcriptIndexEnabled,
+      quietDelayMinutes: clampDraftInt(draft.transcriptQuietDelayMinutes, 15, 0, 1440),
+      concurrency: clampDraftInt(draft.transcriptIndexConcurrency, 1, 1, 3),
+      maxPerTick: clampDraftInt(draft.transcriptIndexMaxPerTick, 3, 1, 20)
+    },
+    sessionEmbeddingIndex: {
+      ...settings.sessionEmbeddingIndex,
+      enabled: draft.embeddingIndexEnabled,
+      quietDelayMinutes: clampDraftInt(draft.embeddingQuietDelayMinutes, 0, 0, 1440),
+      concurrency: clampDraftInt(draft.embeddingIndexConcurrency, 2, 1, 4),
+      maxPerTick: clampDraftInt(draft.embeddingIndexMaxPerTick, 5, 1, 50)
+    },
+    autoTagging: {
+      ...settings.autoTagging,
+      enabled: draft.autoTaggingEnabled,
+      halfLifeDays: clampDraftInt(draft.autoTagHalfLifeDays, 7, 1, 90),
+      pruneThreshold:
+        Number.isFinite(draft.autoTagPruneThreshold) && draft.autoTagPruneThreshold > 0
+          ? Math.min(1, Math.max(0.01, Number(draft.autoTagPruneThreshold)))
+          : 0.1,
+      maxTagsPerItem: clampDraftInt(draft.autoTagMaxTagsPerItem, 6, 3, 10),
+      hitBoost:
+        Number.isFinite(draft.autoTagHitBoost) && draft.autoTagHitBoost > 0
+          ? Math.min(5, Math.max(0.1, Number(draft.autoTagHitBoost)))
+          : 0.5,
+      consensusFactor:
+        Number.isFinite(draft.autoTagConsensusFactor) && draft.autoTagConsensusFactor > 0
+          ? Math.min(2, Math.max(0.1, Number(draft.autoTagConsensusFactor)))
+          : 0.5
+    },
     sessionSync: {
       ...settings.sessionSync,
-      ...draft,
-      maxItems: Math.max(1, Math.min(50_000, Number(draft.maxItems) || 10_000))
+      maxItems: Math.max(1, Math.min(50_000, Number(draft.maxItems) || 10_000)),
+      stalePolicy: draft.stalePolicy,
+      showArchivedCodex: draft.showArchivedCodex,
+      showSubagentCodex: draft.showSubagentCodex,
+      showArchivedOpenCode: draft.showArchivedOpenCode,
+      showSubagentGrok: draft.showSubagentGrok
     }
   };
 }
@@ -203,17 +414,57 @@ function numberInRange(value: number | undefined, fallback: number, min: number,
   return Math.max(min, Math.min(max, Math.round(Number(value) || fallback)));
 }
 
+function normalizeNewSessionTarget(settings: PanelSettings): string {
+  const workbench = settings.workbench;
+  const raw = workbench?.defaultNewSessionTarget?.trim();
+  if (workbench && Object.prototype.hasOwnProperty.call(workbench, "defaultNewSessionTarget") && raw === "") {
+    return "";
+  }
+  if (raw && WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === raw)) {
+    return raw;
+  }
+  const provider = workbench?.defaultNewSessionProvider;
+  const cli =
+    provider === "claude" ||
+    provider === "grok" ||
+    provider === "agy" ||
+    provider === "opencode" ||
+    provider === "pi" ||
+    provider === "prime" ||
+    provider === "cursor"
+      ? provider
+      : "codex";
+  return `cli:${cli}`;
+}
+
 export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDraft {
   const workbench = settings.workbench;
   const editor = workbench?.editor;
+  const target = normalizeNewSessionTarget(settings);
   const provider = workbench?.defaultNewSessionProvider;
+  const defaultProvider =
+    provider === "claude" ||
+    provider === "grok" ||
+    provider === "agy" ||
+    provider === "opencode" ||
+    provider === "pi" ||
+    provider === "prime" ||
+    provider === "cursor"
+      ? provider
+      : "codex";
   return {
     scratchDir: workbench?.scratchDir || "",
-    defaultProvider: provider === "claude" || provider === "grok" || provider === "agy" || provider === "opencode" || provider === "pi" ? provider : "codex",
+    defaultProvider: defaultProvider,
+    defaultNewSessionTarget: target,
+    newSessionYolo: workbench?.newSessionYolo === true,
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
+    terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
+    editorTheme: workbench?.editorTheme === "light" || workbench?.editorTheme === "dark" ? workbench.editorTheme : "follow-app",
+    terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
     externalLaunchMode: workbench?.externalLaunchMode === "pasteCommand" || workbench?.externalLaunchMode === "copyCommand" ? workbench.externalLaunchMode : "executeCommand",
     cmdTAction: workbench?.cmdTAction === "newSession" ? "newSession" : "newTerminal",
+    transcriptFontSize: numberInRange(workbench?.transcriptFontSize, 14, 11, 24),
     editorEditable: editor?.editable !== false,
     editorFontSize: numberInRange(editor?.fontSize, 13, 11, 24),
     editorWordWrap: editor?.wordWrap === true,
@@ -225,20 +476,46 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
     projectContextMenu: normalizeProjectContextMenu(
       workbench?.projectContextMenu ?? DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU
-    )
+    ),
+    acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
+    acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
 }
 
 export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): Partial<PanelSettings> {
+  const target = draft.defaultNewSessionTarget === ""
+    ? ""
+    : WORKBENCH_NEW_SESSION_TARGET_OPTIONS.some((option) => option.value === draft.defaultNewSessionTarget)
+    ? draft.defaultNewSessionTarget
+    : "cli:codex";
+  const cliProvider = target.startsWith("cli:")
+    ? (target.slice(4) as WorkbenchDraft["defaultProvider"])
+    : draft.defaultProvider;
+  const safeCli =
+    cliProvider === "claude" ||
+    cliProvider === "grok" ||
+    cliProvider === "agy" ||
+    cliProvider === "opencode" ||
+    cliProvider === "pi" ||
+    cliProvider === "prime" ||
+    cliProvider === "cursor"
+      ? cliProvider
+      : "codex";
   return {
     workbench: {
       ...settings.workbench,
       scratchDir: draft.scratchDir.trim() || undefined,
-      defaultNewSessionProvider: draft.defaultProvider,
+      defaultNewSessionProvider: safeCli,
+      defaultNewSessionTarget: target,
+      newSessionYolo: draft.newSessionYolo === true,
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
+      terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
+      editorTheme: draft.editorTheme,
+      terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
       externalLaunchMode: draft.externalLaunchMode,
       cmdTAction: draft.cmdTAction,
+      transcriptFontSize: numberInRange(draft.transcriptFontSize, 14, 11, 24),
       editor: {
         editable: draft.editorEditable,
         fontSize: numberInRange(draft.editorFontSize, 13, 11, 24),
@@ -251,6 +528,11 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
       projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu)
+    },
+    acp: {
+      ...settings.acp,
+      autoApprovePermissions: draft.acpAutoApprovePermissions === "allowAll" ? "allowAll" : "ask",
+      experimentalGrokVendorUi: draft.acpExperimentalGrokVendorUi === true
     }
   };
 }
@@ -259,6 +541,7 @@ export function reportDraftFromSettings(settings: PanelSettings): ReportDraft {
   const report = settings.report;
   return {
     enabled: report?.enabled === true,
+    maxDigestLlmCalls: numberInRange(report?.maxDigestLlmCalls, 100, 10, 1000),
     dailyHour: numberInRange(report?.scheduleDailyHour, 22, 0, 23),
     weeklyHour: numberInRange(report?.scheduleWeeklyHour, 9, 0, 23),
     monthlyHour: numberInRange(report?.scheduleMonthlyHour, 9, 0, 23)
@@ -271,7 +554,7 @@ export function reportPatch(settings: PanelSettings, draft: ReportDraft): Partia
       ...settings.report,
       enabled: draft.enabled,
       includeTranscripts: true,
-      maxSessionsPerDigest: 40,
+      maxDigestLlmCalls: numberInRange(draft.maxDigestLlmCalls, settings.report?.maxDigestLlmCalls ?? 100, 10, 1000),
       snippetMaxChars: 2500,
       scheduleDailyHour: numberInRange(draft.dailyHour, 22, 0, 23),
       scheduleWeeklyHour: numberInRange(draft.weeklyHour, 9, 0, 23),
@@ -285,9 +568,11 @@ const AGENT_HOME_DEFAULTS = {
   claudeHome: "~/.claude",
   antigravityHome: "~/.gemini",
   grokHome: "~/.grok",
-  almaDataDir: "~/Library/Application Support/alma",
   opencodeHome: "~/.local/share/opencode",
-  piHome: "~/.pi/agent"
+  piHome: "~/.pi/agent",
+  primeHome: "~/.prime/agent",
+  cursorHome: "~/.cursor",
+  cursorIdeUserDataHome: ""
 } as const;
 
 export function storageDraftFromSettings(settings: PanelSettings): StorageDraft {
@@ -302,8 +587,32 @@ export function storagePatch(settings: PanelSettings, draft: StorageDraft): Part
     const value = draft[key as keyof typeof AGENT_HOME_DEFAULTS].trim();
     return value && value !== fallback ? [[key, value]] : [];
   }));
+  const cursorIdeUserDataHome = draft.cursorIdeUserDataHome.trim();
   return {
     panelHome: draft.panelHome.trim() || undefined,
-    agentHomes: Object.keys(agentHomes).length ? agentHomes : undefined
+    agentHomes: Object.keys(agentHomes).length || cursorIdeUserDataHome
+      ? { ...agentHomes, ...(cursorIdeUserDataHome ? { cursorIdeUserDataHome } : {}) }
+      : undefined
+  };
+}
+
+export function notesDraftFromSettings(settings: PanelSettings): NotesDraft {
+  return {
+    newStandaloneNoteShortcut:
+      settings.notes?.newStandaloneNoteShortcut ??
+      "CommandOrControl+D",
+    recentStandaloneNoteShortcut:
+      settings.notes?.recentStandaloneNoteShortcut ??
+      "CommandOrControl+Shift+D"
+  };
+}
+
+export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<PanelSettings> {
+  return {
+    notes: {
+      ...settings.notes,
+      newStandaloneNoteShortcut: draft.newStandaloneNoteShortcut.trim(),
+      recentStandaloneNoteShortcut: draft.recentStandaloneNoteShortcut.trim()
+    }
   };
 }

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { AgentProvider, AgentSession } from "../history";
 import { t } from "../i18n";
-import { openAlmaThread } from "./almaApp";
 import { openClaudeCodePanelResumeFlow, shouldResumeClaudeInPanel } from "./claudeCodePanel";
 import {
   getCodexResumeMode,
@@ -17,11 +16,10 @@ const resumeTerminals = new Map<string, vscode.Terminal>();
 let closeTerminalListener: vscode.Disposable | undefined;
 
 export function openSessionResume(session: AgentSession, context?: vscode.ExtensionContext): void {
-  if (session.provider === "alma") {
-    void openAlmaThread(session);
+  if (session.provider === "cursor-ide") {
+    vscode.window.showInformationMessage("Cursor IDE chat resume is unavailable; open this project in Cursor to continue.");
     return;
   }
-
   if (session.provider === "claude" && shouldResumeClaudeInPanel()) {
     void openClaudeCodePanelResumeFlow(session, context);
     return;
@@ -137,14 +135,20 @@ function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "grok") {
     return t("terminal.providerLabelGrok");
   }
-  if (provider === "alma") {
-    return t("terminal.providerLabelAlma");
-  }
   if (provider === "opencode") {
     return t("terminal.providerLabelOpencode");
   }
   if (provider === "pi") {
     return t("terminal.providerLabelPi");
+  }
+  if (provider === "prime") {
+    return t("terminal.providerLabelPrime");
+  }
+  if (provider === "cursor") {
+    return "Cursor CLI";
+  }
+  if (provider === "cursor-ide") {
+    return "Cursor IDE";
   }
   return t("terminal.providerLabelClaude");
 }

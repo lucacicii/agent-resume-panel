@@ -35,3 +35,17 @@ export function desktopDbPath(panelHome: string): string {
 export function defaultScratchDir(panelHome: string): string {
   return path.join(desktopDataDir(panelHome), "scratch");
 }
+
+/** Desktop app error / diagnostic logs: `<panelHome>/.desktop/logs`. */
+export function desktopLogsDir(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "logs");
+}
+
+/**
+ * Live loopback handle for the Desktop in-app browser MCP
+ * (`agent-resume-browser`). Written by Desktop main when the server is up;
+ * read by the headless stdio proxy used by TUI/CLI MCP clients.
+ */
+export function browserMcpEndpointPath(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "browser-mcp-endpoint.json");
+}

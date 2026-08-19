@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { readJsonLines } from "./jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface CodexRolloutRow {
@@ -50,14 +50,15 @@ export async function previewCodexSession(
         continue;
       }
 
-      const text = extractTextFromContent(row.payload.content);
-      if (!text) {
+      const extracted = extractPreviewContent(row.payload.content);
+      if (!extracted.text && !extracted.thinking) {
         continue;
       }
 
       messages.push({
         role: row.payload.role,
-        text,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined,
         timestamp: row.timestamp
       });
     }

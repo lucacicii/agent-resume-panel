@@ -12,6 +12,8 @@ import { loadSessionPreview } from "../transcript/load";
 import { PreviewHomes } from "../transcript/types";
 import { recordLlmUsage } from "../usage/store";
 import { summarizeSessionMessages } from "./assist";
+import { upsertSessionEmbedding } from "./embedStore";
+import { indexSessionTranscript } from "./transcriptIndex";
 
 export interface EnsureSummariesOptions {
   dbPath: string;
@@ -19,6 +21,12 @@ export interface EnsureSummariesOptions {
   settings: PanelSettings;
   /** Re-run summarize even when session_summary already exists. Default false. */
   force?: boolean;
+  /**
+   * When true, re-summarize if a summary exists but session.updatedAt is newer than
+   * sessionSummaryAtMs (or summary_at is missing). Ignored when force=true.
+   * Default false (digest path keeps existing summaries).
+   */
+  refreshIfStale?: boolean;
   /** Parallel LLM calls. Default 2. */
   concurrency?: number;
   /** Optional panel home hint for agent homes resolution. */
@@ -29,6 +37,12 @@ export interface EnsureSummariesOptions {
   onProgress?: DigestProgressCallback;
   /** OS / VS Code display locale when output language is auto. */
   systemLocale?: string;
+  /**
+   * Whether to enqueue derived embedding/transcript indexes after a summary.
+   * Auto-summary has dedicated background workers for these indexes, so it
+   * disables the side effects to avoid duplicate work.
+   */
+  indexDerivedData?: boolean;
   progressLevel?: "daily" | "weekly" | "monthly";
   progressPeriodLabel?: string;
 }
@@ -63,11 +77,13 @@ export async function ensureSummariesForSessions(
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 2, 6));
   const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
   const force = options.force === true;
+  const refreshIfStale = options.refreshIfStale === true;
   const prefix = options.jobKeyPrefix || "summarize";
   const level = options.progressLevel || "daily";
   const periodLabel = options.progressPeriodLabel || "";
   const onProgress = options.onProgress;
   const progressText = createReportProgressText(options.settings, options.systemLocale);
+  const indexDerivedData = options.indexDerivedData !== false;
 
   const out: AgentSession[] = options.sessions.map((s) => ({ ...s }));
   let summarized = 0;
@@ -87,6 +103,24 @@ export async function ensureSummariesForSessions(
     });
   }
 
+  function shouldSkipExistingSummary(session: AgentSession): boolean {
+    if (force) {
+      return false;
+    }
+    if (!session.sessionSummary?.trim()) {
+      return false;
+    }
+    if (!refreshIfStale) {
+      return true;
+    }
+    const summaryAt = session.sessionSummaryAtMs;
+    if (summaryAt == null || !Number.isFinite(summaryAt)) {
+      return false;
+    }
+    // Session quieter or unchanged since last summary — skip.
+    return session.updatedAt <= summaryAt;
+  }
+
   let cursor = 0;
   async function worker(): Promise<void> {
     while (cursor < out.length) {
@@ -95,7 +129,7 @@ export async function ensureSummariesForSessions(
       const key = `${session.provider}:${session.id}`;
       const ref = sessionProgressRef(session);
 
-      if (!force && session.sessionSummary?.trim()) {
+      if (shouldSkipExistingSummary(session)) {
         skipped += 1;
         processed += 1;
         onProgress?.({
@@ -128,9 +162,15 @@ export async function ensureSummariesForSessions(
           llm,
           homes,
           language,
-          jobKey: `${prefix}:${key}`
+          jobKey: `${prefix}:${key}`,
+          settings: options.settings,
+          indexDerivedData
         });
-        out[index] = { ...session, sessionSummary: summary };
+        out[index] = {
+          ...session,
+          sessionSummary: summary,
+          sessionSummaryAtMs: Date.now()
+        };
         summarized += 1;
         processed += 1;
         onProgress?.({
@@ -175,6 +215,8 @@ async function summarizeOneSession(input: {
   homes: PreviewHomes;
   language: string;
   jobKey: string;
+  settings: PanelSettings;
+  indexDerivedData: boolean;
 }): Promise<string> {
   const preview = await loadSessionPreview(input.session, input.homes);
   if (!preview.messages?.length) {
@@ -199,6 +241,23 @@ async function summarizeOneSession(input: {
       input.language,
       result.summary
     );
+    if (input.indexDerivedData) {
+      void upsertSessionEmbedding({
+        desktopDb: input.desktopDb,
+        settings: input.settings,
+        provider: input.session.provider,
+        sessionId: input.session.id,
+        title: input.session.title,
+        summary: result.summary,
+        jobKey: `session_embed:${input.jobKey}`
+      }).catch(() => undefined);
+      void indexSessionTranscript({
+        desktopDb: input.desktopDb,
+        settings: input.settings,
+        session: { ...input.session, sessionSummary: result.summary },
+        jobKey: `session_tx_embed:${input.jobKey}`
+      }).catch(() => undefined);
+    }
     return result.summary;
   } catch (error) {
     await recordLlmUsage(input.desktopDb, {

@@ -1,18 +1,14 @@
 import { AgentSession } from "../history/types";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../history/sqlite";
 import { CatalogSessionRow, toAgentSession } from "./types";
+import { GTD_STATUSES, isGtdStatus, type GtdStatus } from "@agent-resume/core/extension";
 
-export const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const;
-export type GtdStatus = (typeof GTD_STATUSES)[number];
+export { GTD_STATUSES, isGtdStatus, type GtdStatus };
 
 interface SessionGtdRow {
   provider: string;
   agent_session_id: string;
   status: string;
-}
-
-export function isGtdStatus(value: string): value is GtdStatus {
-  return (GTD_STATUSES as readonly string[]).includes(value);
 }
 
 export function sessionGtdKey(session: Pick<AgentSession, "provider" | "id">): string {

@@ -11,9 +11,11 @@ export function homesFromLoadOptions(options: HistoryLoadOptions): RenameHomes {
     claudeHome: options.claudeHome,
     antigravityHome: options.antigravityHome,
     grokHome: options.grokHome,
-    almaDataDir: options.almaDataDir,
     opencodeHome: options.opencodeHome,
-    piHome: options.piHome
+    piHome: options.piHome,
+    primeHome: options.primeHome,
+    cursorHome: options.cursorHome,
+    cursorIdeUserDataHome: options.cursorIdeUserDataHome
   };
 }
 
@@ -31,12 +33,16 @@ export function resolveTranscriptRefs(
       return resolveGrok(session, indexes);
     case "pi":
       return resolvePi(session, indexes);
+    case "prime":
+      return resolvePrime(session, indexes);
     case "agy":
       return resolveAgy(session, indexes);
     case "opencode":
       return resolveOpenCode(session, homes);
-    case "alma":
-      return resolveAlma(session, homes);
+    case "cursor":
+      return { kind: "unavailable", reason: "Cursor CLI transcript refs are synchronized by Core." };
+    case "cursor-ide":
+      return { kind: "unavailable", reason: "Cursor IDE composer headers do not expose conversation bodies." };
     case "chat":
       return resolveAcp(session, homes);
     default:
@@ -86,6 +92,14 @@ function resolvePi(session: AgentSession, indexes: TranscriptIndexes): Transcrip
   return { kind: "jsonl", paths: [file] };
 }
 
+function resolvePrime(session: AgentSession, indexes: TranscriptIndexes): TranscriptRefs {
+  const file = indexes.prime.get(session.id);
+  if (!file) {
+    return { kind: "unavailable", reason: "Prime Agent session jsonl not indexed" };
+  }
+  return { kind: "jsonl", paths: [file] };
+}
+
 function resolveAgy(session: AgentSession, indexes: TranscriptIndexes): TranscriptRefs {
   const paths = uniquePaths(indexes.agy.get(session.id) ?? []);
   if (!paths.length) {
@@ -99,15 +113,6 @@ function resolveOpenCode(session: AgentSession, homes: RenameHomes): TranscriptR
     kind: "sqlite",
     dbPath: path.join(homes.opencodeHome, "opencode.db"),
     dialect: "opencode",
-    sessionId: session.id
-  };
-}
-
-function resolveAlma(session: AgentSession, homes: RenameHomes): TranscriptRefs {
-  return {
-    kind: "sqlite",
-    dbPath: path.join(homes.almaDataDir, "chat_threads.db"),
-    dialect: "alma",
     sessionId: session.id
   };
 }

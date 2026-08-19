@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatManager, refreshAcpChatPanels } from "./acp/acpChatManager";
 import { AcpChatTreeProvider } from "./acp/acpChatTree";
@@ -17,14 +19,12 @@ import {
 import { AgentProvider, AgentSession, HistoryLoadOptions } from "./history";
 import { renameSession } from "./history/rename";
 import { loadRenameHomes } from "./history/rename/homes";
-import { defaultAlmaDataDir } from "./history/alma";
 import { basenameOrPath, compactPath, expandHome } from "./history/pathUtils";
 import { t } from "./i18n";
 import { menuCommand } from "./i18n/menuCommands";
 import { registerLocalizedUiRefreshTargets, refreshAllLocalizedUi } from "./i18n/refresh";
 import { applyUiLocaleContext } from "./i18n/uiLocaleContext";
 import { truncateText } from "./util/dialogText";
-import { openNewAlmaSession } from "./terminal/almaApp";
 import { openCodexAppProject } from "./terminal/codexApp";
 import { openInGhostty, openProjectInGhostty } from "./terminal/ghosttyTerminal";
 import { consumePendingResumeForWorkspace, storePendingResume } from "./terminal/pendingResume";
@@ -67,7 +67,8 @@ import {
   openProjectNoteCommand,
   openSessionNoteCommand,
   renameNoteCommand,
-  revealNoteInOsCommand
+  revealNoteInOsCommand,
+  setNoteGtdStatusCommand
 } from "./notes/noteCommands";
 import { ensureCatalogSchema } from "./catalog/db";
 import { NotesStore } from "./notes/notesStore";
@@ -92,6 +93,7 @@ import { CLI_HANDOFF_TARGETS, handoffCommandId } from "./menu/handoffMenu";
 import { runAutoRename } from "./preview/sessionAssistActions";
 import { openSessionManagerPanel, refreshSessionManagerPanel } from "./manager/sessionManagerPanel";
 import { openSessionPreviewPanel, refreshSessionPreviewPanel } from "./preview/sessionPreviewPanel";
+import { openReportPanel, refreshReportPanel } from "./report/reportPanel";
 import { refreshSessionSearchPanel, searchAndOpenSessions } from "./search/sessionSearch";
 import {
   openSettingsPanel,
@@ -107,7 +109,17 @@ import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
-type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi">;
+type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "cursor">;
+
+function defaultCursorIdeUserDataHome(): string {
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", "Cursor", "User");
+  }
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Cursor", "User");
+  }
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Cursor", "User");
+}
 
 let extensionContext: vscode.ExtensionContext | undefined;
 let projectAliasStore: ProjectAliasStore | undefined;
@@ -120,7 +132,7 @@ let notesTreeView: vscode.TreeView<import("./notes/notesTree").NotesTreeNode> | 
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   void promptReloadIfContributionsStale(context);
-  const tree = new SessionTreeProvider();
+  const tree = new SessionTreeProvider(vscode.Uri.joinPath(context.extensionUri, "resources", "cursor.svg"));
   const acpTree = new AcpChatTreeProvider();
   const catalogDbPath = loadCatalogSettings().dbPath;
   projectAliasStore = new ProjectAliasStore(catalogDbPath);
@@ -129,6 +141,37 @@ export function activate(context: vscode.ExtensionContext): void {
   gtdTree = new GtdTreeProvider(sessionGtdStore);
   notesTree = new NotesTreeProvider(notesStore);
   const acpChatManager = new AcpChatManager(context, () => refreshAcpChats(acpTree, false));
+  let acpStoreWatcher: vscode.Disposable | undefined;
+  let acpStoreWatcherHome: string | undefined;
+  let acpStoreRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const refreshAcpStoreFromDisk = () => {
+    if (acpStoreRefreshTimer) {
+      clearTimeout(acpStoreRefreshTimer);
+    }
+    acpStoreRefreshTimer = setTimeout(() => {
+      acpStoreRefreshTimer = undefined;
+      void refreshAcpChats(acpTree, false);
+      void acpChatManager.refreshExternalStore();
+    }, 200);
+  };
+  const replaceAcpStoreWatcher = () => {
+    const panelHome = panelHomeFromConfig();
+    if (acpStoreWatcher && acpStoreWatcherHome === panelHome) {
+      return;
+    }
+    acpStoreWatcher?.dispose();
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(path.join(panelHome, "acp")), "**/*.jsonl")
+    );
+    acpStoreWatcher = vscode.Disposable.from(
+      watcher,
+      watcher.onDidCreate(refreshAcpStoreFromDisk),
+      watcher.onDidChange(refreshAcpStoreFromDisk),
+      watcher.onDidDelete(refreshAcpStoreFromDisk)
+    );
+    acpStoreWatcherHome = panelHome;
+  };
+  replaceAcpStoreWatcher();
   tree.setFavoriteProjects(loadFavoriteProjects(context));
   tree.setSectionOrder(loadSectionOrder(context));
   tree.setProjectSessionSortMode((projectPath) => getProjectSessionSortMode(context, projectPath));
@@ -159,6 +202,14 @@ export function activate(context: vscode.ExtensionContext): void {
     gtdTreeView,
     notesTreeView,
     { dispose: () => acpChatManager.dispose() },
+    {
+      dispose: () => {
+        if (acpStoreRefreshTimer) {
+          clearTimeout(acpStoreRefreshTimer);
+        }
+        acpStoreWatcher?.dispose();
+      }
+    },
     vscode.commands.registerCommand("agentResume.refresh", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshGtd", () => refresh(tree, true)),
     vscode.commands.registerCommand("agentResume.refreshAcpChats", () => refreshAcpChats(acpTree, true)),
@@ -169,6 +220,9 @@ export function activate(context: vscode.ExtensionContext): void {
       openSessionManagerPanel(context, tree, () => buildHistoryLoadOptions(vscode.workspace.getConfiguration("agentResume")), () =>
         refresh(tree, false)
       )
+    ),
+    vscode.commands.registerCommand("agentResume.openReport", () =>
+      openReportPanel(context, tree, () => refresh(tree, false), acpChatManager)
     ),
     ...menuCommand("agentResume.setSessionGtdStatus", (nodeOrSession?: unknown) =>
       setSessionGtdStatusCommand(tree, nodeOrSession)
@@ -239,7 +293,7 @@ export function activate(context: vscode.ExtensionContext): void {
       openNewSession(tree, node, "opencode", context)
     ),
     ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
-    ...menuCommand("agentResume.newAlmaSession", (node?: unknown) => openNewAlmaSessionFromTree(tree, node)),
+    ...menuCommand("agentResume.newPrimeSession", (node?: unknown) => openNewSession(tree, node, "prime", context)),
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
@@ -318,6 +372,12 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       void openNoteCommand(notesStore, notesTree, node);
+    }),
+    ...menuCommand("agentResume.setNoteGtdStatus", (node?: unknown) => {
+      if (!notesStore || !notesTree) {
+        return;
+      }
+      void setNoteGtdStatusCommand(notesStore, notesTree, node, () => refreshNotesUi(tree, true));
     }),
     ...menuCommand("agentResume.deleteNote", (node?: unknown) => {
       if (!notesStore || !notesTree) {
@@ -423,6 +483,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration("agentResume.codexIdePanelResume")) {
         void applyCodexIdePanelContext();
       }
+      if (event.affectsConfiguration("agentResume.panelHome")) {
+        replaceAcpStoreWatcher();
+      }
       if (event.affectsConfiguration("agentResume.uiLanguage")) {
         void refreshAllLocalizedUi(false);
         if (isOutputLanguageFollowingUi()) {
@@ -474,6 +537,7 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshSessionSearch: refreshSessionSearchPanel,
     refreshSessionPreview: refreshSessionPreviewPanel,
     refreshSessionManager: refreshSessionManagerPanel,
+    refreshReportPanel,
     refreshAcpChatPanels
   });
 }
@@ -527,23 +591,27 @@ async function refreshAcpChats(acpTree: AcpChatTreeProvider, showToast: boolean)
 function buildHistoryLoadOptions(
   config: vscode.WorkspaceConfiguration
 ): HistoryLoadOptions {
+  const configuredCursorIdeUserDataHome = config.get<string>("cursorIdeUserDataHome", "").trim();
   return {
     panelHome: panelHomeFromConfig(),
     codexHome: expandHome(config.get<string>("codexHome", "~/.codex")),
     claudeHome: expandHome(config.get<string>("claudeHome", "~/.claude")),
     antigravityHome: expandHome(config.get<string>("antigravityHome", "~/.gemini")),
     grokHome: expandHome(config.get<string>("grokHome", "~/.grok")),
-    almaDataDir: expandHome(config.get<string>("almaDataDir", defaultAlmaDataDir())),
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
+    primeHome: expandHome(config.get<string>("primeHome", "~/.prime/agent")),
+    cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
+    cursorIdeUserDataHome: configuredCursorIdeUserDataHome
+      ? expandHome(configuredCursorIdeUserDataHome)
+      : defaultCursorIdeUserDataHome(),
     maxItems: config.get<number>("maxItems", 10_000),
     showArchivedCodex: config.get<boolean>("showArchivedCodex", false),
     showArchivedOpenCode: config.get<boolean>("showArchivedOpenCode", false),
     showSubagentCodex: config.get<boolean>("showSubagentCodex", false),
     showSubagentGrok: config.get<boolean>("showSubagentGrok", false),
-    hideCronAlma: config.get<boolean>("hideCronAlma", true),
-    hideChannelAlma: config.get<boolean>("hideChannelAlma", true),
-    showIncognitoAlma: config.get<boolean>("showIncognitoAlma", false)
+    showArchivedCursorIde: config.get<boolean>("showArchivedCursorIde", false),
+    showSubagentCursorIde: config.get<boolean>("showSubagentCursorIde", false)
   };
 }
 
@@ -812,6 +880,16 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         provider: "pi" as const
       },
       {
+        label: t("quickpick.newSessionPrimeLabel"),
+        description: t("quickpick.newSessionPrimeDescription"),
+        provider: "prime" as const
+      },
+      {
+        label: "Cursor CLI",
+        description: "Start a Cursor agent session in the selected workspace",
+        provider: "cursor" as const
+      },
+      {
         label: t("quickpick.newSessionCodexAppLabel"),
         description: t("quickpick.newSessionCodexAppDescription"),
         provider: "codexApp" as const
@@ -960,18 +1038,6 @@ function openNewSession(
   openNewSessionTerminal(provider, projectPath, context);
 }
 
-async function openNewAlmaSessionFromTree(tree: SessionTreeProvider, node: unknown): Promise<void> {
-  const projectPath = tree.getProjectFromNode(node);
-  if (!projectPath) {
-    return;
-  }
-
-  const almaDataDir = expandHome(
-    vscode.workspace.getConfiguration("agentResume").get<string>("almaDataDir", defaultAlmaDataDir())
-  );
-  await openNewAlmaSession(projectPath, almaDataDir);
-}
-
 function openNewCodexAppSession(tree: SessionTreeProvider, node: unknown): void {
   const projectPath = tree.getProjectFromNode(node);
   if (!projectPath) {
@@ -1025,11 +1091,7 @@ function applyProjectAndGtdResolvers(
   tree.setGtdRawStatusResolver((session) => sessionGtdStore?.get(session));
   tree.setHasSessionNoteResolver((session) => notesStore?.hasSessionNote(session) ?? false);
   tree.setHasProjectNoteResolver((projectPath) => notesStore?.hasProjectNote(projectPath) ?? false);
-  gtdTreeProvider.setSessionTreeOptions({
-    projectDisplayName: (projectPath) => tree.getProjectDisplayName(projectPath),
-    gtdStatusResolver: gtdResolver,
-    hasSessionNoteResolver: (session) => notesStore?.hasSessionNote(session) ?? false
-  });
+  gtdTreeProvider.setSessionTreeOptions(tree.getSessionTreeItemOptions());
 }
 
 function refreshNotesUi(tree: SessionTreeProvider, reload = false): void {
@@ -1115,9 +1177,11 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "claude" ||
         value.provider === "agy" ||
         value.provider === "grok" ||
-        value.provider === "alma" ||
         value.provider === "opencode" ||
         value.provider === "pi" ||
+        value.provider === "prime" ||
+        value.provider === "cursor" ||
+        value.provider === "cursor-ide" ||
         value.provider === "chat") &&
       "id" in value
   );

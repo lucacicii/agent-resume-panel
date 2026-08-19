@@ -15,6 +15,12 @@ export interface LlmSettings {
   maxContextChars?: number;
   /** Timeout for one tool-LLM request; defaults to five minutes. */
   requestTimeoutMs?: number;
+  /**
+   * Send `thinking: { type: "disabled" }` on chat completions. Reasoning models
+   * (DeepSeek V3.x/4, Qwen, GLM, …) otherwise burn the whole max_tokens budget on
+   * thinking and return an empty response on deterministic batch tasks (digests, GTD).
+   */
+  disableThinking?: boolean;
 }
 
 /**
@@ -25,6 +31,7 @@ export interface ChatLlmSettings {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  disableThinking?: boolean;
 }
 
 export interface EmbeddingSettings {
@@ -36,15 +43,129 @@ export interface EmbeddingSettings {
 }
 
 export type DesktopTheme = "system" | "light" | "dark";
+/** Official visual theme packages bundled with the Desktop renderer. */
+export type DesktopVisualThemeId = "classic" | "cyberpunk" | "dos";
+export const DESKTOP_VISUAL_THEME_IDS: readonly DesktopVisualThemeId[] = [
+  "classic",
+  "cyberpunk",
+  "dos"
+] as const;
+/** Decorative effects preference. The OS reduced-motion preference always wins at runtime. */
+export type DesktopThemeEffects = "full" | "reduced";
+
+export type DesktopBrowserPartitionMode = "per-project" | "shared";
+export type DesktopBrowserDefaultSurface = "workbench" | "window" | "last-used";
+export type DesktopBrowserSnapshotMode = "a11y" | "dom-lite" | "screenshot";
+
+export type DesktopBrowserPolicy = {
+  allowHosts: string[];
+  blockHosts: string[];
+  allowDownloads: boolean;
+  allowPopups: boolean;
+  snapshotMode: DesktopBrowserSnapshotMode;
+  maxTabs: number;
+};
+
+export type DesktopBrowserSettings = {
+  enabled: boolean;
+  partitionMode: DesktopBrowserPartitionMode;
+  defaultPolicy: DesktopBrowserPolicy;
+  /** Inject agent-resume-browser into ACP session/new + restore (P1). */
+  injectIntoAcpSessions: boolean;
+  /**
+   * Register `agent-resume-browser` stdio proxy for external CLI/TUI agents
+   * (Claude Code, Codex, …). Proxy talks to Desktop's loopback browser MCP;
+   * requires Desktop running. Default true so Workbench TUI sessions can use the pane.
+   */
+  exposeExternalMcp: boolean;
+  /** status/snapshot/screenshot/wait auto-allow. */
+  autoAllowReadTools: boolean;
+  defaultSurface: DesktopBrowserDefaultSurface;
+  restoreWindowBounds: boolean;
+  chromeCookieImport: {
+    enabled: boolean;
+    maxHostsPerImport: number;
+    allowSessionCookies: boolean;
+  };
+};
+
+export const DEFAULT_DESKTOP_BROWSER_SETTINGS: DesktopBrowserSettings = {
+  enabled: true,
+  partitionMode: "per-project",
+  injectIntoAcpSessions: true,
+  exposeExternalMcp: true,
+  autoAllowReadTools: true,
+  defaultSurface: "workbench",
+  restoreWindowBounds: true,
+  chromeCookieImport: {
+    enabled: false,
+    maxHostsPerImport: 5,
+    allowSessionCookies: true
+  },
+  defaultPolicy: {
+    allowHosts: [],
+    blockHosts: ["*.paypal.com", "*.alipay.com", "*.stripe.com"],
+    allowDownloads: false,
+    allowPopups: false,
+    snapshotMode: "a11y",
+    maxTabs: 6
+  }
+};
 
 export interface DesktopSettings {
   windowWidth?: number;
   windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
+  /** Theme package controlling the visual language; defaults to Classic. */
+  visualTheme?: DesktopVisualThemeId;
+  /** User preference for decorative effects; system reduced motion overrides it. */
+  themeEffects?: DesktopThemeEffects;
+  /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
+  alwaysAllowAgentWriteOperations?: boolean;
+  /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
+  alwaysAllowAgentNonDestructiveOperations?: boolean;
+  /** In-app agent browser (Workbench + standalone window). */
+  browser?: DesktopBrowserSettings;
+}
+
+/** Notes-specific desktop behavior. */
+export interface NotesSettings {
+  /** Global shortcut used to create a new Library Note window. Empty disables it. */
+  newStandaloneNoteShortcut?: string;
+  /** Global shortcut used to open a recent-notes picker as a floating window. Empty disables it. */
+  recentStandaloneNoteShortcut?: string;
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
+/** Built-in embedded xterm color presets (desktop Workbench). */
+export type WorkbenchTerminalThemeId =
+  | "follow-app"
+  | "default-dark"
+  | "default-light"
+  | "solarized-dark"
+  | "solarized-light"
+  | "one-dark"
+  | "dracula";
+export const WORKBENCH_TERMINAL_THEME_IDS: readonly WorkbenchTerminalThemeId[] = [
+  "follow-app",
+  "default-dark",
+  "default-light",
+  "solarized-dark",
+  "solarized-light",
+  "one-dark",
+  "dracula"
+] as const;
+/**
+ * Embedded xterm accelerated renderer.
+ * - webgl: prefer WebGL, fall back to Canvas on failure/context loss (default)
+ * - canvas: force Canvas 2D (more stable for some CJK / GPU drivers)
+ */
+export type WorkbenchTerminalRenderer = "webgl" | "canvas";
+export const WORKBENCH_TERMINAL_RENDERERS: readonly WorkbenchTerminalRenderer[] = [
+  "webgl",
+  "canvas"
+] as const;
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
 export type WorkbenchCmdTAction = "newSession" | "newTerminal";
@@ -101,15 +222,70 @@ export interface WorkbenchEditorSettings {
   autoSaveDelayMs?: WorkbenchEditorAutoSaveDelayMs;
 }
 
+/**
+ * Workbench "New session" target.
+ * CLI and ACP share provider names; the channel prefix disambiguates launch path.
+ * Examples: `cli:codex`, `acp:claude`.
+ */
+export type WorkbenchNewSessionTarget = string;
+
+export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
+
+export const ACP_AGENT_PROVIDERS: readonly AcpAgentProvider[] = [
+  "claude",
+  "codex",
+  "grok",
+  "opencode",
+  "pi",
+  "prime"
+] as const;
+
+export type AcpAutoApprovePermissions = "ask" | "allowAll";
+
+export interface AcpAgentLaunchConfig {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+/** Shared panel-home ACP settings (Desktop Workbench; optional for extension later). */
+export interface AcpSettings {
+  autoApprovePermissions?: AcpAutoApprovePermissions;
+  agents?: Partial<Record<AcpAgentProvider, AcpAgentLaunchConfig>>;
+  /**
+   * Experimental: map Grok Build proprietary ACP session meta into model + thinking toolbar options.
+   * Default false (opt-in). Disable when official ACP configOptions/modes cover Grok.
+   */
+  experimentalGrokVendorUi?: boolean;
+}
+
 export interface WorkbenchSettings {
   /** Scratch directory for temporary new sessions. Default: {panelHome}/.desktop/scratch */
   scratchDir?: string;
+  /**
+   * Legacy CLI-only default agent. Prefer `defaultNewSessionTarget`.
+   * Still written for older readers as the CLI provider when target is CLI.
+   */
   defaultNewSessionProvider?: AgentProvider;
+  /**
+   * Composite default for Workbench new session: `cli:{provider}` or `acp:{provider}`.
+   * An explicit empty string means prompt for a target each time.
+   * When unset, falls back to `cli:{defaultNewSessionProvider || "codex"}`.
+   */
+  defaultNewSessionTarget?: WorkbenchNewSessionTarget;
+  /** Launch normal CLI Workbench sessions with provider-specific YOLO flags. Default false. */
+  newSessionYolo?: boolean;
   /** Workbench ⌘T / Ctrl+T shortcut action. Default newTerminal. */
   cmdTAction?: WorkbenchCmdTAction;
   /** Editor used by the workbench project context menu. Default auto. */
   projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;
+  /** Embedded xterm color preset. `follow-app` follows the active visual theme. */
+  terminalTheme?: WorkbenchTerminalThemeId;
+  /** Workbench CodeMirror scheme. `follow-app` is the default. */
+  editorTheme?: "follow-app" | "light" | "dark";
+  /** Embedded xterm GPU renderer. Default webgl (Canvas fallback on failure). */
+  terminalRenderer?: WorkbenchTerminalRenderer;
   /** How external (system) terminal starts a resumed session. Default executeCommand. */
   externalLaunchMode?: GhosttyLaunchMode;
   externalAutoPasteDelayMs?: number;
@@ -123,6 +299,8 @@ export interface WorkbenchSettings {
   gitCommitMessageStyle?: CommitMessageStyle;
   /** Format rules used when gitCommitMessageStyle is custom. */
   gitCommitCustomInstructions?: string;
+  /** Session transcript markdown/plain body font size in pixels (11–24). Default 14. */
+  transcriptFontSize?: number;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
   /**
@@ -140,9 +318,14 @@ export interface AgentHomesSettings {
   claudeHome?: string;
   antigravityHome?: string;
   grokHome?: string;
-  almaDataDir?: string;
   opencodeHome?: string;
   piHome?: string;
+  /** Prime Agent data root, containing sessions/ and AGENTS.md. */
+  primeHome?: string;
+  /** Cursor CLI data root, containing chats/ and projects/. */
+  cursorHome?: string;
+  /** Cursor IDE User data directory. Empty uses the platform default. */
+  cursorIdeUserDataHome?: string;
 }
 
 export type SessionSyncStalePolicy = "off" | "purge";
@@ -152,9 +335,8 @@ export interface AgentSessionSyncFilters {
   showArchivedOpenCode?: boolean;
   showSubagentCodex?: boolean;
   showSubagentGrok?: boolean;
-  hideCronAlma?: boolean;
-  hideChannelAlma?: boolean;
-  showIncognitoAlma?: boolean;
+  showArchivedCursorIde?: boolean;
+  showSubagentCursorIde?: boolean;
 }
 
 export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
@@ -167,8 +349,10 @@ export interface ReportSettings {
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
   includeTranscripts?: boolean;
-  /** Max sessions included in one daily digest. Default 40. */
+  /** @deprecated Report generation now covers every session. */
   maxSessionsPerDigest?: number;
+  /** Maximum estimated LLM calls before manual approval is required. Default 100. */
+  maxDigestLlmCalls?: number;
   /** Max chars of transcript excerpt per session. Default 2500. */
   snippetMaxChars?: number;
   /** Local hour 0–23 for automatic daily job. Default 22. */
@@ -177,6 +361,74 @@ export interface ReportSettings {
   scheduleWeeklyHour?: number;
   /** Local hour on day 1 for previous-month job. Default 9. */
   scheduleMonthlyHour?: number;
+}
+
+/**
+ * Desktop-only: auto-generate / refresh session_summary after sync.
+ * Delays are relative to each session's last updated_at_ms (quiet period).
+ */
+export interface SessionSummaryAutoSettings {
+  /** Master switch. Default true (still no-ops without tool LLM). */
+  enabled?: boolean;
+  /** Minutes after last update before re-summarizing a session that already has a summary. Default 30. */
+  staleDelayMinutes?: number;
+  /** Minutes after last update before first summary when missing. Default 0. */
+  missingDelayMinutes?: number;
+  /** Parallel LLM calls per tick. Default 1. */
+  concurrency?: number;
+  /** Max sessions to summarize per scan. Default 5. */
+  maxPerTick?: number;
+}
+
+/**
+ * Desktop-only: background transcript-chunk embeddings (independent of session_summary).
+ * Quiet delay is relative to each session's updated_at_ms.
+ */
+export interface SessionTranscriptIndexSettings {
+  /** Master switch. Default true (no-ops without embedding config). */
+  enabled?: boolean;
+  /** Minutes after last session update before (re)indexing transcript. Default 15. */
+  quietDelayMinutes?: number;
+  /** Parallel sessions per tick. Default 1. */
+  concurrency?: number;
+  /** Max sessions to index per scan. Default 3. */
+  maxPerTick?: number;
+}
+
+/**
+ * Desktop-only: background session_embeddings for rows that already have session_summary.
+ * Does not generate summaries — only embeds title+summary text.
+ */
+export interface SessionEmbeddingIndexSettings {
+  /** Master switch. Default true (no-ops without embedding config). */
+  enabled?: boolean;
+  /**
+   * Minutes after session_summary_at_ms (fallback updated_at) before (re)embedding.
+   * Default 0 so existing summaries backfill immediately.
+   */
+  quietDelayMinutes?: number;
+  /** Parallel embed jobs per tick. Default 2. */
+  concurrency?: number;
+  /** Max sessions to embed per scan. Default 5. */
+  maxPerTick?: number;
+}
+
+/**
+ * Desktop-only: auto-tagging, hit tracking, and weight decay for Sessions and Notes.
+ */
+export interface AutoTaggingSettings {
+  /** Master switch. Default true. */
+  enabled?: boolean;
+  /** Half-life for exponential weight decay in days. Default 7. */
+  halfLifeDays?: number;
+  /** Weight threshold below which tags are marked obsolete. Default 0.1. */
+  pruneThreshold?: number;
+  /** Max tags extracted per item. Default 6. */
+  maxTagsPerItem?: number;
+  /** Weight boost added on recall / search hit. Default 0.5. */
+  hitBoost?: number;
+  /** Multi-entity consensus boost coefficient. Default 0.5. */
+  consensusFactor?: number;
 }
 
 export interface PanelSettings {
@@ -190,10 +442,21 @@ export interface PanelSettings {
   chatLlm?: ChatLlmSettings;
   embedding: EmbeddingSettings;
   report?: ReportSettings;
+  /** Auto session_summary generation (Desktop main process). */
+  sessionSummaryAuto?: SessionSummaryAutoSettings;
+  /** Auto session_embeddings for sessions that already have summaries. */
+  sessionEmbeddingIndex?: SessionEmbeddingIndexSettings;
+  /** Auto transcript-chunk index (Desktop main; independent of summaries). */
+  sessionTranscriptIndex?: SessionTranscriptIndexSettings;
+  /** Auto tagging and weight decay for Sessions and Notes. */
+  autoTagging?: AutoTaggingSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
+  notes?: NotesSettings;
   workbench?: WorkbenchSettings;
+  /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
+  acp?: AcpSettings;
   ghosttyExecutable?: string;
   ghosttyLaunchMode?: GhosttyLaunchMode;
   ghosttyAutoPasteDelayMs?: number;
@@ -206,7 +469,8 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     model: "gpt-4o-mini",
     outputLanguage: "auto",
     maxContextChars: 120_000,
-    requestTimeoutMs: 300_000
+    requestTimeoutMs: 300_000,
+    disableThinking: false
   },
   embedding: {
     model: "text-embedding-3-small"
@@ -214,11 +478,38 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   report: {
     enabled: false,
     includeTranscripts: true,
-    maxSessionsPerDigest: 40,
+    maxDigestLlmCalls: 100,
     snippetMaxChars: 2500,
     scheduleDailyHour: 22,
     scheduleWeeklyHour: 9,
     scheduleMonthlyHour: 9
+  },
+  sessionSummaryAuto: {
+    enabled: true,
+    staleDelayMinutes: 30,
+    missingDelayMinutes: 0,
+    concurrency: 1,
+    maxPerTick: 5
+  },
+  sessionEmbeddingIndex: {
+    enabled: true,
+    quietDelayMinutes: 0,
+    concurrency: 2,
+    maxPerTick: 5
+  },
+  sessionTranscriptIndex: {
+    enabled: true,
+    quietDelayMinutes: 15,
+    concurrency: 1,
+    maxPerTick: 3
+  },
+  autoTagging: {
+    enabled: true,
+    halfLifeDays: 7,
+    pruneThreshold: 0.1,
+    maxTagsPerItem: 6,
+    hitBoost: 0.5,
+    consensusFactor: 0.5
   },
   sessionSync: {
     maxItems: 10_000,
@@ -227,15 +518,19 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     showArchivedOpenCode: false,
     showSubagentCodex: false,
     showSubagentGrok: false,
-    hideCronAlma: true,
-    hideChannelAlma: true,
-    showIncognitoAlma: false
+    showArchivedCursorIde: false,
+    showSubagentCursorIde: false
   },
   workbench: {
     projectEditor: "auto",
+    newSessionYolo: false,
+    terminalTheme: "follow-app",
+    editorTheme: "follow-app",
+    terminalRenderer: "webgl",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
+    transcriptFontSize: 14,
     editor: {
       editable: true,
       fontSize: 13,
@@ -245,6 +540,15 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     }
   },
   desktop: {
-    theme: "system"
+    theme: "system",
+    visualTheme: "classic",
+    themeEffects: "full",
+    alwaysAllowAgentWriteOperations: false,
+    alwaysAllowAgentNonDestructiveOperations: false,
+    browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] }, chromeCookieImport: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport } }
+  },
+  notes: {
+    newStandaloneNoteShortcut: "CommandOrControl+D",
+    recentStandaloneNoteShortcut: "CommandOrControl+Shift+D"
   }
 };

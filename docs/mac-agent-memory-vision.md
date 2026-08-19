@@ -1,8 +1,9 @@
 # Mac 端 Agent Session OS + Memory 系统
 
-> 产品 / 架构讨论结论（the product owner × 助手）  
+> 产品 / 架构讨论结论  
 > 性质：愿景与决策文档，**非实现规格**。  
-> 相关现状：本仓库 VS Code 扩展 **Agent Resume Panel**（local-first 多 CLI 会话管理）。
+> 相关现状：本仓库 VS Code 扩展 **Agent Resume Panel**（local-first 多 CLI 会话管理）。  
+> 相关实现向设计：Workbench 内嵌可被 LLM 操作的浏览器见 [`docs/design/browser-pane.md`](design/browser-pane.md)（2026-08-14 接受方向；v1 登录态 = agent partition 内手动登录，不做 Chrome Cookie 自动同步）。
 
 ---
 
@@ -12,7 +13,7 @@
 
 | 能力 | 现状 |
 |------|------|
-| 多 CLI 会话统一浏览 | Codex / Claude / AGY / Grok / OpenCode / Pi / Alma |
+| 多 CLI 会话统一浏览 | Codex / Claude / AGY / Grok / OpenCode / Pi |
 | 索引库 | `~/.agent-resume-panel/catalog.db`（sessions、GTD、notes 索引、summary 等） |
 | 对话全文 | 仍在各 Agent **原生存储**（如 `~/.codex`、`~/.claude`） |
 | 单次摘要 | LLM Assist → `session_summary`（按需、单 session） |
@@ -49,7 +50,7 @@
 └─────────────────────────────────────────────────────────┘
          │ resume / handoff / spawn
          ▼
-   Codex · Claude · Grok · OpenCode · Pi · Alma · …
+   Codex · Claude · Grok · OpenCode · Pi · …
 ```
 
 ### 2.2 是否需要「自己的 Agent」？
@@ -352,7 +353,7 @@ agent-resume-panel/
 
 ## 10. 总结
 
-the product owner 要的是：
+产品目标是：
 
 **Electron（macOS）Session 总控 + 日/周/月 Memory（OpenAI 兼容 embedding 向量检索）+ Meta-Agent；与 VS Code 扩展共享 `~/.agent-resume-panel`（`settings.json`）。**
 

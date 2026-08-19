@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopRoot = path.join(root, "apps", "desktop");
 const desktopChangelogPath = path.join(desktopRoot, "CHANGELOG.md");
-const releaseRepo = "thunder-luc/agent-resume-desktop-doc";
+const releaseRepo = "thunder-luc/agent-resume-panel";
 
 function usage() {
   console.log(`Usage: node scripts/release-desktop-mac.mjs [options]
@@ -116,29 +116,35 @@ function readDesktopVersion() {
   return pkg.version;
 }
 
-function dmgPathForVersion(version) {
-  return path.join(desktopRoot, "release", `Agent Resume-${version}.dmg`);
+function dmgPathsForVersion(version) {
+  return ["arm64", "x64"].map(
+    (arch) => path.join(desktopRoot, "release", `Agent Resume-${version}-${arch}.dmg`)
+  );
 }
 
 function ensureGhAuth(dryRun) {
   run("gh", ["auth", "status"], { dryRun });
 }
 
-function ensureDmg(version, build, dryRun) {
-  const dmgPath = dmgPathForVersion(version);
-  if (fs.existsSync(dmgPath)) {
-    return dmgPath;
+function ensureDmgs(version, build, dryRun) {
+  const dmgPaths = dmgPathsForVersion(version);
+  const existing = dmgPaths.filter((dmgPath) => fs.existsSync(dmgPath));
+  if (existing.length === dmgPaths.length) {
+    return dmgPaths;
   }
   if (!build) {
     throw new Error(
-      `Missing DMG: ${dmgPath}\nRebuild with --build or run: pnpm run pack:desktop`
+      `Missing DMGs: ${dmgPaths.join(", ")}\nRebuild with --build or run: pnpm run pack:desktop`
     );
   }
   run("pnpm", ["run", "pack:desktop"], { dryRun, cwd: root });
-  if (!dryRun && !fs.existsSync(dmgPath)) {
-    throw new Error(`Packaging finished but DMG was not found: ${dmgPath}`);
+  if (!dryRun) {
+    const missing = dmgPaths.filter((dmgPath) => !fs.existsSync(dmgPath));
+    if (missing.length > 0) {
+      throw new Error(`Packaging finished but DMGs were not found: ${missing.join(", ")}`);
+    }
   }
-  return dmgPath;
+  return dmgPaths;
 }
 
 function releaseExists(tag, dryRun) {
@@ -280,10 +286,10 @@ function uploadAsset(version, dmgPath, dryRun) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const version = readDesktopVersion();
-  const dmgPath = ensureDmg(version, options.build, options.dryRun);
+  const dmgPaths = ensureDmgs(version, options.build, options.dryRun);
 
   console.log(`Desktop version: ${version}`);
-  console.log(`DMG: ${dmgPath}`);
+  console.log(`DMGs: ${dmgPaths.join(", ")}`);
   console.log(`Target repo: ${releaseRepo}`);
 
   ensureGhAuth(options.dryRun);
@@ -292,7 +298,9 @@ function main() {
     console.log(`Release notes: ${notesFile}`);
     createRelease(version, notesFile, options.dryRun);
   }
-  uploadAsset(version, dmgPath, options.dryRun);
+  for (const dmgPath of dmgPaths) {
+    uploadAsset(version, dmgPath, options.dryRun);
+  }
 
   console.log(`\nRelease ready: https://github.com/${releaseRepo}/releases/tag/v${version}`);
 }

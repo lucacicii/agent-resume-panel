@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -7,7 +7,7 @@ import { packageVsix } from "./vsix-output.mjs";
 const extensionRoot = join(import.meta.dirname, "..");
 const repoRoot = join(extensionRoot, "..", "..");
 
-execSync("pnpm run compile", { cwd: repoRoot, stdio: "inherit" });
+execFileSync("pnpm", ["run", "compile"], { cwd: repoRoot, stdio: "inherit" });
 
 const openvsxPkg = JSON.parse(readFileSync(join(extensionRoot, "package.json"), "utf8"));
 console.log("Building Open VSX version...");

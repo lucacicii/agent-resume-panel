@@ -38,7 +38,7 @@ export async function runHandoff(
       ? await loadCliHandoffContext(source.session)
       : await loadAcpHandoffContext(source.record, options.panelHome);
 
-  const maxBriefTokens = readAgentResumeSetting("handoff.maxBriefTokens", 2500);
+  const maxBriefTokens = readAgentResumeSetting("handoff.maxBriefTokens", 4000);
   const attachRecentVerbatim = readAgentResumeSetting("handoff.attachRecentVerbatim", 5);
   const brief = await generateHandoffBrief(handoffContext, llmConfig, maxBriefTokens);
   const composedMessage = composeHandoffMessage({

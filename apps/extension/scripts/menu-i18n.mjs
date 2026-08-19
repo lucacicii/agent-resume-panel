@@ -23,6 +23,7 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.deleteSessionNote", key: "menu.session.deleteNote" },
   { base: "agentResume.openProjectNote", key: "menu.project.openNote" },
   { base: "agentResume.deleteProjectNote", key: "menu.project.deleteNote" },
+  { base: "agentResume.setNoteGtdStatus", key: "menu.notes.setGtdStatus" },
   { base: "agentResume.openNote", key: "menu.notes.open" },
   { base: "agentResume.renameNote", key: "menu.notes.rename" },
   { base: "agentResume.deleteNote", key: "menu.notes.delete" },
@@ -54,7 +55,6 @@ export const CONTEXT_MENU_COMMAND_SPECS = [
   { base: "agentResume.newGrokSession", key: "menu.project.newGrokSession" },
   { base: "agentResume.newOpenCodeSession", key: "menu.project.newOpenCodeSession" },
   { base: "agentResume.newPiSession", key: "menu.project.newPiSession" },
-  { base: "agentResume.newAlmaSession", key: "menu.project.newAlmaSession" },
   { base: "agentResume.newCodexAppSession", key: "menu.project.newCodexAppSession" }
 ];
 

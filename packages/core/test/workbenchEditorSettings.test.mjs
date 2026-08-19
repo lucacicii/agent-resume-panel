@@ -10,6 +10,7 @@ test("workbench editor settings keep backward-compatible defaults", async () => 
   try {
     await saveSettings({ ...structuredClone(DEFAULT_SETTINGS), panelHome, workbench: {} }, panelHome);
     const loaded = await loadSettings(panelHome);
+    assert.equal(loaded.workbench.newSessionYolo, false);
     assert.deepEqual(loaded.workbench.editor, {
       editable: true,
       fontSize: 13,
@@ -17,6 +18,24 @@ test("workbench editor settings keep backward-compatible defaults", async () => 
       tabSize: 4,
       autoSaveDelayMs: 600
     });
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("workbench new-session YOLO preference persists", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-yolo-settings-"));
+  try {
+    await saveSettings(
+      {
+        ...structuredClone(DEFAULT_SETTINGS),
+        panelHome,
+        workbench: { newSessionYolo: true }
+      },
+      panelHome
+    );
+    const loaded = await loadSettings(panelHome);
+    assert.equal(loaded.workbench.newSessionYolo, true);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

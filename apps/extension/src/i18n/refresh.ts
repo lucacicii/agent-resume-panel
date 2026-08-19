@@ -11,6 +11,7 @@ export interface LocalizedUiRefreshTargets {
   refreshSessionSearch?: () => Promise<void>;
   refreshSessionPreview?: () => Promise<void>;
   refreshSessionManager?: () => Promise<void>;
+  refreshReportPanel?: () => Promise<void>;
   refreshAcpChatPanels?: () => Promise<void>;
 }
 
@@ -33,6 +34,7 @@ export async function refreshAllLocalizedUi(showToast = true): Promise<void> {
     targets.refreshSessionSearch?.(),
     targets.refreshSessionPreview?.(),
     targets.refreshSessionManager?.(),
+    targets.refreshReportPanel?.(),
     targets.refreshAcpChatPanels?.()
   ]);
 

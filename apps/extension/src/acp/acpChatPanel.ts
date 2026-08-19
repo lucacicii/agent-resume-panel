@@ -6,6 +6,7 @@ import { AcpAgentConnection, AcpPromptBlock } from "./agentConnection";
 import { subscribeSessionUpdates, clearSessionUpdateListeners } from "./sessionUpdateBus";
 import {
   appendAcpMessage,
+  getAcpRecord,
   IncomingAcpImage,
   loadAcpMessages,
   readAcpImageBase64,
@@ -67,6 +68,7 @@ export class AcpChatPanel {
   private historyReplayDone?: () => void;
   private readonly initialPrompt?: string;
   private initialPromptSent = false;
+  private pendingExternalStoreRefresh = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -111,6 +113,14 @@ export class AcpChatPanel {
     this.postInit();
   }
 
+  async refreshExternalStore(): Promise<void> {
+    if (this.isRunning || this.isConnecting) {
+      this.pendingExternalStoreRefresh = true;
+      return;
+    }
+    await this.reloadExternalStore();
+  }
+
   dispose(): void {
     this.abortController?.abort();
     if (this.activeAcpSessionId) {
@@ -124,8 +134,7 @@ export class AcpChatPanel {
   }
 
   private async bootstrap(): Promise<void> {
-    this.messages = migrateLegacyToolMessages(await loadAcpMessages(this.panelHome, this.record.id));
-    this.postHistory();
+    await this.reloadExternalStore();
     await this.ensureAgentSession();
     this.postInit();
   }
@@ -145,7 +154,7 @@ export class AcpChatPanel {
       this.unsubscribeSessionUpdates?.();
       this.unsubscribeSessionUpdates = undefined;
       this.connection?.dispose();
-      this.connection = new AcpAgentConnection(this.record.provider);
+      this.connection = new AcpAgentConnection(this.record.provider, this.record.projectPath);
 
       if (this.record.acpSessionId) {
         const previousSessionId = this.record.acpSessionId;
@@ -190,7 +199,26 @@ export class AcpChatPanel {
       this.post({ type: "status", status: "error", isRunning: false, isConnecting: false });
     } finally {
       this.isConnecting = false;
+      await this.flushExternalStoreRefresh();
     }
+  }
+
+  private async reloadExternalStore(): Promise<void> {
+    const latestRecord = await getAcpRecord(this.panelHome, this.record.id);
+    if (latestRecord) {
+      this.record = latestRecord;
+    }
+    this.messages = migrateLegacyToolMessages(await loadAcpMessages(this.panelHome, this.record.id));
+    this.postHistory();
+    this.postInit();
+  }
+
+  private async flushExternalStoreRefresh(): Promise<void> {
+    if (!this.pendingExternalStoreRefresh || this.isRunning || this.isConnecting) {
+      return;
+    }
+    this.pendingExternalStoreRefresh = false;
+    await this.reloadExternalStore();
   }
 
   private waitForHistoryReplay(): Promise<void> {
@@ -535,6 +563,7 @@ export class AcpChatPanel {
       this.isRunning = false;
       this.abortController = undefined;
       this.post({ type: "status", status: "ready", isRunning: false, isConnecting: false });
+      await this.flushExternalStoreRefresh();
     }
   }
 

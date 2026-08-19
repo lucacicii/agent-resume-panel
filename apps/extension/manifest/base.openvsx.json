@@ -2,19 +2,19 @@
   "name": "agent-resume-panel",
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
-  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, and Alma sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.6.11",
+  "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
+  "version": "2.11.0",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/thunder-luc/agent-resume-panel.git"
   },
-  "homepage": "https://github.com/thunder-luc/agent-resume-panel-doc#readme",
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/panel/README.md",
   "bugs": {
-    "url": "https://github.com/thunder-luc/agent-resume-panel-doc/issues"
+    "url": "https://github.com/thunder-luc/agent-resume-panel/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
@@ -32,12 +32,12 @@
     "agent",
     "coding agent",
     "codex",
+    "cursor",
     "claude",
     "claude code",
     "grok",
     "opencode",
     "pi",
-    "alma",
     "antigravity",
     "session",
     "resume",
@@ -65,8 +65,10 @@
     "onCommand:agentResume.refreshGtd",
     "onCommand:agentResume.refreshNotes",
     "onCommand:agentResume.setSessionGtdStatus",
+    "onCommand:agentResume.setNoteGtdStatus",
     "onCommand:agentResume.search",
     "onCommand:agentResume.openSessionManager",
+    "onCommand:agentResume.openReport",
     "onCommand:agentResume.newSession",
     "onCommand:agentResume.openFolder",
     "onCommand:agentResume.openProject",
@@ -80,7 +82,7 @@
     "onCommand:agentResume.newGrokSession",
     "onCommand:agentResume.newOpenCodeSession",
     "onCommand:agentResume.newPiSession",
-    "onCommand:agentResume.newAlmaSession",
+    "onCommand:agentResume.newPrimeSession",
     "onCommand:agentResume.newCodexAppSession",
     "onCommand:agentResume.favoriteProject",
     "onCommand:agentResume.unfavoriteProject",
@@ -100,7 +102,8 @@
     "onCommand:agentResume.handoffTo.agy",
     "onCommand:agentResume.handoffTo.grok",
     "onCommand:agentResume.handoffTo.opencode",
-    "onCommand:agentResume.handoffTo.pi"
+    "onCommand:agentResume.handoffTo.pi",
+    "onCommand:agentResume.handoffTo.prime"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -160,11 +163,6 @@
           "default": "~/.grok",
           "description": "Grok Build home directory containing sessions."
         },
-        "agentResume.almaDataDir": {
-          "type": "string",
-          "default": "~/Library/Application Support/alma",
-          "description": "Alma data directory containing chat_threads.db. On macOS this is usually ~/Library/Application Support/alma."
-        },
         "agentResume.opencodeHome": {
           "type": "string",
           "default": "~/.local/share/opencode",
@@ -174,6 +172,21 @@
           "type": "string",
           "default": "~/.pi/agent",
           "description": "Pi agent home directory containing sessions."
+        },
+        "agentResume.primeHome": {
+          "type": "string",
+          "default": "~/.prime/agent",
+          "description": "Prime Agent home directory containing sessions."
+        },
+        "agentResume.cursorHome": {
+          "type": "string",
+          "default": "~/.cursor",
+          "description": "Cursor CLI data directory containing chats and agent transcripts."
+        },
+        "agentResume.cursorIdeUserDataHome": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Cursor IDE User directory. Empty uses the platform default; only composer metadata is read."
         },
         "agentResume.panelHome": {
           "type": "string",
@@ -231,7 +244,7 @@
           },
           "default": [
             "-y",
-            "@zed-industries/codex-acp@latest"
+            "@agentclientprotocol/codex-acp@latest"
           ],
           "description": "Launch arguments for Codex ACP agent."
         },
@@ -299,6 +312,22 @@
             "pi-acp"
           ],
           "description": "Launch arguments for Pi ACP agent."
+        },
+        "agentResume.acp.agents.prime.command": {
+          "type": "string",
+          "default": "prime-agent",
+          "description": "Launch command for Prime Agent ACP agent."
+        },
+        "agentResume.acp.agents.prime.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "--mode",
+            "acp"
+          ],
+          "description": "Launch arguments for Prime Agent ACP agent."
         },
         "agentResume.uiLanguage": {
           "type": "string",
@@ -389,20 +418,15 @@
           "default": false,
           "description": "Show Grok Build subagent sessions (session_kind: subagent) in the panel. Ephemeral subagent shells with no title and at most one message are always hidden."
         },
-        "agentResume.hideCronAlma": {
-          "type": "boolean",
-          "default": true,
-          "description": "Hide Alma cron threads (titles starting with ⏰ Cron:)."
-        },
-        "agentResume.hideChannelAlma": {
-          "type": "boolean",
-          "default": true,
-          "description": "Hide Alma channel threads (WeChat, Telegram, Discord, Slack)."
-        },
-        "agentResume.showIncognitoAlma": {
+        "agentResume.showArchivedCursorIde": {
           "type": "boolean",
           "default": false,
-          "description": "Show Alma incognito threads in the panel."
+          "description": "Show archived Cursor IDE composer headers."
+        },
+        "agentResume.showSubagentCursorIde": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Cursor IDE subagent composer headers."
         },
         "agentResume.editorNewSessionProvider": {
           "type": "string",
@@ -412,7 +436,9 @@
             "agy",
             "grok",
             "opencode",
-            "pi"
+            "pi",
+            "prime",
+            "cursor"
           ],
           "default": "codex",
           "description": "CLI agent provider started by the editor title bar New Session button."
@@ -499,7 +525,7 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
-              "newAlmaSession",
+              "newPrimeSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -526,7 +552,7 @@
               "newGrokSession",
               "newOpenCodeSession",
               "newPiSession",
-              "newAlmaSession",
+              "newPrimeSession",
               "newCodexAppSession",
               "openProjectNote",
               "deleteProjectNote"
@@ -543,7 +569,7 @@
             "newGrokSession",
             "newOpenCodeSession",
             "newPiSession",
-            "newAlmaSession",
+            "newPrimeSession",
             "newCodexAppSession",
             "openProjectNote",
             "deleteProjectNote"
@@ -678,6 +704,12 @@
         "icon": "$(database)"
       },
       {
+        "command": "agentResume.openReport",
+        "title": "Reports (read-only)",
+        "category": "Agent Resume",
+        "icon": "$(calendar)"
+      },
+      {
         "command": "agentResume.newSession",
         "title": "New Session",
         "category": "Agent Resume",
@@ -785,6 +817,11 @@
       {
         "command": "agentResume.handoffTo.pi",
         "title": "Hand Off to Pi",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.handoffTo.prime",
+        "title": "Hand Off to Prime Agent",
         "category": "Agent Resume"
       },
       {
@@ -2420,41 +2457,6 @@
         "category": "Agent Resume"
       },
       {
-        "command": "agentResume.ko.newAlmaSession",
-        "title": "새 Alma 스레드",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.es.newAlmaSession",
-        "title": "Nuevo hilo de Alma",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.fr.newAlmaSession",
-        "title": "Nouveau fil Alma",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.de.newAlmaSession",
-        "title": "Neuer Alma-Thread",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.pt-br.newAlmaSession",
-        "title": "Novo thread Alma",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.it.newAlmaSession",
-        "title": "Nuovo thread Alma",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.ru.newAlmaSession",
-        "title": "Новый поток Alma",
-        "category": "Agent Resume"
-      },
-      {
         "command": "agentResume.ko.newCodexAppSession",
         "title": "새 ChatGPT 세션",
         "category": "Agent Resume"
@@ -2487,6 +2489,11 @@
       {
         "command": "agentResume.ru.newCodexAppSession",
         "title": "Новая сессия ChatGPT",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.newPrimeSession",
+        "title": "New Prime Agent Session",
         "category": "Agent Resume"
       },
       {
@@ -2557,6 +2564,11 @@
       {
         "command": "agentResume.deleteProjectNote",
         "title": "Delete Project Notes",
+        "category": "Agent Resume"
+      },
+      {
+        "command": "agentResume.setNoteGtdStatus",
+        "title": "Set Note GTD Status…",
         "category": "Agent Resume"
       },
       {
@@ -2718,11 +2730,6 @@
       {
         "command": "agentResume.newPiSession",
         "title": "New Pi Session",
-        "category": "Agent Resume"
-      },
-      {
-        "command": "agentResume.newAlmaSession",
-        "title": "New Alma Thread",
         "category": "Agent Resume"
       },
       {

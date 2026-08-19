@@ -1,5 +1,6 @@
 import type { AgentProvider } from "../catalog/types";
 import { sessionGtdKey } from "../gtd/store";
+import { isGtdStatus, type GtdStatus } from "../gtd/types";
 import { normalizeProjectPath } from "../pathUtils";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import type { NoteScope } from "./paths";
@@ -18,6 +19,7 @@ export interface NoteRecord {
   createdAtMs: number;
   updatedAtMs: number;
   fsMtimeMs?: number;
+  gtdStatus?: GtdStatus;
 }
 
 interface NoteRow {
@@ -34,6 +36,7 @@ interface NoteRow {
   created_at_ms: number;
   updated_at_ms: number;
   fs_mtime_ms: number | null;
+  gtd_status: string | null;
 }
 
 function mapRow(row: NoteRow): NoteRecord {
@@ -50,7 +53,8 @@ function mapRow(row: NoteRow): NoteRecord {
     contentPreview: row.content_preview ?? undefined,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
-    fsMtimeMs: row.fs_mtime_ms ?? undefined
+    fsMtimeMs: row.fs_mtime_ms ?? undefined,
+    gtdStatus: row.gtd_status && isGtdStatus(row.gtd_status) ? row.gtd_status : undefined
   };
 }
 
@@ -61,10 +65,15 @@ function sqlNullOrString(value: string | undefined): string {
   return `'${escapeSqlLiteral(value)}'`;
 }
 
-export async function listAllNotes(dbPath: string): Promise<NoteRecord[]> {
+export async function listAllNotes(dbPath: string, limit?: number): Promise<NoteRecord[]> {
+  const limitClause = limit == null
+    ? ""
+    : ` LIMIT ${Math.max(1, Math.min(Math.floor(Number(limit)) || 1, 50_000))}`;
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes ORDER BY updated_at_ms DESC;`
+    `SELECT n.*, g.status AS gtd_status
+     FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     ORDER BY n.updated_at_ms DESC${limitClause};`
   );
   return rows.map(mapRow);
 }
@@ -72,7 +81,7 @@ export async function listAllNotes(dbPath: string): Promise<NoteRecord[]> {
 export async function getNoteById(dbPath: string, noteId: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
+    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
   );
   return rows[0] ? mapRow(rows[0]) : undefined;
 }
@@ -80,7 +89,7 @@ export async function getNoteById(dbPath: string, noteId: string): Promise<NoteR
 export async function getNoteByRelPath(dbPath: string, relMdPath: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes WHERE rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
+    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
   );
   return rows[0] ? mapRow(rows[0]) : undefined;
 }
@@ -92,8 +101,8 @@ export async function listSessionNotes(
 ): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes
-     WHERE scope = 'session'
+    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     WHERE n.scope = 'session'
        AND provider = '${escapeSqlLiteral(provider)}'
        AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
      ORDER BY updated_at_ms DESC;`
@@ -104,8 +113,8 @@ export async function listSessionNotes(
 export async function listLibraryNotes(dbPath: string): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes
-     WHERE scope = 'library'
+    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     WHERE n.scope = 'library'
      ORDER BY updated_at_ms DESC;`
   );
   return rows.map(mapRow);
@@ -115,8 +124,8 @@ export async function listProjectNotes(dbPath: string, projectPath: string): Pro
   const normalized = normalizeProjectPath(projectPath);
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT * FROM notes
-     WHERE scope = 'project'
+    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     WHERE n.scope = 'project'
        AND project_path = '${escapeSqlLiteral(normalized)}'
      ORDER BY updated_at_ms DESC;`
   );
@@ -126,6 +135,19 @@ export async function listProjectNotes(dbPath: string, projectPath: string): Pro
 export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Promise<void> {
   const projectPath =
     record.projectPath !== undefined ? normalizeProjectPath(record.projectPath) : undefined;
+
+  // Path is UNIQUE. If another note_id already owns this path, update that row
+  // (path identity) instead of inserting a second note_id for the same file.
+  const existingByPath = await getNoteByRelPath(dbPath, record.relMdPath);
+  const noteId =
+    existingByPath && existingByPath.noteId !== record.noteId
+      ? existingByPath.noteId
+      : record.noteId;
+  const createdAtMs =
+    existingByPath && existingByPath.noteId === noteId
+      ? Math.min(existingByPath.createdAtMs, record.createdAtMs)
+      : record.createdAtMs;
+
   await runSqlite(
     dbPath,
     `INSERT INTO notes (
@@ -133,7 +155,7 @@ export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Prom
        filename, rel_dir, rel_md_path, title, content_preview,
        created_at_ms, updated_at_ms, fs_mtime_ms
      ) VALUES (
-       '${escapeSqlLiteral(record.noteId)}',
+       '${escapeSqlLiteral(noteId)}',
        '${escapeSqlLiteral(record.scope)}',
        ${sqlNullOrString(record.provider)},
        ${sqlNullOrString(record.agentSessionId)},
@@ -143,7 +165,7 @@ export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Prom
        '${escapeSqlLiteral(record.relMdPath)}',
        ${sqlNullOrString(record.title)},
        ${sqlNullOrString(record.contentPreview)},
-       ${record.createdAtMs},
+       ${createdAtMs},
        ${record.updatedAtMs},
        ${record.fsMtimeMs ?? "NULL"}
      )
@@ -164,7 +186,11 @@ export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Prom
 }
 
 export async function deleteNoteRecord(dbPath: string, noteId: string): Promise<void> {
-  await runSqlite(dbPath, `DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`);
+  await runSqlite(
+    dbPath,
+    `DELETE FROM note_gtd WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`
+  );
 }
 
 export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]): Promise<void> {
@@ -172,7 +198,11 @@ export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]):
     return;
   }
   const list = relPaths.map((p) => `'${escapeSqlLiteral(p)}'`).join(", ");
-  await runSqlite(dbPath, `DELETE FROM notes WHERE rel_md_path IN (${list});`);
+  await runSqlite(
+    dbPath,
+    `DELETE FROM note_gtd WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM notes WHERE rel_md_path IN (${list});`
+  );
 }
 
 export async function loadSessionNoteFlags(dbPath: string): Promise<Set<string>> {

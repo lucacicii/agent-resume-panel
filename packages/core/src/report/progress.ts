@@ -10,6 +10,8 @@ export type DigestProgressPhase =
   | "session_skip"
   | "session_fail"
   | "digest"
+  | "chunk"
+  | "reduce"
   | "embed"
   | "complete"
   | "error";

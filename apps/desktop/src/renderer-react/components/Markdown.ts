@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js";
-import { marked, type Tokens } from "marked";
+import { marked, type Renderer, type Tokens } from "marked";
 
 function codeToken(token: Tokens.Code): string {
   const requested = token.lang?.trim().toLowerCase();
@@ -11,14 +11,18 @@ function codeToken(token: Tokens.Code): string {
   return `<pre><code class="hljs language-${language}">${content}</code></pre>`;
 }
 
-export function renderMarkdown(value: string): string {
-  const renderer = new marked.Renderer();
-  renderer.code = codeToken;
-  return DOMPurify.sanitize(marked.parse(value, {
+function parseMarkdown(value: string, renderer: Renderer): string {
+  return marked.parse(value, {
     gfm: true,
     breaks: true,
     renderer
-  }) as string, {
+  }) as string;
+}
+
+export function renderMarkdown(value: string): string {
+  const renderer = new marked.Renderer();
+  renderer.code = codeToken;
+  return DOMPurify.sanitize(parseMarkdown(value, renderer), {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
     FORBID_ATTR: ["style"],

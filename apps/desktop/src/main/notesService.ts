@@ -3,15 +3,22 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   effectivePanelHome,
+  ensureDesktopDbSchema,
   expandHome,
   loadSettings,
   noteAssetsDirName,
   NotesStore,
   notesRoot,
+  recordEntityTagHits,
+  resolveAutoTaggingSettings,
+  toTagStoreSettings,
   type AgentProvider,
+  type GtdStatus,
   type ImportNotesResult,
+  type NoteLink,
   type NoteOwner,
-  type NoteRecord
+  type NoteRecord,
+  type NoteSubtree
 } from "@agent-resume/core";
 import { desktopT } from "./i18nService";
 import { loadPanelDbPaths } from "./panelDatabases";
@@ -19,7 +26,9 @@ import { loadPanelDbPaths } from "./panelDatabases";
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
 
-async function getNotesStore(): Promise<NotesStore> {
+export type DesktopNoteRecord = NoteRecord;
+
+export async function getDesktopNotesStore(): Promise<NotesStore> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
   const paths = await loadPanelDbPaths(settings);
@@ -33,24 +42,48 @@ async function getNotesStore(): Promise<NotesStore> {
   return notesStore;
 }
 
-export async function notesList(): Promise<NoteRecord[]> {
-  const store = await getNotesStore();
+export async function notesList(): Promise<DesktopNoteRecord[]> {
+  const store = await getDesktopNotesStore();
   await store.reload();
   return store.getAllNotes();
 }
 
-export async function notesRead(noteId: string): Promise<{ record: NoteRecord; content: string }> {
-  const store = await getNotesStore();
+export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null): Promise<NoteRecord> {
+  const store = await getDesktopNotesStore();
+  return status === null
+    ? store.clearNoteGtdStatus(noteId)
+    : store.setNoteGtdStatus(noteId, status);
+}
+
+async function trackNoteTagHit(noteId: string): Promise<void> {
+  try {
+    const settings = await loadSettings();
+    const paths = await loadPanelDbPaths(settings);
+    await ensureDesktopDbSchema(paths.desktopDb);
+    const auto = resolveAutoTaggingSettings(settings);
+    if (!auto.enabled) return;
+    await recordEntityTagHits(paths.desktopDb, "note", noteId, toTagStoreSettings(auto));
+  } catch {
+    // hit tracking is best-effort
+  }
+}
+
+export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
+  const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
   }
   const content = await store.readNoteContent(noteId);
+  void trackNoteTagHit(noteId);
   return { record, content };
 }
 
-export async function notesWrite(noteId: string, content: string): Promise<NoteRecord> {
-  const store = await getNotesStore();
+export async function notesWrite(
+  noteId: string,
+  content: string
+): Promise<NoteRecord & { content?: string }> {
+  const store = await getDesktopNotesStore();
   return store.writeNoteContent(noteId, content);
 }
 
@@ -59,16 +92,17 @@ export async function notesCreate(args: {
   projectPath?: string;
   provider?: string;
   sessionId?: string;
+  body?: string;
 }): Promise<NoteRecord> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   if (args.scope === "library") {
-    return store.createLibraryNote();
+    return store.createLibraryNote(args.body || "");
   }
   if (args.scope === "project") {
     if (!args.projectPath?.trim()) {
       throw new Error("projectPath is required.");
     }
-    return store.createProjectNote(args.projectPath);
+    return store.createProjectNote(args.projectPath, args.body || "");
   }
   if (!args.provider?.trim() || !args.sessionId?.trim()) {
     throw new Error("provider and sessionId are required.");
@@ -77,22 +111,26 @@ export async function notesCreate(args: {
     provider: args.provider as AgentProvider,
     id: args.sessionId,
     projectPath: args.projectPath || ""
-  });
+  }, args.body || "");
 }
 
 export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteRecord> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   return store.moveNote(noteId, owner);
 }
 
-export async function notesDelete(noteId: string): Promise<{ ok: boolean }> {
-  const store = await getNotesStore();
-  await store.deleteNote(noteId);
-  return { ok: true };
+export async function notesDelete(noteId: string): Promise<{ ok: boolean; deletedNoteIds: string[] }> {
+  const store = await getDesktopNotesStore();
+  const descendants = await store.collectNoteDescendantIds(noteId);
+  const deletedNoteIds = [...descendants, noteId];
+  for (const id of deletedNoteIds) {
+    await store.deleteNote(id);
+  }
+  return { ok: true, deletedNoteIds };
 }
 
 export async function notesRename(noteId: string, filename: string): Promise<NoteRecord> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   return store.renameNote(noteId, filename);
 }
 
@@ -105,7 +143,7 @@ export async function notesImport(owner: NoteOwner): Promise<ImportNotesResult> 
   if (result.canceled || !result.filePaths.length) {
     return { imported: 0, skipped: 0, errors: [], records: [] };
   }
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   return store.importMarkdownFiles(owner, result.filePaths);
 }
 
@@ -115,7 +153,7 @@ export async function notesPasteImage(noteId: string): Promise<{ snippet: string
     return null;
   }
 
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
@@ -143,7 +181,7 @@ function imageToPngBuffer(image: Electron.NativeImage): Buffer {
 }
 
 export async function notesOpenFolder(): Promise<{ ok: boolean }> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   const root = notesRoot(store.getPanelHome());
   await shell.openPath(root);
   return { ok: true };
@@ -157,7 +195,7 @@ export async function settingsOpenPanelHome(): Promise<{ ok: boolean }> {
 }
 
 export async function notesReveal(noteId: string): Promise<{ ok: boolean }> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
@@ -168,7 +206,7 @@ export async function notesReveal(noteId: string): Promise<{ ok: boolean }> {
 }
 
 export async function notesCopyPath(noteId: string): Promise<{ path: string }> {
-  const store = await getNotesStore();
+  const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
   if (!record) {
     throw new Error("Note not found.");
@@ -176,6 +214,58 @@ export async function notesCopyPath(noteId: string): Promise<{ path: string }> {
   const abs = store.absolutePath(record);
   clipboard.writeText(abs);
   return { path: abs };
+}
+
+export async function notesListRootNotes(): Promise<DesktopNoteRecord[]> {
+  const store = await getDesktopNotesStore();
+  await store.reload();
+  return store.listRootNotes();
+}
+
+export async function notesListLinks(): Promise<NoteLink[]> {
+  const store = await getDesktopNotesStore();
+  return store.listNoteLinks();
+}
+
+export async function notesGetParent(noteId: string): Promise<NoteLink | null> {
+  const store = await getDesktopNotesStore();
+  return (await store.getNoteParent(noteId)) ?? null;
+}
+
+export async function notesSetParent(
+  childNoteId: string,
+  parentNoteId: string | null
+): Promise<{ ok: boolean }> {
+  const store = await getDesktopNotesStore();
+  await store.setNoteParent(childNoteId, parentNoteId);
+  return { ok: true };
+}
+
+export async function notesCreateLinkedChild(parentNoteId: string): Promise<NoteRecord> {
+  const store = await getDesktopNotesStore();
+  return store.createLinkedChildNote(parentNoteId);
+}
+
+export async function notesGetSubtree(rootNoteId: string): Promise<NoteSubtree> {
+  const store = await getDesktopNotesStore();
+  return store.getNoteSubtree(rootNoteId);
+}
+
+export async function notesResolveLinkRoot(noteId: string): Promise<{ rootNoteId: string }> {
+  const store = await getDesktopNotesStore();
+  const rootNoteId = await store.resolveNoteLinkRoot(noteId);
+  return { rootNoteId };
+}
+
+export async function notesListLinkedChildIds(): Promise<string[]> {
+  const store = await getDesktopNotesStore();
+  return [...(await store.listLinkedChildIds())];
+}
+
+export async function notesListChildCounts(): Promise<Record<string, number>> {
+  const store = await getDesktopNotesStore();
+  const map = await store.listNoteChildCounts();
+  return Object.fromEntries(map.entries());
 }
 
 export function invalidateNotesStore(): void {

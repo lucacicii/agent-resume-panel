@@ -52,43 +52,26 @@ async function readJsonlRefs(paths: string[]): Promise<TranscriptExportFile[]> {
 }
 
 async function readSqliteRef(refs: Extract<TranscriptRefs, { kind: "sqlite" }>): Promise<TranscriptExportFile[]> {
-  if (refs.dialect === "opencode") {
-    const messageSql = `
-      select id, time_created, data
-      from message
-      where session_id = '${escapeSqlLiteral(refs.sessionId)}'
-      order by time_created asc
-    `;
-    const partSql = `
-      select message_id, time_created, data
-      from part
-      where session_id = '${escapeSqlLiteral(refs.sessionId)}'
-      order by time_created asc
-    `;
-    const messages = await runSqliteJson(refs.dbPath, messageSql);
-    const parts = await runSqliteJson(refs.dbPath, partSql);
-    const payload = { messages, parts };
-    return [
-      {
-        sourcePath: refs.dbPath,
-        fileName: `opencode-session-${refs.sessionId}.json`,
-        content: JSON.stringify(payload, null, 2)
-      }
-    ];
-  }
-
-  const sql = `
-    select message, timestamp
-    from chat_messages
-    where thread_id = '${escapeSqlLiteral(refs.sessionId)}'
-    order by timestamp asc
+  const messageSql = `
+    select id, time_created, data
+    from message
+    where session_id = '${escapeSqlLiteral(refs.sessionId)}'
+    order by time_created asc
   `;
-  const rows = await runSqliteJson(refs.dbPath, sql);
+  const partSql = `
+    select message_id, time_created, data
+    from part
+    where session_id = '${escapeSqlLiteral(refs.sessionId)}'
+    order by time_created asc
+  `;
+  const messages = await runSqliteJson(refs.dbPath, messageSql);
+  const parts = await runSqliteJson(refs.dbPath, partSql);
+  const payload = { messages, parts };
   return [
     {
       sourcePath: refs.dbPath,
-      fileName: `alma-thread-${refs.sessionId}.json`,
-      content: JSON.stringify(rows, null, 2)
+      fileName: `opencode-session-${refs.sessionId}.json`,
+      content: JSON.stringify(payload, null, 2)
     }
   ];
 }

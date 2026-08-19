@@ -1,5 +1,7 @@
+import * as fs from "node:fs/promises";
+import { sanitizeLikeFragment } from "../catalog/search";
 import { ensureDesktopDbSchema } from "../catalog/db";
-import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
+import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "../sqlite";
 import { ReportEntry, ReportLevel } from "./schema";
 
 interface ReportEntryRow {
@@ -26,20 +28,147 @@ function rowToEntry(row: ReportEntryRow): ReportEntry {
   };
 }
 
-export async function listReportEntries(
+function isMissingReportSchemaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("no such table") ||
+    message.includes("unable to open database file") ||
+    message.includes("does not exist")
+  );
+}
+
+/** True when desktop.db exists on disk (does not create files). */
+export async function desktopReportDbExists(dbPath: string): Promise<boolean> {
+  try {
+    await fs.access(dbPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read-only list for consumers that must not create desktop schema
+ * (e.g. VS Code extension). Returns [] when db/table is absent.
+ */
+export async function readReportEntries(
   dbPath: string,
   options?: { level?: ReportLevel | string; limit?: number }
 ): Promise<ReportEntry[]> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return [];
+  }
   const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
   const levelClause = options?.level
     ? `WHERE level = '${escapeSqlLiteral(options.level)}'`
     : "";
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       ${levelClause}
+       ORDER BY period_start_ms DESC, created_at_ms DESC
+       LIMIT ${limit};`
+    );
+    return rows.map(rowToEntry);
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read-only range list. Returns [] when db/table is absent; never creates files.
+ */
+export async function readReportEntriesInRange(
+  dbPath: string,
+  options: {
+    level?: ReportLevel | string;
+    startMs: number;
+    endMs: number;
+    limit?: number;
+  }
+): Promise<ReportEntry[]> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return [];
+  }
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const levelClause = options.level
+    ? `AND level = '${escapeSqlLiteral(options.level)}'`
+    : "";
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       WHERE period_start_ms >= ${Math.floor(options.startMs)}
+         AND period_start_ms < ${Math.floor(options.endMs)}
+         ${levelClause}
+       ORDER BY period_start_ms ASC, created_at_ms DESC
+       LIMIT ${limit};`
+    );
+    return rows.map(rowToEntry);
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read-only get by id. Does not run ensureDesktopDbSchema.
+ */
+export async function readReportEntryById(
+  dbPath: string,
+  id: string
+): Promise<ReportEntry | undefined> {
+  if (!(await desktopReportDbExists(dbPath))) {
+    return undefined;
+  }
+  try {
+    const rows = await runSqliteReadOnlyJson<ReportEntryRow>(
+      dbPath,
+      `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
+       FROM report_entries
+       WHERE id = '${escapeSqlLiteral(id)}'
+       LIMIT 1;`
+    );
+    const row = rows[0];
+    return row ? rowToEntry(row) : undefined;
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function listReportEntries(
+  dbPath: string,
+  options?: { level?: ReportLevel | string; limit?: number; projectPath?: string }
+): Promise<ReportEntry[]> {
+  const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
+  const clauses: string[] = [];
+  if (options?.level) {
+    clauses.push(`level = '${escapeSqlLiteral(options.level)}'`);
+  }
+  if (options?.projectPath) {
+    const frag = sanitizeLikeFragment(options.projectPath);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM report_links l WHERE l.report_id = report_entries.id AND l.project_path LIKE '%${escapeSqlLiteral(frag)}%')`
+    );
+  }
+  const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 
   const rows = await runSqliteJson<ReportEntryRow>(
     dbPath,
     `SELECT id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms
      FROM report_entries
-     ${levelClause}
+     ${whereClause}
      ORDER BY period_start_ms DESC, created_at_ms DESC
      LIMIT ${limit};`
   );
@@ -69,7 +198,7 @@ export async function listReportEntriesInRange(
      WHERE period_start_ms >= ${Math.floor(options.startMs)}
        AND period_start_ms < ${Math.floor(options.endMs)}
        ${levelClause}
-     ORDER BY period_start_ms ASC
+     ORDER BY period_start_ms ASC, created_at_ms DESC
      LIMIT ${limit};`
   );
 
@@ -111,8 +240,7 @@ export async function insertReportEntry(
   const embeddingSql =
     entry.embeddingJson == null ? "NULL" : `'${escapeSqlLiteral(entry.embeddingJson)}'`;
 
-  await runSqlite(
-    dbPath,
+  const statements = [
     `INSERT OR REPLACE INTO report_entries
       (id, level, period_start_ms, period_end_ms, title, content, embedding_json, created_at_ms)
      VALUES (
@@ -124,24 +252,21 @@ export async function insertReportEntry(
       '${escapeSqlLiteral(entry.content)}',
       ${embeddingSql},
       ${entry.createdAtMs}
-     );`
-  );
-
-  await runSqlite(dbPath, `DELETE FROM report_links WHERE report_id = '${escapeSqlLiteral(entry.id)}';`);
-
-  for (const link of links) {
-    await runSqlite(
-      dbPath,
-      `INSERT INTO report_links (report_id, provider, agent_session_id, project_path)
-       VALUES (
-        '${escapeSqlLiteral(entry.id)}',
-        '${escapeSqlLiteral(link.provider)}',
-        '${escapeSqlLiteral(link.agentSessionId)}',
-        '${escapeSqlLiteral(link.projectPath)}'
-       );`
+     )`,
+    `DELETE FROM report_links WHERE report_id = '${escapeSqlLiteral(entry.id)}'`
+  ];
+  for (let index = 0; index < links.length; index += 500) {
+    const values = links.slice(index, index + 500).map((link) => `(
+      '${escapeSqlLiteral(entry.id)}',
+      '${escapeSqlLiteral(link.provider)}',
+      '${escapeSqlLiteral(link.agentSessionId)}',
+      '${escapeSqlLiteral(link.projectPath)}'
+    )`).join(",");
+    statements.push(
+      `INSERT INTO report_links (report_id, provider, agent_session_id, project_path) VALUES ${values}`
     );
   }
-
+  await runSqliteTransaction(dbPath, statements);
   return { replaced };
 }
 
@@ -157,6 +282,14 @@ export async function upsertReportJob(
     dbPath,
     `INSERT OR REPLACE INTO report_jobs (job_key, status, last_error, updated_at_ms)
      VALUES ('${escapeSqlLiteral(jobKey)}', '${escapeSqlLiteral(status)}', ${errSql}, ${now});`
+  );
+}
+
+
+export async function clearReportJobsByStatus(dbPath: string, status: string): Promise<void> {
+  await runSqlite(
+    dbPath,
+    `DELETE FROM report_jobs WHERE status = '${escapeSqlLiteral(status)}';`
   );
 }
 
@@ -178,7 +311,7 @@ export async function listReportLinks(dbPath: string, reportId: string): Promise
     `SELECT report_id, provider, agent_session_id, project_path
      FROM report_links
      WHERE report_id = '${escapeSqlLiteral(reportId)}'
-     LIMIT 50;`
+     ORDER BY rowid ASC;`
   );
 
   return rows.map((row) => ({

@@ -256,7 +256,7 @@ async function sendPreviewData(webview: vscode.Webview, session: AgentSession): 
       type: "init",
       uiStrings: getSessionPreviewUiStrings(),
       provider: session.provider,
-      showResumeWith: session.provider !== "alma",
+      showResumeWith: true,
       showHandoff: canHandoffSession(session),
       llmConfigured,
       cachedSummary,

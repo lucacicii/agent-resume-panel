@@ -10,6 +10,7 @@
 | narrow IPC helper | `apps/desktop/src/main/ipcUtils.ts` | Shared error boundary for selected IPC routes. |
 | preload API | `apps/desktop/src/preload/preload.ts` | Typed bridge exposed as `agentResume`; update alongside matching main and renderer work. |
 | embedded terminal | `apps/desktop/src/main/ptyHost.ts` | Lazy loads node-pty so terminal failures do not block other desktop functions. |
+| Workbench ACP chat | `apps/desktop/src/main/acp/*`, `renderer-react/features/workbench/AcpChatView.tsx` | New-session ACP targets open a visual chat pane in the xterm tab strip; data under `panelHome/acp`. |
 | notes indexing and memory scheduler | `apps/desktop/src/main/{noteIndexer,scheduler}.ts` | Background tasks and renderer progress events. |
 | renderer | `apps/desktop/src/renderer/{index.html,app.js,styles.css}` | Framework-free app: Memory, Ask, Workbench, Notes, Sessions, and Settings. |
 | renderer vendor bundle | `apps/desktop/src/renderer/vendor-entry/`, `apps/desktop/scripts/build-renderer-vendor.mjs` | CodeMirror, Marked, DOMPurify, Highlight.js, and xterm vendor build. |

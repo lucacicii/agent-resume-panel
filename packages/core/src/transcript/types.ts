@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 export interface PreviewMessage {
   role: "user" | "assistant";
   text: string;
+  thinking?: string;
   timestamp?: string;
 }
 
@@ -19,9 +20,11 @@ export interface PreviewHomes {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
 }
 
 export const MAX_PREVIEW_MESSAGES = 100;

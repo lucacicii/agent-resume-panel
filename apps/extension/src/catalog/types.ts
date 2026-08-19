@@ -34,6 +34,7 @@ export interface CatalogSessionRow {
   session_summary_language?: string | null;
   session_summary_at_ms?: number | null;
   project_id?: string | null;
+  native_project_path?: string | null;
 }
 
 export type SessionSummaryPolicy = "match" | "any";
@@ -54,6 +55,11 @@ export function toAgentSession(
 
   if (row.archived) {
     session.archived = true;
+  }
+  const native = row.native_project_path?.trim();
+  if (native) {
+    session.nativeProjectPath = native;
+    session.projectOverridden = row.project_path.trim() !== native;
   }
   if (row.message_count != null) {
     session.messageCount = row.message_count;

@@ -3,7 +3,7 @@ import { ensureDesktopDbSchema } from "../catalog/db";
 import { createUiText } from "../i18n/uiText";
 import { loadSettings } from "../settings/store";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteTransaction } from "../sqlite";
-import { AgentCitation } from "./types";
+import { AgentCitation, AgentToolTraceStep } from "./types";
 
 export interface AgentChatMessage {
   id: string;
@@ -11,6 +11,7 @@ export interface AgentChatMessage {
   content: string;
   citations?: AgentCitation[];
   fallback?: boolean;
+  toolTrace?: AgentToolTraceStep[];
   createdAtMs: number;
   sortOrder: number;
 }
@@ -20,6 +21,7 @@ interface AskMessageRow {
   role: string;
   content: string;
   citations_json: string | null;
+  tool_trace_json: string | null;
   fallback: number;
   sort_order: number;
   created_at_ms: number;
@@ -37,6 +39,16 @@ function parseCitationsJson(raw: string | null | undefined): AgentCitation[] | u
   }
 }
 
+function parseToolTraceJson(raw: string | null | undefined): AgentToolTraceStep[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed as AgentToolTraceStep[] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function rowToMessage(row: AskMessageRow): AgentChatMessage | undefined {
   if (row.role !== "user" && row.role !== "assistant") {
     return undefined;
@@ -46,6 +58,7 @@ function rowToMessage(row: AskMessageRow): AgentChatMessage | undefined {
     role: row.role,
     content: row.content,
     citations: parseCitationsJson(row.citations_json),
+    toolTrace: parseToolTraceJson(row.tool_trace_json),
     fallback: row.fallback ? true : undefined,
     createdAtMs: row.created_at_ms,
     sortOrder: row.sort_order
@@ -73,7 +86,7 @@ async function listAgentMessagesDescending(
   const page = normalizeAskPageLimit(limit);
   const rows = await runSqliteJson<AskMessageRow>(
     dbPath,
-    `SELECT id, role, content, citations_json, fallback, sort_order, created_at_ms
+    `SELECT id, role, content, citations_json, tool_trace_json, fallback, sort_order, created_at_ms
      FROM agent_messages
      ${sqlWhere}
      ORDER BY sort_order DESC, created_at_ms DESC
@@ -238,6 +251,7 @@ export async function appendAgentTurn(
     assistantContent: string;
     citations?: AgentCitation[];
     fallback?: boolean;
+    toolTrace?: AgentToolTraceStep[];
     threadId?: string;
   }
 ): Promise<void> {
@@ -251,26 +265,29 @@ export async function appendAgentTurn(
   const assistantId = randomUUID();
   const now = Date.now();
   const citationsJson = turn.citations?.length ? JSON.stringify(turn.citations) : null;
+  const toolTraceJson = turn.toolTrace?.length ? JSON.stringify(turn.toolTrace) : null;
   const fallback = turn.fallback ? 1 : 0;
 
   await runSqliteTransaction(dbPath, [
-    `INSERT INTO agent_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
+    `INSERT INTO agent_messages (id, role, content, citations_json, tool_trace_json, fallback, sort_order, created_at_ms, thread_id)
      VALUES (
        '${escapeSqlLiteral(userId)}',
        'user',
        '${escapeSqlLiteral(turn.userContent)}',
+       NULL,
        NULL,
        0,
        ${base + 1},
        ${now},
        '${escapeSqlLiteral(threadId)}'
      )`,
-    `INSERT INTO agent_messages (id, role, content, citations_json, fallback, sort_order, created_at_ms, thread_id)
+    `INSERT INTO agent_messages (id, role, content, citations_json, tool_trace_json, fallback, sort_order, created_at_ms, thread_id)
      VALUES (
        '${escapeSqlLiteral(assistantId)}',
        'assistant',
        '${escapeSqlLiteral(turn.assistantContent)}',
        ${citationsJson ? `'${escapeSqlLiteral(citationsJson)}'` : "NULL"},
+       ${toolTraceJson ? `'${escapeSqlLiteral(toolTraceJson)}'` : "NULL"},
        ${fallback},
        ${base + 2},
        ${now + 1},
@@ -287,4 +304,24 @@ export async function clearAgentMessages(dbPath: string, threadId?: string): Pro
   } else {
     await runSqlite(dbPath, "DELETE FROM agent_messages;");
   }
+}
+
+/** Delete a message and all later messages in the thread (by sort_order, inclusive). */
+export async function deleteAgentMessagesFromSortOrder(
+  dbPath: string,
+  options: { threadId: string; fromSortOrder: number }
+): Promise<void> {
+  await ensureDesktopDbSchema(dbPath);
+  const threadId = options.threadId?.trim();
+  if (!threadId) {
+    throw new Error("threadId is required.");
+  }
+  const fromSortOrder = Math.max(0, Math.floor(options.fromSortOrder));
+  const now = Date.now();
+  await runSqliteTransaction(dbPath, [
+    `DELETE FROM agent_messages
+     WHERE thread_id = '${escapeSqlLiteral(threadId)}'
+       AND sort_order >= ${fromSortOrder};`,
+    `UPDATE agent_threads SET updated_at_ms = ${now} WHERE id = '${escapeSqlLiteral(threadId)}';`
+  ]);
 }

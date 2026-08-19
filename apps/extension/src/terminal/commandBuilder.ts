@@ -1,24 +1,31 @@
 import { AgentProvider, AgentSession } from "../history";
-import { buildAlmaActivateCommand } from "./almaApi";
 
+/** Resume runs in the assigned project (user-move aware); providers restore by session id. */
 export function buildResumeCommand(session: AgentSession): string {
+  const cwd = session.projectPath;
   if (session.provider === "codex") {
-    return `codex resume --cd ${shellQuote(session.projectPath)} ${shellQuote(session.id)}`;
+    return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
   }
   if (session.provider === "agy") {
     return `agy --conversation ${shellQuote(session.id)}`;
   }
   if (session.provider === "grok") {
-    return `grok --cwd ${shellQuote(session.projectPath)} --resume ${shellQuote(session.id)}`;
-  }
-  if (session.provider === "alma") {
-    return buildAlmaActivateCommand(session.id, session.title);
+    return `grok --cwd ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
   }
   if (session.provider === "opencode") {
     return `opencode --session ${shellQuote(session.id)}`;
   }
   if (session.provider === "pi") {
     return `pi --session ${shellQuote(session.id)}`;
+  }
+  if (session.provider === "prime") {
+    return `prime-agent --resume ${shellQuote(session.id)}`;
+  }
+  if (session.provider === "cursor") {
+    return `cursor-agent --workspace ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
+  }
+  if (session.provider === "cursor-ide") {
+    throw new Error("Cursor IDE chats cannot be resumed by command; open the project in Cursor instead.");
   }
 
   return `claude --resume ${shellQuote(session.id)}`;
@@ -34,14 +41,20 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   if (provider === "grok") {
     return `grok --cwd ${shellQuote(projectPath)}`;
   }
-  if (provider === "alma") {
-    return "# Alma new threads require a workspace id; use New Alma Thread from the Agent Resume panel.";
-  }
   if (provider === "opencode") {
     return `opencode ${shellQuote(projectPath)}`;
   }
   if (provider === "pi") {
     return "pi";
+  }
+  if (provider === "prime") {
+    return "prime-agent";
+  }
+  if (provider === "cursor") {
+    return `cursor-agent --workspace ${shellQuote(projectPath)}`;
+  }
+  if (provider === "cursor-ide" || provider === "chat") {
+    throw new Error(`New terminal sessions are not supported for ${provider}.`);
   }
 
   return "claude";

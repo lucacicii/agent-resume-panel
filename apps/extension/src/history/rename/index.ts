@@ -1,12 +1,11 @@
 import { AgentSession } from "../types";
 import { renameAgySession } from "./agy";
-import { renameAlmaSession } from "./alma";
 import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
 import { renameOpenCodeSession } from "./opencode";
 import { renameAcpSession } from "./acp";
-import { renamePiSession } from "./pi";
+import { renamePiSession, renamePrimeSession } from "./pi";
 
 export interface RenameHomes {
   panelHome: string;
@@ -14,9 +13,11 @@ export interface RenameHomes {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
 }
 
 function cleanTitle(input: string): string {
@@ -42,12 +43,16 @@ export async function renameSession(
       return renameAgySession(homes.antigravityHome, session, title);
     case "grok":
       return renameGrokSession(homes.grokHome, session, title);
-    case "alma":
-      return renameAlmaSession(homes.almaDataDir, session, title);
     case "opencode":
       return renameOpenCodeSession(homes.opencodeHome, session, title);
     case "pi":
       return renamePiSession(homes.piHome, session, title);
+    case "prime":
+      return renamePrimeSession(homes.primeHome, session, title);
+    case "cursor":
+    case "cursor-ide":
+      // Cursor's local session records are catalog-only for title changes.
+      return;
     case "chat":
       return renameAcpSession(homes.panelHome, session, title);
     default:

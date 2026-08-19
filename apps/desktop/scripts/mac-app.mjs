@@ -17,23 +17,22 @@ const packagingRoot = path.join(root, ".pack-staging");
 const repoRoot = path.join(root, "..", "..");
 const stampFile = path.join(root, ".dev-app-stamp");
 const iconPath = path.join(root, "dist", "resources", "icon.icns");
-const targetArch = "universal";
 const bundleId = "com.thunder-luc.agent-resume";
-const appBundlePath = path.join(
-  releaseRoot,
-  `Agent Resume-darwin-${targetArch}`,
-  "Agent Resume.app"
-);
+
+export const macTargetArches = ["x64", "arm64"];
 
 export const desktopRoot = root;
-export const macTargetArch = targetArch;
+
+export function appBundlePathFor(arch) {
+  return path.join(releaseRoot, `Agent Resume-darwin-${arch}`, "Agent Resume.app");
+}
 
 export function runDesktopBuild() {
   execFileSync("pnpm", ["run", "build"], { cwd: root, stdio: "inherit" });
 }
 
-export function findAppBundle() {
-  return fs.existsSync(appBundlePath) ? appBundlePath : null;
+export function findAppBundle(arch) {
+  return fs.existsSync(appBundlePathFor(arch)) ? appBundlePathFor(arch) : null;
 }
 
 function walkLatestMtime(target, latest = { value: 0 }) {
@@ -65,7 +64,9 @@ function latestRepackMtime() {
   return Math.max(...repackInputs().map((input) => walkLatestMtime(input)));
 }
 
-export function isBuildStampCurrent(rawStamp, sourceMtime, arch = targetArch) {
+const stampFileFor = (arch) => path.join(root, `.dev-app-stamp-${arch}`);
+
+export function isBuildStampCurrent(rawStamp, sourceMtime, arch) {
   try {
     const stamp = JSON.parse(rawStamp);
     return (
@@ -79,10 +80,12 @@ export function isBuildStampCurrent(rawStamp, sourceMtime, arch = targetArch) {
   }
 }
 
-export function needsRepack() {
-  if (!findAppBundle()) return true;
+export function needsRepack(arch) {
+  const appBundle = findAppBundle(arch);
+  if (!appBundle) return true;
+  const stampFile = stampFileFor(arch);
   if (!fs.existsSync(stampFile)) return true;
-  return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime());
+  return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime(), arch);
 }
 
 function signMacApp(appBundle) {
@@ -123,27 +126,25 @@ async function withRetry(label, attempts, fn) {
   throw lastError;
 }
 
-async function ensureElectronZipDir() {
+async function ensureElectronZipDir(arch) {
   const version = installedElectronVersion();
   const zipDir = electronZipDirForVersion(version);
   fs.mkdirSync(zipDir, { recursive: true });
 
-  for (const arch of ["x64", "arm64"]) {
-    const fileName = `electron-v${version}-darwin-${arch}.zip`;
-    const dest = path.join(zipDir, fileName);
-    if (fs.existsSync(dest)) continue;
+  const fileName = `electron-v${version}-darwin-${arch}.zip`;
+  const dest = path.join(zipDir, fileName);
+  if (fs.existsSync(dest)) return zipDir;
 
-    console.log(`Fetching Electron ${version} darwin-${arch}...`);
-    const cached = await withRetry(`Electron ${arch} download`, DOWNLOAD_ATTEMPTS, () =>
-      downloadArtifact({
-        version,
-        platform: "darwin",
-        arch,
-        artifactName: "electron"
-      })
-    );
-    fs.copyFileSync(cached, dest);
-  }
+  console.log(`Fetching Electron ${version} darwin-${arch}...`);
+  const cached = await withRetry(`Electron ${arch} download`, DOWNLOAD_ATTEMPTS, () =>
+    downloadArtifact({
+      version,
+      platform: "darwin",
+      arch,
+      artifactName: "electron"
+    })
+  );
+  fs.copyFileSync(cached, dest);
 
   return zipDir;
 }
@@ -288,24 +289,30 @@ export function flattenDeployedNodeModulesForAsar(deployRoot) {
   }
 }
 
-export async function packMacApp() {
+export async function packMacApp(arch) {
   if (process.platform !== "darwin") {
     throw new Error("pack:mac is only supported on macOS.");
+  }
+  if (!macTargetArches.includes(arch)) {
+    throw new Error(`Unsupported arch: ${arch}. Expected one of: ${macTargetArches.join(", ")}`);
   }
   if (!fs.existsSync(iconPath)) {
     throw new Error(`Missing app icon: ${iconPath}. Run pnpm run build first.`);
   }
   deployDesktop();
-  const electronZipDir = await ensureElectronZipDir();
-  console.log("Packaging macOS .app...");
-  fs.rmSync(releaseRoot, { recursive: true, force: true });
+  const electronZipDir = await ensureElectronZipDir(arch);
+  console.log(`Packaging macOS ${arch} .app...`);
+  // Remove stale artifacts for this arch only; keep other arches' outputs.
+  fs.rmSync(path.dirname(appBundlePathFor(arch)), { recursive: true, force: true });
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  fs.rmSync(path.join(releaseRoot, `Agent Resume-${pkg.version}-${arch}.dmg`), { force: true });
   const packagerArgs = [
     "exec",
     "electron-packager",
     packagingRoot,
     "Agent Resume",
     `--platform=darwin`,
-    `--arch=${targetArch}`,
+    `--arch=${arch}`,
     `--app-bundle-id=${bundleId}`,
     "--app-category-type=public.app-category.developer-tools",
     `--icon=${iconPath}`,
@@ -313,7 +320,6 @@ export async function packMacApp() {
     `--electron-zip-dir=${electronZipDir}`,
     "--overwrite",
     "--asar.unpackDir=node_modules/node-pty",
-    "--osx-universal.x64ArchFiles=**/node-pty/prebuilds/**",
     "--no-prune"
   ];
   await withRetry("electron-packager", PACKAGER_ATTEMPTS, () => {
@@ -323,14 +329,14 @@ export async function packMacApp() {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }
     });
   });
-  const appBundle = findAppBundle();
+  const appBundle = findAppBundle(arch);
   if (!appBundle) {
-    throw new Error("Packaging finished but Agent Resume.app was not found under release/");
+    throw new Error(`Packaging finished but Agent Resume.app was not found for ${arch} under release/`);
   }
   signMacApp(appBundle);
   fs.writeFileSync(
-    stampFile,
-    JSON.stringify({ version: 1, arch: targetArch, bundleId, sourceMtime: latestRepackMtime() })
+    stampFileFor(arch),
+    JSON.stringify({ version: 1, arch, bundleId, sourceMtime: latestRepackMtime() })
   );
   return appBundle;
 }
@@ -349,12 +355,12 @@ export function stageMacDmgContents(appBundle, stagingDir) {
   fs.symlinkSync("/Applications", path.join(stagingDir, "Applications"), "dir");
 }
 
-export function createMacDmg(appBundle) {
+export function createMacDmg(appBundle, arch) {
   if (process.platform !== "darwin") {
     throw new Error("DMG packaging is only supported on macOS.");
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const dmgName = `Agent Resume-${pkg.version}.dmg`;
+  const dmgName = `Agent Resume-${pkg.version}-${arch}.dmg`;
   const dmgPath = path.join(releaseRoot, dmgName);
   const dmgStagingDir = path.join(releaseRoot, "dmg-root");
   fs.rmSync(dmgPath, { force: true });

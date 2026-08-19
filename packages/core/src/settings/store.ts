@@ -9,10 +9,19 @@ import {
 import { sanitizeAgentHomes } from "../transcript/homes";
 import {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
+  DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
+  DESKTOP_VISUAL_THEME_IDS,
   PanelSettings,
-  WorkbenchProjectContextMenuAction
+  WORKBENCH_TERMINAL_THEME_IDS,
+  WORKBENCH_TERMINAL_RENDERERS,
+  WorkbenchProjectContextMenuAction,
+  type DesktopTheme,
+  type DesktopThemeEffects,
+  type DesktopVisualThemeId,
+  type WorkbenchTerminalRenderer,
+  type WorkbenchTerminalThemeId
 } from "./types";
 import {
   normalizeCommitMessageStyle,
@@ -23,6 +32,47 @@ type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["re
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
+const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
+const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
+const VISUAL_THEME_IDS = new Set<string>(DESKTOP_VISUAL_THEME_IDS);
+
+export function normalizeDesktopVisualTheme(value: string | undefined | null): DesktopVisualThemeId {
+  return value && VISUAL_THEME_IDS.has(value)
+    ? value as DesktopVisualThemeId
+    : "classic";
+}
+
+export function normalizeDesktopThemeEffects(value: string | undefined | null): DesktopThemeEffects {
+  return value === "reduced" ? "reduced" : "full";
+}
+
+export function normalizeDesktopTheme(value: string | undefined | null, visualTheme: DesktopVisualThemeId): DesktopTheme {
+  if (visualTheme === "cyberpunk" || visualTheme === "dos") return "dark";
+  return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
+export function normalizeWorkbenchEditorTheme(value: string | undefined | null): "follow-app" | "light" | "dark" {
+  return value === "light" || value === "dark" ? value : "follow-app";
+}
+
+export function normalizeWorkbenchTerminalTheme(
+  value: string | undefined | null
+): WorkbenchTerminalThemeId {
+  if (value === "default-dark") return "follow-app";
+  if (value && TERMINAL_THEME_IDS.has(value)) {
+    return value as WorkbenchTerminalThemeId;
+  }
+  return DEFAULT_SETTINGS.workbench?.terminalTheme ?? "follow-app";
+}
+
+export function normalizeWorkbenchTerminalRenderer(
+  value: string | undefined | null
+): WorkbenchTerminalRenderer {
+  if (value && TERMINAL_RENDERERS.has(value)) {
+    return value as WorkbenchTerminalRenderer;
+  }
+  return DEFAULT_SETTINGS.workbench?.terminalRenderer ?? "webgl";
+}
 
 export function normalizeWorkbenchProjectContextMenu(
   value: WorkbenchProjectContextMenuAction[] | undefined | null
@@ -39,6 +89,12 @@ export function normalizeWorkbenchProjectContextMenu(
   }
   // Empty explicit array is allowed (hide all); only fall back when unset/invalid.
   return output;
+}
+
+function normalizeWorkbenchTranscriptFontSize(value: number | undefined): number {
+  const fallback = DEFAULT_SETTINGS.workbench?.transcriptFontSize ?? 14;
+  const fontSize = Math.round(Number(value ?? fallback));
+  return Math.min(24, Math.max(11, Number.isFinite(fontSize) ? fontSize : fallback));
 }
 
 function normalizeWorkbenchEditorSettings(
@@ -62,6 +118,22 @@ function normalizeWorkbenchEditorSettings(
 }
 
 function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSettings> {
+  if (partial.desktop && "autoSessionExecutionNotes" in partial.desktop) {
+    const { autoSessionExecutionNotes: _removed, ...desktop } = partial.desktop as typeof partial.desktop & { autoSessionExecutionNotes?: boolean };
+    partial = { ...partial, desktop };
+  }
+  if (
+    partial.desktop?.alwaysAllowAgentNonDestructiveOperations === undefined &&
+    partial.desktop?.alwaysAllowAgentWriteOperations !== undefined
+  ) {
+    partial = {
+      ...partial,
+      desktop: {
+        ...partial.desktop,
+        alwaysAllowAgentNonDestructiveOperations: partial.desktop.alwaysAllowAgentWriteOperations
+      }
+    };
+  }
   if (partial.memory && !partial.report) {
     const { memory, ...rest } = partial;
     return { ...rest, report: memory };
@@ -73,9 +145,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
   const base = structuredClone(DEFAULT_SETTINGS);
   if (!partial || typeof partial !== "object") {
     return base;
-  }
-
-  const chatLlm =
+  }  const chatLlm =
     partial.chatLlm || base.chatLlm
       ? {
           ...(base.chatLlm || {}),
@@ -99,6 +169,24 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.report,
       ...(partial.report || {})
     },
+    // Desktop session auto jobs (summary / embeddings / transcript index / tagging).
+    // Must be merged or Settings → Sessions saves report success but never persist.
+    sessionSummaryAuto: {
+      ...base.sessionSummaryAuto,
+      ...(partial.sessionSummaryAuto || {})
+    },
+    sessionEmbeddingIndex: {
+      ...base.sessionEmbeddingIndex,
+      ...(partial.sessionEmbeddingIndex || {})
+    },
+    sessionTranscriptIndex: {
+      ...base.sessionTranscriptIndex,
+      ...(partial.sessionTranscriptIndex || {})
+    },
+    autoTagging: {
+      ...base.autoTagging,
+      ...(partial.autoTagging || {})
+    },
     agentHomes: sanitizeAgentHomes({
       ...base.agentHomes,
       ...(partial.agentHomes || {})
@@ -109,11 +197,55 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     desktop: {
       ...base.desktop,
-      ...(partial.desktop || {})
+      ...(partial.desktop || {}),
+      visualTheme: normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme),
+      themeEffects: normalizeDesktopThemeEffects(partial.desktop?.themeEffects ?? base.desktop?.themeEffects),
+      theme: normalizeDesktopTheme(
+        partial.desktop?.theme ?? base.desktop?.theme,
+        normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme)
+      ),
+      browser: {
+        ...DEFAULT_DESKTOP_BROWSER_SETTINGS,
+        ...base.desktop?.browser,
+        ...(partial.desktop?.browser || {}),
+        defaultPolicy: {
+          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy,
+          ...base.desktop?.browser?.defaultPolicy,
+          ...(partial.desktop?.browser?.defaultPolicy || {}),
+          allowHosts: [
+            ...(partial.desktop?.browser?.defaultPolicy?.allowHosts
+              ?? base.desktop?.browser?.defaultPolicy?.allowHosts
+              ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.allowHosts)
+          ],
+          blockHosts: [
+            ...(partial.desktop?.browser?.defaultPolicy?.blockHosts
+              ?? base.desktop?.browser?.defaultPolicy?.blockHosts
+              ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts)
+          ]
+        },
+        chromeCookieImport: {
+          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport,
+          ...base.desktop?.browser?.chromeCookieImport,
+          ...(partial.desktop?.browser?.chromeCookieImport || {})
+        }
+      }
+    },
+    notes: {
+      ...base.notes,
+      ...(partial.notes || {})
     },
     workbench: {
       ...base.workbench,
       ...(partial.workbench || {}),
+      terminalTheme: normalizeWorkbenchTerminalTheme(
+        partial.workbench?.terminalTheme ?? base.workbench?.terminalTheme
+      ),
+      terminalRenderer: normalizeWorkbenchTerminalRenderer(
+        partial.workbench?.terminalRenderer ?? base.workbench?.terminalRenderer
+      ),
+      editorTheme: normalizeWorkbenchEditorTheme(
+        partial.workbench?.editorTheme ?? base.workbench?.editorTheme
+      ),
       gitCommitMessageStyle: normalizeCommitMessageStyle(partial.workbench?.gitCommitMessageStyle),
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(
         partial.workbench?.gitCommitCustomInstructions
@@ -121,12 +253,39 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       projectContextMenu: normalizeWorkbenchProjectContextMenu(
         partial.workbench?.projectContextMenu ?? base.workbench?.projectContextMenu
       ),
+      transcriptFontSize: normalizeWorkbenchTranscriptFontSize(
+        partial.workbench?.transcriptFontSize ?? base.workbench?.transcriptFontSize
+      ),
       editor: normalizeWorkbenchEditorSettings(partial.workbench?.editor)
     },
+    // Desktop ACP (permissions, launch overrides, experimental vendor UI).
+    // Must merge or Workbench ACP toggles never persist across save/reload.
+    acp: mergeAcpSettings(base.acp, partial.acp),
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
     ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
   };
+}
+
+function mergeAcpSettings(
+  base: PanelSettings["acp"] | undefined,
+  partial: PanelSettings["acp"] | undefined
+): PanelSettings["acp"] | undefined {
+  if (!base && !partial) return undefined;
+  const agents = {
+    ...(base?.agents || {}),
+    ...(partial?.agents || {})
+  };
+  const merged = {
+    ...(base || {}),
+    ...(partial || {}),
+    ...(Object.keys(agents).length ? { agents } : {})
+  };
+  // Drop empty agents object noise.
+  if (merged.agents && !Object.keys(merged.agents).length) {
+    delete merged.agents;
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 /**

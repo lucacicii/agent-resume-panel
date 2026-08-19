@@ -2,15 +2,15 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
 import { PreviewHomes, SessionPreviewResult } from "./types";
-import { extractTextFromContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
 import { listJsonlFiles } from "./fs";
 
-interface PiSessionHeader {
+interface JsonlSessionHeader {
   type?: string;
   id?: string;
 }
 
-interface PiMessageEntry {
+interface JsonlMessageEntry {
   type?: string;
   timestamp?: string;
   message?: {
@@ -20,7 +20,14 @@ interface PiMessageEntry {
 }
 
 export async function previewPiSession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
-  const sessionsRoot = path.join(homes.piHome, "sessions");
+  return previewJsonlSession(session, path.join(homes.piHome, "sessions"));
+}
+
+export async function previewPrimeSession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
+  return previewJsonlSession(session, path.join(homes.primeHome, "sessions"));
+}
+
+async function previewJsonlSession(session: AgentSession, sessionsRoot: string): Promise<SessionPreviewResult> {
   const sessionFiles = await listJsonlFiles(sessionsRoot);
   const messages: SessionPreviewResult["messages"] = [];
 
@@ -40,9 +47,9 @@ export async function previewPiSession(session: AgentSession, homes: PreviewHome
       continue;
     }
 
-    let header: PiSessionHeader;
+    let header: JsonlSessionHeader;
     try {
-      header = JSON.parse(lines[0]) as PiSessionHeader;
+      header = JSON.parse(lines[0]) as JsonlSessionHeader;
     } catch {
       continue;
     }
@@ -52,9 +59,9 @@ export async function previewPiSession(session: AgentSession, homes: PreviewHome
     }
 
     for (const line of lines.slice(1)) {
-      let entry: PiMessageEntry;
+      let entry: JsonlMessageEntry;
       try {
-        entry = JSON.parse(line) as PiMessageEntry;
+        entry = JSON.parse(line) as JsonlMessageEntry;
       } catch {
         continue;
       }
@@ -66,14 +73,15 @@ export async function previewPiSession(session: AgentSession, homes: PreviewHome
         continue;
       }
 
-      const text = extractTextFromContent(entry.message.content);
-      if (!text) {
+      const extracted = extractPreviewContent(entry.message.content);
+      if (!extracted.text && !extracted.thinking) {
         continue;
       }
 
       messages.push({
         role: entry.message.role,
-        text,
+        text: extracted.text,
+        thinking: extracted.thinking || undefined,
         timestamp: entry.timestamp
       });
     }
@@ -83,5 +91,5 @@ export async function previewPiSession(session: AgentSession, homes: PreviewHome
     }
   }
 
-  throw new Error("Pi transcript not found for this session.");
+  throw new Error("Session transcript not found for this session.");
 }

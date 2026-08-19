@@ -8,7 +8,7 @@ const blocks = buildHandoffMenuContributionBlocks();
 assert.equal(blocks.handoffSubmenu.id, "agentResume.handoffTo");
 assert.ok(blocks.sessionHandoffTrigger.length === 1);
 assert.ok(blocks.acpHandoffTrigger.length === 1);
-assert.equal(blocks.handoffSubmenuItems.length, 11);
+assert.equal(blocks.handoffSubmenuItems.length, 13);
 assert.ok(blocks.handoffSubmenuItems.every((entry) => entry.command.startsWith("agentResume.handoffTo.")));
 assert.ok(
   blocks.handoffSubmenuItems.some(

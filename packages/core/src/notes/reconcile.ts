@@ -8,14 +8,22 @@ import {
   listAllNotes,
   listLegacyProjectNotes,
   listLegacySessionNotes,
+  listProjectNotes,
+  listSessionNotes,
   setCatalogMeta,
   upsertNoteRecord,
   type NoteRecord
 } from "./catalogNotes";
 import { contentPreview, extractTitle, parseNoteDocument } from "./frontmatter";
 import { formatNoteFilename, localDateString } from "./naming";
-import { fileMtimeMs, newNoteId, writeNewNoteFile } from "./fs";
-import { NoteOwner, notesRoot, ownerRelDir, parseOwnerJson } from "./paths";
+import { fileMtimeMs, newNoteId, pathExists, writeNewNoteFile } from "./fs";
+import {
+  NoteOwner,
+  noteAbsMdPath,
+  notesRoot,
+  ownerRelDir,
+  parseOwnerJson
+} from "./paths";
 
 const LEGACY_MIGRATION_KEY = "notes_disk_migrated_v1";
 
@@ -34,10 +42,24 @@ export async function migrateLegacyNotesToDisk(dbPath: string, panelHome: string
       provider: row.provider as AgentProvider,
       sessionId: row.agent_session_id
     };
+    // Idempotent: skip when this session already has indexed notes (partial re-run).
+    const existing = await listSessionNotes(
+      dbPath,
+      row.provider as AgentProvider,
+      row.agent_session_id
+    );
+    if (existing.length > 0) {
+      continue;
+    }
     const date = new Date(row.updated_at_ms || Date.now());
     const filename = formatNoteFilename(localDateString(date), 1);
+    const absPath = noteAbsMdPath(panelHome, owner, filename);
+    // If the target file already exists (previous run wrote disk but not DB), let reconcile index it.
+    if (await pathExists(absPath)) {
+      continue;
+    }
     const noteId = newNoteId();
-    const { absPath } = await writeNewNoteFile({
+    const { absPath: writtenPath } = await writeNewNoteFile({
       panelHome,
       owner,
       filename,
@@ -45,7 +67,7 @@ export async function migrateLegacyNotesToDisk(dbPath: string, panelHome: string
       body: row.content,
       createdAtMs: row.updated_at_ms || Date.now()
     });
-    const mtime = await fileMtimeMs(absPath);
+    const mtime = await fileMtimeMs(writtenPath);
     await upsertNoteRecord(dbPath, {
       noteId,
       scope: "session",
@@ -67,10 +89,18 @@ export async function migrateLegacyNotesToDisk(dbPath: string, panelHome: string
       scope: "project",
       projectPath: normalizeProjectPath(row.project_path)
     };
+    const existing = await listProjectNotes(dbPath, owner.projectPath);
+    if (existing.length > 0) {
+      continue;
+    }
     const date = new Date(row.updated_at_ms || Date.now());
     const filename = formatNoteFilename(localDateString(date), 1);
+    const absPath = noteAbsMdPath(panelHome, owner, filename);
+    if (await pathExists(absPath)) {
+      continue;
+    }
     const noteId = newNoteId();
-    const { absPath } = await writeNewNoteFile({
+    const { absPath: writtenPath } = await writeNewNoteFile({
       panelHome,
       owner,
       filename,
@@ -78,7 +108,7 @@ export async function migrateLegacyNotesToDisk(dbPath: string, panelHome: string
       body: row.content,
       createdAtMs: row.updated_at_ms || Date.now()
     });
-    const mtime = await fileMtimeMs(absPath);
+    const mtime = await fileMtimeMs(writtenPath);
     await upsertNoteRecord(dbPath, {
       noteId,
       scope: "project",
@@ -116,7 +146,8 @@ export async function reconcileNotesIndex(dbPath: string, panelHome: string): Pr
     }
     const raw = await fs.readFile(entry.absPath, "utf8");
     const doc = parseNoteDocument(raw);
-    const noteId = doc.frontmatter.id || prev?.noteId || newNoteId();
+    // Path is the stable index identity; prefer the existing DB row for this path.
+    const noteId = prev?.noteId || doc.frontmatter.id || newNoteId();
     const owner = entry.owner;
     const record: NoteRecord = {
       noteId,

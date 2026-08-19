@@ -76,6 +76,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private hasSessionNoteResolver: (session: AgentSession) => boolean = () => false;
   private hasProjectNoteResolver: (projectPath: string) => boolean = () => false;
 
+  constructor(private readonly cursorIconPath?: vscode.Uri) {}
+
   setProjectSessionSortMode(resolver: (projectPath: string) => ProjectSessionSortMode): void {
     this.projectSessionSortMode = resolver;
     this.onDidChangeTreeDataEmitter.fire();
@@ -119,7 +121,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       showProjectName,
       projectDisplayName: (projectPath) => this.getProjectDisplayName(projectPath),
       gtdStatusResolver: (session) => this.gtdStatusResolver(session),
-      hasSessionNoteResolver: (session) => this.hasSessionNoteResolver(session)
+      hasSessionNoteResolver: (session) => this.hasSessionNoteResolver(session),
+      cursorIconPath: this.cursorIconPath
     };
   }
 
@@ -306,6 +309,7 @@ export interface SessionTreeItemOptions {
   projectDisplayName?: (projectPath: string) => string;
   gtdStatusResolver?: (session: AgentSession) => string | undefined;
   hasSessionNoteResolver?: (session: AgentSession) => boolean;
+  cursorIconPath?: vscode.Uri;
 }
 
 export function buildSessionTreeItem(session: AgentSession, options: SessionTreeItemOptions = {}): vscode.TreeItem {
@@ -320,7 +324,7 @@ export function buildSessionTreeItem(session: AgentSession, options: SessionTree
   );
   item.description = sessionDescription(session, hasNote);
   item.tooltip = buildSessionTooltip(session, gtdStatus, hasNote);
-  item.iconPath = new vscode.ThemeIcon(providerIcon(session.provider));
+  item.iconPath = sessionIconPath(session.provider, options.cursorIconPath);
   item.contextValue = `agentResume.session.${session.provider}`;
   item.command = {
     command: session.provider === "chat" ? "agentResume.openChatSession" : "agentResume.openSession",
@@ -527,14 +531,20 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "grok") {
     return "grok";
   }
-  if (provider === "alma") {
-    return "alma";
-  }
   if (provider === "opencode") {
     return "opencode";
   }
   if (provider === "pi") {
     return "pi";
+  }
+  if (provider === "prime") {
+    return "prime";
+  }
+  if (provider === "cursor") {
+    return "cursor cli";
+  }
+  if (provider === "cursor-ide") {
+    return "cursor ide";
   }
   return "claude";
 }
@@ -552,16 +562,26 @@ function providerIcon(provider: AgentSession["provider"]): string {
   if (provider === "grok") {
     return "rocket";
   }
-  if (provider === "alma") {
-    return "sparkle";
-  }
   if (provider === "opencode") {
     return "terminal";
   }
   if (provider === "pi") {
     return "symbol-method";
   }
+  if (provider === "prime") {
+    return "sparkle";
+  }
+  if (provider === "cursor" || provider === "cursor-ide") {
+    return "window";
+  }
   return "comment-discussion";
+}
+
+function sessionIconPath(provider: AgentSession["provider"], cursorIconPath?: vscode.Uri): vscode.ThemeIcon | vscode.Uri {
+  if ((provider === "cursor" || provider === "cursor-ide") && cursorIconPath) {
+    return cursorIconPath;
+  }
+  return new vscode.ThemeIcon(providerIcon(provider));
 }
 
 export interface SearchSessionItem {

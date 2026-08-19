@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, StateEffect, StateField, Transaction, type Extension, type Text } from "@codemirror/state";
 import { cpp } from "@codemirror/lang-cpp";
 import { css } from "@codemirror/lang-css";
 import { go } from "@codemirror/lang-go";
@@ -14,10 +14,10 @@ import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { drawSelection, EditorView, keymap } from "@codemirror/view";
+import { Decoration, drawSelection, EditorView, keymap, type DecorationSet } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching } from "@codemirror/language";
+import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "./codeMirrorThemes";
 
 export interface CodeEditorProps {
   value: string;
@@ -29,6 +29,8 @@ export interface CodeEditorProps {
   fontSize?: number;
   wordWrap?: boolean;
   tabSize?: number;
+  /** Workbench may use an independent editor appearance; other editors follow the app. */
+  appearance?: CodeMirrorAppearance;
   /** File path or language id used to pick a CodeMirror language pack. */
   filePath?: string;
   /** Explicit language id (overrides filePath extension when set). */
@@ -37,9 +39,51 @@ export interface CodeEditorProps {
   onPasteImage?: () => Promise<string | null>;
 }
 
+export interface CodeEditorFindOptions {
+  /** When false, highlight the match without stealing keyboard focus. Default true. */
+  focus?: boolean;
+}
+
+export interface CodeEditorSearchResult {
+  /** 1-based current match, or 0 when there are no matches. */
+  current: number;
+  total: number;
+}
+
+export interface CodeEditorRevealRange {
+  /** 1-based line number */
+  line: number;
+  /** 1-based start column */
+  column: number;
+  /** 1-based end column (exclusive-style end for selection head). */
+  endColumn?: number;
+  focus?: boolean;
+}
+
+export interface CodeEditorSelectionRange {
+  /** 1-based start line */
+  startLine: number;
+  /** 1-based end line */
+  endLine: number;
+  /** 1-based start column */
+  startColumn: number;
+  /** 1-based end column */
+  endColumn: number;
+  text: string;
+}
+
 export interface CodeEditorHandle {
   focus(): void;
-  find(query: string, direction?: "forward" | "backward"): boolean;
+  find(query: string, direction?: "forward" | "backward", options?: CodeEditorFindOptions): boolean;
+  setSearchQuery(query: string): CodeEditorSearchResult;
+  navigateSearch(direction: "forward" | "backward"): CodeEditorSearchResult;
+  clearSearch(): void;
+  getSearchResult(): CodeEditorSearchResult;
+  getSelectedText(): string;
+  /** Non-empty selection range in 1-based line/column coordinates. */
+  getSelectionRange(): CodeEditorSelectionRange | null;
+  /** Select and scroll to a 1-based line/column range (for Find in Files). */
+  revealRange(range: CodeEditorRevealRange): boolean;
 }
 
 const editable = new Compartment();
@@ -47,52 +91,110 @@ const wrapping = new Compartment();
 const tabs = new Compartment();
 const theme = new Compartment();
 const language = new Compartment();
+const externalValueSync = Annotation.define<boolean>();
 
-const lightEditorTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "transparent",
-    color: "var(--color-label-primary)"
-  },
-  ".cm-content": {
-    caretColor: "var(--editor-caret-color)"
-  },
-  ".cm-cursor, .cm-dropCursor": {
-    borderLeftColor: "var(--editor-caret-color)"
-  },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-    backgroundColor: "var(--color-fill-primary)"
-  },
-  ".cm-activeLine": {
-    backgroundColor: "var(--color-fill-tertiary)"
-  },
-  ".cm-gutters": {
-    backgroundColor: "transparent",
-    color: "var(--color-label-tertiary)",
-    border: "none"
-  }
-});
-
-const caretTheme = EditorView.theme({
-  ".cm-cursor": {
-    borderLeft: "2px solid var(--editor-caret-color)",
-    marginLeft: "-1px"
-  }
-});
-
-function isDarkAppearance(): boolean {
-  const root = document.documentElement;
-  const explicit = root.dataset.theme;
-  if (explicit === "dark") return true;
-  if (explicit === "light") return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+interface SearchMatch {
+  from: number;
+  to: number;
 }
 
-function themeExtensions(dark: boolean): Extension[] {
-  if (dark) {
-    // One Dark: high-contrast tokens for markdown + code on dark chrome.
-    return [oneDark, caretTheme];
+interface EditorSearchState {
+  query: string;
+  matches: SearchMatch[];
+  currentIndex: number;
+  decorations: DecorationSet;
+}
+
+const setEditorSearchQuery = StateEffect.define<{ query: string; selectedFrom?: number; selectedTo?: number }>();
+const navigateEditorSearch = StateEffect.define<"forward" | "backward">();
+
+function collectSearchMatches(doc: Text, query: string): SearchMatch[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return [];
+  const haystack = doc.toString().toLocaleLowerCase();
+  const matches: SearchMatch[] = [];
+  let from = 0;
+  while (from <= haystack.length - needle.length) {
+    const match = haystack.indexOf(needle, from);
+    if (match < 0) break;
+    matches.push({ from: match, to: match + needle.length });
+    from = match + Math.max(1, needle.length);
   }
-  return [lightEditorTheme, syntaxHighlighting(defaultHighlightStyle), caretTheme];
+  return matches;
+}
+
+function createEditorSearchState(doc: Text, query: string, currentIndex = 0): EditorSearchState {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matches = collectSearchMatches(doc, normalizedQuery);
+  const nextIndex = matches.length ? Math.min(Math.max(0, currentIndex), matches.length - 1) : -1;
+  return {
+    query: normalizedQuery,
+    matches,
+    currentIndex: nextIndex,
+    decorations: Decoration.set(matches.map((match, index) => Decoration.mark({
+      class: index === nextIndex
+        ? "cm-editor-search-match cm-editor-search-match-current"
+        : "cm-editor-search-match"
+    }).range(match.from, match.to)))
+  };
+}
+
+const editorSearchState = StateField.define<EditorSearchState>({
+  create: (state) => createEditorSearchState(state.doc, ""),
+  update: (search, transaction) => {
+    for (const effect of transaction.effects) {
+      if (effect.is(setEditorSearchQuery)) {
+        const next = createEditorSearchState(transaction.newDoc, effect.value.query);
+        const selectedIndex = next.matches.findIndex((match) =>
+          match.from === effect.value.selectedFrom && match.to === effect.value.selectedTo
+        );
+        return selectedIndex >= 0
+          ? createEditorSearchState(transaction.newDoc, effect.value.query, selectedIndex)
+          : next;
+      }
+      if (effect.is(navigateEditorSearch)) {
+        if (!search.matches.length) return search;
+        const delta = effect.value === "forward" ? 1 : -1;
+        return createEditorSearchState(
+          transaction.newDoc,
+          search.query,
+          (search.currentIndex + delta + search.matches.length) % search.matches.length
+        );
+      }
+    }
+    if (!transaction.docChanged || !search.query) return search;
+    const current = search.matches[search.currentIndex];
+    const mappedPosition = current ? transaction.changes.mapPos(current.from, 1) : 0;
+    const matches = collectSearchMatches(transaction.newDoc, search.query);
+    const currentIndex = matches.findIndex((match) => match.from >= mappedPosition);
+    return createEditorSearchState(
+      transaction.newDoc,
+      search.query,
+      currentIndex >= 0 ? currentIndex : Math.max(0, matches.length - 1)
+    );
+  },
+  provide: (field) => EditorView.decorations.from(field, (search) => search.decorations)
+});
+
+function searchResult(search: EditorSearchState): CodeEditorSearchResult {
+  return {
+    current: search.currentIndex >= 0 ? search.currentIndex + 1 : 0,
+    total: search.matches.length
+  };
+}
+
+function revealSearchMatch(instance: EditorView, focus: boolean): CodeEditorSearchResult {
+  const search = instance.state.field(editorSearchState);
+  const match = search.matches[search.currentIndex];
+  if (match) {
+    instance.dispatch({
+      selection: { anchor: match.from, head: match.to },
+      effects: EditorView.scrollIntoView(match.from, { y: "center" })
+    });
+    if (focus) instance.focus();
+    else instance.contentDOM.blur();
+  }
+  return searchResult(search);
 }
 
 function normalizeLanguageKey(filePath?: string, languageId?: string): string {
@@ -179,6 +281,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   fontSize = 13,
   wordWrap = true,
   tabSize = 4,
+  appearance = "follow-app",
   filePath,
   language: languageId,
   shouldHandlePaste,
@@ -190,14 +293,16 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   const blur = useRef(onBlur);
   const pasteImage = useRef(onPasteImage);
   const handlesPaste = useRef(shouldHandlePaste);
+  const appearanceMode = useRef(appearance);
   change.current = onChange;
   blur.current = onBlur;
   pasteImage.current = onPasteImage;
   handlesPaste.current = shouldHandlePaste;
+  appearanceMode.current = appearance;
 
   useImperativeHandle(ref, () => ({
     focus: () => view.current?.focus(),
-    find: (query, direction = "forward") => {
+    find: (query, direction = "forward", options) => {
       const instance = view.current;
       const needle = query.trim().toLocaleLowerCase();
       if (!instance || !needle) return false;
@@ -215,7 +320,85 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         selection: { anchor: wrapped, head: wrapped + needle.length },
         effects: EditorView.scrollIntoView(wrapped, { y: "center" })
       });
-      instance.focus();
+      if (options?.focus === false) {
+        // Programmatic selection can move focus into the contenteditable; push it out
+        // so host find UIs keep receiving keyboard events (Enter = next match).
+        instance.contentDOM.blur();
+      } else {
+        instance.focus();
+      }
+      return true;
+    },
+    setSearchQuery: (query) => {
+      const instance = view.current;
+      if (!instance) return { current: 0, total: 0 };
+      const selection = instance.state.selection.main;
+      instance.dispatch({ effects: setEditorSearchQuery.of({
+        query,
+        selectedFrom: selection.from === selection.to ? undefined : selection.from,
+        selectedTo: selection.from === selection.to ? undefined : selection.to
+      }) });
+      return revealSearchMatch(instance, false);
+    },
+    navigateSearch: (direction) => {
+      const instance = view.current;
+      if (!instance) return { current: 0, total: 0 };
+      instance.dispatch({ effects: navigateEditorSearch.of(direction) });
+      return revealSearchMatch(instance, false);
+    },
+    clearSearch: () => {
+      const instance = view.current;
+      if (!instance) return;
+      instance.dispatch({ effects: setEditorSearchQuery.of({ query: "" }) });
+      const head = instance.state.selection.main.head;
+      instance.dispatch({ selection: { anchor: head } });
+    },
+    getSearchResult: () => {
+      const instance = view.current;
+      return instance ? searchResult(instance.state.field(editorSearchState)) : { current: 0, total: 0 };
+    },
+    getSelectedText: () => {
+      const instance = view.current;
+      if (!instance) return "";
+      const { from, to } = instance.state.selection.main;
+      return from === to ? "" : instance.state.sliceDoc(from, to);
+    },
+    getSelectionRange: () => {
+      const instance = view.current;
+      if (!instance) return null;
+      const { from, to } = instance.state.selection.main;
+      if (from === to) return null;
+      const start = Math.min(from, to);
+      const end = Math.max(from, to);
+      const startLine = instance.state.doc.lineAt(start);
+      const endLine = instance.state.doc.lineAt(end);
+      return {
+        startLine: startLine.number,
+        endLine: endLine.number,
+        startColumn: start - startLine.from + 1,
+        endColumn: end - endLine.from + 1,
+        text: instance.state.sliceDoc(start, end)
+      };
+    },
+    revealRange: (range) => {
+      const instance = view.current;
+      if (!instance || !range) return false;
+      const doc = instance.state.doc;
+      const lineNumber = Math.min(Math.max(1, Math.floor(range.line) || 1), doc.lines);
+      const line = doc.line(lineNumber);
+      const column = Math.max(1, Math.floor(range.column) || 1);
+      const endColumn = Math.max(column, Math.floor(range.endColumn ?? column + 1));
+      const anchor = Math.min(line.to, line.from + column - 1);
+      const head = Math.min(line.to, line.from + endColumn - 1);
+      instance.dispatch({
+        selection: { anchor, head: Math.max(anchor, head) },
+        effects: EditorView.scrollIntoView(anchor, { y: "center" })
+      });
+      if (range.focus === false) {
+        instance.contentDOM.blur();
+      } else {
+        instance.focus();
+      }
       return true;
     }
   }), []);
@@ -226,10 +409,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       doc: value,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        editorSearchState,
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          indentWithTab
+        ]),
         bracketMatching(),
         language.of(languageExtension(filePath, languageId)),
-        theme.of(themeExtensions(isDarkAppearance())),
+        theme.of(codeMirrorThemeExtensions(appearanceMode.current)),
         drawSelection(),
         wrapping.of(wordWrap ? EditorView.lineWrapping : []),
         tabs.of(EditorState.tabSize.of(tabSize)),
@@ -254,7 +442,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
           }
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) change.current(update.state.doc.toString());
+          const programmatic = update.transactions.some((transaction) => transaction.annotation(externalValueSync));
+          if (update.docChanged && !programmatic) change.current(update.state.doc.toString());
         })
       ]
     });
@@ -262,20 +451,20 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     view.current = instance;
 
     const applyTheme = () => {
-      instance.dispatch({ effects: theme.reconfigure(themeExtensions(isDarkAppearance())) });
+      instance.dispatch({ effects: theme.reconfigure(codeMirrorThemeExtensions(appearanceMode.current)) });
     };
     const onThemeChange = () => applyTheme();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onMedia = () => {
-      if (!document.documentElement.dataset.theme) applyTheme();
+      if (appearanceMode.current === "follow-app") applyTheme();
     };
-    window.addEventListener("agent-resume:theme-change", onThemeChange);
+    window.addEventListener("agent-resume:appearance-change", onThemeChange);
     media.addEventListener("change", onMedia);
     const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-visual-theme"] });
 
     return () => {
-      window.removeEventListener("agent-resume:theme-change", onThemeChange);
+      window.removeEventListener("agent-resume:appearance-change", onThemeChange);
       media.removeEventListener("change", onMedia);
       observer.disconnect();
       instance.destroy();
@@ -288,7 +477,15 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   useEffect(() => {
     const instance = view.current;
     if (!instance || instance.state.doc.toString() === value) return;
-    instance.dispatch({ changes: { from: 0, to: instance.state.doc.length, insert: value } });
+    const selection = instance.state.selection.main;
+    instance.dispatch({
+      changes: { from: 0, to: instance.state.doc.length, insert: value },
+      selection: {
+        anchor: Math.min(selection.anchor, value.length),
+        head: Math.min(selection.head, value.length)
+      },
+      annotations: [externalValueSync.of(true), Transaction.addToHistory.of(false)]
+    });
   }, [value]);
 
   useEffect(() => {
@@ -314,6 +511,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     if (!instance) return;
     instance.dispatch({ effects: language.reconfigure(languageExtension(filePath, languageId)) });
   }, [filePath, languageId]);
+
+  useEffect(() => {
+    const instance = view.current;
+    if (!instance) return;
+    instance.dispatch({ effects: theme.reconfigure(codeMirrorThemeExtensions(appearance)) });
+  }, [appearance]);
 
   return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;
 });

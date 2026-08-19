@@ -3,6 +3,11 @@ import * as path from "node:path";
 import { ensureExtensionCatalogSchema } from "../catalog/db";
 import type { AgentProvider, AgentSession } from "../catalog/types";
 import { sessionGtdKey } from "../gtd/store";
+import {
+  clearNoteGtdStatus as clearCatalogNoteGtdStatus,
+  setNoteGtdStatus as setCatalogNoteGtdStatus
+} from "./gtd";
+import type { GtdStatus } from "../gtd/types";
 import { resolvePanelHome } from "../panelHome";
 import { normalizeProjectPath } from "../pathUtils";
 import {
@@ -51,13 +56,30 @@ import {
   writeNewNoteFile
 } from "./fs";
 import { reconcileNotesIndex } from "./reconcile";
-
+import {
+  clearParentLink,
+  collectDescendantIds,
+  deleteLinksForNote,
+  getNoteSubtree,
+  getParentLink,
+  listAllNoteLinks,
+  listChildCounts,
+  listChildLinks,
+  listLinkedChildNoteIds,
+  resolveLinkRoot,
+  setParentLink,
+  type NoteLink,
+  type NoteSubtree,
+  type NoteTreeNode
+} from "./links";
 export interface ImportNotesResult {
   imported: number;
   skipped: number;
   errors: string[];
   records: NoteRecord[];
 }
+
+export type { NoteLink, NoteSubtree, NoteTreeNode };
 
 export class NotesStore {
   private sessionFlags = new Set<string>();
@@ -122,6 +144,34 @@ export class NotesStore {
     return getNoteById(this.dbPath, noteId);
   }
 
+  async setNoteGtdStatus(noteId: string, status: GtdStatus): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    await setCatalogNoteGtdStatus(this.dbPath, noteId, status);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) {
+      throw new Error("Note not found after setting GTD status.");
+    }
+    this.cachedNotes = this.cachedNotes.map((note) => note.noteId === noteId ? updated : note);
+    return updated;
+  }
+
+  async clearNoteGtdStatus(noteId: string): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) {
+      throw new Error("Note not found.");
+    }
+    await clearCatalogNoteGtdStatus(this.dbPath, noteId);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) {
+      throw new Error("Note not found after clearing GTD status.");
+    }
+    this.cachedNotes = this.cachedNotes.map((note) => note.noteId === noteId ? updated : note);
+    return updated;
+  }
+
   absolutePath(record: NoteRecord): string {
     return absFromRelMdPath(this.panelHome, record.relMdPath);
   }
@@ -134,17 +184,32 @@ export class NotesStore {
     return readNoteFile(this.absolutePath(record));
   }
 
-  async writeNoteContent(noteId: string, content: string): Promise<NoteRecord> {
+  async writeNoteContent(noteId: string, content: string): Promise<NoteRecord & { content?: string }> {
     const record = await getNoteById(this.dbPath, noteId);
-    if (!record) {
-      throw new Error("Note not found.");
-    }
+    if (!record) throw new Error("Note not found.");
     await fs.writeFile(this.absolutePath(record), content, "utf8");
     await this.refreshNoteFromDisk(record);
     const updated = await getNoteById(this.dbPath, noteId);
-    if (!updated) {
-      throw new Error("Note not found after write.");
+    if (!updated) throw new Error("Note not found after write.");
+    return { ...updated, content };
+  }
+
+  /** Write already-validated note content with an atomic rename and no materialization. */
+  async writeValidatedNoteContent(noteId: string, content: string): Promise<NoteRecord> {
+    const record = await getNoteById(this.dbPath, noteId);
+    if (!record) throw new Error("Note not found.");
+    const target = this.absolutePath(record);
+    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fs.writeFile(temporary, content, "utf8");
+      await fs.rename(temporary, target);
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => {});
+      throw error;
     }
+    await this.refreshNoteFromDisk(record);
+    const updated = await getNoteById(this.dbPath, noteId);
+    if (!updated) throw new Error("Note disappeared after write.");
     return updated;
   }
 
@@ -305,9 +370,83 @@ export class NotesStore {
     }
     const ownerDir = path.join(this.panelHome, "notes", record.relDir);
     await deleteNoteFiles(ownerDir, record.filename);
+    await deleteLinksForNote(this.dbPath, noteId);
     await deleteNoteRecord(this.dbPath, noteId);
     this.cachedNotes = this.cachedNotes.filter((n) => n.noteId !== noteId);
     await this.rebuildFlagsFromCache();
+  }
+
+  // --- Note links (tree associations among project notes) ---
+
+  async listNoteLinks(): Promise<NoteLink[]> {
+    return listAllNoteLinks(this.dbPath);
+  }
+
+  async getNoteParent(noteId: string): Promise<NoteLink | undefined> {
+    return getParentLink(this.dbPath, noteId);
+  }
+
+  async listNoteChildren(parentNoteId: string): Promise<NoteLink[]> {
+    return listChildLinks(this.dbPath, parentNoteId);
+  }
+
+  async listLinkedChildIds(): Promise<Set<string>> {
+    return listLinkedChildNoteIds(this.dbPath);
+  }
+
+  async listNoteChildCounts(): Promise<Map<string, number>> {
+    return listChildCounts(this.dbPath);
+  }
+
+  /**
+   * Root notes for list UI: library/session always roots; project notes without a parent.
+   */
+  async listRootNotes(): Promise<NoteRecord[]> {
+    const childIds = await listLinkedChildNoteIds(this.dbPath);
+    return this.cachedNotes.filter((note) => {
+      if (note.scope !== "project") {
+        return true;
+      }
+      return !childIds.has(note.noteId);
+    });
+  }
+
+  async setNoteParent(childNoteId: string, parentNoteId: string | null): Promise<void> {
+    await setParentLink(this.dbPath, childNoteId, parentNoteId);
+  }
+
+  async clearNoteParent(childNoteId: string): Promise<void> {
+    await clearParentLink(this.dbPath, childNoteId);
+  }
+
+  async createLinkedChildNote(parentNoteId: string, body = ""): Promise<NoteRecord> {
+    const parent = await getNoteById(this.dbPath, parentNoteId);
+    if (!parent) {
+      throw new Error("Parent note not found.");
+    }
+    if (parent.scope !== "project" || !parent.projectPath) {
+      throw new Error("Linked children can only be created under a project note.");
+    }
+    const child = await this.createProjectNote(parent.projectPath, body);
+    try {
+      await setParentLink(this.dbPath, child.noteId, parentNoteId);
+    } catch (error) {
+      await this.deleteNote(child.noteId);
+      throw error;
+    }
+    return child;
+  }
+
+  async getNoteSubtree(rootNoteId: string): Promise<NoteSubtree> {
+    return getNoteSubtree(this.dbPath, rootNoteId);
+  }
+
+  async resolveNoteLinkRoot(noteId: string): Promise<string> {
+    return resolveLinkRoot(this.dbPath, noteId);
+  }
+
+  async collectNoteDescendantIds(rootNoteId: string): Promise<Set<string>> {
+    return collectDescendantIds(this.dbPath, rootNoteId);
   }
 
   async moveNote(noteId: string, newOwner: NoteOwner): Promise<NoteRecord> {
@@ -377,6 +516,7 @@ export class NotesStore {
       relMdPath: path.join("notes", ownerRelDir(newOwner), newFilename),
       title: extractTitle(body),
       contentPreview: contentPreview(body),
+      gtdStatus: record.gtdStatus,
       createdAtMs: record.createdAtMs,
       updatedAtMs: mtime,
       fsMtimeMs: mtime

@@ -7,7 +7,7 @@ This monorepo ships **two independent products** plus a shared library. Treat th
 | Product | Workspace | Version file | Primary deliverable |
 | --- | --- | --- | --- |
 | VS Code extension | `agent-resume-panel` (`apps/extension/`) | `apps/extension/package.json` | `.vsix` → VS Marketplace / Open VSX |
-| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `thunder-luc/agent-resume-desktop-doc` GitHub Releases |
+| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `thunder-luc/agent-resume-panel` GitHub Releases |
 | Shared core | `@agent-resume/core` (`packages/core/`) | `packages/core/package.json` | pnpm workspace library (not published standalone) |
 
 Versions, release cadence, and changelogs are **independent**. Bumping the extension does not bump desktop, and vice versa.
@@ -87,6 +87,6 @@ Before editing, identify the target product:
 ## Release Pipelines
 
 - **Extension** — update `apps/extension/CHANGELOG.md`, then workspace scripts in `apps/extension/package.json`; publish via Marketplace / Open VSX tooling.
-- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `pnpm run release:desktop:mac -- --build`; user docs live in `agent-resume-desktop-doc` repo.
+- **Desktop** — update `apps/desktop/CHANGELOG.md`, then `pnpm run release:desktop:mac -- --build`; user docs live in `docs/desktop/`.
 
 A desktop release does not require an extension release, and the reverse is also true.

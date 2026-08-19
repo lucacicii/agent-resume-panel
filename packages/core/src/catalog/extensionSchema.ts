@@ -24,10 +24,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   session_summary_language TEXT,
   session_summary_at_ms INTEGER,
   project_id TEXT,
+  native_project_path TEXT,
   PRIMARY KEY (provider, agent_session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
+CREATE INDEX IF NOT EXISTS idx_sessions_visible_project_id ON sessions(hidden, project_id);
 CREATE TABLE IF NOT EXISTS sync_state (
   provider TEXT PRIMARY KEY,
   last_sync_at_ms INTEGER
@@ -39,7 +41,8 @@ CREATE TABLE IF NOT EXISTS projects (
   hidden INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  absorbed_keys TEXT
 );
 CREATE TABLE IF NOT EXISTS project_local_paths (
   project_id TEXT NOT NULL,
@@ -87,6 +90,18 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS note_gtd (
+  note_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_gtd_status ON note_gtd(status);
+CREATE TABLE IF NOT EXISTS note_links (
+  child_note_id TEXT PRIMARY KEY,
+  parent_note_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -94,13 +109,17 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
 `;
 
 export const EXTENSION_MIGRATION_SQL = `
+DROP TABLE IF EXISTS note_session_bindings;
+DROP TABLE IF EXISTS note_runs;
 ALTER TABLE sessions ADD COLUMN transcript_kind TEXT;
 ALTER TABLE sessions ADD COLUMN transcript_refs TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_language TEXT;
 ALTER TABLE sessions ADD COLUMN session_summary_at_ms INTEGER;
 ALTER TABLE sessions ADD COLUMN project_id TEXT;
+ALTER TABLE sessions ADD COLUMN native_project_path TEXT;
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_visible_project_id ON sessions(hidden, project_id);
 CREATE TABLE IF NOT EXISTS project_local_paths (
   project_id TEXT NOT NULL,
   machine_id TEXT NOT NULL,
@@ -147,6 +166,18 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_path);
+CREATE TABLE IF NOT EXISTS note_gtd (
+  note_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_gtd_status ON note_gtd(status);
+CREATE TABLE IF NOT EXISTS note_links (
+  child_note_id TEXT PRIMARY KEY,
+  parent_note_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_parent ON note_links(parent_note_id);
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

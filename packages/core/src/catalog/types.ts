@@ -3,25 +3,42 @@ export type AgentProvider =
   | "claude"
   | "agy"
   | "grok"
-  | "alma"
   | "opencode"
   | "pi"
+  | "prime"
+  | "cursor"
+  | "cursor-ide"
   | "chat";
+
+/** Underlying ACP agent when provider is "chat". */
+export type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
 
 export interface AgentSession {
   provider: AgentProvider;
   id: string;
   title: string;
+  /** Effective display/grouping path — user-moved when it differs from nativeProjectPath. */
   projectPath: string;
+  /** Sync-owned canonical path from the provider (resume/operations should use this). */
+  nativeProjectPath?: string;
+  /** True when projectPath was reassigned by the user and sync must not revert it. */
+  projectOverridden?: boolean;
   /** Logical project id when catalog projects reconcile has run. */
   projectId?: string;
   updatedAt: number;
   model?: string;
   branch?: string;
   source?: string;
+  /**
+   * When provider is "chat" (ACP), the underlying ACP agent
+   * (codex / claude / grok / opencode / pi / prime).
+   */
+  acpProvider?: CatalogAcpProvider;
   archived?: boolean;
   messageCount?: number;
   sessionSummary?: string;
+  /** Catalog session_summary_at_ms when known. */
+  sessionSummaryAtMs?: number;
 }
 
 export interface CatalogSessionRow {
@@ -43,6 +60,7 @@ export interface CatalogSessionRow {
   session_summary_language?: string | null;
   session_summary_at_ms?: number | null;
   project_id?: string | null;
+  native_project_path?: string | null;
 }
 
 export function toAgentSession(row: CatalogSessionRow): AgentSession {
@@ -54,6 +72,12 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
     projectPath: row.project_path,
     updatedAt: row.updated_at_ms
   };
+
+  const native = row.native_project_path?.trim();
+  if (native) {
+    session.nativeProjectPath = native;
+    session.projectOverridden = row.project_path.trim() !== native;
+  }
 
   if (row.archived) {
     session.archived = true;
@@ -70,9 +94,25 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   if (row.source) {
     session.source = row.source;
   }
+  if (row.acp_provider && row.provider === "chat") {
+    const acp = row.acp_provider.trim();
+    if (
+      acp === "codex" ||
+      acp === "claude" ||
+      acp === "grok" ||
+      acp === "opencode" ||
+      acp === "pi" ||
+      acp === "prime"
+    ) {
+      session.acpProvider = acp;
+    }
+  }
   const summary = row.session_summary?.trim();
   if (summary) {
     session.sessionSummary = summary;
+  }
+  if (row.session_summary_at_ms != null && Number.isFinite(row.session_summary_at_ms)) {
+    session.sessionSummaryAtMs = Number(row.session_summary_at_ms);
   }
   const projectId = row.project_id?.trim();
   if (projectId) {

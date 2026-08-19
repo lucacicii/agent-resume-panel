@@ -6,12 +6,12 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 
 | | Link |
 |---|------|
-| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
-| **User docs** | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
-| **Report issues** | [desktop-doc Issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
+| **User docs** | [docs/desktop](../../docs/desktop/README.md) |
+| **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 
-Version: **0.1.4**
+Version: **0.2.7**
 
 > **No cloud · Local-first**  
 > Session index, notes, and reports are stored on your machine under **`~/.agent-resume-panel`** (shared with the VS Code extension).  
@@ -27,7 +27,7 @@ Version: **0.1.4**
 |------|-------------|
 | **Report** | Calendar with daily / weekly / monthly AI digests and GTD bar |
 | **Agent** | Natural-language Q&A over your digests and session history |
-| **Workbench** | Embedded terminal with multi-tab session resume and Git tooling |
+| **Workbench** | Embedded terminal (themes, multi-tab resume), project search, scripts runner, and Git tooling |
 | **Notes** | Markdown note editor (shared with the extension) |
 | **Sessions** | Reference list and read-only preview |
 
@@ -40,17 +40,17 @@ Version: **0.1.4**
 
 ```sh
 # from monorepo root
-./pnpm install
-./pnpm run doctor:desktop   # optional: Node/pnpm/Electron/node-pty health
-./pnpm run dev:desktop
-./pnpm run pack:desktop     # universal .app + DMG; either Mac arch is fine
+pnpm install
+pnpm run doctor:desktop   # optional: Node/pnpm/Electron/node-pty health
+pnpm run dev:desktop
+pnpm run pack:desktop     # universal .app + DMG; either Mac arch is fine
 ```
 
-Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silicon machines—only clone/pull and `./pnpm install`.
+Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silicon machines—only clone/pull and `pnpm install`.
 
 ### Install
 
-1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest).
+1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest).
 2. Open the DMG and drag **Agent Resume** to **Applications**.
 3. If macOS blocks the app on first launch, right-click → **Open** once, or run:
 
@@ -70,7 +70,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 |------|------|
 | **Report** | 日历、日/周/月 AI 回顾报告与 GTD 条 |
 | **Agent** | 对回顾与会话历史的自然语言问答 |
-| **Workbench** | 内嵌终端、多标签恢复与 Git 工具 |
+| **Workbench** | 内嵌终端（配色、多标签恢复）、项目搜索、脚本运行与 Git 工具 |
 | **Notes** | Markdown 笔记编辑（与扩展共用） |
 | **Sessions** | 会话参考列表与只读预览 |
 
@@ -81,7 +81,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 
 ### 安装
 
-1. 从 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
+1. 从 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
 2. 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
 3. 若首次启动被系统拦截，可右键 → **打开** 一次，或执行：
 

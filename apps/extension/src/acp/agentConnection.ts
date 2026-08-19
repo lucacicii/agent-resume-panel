@@ -4,11 +4,13 @@ import type { AgentCapabilities, ClientConnection, ClientContext } from "@agentc
 import * as path from "node:path";
 import { loadAcpAgentLaunch } from "./config";
 import { createAcpClientApp } from "./createClientApp";
+import { resolveSpawnCommand } from "./resolveCommand";
 
 import { getAcpSdk } from "./sdk";
 import type { AcpAgentProvider } from "./types";
 
 const STDERR_BUFFER_LIMIT = 2048;
+const ACP_HANDSHAKE_TIMEOUT_MS = 60_000;
 
 export type AcpSessionModes = {
   currentModeId: string;
@@ -32,7 +34,10 @@ export class AcpAgentConnection {
   private agentCapabilities?: AgentCapabilities;
   private stderrBuffer = "";
 
-  constructor(private readonly provider: AcpAgentProvider) {}
+  constructor(
+    private readonly provider: AcpAgentProvider,
+    private readonly projectPath?: string
+  ) {}
 
   async connect(): Promise<ClientContext> {
     if (this.connection && this.initialized) {
@@ -41,11 +46,21 @@ export class AcpAgentConnection {
 
     const acp = await getAcpSdk();
     const launch = loadAcpAgentLaunch(this.provider);
-    const env = { ...process.env, ...launch.env };
-    const command = launch.command;
+    // GUI-launched VS Code often lacks fnm/nvm/Homebrew on PATH → spawn ENOENT.
+    const spawnSpec = resolveSpawnCommand(launch.command, process.env, launch.env);
+    const command = spawnSpec.command;
+    const env = spawnSpec.env;
+    const args = primeAgentLaunchArgs(this.provider, launch.args, this.projectPath);
+    if (!spawnSpec.resolved && !path.isAbsolute(command) && !command.includes(path.sep)) {
+      throw new Error(
+        `Command not found: ${launch.command}. ` +
+          `Install the agent CLI or set Settings → ACP → ${this.provider} command to an absolute path. ` +
+          `Searched PATH includes Homebrew/fnm/nvm common locations.`
+      );
+    }
     const useShell = process.platform === "win32" && (command.endsWith(".cmd") || command.endsWith(".bat"));
     this.stderrBuffer = "";
-    this.process = spawn(command, launch.args, {
+    this.process = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
       shell: useShell
@@ -54,6 +69,7 @@ export class AcpAgentConnection {
     let handshakeComplete = false;
     let exitCode: number | null = null;
     let exitSignal: NodeJS.Signals | null = null;
+    let spawnError: Error | undefined;
 
     const processExit = new Promise<void>((resolve) => {
       this.process?.on("exit", (code, signal) => {
@@ -61,6 +77,11 @@ export class AcpAgentConnection {
         exitSignal = signal;
         resolve();
       });
+    });
+
+    this.process.on("error", (error) => {
+      spawnError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[ACP ${this.provider}] spawn error`, spawnError);
     });
 
     this.process.stderr.on("data", (chunk: Buffer) => {
@@ -75,19 +96,45 @@ export class AcpAgentConnection {
     const app = await createAcpClientApp();
     this.connection = app.connect(stream);
 
+    let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const initResponse = await this.connection.agent.request(acp.methods.agent.initialize, {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: true
-        }
-      });
+      const initResponse = await Promise.race([
+        this.connection.agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {
+            fs: { readTextFile: true, writeTextFile: true },
+            terminal: true
+          }
+        }),
+        new Promise<never>((_, reject) => {
+          handshakeTimer = setTimeout(() => {
+            reject(
+              new Error(
+                `ACP handshake timed out after ${Math.round(ACP_HANDSHAKE_TIMEOUT_MS / 1000)}s ` +
+                  `(command: ${command} ${args.join(" ")}). ` +
+                  `Check that the agent CLI is installed and supports ACP stdio.`
+              )
+            );
+          }, ACP_HANDSHAKE_TIMEOUT_MS);
+        })
+      ]);
       this.agentCapabilities = initResponse.agentCapabilities;
       handshakeComplete = true;
     } catch (error) {
-      await processExit;
+      this.dispose();
+      if (spawnError) {
+        throw this.wrapConnectError(spawnError, handshakeComplete, exitCode, exitSignal);
+      }
+      const exited = exitCode != null || exitSignal != null;
+      if (exited) {
+        throw this.wrapConnectError(error, handshakeComplete, exitCode, exitSignal);
+      }
+      await Promise.race([processExit, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
       throw this.wrapConnectError(error, handshakeComplete, exitCode, exitSignal);
+    } finally {
+      if (handshakeTimer) {
+        clearTimeout(handshakeTimer);
+      }
     }
 
     this.initialized = true;
@@ -160,9 +207,12 @@ export class AcpAgentConnection {
           method
         };
       } catch (error) {
-        if (!isResourceNotFoundError(error)) {
-          throw error;
-        }
+        // Codex returns Internal error (-32603) for invalid/unknown session ids
+        // rather than Resource not found — fall through to resume / session/new.
+        console.warn(
+          `[ACP ${this.provider}] session/${method} failed for ${acpSessionId}:`,
+          error instanceof Error ? error.message : error
+        );
       }
     }
 
@@ -225,18 +275,27 @@ export class AcpAgentConnection {
   }
 }
 
+function primeAgentLaunchArgs(
+  provider: AcpAgentProvider,
+  args: string[],
+  projectPath?: string
+): string[] {
+  if (provider !== "prime") {
+    return args;
+  }
+  if (!projectPath) {
+    throw new Error("Prime Agent ACP requires a project working directory.");
+  }
+  const cwd = path.resolve(projectPath);
+  if (args.some((arg) => arg === "--cwd" || arg.startsWith("--cwd="))) {
+    return args;
+  }
+  return [...args, "--cwd", cwd];
+}
+
 function supportsSessionResume(capabilities?: AgentCapabilities): boolean {
   const resume = capabilities?.sessionCapabilities?.resume;
   return resume != null && typeof resume === "object";
-}
-
-function isResourceNotFoundError(error: unknown): boolean {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    return (error as { code?: number }).code === -32002;
-  }
-
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Resource not found");
 }
 
 function normalizeSessionModes(response: Record<string, unknown>): AcpSessionModes | null {

@@ -44,7 +44,9 @@ function checkNode() {
     ok,
     name: "Node.js",
     detail: ok ? `v${actual} (>= ${MIN_NODE})` : `v${actual} — need >= ${MIN_NODE}`,
-    fix: ok ? undefined : "Install Node 22.13+ (volta pin in root package.json, or nvm/fnm)."
+    fix: ok
+      ? undefined
+      : "Install Node 22.13+ via fnm (reads .node-version): fnm install && fnm use"
   };
 }
 
@@ -56,14 +58,14 @@ function checkPnpm() {
       ok,
       name: "pnpm",
       detail: ok ? out : `${out} — expected ${EXPECTED_PNPM}`,
-      fix: ok ? undefined : "From repo root: ./pnpm install --frozen-lockfile"
+      fix: ok ? undefined : "From repo root: corepack enable && pnpm install --frozen-lockfile"
     };
   } catch {
     return {
       ok: false,
       name: "pnpm",
       detail: "not found on PATH",
-      fix: "From repo root: ./pnpm install --frozen-lockfile"
+      fix: "From repo root: corepack enable && pnpm install --frozen-lockfile"
     };
   }
 }
@@ -111,7 +113,7 @@ function checkNodePty() {
   const archHelpers = findSpawnHelpers(root, "darwin").filter((h) => h.includes(`darwin-${arch}`));
   const ok = hasPrebuild && (helpers.length > 0 || archHelpers.length > 0);
 
-  // Pack (universal) needs both arches available in the package.
+  // Per-arch packs need prebuilds for each target arch present in the package.
   const hasX64 = fs.existsSync(path.join(root, "prebuilds", "darwin-x64"));
   const hasArm64 = fs.existsSync(path.join(root, "prebuilds", "darwin-arm64"));
   const packReady = hasX64 && hasArm64;
@@ -120,7 +122,7 @@ function checkNodePty() {
     hasPrebuild ? `prebuild darwin-${arch} OK` : `missing prebuild darwin-${arch}`,
     helpers.length ? `spawn-helper x${helpers.length}` : "no spawn-helper",
     packReady
-      ? "universal prebuilds (x64+arm64) OK"
+      ? "both-arch prebuilds (x64+arm64) OK"
       : `pack prebuilds: x64=${hasX64} arm64=${hasArm64}`
   ];
 
@@ -188,7 +190,7 @@ function checkElectronPackCache() {
   } catch {
     return {
       ok: true,
-      name: "Electron pack cache (universal)",
+      name: "Electron pack cache",
       detail: "skipped (electron not installed)"
     };
   }
@@ -205,7 +207,7 @@ function checkElectronPackCache() {
   const allOk = present.every((p) => p.ok);
   return {
     ok: true, // cache miss is OK; pack will download
-    name: "Electron pack cache (universal)",
+    name: "Electron pack cache (per-arch zips)",
     detail: allOk
       ? `cached both zips under ${zipDir}`
       : `partial/missing under ${zipDir}: ${present.map((p) => `${p.name}=${p.ok}`).join(", ")} (pack:desktop will download)`
@@ -254,7 +256,7 @@ function main() {
   if (failed === 0) {
     console.log("All required checks passed.");
     console.log("Dev:  pnpm run dev:desktop");
-    console.log("Pack: pnpm run pack:desktop   # any Mac; builds universal");
+    console.log("Pack: pnpm run pack:desktop   # any Mac; builds arm64 + x64 separately");
     console.log("Tip:  never copy node_modules between Intel and Apple Silicon — only git + pnpm install.");
     process.exit(0);
   }

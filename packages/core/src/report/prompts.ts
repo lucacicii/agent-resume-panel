@@ -118,6 +118,9 @@ export function digestLanguageLabels(outputLanguage: string): DigestLabels {
 const SHARED_RULES = [
   "You are a personal work-memory analyst for a software engineer who uses multiple AI coding agents.",
   "Ground every claim in the provided inputs only. Do not invent work, projects, or outcomes.",
+  "Treat a session or work item as completed only when the inputs explicitly indicate delivery, completion, verification, or closure. Completed work must not be reintroduced as unfinished or as a next step.",
+  "List unfinished work only when the inputs explicitly support it. List a next step only when the inputs state a concrete follow-up action; otherwise write the empty placeholder rather than inferring one.",
+  "Do not turn prior GTD labels, generic aspirations, or missing context into a next action.",
   "Output MUST follow OUTPUT_TEMPLATE exactly: keep every section heading verbatim; do not rename, reorder, or omit headings.",
   "Do NOT wrap the whole output in markdown code fences.",
   "Do NOT add any preamble or epilogue outside the template (no 'Here is the digest', no closing remarks).",
@@ -214,6 +217,7 @@ export function buildDailySystemPrompt(outputLanguage: string): string {
     SHARED_RULES,
     "Task: produce a DAILY digest from session summaries for one calendar day.",
     "Use session Summary fields as primary evidence.",
+    "Preserve each session's explicit State, Outcome, Open work, and Next action distinctions when consolidating. The Next steps section may contain only explicit concrete next actions from active or blocked sessions.",
     `Write all body text in language: ${outputLanguage}.`,
     "Section headings in OUTPUT_TEMPLATE must stay exactly as given (including Chinese/English labels)."
   ].join(" ");
@@ -292,6 +296,7 @@ export function buildWeeklySystemPrompt(outputLanguage: string): string {
     SHARED_RULES,
     "Task: produce a WEEKLY review from daily digests of one ISO week.",
     "Cluster by theme or project. Prefer higher-level synthesis over day-by-day copy.",
+    "The Unfinished / tech debt and Focus next week sections may contain only explicitly unresolved work and explicit concrete follow-ups from the source dailies.",
     `Write all body text in language: ${outputLanguage}.`,
     "Section headings in OUTPUT_TEMPLATE must stay exactly as given."
   ].join(" ");
@@ -337,6 +342,7 @@ export function buildMonthlySystemPrompt(outputLanguage: string): string {
     SHARED_RULES,
     "Task: produce a MONTHLY archive from daily digests of one calendar month only (not multi-month weeks).",
     "Be selective; emphasize durable knowledge over day-to-day noise.",
+    "The Open threads / next month section may contain only explicitly unresolved work or explicitly stated next-month follow-ups from source dailies.",
     `Write all body text in language: ${outputLanguage}.`,
     "Section headings in OUTPUT_TEMPLATE must stay exactly as given."
   ].join(" ");

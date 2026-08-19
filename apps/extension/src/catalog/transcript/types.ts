@@ -8,7 +8,7 @@ export interface JsonlTranscriptRef {
 export interface SqliteTranscriptRef {
   kind: "sqlite";
   dbPath: string;
-  dialect: "opencode" | "alma";
+  dialect: "opencode";
   sessionId: string;
 }
 

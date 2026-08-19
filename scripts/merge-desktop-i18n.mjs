@@ -10,7 +10,42 @@ const aliasesPath = join(root, "scripts", "desktop-settings-i18n-aliases.json");
 const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
-const obsoleteDesktopKeys = new Set(["desktop.workbench.sidePanelBack"]);
+const obsoleteDesktopKeys = new Set([
+  "desktop.workbench.terminalScrollTop",
+  "desktop.workbench.terminalScrollBottom",
+  "desktop.workbench.terminalScrollPosition",
+  "desktop.workbench.sidePanelBack",
+  "desktop.workbench.renameSession",
+  "desktop.workbench.renameSessionTitle",
+  "desktop.workbench.generatingTitle",
+  "desktop.workbench.titleSuggested",
+  "desktop.workbench.titleEmpty",
+  // Link Graph: removed dig/continue/branches UI (core agent only)
+  "desktop.workbench.linkGraphIncomplete",
+  "desktop.workbench.linkGraphMeta",
+  "desktop.workbench.linkGraphChain",
+  "desktop.workbench.linkGraphAllHits",
+  "desktop.workbench.linkGraphContinue",
+  "desktop.workbench.linkGraphTogglePreview",
+  "desktop.workbench.linkGraphContinueNoProgress",
+  "desktop.workbench.linkGraphChainCumulativeHint",
+  "desktop.workbench.linkGraphLlmPath",
+  "desktop.workbench.linkGraphShowMore",
+  "desktop.workbench.linkGraphShowLess",
+  "desktop.workbench.linkGraphMainPath",
+  "desktop.workbench.linkGraphMainPathHint",
+  "desktop.workbench.linkGraphEvidence",
+  "desktop.workbench.linkGraphPrimaryChainHint",
+  "desktop.workbench.linkGraphBranches",
+  "desktop.workbench.linkGraphBranchesHint",
+  "desktop.workbench.linkGraphPrunedBranches",
+  "desktop.workbench.linkGraphPrunedHint",
+  "desktop.workbench.linkGraphDiscarded",
+  "desktop.workbench.linkGraphChainGroups",
+  "desktop.workbench.linkGraphChainGroupsHint",
+  "desktop.workbench.linkGraphBranchGroup",
+  "desktop.workbench.linkGraphTruncated"
+]);
 
 function normalizePlaceholders(value) {
   const names = [];
@@ -99,12 +134,15 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
   const localeCode = file.replace(/\.json$/, "");
   const localePath = join(desktopLocalesDir, file);
   const locale = existsSync(localePath) ? JSON.parse(readFileSync(localePath, "utf8")) : {};
-  const source =
+  const localizedSource =
     localeCode === "zh-cn" && Object.keys(zhKeys).length
       ? zhKeys
       : localeCode === "ja" && Object.keys(jaKeys).length
         ? jaKeys
         : enKeys;
+  // Keep every generated locale structurally complete when a localized catalog
+  // lags behind English; untranslated entries intentionally fall back to en.
+  const source = localeCode === "en" ? enKeys : { ...enKeys, ...localizedSource };
   for (const key of obsoleteDesktopKeys) {
     delete locale[key];
   }
@@ -113,6 +151,12 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
+  if (localeCode !== "en") {
+    const englishLocale = JSON.parse(readFileSync(join(desktopLocalesDir, "en.json"), "utf8"));
+    for (const [key, value] of Object.entries(englishLocale)) {
+      if (!(key in locale)) locale[key] = value;
+    }
+  }
   writeLocale(localePath, locale);
   const overlayNote = overlayCount ? ` (+${overlayCount} settings i18n)` : "";
   console.log(`merged ${Object.keys(source).length} desktop keys into apps/desktop/locales/${file}${overlayNote}`);

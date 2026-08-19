@@ -69,14 +69,16 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldEditorNewSessionProviderDescription"),
           type: "enum",
           default: "codex",
-          enum: ["codex", "claude", "agy", "grok", "opencode", "pi"],
+          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"],
           enumLabels: {
             codex: t("settings.enum.editorNewSessionProviderCodex"),
             claude: t("settings.enum.editorNewSessionProviderClaude"),
             agy: t("settings.enum.editorNewSessionProviderAgy"),
             grok: t("settings.enum.editorNewSessionProviderGrok"),
             opencode: t("settings.enum.editorNewSessionProviderOpencode"),
-            pi: t("settings.enum.editorNewSessionProviderPi")
+            pi: t("settings.enum.editorNewSessionProviderPi"),
+            prime: t("settings.enum.editorNewSessionProviderPrime"),
+            cursor: "Cursor CLI"
           }
         }
       ]
@@ -161,13 +163,6 @@ export function getSettingSections(): SettingSection[] {
           default: "~/.grok"
         },
         {
-          key: "almaDataDir",
-          label: t("settings.fieldAlmaDataDirLabel"),
-          description: t("settings.fieldAlmaDataDirDescription"),
-          type: "string",
-          default: "~/Library/Application Support/alma"
-        },
-        {
           key: "opencodeHome",
           label: t("settings.fieldOpencodeHomeLabel"),
           description: t("settings.fieldOpencodeHomeDescription"),
@@ -180,6 +175,27 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldPiHomeDescription"),
           type: "string",
           default: "~/.pi/agent"
+        },
+        {
+          key: "primeHome",
+          label: t("settings.fieldPrimeHomeLabel"),
+          description: t("settings.fieldPrimeHomeDescription"),
+          type: "string",
+          default: "~/.prime/agent"
+        },
+        {
+          key: "cursorHome",
+          label: "Cursor CLI home",
+          description: "Cursor CLI data directory containing chats and agent transcripts.",
+          type: "string",
+          default: "~/.cursor"
+        },
+        {
+          key: "cursorIdeUserDataHome",
+          label: "Cursor IDE user data home",
+          description: "Cursor IDE User directory containing composer headers. IDE chat bodies are not imported.",
+          type: "string",
+          default: ""
         }
       ]
     },
@@ -216,23 +232,16 @@ export function getSettingSections(): SettingSection[] {
           default: false
         },
         {
-          key: "hideCronAlma",
-          label: t("settings.fieldHideCronAlmaLabel"),
-          description: t("settings.fieldHideCronAlmaDescription"),
+          key: "showArchivedCursorIde",
+          label: "Show archived Cursor IDE chats",
+          description: "Show archived Cursor IDE composer headers.",
           type: "boolean",
-          default: true
+          default: false
         },
         {
-          key: "hideChannelAlma",
-          label: t("settings.fieldHideChannelAlmaLabel"),
-          description: t("settings.fieldHideChannelAlmaDescription"),
-          type: "boolean",
-          default: true
-        },
-        {
-          key: "showIncognitoAlma",
-          label: t("settings.fieldShowIncognitoAlmaLabel"),
-          description: t("settings.fieldShowIncognitoAlmaDescription"),
+          key: "showSubagentCursorIde",
+          label: "Show Cursor IDE subagent chats",
+          description: "Show Cursor IDE subagent composer headers.",
           type: "boolean",
           default: false
         }
@@ -396,7 +405,7 @@ export function getSettingSections(): SettingSection[] {
               label: t("settings.fieldAcpLaunchArgsLabel"),
               description: t("settings.fieldAcpCodexLaunchArgsDescription"),
               type: "stringArray",
-              default: ["-y", "@zed-industries/codex-acp@latest"]
+              default: ["-y", "@agentclientprotocol/codex-acp@latest"]
             }
           ]
         },
@@ -480,6 +489,26 @@ export function getSettingSections(): SettingSection[] {
               default: ["-y", "pi-acp"]
             }
           ]
+        },
+        {
+          id: "prime",
+          title: t("settings.groupAcpPrimeTitle"),
+          fields: [
+            {
+              key: "acp.agents.prime.command",
+              label: t("settings.fieldAcpLaunchCommandLabel"),
+              description: t("settings.fieldAcpPrimeLaunchCommandDescription"),
+              type: "string",
+              default: "prime-agent"
+            },
+            {
+              key: "acp.agents.prime.args",
+              label: t("settings.fieldAcpLaunchArgsLabel"),
+              description: t("settings.fieldAcpPrimeLaunchArgsDescription"),
+              type: "stringArray",
+              default: ["--mode", "acp"]
+            }
+          ]
         }
       ]
     },
@@ -543,7 +572,7 @@ export function getSettingSections(): SettingSection[] {
           label: t("settings.fieldHandoffMaxBriefTokensLabel"),
           description: t("settings.fieldHandoffMaxBriefTokensDescription"),
           type: "number",
-          default: 2500,
+          default: 4000,
           minimum: 500,
           maximum: 8000
         }

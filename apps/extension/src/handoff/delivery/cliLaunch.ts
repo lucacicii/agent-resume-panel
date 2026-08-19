@@ -33,6 +33,11 @@ export function buildHandoffCliLaunchCommand(
         return `pi ${shellQuote(prompt)}`;
       }
       return `pi @${shellQuotePathForPi(handoffFilePath)}`;
+    case "prime":
+      if (useInline) {
+        return `prime-agent ${shellQuote(prompt)}`;
+      }
+      return `prime-agent @${shellQuotePathForPi(handoffFilePath)}`;
     case "agy":
       return `agy --prompt-interactive ${shellQuote(prompt)}`;
     default:
@@ -44,5 +49,5 @@ function shellQuotePathForPi(filePath: string): string {
   if (/^[A-Za-z0-9_./-]+$/.test(filePath)) {
     return filePath;
   }
-  return shellQuote(filePath).slice(1, -1);
+  return shellQuote(filePath);
 }

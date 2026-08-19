@@ -1,12 +1,16 @@
 import { AcpAgentProvider } from "../acp/types";
 
-export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "alma" | "opencode" | "pi" | "chat";
+export type AgentProvider = "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "cursor" | "cursor-ide" | "chat";
 
 export interface AgentSession {
   provider: AgentProvider;
   id: string;
   title: string;
   projectPath: string;
+  /** Sync-owned canonical path from the provider (resume/operations should use this). */
+  nativeProjectPath?: string;
+  /** True when projectPath was reassigned by the user and sync must not revert it. */
+  projectOverridden?: boolean;
   /** Logical catalog project id when projects schema v2 is available. */
   projectId?: string;
   updatedAt: number;
@@ -25,17 +29,18 @@ export interface HistoryLoadOptions {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
   maxItems: number;
   showArchivedCodex: boolean;
   showArchivedOpenCode: boolean;
   showSubagentCodex: boolean;
   showSubagentGrok: boolean;
-  hideCronAlma: boolean;
-  hideChannelAlma: boolean;
-  showIncognitoAlma: boolean;
+  showArchivedCursorIde: boolean;
+  showSubagentCursorIde: boolean;
 }
 
 export interface HistoryLoadResult {

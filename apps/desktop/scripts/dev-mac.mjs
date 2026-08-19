@@ -8,9 +8,11 @@ if (process.platform !== "darwin") {
   process.exit(1);
 }
 
+const arch = process.arch === "arm64" ? "arm64" : "x64";
+
 runDesktopBuild();
 
-const appBundle = needsRepack() ? await packMacApp() : findAppBundle();
+const appBundle = needsRepack(arch) ? await packMacApp(arch) : findAppBundle(arch);
 if (!appBundle) {
   throw new Error("Failed to locate Agent Resume.app");
 }

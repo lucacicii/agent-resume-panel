@@ -11,7 +11,7 @@
 | session catalog | `src/catalog/` | SQLite sync, query, mutation, aliases, GTD, notes flags, and transcript export. |
 | preview and session assistant actions | `src/preview/` | Read-only transcript preview, summary, auto rename, handoff actions. |
 | search and session manager | `src/search/sessionSearch.ts`, `src/manager/sessionManagerPanel.ts` | Search filters and bulk export. |
-| resume targets | `src/terminal/` | Integrated terminal, Ghostty, Claude/Codex panels, Codex App, and Alma. |
+| resume targets | `src/terminal/` | Integrated terminal, Ghostty, Claude/Codex panels, Codex App. |
 
 ## Shared Core And Desktop
 

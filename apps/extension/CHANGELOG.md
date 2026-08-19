@@ -8,6 +8,102 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.11.0]
+
+#### 新增
+
+- **Prime Agent 集成完善**：MCP 工具（`session_search` / `session_list` / `session_read` / `session_read_transcript` / `session_set_gtd` / `session_resume` / `session_move` 及会话级笔记工具）的 `provider` 现接受 `prime`，可在 Claude Code 中检索、读取与迁移 Prime Agent 会话；`New Prime Agent Session` 命令现正确纳入命令面板。
+- **MCP 项目整理与会话迁移**：新增 project tidy（项目整理）与 session move（会话迁移至目录）工具。
+- **链路图工具收敛到 core/MCP**：`link_graph_trace` 等链路图工具在项目限定下可通过 MCP 调用。
+
+#### 改进
+
+- **ACP 命令解析**：GUI 启动的 VS Code（PATH 缺少 Homebrew / fnm / nvm 等常见位置）现在也能定位 `prime-agent` 等 ACP 命令；找不到命令时立即给出明确错误，不再等待 60 秒超时。
+- **Claude 会话归属**：会话归属取会话起始目录，避免 `cd` 漂移到子目录后归属错乱。
+
+#### 修复
+
+- **Prime 会话识别**：修复 MCP provider 枚举遗漏 `prime`，导致 Claude Code 中无法检索 Prime Agent 会话的问题。
+- **Handoff 文件引用**：手递文件路径含空格时不再因引号剥离生成损坏命令。
+
+### [2.10.0]
+
+#### 新增
+
+- **笔记 GTD 状态**：Notes 右键菜单支持设置 / 清除笔记 GTD 状态，Notes 树直接显示状态标签；状态写入共享 catalog 的 `note_gtd` 表，不再依赖笔记正文中的 `:::gtd` 块。
+- **共享笔记关联存储**：catalog 新增 `note_links` 表，为项目笔记父子关联提供一致存储与迁移基础。
+- **Prime Agent 支持**：同步 `~/.prime/agent/sessions/*.jsonl`，支持原生 `prime-agent --resume` 恢复、`prime-agent --mode acp` ACP 聊天、CLI 新会话 / 自主模式、Handoff 与备份。
+
+#### 改进
+
+- **LLM 推理模型兼容性**：提高 Summarize、Auto Rename、Handoff 与连接测试的默认 token 预算；当推理模型因 `reasoning_content` 或 `finish_reason=length` 耗尽输出预算时，给出明确错误提示，而不是笼统的 empty response。
+- **Handoff 默认摘要长度**：`handoff.maxBriefTokens` 默认值从 2500 提高到 4000。
+
+#### 变更
+
+- **Notes GTD 数据模型**：扩展与共享 core 统一使用 `note_gtd` 表管理笔记 GTD 状态。
+
+### [2.9.0]
+
+#### 新增
+
+- **ACP 会话纳入 catalog 索引**：ACP 聊天会话现写入共享 catalog，可在 Sessions 与搜索中按元数据检索，并支持 transcript 预览、自动重命名与自动向量化（此前 ACP 会话被排除在这些流程之外）。
+- **与 Agent Resume Desktop 共享 ACP 存储**：扩展通过共享 core 存储读写 ACP 会话，并监听 `panelHome/acp` 下的 `.jsonl` 变更，桌面端新建或更新会话后侧栏自动刷新；切换 `panelHome` 时自动重建监听。
+- **LLM 连接测试**：设置页可校验模型配置与连接是否可用（共享 core 的 `testConnection`）。
+
+#### 变更
+
+- **Codex ACP 默认适配器**：切换为官方包 `@agentclientprotocol/codex-acp`（原 `@zed-industries/codex-acp`），可在 ACP 启动参数中覆盖。
+
+#### 修复
+
+- **ACP 会话识别**：ACP 仅由 `chat` provider 判定，避免 Codex 等 CLI 会话被误识别为 ACP。
+
+### [2.8.1]
+
+#### 修复
+
+- **Marketplace 包缺少 Notes 视图**：`thunder-luc.agent-resume-panel-v2` 的 `contributes.views` 未声明 `agentResume.notes`，VS Code 激活时报 *No view is registered with id: agentResume.notes*，且侧栏无 Notes。现与 Open VSX 包对齐（含 `onView:agentResume.notes`）。
+
+### [2.8.0]
+
+#### 新增
+
+- **Reports 只读查看器**：命令 **Agent Resume: Reports (read-only)**，以及 Sessions 标题栏日历入口；三栏布局（日历 · 时段会话 · Digest Markdown）查看 Desktop 已生成的日/周/月报告。
+- 可从时段会话列表打开已有 **Session Preview**；顶部说明生成 / 重生成 / 编辑 / 删除与定时向量化仅在 **Agent Resume Desktop** 完成。
+- 无 `desktop.db` 或尚无 digests 时给出空状态提示，扩展端不会创建或写入报告库。
+
+#### 文档
+
+- README 补充 Reports 只读能力与 Desktop 维护边界说明。
+
+### [2.7.0]
+
+#### 新增
+
+- **Cursor CLI**：同步 `~/.cursor` 中的会话、读取本地 transcript 预览，并通过 `cursor-agent --workspace <cwd> --resume <sessionId>` 在集成终端恢复；支持新建会话与右键复制恢复命令。
+- **Cursor IDE**：索引本机 Composer 会话头信息与关联项目；点击会在 Cursor 中打开该项目。Cursor 未提供可用的会话命令恢复接口，因此不显示恢复命令菜单。
+- **Cursor 标识**：Cursor CLI / IDE 会话在 Sessions 与 GTD 树使用 Cursor 图标。
+
+### [2.6.13]
+
+#### 新增
+
+- **GTD Done 状态**：Sessions / GTD 右键菜单可标记完成；GTD 树新增默认折叠的完成分组。
+- **搜索与管理筛选**：Search Sessions 与 Session Manager 可按 Done 筛选，并显示完成标签。
+
+#### 变更
+
+- Done 为人工完成归档；清除状态仍表示未分流，报告 AI 与 MCP 写入不会自动设置 Done。
+
+### [2.6.12]
+
+#### 变更
+
+- **移除 Alma Provider 支持**：不再同步 / 预览 / 恢复 Alma 会话；设置中的 Alma 目录与过滤项已删除。
+- **清理 catalog 中的 Alma 数据**：同步时硬删除 Alma `sessions` 及相关行，并删除仅含 Alma 会话的 projects；混合项目保留。
+- 请与 **Agent Resume Desktop ≥ 0.2.3** 共用同一 `panelHome`（共享 core 已去掉 Alma 同步）。
+
 ### [2.6.11]
 
 #### 修复
@@ -406,6 +502,102 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.11.0]
+
+#### Added
+
+- **Prime Agent integration**: MCP tools (`session_search` / `session_list` / `session_read` / `session_read_transcript` / `session_set_gtd` / `session_resume` / `session_move` and session-scoped note tools) now accept `prime` as `provider`, so Prime Agent sessions can be searched, read, and migrated from Claude Code. The `New Prime Agent Session` command is now correctly wired into the command palette.
+- **MCP project tidy & session move tools**: new project tidy and session move-to-folder tools.
+- **Link-graph tools in core/MCP**: `link_graph_trace` and related tools are available via MCP within a project scope.
+
+#### Improved
+
+- **ACP command resolution**: GUI-launched VS Code (whose PATH lacks Homebrew / fnm / nvm etc.) now finds ACP commands such as `prime-agent`; a missing command fails fast with a clear error instead of a 60s timeout.
+- **Claude session ownership**: sessions are attributed to the directory where they started, so `cd` into a subdirectory no longer misattributes ownership.
+
+#### Fixed
+
+- **Prime session recognition**: the MCP provider enum omitted `prime`, so Prime Agent sessions could not be retrieved from Claude Code; now fixed.
+- **Handoff @file quoting**: handoff file paths containing spaces no longer produce a broken command.
+
+### [2.10.0]
+
+#### Added
+
+- **Note GTD status**: set or clear GTD status from the Notes context menu; status labels now appear in the Notes tree and persist in the shared `note_gtd` catalog table instead of relying on `:::gtd` blocks inside note content.
+- **Shared note-link storage**: catalog adds the `note_links` table as the storage base for parent/child project-note relationships.
+- **Prime Agent support**: sync `~/.prime/agent/sessions/*.jsonl`, native `prime-agent --resume`, ACP Chat via `prime-agent --mode acp`, CLI new session / autonomous mode, handoff, and backup.
+
+#### Improved
+
+- **Reasoning-model LLM handling**: raised default token budgets for Summarize, Auto Rename, Handoff, and connection tests; explicit errors now surface when a reasoning model exhausts the budget via `reasoning_content` or `finish_reason=length`.
+- **Handoff brief size**: `handoff.maxBriefTokens` default increased from 2500 to 4000.
+
+#### Changed
+
+- **Notes GTD data model**: extension and shared core now manage note GTD status through the `note_gtd` table.
+
+### [2.9.0]
+
+#### Added
+
+- **ACP sessions indexed in the catalog**: ACP chat sessions now write into the shared catalog, so they are searchable in Sessions by metadata and support transcript preview, auto-rename, and auto-vectorization (previously excluded from these flows).
+- **Shared ACP store with Agent Resume Desktop**: the extension reads/writes ACP sessions through the shared core store and watches `panelHome/acp` `.jsonl` files, refreshing the sidebar when Desktop creates or updates a session; the watcher rebuilds when `panelHome` changes.
+- **LLM connection test**: validate model configuration and connectivity from Settings (shared core `testConnection`).
+
+#### Changed
+
+- **Codex ACP default adapter**: switched to the official `@agentclientprotocol/codex-acp` package (was `@zed-industries/codex-acp`); override via the ACP launch arguments.
+
+#### Fixed
+
+- **ACP session detection**: ACP is now identified only via the `chat` provider, so Codex and other CLI sessions are no longer misidentified as ACP.
+
+### [2.8.1]
+
+#### Fixed
+
+- **Marketplace package missing Notes view**: `thunder-luc.agent-resume-panel-v2` did not declare `agentResume.notes` under `contributes.views`, so VS Code logged *No view is registered with id: agentResume.notes* and omitted the Notes tab. Aligned with the Open VSX package (including `onView:agentResume.notes`).
+
+### [2.8.0]
+
+#### Added
+
+- **Reports (read-only) viewer**: command **Agent Resume: Reports (read-only)** and a calendar action on the Sessions view title bar; three-pane layout (calendar · period sessions · digest Markdown) for digests produced by Desktop.
+- Open existing **Session Preview** from the period session list; banner explains that generate / regenerate / edit / delete and scheduled vectorization remain **Agent Resume Desktop** only.
+- Empty states when `desktop.db` or digests are missing; the extension never creates or writes the report database.
+
+#### Docs
+
+- README documents the read-only Reports surface and Desktop maintenance boundary.
+
+### [2.7.0]
+
+#### Added
+
+- **Cursor CLI**: syncs sessions from `~/.cursor`, reads local transcript previews, and resumes in the integrated terminal with `cursor-agent --workspace <cwd> --resume <sessionId>`; new sessions and copied resume commands are supported.
+- **Cursor IDE**: indexes local Composer session headers and their associated projects; clicking one opens that project in Cursor. Cursor does not expose a usable command-line chat-resume interface, so resume-command menus are unavailable.
+- **Cursor identity**: Cursor CLI / IDE sessions use the Cursor icon in the Sessions and GTD trees.
+
+### [2.6.13]
+
+#### Added
+
+- **GTD Done status**: mark sessions complete from the Sessions / GTD context menu; the GTD tree adds a collapsed Done group.
+- **Search and Manager filters**: filter by Done and display its completion tag.
+
+#### Changed
+
+- Done is a human completion archive; Clear still means untriaged, and report AI or MCP writes never set Done automatically.
+
+### [2.6.12]
+
+#### Changed
+
+- **Removed Alma provider support**: Alma sessions are no longer synced, previewed, or resumed; Alma-related settings are gone.
+- **Purge Alma catalog rows on sync**: hard-deletes Alma `sessions` / satellite rows and Alma-only projects; mixed projects are kept.
+- Prefer **Agent Resume Desktop ≥ 0.2.3** when sharing the same `panelHome` (shared core no longer syncs Alma).
 
 ### [2.6.11]
 

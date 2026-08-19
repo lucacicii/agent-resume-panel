@@ -2,6 +2,8 @@
   "name": "@agent-resume/core",
   "version": "0.1.0",
   "private": true,
+  "author": "thunder-luc",
+  "license": "AGPL-3.0-only",
   "description": "Shared catalog, settings, LLM, and memory for Agent Resume Panel and Desktop",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +18,8 @@
     }
   },
   "bin": {
-    "agent-resume-mcp": "./dist/mcp/cli.js"
+    "agent-resume-mcp": "./dist/mcp/cli.js",
+    "agent-resume-browser-mcp": "./dist/mcp/browserCli.js"
   },
   "engines": {
     "node": ">=18"
@@ -24,7 +27,7 @@
   "scripts": {
     "build": "node ../../scripts/run-tsc.mjs --cwd . -p ./",
     "watch": "node ../../scripts/run-tsc.mjs --cwd . -p ./ -w",
-    "test": "node ../../scripts/pnpm.mjs run build && node --test test/*.test.mjs"
+    "test": "pnpm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

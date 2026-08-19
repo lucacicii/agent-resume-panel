@@ -93,24 +93,29 @@ function patchManifest() {
       group: "inline@1"
     },
     {
-      command: "agentResume.renameNote",
+      command: "agentResume.setNoteGtdStatus",
       when: "view == agentResume.notes && viewItem == agentResume.notes.note",
       group: "1_notes@1"
     },
     {
-      command: "agentResume.deleteNote",
+      command: "agentResume.renameNote",
       when: "view == agentResume.notes && viewItem == agentResume.notes.note",
       group: "1_notes@2"
     },
     {
-      command: "agentResume.revealNoteInOS",
+      command: "agentResume.deleteNote",
       when: "view == agentResume.notes && viewItem == agentResume.notes.note",
       group: "1_notes@3"
     },
     {
-      command: "agentResume.copyNotePath",
+      command: "agentResume.revealNoteInOS",
       when: "view == agentResume.notes && viewItem == agentResume.notes.note",
       group: "1_notes@4"
+    },
+    {
+      command: "agentResume.copyNotePath",
+      when: "view == agentResume.notes && viewItem == agentResume.notes.note",
+      group: "1_notes@5"
     },
     {
       command: "agentResume.newNote",

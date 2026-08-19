@@ -127,3 +127,53 @@ export function getAcpChatUiStrings(): Record<string, string> {
     statusReady: t("webview.acpChat.statusReady")
   };
 }
+
+export function getReportViewerUiStrings(): Record<string, string> {
+  return {
+    readonlyBanner: t("webview.report.readonlyBanner"),
+    today: t("webview.report.today"),
+    refresh: t("webview.report.refresh"),
+    prevMonth: t("webview.report.prevMonth"),
+    nextMonth: t("webview.report.nextMonth"),
+    yearLabel: t("webview.report.yearLabel"),
+    monthLabel: t("webview.report.monthLabel"),
+    weekdayMon: t("webview.report.weekdayMon"),
+    weekdayTue: t("webview.report.weekdayTue"),
+    weekdayWed: t("webview.report.weekdayWed"),
+    weekdayThu: t("webview.report.weekdayThu"),
+    weekdayFri: t("webview.report.weekdayFri"),
+    weekdaySat: t("webview.report.weekdaySat"),
+    weekdaySun: t("webview.report.weekdaySun"),
+    weekCol: t("webview.report.weekCol"),
+    legend: t("webview.report.legend"),
+    monthBtn: t("webview.report.monthBtn"),
+    sessionsTitle: t("webview.report.sessionsTitle"),
+    sessionCountMeta: t("webview.report.sessionCountMeta"),
+    noSessionsInRange: t("webview.report.noSessionsInRange"),
+    digestDaily: t("webview.report.digestDaily"),
+    digestWeekly: t("webview.report.digestWeekly"),
+    digestMonthly: t("webview.report.digestMonthly"),
+    rangeDay: t("webview.report.rangeDay"),
+    rangeWeek: t("webview.report.rangeWeek"),
+    rangeMonth: t("webview.report.rangeMonth"),
+    digestDetailTitle: t("webview.report.digestDetailTitle"),
+    futureDateHint: t("webview.report.futureDateHint"),
+    emptyHasSessions: t("webview.report.emptyHasSessions"),
+    emptyNoSessions: t("webview.report.emptyNoSessions"),
+    generateInAppHint: t("webview.report.generateInAppHint"),
+    noDesktopDb: t("webview.report.noDesktopDb"),
+    loadFailed: t("webview.report.loadFailed"),
+    month1: t("webview.report.month1"),
+    month2: t("webview.report.month2"),
+    month3: t("webview.report.month3"),
+    month4: t("webview.report.month4"),
+    month5: t("webview.report.month5"),
+    month6: t("webview.report.month6"),
+    month7: t("webview.report.month7"),
+    month8: t("webview.report.month8"),
+    month9: t("webview.report.month9"),
+    month10: t("webview.report.month10"),
+    month11: t("webview.report.month11"),
+    month12: t("webview.report.month12")
+  };
+}

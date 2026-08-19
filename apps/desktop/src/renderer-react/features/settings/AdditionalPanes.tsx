@@ -1,13 +1,30 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ExternalLink, FileText, MessageSquareWarning, ShieldCheck } from "lucide-react";
+import { ThemeIcon } from "../../components/ThemeIcon";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
-import type { ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
-import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU } from "./model";
+import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
+import type { NotesDraft, ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
+type BackupProgress = { operation: "export" | "import"; phase: "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete"; percent: number };
+
+const TERMINAL_THEME_LABEL_KEYS: Record<string, string> = {
+  "follow-app": "desktop.settings.terminalThemeFollowApp",
+  "default-dark": "desktop.settings.terminalThemeDefaultDark",
+  "default-light": "desktop.settings.terminalThemeDefaultLight",
+  "solarized-dark": "desktop.settings.terminalThemeSolarizedDark",
+  "solarized-light": "desktop.settings.terminalThemeSolarizedLight",
+  "one-dark": "desktop.settings.terminalThemeOneDark",
+  dracula: "desktop.settings.terminalThemeDracula"
+};
+
+function terminalThemeLabelKey(id: string): string {
+  return TERMINAL_THEME_LABEL_KEYS[id] || "desktop.settings.terminalThemeDefaultDark";
+}
 
 function ToggleRow({ title, description, checked, onChange }: { title: string; description?: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><span className="settings-toggle"><input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>;
@@ -25,7 +42,52 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
   };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
-      <SelectRow title={t("desktop.settings.defaultAgent")} description={t("desktop.settings.defaultAgentDesc")} value={draft.defaultProvider} onChange={(value) => update("defaultProvider", value as WorkbenchDraft["defaultProvider"])}><option value="codex">Codex</option><option value="claude">Claude</option><option value="grok">Grok</option><option value="agy">Antigravity</option><option value="opencode">OpenCode</option><option value="pi">Pi</option></SelectRow>
+      <SelectRow
+        title={t("desktop.settings.defaultAgent")}
+        description={t("desktop.settings.defaultAgentDesc")}
+        value={draft.defaultNewSessionTarget}
+        onChange={(value) => {
+          const next = { ...draft, defaultNewSessionTarget: value };
+          if (value.startsWith("cli:")) {
+            next.defaultProvider = value.slice(4) as WorkbenchDraft["defaultProvider"];
+          }
+          setDraft(next);
+          scheduleSave(next);
+        }}
+      >
+        <option value="">{t("desktop.settings.newSessionTarget.askEveryTime")}</option>
+        <optgroup label={t("desktop.settings.newSessionGroupCli")}>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => (
+            <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
+          ))}
+        </optgroup>
+        <optgroup label={t("desktop.settings.newSessionGroupAcp")}>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => (
+            <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
+          ))}
+        </optgroup>
+      </SelectRow>
+      <ToggleRow
+        title={t("desktop.settings.newSessionYolo")}
+        description={t("desktop.settings.newSessionYoloDesc")}
+        checked={draft.newSessionYolo}
+        onChange={(value) => update("newSessionYolo", value)}
+      />
+      <SelectRow
+        title={t("desktop.settings.acpAutoApprove")}
+        description={t("desktop.settings.acpAutoApproveDesc")}
+        value={draft.acpAutoApprovePermissions}
+        onChange={(value) => update("acpAutoApprovePermissions", value as WorkbenchDraft["acpAutoApprovePermissions"])}
+      >
+        <option value="ask">{t("desktop.settings.acpAutoApproveAsk")}</option>
+        <option value="allowAll">{t("desktop.settings.acpAutoApproveAllowAll")}</option>
+      </SelectRow>
+      <ToggleRow
+        title={t("desktop.settings.acpExperimentalGrokVendorUi")}
+        description={t("desktop.settings.acpExperimentalGrokVendorUiDesc")}
+        checked={draft.acpExperimentalGrokVendorUi}
+        onChange={(value) => update("acpExperimentalGrokVendorUi", value)}
+      />
       <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value)} /></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
@@ -35,9 +97,43 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
       <SelectRow title={t("desktop.settings.editorTabSize")} description={t("desktop.settings.editorTabSizeDesc")} value={draft.editorTabSize} onChange={(value) => update("editorTabSize", Number(value) as WorkbenchDraft["editorTabSize"])}><option value="2">{t("desktop.settings.editorTabSize2")}</option><option value="4">{t("desktop.settings.editorTabSize4")}</option><option value="8">{t("desktop.settings.editorTabSize8")}</option></SelectRow>
       <SelectRow title={t("desktop.settings.editorAutoSaveDelay")} description={t("desktop.settings.editorAutoSaveDelayDesc")} value={draft.editorAutoSaveDelayMs} onChange={(value) => update("editorAutoSaveDelayMs", Number(value) as WorkbenchDraft["editorAutoSaveDelayMs"])}><option value="300">{t("desktop.settings.editorAutoSaveDelay300")}</option><option value="600">{t("desktop.settings.editorAutoSaveDelay600")}</option><option value="1000">{t("desktop.settings.editorAutoSaveDelay1000")}</option><option value="2000">{t("desktop.settings.editorAutoSaveDelay2000")}</option></SelectRow>
     </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.transcriptGroup")}</h3><div className="settings-group-body">
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
+    </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
       <SelectRow title={t("desktop.settings.terminalMode")} description={t("desktop.settings.terminalModeDesc")} value={draft.terminalMode} onChange={(value) => update("terminalMode", value as WorkbenchDraft["terminalMode"])}><option value="xterm">{t("desktop.settings.terminalXterm")}</option><option value="external-system">{t("desktop.settings.terminalExternal")}</option></SelectRow>
+      <SelectRow
+        title={t("desktop.settings.terminalTheme")}
+        description={t("desktop.settings.terminalThemeDesc")}
+        value={draft.terminalTheme}
+        onChange={(value) => update("terminalTheme", value as WorkbenchDraft["terminalTheme"])}
+      >
+        {WORKBENCH_TERMINAL_THEME_IDS.map((id) => (
+          <option key={id} value={id}>{t(terminalThemeLabelKey(id))}</option>
+        ))}
+      </SelectRow>
+      <SelectRow
+        title={t("desktop.settings.editorTheme")}
+        description={t("desktop.settings.editorThemeDesc")}
+        value={draft.editorTheme}
+        onChange={(value) => update("editorTheme", value as WorkbenchDraft["editorTheme"])}
+      >
+        <option value="follow-app">{t("desktop.settings.editorThemeFollowApp")}</option>
+        <option value="light">{t("desktop.settings.editorThemeLight")}</option>
+        <option value="dark">{t("desktop.settings.editorThemeDark")}</option>
+      </SelectRow>
+      {draft.terminalMode === "xterm" ? (
+        <SelectRow
+          title={t("desktop.settings.terminalRenderer")}
+          description={t("desktop.settings.terminalRendererDesc")}
+          value={draft.terminalRenderer}
+          onChange={(value) => update("terminalRenderer", value as WorkbenchDraft["terminalRenderer"])}
+        >
+          <option value="webgl">{t("desktop.settings.terminalRendererWebgl")}</option>
+          <option value="canvas">{t("desktop.settings.terminalRendererCanvas")}</option>
+        </SelectRow>
+      ) : null}
       {draft.terminalMode === "external-system" ? <SelectRow title={t("desktop.settings.externalLaunch")} description={t("desktop.settings.externalLaunchDesc")} value={draft.externalLaunchMode} onChange={(value) => update("externalLaunchMode", value as WorkbenchDraft["externalLaunchMode"])}><option value="executeCommand">{t("desktop.settings.launchExecute")}</option><option value="pasteCommand">{t("desktop.settings.launchPaste")}</option><option value="copyCommand">{t("desktop.settings.launchCopy")}</option></SelectRow> : null}
       <SelectRow title={t("desktop.settings.cmdT")} description={t("desktop.settings.cmdTDesc")} value={draft.cmdTAction} onChange={(value) => update("cmdTAction", value as WorkbenchDraft["cmdTAction"])}><option value="newTerminal">{t("desktop.settings.cmdTNewTerminal")}</option><option value="newSession">{t("desktop.settings.cmdTNewSession")}</option></SelectRow>
     </div></section>
@@ -72,11 +168,66 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
   </>;
 }
 
-export function ReportPane({ draft, setDraft, scheduleSave, t }: { draft: ReportDraft; setDraft: (value: ReportDraft) => void; scheduleSave: (value: ReportDraft) => void; t: Translate }) {
+type ScheduleRunRow = Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>[number];
+
+function scheduleLevelLabel(level: string, t: Translate): string {
+  if (level === "weekly") return t("desktop.report.digestWeekly");
+  if (level === "monthly") return t("desktop.report.digestMonthly");
+  if (level === "daily") return t("desktop.report.digestDaily");
+  return level;
+}
+
+function formatScheduleRunSummary(run: ScheduleRunRow, t: Translate): { text: string; kind?: StatusKind } {
+  const level = scheduleLevelLabel(run.level, t);
+  const when = formatTime(run.startedAtMs);
+  if (run.status === "running") {
+    return { text: t("desktop.settings.scheduleLastRunRunning", level, run.periodKey, when) };
+  }
+  if (run.status === "ok") {
+    return { text: t("desktop.settings.scheduleLastRunOk", level, run.periodKey, when), kind: "ok" };
+  }
+  const err = (run.error || "").trim() || t("desktop.common.unknownError");
+  return { text: t("desktop.settings.scheduleLastRunError", level, run.periodKey, when, err), kind: "error" };
+}
+
+export function ReportPane({
+  draft,
+  setDraft,
+  scheduleSave,
+  t,
+  onOpenScheduleLog
+}: {
+  draft: ReportDraft;
+  setDraft: (value: ReportDraft) => void;
+  scheduleSave: (value: ReportDraft) => void;
+  t: Translate;
+  onOpenScheduleLog?: () => void;
+}) {
   const [maxDays, setMaxDays] = useState(400);
   const [skipExisting, setSkipExisting] = useState(true);
   const [skipEmbedding, setSkipEmbedding] = useState(true);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [lastRun, setLastRun] = useState<ScheduleRunRow | null>(null);
+  const [lastRunLoaded, setLastRunLoaded] = useState(false);
+  const [lastRunError, setLastRunError] = useState("");
+
+  const loadLastRun = useCallback(async () => {
+    try {
+      const runs = await desktopApi().usageListScheduleRuns({ days: 90, limit: 1 });
+      setLastRun(runs[0] ?? null);
+      setLastRunError("");
+    } catch (error) {
+      setLastRun(null);
+      setLastRunError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLastRunLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLastRun();
+  }, [loadLastRun, draft.enabled]);
+
   const update = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) => {
     if (key === "enabled" && value && !draft.enabled && !window.confirm(t("desktop.settings.memoryEnableConfirm"))) return;
     const next = { ...draft, [key]: value };
@@ -102,38 +253,675 @@ export function ReportPane({ draft, setDraft, scheduleSave, t }: { draft: Report
       setStatus({ text: `${t("desktop.backfill.stats", "daily", result.daily.ok.length, result.daily.skipped.length, failures ? `/fail ${failures}` : "", result.daily.planned.length)} · ${t("desktop.backfill.stats", "weekly", result.weekly.ok.length, result.weekly.skipped.length, "", result.weekly.planned.length)}`, kind: failures ? "error" : "ok" });
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
+
+  const lastRunSummary = lastRun ? formatScheduleRunSummary(lastRun, t) : null;
+
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.scheduledDigests")}</h3><div className="settings-group-body"><ToggleRow title={t("desktop.settings.enableSchedule")} description={t("desktop.settings.enableScheduleDesc")} checked={draft.enabled} onChange={(value) => update("enabled", value)} />{draft.enabled ? <div className="settings-schedule-fields"><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.dailyHour")}</span><input type="number" min="0" max="23" value={draft.dailyHour} onChange={(event) => update("dailyHour", Number(event.target.value))} /></label><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.weeklyHour")}</span><input type="number" min="0" max="23" value={draft.weeklyHour} onChange={(event) => update("weeklyHour", Number(event.target.value))} /></label><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.monthlyHour")}</span><input type="number" min="0" max="23" value={draft.monthlyHour} onChange={(event) => update("monthlyHour", Number(event.target.value))} /></label></div> : null}</div></section>
-    <section className="settings-group settings-group-action"><h3 className="settings-group-title">{t("desktop.settings.backfillTitle")}</h3><div className="settings-group-body"><p className="settings-callout">{t("desktop.settings.backfillCallout")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.backfillMaxDays")}</span><input type="number" min="1" max="2000" value={maxDays} onChange={(event) => setMaxDays(Math.max(1, Math.min(2000, Number(event.target.value) || 400)))} /></label><ToggleRow title={t("desktop.settings.backfillSkipExisting")} checked={skipExisting} onChange={setSkipExisting} /><ToggleRow title={t("desktop.settings.backfillSkipEmbedding")} checked={skipEmbedding} onChange={setSkipEmbedding} /><div className="settings-action-row"><button type="button" className="tool-btn" onClick={() => void preview()}>{t("desktop.settings.backfillPreview")}</button><button type="button" className="tool-btn" onClick={() => void run()}>{t("desktop.settings.backfillRun")}</button></div><Status kind={status.kind}>{status.text}</Status></div></section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.scheduledDigests")}</h3>
+      <div className="settings-group-body">
+        <ToggleRow
+          title={t("desktop.settings.enableSchedule")}
+          description={t("desktop.settings.enableScheduleDesc")}
+          checked={draft.enabled}
+          onChange={(value) => update("enabled", value)}
+        />
+        <p className="settings-footnote">{t("desktop.settings.scheduleRuntimeNote")}</p>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.maxDigestLlmCalls")}</span>
+          <span className="settings-field-desc">{t("desktop.settings.maxDigestLlmCallsDesc")}</span>
+          <input type="number" min="10" max="1000" value={draft.maxDigestLlmCalls} onChange={(event) => update("maxDigestLlmCalls", Math.max(10, Math.min(1000, Number(event.target.value) || 100)))} />
+        </label>
+        {draft.enabled ? (
+          <div className="settings-schedule-fields">
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.dailyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.dailyHour} onChange={(event) => update("dailyHour", Number(event.target.value))} />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.weeklyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.weeklyHour} onChange={(event) => update("weeklyHour", Number(event.target.value))} />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.monthlyHour")}</span>
+              <input type="number" min="0" max="23" value={draft.monthlyHour} onChange={(event) => update("monthlyHour", Number(event.target.value))} />
+            </label>
+          </div>
+        ) : null}
+        <div className="settings-schedule-status" aria-live="polite">
+          <div className="settings-schedule-status-label">{t("desktop.settings.scheduleLastRunTitle")}</div>
+          {!lastRunLoaded ? (
+            <Status>{t("desktop.common.loading")}</Status>
+          ) : lastRunError ? (
+            <Status kind="error">{lastRunError}</Status>
+          ) : lastRunSummary ? (
+            <Status kind={lastRunSummary.kind}>{lastRunSummary.text}</Status>
+          ) : (
+            <Status>{t("desktop.settings.scheduleLastRunNone")}</Status>
+          )}
+          <div className="settings-action-row">
+            <button type="button" className="tool-btn" onClick={() => void loadLastRun()}>
+              {t("desktop.settings.scheduleRefreshStatus")}
+            </button>
+            {onOpenScheduleLog ? (
+              <button type="button" className="tool-btn" onClick={onOpenScheduleLog}>
+                {t("desktop.settings.scheduleViewLog")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+    <section className="settings-group settings-group-action">
+      <h3 className="settings-group-title">{t("desktop.settings.backfillTitle")}</h3>
+      <div className="settings-group-body">
+        <p className="settings-callout">{t("desktop.settings.backfillCallout")}</p>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.backfillMaxDays")}</span>
+          <input type="number" min="1" max="2000" value={maxDays} onChange={(event) => setMaxDays(Math.max(1, Math.min(2000, Number(event.target.value) || 400)))} />
+        </label>
+        <ToggleRow title={t("desktop.settings.backfillSkipExisting")} checked={skipExisting} onChange={setSkipExisting} />
+        <ToggleRow title={t("desktop.settings.backfillSkipEmbedding")} checked={skipEmbedding} onChange={setSkipEmbedding} />
+        <div className="settings-action-row">
+          <button type="button" className="tool-btn" onClick={() => void preview()}>{t("desktop.settings.backfillPreview")}</button>
+          <button type="button" className="tool-btn" onClick={() => void run()}>{t("desktop.settings.backfillRun")}</button>
+        </div>
+        <Status kind={status.kind}>{status.text}</Status>
+      </div>
+    </section>
   </>;
+}
+
+export function BackupPane({ t }: { t: Translate }) {
+  type Target = "local-file" | "icloud-drive";
+  const [target, setTarget] = useState<Target>("local-file");
+  const [targetStatus, setTargetStatus] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupTargetStatus"]>>>([]);
+  const [icloudItems, setIcloudItems] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupListIcloud"]>>>([]);
+  const [selectedIcloudId, setSelectedIcloudId] = useState("");
+  const [includeCredentials, setIncludeCredentials] = useState(false);
+  const [includeNativeConversations, setIncludeNativeConversations] = useState(true);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [backupPasswordConfirm, setBackupPasswordConfirm] = useState("");
+  const [pendingImport, setPendingImport] = useState<Awaited<ReturnType<ReturnType<typeof desktopApi>["backupSelectImport"]>>>(null);
+  const [importCredentials, setImportCredentials] = useState(false);
+  const [restoreNativeConversations, setRestoreNativeConversations] = useState(false);
+  const [importPassword, setImportPassword] = useState("");
+  const [backupStatus, setBackupStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupProgress, setBackupProgress] = useState<BackupProgress | null>(null);
+  const icloud = targetStatus.find((item) => item.target === "icloud-drive");
+  const passwordRequired = includeCredentials || target === "icloud-drive";
+
+  const refreshIcloud = useCallback(async () => {
+    const [status, items] = await Promise.all([desktopApi().backupTargetStatus(), desktopApi().backupListIcloud()]);
+    setTargetStatus(status);
+    setIcloudItems(items);
+    setSelectedIcloudId((current) => items.some((item) => item.backupId === current) ? current : items[0]?.backupId || "");
+  }, []);
+
+  useEffect(() => { void refreshIcloud().catch(() => undefined); }, [refreshIcloud]);
+  useEffect(() => {
+    const api = desktopApi();
+    return typeof api.onBackupProgress === "function" ? api.onBackupProgress(setBackupProgress) : undefined;
+  }, []);
+
+  const showPreview = (preview: NonNullable<typeof pendingImport>) => {
+    setPendingImport(preview);
+    setImportCredentials(false);
+    setRestoreNativeConversations(false);
+    setBackupStatus({ text: t("desktop.backup.ready", preview.fileCount), kind: "ok" });
+  };
+
+  const exportData = async () => {
+    if (passwordRequired && (!backupPassword || backupPassword !== backupPasswordConfirm)) {
+      setBackupStatus({ text: t("desktop.backup.passwordMismatch"), kind: "error" });
+      return;
+    }
+    setBackupProgress({ operation: "export", phase: "preparing", percent: 0 });
+    setBackupBusy(true);
+    try {
+      const result = await desktopApi().backupExport({
+        target,
+        includeCredentials,
+        includeNativeConversations,
+        password: passwordRequired ? backupPassword : undefined
+      });
+      const exportedText = target === "icloud-drive" ? t("desktop.backup.icloudSaved", result.fileCount || 0) : t("desktop.backup.exported", result.fileCount || 0);
+      const warningText = result.warnings?.length ? ` ${result.warnings.join(" ")}` : "";
+      setBackupStatus(result.canceled
+        ? { text: t("desktop.backup.exportCanceled") }
+        : { text: `${exportedText}${warningText}`, kind: result.warnings?.length ? "warning" : "ok" });
+      if (target === "icloud-drive") await refreshIcloud();
+      setBackupPassword("");
+      setBackupPasswordConfirm("");
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const selectLocalImport = async () => {
+    setBackupBusy(true);
+    try {
+      const preview = await desktopApi().backupSelectImport();
+      if (!preview) setBackupStatus({ text: t("desktop.backup.importCanceled") });
+      else showPreview(preview);
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const selectIcloudImport = async () => {
+    if (!selectedIcloudId) return;
+    if (!backupPassword) {
+      setBackupStatus({ text: t("desktop.backup.passwordRequiredIcloud"), kind: "error" });
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      const preview = await desktopApi().backupSelectIcloudImport({ backupId: selectedIcloudId, password: backupPassword });
+      setImportPassword(backupPassword);
+      showPreview(preview);
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const mergeImport = async () => {
+    if (!pendingImport) return;
+    if (importCredentials && !importPassword) {
+      setBackupStatus({ text: t("desktop.backup.passwordRequired"), kind: "error" });
+      return;
+    }
+    if (!window.confirm(t("desktop.backup.importConfirm", pendingImport.fileCount))) return;
+    setBackupProgress({ operation: "import", phase: "preparing", percent: 0 });
+    setBackupBusy(true);
+    try {
+      const result = await desktopApi().backupImport({
+        importToken: pendingImport.importToken,
+        includeCredentials: importCredentials,
+        restoreNativeConversations,
+        password: importCredentials ? importPassword : undefined
+      });
+      setPendingImport(null);
+      setImportPassword("");
+      setBackupStatus({ text: t("desktop.backup.imported", result.fileCount || 0), kind: "ok" });
+    } catch (error) {
+      setBackupStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const visibleIcloudItems = icloudItems.slice(0, 10);
+  const selectedIcloud = visibleIcloudItems.find((item) => item.backupId === selectedIcloudId);
+  const providerSummary = pendingImport?.providers
+    .filter((provider) => provider.fileCount > 0)
+    .map((provider) => `${provider.provider} ${Math.ceil(provider.totalBytes / 1024 / 1024)} MB${provider.excludedBytes ? ` · ${t("desktop.backup.excludedHistory", Math.ceil(provider.excludedBytes / 1024 / 1024))}` : ""}`)
+    .join(", ");
+  return (
+    <section className="settings-group settings-group-action">
+      <h3 className="settings-group-title">{t("desktop.backup.title")}</h3>
+      <div className="settings-group-body">
+        <p className="settings-footnote">{t("desktop.backup.description")}</p>
+        <SegmentedControl
+          value={target}
+          options={["local-file", "icloud-drive"] as const}
+          onChange={setTarget}
+          getLabel={(value) => value === "local-file" ? t("desktop.backup.local") : t("desktop.backup.icloud")}
+          aria-label={t("desktop.backup.destination")}
+          className="settings-backup-target"
+        />
+        <label className="settings-row">
+          <span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.includeNative")}</span><span className="settings-row-desc">{t("desktop.backup.includeNativeDesc")}</span></span>
+          <span className="settings-toggle"><input type="checkbox" role="switch" checked={includeNativeConversations} disabled={backupBusy} onChange={(event) => setIncludeNativeConversations(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span>
+        </label>
+        <label className="settings-row">
+          <span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.includeCredentials")}</span><span className="settings-row-desc">{t("desktop.backup.includeCredentialsDesc")}</span></span>
+          <span className="settings-toggle"><input type="checkbox" role="switch" checked={includeCredentials} disabled={backupBusy} onChange={(event) => setIncludeCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span>
+        </label>
+        {target === "local-file" ? <p className="settings-callout">{t("desktop.backup.localWarning")}</p> : <p className={`settings-callout${icloud?.available ? "" : " is-error"}`}>{icloud?.available ? t("desktop.backup.icloudReady") : icloud?.reason || t("desktop.backup.icloudUnavailable")}</p>}
+        {passwordRequired ? <>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="new-password" value={backupPassword} disabled={backupBusy} onChange={(event) => setBackupPassword(event.target.value)} /></label>
+          <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.passwordConfirm")}</span><input type="password" autoComplete="new-password" value={backupPasswordConfirm} disabled={backupBusy} onChange={(event) => setBackupPasswordConfirm(event.target.value)} /></label>
+        </> : null}
+        {target === "local-file" ? <div className="settings-action-row">
+          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void exportData()}><ThemeIcon name="download" size={16} aria-hidden="true" />{t("desktop.backup.export")}</button>
+          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void selectLocalImport()}><ThemeIcon name="upload" size={16} aria-hidden="true" />{t("desktop.backup.import")}</button>
+        </div> : <>
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available} onClick={() => void exportData()}><ThemeIcon name="cloud" size={16} aria-hidden="true" />{t("desktop.backup.icloudBackup")}</button></div>
+          <div className="settings-backup-list" aria-label={t("desktop.backup.icloudRecent")}>
+            <div className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.icloudRecent")}</span><span className="settings-row-desc">{icloudItems.length ? t("desktop.backup.icloudRetention") : t("desktop.backup.icloudEmpty")}</span></span></div>
+            {visibleIcloudItems.map((item) => <button type="button" className={`settings-backup-item${item.backupId === selectedIcloudId ? " active" : ""}`} aria-pressed={item.backupId === selectedIcloudId} disabled={backupBusy} key={item.backupId} onClick={() => setSelectedIcloudId(item.backupId)}><span>{new Date(item.createdAtMs).toLocaleString()}</span><small>{item.sourceMachineId.slice(0, 8)} · {item.nativeConversationFileCount} {t("desktop.backup.nativeFiles")}</small></button>)}
+          </div>
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available || !selectedIcloud} onClick={() => void selectIcloudImport()}><ThemeIcon name="upload" size={16} aria-hidden="true" />{t("desktop.backup.icloudRestore")}</button></div>
+        </>}
+        {backupBusy && backupProgress ? <div className="settings-backup-progress" role="status" aria-live="polite"><div className="settings-backup-progress-head"><span>{t(`desktop.backup.progress.${backupProgress.phase}`)}</span><span>{backupProgress.percent}%</span></div><div className="settings-backup-progress-track" role="progressbar" aria-label={t("desktop.backup.progress.label")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={backupProgress.percent}><div className="settings-backup-progress-bar" style={{ width: `${backupProgress.percent}%` }} /></div></div> : null}
+        {pendingImport ? <div className="settings-backup-preview">
+          <p className="settings-footnote">{t("desktop.backup.summary", pendingImport.fileCount, Math.ceil(pendingImport.totalBytes / 1024 / 1024))}</p>
+          <p className="settings-footnote">{t("desktop.backup.nativeSummary", pendingImport.nativeConversationFileCount, Math.ceil(pendingImport.nativeConversationBytes / 1024 / 1024))}{providerSummary ? ` · ${providerSummary}` : ""}</p>
+          {pendingImport.warnings.map((warning) => <p className="settings-footnote" key={warning}>{warning}</p>)}
+          {pendingImport.credentialsEncrypted ? <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.importCredentials")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={importCredentials} disabled={backupBusy} onChange={(event) => setImportCredentials(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label> : null}
+          {pendingImport.credentialsEncrypted && importCredentials ? <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.password")}</span><input type="password" autoComplete="current-password" value={importPassword} disabled={backupBusy} onChange={(event) => setImportPassword(event.target.value)} /></label> : null}
+          {pendingImport.nativeConversationFileCount > 0 ? <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.restoreNative")}</span><span className="settings-row-desc">{t("desktop.backup.restoreNativeDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={restoreNativeConversations} disabled={backupBusy} onChange={(event) => setRestoreNativeConversations(event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label> : null}
+          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void mergeImport()}>{t("desktop.backup.merge")}</button>
+        </div> : null}
+        <Status kind={backupStatus.kind}>{backupStatus.text}</Status>
+      </div>
+    </section>
+  );
 }
 
 export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; scheduleSave: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
   const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
   const home = draft.panelHome.trim() || "~/.agent-resume-panel";
-  const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["almaDataDir", "desktop.settings.almaDataDir", "~/Library/Application Support/alma"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"]];
+  const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{home}/notes</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{t(label)}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div> : null}</section>
+    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div> : null}</section>
   </>;
 }
 
-function formatNumber(value: number | null | undefined): string { return value == null || !Number.isFinite(value) ? "-" : value.toLocaleString(); }
-function formatTime(value: number): string { return new Date(value).toLocaleString(); }
-
-export function UsagePane({ t }: { t: Translate }) {
-  const [days, setDays] = useState(30);
-  const [data, setData] = useState<{ summary: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageSummary"]>>; events: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListEvents"]>>; runs: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>> } | null>(null);
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
-  const load = useCallback(async () => { setStatus({ text: t("desktop.usage.loading") }); try { const [summary, events, runs] = await Promise.all([desktopApi().usageSummary({ days }), desktopApi().usageListEvents({ days, limit: 80 }), desktopApi().usageListScheduleRuns({ days, limit: 80 })]); setData({ summary, events, runs }); setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" }); } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); } }, [days, t]);
-  useEffect(() => { void load(); }, [load]);
-  const summary = data?.summary;
-  return <div className="settings-pane-body"><div className="settings-usage-toolbar"><label className="settings-inline-label"><span>{t("desktop.usage.scope")}</span><select value={days} onChange={(event) => setDays(Number(event.target.value))}><option value="7">{t("desktop.usage.last7")}</option><option value="30">{t("desktop.usage.last30")}</option><option value="90">{t("desktop.usage.last90")}</option></select></label><button type="button" className="ghost-btn" onClick={() => void load()}>{t("desktop.common.refresh")}</button></div><div className="usage-cards"><div className="usage-card"><div className="label">{t("desktop.usage.totalTokens")}</div><div className="value">{formatNumber(summary?.totalTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.promptCompletion")}</div><div className="value usage-value-small">{formatNumber(summary?.promptTokens)} / {formatNumber(summary?.completionTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.chatEmbed")}</div><div className="value usage-value-small">{formatNumber(summary?.chatTokens)} / {formatNumber(summary?.embeddingTokens)}</div></div><div className="usage-card"><div className="label">{t("desktop.usage.events")}</div><div className="value">{formatNumber(summary?.eventCount)}</div></div><div className="usage-card usage-card-wide"><div className="label">{t("desktop.usage.bySource")}</div><div className="value usage-value-small">{summary?.bySource.slice(0, 4).map((item) => `${item.source}:${item.totalTokens}`).join(" · ") || "-"}</div></div></div><UsageTable title={t("desktop.usage.byDay")} headings={[t("desktop.usage.colDate"), t("desktop.usage.colTokens"), t("desktop.usage.colCalls"), t("desktop.usage.colScheduleRuns")]} rows={summary?.byDay.map((item) => [item.day, formatNumber(item.totalTokens), formatNumber(item.events), formatNumber(item.scheduleRuns)]) || []} empty={t("desktop.usage.noData")} /><UsageTable title={t("desktop.usage.scheduleLog")} headings={[t("desktop.usage.colTime"), t("desktop.usage.colLevel"), t("desktop.usage.colPeriod"), t("desktop.usage.colStatus"), t("desktop.usage.colTokens"), t("desktop.usage.colError")]} rows={data?.runs.map((item) => [formatTime(item.startedAtMs), item.level, item.periodKey, item.status, formatNumber(item.totalTokens), item.error || ""]) || []} empty={t("desktop.usage.noScheduleRuns")} /><UsageTable title={t("desktop.usage.llmDetails")} headings={[t("desktop.usage.colTime"), t("desktop.usage.colKind"), t("desktop.usage.colSource"), t("desktop.usage.colModel"), t("desktop.usage.colTokens"), t("desktop.usage.colMs")]} rows={data?.events.map((item) => [formatTime(item.createdAtMs), item.kind, `${item.source}${item.jobKey ? ` · ${item.jobKey}` : ""}`, item.model || "", formatNumber(item.totalTokens), formatNumber(item.durationMs)]) || []} empty={t("desktop.usage.noLlmEvents")} /><Status kind={status.kind}>{status.text}</Status></div>;
+function captureShortcutFromKeyDown(event: KeyboardEvent<HTMLInputElement>): string | null {
+  if (event.key === "Tab" || event.key === "Escape") return null;
+  event.preventDefault();
+  if (event.repeat || ["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
+  const modifiers: string[] = [];
+  if (event.metaKey || event.ctrlKey) modifiers.push("CommandOrControl");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+  if (!modifiers.length) return null;
+  const code = event.code || "";
+  const key = /^Key([A-Z])$/.exec(code)?.[1]
+    || /^Digit([0-9])$/.exec(code)?.[1]
+    || (/^F([1-9]|1[0-9]|2[0-4])$/.test(code) ? code : "")
+    || (event.key.length === 1 ? event.key.toUpperCase() : "");
+  if (!key) return null;
+  return [...modifiers, key].join("+");
 }
 
-function UsageTable({ title, headings, rows, empty }: { title: string; headings: string[]; rows: string[][]; empty: string }) { return <><h3 className="section-h">{title}</h3><div className="table-wrap compact"><table><thead><tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index}>{row.map((value, cell) => <td key={cell}>{value}</td>)}</tr>) : <tr><td colSpan={headings.length} className="muted">{empty}</td></tr>}</tbody></table></div></>; }
+export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
+  const updateField = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    scheduleSave(next);
+  };
+  return (
+    <>
+      <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notesGroup")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.notesFootnote")}</p><div className="settings-path-row"><code className="settings-path-display">{t("desktop.settings.notesPath")}</code><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+      <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.standaloneNoteGroup")}</h3><div className="settings-group-body">
+        <p className="settings-footnote">{t("desktop.settings.standaloneNoteShortcutDesc")}</p>
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.standaloneNoteShortcut")}</span><input
+          value={formatShortcutForDisplay(draft.newStandaloneNoteShortcut)}
+          placeholder="⌘D"
+          readOnly
+          aria-label={t("desktop.settings.standaloneNoteShortcut")}
+          onKeyDown={(event) => {
+            const next = captureShortcutFromKeyDown(event);
+            if (next) updateField("newStandaloneNoteShortcut", next);
+          }}
+        /></label>
+        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateField("newStandaloneNoteShortcut", "CommandOrControl+D")}>{t("desktop.settings.standaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateField("newStandaloneNoteShortcut", "")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
+        <p className="settings-footnote">{t("desktop.settings.recentStandaloneNoteShortcutDesc")}</p>
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.recentStandaloneNoteShortcut")}</span><input
+          value={formatShortcutForDisplay(draft.recentStandaloneNoteShortcut)}
+          placeholder="⌘⇧D"
+          readOnly
+          aria-label={t("desktop.settings.recentStandaloneNoteShortcut")}
+          onKeyDown={(event) => {
+            const next = captureShortcutFromKeyDown(event);
+            if (next) updateField("recentStandaloneNoteShortcut", next);
+          }}
+        /></label>
+        <div className="settings-action-row"><button type="button" className="ghost-btn" onClick={() => updateField("recentStandaloneNoteShortcut", "CommandOrControl+Shift+D")}>{t("desktop.settings.recentStandaloneNoteShortcutReset")}</button><button type="button" className="ghost-btn" onClick={() => updateField("recentStandaloneNoteShortcut", "")}>{t("desktop.settings.standaloneNoteShortcutDisable")}</button></div>
+      </div></section>
+    </>
+  );
+}
+
+function formatNumber(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "-" : value.toLocaleString();
+}
+
+function formatTime(value: number): string {
+  return new Date(value).toLocaleString();
+}
+
+export type UsageDetailTab = "byDay" | "schedule" | "llm";
+
+type AppErrorLogRow = Awaited<ReturnType<ReturnType<typeof desktopApi>["logsList"]>>[number];
+
+const USAGE_DETAIL_TABS = ["byDay", "schedule", "llm"] as const satisfies readonly UsageDetailTab[];
+
+export function LogsPane({ t }: { t: Translate }) {
+  const [entries, setEntries] = useState<AppErrorLogRow[]>([]);
+  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [busy, setBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setStatus({ text: t("desktop.logs.loading") });
+    try {
+      const rows = await desktopApi().logsList({ limit: 200 });
+      setEntries(rows);
+      setStatus({ text: t("desktop.logs.summaryStatus", rows.length), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const clear = async () => {
+    if (!window.confirm(t("desktop.logs.clearConfirm"))) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await desktopApi().logsClear();
+      setExpandedId(null);
+      await load();
+      setStatus({ text: t("desktop.logs.cleared"), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-pane-body settings-usage-body">
+      <div className="settings-usage-toolbar">
+        <div className="settings-usage-toolbar-left">
+          <button type="button" className="ghost-btn" disabled={busy} onClick={() => void load()}>
+            {t("desktop.common.refresh")}
+          </button>
+          <button type="button" className="ghost-btn" disabled={busy} onClick={() => void clear()}>
+            {t("desktop.logs.clear")}
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={busy}
+            onClick={() => void desktopApi().logsOpenDir()}
+          >
+            {t("desktop.common.revealInFinder")}
+          </button>
+        </div>
+        {status.text ? <Status kind={status.kind}>{status.text}</Status> : null}
+      </div>
+      <p className="settings-footnote">{t("desktop.logs.footnote")}</p>
+      <div className="table-wrap compact usage-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t("desktop.logs.colTime")}</th>
+              <th>{t("desktop.logs.colLevel")}</th>
+              <th>{t("desktop.logs.colSource")}</th>
+              <th>{t("desktop.logs.colMessage")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length ? (
+              entries.map((entry) => {
+                const open = expandedId === entry.id;
+                return (
+                  <tr
+                    key={entry.id}
+                    className={open ? "is-selected" : undefined}
+                    title={entry.detail || entry.message}
+                    onClick={() => setExpandedId(open ? null : entry.id)}
+                    style={{ cursor: entry.detail ? "pointer" : undefined }}
+                  >
+                    <td>{formatTime(entry.createdAtMs)}</td>
+                    <td>{entry.level}</td>
+                    <td>{entry.source}</td>
+                    <td>
+                      <div>{entry.message}</div>
+                      {open && entry.detail ? (
+                        <pre className="settings-footnote" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>
+                          {entry.detail}
+                        </pre>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {t("desktop.logs.empty")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function UsagePane({ t, initialDetailTab }: { t: Translate; initialDetailTab?: UsageDetailTab }) {
+  const [days, setDays] = useState(30);
+  const [tab, setTab] = useState<UsageDetailTab>(initialDetailTab ?? "byDay");
+  const [data, setData] = useState<{
+    summary: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageSummary"]>>;
+    events: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListEvents"]>>;
+    runs: Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>;
+  } | null>(null);
+  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+
+  useEffect(() => {
+    if (initialDetailTab) {
+      setTab(initialDetailTab);
+    }
+  }, [initialDetailTab]);
+
+  const load = useCallback(async () => {
+    setStatus({ text: t("desktop.usage.loading") });
+    try {
+      const [summary, events, runs] = await Promise.all([
+        desktopApi().usageSummary({ days }),
+        desktopApi().usageListEvents({ days, limit: 80 }),
+        desktopApi().usageListScheduleRuns({ days, limit: 80 }),
+      ]);
+      setData({ summary, events, runs });
+      setStatus({ text: t("desktop.usage.summaryStatus", days, summary.eventCount), kind: "ok" });
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [days, t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const summary = data?.summary;
+
+  const detail = useMemo(() => {
+    if (tab === "byDay") {
+      return {
+        headings: [
+          t("desktop.usage.colDate"),
+          t("desktop.usage.colTokens"),
+          t("desktop.usage.colCalls"),
+          t("desktop.usage.colScheduleRuns"),
+        ],
+        rows:
+          summary?.byDay.map((item) => [
+            item.day,
+            formatNumber(item.totalTokens),
+            formatNumber(item.events),
+            formatNumber(item.scheduleRuns),
+          ]) || [],
+        empty: t("desktop.usage.noData"),
+      };
+    }
+    if (tab === "schedule") {
+      return {
+        headings: [
+          t("desktop.usage.colTime"),
+          t("desktop.usage.colLevel"),
+          t("desktop.usage.colPeriod"),
+          t("desktop.usage.colStatus"),
+          t("desktop.usage.colTokens"),
+          t("desktop.usage.colError"),
+        ],
+        rows:
+          data?.runs.map((item) => [
+            formatTime(item.startedAtMs),
+            item.level,
+            item.periodKey,
+            item.status,
+            formatNumber(item.totalTokens),
+            item.error || "",
+          ]) || [],
+        empty: t("desktop.usage.noScheduleRuns"),
+      };
+    }
+    return {
+      headings: [
+        t("desktop.usage.colTime"),
+        t("desktop.usage.colKind"),
+        t("desktop.usage.colSource"),
+        t("desktop.usage.colModel"),
+        t("desktop.usage.colTokens"),
+        t("desktop.usage.colMs"),
+      ],
+      rows:
+        data?.events.map((item) => [
+          formatTime(item.createdAtMs),
+          item.kind,
+          `${item.source}${item.jobKey ? ` · ${item.jobKey}` : ""}`,
+          item.model || "",
+          formatNumber(item.totalTokens),
+          formatNumber(item.durationMs),
+        ]) || [],
+      empty: t("desktop.usage.noLlmEvents"),
+    };
+  }, [data?.events, data?.runs, summary?.byDay, t, tab]);
+
+  const tabLabel = (value: UsageDetailTab): string => {
+    if (value === "byDay") return t("desktop.usage.byDay");
+    if (value === "schedule") return t("desktop.usage.scheduleLog");
+    return t("desktop.usage.llmDetails");
+  };
+
+  return (
+    <div className="settings-pane-body settings-usage-body">
+      <div className="settings-usage-toolbar">
+        <div className="settings-usage-toolbar-left">
+          <label className="settings-inline-label">
+            <span>{t("desktop.usage.scope")}</span>
+            <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+              <option value="7">{t("desktop.usage.last7")}</option>
+              <option value="30">{t("desktop.usage.last30")}</option>
+              <option value="90">{t("desktop.usage.last90")}</option>
+            </select>
+          </label>
+          <button type="button" className="ghost-btn" onClick={() => void load()}>
+            {t("desktop.common.refresh")}
+          </button>
+        </div>
+        {status.text ? <Status kind={status.kind}>{status.text}</Status> : null}
+      </div>
+
+      <div className="usage-kpis" role="group" aria-label={t("desktop.usage.totalTokens")}>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.totalTokens")}</div>
+          <div className="value">{formatNumber(summary?.totalTokens)}</div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.promptCompletion")}</div>
+          <div className="value usage-value-pair">
+            <span>{formatNumber(summary?.promptTokens)}</span>
+            <span className="usage-value-sep">/</span>
+            <span>{formatNumber(summary?.completionTokens)}</span>
+          </div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.chatEmbed")}</div>
+          <div className="value usage-value-pair">
+            <span>{formatNumber(summary?.chatTokens)}</span>
+            <span className="usage-value-sep">/</span>
+            <span>{formatNumber(summary?.embeddingTokens)}</span>
+          </div>
+        </div>
+        <div className="usage-card">
+          <div className="label">{t("desktop.usage.events")}</div>
+          <div className="value">{formatNumber(summary?.eventCount)}</div>
+        </div>
+      </div>
+
+      <section className="usage-sources" aria-label={t("desktop.usage.bySource")}>
+        <div className="usage-sources-label">{t("desktop.usage.bySource")}</div>
+        <div className="usage-sources-list">
+          {summary?.bySource.length
+            ? summary.bySource.map((item) => (
+                <div className="usage-source-chip" key={item.source} title={`${item.source}: ${formatNumber(item.totalTokens)} · ${formatNumber(item.events)}`}>
+                  <span className="usage-source-name">{item.source}</span>
+                  <span className="usage-source-tokens">{formatNumber(item.totalTokens)}</span>
+                </div>
+              ))
+            : <span className="muted">{t("desktop.usage.noData")}</span>}
+        </div>
+      </section>
+
+      <div className="usage-detail">
+        <SegmentedControl
+          value={tab}
+          options={USAGE_DETAIL_TABS}
+          onChange={setTab}
+          getLabel={tabLabel}
+          aria-label={t("desktop.usage.detailTabs")}
+          className="usage-detail-tabs sidebar-project-filter-segmented"
+        />
+        <UsageTable headings={detail.headings} rows={detail.rows} empty={detail.empty} />
+      </div>
+    </div>
+  );
+}
+
+function UsageTable({ headings, rows, empty }: { headings: string[]; rows: string[][]; empty: string }) {
+  return (
+    <div className="table-wrap compact usage-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {headings.map((heading) => (
+              <th key={heading}>{heading}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((row, index) => (
+              <tr key={index}>
+                {row.map((value, cell) => (
+                  <td key={cell}>{value}</td>
+                ))}
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={headings.length} className="muted">
+                {empty}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function AboutPane({ t }: { t: Translate }) {
   const [version, setVersion] = useState("");
@@ -144,6 +932,6 @@ export function AboutPane({ t }: { t: Translate }) {
   const available = Boolean(update?.ok && update.updateAvailable && update.latestVersion && update.latestVersion !== update.currentVersion);
   const updateUrl = update?.ok ? update.downloadUrl || update.releaseUrl || "" : "";
   const open = (url: string) => void desktopApi().openExternalUrl(url);
-  const resource = (title: string, description: string, icon: ReactNode, url: string, primary = false) => <button type="button" className={`settings-about-row${primary ? " settings-about-row-primary" : ""}`} onClick={() => open(url)}><span className="settings-about-row-icon" aria-hidden="true">{icon}</span><span className="settings-about-row-text"><span className="settings-about-row-title">{title}</span><span className="settings-about-row-desc">{description}</span></span><ExternalLink className="settings-about-row-external" size={14} aria-hidden="true" /></button>;
-  return <div className="settings-pane-body settings-about-body"><header className="settings-about-hero"><div className="settings-about-app-icon" aria-hidden="true"><img className="settings-about-app-icon-img" src="../resources/icon.png" alt="" width="72" height="72" decoding="async" /></div><h3 className="settings-about-app-name">Agent Resume</h3><p className="settings-about-version">{t("desktop.settings.aboutVersionLabel")} {version || "-"}</p><p className="settings-about-tagline">{t("desktop.settings.aboutTagline")}</p></header>{checking || update ? <div className={`settings-about-update${available ? " is-available" : ""}`}><p className="settings-about-update-text">{checking ? t("desktop.settings.updateChecking") : !update?.ok ? t("desktop.settings.updateCheckFailed") : available ? t("desktop.settings.updateAvailable", update.latestVersion || "") : t("desktop.settings.updateUpToDate")}</p><div className="settings-about-update-actions">{available && updateUrl ? <button type="button" className="btn primary" onClick={() => open(updateUrl)}>{t("desktop.settings.updateDownload")}</button> : null}<button type="button" className="btn ghost" onClick={() => void check(true)}>{t("desktop.settings.updateRecheck")}</button></div></div> : null}<section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutResources")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkDocumentation"), t("desktop.settings.linkDocumentationDesc"), <FileText size={18} />, "https://github.com/thunder-luc/agent-resume-desktop-doc#readme")}{resource(t("desktop.settings.linkExtensionDoc"), t("desktop.settings.linkExtensionDocDesc"), <ExternalLink size={18} />, "https://github.com/thunder-luc/agent-resume-panel-doc#readme")}</div></section><section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutFeedback")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkReportIssue"), t("desktop.settings.linkReportIssueDesc"), <MessageSquareWarning size={18} />, "https://github.com/thunder-luc/agent-resume-desktop-doc/issues", true)}</div></section><aside className="settings-about-privacy"><ShieldCheck className="settings-about-privacy-icon" size={16} aria-hidden="true" /><p>{t("desktop.settings.footerHint")}</p></aside></div>;
+  const resource = (title: string, description: string, icon: ReactNode, url: string, primary = false) => <button type="button" className={`settings-about-row${primary ? " settings-about-row-primary" : ""}`} onClick={() => open(url)}><span className="settings-about-row-icon" aria-hidden="true">{icon}</span><span className="settings-about-row-text"><span className="settings-about-row-title">{title}</span><span className="settings-about-row-desc">{description}</span></span><ThemeIcon name="external-link" className="settings-about-row-external" size={14} aria-hidden="true" /></button>;
+  return <div className="settings-pane-body settings-about-body"><header className="settings-about-hero"><div className="settings-about-app-icon" aria-hidden="true"><img className="settings-about-app-icon-img" src="../resources/icon.png" alt="" width="72" height="72" decoding="async" /></div><h3 className="settings-about-app-name">Agent Resume</h3><p className="settings-about-version">{t("desktop.settings.aboutVersionLabel")} {version || "-"}</p><p className="settings-about-tagline">{t("desktop.settings.aboutTagline")}</p></header>{checking || update ? <div className={`settings-about-update${available ? " is-available" : ""}`}><p className="settings-about-update-text">{checking ? t("desktop.settings.updateChecking") : !update?.ok ? t("desktop.settings.updateCheckFailed") : available ? t("desktop.settings.updateAvailable", update.latestVersion || "") : t("desktop.settings.updateUpToDate")}</p><div className="settings-about-update-actions">{available && updateUrl ? <button type="button" className="btn primary" onClick={() => open(updateUrl)}>{t("desktop.settings.updateDownload")}</button> : null}<button type="button" className="btn ghost" onClick={() => void check(true)}>{t("desktop.settings.updateRecheck")}</button></div></div> : null}<section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutResources")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkDocumentation"), t("desktop.settings.linkDocumentationDesc"), <ThemeIcon name="file-text" size={18} />, "https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/desktop/README.md")}{resource(t("desktop.settings.linkExtensionDoc"), t("desktop.settings.linkExtensionDocDesc"), <ThemeIcon name="external-link" size={18} />, "https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/panel/README.md")}</div></section><section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutFeedback")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkReportIssue"), t("desktop.settings.linkReportIssueDesc"), <ThemeIcon name="message-square-warning" size={18} />, "https://github.com/thunder-luc/agent-resume-panel/issues", true)}</div></section><aside className="settings-about-privacy"><ThemeIcon name="shield-check" className="settings-about-privacy-icon" size={16} aria-hidden="true" /><p>{t("desktop.settings.footerHint")}</p></aside></div>;
 }

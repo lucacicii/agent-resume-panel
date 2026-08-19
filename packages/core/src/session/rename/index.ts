@@ -1,12 +1,13 @@
 import { AgentSession } from "../../catalog/types";
+import { renameAcpSessionInStore } from "../../transcript/renameAcp";
 import { PreviewHomes } from "../../transcript/types";
 import { renameAgySession } from "./agy";
-import { renameAlmaSession } from "./alma";
 import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
 import { renameOpenCodeSession } from "./opencode";
 import { renamePiSession } from "./pi";
+import { renamePrimeSession } from "./pi";
 
 export type RenameHomes = PreviewHomes;
 
@@ -30,18 +31,22 @@ export async function renameSessionNative(
       return renameCodexSession(homes.codexHome, session, title);
     case "claude":
       return renameClaudeSession(homes.claudeHome, session, title);
+    case "cursor":
+    case "cursor-ide":
+      // Cursor title changes remain local to the catalog.
+      return;
     case "agy":
       return renameAgySession(homes.antigravityHome, session, title);
     case "grok":
       return renameGrokSession(homes.grokHome, session, title);
-    case "alma":
-      return renameAlmaSession(homes.almaDataDir, session, title);
     case "opencode":
       return renameOpenCodeSession(homes.opencodeHome, session, title);
     case "pi":
       return renamePiSession(homes.piHome, session, title);
+    case "prime":
+      return renamePrimeSession(homes.primeHome, session, title);
     case "chat":
-      throw new Error("Rename is not supported for ACP chat sessions in Desktop yet.");
+      return renameAcpSessionInStore(homes.panelHome, session.id, title);
     default:
       throw new Error(`Rename is not supported for provider ${session.provider}.`);
   }

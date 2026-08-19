@@ -5,37 +5,13 @@ import path from "node:path";
 import {
   flattenDeployedNodeModulesForAsar,
   isBuildStampCurrent,
-  macTargetArch,
+  macTargetArches,
   packageNameFromMapKey,
   removeDesktopSelfReferences,
   stageMacDmgContents
 } from "./mac-app.mjs";
 
-assert.equal(macTargetArch, "universal");
-assert.equal(
-  isBuildStampCurrent(
-    JSON.stringify({
-      version: 1,
-      arch: "universal",
-      bundleId: "com.thunder-luc.agent-resume",
-      sourceMtime: 200
-    }),
-    200
-  ),
-  true
-);
-assert.equal(
-  isBuildStampCurrent(
-    JSON.stringify({
-      version: 1,
-      arch: "universal",
-      bundleId: "com.thunder-luc.agent-resume",
-      sourceMtime: 199
-    }),
-    200
-  ),
-  false
-);
+assert.deepEqual(macTargetArches, ["x64", "arm64"]);
 assert.equal(
   isBuildStampCurrent(
     JSON.stringify({
@@ -44,16 +20,43 @@ assert.equal(
       bundleId: "com.thunder-luc.agent-resume",
       sourceMtime: 200
     }),
-    200
+    200,
+    "arm64"
+  ),
+  true
+);
+assert.equal(
+  isBuildStampCurrent(
+    JSON.stringify({
+      version: 1,
+      arch: "arm64",
+      bundleId: "com.thunder-luc.agent-resume",
+      sourceMtime: 199
+    }),
+    200,
+    "arm64"
   ),
   false
 );
 assert.equal(
-  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "universal", sourceMtime: 200 }), 200),
+  isBuildStampCurrent(
+    JSON.stringify({
+      version: 1,
+      arch: "x64",
+      bundleId: "com.thunder-luc.agent-resume",
+      sourceMtime: 200
+    }),
+    200,
+    "arm64"
+  ),
   false
 );
-assert.equal(isBuildStampCurrent("200", 200), false);
-assert.equal(isBuildStampCurrent("invalid", 200), false);
+assert.equal(
+  isBuildStampCurrent(JSON.stringify({ version: 1, arch: "universal", sourceMtime: 200 }), 200, "arm64"),
+  false
+);
+assert.equal(isBuildStampCurrent("200", 200, "arm64"), false);
+assert.equal(isBuildStampCurrent("invalid", 200, "arm64"), false);
 
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agent-resume-mac-app-test-"));
 try {

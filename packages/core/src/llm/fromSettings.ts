@@ -28,7 +28,8 @@ export function llmConfigFromSettings(
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
     outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: settings.llm.requestTimeoutMs
+    requestTimeoutMs: settings.llm.requestTimeoutMs,
+    disableThinking: settings.llm.disableThinking
   };
 }
 
@@ -54,14 +55,17 @@ export function chatLlmConfigFromSettings(
     apiKey,
     maxContextChars: settings.llm.maxContextChars,
     outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: settings.llm.requestTimeoutMs
+    requestTimeoutMs: settings.llm.requestTimeoutMs,
+    disableThinking: chat?.disableThinking
   };
 }
 
 export function embeddingConfigFromSettings(settings: PanelSettings): EmbeddingRuntimeConfig | undefined {
-  const apiKey = (settings.embedding.apiKey || settings.llm.apiKey)?.trim();
-  const baseUrl = normalizeBaseUrl(settings.embedding.baseUrl || settings.llm.baseUrl || "");
-  const model = settings.embedding.model?.trim();
+  const embedding = settings?.embedding;
+  const llm = settings?.llm;
+  const apiKey = (embedding?.apiKey || llm?.apiKey)?.trim();
+  const baseUrl = normalizeBaseUrl(embedding?.baseUrl || llm?.baseUrl || "");
+  const model = embedding?.model?.trim();
   if (!apiKey || !baseUrl || !model) {
     return undefined;
   }

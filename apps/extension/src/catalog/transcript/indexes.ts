@@ -11,19 +11,21 @@ export interface TranscriptIndexes {
   claude: Map<string, string[]>;
   grok: Map<string, string[]>;
   pi: Map<string, string>;
+  prime: Map<string, string>;
   agy: Map<string, string[]>;
 }
 
 export async function buildTranscriptIndexes(homes: RenameHomes): Promise<TranscriptIndexes> {
-  const [codex, claude, grok, pi, agy] = await Promise.all([
+  const [codex, claude, grok, pi, prime, agy] = await Promise.all([
     buildCodexIndex(homes.codexHome),
     buildClaudeIndex(homes.claudeHome),
     buildGrokIndex(homes.grokHome),
     buildPiIndex(homes.piHome),
+    buildPrimeIndex(homes.primeHome),
     buildAgyIndex(homes.antigravityHome)
   ]);
 
-  return { codex, claude, grok, pi, agy };
+  return { codex, claude, grok, pi, prime, agy };
 }
 
 async function buildCodexIndex(codexHome: string): Promise<Map<string, string[]>> {
@@ -86,8 +88,16 @@ async function buildGrokIndex(grokHome: string): Promise<Map<string, string[]>> 
 }
 
 async function buildPiIndex(piHome: string): Promise<Map<string, string>> {
+  return buildJsonlSessionIndex(piHome);
+}
+
+async function buildPrimeIndex(primeHome: string): Promise<Map<string, string>> {
+  return buildJsonlSessionIndex(primeHome);
+}
+
+async function buildJsonlSessionIndex(home: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const sessionFiles = await listJsonlFiles(path.join(piHome, "sessions"));
+  const sessionFiles = await listJsonlFiles(path.join(home, "sessions"));
 
   for (const file of sessionFiles) {
     let content: string;

@@ -1,19 +1,24 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadAcpSessionRecords, type AcpSessionStoreRecord } from "./acp/store";
 import { AgentSession, AgentProvider } from "./catalog/types";
 import {
   ensureCatalogSyncStateDesktop,
   ensureExtensionCatalogSchema,
   syncStateHasExtendedColumns
 } from "./catalog/db";
+import { syncAcpRecordsIntoCatalog, type AcpCatalogRecordInput } from "./catalog/acpCatalog";
+import { purgeRetiredAlmaCatalog } from "./catalog/mutations";
 import { reconcileProjectsFromSessions } from "./catalog/projects";
-import { escapeSqlLiteral, runSqliteJson, runSqliteTransaction } from "./sqlite";
+import { escapeSqlLiteral, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "./sqlite";
 import { AgentHomesSettings, PanelSettings, SessionSyncStalePolicy } from "./settings/types";
 import { catalogDbFromSettings } from "./settings/store";
 import { agentHomeDiffersFromDefault, AgentHomeKey, resolvePreviewHomes } from "./transcript/homes";
 import { candidateAgyRoots } from "./transcript/agyRoots";
 import { listJsonlFiles, findFilesByName } from "./transcript/fs";
+import { findCursorTranscriptFile, listCursorChatMetas } from "./transcript/cursor";
 
 export type SyncableAgentProvider = Exclude<AgentProvider, "chat">;
 
@@ -28,9 +33,11 @@ export interface AgentSessionSyncOptions {
   claudeHome: string;
   antigravityHome: string;
   grokHome: string;
-  almaDataDir: string;
   opencodeHome: string;
   piHome: string;
+  primeHome: string;
+  cursorHome: string;
+  cursorIdeUserDataHome: string;
   configuredAgentHomes?: AgentHomesSettings;
   maxItems: number;
   stalePolicy: SessionSyncStalePolicy;
@@ -38,9 +45,8 @@ export interface AgentSessionSyncOptions {
   showArchivedOpenCode: boolean;
   showSubagentCodex: boolean;
   showSubagentGrok: boolean;
-  hideCronAlma: boolean;
-  hideChannelAlma: boolean;
-  showIncognitoAlma: boolean;
+  showArchivedCursorIde: boolean;
+  showSubagentCursorIde: boolean;
 }
 
 export interface AgentSessionProviderSyncResult {
@@ -67,15 +73,24 @@ interface LoadedSession extends AgentSession {
 interface ProviderLoadResult {
   provider: SyncableAgentProvider;
   sessions: LoadedSession[];
+  excludedSessionIds?: string[];
   warning?: string;
   failed?: boolean;
 }
 
-const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "alma", "opencode", "pi"];
+interface AgentSessionLoadDetails {
+  result: AgentSessionSyncResult;
+  excludedCodexAcpSessionIds: string[];
+}
+
+const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"];
 const textCache = new Map<string, { mtimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
+const codexOriginatorCache = new Map<string, { mtimeMs: number; size: number; value?: string }>();
 const syncTasks = new Map<string, Promise<AgentSessionSyncResult>>();
 const BATCH_SIZE = 80;
+const CODEX_ACP_ORIGINATOR = "@agentclientprotocol/codex-acp";
+const CODEX_SESSION_META_READ_LIMIT = 256 * 1024;
 
 export function sessionSyncOptionsFromSettings(
   settings: PanelSettings,
@@ -93,20 +108,24 @@ export function sessionSyncOptionsFromSettings(
     showArchivedOpenCode: sync.showArchivedOpenCode === true,
     showSubagentCodex: sync.showSubagentCodex === true,
     showSubagentGrok: sync.showSubagentGrok === true,
-    hideCronAlma: sync.hideCronAlma !== false,
-    hideChannelAlma: sync.hideChannelAlma !== false,
-    showIncognitoAlma: sync.showIncognitoAlma === true,
+    showArchivedCursorIde: sync.showArchivedCursorIde === true,
+    showSubagentCursorIde: sync.showSubagentCursorIde === true,
     catalogSchema: "desktop",
     ...overrides
   };
 }
 
 export async function loadAllAgentSessions(options: AgentSessionSyncOptions): Promise<AgentSessionSyncResult> {
+  return (await loadAllAgentSessionDetails(options)).result;
+}
+
+async function loadAllAgentSessionDetails(options: AgentSessionSyncOptions): Promise<AgentSessionLoadDetails> {
   const syncedAt = Date.now();
+  const knownCodexAcpSessionIds = await loadCodexAcpSessionIds(options.panelHome);
   const settled = await Promise.all(
     PROVIDERS.map(async (provider) => {
       try {
-        return await loadProvider(provider, options);
+        return await loadProvider(provider, options, knownCodexAcpSessionIds);
       } catch (error) {
         return {
           provider,
@@ -129,11 +148,19 @@ export async function loadAllAgentSessions(options: AgentSessionSyncOptions): Pr
     syncedAt
   }));
   return {
-    sessions,
-    sessionCount: sessions.length,
-    providers,
-    warnings: providers.flatMap((item) => item.warning ? [item.warning] : []),
-    syncedAt
+    result: {
+      sessions,
+      sessionCount: sessions.length,
+      providers,
+      warnings: providers.flatMap((item) => item.warning ? [item.warning] : []),
+      syncedAt
+    },
+    excludedCodexAcpSessionIds: [...new Set([
+      ...knownCodexAcpSessionIds,
+      ...settled
+        .filter((item) => item.provider === "codex")
+        .flatMap((item) => item.excludedSessionIds ?? [])
+    ])]
   };
 }
 
@@ -151,7 +178,7 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
   if (options.catalogSchema === "desktop") {
     await ensureCatalogSyncStateDesktop(options.dbPath);
   }
-  const result = await loadAllAgentSessions(options);
+  const { result, excludedCodexAcpSessionIds } = await loadAllAgentSessionDetails(options);
   const loaded = result.sessions as LoadedSession[];
   for (const providerResult of result.providers) {
     const providerSessions = loaded.filter((session) => session.provider === providerResult.provider);
@@ -161,6 +188,27 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
     }
     await writeSyncState(options.dbPath, providerResult);
   }
+  await deleteCodexAcpCatalogDuplicates(options.dbPath, excludedCodexAcpSessionIds);
+  // Alma support removed: hard-delete leftover Alma catalog rows and Alma-only projects.
+  await purgeRetiredAlmaCatalog(options.dbPath);
+
+  // ACP chats: dual-index into catalog from panelHome/acp JSONL (messages stay file-backed).
+  try {
+    const acpRecords = await loadAcpCatalogRecords(options.panelHome, options.maxItems);
+    const acpCount = await syncAcpRecordsIntoCatalog(
+      options.dbPath,
+      options.panelHome,
+      acpRecords,
+      result.syncedAt
+    );
+    if (acpCount > 0) {
+      result.sessionCount += acpCount;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.warnings.push(`ACP catalog sync failed. ${message}`);
+  }
+
   try {
     await reconcileProjectsFromSessions(options.dbPath);
   } catch (error) {
@@ -171,7 +219,55 @@ async function performSync(options: AgentSessionSyncOptions): Promise<AgentSessi
   return result;
 }
 
-async function loadProvider(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
+/** Read panelHome/acp/sessions.jsonl into catalog upsert inputs. */
+async function loadAcpCatalogRecords(panelHome: string, maxItems: number): Promise<AcpCatalogRecordInput[]> {
+  const file = path.join(panelHome, "acp", "sessions.jsonl");
+  if (!(await fileExists(file))) {
+    return [];
+  }
+  let raw = "";
+  try {
+    raw = await readCachedText(file);
+  } catch {
+    return [];
+  }
+  const byId = new Map<string, AcpCatalogRecordInput>();
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const row = JSON.parse(trimmed) as {
+        id?: string;
+        title?: string;
+        projectPath?: string;
+        provider?: string;
+        updatedAt?: number;
+        messageCount?: number;
+      };
+      if (!row.id) continue;
+      byId.set(row.id, {
+        id: row.id,
+        title: row.title || row.id,
+        projectPath: row.projectPath || panelHome,
+        acpProvider: row.provider || "claude",
+        updatedAt: Number(row.updatedAt) || Date.now(),
+        messageCount: row.messageCount,
+        model: row.provider || undefined
+      });
+    } catch {
+      /* skip malformed */
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, Math.max(0, maxItems));
+}
+
+async function loadProvider(
+  provider: SyncableAgentProvider,
+  options: AgentSessionSyncOptions,
+  knownCodexAcpSessionIds: ReadonlySet<string>
+): Promise<ProviderLoadResult> {
   const home = providerHome(provider, options);
   if (!await fileExists(home)) {
     const configured = isConfiguredAgentHome(provider, options);
@@ -183,27 +279,36 @@ async function loadProvider(provider: SyncableAgentProvider, options: AgentSessi
     };
   }
   switch (provider) {
-    case "codex": return loadCodex(options);
+    case "codex": return loadCodex(options, knownCodexAcpSessionIds);
     case "claude": return { provider, sessions: await loadClaude(options.claudeHome, options.maxItems) };
     case "agy": return { provider, sessions: await loadAgy(options.antigravityHome, options.maxItems) };
     case "grok": return { provider, sessions: await loadGrok(options.grokHome, options.maxItems, options.showSubagentGrok) };
-    case "alma": return loadAlma(options);
     case "opencode": return loadOpenCode(options);
     case "pi": return { provider, sessions: await loadPi(options.piHome, options.maxItems) };
+    case "prime": return { provider, sessions: await loadPrime(options.primeHome, options.maxItems) };
+    case "cursor": return { provider, sessions: await loadCursor(options.cursorHome, options.maxItems) };
+    case "cursor-ide": return { provider, sessions: await loadCursorIde(options) };
   }
 }
 
 async function upsertProvider(dbPath: string, provider: SyncableAgentProvider, sessions: LoadedSession[], syncTime: number): Promise<void> {
   for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
     await runSqliteTransaction(dbPath, sessions.slice(i, i + BATCH_SIZE).map((session) => `INSERT INTO sessions (
-      provider, agent_session_id, title, project_path, updated_at_ms, archived, message_count, model, branch,
+      provider, agent_session_id, title, project_path, native_project_path, updated_at_ms, archived, message_count, model, branch,
       source, hidden, last_synced_at_ms, transcript_kind, transcript_refs
-    ) VALUES (${sql(session.provider)}, ${sql(session.id)}, ${sql(session.title)}, ${sql(session.projectPath)},
+    ) VALUES (${sql(session.provider)}, ${sql(session.id)}, ${sql(session.title)}, ${sql(session.projectPath)}, ${sql(session.projectPath)},
       ${Math.floor(session.updatedAt || 0)}, ${session.archived ? 1 : 0}, ${numberOrNull(session.messageCount)},
       ${nullable(session.model)}, ${nullable(session.branch)}, ${nullable(session.source)}, 0, ${syncTime},
       ${nullable(session.transcriptKind)}, ${nullable(session.transcriptRefs)})
     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
-      title=excluded.title, project_path=excluded.project_path, updated_at_ms=excluded.updated_at_ms,
+      title=excluded.title,
+      native_project_path=excluded.project_path,
+      project_path=CASE
+        WHEN IFNULL(sessions.native_project_path, sessions.project_path) = sessions.project_path
+        THEN excluded.project_path
+        ELSE sessions.project_path
+      END,
+      updated_at_ms=excluded.updated_at_ms,
       archived=excluded.archived, message_count=excluded.message_count, model=excluded.model,
       branch=excluded.branch, source=excluded.source, last_synced_at_ms=excluded.last_synced_at_ms,
       transcript_kind=excluded.transcript_kind, transcript_refs=excluded.transcript_refs`));
@@ -215,7 +320,9 @@ function normalizeStalePolicy(value: SessionSyncStalePolicy | "hide" | undefined
 }
 
 async function applyProviderStalePolicy(dbPath: string, provider: SyncableAgentProvider, policy: SessionSyncStalePolicy, syncTime: number): Promise<void> {
-  if (policy !== "purge") {
+  // Cursor's local stores are intentionally version-gated and may omit history
+  // while the app is running. Never let a partial read purge prior catalog rows.
+  if (policy !== "purge" || provider === "cursor" || provider === "cursor-ide") {
     return;
   }
   const where = `provider=${sql(provider)} AND (last_synced_at_ms IS NULL OR last_synced_at_ms < ${syncTime})`;
@@ -237,25 +344,116 @@ async function writeSyncState(dbPath: string, result: AgentSessionProviderSyncRe
     ON CONFLICT(provider) DO UPDATE SET last_sync_at_ms=excluded.last_sync_at_ms`]);
 }
 
-async function loadCodex(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
+async function loadCodexAcpSessionIds(panelHome: string): Promise<Set<string>> {
+  const records = await loadAcpSessionRecords<AcpSessionStoreRecord>(panelHome);
+  return new Set(
+    records
+      .filter((record) => record.provider === "codex")
+      .map((record) => record.acpSessionId?.trim())
+      .filter((sessionId): sessionId is string => Boolean(sessionId))
+  );
+}
+
+async function deleteCodexAcpCatalogDuplicates(dbPath: string, sessionIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(sessionIds.map((id) => id.trim()).filter(Boolean))];
+  for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+    const ids = uniqueIds.slice(i, i + BATCH_SIZE).map(sql).join(",");
+    await runSqliteTransaction(dbPath, [
+      `DELETE FROM sessions WHERE provider='codex' AND agent_session_id IN (${ids})`
+    ]);
+  }
+}
+
+function indexCodexRollouts(files: string[]): Map<string, string[]> {
+  const bySessionId = new Map<string, string[]>();
+  for (const file of files) {
+    const match = path.basename(file).match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
+    const sessionId = match?.[1];
+    if (!sessionId) continue;
+    const existing = bySessionId.get(sessionId) ?? [];
+    existing.push(file);
+    bySessionId.set(sessionId, existing);
+  }
+  return bySessionId;
+}
+
+async function isCodexAcpRollout(source: unknown, files: string[]): Promise<boolean> {
+  if (source !== "vscode" && source !== "unknown" && source !== "appServer") {
+    return false;
+  }
+  for (const file of files) {
+    if (await readCodexRolloutOriginator(file) === CODEX_ACP_ORIGINATOR) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function readCodexRolloutOriginator(file: string): Promise<string | undefined> {
+  let handle: fs.FileHandle | undefined;
+  try {
+    const stat = await fs.stat(file);
+    const cached = codexOriginatorCache.get(file);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      return cached.value;
+    }
+    handle = await fs.open(file, "r");
+    const buffer = Buffer.alloc(CODEX_SESSION_META_READ_LIMIT);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (!bytesRead) return undefined;
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
+    const newline = text.indexOf("\n");
+    if (newline < 0 && bytesRead === buffer.length) return undefined;
+    const firstLine = (newline >= 0 ? text.slice(0, newline) : text).trim();
+    if (!firstLine) return undefined;
+    const row = JSON.parse(firstLine) as {
+      type?: unknown;
+      payload?: { originator?: unknown };
+    };
+    const originator = row.type === "session_meta" && typeof row.payload?.originator === "string"
+      ? row.payload.originator
+      : undefined;
+    codexOriginatorCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, value: originator });
+    return originator;
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function loadCodex(
+  options: AgentSessionSyncOptions,
+  knownAcpSessionIds: ReadonlySet<string>
+): Promise<ProviderLoadResult> {
   const dbFiles = (await safeReadDir(options.codexHome)).filter((name) => /^state_\d+\.sqlite$/.test(name));
   const stats = await Promise.all(dbFiles.map(async (name) => ({ file: path.join(options.codexHome, name), mtime: await mtime(path.join(options.codexHome, name)) })));
   const dbPath = stats.sort((a, b) => b.mtime - a.mtime)[0]?.file;
   if (!dbPath) {
     const rows = await readCachedJsonLinesSafe<{ id?: string; thread_name?: string; updated_at?: string }>(path.join(options.codexHome, "session_index.jsonl"));
     return { provider: "codex", warning: rows.length ? "Codex state database was not found; used session_index.jsonl." : "Codex state database and session index were not found.", failed: !rows.length,
-      sessions: rows.filter((row) => row.id).slice(-options.maxItems).map((row) => session("codex", row.id!, row.thread_name || row.id!, os.homedir(), Date.parse(row.updated_at || "") || 0)) };
+      excludedSessionIds: [...knownAcpSessionIds],
+      sessions: rows.filter((row) => row.id && !knownAcpSessionIds.has(row.id)).slice(-options.maxItems).map((row) => session("codex", row.id!, row.thread_name || row.id!, os.homedir(), Date.parse(row.updated_at || "") || 0)) };
   }
   const clauses = [!options.showArchivedCodex ? "archived=0" : "", !options.showSubagentCodex ? "(source IS NULL OR instr(source,'subagent')=0)" : ""].filter(Boolean);
   const rows = await runSqliteJson<any>(dbPath, `SELECT id,title,cwd,updated_at_ms,updated_at,model,git_branch,archived,source,preview,first_user_message FROM threads ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY coalesce(updated_at_ms,updated_at*1000) DESC LIMIT ${options.maxItems}`);
   const rollouts = await cachedFiles(`codex:${options.codexHome}`, async () => [...await listJsonlFiles(path.join(options.codexHome, "sessions")), ...await listJsonlFiles(path.join(options.codexHome, "archived_sessions"))]);
-  return { provider: "codex", sessions: rows.filter((row) => row.id).map((row) => {
-    const files = rollouts.filter((file) => path.basename(file).includes(row.id));
-    return session("codex", row.id, first(row.title, row.preview, row.first_user_message, row.id), first(row.cwd, os.homedir()), Number(row.updated_at_ms ?? ((row.updated_at || 0) * 1000)), {
+  const rolloutsBySessionId = indexCodexRollouts(rollouts);
+  const excludedSessionIds = new Set(knownAcpSessionIds);
+  const sessions: LoadedSession[] = [];
+  for (const row of rows.filter((entry) => entry.id)) {
+    const files = rolloutsBySessionId.get(row.id)
+      ?? rollouts.filter((file) => path.basename(file).includes(row.id));
+    if (excludedSessionIds.has(row.id) || await isCodexAcpRollout(row.source, files)) {
+      excludedSessionIds.add(row.id);
+      continue;
+    }
+    sessions.push(session("codex", row.id, first(row.title, row.preview, row.first_user_message, row.id), first(row.cwd, os.homedir()), Number(row.updated_at_ms ?? ((row.updated_at || 0) * 1000)), {
       model: row.model || undefined, branch: row.git_branch || undefined, source: row.source || undefined, archived: !!row.archived,
       transcriptKind: files.length ? "jsonl" : "unavailable", transcriptRefs: JSON.stringify(files.length ? { kind: "jsonl", paths: files } : { kind: "unavailable", reason: "Codex rollout file not indexed" })
-    });
-  }) };
+    }));
+  }
+  return { provider: "codex", sessions, excludedSessionIds: [...excludedSessionIds] };
 }
 
 async function loadClaude(home: string, maxItems: number): Promise<LoadedSession[]> {
@@ -263,9 +461,19 @@ async function loadClaude(home: string, maxItems: number): Promise<LoadedSession
   for (const row of await readCachedJsonLinesSafe<any>(path.join(home, "history.jsonl"))) if (row.sessionId) mergeLatest(byId, session("claude", row.sessionId, clean(row.display) || row.sessionId, row.project || os.homedir(), Number(row.timestamp || 0), { source: "history" }));
   const files = await cachedFiles(`claude:${home}`, () => listJsonlFiles(path.join(home, "projects")));
   for (const file of files) {
-    const rows = await readCachedJsonLines<any>(file); let id = path.basename(file, ".jsonl"), title = "", cwd = "", updated = 0, branch: string | undefined, model: string | undefined;
-    for (const row of rows) { id = row.sessionId || id; cwd = row.cwd || cwd; branch = row.gitBranch || branch; model = row.version || model; updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (!title && row.type === "ai-title") title = row.aiTitle || ""; if (!title && row.type === "user") title = contentText(row.message?.content); }
-    mergeLatest(byId, session("claude", id, clean(title) || id, cwd || claudePath(file), updated, { branch, model, source: "project", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) }));
+    // Prefer the first transcript cwd (session start workspace). Claude Code rewrites later
+    // rows' cwd after Bash `cd`, so last-cwd would mis-file monorepo sessions under subdirs.
+    const rows = await readCachedJsonLines<any>(file); let id = path.basename(file, ".jsonl"), title = "", firstCwd = "", updated = 0, branch: string | undefined, model: string | undefined;
+    for (const row of rows) {
+      id = row.sessionId || id;
+      if (!firstCwd && typeof row.cwd === "string" && row.cwd.trim()) firstCwd = row.cwd.trim();
+      branch = row.gitBranch || branch;
+      model = row.version || model;
+      updated = Math.max(updated, Date.parse(row.timestamp || "") || 0);
+      if (!title && row.type === "ai-title") title = row.aiTitle || "";
+      if (!title && row.type === "user") title = contentText(row.message?.content);
+    }
+    mergeLatest(byId, session("claude", id, clean(title) || id, firstCwd || claudePath(file), updated, { branch, model, source: "project", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) }));
   }
   return [...byId.values()].sort(byUpdated).slice(0, maxItems);
 }
@@ -287,14 +495,6 @@ async function loadGrok(home: string, maxItems: number, showSubagents: boolean):
   return out.sort(byUpdated).slice(0, maxItems);
 }
 
-async function loadAlma(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
-  const dbPath = path.join(options.almaDataDir, "chat_threads.db");
-  if (!await fileExists(dbPath)) return { provider: "alma", sessions: [], warning: `Alma database not found at ${dbPath}.`, failed: true };
-  const rows = await runSqliteJson<any>(dbPath, `SELECT ct.id,ct.title,ct.updated_at,ct.model,ct.is_incognito,w.path workspace_path,w.name workspace_name,(SELECT count(*) FROM chat_messages cm WHERE cm.thread_id=ct.id) message_count FROM chat_threads ct LEFT JOIN workspaces w ON ct.workspace_id=w.id ${options.showIncognitoAlma ? "" : "WHERE ct.is_incognito=0"} ORDER BY ct.updated_at DESC LIMIT ${options.maxItems * 3}`);
-  const sessions = rows.filter((row) => row.id && !hideAlma(row.title || "", options)).slice(0, options.maxItems).map((row) => session("alma", row.id, clean(row.title) || row.id, row.workspace_path || options.almaDataDir, Date.parse(row.updated_at || "") || 0, { model: row.model || undefined, source: row.workspace_name || undefined, messageCount: Number(row.message_count) || undefined, transcriptKind: "sqlite", transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "alma", sessionId: row.id }) }));
-  return { provider: "alma", sessions };
-}
-
 async function loadOpenCode(options: AgentSessionSyncOptions): Promise<ProviderLoadResult> {
   const dbPath = path.join(options.opencodeHome, "opencode.db");
   if (!await fileExists(dbPath)) return { provider: "opencode", sessions: [], warning: `OpenCode database not found at ${dbPath}.`, failed: true };
@@ -302,9 +502,91 @@ async function loadOpenCode(options: AgentSessionSyncOptions): Promise<ProviderL
   return { provider: "opencode", sessions: rows.filter((row) => row.id).map((row) => session("opencode", row.id, clean(row.title) || row.id, row.directory || os.homedir(), Number(row.time_updated || 0), { archived: row.time_archived != null, model: parseOpenCodeModel(row.model), source: "sqlite", transcriptKind: "sqlite", transcriptRefs: JSON.stringify({ kind: "sqlite", dbPath, dialect: "opencode", sessionId: row.id }) })) };
 }
 
+async function loadCursor(home: string, maxItems: number): Promise<LoadedSession[]> {
+  const chats = await listCursorChatMetas(home, maxItems);
+  return Promise.all(chats.map(async (chat) => {
+    const transcript = await findCursorTranscriptFile(home, chat.id);
+    return session("cursor", chat.id, clean(chat.title) || chat.id, chat.cwd || os.homedir(), chat.updatedAt, {
+      source: "cursor-cli-meta-v1",
+      archived: false,
+      transcriptKind: transcript ? "jsonl" : "unavailable",
+      transcriptRefs: JSON.stringify(transcript
+        ? { kind: "jsonl", paths: [transcript] }
+        : { kind: "unavailable", reason: "Cursor CLI transcript not found" })
+    });
+  }));
+}
+
+interface CursorIdeHeaderRow {
+  id?: string;
+  workspaceId?: string;
+  createdAt?: number;
+  lastUpdatedAt?: number;
+  recency?: number;
+  archived?: number;
+  subagent?: number;
+  title?: string;
+  subtitle?: string;
+}
+
+async function loadCursorIde(options: AgentSessionSyncOptions): Promise<LoadedSession[]> {
+  const dbPath = path.join(options.cursorIdeUserDataHome, "globalStorage", "state.vscdb");
+  const columns = await runSqliteReadOnlyJson<{ name?: string }>(dbPath, "PRAGMA table_info(composerHeaders);");
+  const expected = new Set(["composerId", "workspaceId", "createdAt", "lastUpdatedAt", "recency", "isArchived", "isSubagent", "value"]);
+  if (!expected.size || ![...expected].every((name) => columns.some((column) => column.name === name))) {
+    throw new Error("Cursor IDE composerHeaders schema is unsupported.");
+  }
+  const clauses = [
+    "composerId <> 'empty-state-draft'",
+    !options.showArchivedCursorIde ? "coalesce(isArchived,0)=0" : "",
+    !options.showSubagentCursorIde ? "coalesce(isSubagent,0)=0" : ""
+  ].filter(Boolean);
+  const rows = await runSqliteReadOnlyJson<CursorIdeHeaderRow>(dbPath, `SELECT
+      composerId AS id, workspaceId, createdAt, lastUpdatedAt, recency,
+      isArchived AS archived, isSubagent AS subagent,
+      json_extract(value, '$.name') AS title,
+      json_extract(value, '$.subtitle') AS subtitle
+    FROM composerHeaders
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY coalesce(lastUpdatedAt,recency,createdAt) DESC
+    LIMIT ${options.maxItems}`);
+  return Promise.all(rows.filter((row) => row.id).map(async (row) => {
+    const workspacePath = await cursorIdeWorkspacePath(options.cursorIdeUserDataHome, row.workspaceId);
+    const updatedAt = Number(row.lastUpdatedAt || row.recency || row.createdAt || 0);
+    return session("cursor-ide", row.id!, clean(row.title) || clean(row.subtitle) || row.id!, workspacePath || os.homedir(), updatedAt, {
+      archived: !!row.archived,
+      source: workspacePath ? "cursor-ide-header" : "cursor-ide-header-only",
+      transcriptKind: "unavailable",
+      transcriptRefs: JSON.stringify({ kind: "unavailable", reason: "Cursor IDE stores conversation bodies outside its supported local header index." })
+    });
+  }));
+}
+
+async function cursorIdeWorkspacePath(userDataHome: string, workspaceId?: string): Promise<string | undefined> {
+  if (!workspaceId || path.basename(workspaceId) !== workspaceId || workspaceId === "empty-window") {
+    return undefined;
+  }
+  const workspaceFile = path.join(userDataHome, "workspaceStorage", workspaceId, "workspace.json");
+  try {
+    const raw = JSON.parse(await fs.readFile(workspaceFile, "utf8")) as { folder?: unknown; workspace?: unknown };
+    const uri = typeof raw.folder === "string" ? raw.folder : typeof raw.workspace === "string" ? raw.workspace : undefined;
+    return uri?.startsWith("file:") ? fileURLToPath(uri) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadPi(home: string, maxItems: number): Promise<LoadedSession[]> {
-  const files = await cachedFiles(`pi:${home}`, () => listJsonlFiles(path.join(home, "sessions"))); const out: LoadedSession[] = [];
-  for (const file of files) { const rows = await readCachedJsonLines<any>(file); const header = rows[0]; if (header?.type !== "session" || !header.id) continue; let title = "", firstUser = "", count = 0, updated = Date.parse(header.timestamp || "") || 0; for (const row of rows.slice(1)) { updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (row.type === "session_info" && row.name) title = row.name; if (row.type === "message" && row.message?.role === "user") { count++; firstUser ||= contentText(row.message.content); } } out.push(session("pi", header.id, clean(title) || clean(firstUser) || header.id, header.cwd || os.homedir(), updated || await mtime(file), { messageCount: count || undefined, source: "jsonl", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) })); }
+  return loadJsonlSessions("pi", home, maxItems);
+}
+
+async function loadPrime(home: string, maxItems: number): Promise<LoadedSession[]> {
+  return loadJsonlSessions("prime", home, maxItems);
+}
+
+async function loadJsonlSessions(provider: "pi" | "prime", home: string, maxItems: number): Promise<LoadedSession[]> {
+  const files = await cachedFiles(`${provider}:${home}`, () => listJsonlFiles(path.join(home, "sessions"))); const out: LoadedSession[] = [];
+  for (const file of files) { const rows = await readCachedJsonLines<any>(file); const header = rows[0]; if (header?.type !== "session" || !header.id) continue; let title = "", firstUser = "", count = 0, updated = Date.parse(header.timestamp || "") || 0; for (const row of rows.slice(1)) { updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (row.type === "session_info" && row.name) title = row.name; if (row.type === "message" && row.message?.role === "user") { count++; firstUser ||= contentText(row.message.content); } } out.push(session(provider, header.id, clean(title) || clean(firstUser) || header.id, header.cwd || os.homedir(), updated || await mtime(file), { messageCount: count || undefined, source: "jsonl", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) })); }
   return out.sort(byUpdated).slice(0, maxItems);
 }
 
@@ -314,7 +596,13 @@ function contentText(value: unknown): string { if (typeof value === "string") re
 function clean(value?: string): string { return (value || "").replace(/\s+/g, " ").trim().slice(0, 180); }
 function first(...values: Array<string | undefined | null>): string { return values.find((value) => value?.trim())?.trim() || "Untitled"; }
 function byUpdated(a: AgentSession, b: AgentSession): number { return b.updatedAt - a.updatedAt; }
-function label(provider: SyncableAgentProvider): string { return provider === "agy" ? "Antigravity" : provider[0].toUpperCase() + provider.slice(1); }
+function label(provider: SyncableAgentProvider): string {
+  if (provider === "agy") return "Antigravity";
+  if (provider === "prime") return "Prime Agent";
+  if (provider === "cursor") return "Cursor CLI";
+  if (provider === "cursor-ide") return "Cursor IDE";
+  return provider[0].toUpperCase() + provider.slice(1);
+}
 function formatError(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, Math.floor(value))); }
 function sql(value: string): string { return `'${escapeSqlLiteral(value)}'`; }
@@ -330,11 +618,13 @@ async function readCachedJsonLinesSafe<T>(file: string): Promise<T[]> { try { re
 async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<string[]> { const cached = listCache.get(key); if (cached && cached.expiresAt > Date.now()) return cached.value; const value = await load(); listCache.set(key, { expiresAt: Date.now() + 10_000, value }); return value; }
 function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
-function hideAlma(title: string, options: AgentSessionSyncOptions): boolean { const value = title.trim(); return (options.hideCronAlma && value.startsWith("⏰ Cron:")) || (options.hideChannelAlma && ["WeChat:", "Telegram:", "Discord:", "Slack:"].some((prefix) => value.startsWith(prefix))); }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
-function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "alma": return options.almaDataDir; case "opencode": return options.opencodeHome; case "pi": return options.piHome; } }
-function agentHomeSettingKey(provider: SyncableAgentProvider): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "alma": return "almaDataDir"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; } }
+function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }
+function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "prime": return "primeHome"; case "cursor": return "cursorHome"; } }
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
+  if (provider === "cursor-ide") {
+    return Boolean(options.configuredAgentHomes?.cursorIdeUserDataHome?.trim());
+  }
   const key = agentHomeSettingKey(provider) as AgentHomeKey;
   return agentHomeDiffersFromDefault(key, options.configuredAgentHomes?.[key]);
 }

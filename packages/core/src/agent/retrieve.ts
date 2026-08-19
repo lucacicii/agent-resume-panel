@@ -1,3 +1,8 @@
+import {
+  mergeSessionSearchHits,
+  searchCatalogSessions,
+  type SessionSearchHit
+} from "../catalog/search";
 import { AgentProvider } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { embedTextsDetailed } from "../llm/embeddings";
@@ -7,6 +12,9 @@ import { listReportEntries, listReportLinks } from "../report/store";
 import { searchReportsByEmbedding } from "../report/search";
 import { NoteSearchHit, searchNotesByEmbedding } from "../notes/search";
 import type { NoteIndexProgressCallback } from "../notes/vectorIndex";
+import { searchSessionsByEmbedding } from "../session/searchByEmbedding";
+import { searchSessionsByTranscriptEmbedding } from "../session/transcriptIndex";
+import type { PanelSettings } from "../settings/types";
 import { recordLlmUsage } from "../usage/store";
 import { AgentCitation } from "./types";
 import { resolveNoteSearchPlan } from "./noteIntent";
@@ -19,6 +27,10 @@ const DEFAULT_NOTE_LIMIT = 6;
 const EXACT_NOTE_LIMIT = 50;
 const NOTE_CONTEXT_CHARS = 8000;
 const EXACT_NOTE_CONTEXT_CHARS = 18000;
+const DEFAULT_SESSION_LIMIT = 6;
+const MAX_SESSION_LIMIT = 12;
+const SESSION_CONTEXT_CHARS = 4000;
+const SESSION_PREVIEW_CHARS = 600;
 
 export interface RetrievedDigest {
   entry: ReportEntry;
@@ -28,9 +40,16 @@ export interface RetrievedDigest {
 export interface RetrieveAgentContextResult {
   digests: RetrievedDigest[];
   notes: NoteSearchHit[];
+  sessions: SessionSearchHit[];
   citations: AgentCitation[];
   fallback: boolean;
   noteMatchTotal?: number;
+  /** Which context searches ran for this request. */
+  executedSearches: {
+    reports: boolean;
+    notes: boolean;
+    sessions: boolean;
+  };
   catalogDb: string;
   desktopDb: string;
 }
@@ -42,11 +61,106 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}\n[...truncated...]`;
 }
 
+/** Significant tokens for keyword fallback when full-phrase LIKE misses. */
+function keywordTokens(query: string): string[] {
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const raw of query.split(/[\s,./;:|!?()[\]{}"'`]+/u)) {
+    const token = raw.replace(/^[^\p{L}\p{N}_-]+|[^\p{L}\p{N}_-]+$/gu, "");
+    if (token.length < 3) {
+      continue;
+    }
+    const key = token.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    tokens.push(token);
+    if (tokens.length >= 6) {
+      break;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Hybrid session search for Ask retrieval (keyword + summary/transcript embeddings).
+ * Mirrors session_search tool logic, with token fallback for natural-language questions.
+ */
+async function searchSessionsForAsk(options: {
+  query: string;
+  catalogDb: string;
+  desktopDb: string;
+  settings: PanelSettings;
+  queryVector?: number[];
+  limit: number;
+  projectPath?: string;
+}): Promise<SessionSearchHit[]> {
+  const query = options.query.trim();
+  if (!query) {
+    return [];
+  }
+  const limit = Math.max(1, Math.min(options.limit, MAX_SESSION_LIMIT));
+  const filters = { query, limit: limit * 2, projectPath: options.projectPath };
+
+  let keywordHits = await searchCatalogSessions(options.catalogDb, filters);
+  // Full-query LIKE is phrase-based; natural-language Ask queries often miss. Fall back to tokens.
+  if (!keywordHits.length) {
+    const tokens = keywordTokens(query);
+    let tokenMerged: SessionSearchHit[] = [];
+    for (const token of tokens) {
+      const hits = await searchCatalogSessions(options.catalogDb, {
+        query: token,
+        limit: limit * 2
+      });
+      tokenMerged = mergeSessionSearchHits(tokenMerged, hits, limit * 2);
+    }
+    keywordHits = tokenMerged;
+  }
+
+  let summaryHits: SessionSearchHit[] = [];
+  let transcriptHits: SessionSearchHit[] = [];
+  const hasEmbedding = Boolean(options.queryVector || embeddingConfigFromSettings(options.settings));
+  if (hasEmbedding) {
+    try {
+      summaryHits = await searchSessionsByEmbedding({
+        catalogDb: options.catalogDb,
+        desktopDb: options.desktopDb,
+        settings: options.settings,
+        query,
+        filters: { ...filters, limit: limit * 2 },
+        limit: limit * 2,
+        queryVector: options.queryVector
+      });
+    } catch {
+      summaryHits = [];
+    }
+    try {
+      transcriptHits = await searchSessionsByTranscriptEmbedding({
+        catalogDb: options.catalogDb,
+        desktopDb: options.desktopDb,
+        settings: options.settings,
+        query,
+        filters: { ...filters, limit: limit * 2 },
+        limit: limit * 2,
+        queryVector: options.queryVector
+      });
+    } catch {
+      transcriptHits = [];
+    }
+  }
+
+  const semanticHits = mergeSessionSearchHits(summaryHits, transcriptHits, limit * 2);
+  return mergeSessionSearchHits(keywordHits, semanticHits, limit);
+}
+
 export async function retrieveAgentContext(options: {
   query: string;
   panelHome?: string;
   limit?: number;
   onNoteIndexProgress?: NoteIndexProgressCallback;
+  /** When set, reports/notes/sessions are filtered to this project path. */
+  projectPath?: string;
 }): Promise<RetrieveAgentContextResult> {
   const settings = await loadSettings(options.panelHome);
   const panelHome = options.panelHome
@@ -59,6 +173,7 @@ export async function retrieveAgentContext(options: {
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, 16));
   let digests: RetrievedDigest[] = [];
   let notes: NoteSearchHit[] = [];
+  let sessions: SessionSearchHit[] = [];
   let fallback = false;
   let noteMatchTotal: number | undefined;
   let queryVector: number[] | undefined;
@@ -103,7 +218,8 @@ export async function retrieveAgentContext(options: {
         panelHome: options.panelHome,
         query: options.query,
         limit,
-        queryVector
+        queryVector,
+        projectPath: options.projectPath
       });
       if (hits.length) {
         digests = hits.map((h) => ({ entry: h.entry, score: h.score }));
@@ -116,8 +232,8 @@ export async function retrieveAgentContext(options: {
 
     if (!digests.length) {
       fallback = true;
-      const dailies = await listReportEntries(desktopDb, { level: "daily", limit: Math.ceil(limit / 2) });
-      const weeklies = await listReportEntries(desktopDb, { level: "weekly", limit: Math.ceil(limit / 2) });
+      const dailies = await listReportEntries(desktopDb, { level: "daily", limit: Math.ceil(limit / 2), projectPath: options.projectPath });
+      const weeklies = await listReportEntries(desktopDb, { level: "weekly", limit: Math.ceil(limit / 2), projectPath: options.projectPath });
       const merged = [...dailies, ...weeklies].sort((a, b) => b.periodStartMs - a.periodStartMs);
       digests = merged.slice(0, limit).map((entry) => ({ entry }));
     }
@@ -133,7 +249,8 @@ export async function retrieveAgentContext(options: {
       limit: exactNoteSearch ? EXACT_NOTE_LIMIT : DEFAULT_NOTE_LIMIT,
       queryVector,
       onIndexProgress: options.onNoteIndexProgress,
-      plan: noteSearchPlan
+      plan: noteSearchPlan,
+      projectPath: options.projectPath
     });
     noteMatchTotal = exactNoteSearch ? (hits[0]?.exactMatchTotal ?? 0) : undefined;
     let remaining = exactNoteSearch ? EXACT_NOTE_CONTEXT_CHARS : NOTE_CONTEXT_CHARS;
@@ -148,6 +265,35 @@ export async function retrieveAgentContext(options: {
     }
   } catch {
     // Notes are an optional source; Memory retrieval should still answer independently.
+  }
+
+  if (!notesOnly) {
+    try {
+      const sessionLimit = Math.max(1, Math.min(DEFAULT_SESSION_LIMIT, MAX_SESSION_LIMIT));
+      const hits = await searchSessionsForAsk({
+        query: options.query,
+        catalogDb,
+        desktopDb,
+        settings,
+        queryVector,
+        limit: sessionLimit,
+        projectPath: options.projectPath
+      });
+      let remaining = SESSION_CONTEXT_CHARS;
+      for (const hit of hits) {
+        if (remaining <= 0) {
+          break;
+        }
+        const preview = truncate(hit.summaryPreview || hit.title || "", Math.min(SESSION_PREVIEW_CHARS, remaining));
+        sessions.push({
+          ...hit,
+          summaryPreview: preview || undefined
+        });
+        remaining -= preview.length;
+      }
+    } catch {
+      // Sessions are an optional source; report/note retrieval still answers independently.
+    }
   }
 
   const citations: AgentCitation[] = [];
@@ -191,10 +337,38 @@ export async function retrieveAgentContext(options: {
     });
   }
 
+  for (let i = 0; i < sessions.length; i++) {
+    const session = sessions[i];
+    citations.push({
+      source: "session",
+      index: i + 1,
+      level: "session",
+      title: session.title || session.sessionId,
+      score: session.score,
+      periodStartMs: session.updatedAtMs,
+      contentPreview: truncate(session.summaryPreview || session.title || "", SESSION_PREVIEW_CHARS),
+      session: {
+        provider: session.provider,
+        id: session.sessionId,
+        projectPath: session.projectPath || ""
+      }
+    });
+  }
+
   digests = digests.map((d) => ({
     ...d,
     entry: { ...d.entry, content: truncate(d.entry.content, CONTENT_CHARS) }
   }));
 
-  return { digests, notes, citations, fallback, noteMatchTotal, catalogDb, desktopDb };
+  return {
+    digests,
+    notes,
+    sessions,
+    citations,
+    fallback,
+    noteMatchTotal,
+    executedSearches: { reports: !notesOnly, notes: true, sessions: !notesOnly },
+    catalogDb,
+    desktopDb
+  };
 }

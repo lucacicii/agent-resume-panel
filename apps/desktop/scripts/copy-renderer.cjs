@@ -43,7 +43,11 @@ for (const legacyFile of ["app.js", "i18n.js", "refreshLocalizedUi.js"]) {
 for (const name of fs.readdirSync(src)) {
   const from = path.join(src, name);
   const to = path.join(dest, name);
-  if (fs.statSync(from).isDirectory()) continue;
+  if (fs.statSync(from).isDirectory()) {
+    // Static assets (provider icons, etc.) ship next to index.html.
+    fs.cpSync(from, to, { recursive: true });
+    continue;
+  }
   fs.copyFileSync(from, to);
 }
 

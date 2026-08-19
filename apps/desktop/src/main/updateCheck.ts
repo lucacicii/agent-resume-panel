@@ -2,7 +2,7 @@ import { app } from "electron";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-export const RELEASE_REPO = "thunder-luc/agent-resume-desktop-doc";
+export const RELEASE_REPO = "thunder-luc/agent-resume-panel";
 const GITHUB_API_URL = `https://api.github.com/repos/${RELEASE_REPO}/releases/latest`;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 

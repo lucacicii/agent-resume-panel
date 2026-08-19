@@ -2,12 +2,12 @@
 
 > Parent index: `.agents/menus-index.md`
 >
-> **Scope:** VS Code extension only. Desktop has no ACP Chat surface.
+> **Scope:** VS Code extension owns the activity-bar ACP Chats tree and editor webview. **Desktop Workbench** also launches ACP visual chat panes when Settings → Workbench → New Session targets `acp:*` (see `apps/desktop/src/main/acp/` and `AcpChatView.tsx`). Both share `panelHome/acp` storage.
 
 | Feature keywords | Code path | Notes |
 | --- | --- | --- |
 | ACP chat lifecycle and panel | `src/acp/acpChatManager.ts`, `src/acp/acpChatPanel.ts`, `src/acp/acpChatTree.ts` | Opens editor-side ACP chat panels and tree entries. |
-| agent launch configuration | `src/acp/agentRegistry.ts`, `src/acp/config.ts`, `src/acp/newSession.ts` | Codex, Claude, Grok, OpenCode, and Pi launch options. |
+| agent launch configuration | `src/acp/agentRegistry.ts`, `src/acp/config.ts`, `src/acp/newSession.ts` | Codex, Claude, Grok, OpenCode, Pi, and Prime Agent launch options. |
 | ACP protocol connection | `src/acp/agentConnection.ts`, `src/acp/sdk.ts`, `src/acp/createClientApp.ts` | Connection lifecycle and protocol client. |
 | agent tools and permissions | `src/acp/handlers/` | Terminal, filesystem, and permission handling. Preserve approvals. |
 | ACP storage and attachments | `src/acp/store.ts`, `src/acp/types.ts` | Local ACP records and image validation limits. |
@@ -15,5 +15,5 @@
 
 ## Constraints
 
-- ACP chats are separate from CLI session history and are not GTD-tagged.
+- ACP **messages** stay in `panelHome/acp` JSONL; **session index** dual-writes to `catalog.db` as `provider=chat` + `acp_provider` so Workbench GTD, hide, rename, summary, search, and Memory ranges share the CLI session flow.
 - Do not broaden ACP filesystem, terminal, or permission capabilities without an explicit security review.

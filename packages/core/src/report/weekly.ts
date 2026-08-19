@@ -1,5 +1,4 @@
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
-import { chatCompletionDetailed } from "../llm/chat";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { llmConfigFromSettings } from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
@@ -8,6 +7,8 @@ import { buildWeeklySourceLines } from "./context";
 import { EnsureLevelStats } from "./ensureDailies";
 import { ensureFreshDailiesForPeriod } from "./ensureFreshDigests";
 import { maybeEmbedContent, finalizeDigestEntry } from "./embedStore";
+import { assertDigestCallBudget, estimateDigestRun, type DigestRunTrigger } from "./digestBudget";
+import { runHierarchicalDigest } from "./hierarchicalDigest";
 import { localWeekRange } from "./period";
 import { createReportProgressText } from "./progressI18n";
 import { DigestProgressCallback } from "./progress";
@@ -30,6 +31,8 @@ export interface RunWeeklyDigestOptions {
   forceEnsureLower?: boolean;
   onProgress?: DigestProgressCallback;
   systemLocale?: string;
+  allowOverBudget?: boolean;
+  trigger?: DigestRunTrigger;
 }
 
 export interface RunWeeklyDigestResult {
@@ -44,6 +47,7 @@ export interface RunWeeklyDigestResult {
   summarizedCount: number;
   summarySkippedCount: number;
   summaryFailed: Array<{ key: string; error: string }>;
+  chunkCount: number;
 }
 
 export async function runWeeklyDigest(
@@ -75,6 +79,13 @@ export async function runWeeklyDigest(
       );
     }
 
+    const estimate = await estimateDigestRun({
+      panelHome: options.panelHome,
+      level: "weekly",
+      periodKey: period.label
+    });
+    assertDigestCallBudget(estimate, options.allowOverBudget);
+
     const ensuredDailies = await ensureFreshDailiesForPeriod({
       catalogDb,
       desktopDb,
@@ -87,7 +98,9 @@ export async function runWeeklyDigest(
       onProgress,
       systemLocale: options.systemLocale,
       progressLevel: "weekly",
-      progressPeriodLabel: period.label
+      progressPeriodLabel: period.label,
+      allowOverBudget: options.allowOverBudget,
+      trigger: options.trigger
     });
 
     const { lines, sourceCount, usedDailies } = await buildWeeklySourceLines({
@@ -111,24 +124,23 @@ export async function runWeeklyDigest(
 
     const rangeHint = `${new Date(period.startMs).toLocaleDateString()} – ${new Date(period.endMs - 1).toLocaleDateString()}`;
     const language = llm.outputLanguage || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
-    const chatResult = await chatCompletionDetailed(
+    const generated = await runHierarchicalDigest({
       llm,
-      [
-        { role: "system", content: buildWeeklySystemPrompt(language) },
-        { role: "user", content: buildWeeklyUserPrompt(period.label, rangeHint, lines, language) }
-      ],
-      2500
-    );
-    const content = normalizeDigestMarkdown(chatResult.content);
-    await recordLlmUsage(desktopDb, {
-      kind: "chat",
+      desktopDb,
       source: "weekly",
       jobKey: period.jobKey,
-      model: chatResult.model,
-      usage: chatResult.usage,
-      durationMs: chatResult.durationMs,
-      ok: true
+      level: "weekly",
+      periodLabel: period.label,
+      outputLanguage: language,
+      sourceItems: lines,
+      finalSystemPrompt: buildWeeklySystemPrompt(language),
+      buildFinalUserPrompt: (items) => buildWeeklyUserPrompt(period.label, rangeHint, items, language),
+      maxTokens: 8000,
+      onProgress,
+      progressMessage: (current, total) => pt("desktop.report.chunkProgress", current, total),
+      reduceMessage: (round) => pt("desktop.report.reduceProgress", round)
     });
+    const content = normalizeDigestMarkdown(generated.content);
 
     const embedResult = await maybeEmbedContent(settings, content, options.skipEmbedding);
     const { embeddingJson, embedded } = embedResult;
@@ -175,6 +187,7 @@ export async function runWeeklyDigest(
       summarizedCount: 0,
       summarySkippedCount: 0,
       summaryFailed: ensuredDailies.failed,
+      chunkCount: generated.chunkCount,
       jobKey: period.jobKey,
       embedded,
       replaced

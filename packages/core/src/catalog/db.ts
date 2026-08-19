@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { runSqlite, runSqliteJson } from "../sqlite";
 import { REPORT_SCHEMA_SQL } from "../report/schema";
-import { DESKTOP_ONLY_SCHEMA_SQL, SYNC_STATE_DESKTOP_MIGRATION_SQL } from "./desktopSchema";
+import { DESKTOP_AGENT_TRACE_MIGRATION_SQL, DESKTOP_ONLY_SCHEMA_SQL, SYNC_STATE_DESKTOP_MIGRATION_SQL } from "./desktopSchema";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
 
@@ -61,6 +61,7 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
   await ensureWalMode(desktopDb);
   await runSqlite(desktopDb, REPORT_SCHEMA_SQL);
   await runSqlite(desktopDb, DESKTOP_ONLY_SCHEMA_SQL);
+  await runIdempotentStatements(desktopDb, DESKTOP_AGENT_TRACE_MIGRATION_SQL);
 }
 
 export async function syncStateHasExtendedColumns(dbPath: string): Promise<boolean> {

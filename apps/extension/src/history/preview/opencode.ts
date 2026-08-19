@@ -24,6 +24,11 @@ interface OpenCodePartData {
   text?: string;
 }
 
+type OpenCodePartBucket = {
+  text: string[];
+  thinking: string[];
+};
+
 export async function previewOpenCodeSession(
   session: AgentSession,
   homes: PreviewHomes
@@ -47,7 +52,7 @@ export async function previewOpenCodeSession(
     order by time_created asc
   `;
   const parts = await runSqliteJson<OpenCodePartRow>(dbPath, partSql);
-  const partsByMessage = new Map<string, string[]>();
+  const partsByMessage = new Map<string, OpenCodePartBucket>();
 
   for (const part of parts) {
     let payload: OpenCodePartData;
@@ -56,11 +61,16 @@ export async function previewOpenCodeSession(
     } catch {
       continue;
     }
-    if (payload.type !== "text" || !payload.text?.trim()) {
+    const text = payload.text?.trim();
+    if (!text) continue;
+    const bucket = partsByMessage.get(part.message_id) ?? { text: [], thinking: [] };
+    if (payload.type === "reasoning" || payload.type === "thinking") {
+      bucket.thinking.push(text);
+    } else if (payload.type === "text") {
+      bucket.text.push(text);
+    } else {
       continue;
     }
-    const bucket = partsByMessage.get(part.message_id) ?? [];
-    bucket.push(payload.text.trim());
     partsByMessage.set(part.message_id, bucket);
   }
 
@@ -76,14 +86,17 @@ export async function previewOpenCodeSession(
       continue;
     }
 
-    const text = (partsByMessage.get(message.id) ?? []).join("\n").trim();
-    if (!text) {
+    const bucket = partsByMessage.get(message.id);
+    const text = (bucket?.text ?? []).join("\n").trim();
+    const thinking = (bucket?.thinking ?? []).join("\n\n").trim();
+    if (!text && !thinking) {
       continue;
     }
 
     previewMessages.push({
       role: payload.role,
       text,
+      thinking: thinking || undefined,
       timestamp: new Date(message.time_created).toISOString()
     });
   }
