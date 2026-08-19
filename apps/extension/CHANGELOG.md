@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.11.1]
+
+#### 变更
+
+- **许可证**：项目改为 GNU Affero General Public License v3.0（`AGPL-3.0-only`）。
+- **文档与反馈**：用户文档与 Issue 迁入主仓库 `docs/panel/`；扩展 `homepage` / `bugs` 指向 [thunder-luc/agent-resume-panel](https://github.com/thunder-luc/agent-resume-panel)。
+
 ### [2.11.0]
 
 #### 新增
@@ -502,6 +509,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.11.1]
+
+#### Changed
+
+- **License**: the project is now licensed under the GNU Affero General Public License v3.0 (`AGPL-3.0-only`).
+- **Docs and feedback**: user docs and issues now live in the main repo under `docs/panel/`; extension `homepage` / `bugs` point at [thunder-luc/agent-resume-panel](https://github.com/thunder-luc/agent-resume-panel).
 
 ### [2.11.0]
 

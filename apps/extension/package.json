@@ -3,7 +3,7 @@
   "displayName": "Agent Resume Panel",
   "publisher": "thunder-luc",
   "description": "Browse, search, and resume Codex, Claude Code, Antigravity CLI, Grok Build, OpenCode, Pi, Prime Agent, and Cursor CLI sessions from a VS Code sidebar — ACP Chat, GTD, multi-note Markdown, LLM assist. Cursor IDE composer metadata is indexed too. Companion macOS Desktop app (shared ~/.agent-resume-panel data) adds calendar digests, Agent Q&A, and embedded Workbench.",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "icon": "resources/icon.png",
   "private": true,
   "author": "thunder-luc",
