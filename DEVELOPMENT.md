@@ -8,8 +8,8 @@
 
 | 产品 | 用户文档 | Issues |
 |------|----------|--------|
-| VS Code 扩展 | [docs/panel](docs/panel/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
-| Desktop App | [docs/desktop](docs/desktop/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
+| VS Code 扩展 | [docs/panel](docs/panel/README.md) | [issues](https://github.com/lucacicii/agent-resume-panel/issues) |
+| Desktop App | [docs/desktop](docs/desktop/README.md) | [issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 
 Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.md)。
 

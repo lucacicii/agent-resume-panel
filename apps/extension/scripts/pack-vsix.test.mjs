@@ -40,7 +40,7 @@ try {
     assert.equal(fs.existsSync(path.join(extRoot, metadata)), false, `VSIX must exclude ${metadata}`);
   }
 
-  for (const file of ["README.md", "CHANGELOG.md"]) {
+  for (const file of ["README.md", "CHANGELOG.md", "LICENSE"]) {
     const filePath = path.join(extRoot, file);
     assert.ok(fs.existsSync(filePath), `VSIX must contain ${file} for extension details tabs`);
     assert.ok(fs.statSync(filePath).size > 0, `VSIX ${file} must not be empty`);

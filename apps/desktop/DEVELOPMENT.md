@@ -2,14 +2,14 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2).
+Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A over your work history, and an embedded **Workbench** terminal. Shares the same local data as the [Agent Resume Panel VS Code extension](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2).
 
 | | Link |
 |---|------|
-| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
+| **Download** | [Latest DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
 | **User docs** | [docs/desktop](../../docs/desktop/README.md) |
-| **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
-| **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
+| **Report issues** | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
+| **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 
 Version: **0.2.7**
 
@@ -50,7 +50,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 
 ### Install
 
-1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest).
+1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest).
 2. Open the DMG and drag **Agent Resume** to **Applications**.
 3. If macOS blocks the app on first launch, right-click → **Open** once, or run:
 
@@ -62,7 +62,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 
 ## 简体中文
 
-独立 **macOS Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) 共用同一份本机数据。
+独立 **macOS Session OS + Memory** 应用：日历回顾、基于报告的 **Agent** 问答、内嵌 **Workbench** 终端。与 [Agent Resume Panel VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) 共用同一份本机数据。
 
 ### 主要视图
 
@@ -81,7 +81,7 @@ Do **not** copy `node_modules` or `.pack-staging` between Intel and Apple Silico
 
 ### 安装
 
-1. 从 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
+1. 从 [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
 2. 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
 3. 若首次启动被系统拦截，可右键 → **打开** 一次，或执行：
 

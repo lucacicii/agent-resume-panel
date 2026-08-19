@@ -64,7 +64,7 @@ UI language can follow VS Code or be forced via `agentResume.uiLanguage` (Englis
 
 ### Feedback
 
-- Issues: [Issues](https://github.com/thunder-luc/agent-resume-panel/issues)  
+- Issues: [Issues](https://github.com/lucacicii/agent-resume-panel/issues)  
 - Do not paste API keys, full transcripts, or sensitive paths.
 
 ### Related
@@ -132,7 +132,7 @@ CLI **对话原文** 仍在各 Agent 原生目录（`~/.codex`、`~/.claude` 等
 
 ### 反馈
 
-- [Issues](https://github.com/thunder-luc/agent-resume-panel/issues)  
+- [Issues](https://github.com/lucacicii/agent-resume-panel/issues)  
 - 请勿粘贴 API Key、完整对话或敏感路径。
 
 ### 相关文档
