@@ -6,9 +6,9 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 
 | | Link |
 |---|------|
-| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
+| **Download** | [Latest DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
 | **User docs** | [docs/desktop](../../docs/desktop/README.md) |
-| **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
+| **Report issues** | [Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) |
 
 > **No cloud · Local-first**  
@@ -44,7 +44,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 
 **Agent Resume MCP** is one local stdio service that lets a trusted local agent work with the same Notes, Reports, Sessions, and GTD data as Desktop. Open **Settings → MCP** to register detected Codex, Claude Code, Gemini CLI, Antigravity, or OpenCode installations. Cursor, Pi, and Grok Build use the copyable configuration from that page.
 
-The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes, 3 for Reports, and 6 for Sessions. Executable `run` / `note-child` / `session` / `result` blocks should be written through the deterministic MCP tools instead of hand-authored Markdown. Registered agents can create, update, and permanently delete local data, so only register clients you trust. The service does not open a network port. See the [MCP user guide](https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/desktop/mcp.md) for the tool reference and registration details.
+The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes, 3 for Reports, and 6 for Sessions. Executable `run` / `note-child` / `session` / `result` blocks should be written through the deterministic MCP tools instead of hand-authored Markdown. Registered agents can create, update, and permanently delete local data, so only register clients you trust. The service does not open a network port. See the [MCP user guide](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/desktop/mcp.md) for the tool reference and registration details.
 
 ### Requirements
 
@@ -53,7 +53,7 @@ The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes,
 
 ### Install
 
-1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest).
+1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest).
 2. Open the DMG and drag **Agent Resume** to **Applications**.
 3. If macOS blocks the app on first launch, right-click → **Open** once, or run:
 
@@ -89,7 +89,7 @@ The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes,
 
 **Agent Resume MCP** 是一个本机 stdio 聚合服务，让受信任的本机 Agent 使用与 Desktop 相同的 Notes、Reports、Sessions 与 GTD 数据。在 **设置 → MCP** 中可注册已检测到的 Codex、Claude Code、Gemini CLI、Antigravity 与 OpenCode；Cursor、Pi、Grok Build 可从该页面复制配置后手动添加。
 
-服务当前提供 28 个工具：Notes 与笔记 GTD 15 个、Executable Notes 4 个、Reports 3 个、Sessions 6 个。`run` / `note-child` / `session` / `result` 指令必须通过确定性 MCP 工具写入，而不是由 Agent 手工拼接 Markdown。注册后的 Agent 可创建、修改和永久删除本机数据，请仅注册可信客户端。服务不会开放网络端口。工具说明与注册细节见 [MCP 使用文档](https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/desktop/mcp.md)。
+服务当前提供 28 个工具：Notes 与笔记 GTD 15 个、Executable Notes 4 个、Reports 3 个、Sessions 6 个。`run` / `note-child` / `session` / `result` 指令必须通过确定性 MCP 工具写入，而不是由 Agent 手工拼接 Markdown。注册后的 Agent 可创建、修改和永久删除本机数据，请仅注册可信客户端。服务不会开放网络端口。工具说明与注册细节见 [MCP 使用文档](https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/desktop/mcp.md)。
 
 ### 系统要求
 
@@ -98,7 +98,7 @@ The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes,
 
 ### 安装
 
-1. 从 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
+1. 从 [Releases](https://github.com/lucacicii/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
 2. 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
 3. 若首次启动被系统拦截，可右键 → **打开** 一次，或执行：
 

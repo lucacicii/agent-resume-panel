@@ -51,7 +51,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 ### Updates
 
 - In-app **version check** / update entry (About or update icon when available).  
-- Download new DMGs from [Releases](https://github.com/thunder-luc/agent-resume-panel/releases).  
+- Download new DMGs from [Releases](https://github.com/lucacicii/agent-resume-panel/releases).  
 - First-launch Gatekeeper steps: see [README install](README.md).
 
 ### Backup
@@ -77,7 +77,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 
 ### Feedback
 
-- [Issues](https://github.com/thunder-luc/agent-resume-panel/issues)  
+- [Issues](https://github.com/lucacicii/agent-resume-panel/issues)  
 - [Changelog](../../apps/desktop/CHANGELOG.md)
 
 ### Related
@@ -132,7 +132,7 @@ CLI 原文仍在各 Agent 原生目录。修改 panel home 时请确保两产品
 ### 更新
 
 - 应用内 **版本检查** / 更新入口（关于页或更新图标）。  
-- 也可从 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases) 下载新 DMG。  
+- 也可从 [Releases](https://github.com/lucacicii/agent-resume-panel/releases) 下载新 DMG。  
 - 首次启动系统拦截步骤见 [README 安装](README.md)。
 
 ### 备份
@@ -158,7 +158,7 @@ CLI 原文仍在各 Agent 原生目录。修改 panel home 时请确保两产品
 
 ### 反馈
 
-- [Issues](https://github.com/thunder-luc/agent-resume-panel/issues)  
+- [Issues](https://github.com/lucacicii/agent-resume-panel/issues)  
 - [更新日志](../../apps/desktop/CHANGELOG.md)
 
 ### 相关文档

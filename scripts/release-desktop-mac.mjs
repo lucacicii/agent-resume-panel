@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopRoot = path.join(root, "apps", "desktop");
 const desktopChangelogPath = path.join(desktopRoot, "CHANGELOG.md");
-const releaseRepo = "thunder-luc/agent-resume-panel";
+const releaseRepo = "lucacicii/agent-resume-panel";
 
 function usage() {
   console.log(`Usage: node scripts/release-desktop-mac.mjs [options]

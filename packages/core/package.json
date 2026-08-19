@@ -2,7 +2,7 @@
   "name": "@agent-resume/core",
   "version": "0.1.0",
   "private": true,
-  "author": "thunder-luc",
+  "author": "lucacicii",
   "license": "AGPL-3.0-only",
   "description": "Shared catalog, settings, LLM, and memory for Agent Resume Panel and Desktop",
   "main": "./dist/index.js",

@@ -2,7 +2,7 @@
   "name": "@agent-resume/desktop",
   "version": "0.2.13",
   "private": true,
-  "author": "thunder-luc",
+  "author": "lucacicii",
   "license": "AGPL-3.0-only",
   "description": "Agent Resume Desktop (Electron) — Session OS + Memory",
   "main": "dist/main/main.js",

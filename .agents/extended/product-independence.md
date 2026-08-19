@@ -7,7 +7,7 @@ This monorepo ships **two independent products** plus a shared library. Treat th
 | Product | Workspace | Version file | Primary deliverable |
 | --- | --- | --- | --- |
 | VS Code extension | `agent-resume-panel` (`apps/extension/`) | `apps/extension/package.json` | `.vsix` → VS Marketplace / Open VSX |
-| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `thunder-luc/agent-resume-panel` GitHub Releases |
+| Electron desktop | `@agent-resume/desktop` (`apps/desktop/`) | `apps/desktop/package.json` | `.dmg` → `lucacicii/agent-resume-panel` GitHub Releases |
 | Shared core | `@agent-resume/core` (`packages/core/`) | `packages/core/package.json` | pnpm workspace library (not published standalone) |
 
 Versions, release cadence, and changelogs are **independent**. Bumping the extension does not bump desktop, and vice versa.

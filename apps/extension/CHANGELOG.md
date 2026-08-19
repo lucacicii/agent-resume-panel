@@ -13,7 +13,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 #### 变更
 
 - **许可证**：项目改为 GNU Affero General Public License v3.0（`AGPL-3.0-only`）。
-- **文档与反馈**：用户文档与 Issue 迁入主仓库 `docs/panel/`；扩展 `homepage` / `bugs` 指向 [thunder-luc/agent-resume-panel](https://github.com/thunder-luc/agent-resume-panel)。
+- **文档与反馈**：用户文档与 Issue 迁入主仓库 `docs/panel/`；扩展 `homepage` / `bugs` 指向 [lucacicii/agent-resume-panel](https://github.com/lucacicii/agent-resume-panel)。
 
 ### [2.11.0]
 
@@ -70,7 +70,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### 修复
 
-- **Marketplace 包缺少 Notes 视图**：`thunder-luc.agent-resume-panel-v2` 的 `contributes.views` 未声明 `agentResume.notes`，VS Code 激活时报 *No view is registered with id: agentResume.notes*，且侧栏无 Notes。现与 Open VSX 包对齐（含 `onView:agentResume.notes`）。
+- **Marketplace 包缺少 Notes 视图**：`lucacicii.agent-resume-panel-v2` 的 `contributes.views` 未声明 `agentResume.notes`，VS Code 激活时报 *No view is registered with id: agentResume.notes*，且侧栏无 Notes。现与 Open VSX 包对齐（含 `onView:agentResume.notes`）。
 
 ### [2.8.0]
 
@@ -171,7 +171,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### 新增
 
-- **文档与反馈**：**Agent Resume Settings** 页脚增加**用户文档**与 **Report Issue** 链接；扩展 `homepage` / `bugs` 指向独立文档仓库 [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc)。
+- **文档与反馈**：**Agent Resume Settings** 页脚增加**用户文档**与 **Report Issue** 链接；扩展 `homepage` / `bugs` 指向独立文档仓库 [agent-resume-panel-doc](https://github.com/lucacicii/agent-resume-panel-doc)。
 
 #### 变更
 
@@ -515,7 +515,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 #### Changed
 
 - **License**: the project is now licensed under the GNU Affero General Public License v3.0 (`AGPL-3.0-only`).
-- **Docs and feedback**: user docs and issues now live in the main repo under `docs/panel/`; extension `homepage` / `bugs` point at [thunder-luc/agent-resume-panel](https://github.com/thunder-luc/agent-resume-panel).
+- **Docs and feedback**: user docs and issues now live in the main repo under `docs/panel/`; extension `homepage` / `bugs` point at [lucacicii/agent-resume-panel](https://github.com/lucacicii/agent-resume-panel).
 
 ### [2.11.0]
 
@@ -572,7 +572,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### Fixed
 
-- **Marketplace package missing Notes view**: `thunder-luc.agent-resume-panel-v2` did not declare `agentResume.notes` under `contributes.views`, so VS Code logged *No view is registered with id: agentResume.notes* and omitted the Notes tab. Aligned with the Open VSX package (including `onView:agentResume.notes`).
+- **Marketplace package missing Notes view**: `lucacicii.agent-resume-panel-v2` did not declare `agentResume.notes` under `contributes.views`, so VS Code logged *No view is registered with id: agentResume.notes* and omitted the Notes tab. Aligned with the Open VSX package (including `onView:agentResume.notes`).
 
 ### [2.8.0]
 
@@ -673,7 +673,7 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 #### Added
 
-- **Documentation and feedback**: **Agent Resume Settings** footer links to the user guide and **Report Issue**; extension `homepage` / `bugs` point to the standalone [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) repository.
+- **Documentation and feedback**: **Agent Resume Settings** footer links to the user guide and **Report Issue**; extension `homepage` / `bugs` point to the standalone [agent-resume-panel-doc](https://github.com/lucacicii/agent-resume-panel-doc) repository.
 
 #### Changed
 

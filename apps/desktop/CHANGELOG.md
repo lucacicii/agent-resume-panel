@@ -2,7 +2,7 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-Desktop release notes for [GitHub Releases](https://github.com/thunder-luc/agent-resume-panel/releases). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Desktop release notes for [GitHub Releases](https://github.com/lucacicii/agent-resume-panel/releases). Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
