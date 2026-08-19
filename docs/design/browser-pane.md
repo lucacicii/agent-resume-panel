@@ -1,7 +1,7 @@
 # BrowserPane — LLM-operable browser (Workbench + standalone window)
 
 > Design decision record for Agent Resume Desktop.  
-> Status: **P0 + P0b + P1 + TUI external MCP implemented** (the product owner, 2026-08-14). Human browser + pop-out/dock + `agent-resume-browser` local HTTP MCP for ACP + stdio proxy for CLI/TUI when `exposeExternalMcp` (default true). P2 policy UI / always-allow-per-host still pending.  
+> Status: **P0 + P0b + P1 + TUI external MCP implemented** (2026-08-14). Human browser + pop-out/dock + `agent-resume-browser` local HTTP MCP for ACP + stdio proxy for CLI/TUI when `exposeExternalMcp` (default true). P2 policy UI / always-allow-per-host still pending.  
 > Scope: Desktop only (`apps/desktop`). Does not change the VS Code extension product surface.
 
 Related:
@@ -49,7 +49,7 @@ One-line product intent:
 | D7 | Observation channel | Prefer **accessibility snapshot + ref ids**; screenshots secondary |
 | D8 | External stdio MCP for browser | **On by default** (`exposeExternalMcp`); stdio proxy reads endpoint file; Desktop must be running |
 | D9 | `browser_eval` / raw CDP | **Off by default**; never covered by always-allow |
-| D10 | headless screenshot screenshots | Stay on headless Chrome CLI; do not route through BrowserPane |
+| D10 | External headless screenshots | Stay on headless Chrome CLI; do not route through BrowserPane |
 | D11 | Pop-out default | User/agent can open either surface; **pop-out does not clone** the session |
 
 ---
@@ -627,7 +627,7 @@ P0 may ship Workbench-only if needed; **P0b is required before calling dual-surf
 - Replacing system Chrome for daily browsing  
 - Computer Use / OS-level mouse control as the browser agent  
 - Full DevTools protocol for the model  
-- Merging headless screenshot headless screenshot pipeline into BrowserPane  
+- Merging an external headless screenshot pipeline into BrowserPane  
 - Silent or full-profile Chrome identity sync  
 - **Dual live mirrored WebContents** for one `browserId` (two surfaces painting at once)  
 - Arbitrary N browser windows per session (v1: **one** standalone window per `browserId`)

@@ -110,7 +110,7 @@ export function expandPortableKey(portableKey: string): string {
 }
 
 /**
- * True when path is under another user's home (e.g. /Users/me/… on john's machine).
+ * True when path is under another user's home (e.g. /Users/alice/… on bob's machine).
  * Useful for UI badges: session indexed from another machine.
  */
 export function isForeignUserPath(projectPath: string): boolean {

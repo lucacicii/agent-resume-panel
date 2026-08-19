@@ -28,6 +28,14 @@ Thumbs.db
 .env
 .env.*
 
+# Local agent / package-manager state
+.claude/
+.pnpm-store/
+
+# Accidental compile / i18n dumps at repo root
+/workbenchGit.js
+/en.json
+
 # Logs
 *.log
 npm-debug.log*

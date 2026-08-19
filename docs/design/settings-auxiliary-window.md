@@ -3,7 +3,7 @@
 | 字段 | 值 |
 | --- | --- |
 | **Title** | Desktop Settings Auxiliary Window (Scheme A) |
-| **Author** | the product owner / TBD implementer |
+| **Author** | Product / TBD implementer |
 | **Date** | 2026-07-21 |
 | **Status** | Draft（rev 2 — review addressed） |
 | **Scope** | `apps/desktop` only（Electron 35） |

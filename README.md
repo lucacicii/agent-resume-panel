@@ -19,6 +19,12 @@ Product-specific docs:
 - Desktop README / Changelog — [`apps/desktop/README.md`](apps/desktop/README.md), [`apps/desktop/CHANGELOG.md`](apps/desktop/CHANGELOG.md)
 - Desktop dev guide — [`apps/desktop/DEVELOPMENT.md`](apps/desktop/DEVELOPMENT.md)
 
+## License
+
+Copyright (C) 2026 thunder-luc. Licensed under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+
+Third-party material is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Feedback
 
 | Product | Issues |
