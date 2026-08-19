@@ -7,8 +7,8 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 | | Link |
 |---|------|
 | **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
-| **User docs** | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
-| **Report issues** | [desktop-doc Issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+| **User docs** | [docs/desktop](../../docs/desktop/README.md) |
+| **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 
 Version: **0.2.7**

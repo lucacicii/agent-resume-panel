@@ -4,8 +4,8 @@ Monorepo for two independent products that share local data under `~/.agent-resu
 
 | Product | Directory | Install | User docs |
 |---------|-----------|---------|-----------|
-| **VS Code extension** | [`apps/extension/`](apps/extension/) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) |
-| **Desktop app (macOS)** | [`apps/desktop/`](apps/desktop/) | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) | [desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) |
+| **VS Code extension** | [`apps/extension/`](apps/extension/) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) | [docs/panel](docs/panel/README.md) |
+| **Desktop app (macOS)** | [`apps/desktop/`](apps/desktop/) | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) | [docs/desktop](docs/desktop/README.md) |
 
 Shared library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
 
@@ -29,5 +29,5 @@ Third-party material is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.m
 
 | Product | Issues |
 |---------|--------|
-| VS Code extension | [panel-doc Issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
-| Desktop app | [desktop-doc Issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+| VS Code extension | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
+| Desktop app | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |

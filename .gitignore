@@ -44,6 +44,6 @@ npm-debug.log*
 .idea/
 .cursor/
 
-# Vendored doc repos (track content only, not nested .git)
-agent-resume-desktop-doc/.git/
-agent-resume-panel-doc/.git/
+# Local clones of the retired standalone doc repos
+/agent-resume-desktop-doc/
+/agent-resume-panel-doc/

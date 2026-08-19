@@ -4,12 +4,12 @@
 
 ## User-facing documentation
 
-对外用户文档在独立仓库，**不要**把仓库结构、构建命令、源码路径等开发信息写进 doc 仓库 README：
+对外用户文档在本仓库 `docs/`，**不要**把仓库结构、构建命令、源码路径等开发信息写进用户文档：
 
 | 产品 | 用户文档 | Issues |
 |------|----------|--------|
-| VS Code 扩展 | [agent-resume-panel-doc](https://github.com/thunder-luc/agent-resume-panel-doc) | [issues](https://github.com/thunder-luc/agent-resume-panel-doc/issues) |
-| Desktop App | [agent-resume-desktop-doc](https://github.com/thunder-luc/agent-resume-desktop-doc) | [issues](https://github.com/thunder-luc/agent-resume-desktop-doc/issues) |
+| VS Code 扩展 | [docs/panel](docs/panel/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
+| Desktop App | [docs/desktop](docs/desktop/README.md) | [issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
 
 Desktop 专项开发见 [apps/desktop/DEVELOPMENT.md](apps/desktop/DEVELOPMENT.md)。
 

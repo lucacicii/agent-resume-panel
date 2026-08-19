@@ -8,7 +8,7 @@ Related:
 
 - Workbench pane model: `apps/desktop/src/renderer-react/features/workbench/WorkbenchPanel.tsx`
 - ACP session create/restore (`mcpServers: []` today): `apps/desktop/src/main/acp/agentConnection.ts`
-- Existing data MCP (notes/sessions/flow — separate service): `packages/core/src/mcp/server.ts`, `agent-resume-desktop-doc/mcp.md`
+- Existing data MCP (notes/sessions/flow — separate service): `packages/core/src/mcp/server.ts`, `docs/desktop/mcp.md`
 - Permission prompts: `apps/desktop/src/main/acp/handlers/permission.ts`
 - Multi-window precedents: Settings auxiliary window + standalone note windows in `apps/desktop/src/main/main.ts`
 
@@ -583,7 +583,7 @@ apps/desktop/src/renderer-react/
   browserWindowApp.tsx           # mode=browser route (chrome only)
 
 packages/core/src/settings/types.ts   # DesktopBrowserSettings
-agent-resume-desktop-doc/browser.md   # user docs when shipping
+docs/desktop/browser.md   # user docs when shipping
 ```
 
 Do **not** register browser tools inside `packages/core/src/mcp/server.ts` (that process is headless data MCP).
@@ -642,7 +642,7 @@ P0 may ship Workbench-only if needed; **P0b is required before calling dual-surf
 4. `surface.ts` + standalone `mode=browser` window + pop-out/dock (P0b)  
 5. `buildSessionMcpServers()` seam  
 6. Tool server + P1 tools + `browser_set_surface` + permission mapping  
-7. Docs: `agent-resume-desktop-doc/browser.md` + Workbench README row  
+7. Docs: `docs/desktop/browser.md` + Workbench README row  
 
 Do not implement §8.3 import until P3 and an explicit product go-ahead on Keychain access UX.
 

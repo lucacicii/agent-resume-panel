@@ -12,9 +12,9 @@
     "type": "git",
     "url": "https://github.com/thunder-luc/agent-resume-panel.git"
   },
-  "homepage": "https://github.com/thunder-luc/agent-resume-panel-doc#readme",
+  "homepage": "https://github.com/thunder-luc/agent-resume-panel/blob/develop/docs/panel/README.md",
   "bugs": {
-    "url": "https://github.com/thunder-luc/agent-resume-panel-doc/issues"
+    "url": "https://github.com/thunder-luc/agent-resume-panel/issues"
   },
   "engines": {
     "vscode": "^1.92.0"
