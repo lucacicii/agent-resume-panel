@@ -6,7 +6,7 @@ Standalone **macOS Session OS + Memory** app — calendar digests, Agent Q&A ove
 
 | | Link |
 |---|------|
-| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) |
+| **Download** | [Latest DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) |
 | **User docs** | [docs/desktop](../../docs/desktop/README.md) |
 | **Report issues** | [Issues](https://github.com/thunder-luc/agent-resume-panel/issues) |
 | **VS Code extension** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
@@ -53,7 +53,7 @@ The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes,
 
 ### Install
 
-1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest).
+1. Download the latest `Agent Resume-<version>.dmg` from [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest).
 2. Open the DMG and drag **Agent Resume** to **Applications**.
 3. If macOS blocks the app on first launch, right-click → **Open** once, or run:
 
@@ -98,7 +98,7 @@ The service exposes 28 tools: 15 for Notes and note GTD, 4 for Executable Notes,
 
 ### 安装
 
-1. 从 [Releases](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
+1. 从 [Releases](https://github.com/thunder-luc/agent-resume-panel/releases/latest) 下载最新 `Agent Resume-<version>.dmg`。
 2. 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
 3. 若首次启动被系统拦截，可右键 → **打开** 一次，或执行：
 

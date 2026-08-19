@@ -8,10 +8,10 @@ Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions,
 
 | | Desktop app (macOS) | VS Code extension |
 |---|---|---|
-| **Install** | [Download DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
+| **Install** | [Download DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 | **Docs** | [docs/desktop](README.md) | [docs/panel](../panel/README.md) |
 
-[Changelog](../../apps/desktop/CHANGELOG.md) · [Latest release](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) · Extension: **2.6.12**
+[Changelog](../../apps/desktop/CHANGELOG.md) · [Latest release](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · Extension: **2.6.12**
 
 > **No cloud · Local-first**  
 > Data is stored under **`~/.agent-resume-panel`** by default (shared with the VS Code extension; change in settings).  
@@ -23,7 +23,7 @@ Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions,
 
 ### Download & install
 
-- **macOS** (Apple Silicon + Intel universal): [Latest release](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest)
+- **macOS** (Apple Silicon + Intel universal): [Latest release](https://github.com/thunder-luc/agent-resume-panel/releases/latest)
 - Open the DMG and drag **Agent Resume** into **Applications**.
 - **First launch:** macOS may block the app because it is not notarized. Right-click the app → **Open** once, or run:
 
@@ -67,7 +67,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 **Shared:** `catalog.db`, GTD tags, Notes, LLM settings (`settings.json`). Desktop extras live under `panelHome/.desktop/`.
 
-[Download Desktop](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) · [Install extension](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [Extension docs](../panel/README.md)
+[Download Desktop](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [Install extension](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [Extension docs](../panel/README.md)
 
 ### Feedback & support
 
@@ -91,17 +91,17 @@ macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记
 
 | | Desktop 桌面端（macOS） | VS Code 扩展 |
 |---|---|---|
-| **安装** | [下载 DMG](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
+| **安装** | [下载 DMG](https://github.com/thunder-luc/agent-resume-panel/releases/latest) | [Marketplace](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) |
 | **文档** | [docs/desktop](README.md) | [docs/panel](../panel/README.md) |
 
-[更新日志](../../apps/desktop/CHANGELOG.md) · [最新版本](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) · 扩展：**2.6.12**
+[更新日志](../../apps/desktop/CHANGELOG.md) · [最新版本](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · 扩展：**2.6.12**
 
 > **无云端 · 纯本机存储**  
 > 数据默认在 **`~/.agent-resume-panel`**（与 VS Code 扩展共用，可在设置中修改）。
 
 ### 下载安装
 
-- **macOS**（Apple Silicon + Intel 通用包）：[最新版本](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest)
+- **macOS**（Apple Silicon + Intel 通用包）：[最新版本](https://github.com/thunder-luc/agent-resume-panel/releases/latest)
 - 打开 DMG，将 **Agent Resume** 拖入 **应用程序**。
 - **首次打开：** 应用未经 Apple 公证，macOS 可能拦截。请右键应用 → **打开** 一次，或执行：
 
@@ -145,7 +145,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记
 
 **共用：** `catalog.db`、GTD、Notes、LLM 设置（`settings.json`）。Desktop 私有数据在 `panelHome/.desktop/`。
 
-[下载 Desktop](https://github.com/thunder-luc/agent-resume-desktop-doc/releases/latest) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [扩展文档](../panel/README.md)
+[下载 Desktop](https://github.com/thunder-luc/agent-resume-panel/releases/latest) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=thunder-luc.agent-resume-panel-v2) · [扩展文档](../panel/README.md)
 
 ### 反馈与支持
 
