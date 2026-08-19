@@ -115,6 +115,12 @@ export function stageVsix({ clean = true } = {}) {
 
   copyExtensionFiles(stagingRoot);
 
+  const licenseSrc = path.join(repoRoot, "LICENSE");
+  if (!fs.existsSync(licenseSrc)) {
+    throw new Error("Missing LICENSE — required for the VSIX license tab.");
+  }
+  fs.copyFileSync(licenseSrc, path.join(stagingRoot, "LICENSE"));
+
   const extensionPkg = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
   const stagingPkg = buildStagingPackageJson(extensionPkg);
   fs.writeFileSync(path.join(stagingRoot, "package.json"), `${JSON.stringify(stagingPkg, null, 2)}\n`);
