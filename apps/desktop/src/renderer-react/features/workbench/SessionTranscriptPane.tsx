@@ -11,7 +11,6 @@ import {
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
-import { TerminalComposer, type TerminalComposerPane } from "./TerminalComposer";
 
 type TranscriptPreview = {
   title: string;
@@ -28,8 +27,7 @@ export function SessionTranscriptPane({
   iconProvider,
   active,
   autoRefreshMs = TRANSCRIPT_AUTO_REFRESH_MS,
-  fontSize = 14,
-  composer
+  fontSize = 14
 }: {
   provider: string;
   sessionId: string;
@@ -37,11 +35,6 @@ export function SessionTranscriptPane({
   active: boolean;
   autoRefreshMs?: number;
   fontSize?: number;
-  composer?: {
-    pane: TerminalComposerPane;
-    ptyId: number | null;
-    registerFocus: (key: string, focus: () => void) => () => void;
-  };
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -287,17 +280,6 @@ export function SessionTranscriptPane({
             )}
           </div>
         </>
-      ) : null}
-      {composer ? (
-        <div className="wb-transcript-compose">
-          <TerminalComposer
-            pane={composer.pane}
-            ptyId={composer.ptyId}
-            active={active}
-            registerFocus={composer.registerFocus}
-            variant="docked"
-          />
-        </div>
       ) : null}
     </div>
   );

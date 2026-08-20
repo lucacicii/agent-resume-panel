@@ -53,6 +53,7 @@ import {
   detectTuiSessionStatus,
   type TuiDebounceState
 } from "./tuiSessionStatus";
+import { TerminalComposer } from "./TerminalComposer";
 import {
   FloatingSessionNote,
   sessionNoteMatchesTarget,
@@ -1736,7 +1737,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking, registerFocus }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1749,6 +1750,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
+  registerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -2316,6 +2318,12 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
     <div className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`} ref={host} />
+    {pane.group === "session" ? <TerminalComposer
+      pane={{ key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath }}
+      ptyId={pane.ptyId ?? null}
+      active={active}
+      registerFocus={registerFocus}
+    /> : null}
     {tuiControlVisible ? (
       <div className={`wb-terminal-tui-nav${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"}`}>
         <button
@@ -7563,7 +7571,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
-            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} registerFocus={registerComposerFocus} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
@@ -7743,7 +7751,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} composer={activeTerminal?.group === "session" ? { pane: { key: activeTerminal.key, cwd: activeTerminal.cwd, group: "session" }, ptyId: activeTerminal.ptyId ?? null, registerFocus: registerComposerFocus } : undefined} /> : <div className="wb-side-pane">
+            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>

@@ -159,29 +159,6 @@ describe("SessionTranscriptPane", () => {
     await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it("pins a docked composer at the bottom of the transcript pane", async () => {
-    apiMocks.previewSession.mockResolvedValue({
-      session: { provider: "codex", id: "session-1" },
-      preview: { title: "Fix renderer", messages: [{ role: "user", text: "Add a transcript pane" }] }
-    });
-    const registerFocus = vi.fn(() => () => undefined);
-    render(
-      <SessionTranscriptPane
-        provider="codex"
-        sessionId="session-1"
-        active
-        composer={{
-          pane: { key: "terminal:1", cwd: "/work/app", group: "session" },
-          ptyId: 7,
-          registerFocus
-        }}
-      />
-    );
-    expect(await screen.findByRole("button", { name: /Add a transcript pane/ })).toBeTruthy();
-    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer.is-docked")).toBeTruthy();
-    expect(registerFocus).toHaveBeenCalledWith("terminal:1", expect.any(Function));
-  });
-
   it("does not fetch while inactive", async () => {
     render(<SessionTranscriptPane provider="codex" sessionId="session-1" active={false} />);
     await act(async () => undefined);
