@@ -1451,7 +1451,12 @@
       "desktop.workbench.linkGraphBridge.failed": "FE↔BE bridge: failed (no route/OpenAPI match)",
       "desktop.workbench.linkGraphBridge.partial": "FE↔BE bridge: partial",
       "desktop.workbench.linkGraphBridge.skipped": "FE↔BE bridge: skipped",
-      "desktop.workbench.linkGraphTimeline": "Discovery timeline"
+      "desktop.workbench.linkGraphTimeline": "Discovery timeline",
+      "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+      "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
+      "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
+      "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
+      "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}"
     }
   },
   "zh-cn": {
@@ -2943,7 +2948,12 @@
       "desktop.workbench.linkGraphBridge.failed": "前后端桥接：失败（未匹配路由/OpenAPI）",
       "desktop.workbench.linkGraphBridge.partial": "前后端桥接：部分成功",
       "desktop.workbench.linkGraphBridge.skipped": "前后端桥接：未尝试",
-      "desktop.workbench.linkGraphTimeline": "发现时间线"
+      "desktop.workbench.linkGraphTimeline": "发现时间线",
+      "desktop.workbench.terminalComposerDirectorySuggestions": "目录建议",
+      "desktop.workbench.terminalComposerDirectoryLoading": "正在加载目录…",
+      "desktop.workbench.terminalComposerDirectoryEmpty": "该项目下没有文件夹",
+      "desktop.workbench.terminalComposerDirectoryNoMatch": "没有匹配的文件夹",
+      "desktop.workbench.terminalComposerDirectoryError": "加载文件夹失败：{0}"
     }
   },
   "ja": {
@@ -4465,7 +4475,12 @@
       "desktop.workbench.linkGraphBridge.failed": "FE↔BE ブリッジ: 失敗",
       "desktop.workbench.linkGraphBridge.partial": "FE↔BE ブリッジ: 部分的",
       "desktop.workbench.linkGraphBridge.skipped": "FE↔BE ブリッジ: スキップ",
-      "desktop.workbench.linkGraphTimeline": "探索タイムライン"
+      "desktop.workbench.linkGraphTimeline": "探索タイムライン",
+      "desktop.workbench.terminalComposerDirectorySuggestions": "ディレクトリ候補",
+      "desktop.workbench.terminalComposerDirectoryLoading": "ディレクトリを読み込み中…",
+      "desktop.workbench.terminalComposerDirectoryEmpty": "このプロジェクトにフォルダがありません",
+      "desktop.workbench.terminalComposerDirectoryNoMatch": "一致するフォルダがありません",
+      "desktop.workbench.terminalComposerDirectoryError": "フォルダの読み込みに失敗しました: {0}"
     }
   }
 }

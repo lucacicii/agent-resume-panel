@@ -19,6 +19,7 @@ export type TerminalComposerPane = {
   key: string;
   cwd: string;
   group: "session" | "terminal";
+  projectPath?: string;
 };
 
 /** Static fallback suggestions (no LLM). History recency beats these. */
@@ -34,6 +35,14 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 ] as const;
 
 const MAX_SUGGESTIONS = 6;
+
+function hashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+  const before = value.slice(0, cursor);
+  const start = Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
+  const token = before.slice(start);
+  if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
+  return { start, query: token.slice(1) };
+}
 
 /**
  * Prefix matches before substring matches (case-insensitive), history recency
@@ -94,6 +103,26 @@ export function TerminalComposer(props: {
   const draftRef = useRef("");
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [cursor, setCursor] = useState(0);
+  const [directories, setDirectories] = useState<string[] | null>(null);
+  const [directoriesLoading, setDirectoriesLoading] = useState(false);
+  const [directoriesError, setDirectoriesError] = useState("");
+  const [directoriesDismissed, setDirectoriesDismissed] = useState(false);
+  const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const directoryRoot = pane.projectPath || pane.cwd;
+  const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
+  const directorySuggestions = useMemo(() => {
+    if (!hashToken || !directories) return [];
+    const query = hashToken.query.toLowerCase();
+    return directories
+      .filter((name) => name.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const ap = a.toLowerCase().startsWith(query);
+        const bp = b.toLowerCase().startsWith(query);
+        return ap !== bp ? (ap ? -1 : 1) : a.localeCompare(b, undefined, { sensitivity: "base" });
+      });
+  }, [directories, hashToken]);
+  const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
   const [position, setPosition] = useState(() => loadTerminalComposerPosition(pane.cwd));
@@ -112,7 +141,45 @@ export function TerminalComposer(props: {
   const disabled = ptyId === null || !active;
 
   const suggestions = useMemo(() => computeSuggestions(value, history), [value, history]);
-  const suggestionsOpen = focused && !disabled && suggestions.length > 0 && !suggestionsDismissed;
+  const directoryOpen = focused && !disabled && Boolean(hashToken) && !directoriesDismissed;
+  const suggestionsOpen = !directoryOpen && focused && !disabled && suggestions.length > 0 && !suggestionsDismissed;
+  const activeListId = directoryOpen ? `${listId}-directories` : suggestionsOpen ? `${listId}-suggestions` : undefined;
+  const activeOptionId = directoryOpen
+    ? directorySuggestions.length ? `${listId}-directory-${activeDirectory}` : undefined
+    : suggestionsOpen && activeSuggestion >= 0 ? `${listId}-suggestion-${activeSuggestion}` : undefined;
+
+  useEffect(() => {
+    setDirectories(null);
+    setDirectoriesError("");
+    setDirectoriesDismissed(false);
+    setActiveDirectory(0);
+  }, [directoryRoot]);
+
+  useEffect(() => {
+    if (!directoryOpen || !directorySuggestions.length) return;
+    const frame = requestAnimationFrame(() => {
+      directoryItemRefs.current[activeDirectory]?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDirectory, directoryOpen, directorySuggestions]);
+
+  useEffect(() => {
+    if (!directoryOpen || directories !== null || directoriesError) return;
+    let cancelled = false;
+    setDirectoriesLoading(true);
+    void desktopApi().workbenchListDirectory({ rootPath: directoryRoot, dirPath: directoryRoot })
+      .then(({ entries }) => {
+        if (cancelled) return;
+        setDirectories(entries.filter((entry) => entry.isDirectory).map((entry) => entry.name));
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setDirectoriesError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setDirectoriesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [directories, directoriesError, directoryOpen, directoryRoot]);
 
   // Keep the collapsed state when the pane (or workbench tab) goes inactive.
   useEffect(() => {
@@ -131,6 +198,7 @@ export function TerminalComposer(props: {
     if (el) {
       el.focus();
       setFocused(true);
+      setCursor(el.selectionStart || 0);
     }
   }, [disabled]);
 
@@ -176,7 +244,9 @@ export function TerminalComposer(props: {
     setHistoryIndex(-1);
     draftRef.current = "";
     setSuggestionsDismissed(false);
+    setDirectoriesDismissed(false);
     setActiveSuggestion(0);
+    setActiveDirectory(0);
     inputRef.current?.focus();
   }, [active, pane.cwd, ptyId, value]);
 
@@ -188,6 +258,20 @@ export function TerminalComposer(props: {
     inputRef.current?.focus();
   }, [resizeRows]);
 
+  const acceptDirectory = useCallback((name: string) => {
+    if (!hashToken) return;
+    const inserted = `#${name}`;
+    const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    setValue(next);
+    resizeRows(next);
+    setCursor(nextCursor);
+    setDirectoriesDismissed(true);
+    setActiveDirectory(0);
+    requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
+    inputRef.current?.focus();
+  }, [cursor, hashToken, resizeRows, value]);
+
   const onInputChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = event.target.value;
     setValue(next);
@@ -195,7 +279,10 @@ export function TerminalComposer(props: {
     setHistoryIndex(-1);
     draftRef.current = next;
     setSuggestionsDismissed(false);
+    setDirectoriesDismissed(false);
     setActiveSuggestion(0);
+    setActiveDirectory(0);
+    setCursor(event.target.selectionStart || next.length);
   }, [resizeRows]);
 
   // --- Floating position drag ---
@@ -240,6 +327,32 @@ export function TerminalComposer(props: {
     if (disabled) return;
     const isEnter = event.key === "Enter";
     const isTab = event.key === "Tab";
+
+    if (directoryOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDirectoriesDismissed(true);
+        return;
+      }
+      if (directorySuggestions.length) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setActiveDirectory((current) => (current + 1) % directorySuggestions.length);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
+          return;
+        }
+        if (isEnter || isTab) {
+          event.preventDefault();
+          const pick = directorySuggestions[activeDirectory];
+          if (pick) acceptDirectory(pick);
+          return;
+        }
+      }
+    }
 
     if (suggestionsOpen) {
       if (event.key === "ArrowDown") {
@@ -335,7 +448,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptSuggestion, disabled, history, historyIndex, resizeRows, send, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSuggestion, activeDirectory, disabled, directoryOpen, directorySuggestions, history, historyIndex, resizeRows, send, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
@@ -409,16 +522,16 @@ export function TerminalComposer(props: {
         placeholder={t("desktop.workbench.terminalComposerPlaceholder")}
         aria-label={t("desktop.workbench.terminalComposerPlaceholder")}
         aria-autocomplete="list"
-        aria-controls={suggestionsOpen ? `${listId}-suggestions` : undefined}
-        aria-expanded={suggestionsOpen}
-        aria-activedescendant={
-          suggestionsOpen && activeSuggestion >= 0 ? `${listId}-suggestion-${activeSuggestion}` : undefined
-        }
+        aria-controls={activeListId}
+        aria-expanded={activeListId !== undefined}
+        aria-activedescendant={activeOptionId}
         spellCheck={false}
         enterKeyHint="send"
         onChange={onInputChange}
         onKeyDown={onKeyDown}
-        onFocus={() => setFocused(true)}
+        onSelect={(event) => setCursor(event.currentTarget.selectionStart || 0)}
+        onClick={(event) => setCursor(event.currentTarget.selectionStart || 0)}
+        onFocus={(event) => { setFocused(true); setCursor(event.currentTarget.selectionStart || 0); }}
         onBlur={() => setFocused(false)}
       />
       <div className="wb-terminal-composer-tools">
@@ -437,7 +550,44 @@ export function TerminalComposer(props: {
           <ThemeIcon name="send" size={16} />
         </button>
       </div>
-      {suggestionsOpen ? (
+      {directoryOpen ? (
+        <ul
+          id={`${listId}-directories`}
+          className="wb-terminal-composer-suggestions"
+          role="listbox"
+          aria-label={t("desktop.workbench.terminalComposerDirectorySuggestions")}
+        >
+          {directoriesLoading ? (
+            <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+              <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryLoading")}</span>
+            </li>
+          ) : directoriesError ? (
+            <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+              <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryError", directoriesError)}</span>
+            </li>
+          ) : directorySuggestions.length ? directorySuggestions.map((name, index) => (
+            <li
+              ref={(element) => {
+                directoryItemRefs.current[index] = element;
+              }}
+              key={name}
+              id={`${listId}-directory-${index}`}
+              role="option"
+              aria-selected={index === activeDirectory}
+              className={`wb-terminal-composer-suggestion${index === activeDirectory ? " is-active" : ""}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => acceptDirectory(name)}
+            >
+              <span className="wb-terminal-composer-suggestion-text">#{name}</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+            </li>
+          )) : (
+            <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+              <span className="wb-terminal-composer-suggestion-text">{directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
+            </li>
+          )}
+        </ul>
+      ) : suggestionsOpen ? (
         <ul
           id={`${listId}-suggestions`}
           className="wb-terminal-composer-suggestions"
