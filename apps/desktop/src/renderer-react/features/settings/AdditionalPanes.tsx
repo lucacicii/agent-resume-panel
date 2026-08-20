@@ -34,11 +34,10 @@ function SelectRow({ title, description, value, onChange, children }: { title: s
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><select className="settings-row-control" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>;
 }
 
-export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; scheduleSave: (value: WorkbenchDraft) => void; t: Translate }) {
+export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; t: Translate }) {
   const update = <K extends keyof WorkbenchDraft>(key: K, value: WorkbenchDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
-    scheduleSave(next);
   };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
@@ -52,7 +51,6 @@ export function WorkbenchPane({ draft, setDraft, scheduleSave, t }: { draft: Wor
             next.defaultProvider = value.slice(4) as WorkbenchDraft["defaultProvider"];
           }
           setDraft(next);
-          scheduleSave(next);
         }}
       >
         <option value="">{t("desktop.settings.newSessionTarget.askEveryTime")}</option>
@@ -193,13 +191,11 @@ function formatScheduleRunSummary(run: ScheduleRunRow, t: Translate): { text: st
 export function ReportPane({
   draft,
   setDraft,
-  scheduleSave,
   t,
   onOpenScheduleLog
 }: {
   draft: ReportDraft;
   setDraft: (value: ReportDraft) => void;
-  scheduleSave: (value: ReportDraft) => void;
   t: Translate;
   onOpenScheduleLog?: () => void;
 }) {
@@ -232,7 +228,6 @@ export function ReportPane({
     if (key === "enabled" && value && !draft.enabled && !window.confirm(t("desktop.settings.memoryEnableConfirm"))) return;
     const next = { ...draft, [key]: value };
     setDraft(next);
-    scheduleSave(next);
   };
   const preview = async () => {
     setStatus({ text: t("desktop.backfill.scanning") });
@@ -517,9 +512,9 @@ export function BackupPane({ t }: { t: Translate }) {
   );
 }
 
-export function StoragePane({ draft, setDraft, scheduleSave, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; scheduleSave: (value: StorageDraft) => void; t: Translate }) {
+export function StoragePane({ draft, setDraft, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
-  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
+  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
   const home = draft.panelHome.trim() || "~/.agent-resume-panel";
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
@@ -546,11 +541,10 @@ function captureShortcutFromKeyDown(event: KeyboardEvent<HTMLInputElement>): str
   return [...modifiers, key].join("+");
 }
 
-export function NotesPane({ draft, setDraft, scheduleSave, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; scheduleSave: (value: NotesDraft) => void; t: Translate }) {
+export function NotesPane({ draft, setDraft, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; t: Translate }) {
   const updateField = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
-    scheduleSave(next);
   };
   return (
     <>

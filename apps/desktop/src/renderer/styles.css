@@ -16707,3 +16707,9 @@ html[data-window-mode="browser"] #react-chrome {
   height: 100%;
   margin: 0;
 }
+
+.settings-pane-actions{ display:flex; align-items:center; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border, #2a2a2a); }
+.settings-unsaved-hint{ font-size:12px; color: var(--muted, #888); }
+.settings-unsaved-banner{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid var(--border, #2a2a2a); border-radius:8px; background: var(--surface-2, #1a1a1a); margin-bottom:12px; }
+.settings-unsaved-text{ font-size:12px; }
+.settings-unsaved-actions{ display:flex; gap:8px; flex-wrap:wrap; }

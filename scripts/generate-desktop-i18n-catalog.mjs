@@ -557,8 +557,8 @@ const flat = {
   },
   "desktop.settings.panelHome": { en: "Panel home", "zh-cn": "Panel home" },
   "desktop.settings.panelHomeFootnote": {
-    en: "Reveal uses saved path; changes auto-save.",
-    "zh-cn": "打开操作使用已保存的路径；修改后会自动保存。"
+    en: "Reveal uses saved path; click Save to apply changes.",
+    "zh-cn": "打开操作使用已保存的路径；修改后点击“保存”生效。"
   },
   "desktop.settings.notesGroup": { en: "Notes", "zh-cn": "笔记" },
   "desktop.settings.notesFootnote": {
@@ -572,6 +572,13 @@ const flat = {
   "desktop.settings.grokHome": { en: "Grok home", "zh-cn": "Grok home" },
   "desktop.settings.opencodeHome": { en: "OpenCode home", "zh-cn": "OpenCode home" },
   "desktop.settings.piHome": { en: "Pi home", "zh-cn": "Pi home" },
+  "desktop.settings.save": { en: "Save", "zh-cn": "保存" },
+  "desktop.settings.discard": { en: "Discard", "zh-cn": "丢弃" },
+  "desktop.settings.cancel": { en: "Cancel", "zh-cn": "取消" },
+  "desktop.settings.saveAndContinue": { en: "Save and continue", "zh-cn": "保存并继续" },
+  "desktop.settings.discardAndContinue": { en: "Discard and continue", "zh-cn": "丢弃并继续" },
+  "desktop.settings.unsavedHint": { en: "Unsaved changes", "zh-cn": "有未保存的更改" },
+  "desktop.settings.unsavedConfirm": { en: "You have unsaved changes. Save or discard before leaving?", "zh-cn": "有未保存的更改，是否保存或丢弃后再离开？" },
   "desktop.settings.saving": { en: "Saving…", "zh-cn": "保存中…" },
   "desktop.settings.saved": { en: "Saved{0}", "zh-cn": "已保存{0}" },
   "desktop.settings.schedulerOn": { en: " · schedule ON", "zh-cn": " · 定时 ON" },
@@ -982,8 +989,8 @@ const flat = {
     "zh-cn": "日历中的 session 来自本地索引；生成日报 / 周报 / 月报需要调用工具 LLM API（会先补全缺失的日报，再聚合为周报 / 月报）。"
   },
   "desktop.report.llmRequiredBody2": {
-    en: "Fill Base URL, Model, API Key under Settings → Models; auto-saves. Retry after saving.",
-    "zh-cn": "请在 设置 → 模型 填写 Base URL、Model、API Key，会自动保存，保存后重试。"
+    en: "Fill Base URL, Model, API Key under Settings → Models and click Save. Retry after saving.",
+    "zh-cn": "请在 设置 → 模型 填写 Base URL、Model、API Key 并点击保存，保存后重试。"
   },
   "desktop.report.llmSettingsBtn": { en: "Open Settings", "zh-cn": "去 Settings 配置" },
   "desktop.report.llmRequiredToast": {

@@ -37,8 +37,11 @@ type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | 
 type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
 
 type Pane = "general" | "models" | "sessions" | "workbench" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
-type Draft = GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft;
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about">;
+
+function isEditablePane(value: Pane): value is EditablePane {
+  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about";
+}
 
 export type SettingsPanelProps = {
   /** Production path is always "window" (auxiliary BrowserWindow). */
@@ -84,8 +87,11 @@ export function SettingsPanel({
   const [notes, setNotes] = useState<NotesDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
-  const timer = useRef<number | null>(null);
+  const [savingSection, setSavingSection] = useState<EditablePane | null>(null);
+  const [pendingPane, setPendingPane] = useState<Pane | null>(null);
+  const [pendingClose, setPendingClose] = useState(false);
   const lastSavedSettings = useRef<PanelSettings | null>(null);
+  const paneRef = useRef(pane);
 
   const hydrate = useCallback((next: PanelSettings) => {
     lastSavedSettings.current = next;
@@ -101,6 +107,23 @@ export function SettingsPanel({
 
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
 
+  const isDirtyForPane = useCallback((value: Pane): boolean => {
+    if (!isEditablePane(value) || !lastSavedSettings.current) return false;
+    const base = lastSavedSettings.current;
+    if (value === "general") return JSON.stringify(general) !== JSON.stringify(generalDraftFromSettings(base));
+    if (value === "models") return JSON.stringify(models) !== JSON.stringify(modelsDraftFromSettings(base));
+    if (value === "sessions") return JSON.stringify(sessions) !== JSON.stringify(sessionsDraftFromSettings(base));
+    if (value === "workbench") return JSON.stringify(workbench) !== JSON.stringify(workbenchDraftFromSettings(base));
+    if (value === "notes") return JSON.stringify(notes) !== JSON.stringify(notesDraftFromSettings(base));
+    if (value === "report") return JSON.stringify(report) !== JSON.stringify(reportDraftFromSettings(base));
+    if (value === "storage") return JSON.stringify(storage) !== JSON.stringify(storageDraftFromSettings(base));
+    return false;
+  }, [general, models, sessions, workbench, notes, report, storage]);
+
+  paneRef.current = pane;
+  const isDirtyForPaneRef = useRef(isDirtyForPane);
+  isDirtyForPaneRef.current = isDirtyForPane;
+
   useEffect(() => {
     if (isWindow) {
       void load().catch((error: unknown) =>
@@ -109,12 +132,16 @@ export function SettingsPanel({
       const stopNavigate =
         typeof desktopApi().onSettingsNavigate === "function"
           ? desktopApi().onSettingsNavigate((payload) => {
-              setPane(asPane(payload?.pane));
+              const next = asPane(payload?.pane);
+              if (isDirtyForPaneRef.current(paneRef.current)) {
+                setPendingPane(next);
+                return;
+              }
+              setPane(next);
             })
           : () => undefined;
       return () => {
         stopNavigate();
-        if (timer.current) window.clearTimeout(timer.current);
       };
     }
 
@@ -127,6 +154,10 @@ export function SettingsPanel({
     };
     const onTabChange = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== "settings") {
+        if (isDirtyForPaneRef.current(paneRef.current)) {
+          setPendingClose(true);
+          return;
+        }
         setOpen(false);
       }
     };
@@ -135,11 +166,11 @@ export function SettingsPanel({
     return () => {
       window.removeEventListener("agent-resume:settings-open", onOpen);
       window.removeEventListener("agent-resume:tab-change", onTabChange);
-      if (timer.current) window.clearTimeout(timer.current);
     };
   }, [isWindow, load]);
 
   const save = useCallback(async (next: PanelSettings, section: EditablePane) => {
+    setSavingSection(section);
     setStatus({ text: t("desktop.settings.saving") });
     try {
       const result = await desktopApi().saveSettings(next, {
@@ -171,38 +202,97 @@ export function SettingsPanel({
         }));
       }
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setSavingSection(null);
     }
   }, [hydrate, isWindow, t]);
 
-  const scheduleSave = (section: EditablePane, draft: Draft) => {
+  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
+    if (section === "general") return general;
+    if (section === "models") return models;
+    if (section === "sessions") return sessions;
+    if (section === "workbench") return workbench;
+    if (section === "notes") return notes;
+    if (section === "report") return report;
+    return storage;
+  }, [general, models, sessions, workbench, notes, report, storage]);
+
+  const savedDraftFor = useCallback((section: EditablePane) => {
+    const base = lastSavedSettings.current;
+    if (!base) return null;
+    if (section === "general") return generalDraftFromSettings(base);
+    if (section === "models") return modelsDraftFromSettings(base);
+    if (section === "sessions") return sessionsDraftFromSettings(base);
+    if (section === "workbench") return workbenchDraftFromSettings(base);
+    if (section === "notes") return notesDraftFromSettings(base);
+    if (section === "report") return reportDraftFromSettings(base);
+    return storageDraftFromSettings(base);
+  }, []);
+
+  const isDirty = useCallback((section: EditablePane): boolean => {
+    const cur = currentDraft(section);
+    const saved = savedDraftFor(section);
+    if (!cur || !saved) return false;
+    return JSON.stringify(cur) !== JSON.stringify(saved);
+  }, [currentDraft, savedDraftFor]);
+
+  const hasAnyDirty = useCallback((): boolean => {
+    const sections: EditablePane[] = ["general", "models", "sessions", "workbench", "notes", "report", "storage"];
+    return sections.some((s) => isDirty(s));
+  }, [isDirty]);
+
+  const handleSave = useCallback(async (section: EditablePane) => {
     if (!settings) return;
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      if (section === "models") {
-        const modelsDraft = draft as ModelsDraft;
-        if (embeddingSearchIdentityChanged(settings, modelsDraft)) {
-          // Strong confirm: switching embedding space orphans old vectors until re-index.
-          if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
-            setModels(modelsDraftFromSettings(settings));
-            setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
-            return;
-          }
+    const draft = currentDraft(section);
+    if (!draft) return;
+    if (section === "models") {
+      const modelsDraft = draft as ModelsDraft;
+      if (embeddingSearchIdentityChanged(settings, modelsDraft)) {
+        if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
+          setModels(modelsDraftFromSettings(settings));
+          setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
+          return;
         }
       }
-      const patch = section === "general" ? generalPatch(settings, draft as GeneralDraft)
-        : section === "models" ? modelsPatch(settings, draft as ModelsDraft)
-        : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
-        : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
-        : section === "notes" ? notesPatch(settings, draft as NotesDraft)
-        : section === "report" ? reportPatch(settings, draft as ReportDraft)
-        : storagePatch(settings, draft as StorageDraft);
-      void save({ ...settings, ...patch }, section);
-    }, 450);
-  };
+    }
+    const patch = section === "general" ? generalPatch(settings, draft as GeneralDraft)
+      : section === "models" ? modelsPatch(settings, draft as ModelsDraft)
+      : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
+      : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
+      : section === "notes" ? notesPatch(settings, draft as NotesDraft)
+      : section === "report" ? reportPatch(settings, draft as ReportDraft)
+      : storagePatch(settings, draft as StorageDraft);
+    await save({ ...settings, ...patch }, section);
+  }, [settings, currentDraft, save, t]);
 
-  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage) return null;
-  const current = panes.find((item) => item.id === pane) || panes[0];
-  const close = () => {
+  const handleDiscard = useCallback((section: EditablePane) => {
+    const base = lastSavedSettings.current;
+    if (!base) return;
+    if (section === "general") {
+      setGeneral(generalDraftFromSettings(base));
+      window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
+        detail: appearanceStateFromSettings(base)
+      }));
+    } else if (section === "models") setModels(modelsDraftFromSettings(base));
+    else if (section === "sessions") setSessions(sessionsDraftFromSettings(base));
+    else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(base));
+    else if (section === "notes") setNotes(notesDraftFromSettings(base));
+    else if (section === "report") setReport(reportDraftFromSettings(base));
+    else setStorage(storageDraftFromSettings(base));
+    setStatus({ text: "" });
+  }, []);
+
+  const requestPaneChange = useCallback((next: Pane) => {
+    if (next === pane) return;
+    if (isEditablePane(pane) && isDirty(pane)) {
+      setPendingPane(next);
+      return;
+    }
+    if (next !== "usage") setUsageDetailTab(undefined);
+    setPane(next);
+  }, [pane, isDirty]);
+
+  const doClose = useCallback(() => {
     if (isWindow) {
       if (typeof desktopApi().closeSettingsWindow === "function") {
         void desktopApi().closeSettingsWindow();
@@ -211,25 +301,43 @@ export function SettingsPanel({
     }
     setOpen(false);
     window.dispatchEvent(new Event("agent-resume:settings-closed"));
-  };
-  const body = pane === "general" ? <GeneralPane draft={general} setDraft={(value) => setGeneral(value)} scheduleSave={(draft) => scheduleSave("general", draft)} t={t} />
-    : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} scheduleSave={(draft) => scheduleSave("models", draft)} t={t} />
-    : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} scheduleSave={(draft) => scheduleSave("sessions", draft)} t={t} />
-    : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} scheduleSave={(draft) => scheduleSave("workbench", draft)} t={t} />
-    : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} scheduleSave={(draft) => scheduleSave("notes", draft)} t={t} />
+  }, [isWindow]);
+
+  const requestClose = useCallback(() => {
+    if (hasAnyDirty()) {
+      setPendingClose(true);
+      return;
+    }
+    doClose();
+  }, [hasAnyDirty, doClose]);
+
+  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage) return null;
+  const current = panes.find((item) => item.id === pane) || panes[0];
+  const close = requestClose;
+  const editable = isEditablePane(pane);
+  const dirty = editable ? isDirty(pane) : false;
+  const saving = editable ? savingSection === pane : false;
+  const body = pane === "general" ? <GeneralPane draft={general} setDraft={(value) => setGeneral(value)} t={t} />
+    : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} t={t} />
+    : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} t={t} />
+    : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
+    : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
     : pane === "report" ? (
       <ReportPane
         draft={report}
         setDraft={(value) => setReport(value)}
-        scheduleSave={(draft) => scheduleSave("report", draft)}
         t={t}
         onOpenScheduleLog={() => {
+          if (isEditablePane(pane) && isDirty(pane)) {
+            setPendingPane("usage" as Pane);
+            return;
+          }
           setUsageDetailTab("schedule");
           setPane("usage");
         }}
       />
     )
-    : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} scheduleSave={(draft) => scheduleSave("storage", draft)} t={t} />
+    : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
     : pane === "logs" ? <LogsPane t={t} />
@@ -248,12 +356,7 @@ export function SettingsPanel({
               type="button"
               className={`settings-nav-item${pane === item.id ? " active" : ""}`}
               key={item.id}
-              onClick={() => {
-                if (item.id !== "usage") {
-                  setUsageDetailTab(undefined);
-                }
-                setPane(item.id);
-              }}
+              onClick={() => requestPaneChange(item.id)}
             >
               {t(item.key)}
             </button>
@@ -271,11 +374,54 @@ export function SettingsPanel({
               </div>
             ) : null}
           </header>
+          {pendingPane || pendingClose ? (
+            <div className="settings-unsaved-banner" role="alert">
+              <span className="settings-unsaved-text">{t("desktop.settings.unsavedConfirm")}</span>
+              <span className="settings-unsaved-actions">
+                <button type="button" className="btn primary" disabled={Boolean(savingSection)} onClick={async () => {
+                  const targetPane = pendingPane;
+                  const doPendingClose = pendingClose;
+                  if (editable && dirty) {
+                    await handleSave(pane as EditablePane);
+                    if (isDirty(pane as EditablePane)) return;
+                  }
+                  setPendingPane(null);
+                  setPendingClose(false);
+                  if (doPendingClose) {
+                    doClose();
+                  } else if (targetPane) {
+                    if (targetPane !== "usage") setUsageDetailTab(undefined);
+                    setPane(targetPane);
+                  }
+                }}>{t("desktop.settings.saveAndContinue")}</button>
+                <button type="button" className="ghost-btn" onClick={() => {
+                  const targetPane = pendingPane;
+                  const doPendingClose = pendingClose;
+                  if (editable) handleDiscard(pane as EditablePane);
+                  setPendingPane(null);
+                  setPendingClose(false);
+                  if (doPendingClose) {
+                    doClose();
+                  } else if (targetPane) {
+                    if (targetPane !== "usage") setUsageDetailTab(undefined);
+                    setPane(targetPane);
+                  }
+                }}>{t("desktop.settings.discardAndContinue")}</button>
+                <button type="button" className="ghost-btn" onClick={() => { setPendingPane(null); setPendingClose(false); }}>{t("desktop.settings.cancel")}</button>
+              </span>
+            </div>
+          ) : null}
           <div className="form settings-form">
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" ? body : <div className="settings-pane-body">{body}</div>}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{body}
+                <div className="settings-pane-actions">
+                  <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
+                  <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>
+                  {dirty ? <span className="settings-unsaved-hint">{t("desktop.settings.unsavedHint")}</span> : null}
+                </div>
+              </div>}
             </div>
           </div>
           {pane === "about" ? (
@@ -290,7 +436,7 @@ export function SettingsPanel({
   );
 }
 
-function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; scheduleSave: (draft: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+function GeneralPane({ draft, setDraft, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const darkOnly = draft.visualTheme !== "classic";
   const preview = (next: GeneralDraft) => window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
     detail: appearanceStateFromSettings({ desktop: {
@@ -302,7 +448,7 @@ function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft
   const update = <K extends keyof GeneralDraft>(key: K, value: GeneralDraft[K]) => {
     const next = { ...draft, [key]: value };
     if (key === "visualTheme" && value !== "classic") next.desktopTheme = "dark";
-    setDraft(next); preview(next); scheduleSave(next);
+    setDraft(next); preview(next);
   };
   const themes: Array<{ id: GeneralDraft["visualTheme"]; label: string; description: string }> = [
     { id: "classic", label: t("desktop.settings.visualThemeClassic"), description: t("desktop.settings.visualThemeClassicDesc") },
@@ -322,11 +468,11 @@ function GeneralPane({ draft, setDraft, scheduleSave, t }: { draft: GeneralDraft
 
 type ModelTestKind = "tool" | "chat" | "embedding";
 
-function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; setDraft: (value: ModelsDraft) => void; scheduleSave: (draft: ModelsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+function ModelsPane({ draft, setDraft, t }: { draft: ModelsDraft; setDraft: (value: ModelsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const [testing, setTesting] = useState<ModelTestKind | null>(null);
   const [testStatus, setTestStatus] = useState<Partial<Record<ModelTestKind, { text: string; kind?: StatusKind }>>>({});
   const [revealedApiKeys, setRevealedApiKeys] = useState<Partial<Record<ModelsApiKeyField, boolean>>>({});
-  const update = <K extends keyof ModelsDraft>(key: K, value: ModelsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
+  const update = <K extends keyof ModelsDraft>(key: K, value: ModelsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
   const toggleApiKeyReveal = (key: ModelsApiKeyField) => {
     setRevealedApiKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -417,8 +563,8 @@ function ModelsPane({ draft, setDraft, scheduleSave, t }: { draft: ModelsDraft; 
   </>;
 }
 
-function SessionsPane({ draft, setDraft, scheduleSave, t }: { draft: SessionsDraft; setDraft: (value: SessionsDraft) => void; scheduleSave: (draft: SessionsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
-  const update = <K extends keyof SessionsDraft>(key: K, value: SessionsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); scheduleSave(next); };
+function SessionsPane({ draft, setDraft, t }: { draft: SessionsDraft; setDraft: (value: SessionsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+  const update = <K extends keyof SessionsDraft>(key: K, value: SessionsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
   const toggles = [["showArchivedCodex", "desktop.settings.showArchivedCodex"], ["showSubagentCodex", "desktop.settings.showSubagentCodex"], ["showArchivedOpenCode", "desktop.settings.showArchivedOpenCode"], ["showSubagentGrok", "desktop.settings.showSubagentGrok"]] as const;
   return <>
     <section className="settings-group">
