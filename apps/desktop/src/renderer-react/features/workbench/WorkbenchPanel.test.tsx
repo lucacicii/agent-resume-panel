@@ -3427,6 +3427,54 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("notifies the user and opens session when YOLO mode is unsupported for provider", async () => {
+    notificationMocks.notifyDesktop.mockClear();
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({
+      mode: "xterm",
+      command: "pi",
+      cwd: "/work/app",
+      unsupportedYolo: true,
+      warning: "YOLO mode is not supported for provider: pi. Starting in standard mode."
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session · {0}", "desktop.workbench.yoloNotSupported": "YOLO mode is not supported for provider: {0}. Starting in standard mode."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "pi", newSessionYolo: true } }),
+      listSessions: async () => [{ provider: "pi" as const, id: "session-1", title: "Pi session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "pi" as const, id: "session-1", title: "Pi session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ]),
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      workbenchNewSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({
+      text: "YOLO mode is not supported for provider: pi. Starting in standard mode.",
+      kind: "info"
+    }));
+    expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
+  });
+
   it("shows a pending new session until catalog sync supplies its session id", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -3773,6 +3821,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       const tracking = document.querySelector(".wb-git-tracking");
       expect(tracking?.textContent || "").not.toContain("main");
+      expect(tracking?.textContent || "").not.toMatch(/\{\d+\}/);
       expect(tracking?.textContent || "").toMatch(/↑\s*1/);
       expect(tracking?.textContent || "").toMatch(/↓\s*2/);
     });

@@ -1194,8 +1194,13 @@ function GitChangesPanel({
           disabled={syncing}
           onClick={onSync}
         >
-          {syncing ? <ThemeIcon name="loader" size={12} className="spin" aria-hidden="true" /> : null}
-          <span>{trackingLabel}</span>
+          <ThemeIcon
+            name={syncing ? "loader" : "refresh"}
+            size={14}
+            className={`wb-git-tracking-icon${syncing ? " spin" : ""}`}
+            aria-hidden="true"
+          />
+          <span className="wb-git-tracking-label">{trackingLabel}</span>
         </button> : null}
       </div>
     </div>
@@ -4101,6 +4106,12 @@ export function WorkbenchPanel(): ReactPortal | null {
             noteId: request.noteId,
             initialPrompt: request.initialPrompt
           });
+          if (result.unsupportedYolo || result.warning) {
+            notifyDesktop({
+              text: t("desktop.workbench.yoloNotSupported", request.provider),
+              kind: "info"
+            });
+          }
           if (result.mode === "xterm" && result.command) {
             const title = request.title || t("desktop.workbench.newSessionTitle", basename(cwd));
             const terminalKey = addTerminal(
@@ -4594,6 +4605,12 @@ export function WorkbenchPanel(): ReactPortal | null {
           provider: target.provider as AgentProvider,
           executionMode: "standard"
         });
+        if (result.unsupportedYolo || result.warning) {
+          notifyDesktop({
+            text: t("desktop.workbench.yoloNotSupported", target.provider),
+            kind: "info"
+          });
+        }
         if (result.external || result.mode === "external-system") {
           setStatus({
             text: result.copied

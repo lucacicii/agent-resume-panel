@@ -6072,50 +6072,65 @@ code {
 
 #react-workbench .wb-git-tracking {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-caption, 11px);
+  font-weight: var(--font-weight-semibold, 600);
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 #react-workbench .wb-git-tracking-btn {
   appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
+  box-sizing: border-box;
+  min-height: 28px;
+  border: 1px solid var(--color-separator, var(--border));
+  border-radius: var(--radius-full, 999px);
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
+  padding: 0 8px 0 7px;
   font: inherit;
-  color: var(--muted);
-  text-align: left;
+  color: var(--color-label-secondary, var(--muted));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  border-radius: var(--radius-sm, 4px);
+  gap: 5px;
+  flex: 0 0 auto;
+  transition: background var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
+    color var(--duration-fast, 150ms) var(--ease-out, ease-out);
 }
 
-#react-workbench .wb-git-tracking-btn:hover,
-#react-workbench .wb-git-tracking-btn:focus-visible {
-  color: var(--text);
-  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
+#react-workbench .wb-git-tracking-icon {
+  flex: 0 0 auto;
+}
+
+#react-workbench .wb-git-tracking-label {
+  line-height: 1;
+}
+
+#react-workbench .wb-git-tracking-btn:hover:not(:disabled) {
+  color: var(--color-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 35%, var(--color-separator-opaque, var(--border)));
+  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 14%, transparent));
+}
+
+#react-workbench .wb-git-tracking-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 22%, transparent);
 }
 
 #react-workbench .wb-git-tracking-btn:focus-visible {
   outline: 2px solid var(--color-focus-ring, var(--accent));
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 #react-workbench .wb-git-tracking-btn:disabled {
   cursor: default;
-  opacity: 0.75;
+  color: var(--color-label-tertiary, var(--muted));
+  opacity: 0.8;
 }
 
-/* Tracking indicator sits in the commit-action row, after the action buttons,
-   and reads as a separate sync control (counts only, no branch name). */
+/* The sync status belongs with the commit actions, but remains visually
+   distinct from the destructive-to-repeat action icons. */
 #react-workbench .wb-git-commit-actions .wb-git-tracking-btn {
-  margin-left: 8px;
-  padding: 3px 6px;
-  border-left: 1px solid var(--color-separator, var(--border));
-  border-radius: 0;
+  margin-left: 4px;
 }
 
 /* The React tree portal replaces the previous flat change rows while retaining

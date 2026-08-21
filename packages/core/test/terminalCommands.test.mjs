@@ -1,6 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildNewSessionCommand } from "../dist/index.js";
+import { buildNewSessionCommand, supportsNewSessionYoloMode } from "../dist/index.js";
+
+test("supportsNewSessionYoloMode accurately identifies providers with YOLO support", () => {
+  assert.equal(supportsNewSessionYoloMode("codex"), true);
+  assert.equal(supportsNewSessionYoloMode("claude"), true);
+  assert.equal(supportsNewSessionYoloMode("agy"), true);
+  assert.equal(supportsNewSessionYoloMode("grok"), true);
+  assert.equal(supportsNewSessionYoloMode("opencode"), true);
+  assert.equal(supportsNewSessionYoloMode("prime"), true);
+  assert.equal(supportsNewSessionYoloMode("cursor"), true);
+  assert.equal(supportsNewSessionYoloMode("pi"), false);
+  assert.equal(supportsNewSessionYoloMode("cursor-ide"), false);
+  assert.equal(supportsNewSessionYoloMode("chat"), false);
+});
 
 test("buildNewSessionCommand keeps standard commands unchanged", () => {
   assert.equal(buildNewSessionCommand("codex", "/work/app", "standard"), "codex --cd '/work/app'");
@@ -20,3 +33,4 @@ test("buildNewSessionCommand rejects providers without a verified YOLO mode", ()
   assert.throws(() => buildNewSessionCommand("pi", "/work/app", "yolo"), /YOLO mode is not supported/);
   assert.throws(() => buildNewSessionCommand("cursor-ide", "/work/app", "yolo"), /YOLO mode is not supported/);
 });
+

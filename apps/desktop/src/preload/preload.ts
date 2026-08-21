@@ -408,6 +408,8 @@ export interface DesktopApi {
     cwd: string;
     external?: boolean;
     copied?: boolean;
+    unsupportedYolo?: boolean;
+    warning?: string;
   }>;
   listWorkbenchSessionFolders(args: { projectId: string }): Promise<{
     folders: WorkbenchSessionFolder[];
