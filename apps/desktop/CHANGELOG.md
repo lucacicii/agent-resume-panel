@@ -12,13 +12,32 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Added
 
-- **Workbench session auto rename with project / folder context**: auto-renamed sessions now get the project name and folder path appended to the title (e.g. `Fix renderer · app / Campaign / Phase 1`; unclassified sessions get just `· app`), keeping project and folder context visible outside the tree; the suffix is deduplicated and capped at the 180-char native title limit
-- **Truncated session titles reveal full text on hover**: long session titles in the Workbench and Sessions lists show the complete title as a native tooltip when truncated
+- **Ghostty Web & Xterm dual-engine terminal architecture**: introduced a pluggable terminal engine adapter abstraction in **Settings → Workbench → Terminal Engine** supporting both Ghostty Web (Wasm/WebGL with ultra-low latency and native GPU acceleration) and Xterm (Canvas/WebGL)
+- **Workbench workspace & campaign folders**: organize sessions in hierarchical, nested campaign folders within projects; support session group collapse/expand, project-level session count badges, and auto-assigning new sessions to focused folders
+- **Workbench session auto rename with project / folder context**: auto-renamed sessions append project name and folder path (e.g. `Fix renderer · app / Campaign / Phase 1`), keeping hierarchy visible outside the tree with deduplicated suffixes capped at native title limits
+- **Truncated session titles reveal full text on hover**: long session titles in Workbench and Sessions lists display full text via native tooltips on hover
+- **In-app Workbench browser & MCP integration**: built-in interactive browser panel with comprehensive `agent-resume-browser` MCP server integration for programmatic navigation, DOM accessibility snapshots, click, type, fill, wait, and cookie management
+- **Multi-dimensional knowledge tags**: automated AI tagging for sessions and notes across seven dimensions (tech stack, business domain, architecture, task type, problem domain, concept knowledge, context environment), with a dedicated Tag taxonomy view, filtering, and consensus weighting
+- **Full-stack code Link Graph**: Workbench Link Graph side panel and MCP tool (`link_graph_trace`) for tracing UI symbol and form field lineages from frontend code → API client → HTTP route → backend controller → DTO/VO
+- **Visual Flow DAG & Kanban for Project Notes**: structured Project Note association trees with drag-and-drop linking, interactive Flow DAG execution with step progress syncing, and Kanban board view with GTD status columns, direct note creation, and quick delete
+- **Floating scratchpad & quick note (⌘⇧D / Cmd+D)**: global shortcut to open the most recent note in a floating scratchpad with project selector, in-note Cmd+F search, and automatic cleanup of empty unedited notes
+- **Deep Git integration**: line-level and hunk-level staging / unstaging, line-level discard / rollback, merge into current branch from the branch graph, and file rename history inspection
+- **Report interactive citations & Ask enhancements**: clickable report citations jumping directly to linked sessions or reports, per-session Ask tool preferences (auto / custom / off), project-scoped Agent compose context, and Prime Agent ACP / CLI integration
+
+#### Improved
+
+- **TUI session scrolling & controls**: real wheel scrolling events for full-screen TUI sessions (Claude Code, Prime Agent), floating Jump to Top / Jump to Bottom controls with theme-adaptive styling, and auto-expanding multiline bottom input bar
+- **Large Git diff performance**: offloaded large file diff parsing to background Web Workers, with automated retry logic for transient `index.lock` contention
+- **Session focus & navigation**: resuming an open session switches and focuses it without reopening duplicate tabs; keyboard arrow navigation across session, terminal, and code editor groups
+- **Session transcript viewer**: expanded AI tool call rendering in session transcripts with customizable Markdown font size in Settings
 
 #### Fixed
 
 - **Session moves to another project now stick**: reassigning a session to a different project keeps the assignment across provider syncs — the catalog tracks the provider's native path separately, so sync no longer snaps the session back. Moving a session back to its native project restores automatic path tracking.
 - **Resuming a moved session starts the agent in the new project**: the resume command (and terminal cwd) now follow the assigned project for every provider, so the agent keeps working in the directory you moved it to. For Codex, Grok, OpenCode, Antigravity, Cursor CLI, Claude, Pi, and Prime Agent the provider's stored cwd is rewritten too, so even a plain `resume` outside the panel starts in the new project (best-effort; remaining providers stay sticky via the catalog's native-path tracking).
+- **Settings state persistence & editing**: resolved settings form dirty-state tracking and explicit save handling
+- **Uncommitted directory trailing slash**: fixed untracked directories being dropped during git commit operations
+- **TUI sync redraw viewport jump**: prevented viewport from snapping to top after full-screen TUI re-renders
 
 ### [0.2.13]
 
@@ -360,13 +379,32 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 新增
 
+- **Ghostty Web 与 Xterm 双引擎终端架构**：在 **设置 → Workbench → 终端引擎** 中引入模块化终端适配器抽象，支持 Ghostty Web（Wasm/WebGL 极速渲染与原生级 GPU 加速）与 Xterm（Canvas/WebGL）双引擎无缝切换
+- **Workbench 战役多级目录与工作区文件夹**：支持在项目下创建多层级战役文件夹归类会话，支持项目会话折叠展开、项目会话数聚合统计，以及自动将会话分配到聚焦的子文件夹
 - **Workbench 会话自动重命名附带项目/目录上下文**：会话自动重命名时，标题末尾追加项目名与目录路径（如 `Fix renderer · app / Campaign / Phase 1`；未分类会话仅追加 `· app`），让项目与目录归属在树之外依然可见；后缀自动去重并按原生 180 字符上限截断
 - **会话列表长标题悬停显示完整内容**：Workbench 与会话列表中被截断的长标题，悬停时以原生提示显示完整标题
+- **内置工作台浏览器与 MCP 深度联动**：内嵌交互式网页浏览器面板，并集成 `agent-resume-browser` MCP 服务，供 CLI 与 ACP Agent 自动化控制（页面导航、可访问性 DOM 快照、点击、输入、等待与 Cookie 管理）
+- **多维知识标签体系与标签分类视图**：为会话与笔记自动提取技术栈、业务域、架构模式、任务类型、问题域、概念知识与上下文环境等 7 个维度的知识标签，提供专属标签分类总览、筛选与共识权重衰减机制
+- **全栈代码链路图（Link Graph）**：新增工作台 Link Graph 侧边栏与 MCP 工具（`link_graph_trace`），支持跨前端组件 → API 请求客户端 → HTTP 路由 → 后端控制器 → DTO/VO 的端到端字段与符号调用链深度追踪
+- **项目笔记关联树、Flow 流程与看板视图**：支持拖拽管理项目笔记父子关联树，支持基于 DAG 依赖图的 Flow 流程调度与步骤状态回写，新增项目笔记看板视图（GTD 状态分栏、按列快速新建与快捷删除）
+- **全局浮窗笔记与快捷速记（⌘⇧D / Cmd+D）**：全局快捷键一键唤起最近编辑笔记浮窗，支持项目快速归属选择、笔记内 Cmd+F 查找以及未编辑空笔记自动清理
+- **Git 深度工作流支持**：支持代码变更块与行级暂存/取消暂存、行级变更回退、Git 分支图右键快速合并到当前分支、文件重命名历史与提交记录穿透查看
+- **报告双向引用跳转与 Ask 工具增强**：日/周/月回顾正文引用支持点击一键直达对应报告与会话，Ask 工具支持 auto/custom/off 会话级记忆，Agent 输入栏支持项目限定上下文，并深度接入 Prime Agent（ACP 与 CLI）
+
+#### 改进
+
+- **全屏 TUI 会话滚动与控制优化**：通过真实滚轮事件改进 Claude Code、Prime Agent 等全屏 TUI 会话的滚动平滑度，提供主题自适应的回到顶部/回到底部浮动水滴控件，终端输入框支持无上限多行自适应增高
+- **大文件 Git Diff 性能提升**：将大文件差异对比解析移至 Worker 后台线程，并增加暂态 `index.lock` 冲突重试机制
+- **会话聚焦与快捷切换**：恢复已在工作台打开的会话时直接跳转聚焦不重复开标签，支持方向键在会话、终端与代码编辑器之间快速切换
+- **会话转录面板增强**：扩展会话转录预览对多种 AI 工具调用的解析与展示，会话记录 Markdown 字号支持在设置中自定义
 
 #### 修复
 
 - **会话跨项目移动不再被同步回退**：将会话重新分配到其他项目后，归属会在多次同步后保持 —— catalog 单独记录 provider 的原生路径，同步不再把会话弹回原项目。把会话移回其原生项目即恢复自动路径跟随。
 - **恢复被移动的会话时，agent 直接在新项目目录启动**：所有 provider 的恢复命令与终端工作目录都跟随归属项目，agent 在你移到的目录继续工作。Codex、Grok、OpenCode、Antigravity、Cursor CLI、Claude、Pi 与 Prime Agent 还会改写 provider 存储的 cwd，即使绕过面板直接 resume 也会在新项目启动（尽力而为；其余 provider 靠原生路径跟踪保持归属）。
+- **桌面设置显式保存与状态编辑**：修复设置页面脏状态检查与显式保存持久化逻辑
+- **Git 提交未跟踪目录末尾斜杠**：修复包含尾部斜杠的未跟踪目录在提交时被意外丢弃的问题
+- **TUI 重绘视口跳动**：修复全屏 TUI 界面同步重绘后视口跳回顶部的问题
 
 ### [0.2.13]
 

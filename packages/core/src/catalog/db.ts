@@ -45,7 +45,7 @@ async function ensureWalMode(dbPath: string): Promise<void> {
 export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void> {
   await fs.mkdir(path.dirname(dbPath), { recursive: true });
   await ensureWalMode(dbPath);
-  await runSqlite(dbPath, EXTENSION_SCHEMA_SQL);
+  await runIdempotentStatements(dbPath, EXTENSION_SCHEMA_SQL);
   await runIdempotentStatements(dbPath, EXTENSION_MIGRATION_SQL);
   await ensureProjectsCatalogSchema(dbPath);
 }
