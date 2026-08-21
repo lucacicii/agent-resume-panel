@@ -300,6 +300,23 @@ describe("settings model", () => {
     expect(patch.workbench?.terminalRenderer).toBe("canvas");
   });
 
+  it("defaults and persists workbench terminal engine (xterm / ghostty-web)", () => {
+    const defaultDraft = workbenchDraftFromSettings(settings);
+    expect(defaultDraft.terminalEngine).toBe("xterm");
+
+    const ghosttyDraft = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { terminalEngine: "ghostty-web" }
+    });
+    expect(ghosttyDraft.terminalEngine).toBe("ghostty-web");
+
+    const patch = workbenchPatch(settings, {
+      ...defaultDraft,
+      terminalEngine: "ghostty-web"
+    });
+    expect(patch.workbench?.terminalEngine).toBe("ghostty-web");
+  });
+
   it("preserves report invariants and only stores non-default agent homes", () => {
     const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
     expect(report.report?.scheduleDailyHour).toBe(23);

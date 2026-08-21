@@ -1458,7 +1458,11 @@
       "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
       "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
       "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}"
-    }
+    },
+    "desktop.settings.terminalEngine": "Terminal engine",
+    "desktop.settings.terminalEngineDesc": "Underlying terminal emulator engine for the embedded Workbench terminal.",
+    "desktop.settings.terminalEngineXterm": "xterm.js (Default / Stable)",
+    "desktop.settings.terminalEngineGhosttyWeb": "ghostty-web (WASM / Experimental)"
   },
   "zh-cn": {
     "agent": {
@@ -2956,7 +2960,11 @@
       "desktop.workbench.terminalComposerDirectoryEmpty": "该项目下没有文件夹",
       "desktop.workbench.terminalComposerDirectoryNoMatch": "没有匹配的文件夹",
       "desktop.workbench.terminalComposerDirectoryError": "加载文件夹失败：{0}"
-    }
+    },
+    "desktop.settings.terminalEngine": "终端引擎",
+    "desktop.settings.terminalEngineDesc": "Workbench 内嵌终端的底层模拟器引擎。",
+    "desktop.settings.terminalEngineXterm": "xterm.js (默认 / 稳定)",
+    "desktop.settings.terminalEngineGhosttyWeb": "ghostty-web (WASM / 实验性)"
   },
   "ja": {
     "agent": {
@@ -4484,6 +4492,10 @@
       "desktop.workbench.terminalComposerDirectoryEmpty": "このプロジェクトにフォルダがありません",
       "desktop.workbench.terminalComposerDirectoryNoMatch": "一致するフォルダがありません",
       "desktop.workbench.terminalComposerDirectoryError": "フォルダの読み込みに失敗しました: {0}"
-    }
+    },
+    "desktop.settings.terminalEngine": "ターミナルエンジン",
+    "desktop.settings.terminalEngineDesc": "Workbench 内蔵ターミナルの基盤エミュレーターエンジン。",
+    "desktop.settings.terminalEngineXterm": "xterm.js (既定 / 安定版)",
+    "desktop.settings.terminalEngineGhosttyWeb": "ghostty-web (WASM / 実験版)"
   }
 }

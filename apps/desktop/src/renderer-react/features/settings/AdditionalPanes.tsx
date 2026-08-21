@@ -101,6 +101,17 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
       <SelectRow title={t("desktop.settings.terminalMode")} description={t("desktop.settings.terminalModeDesc")} value={draft.terminalMode} onChange={(value) => update("terminalMode", value as WorkbenchDraft["terminalMode"])}><option value="xterm">{t("desktop.settings.terminalXterm")}</option><option value="external-system">{t("desktop.settings.terminalExternal")}</option></SelectRow>
+      {draft.terminalMode === "xterm" ? (
+        <SelectRow
+          title={t("desktop.settings.terminalEngine")}
+          description={t("desktop.settings.terminalEngineDesc")}
+          value={draft.terminalEngine}
+          onChange={(value) => update("terminalEngine", value as WorkbenchDraft["terminalEngine"])}
+        >
+          <option value="xterm">{t("desktop.settings.terminalEngineXterm")}</option>
+          <option value="ghostty-web">{t("desktop.settings.terminalEngineGhosttyWeb")}</option>
+        </SelectRow>
+      ) : null}
       <SelectRow
         title={t("desktop.settings.terminalTheme")}
         description={t("desktop.settings.terminalThemeDesc")}

@@ -38,6 +38,7 @@ import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
+import type { TerminalEngineType } from "./terminal";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
@@ -1742,13 +1743,14 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking, registerFocus }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking, registerFocus }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
   appearance: DesktopAppearanceState;
   /** webgl (default) or force canvas — hot-swapped without killing the PTY. */
   rendererMode: TerminalRendererMode;
+  engineType?: TerminalEngineType;
   onPty: (key: string, id: number, terminal: Terminal | null) => void;
   onDetach: (id: number) => void;
   onInput: (key: string) => void;
@@ -2322,7 +2324,11 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, onPty, 
   };
 
   return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
-    <div className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`} ref={host} />
+    <div
+      className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`}
+      data-terminal-engine={engineType}
+      ref={host}
+    />
     {pane.group === "session" ? <TerminalComposer
       pane={{ key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath }}
       ptyId={pane.ptyId ?? null}
@@ -5598,6 +5604,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     : "follow-app";
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
   const desktopAppearance = useMemo(() => appearanceStateFromSettings(settings || {}), [settings]);
+  const terminalEngine: TerminalEngineType =
+    settings?.workbench?.terminalEngine === "ghostty-web" ? "ghostty-web" : "xterm";
   const terminalRendererMode: TerminalRendererMode =
     settings?.workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl";
   const saveEditor = async (key: string, force = false) => {
@@ -7588,7 +7596,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
-            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} registerFocus={registerComposerFocus} /></div>;
+            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} registerFocus={registerComposerFocus} /></div>;
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input

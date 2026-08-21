@@ -114,6 +114,7 @@ export interface WorkbenchDraft {
   newSessionYolo: boolean;
   projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
+  terminalEngine: "xterm" | "ghostty-web";
   terminalTheme: WorkbenchTerminalThemeId;
   editorTheme: "follow-app" | "light" | "dark";
   /** webgl (default) or force canvas for CJK/GPU compatibility */
@@ -459,6 +460,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     newSessionYolo: workbench?.newSessionYolo === true,
     projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
+    terminalEngine: workbench?.terminalEngine === "ghostty-web" ? "ghostty-web" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
     editorTheme: workbench?.editorTheme === "light" || workbench?.editorTheme === "dark" ? workbench.editorTheme : "follow-app",
     terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
@@ -510,6 +512,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       newSessionYolo: draft.newSessionYolo === true,
       projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
+      terminalEngine: draft.terminalEngine,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
       editorTheme: draft.editorTheme,
       terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",
