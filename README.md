@@ -10,7 +10,13 @@ Languages: [English](#english) | [简体中文](#简体中文)
 | **Desktop app (macOS)** | [`apps/desktop/`](apps/desktop/) | [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) | [docs/desktop](docs/desktop/README.md) | [Desktop Issues](https://github.com/lucacicii/agent-resume-panel/issues) |
 
 Shared core library: [`packages/core/`](packages/core/) (`@agent-resume/core`).
-
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/f7ed9f25-c00f-4443-aab4-085a1825ed87" />
+<img width="1486" height="742" alt="image" src="https://github.com/user-attachments/assets/236c9398-5f53-4a25-be57-2e7f91d92053" />
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/a7e4a16a-e43b-4a10-ade5-6944fe8bfdf6" />
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/a7be547f-bf1d-4605-8100-38eae78cd48e" />
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/c57adc0e-3d99-488e-8cfe-05810b799270" />
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/d29d364d-c30d-4b08-98ce-9c6e8b597f0f" />
+<img width="2880" height="1632" alt="image" src="https://github.com/user-attachments/assets/0b8355b2-438a-4acc-be26-4050d8e1b19b" />
 ---
 
 ## English
