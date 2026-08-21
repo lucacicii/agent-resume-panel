@@ -16,10 +16,12 @@ import {
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
+  WORKBENCH_TERMINAL_ENGINES,
   WorkbenchProjectContextMenuAction,
   type DesktopTheme,
   type DesktopThemeEffects,
   type DesktopVisualThemeId,
+  type WorkbenchTerminalEngine,
   type WorkbenchTerminalRenderer,
   type WorkbenchTerminalThemeId
 } from "./types";
@@ -34,6 +36,7 @@ const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
+const TERMINAL_ENGINES = new Set<string>(WORKBENCH_TERMINAL_ENGINES);
 const VISUAL_THEME_IDS = new Set<string>(DESKTOP_VISUAL_THEME_IDS);
 
 export function normalizeDesktopVisualTheme(value: string | undefined | null): DesktopVisualThemeId {
@@ -72,6 +75,15 @@ export function normalizeWorkbenchTerminalRenderer(
     return value as WorkbenchTerminalRenderer;
   }
   return DEFAULT_SETTINGS.workbench?.terminalRenderer ?? "webgl";
+}
+
+export function normalizeWorkbenchTerminalEngine(
+  value: string | undefined | null
+): WorkbenchTerminalEngine {
+  if (value && TERMINAL_ENGINES.has(value)) {
+    return value as WorkbenchTerminalEngine;
+  }
+  return DEFAULT_SETTINGS.workbench?.terminalEngine ?? "xterm";
 }
 
 export function normalizeWorkbenchProjectContextMenu(
@@ -239,6 +251,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...(partial.workbench || {}),
       terminalTheme: normalizeWorkbenchTerminalTheme(
         partial.workbench?.terminalTheme ?? base.workbench?.terminalTheme
+      ),
+      terminalEngine: normalizeWorkbenchTerminalEngine(
+        partial.workbench?.terminalEngine ?? base.workbench?.terminalEngine
       ),
       terminalRenderer: normalizeWorkbenchTerminalRenderer(
         partial.workbench?.terminalRenderer ?? base.workbench?.terminalRenderer

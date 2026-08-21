@@ -20,6 +20,8 @@ import {
   backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
+  supportsNewSessionYoloMode,
+  type NewSessionExecutionMode,
   updateNativeSessionCwd,
   effectivePanelHome,
   estimateDigestRun,
@@ -2283,17 +2285,30 @@ function registerIpc(): void {
       if (!cwd) {
         throw new Error("Working directory is required.");
       }
+      let requestedYolo = false;
       if (args.executionMode === "note-yolo") {
         if (!args.noteId?.trim()) throw new Error("Note ID is required for Note execution.");
         if (!args.initialPrompt?.trim()) throw new Error("Initial prompt is required for Note execution.");
-        const command = buildNewSessionCommand(args.provider, cwd, "yolo");
-        return { mode: "xterm", command, cwd };
+        requestedYolo = true;
+      } else {
+        const settings = await loadSettings();
+        requestedYolo = settings.workbench?.newSessionYolo === true;
+      }
+
+      const yoloSupported = requestedYolo && supportsNewSessionYoloMode(args.provider);
+      const executionMode: NewSessionExecutionMode = yoloSupported ? "yolo" : "standard";
+      const command = buildNewSessionCommand(args.provider, cwd, executionMode);
+      const unsupportedYolo = requestedYolo && !yoloSupported;
+      const warning = unsupportedYolo
+        ? `YOLO mode is not supported for provider: ${args.provider}. Starting in standard mode.`
+        : undefined;
+
+      if (args.executionMode === "note-yolo") {
+        return { mode: "xterm", command, cwd, unsupportedYolo, warning };
       }
 
       const settings = await loadSettings();
       const mode = resolveWorkbenchTerminalMode(settings);
-      const executionMode = settings.workbench?.newSessionYolo === true ? "yolo" : "standard";
-      const command = buildNewSessionCommand(args.provider, cwd, executionMode);
       if (args.useSystemTerminalOnly || mode === "external-system") {
         const launch = await openCommandInSystemTerminal(
           cwd,
@@ -2306,10 +2321,12 @@ function registerIpc(): void {
           external: true,
           command,
           cwd,
-          copied: launch.copied
+          copied: launch.copied,
+          unsupportedYolo,
+          warning
         };
       }
-      return { mode, command, cwd };
+      return { mode, command, cwd, unsupportedYolo, warning };
     }
   );
 

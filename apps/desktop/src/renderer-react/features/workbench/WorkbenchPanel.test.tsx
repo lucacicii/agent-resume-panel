@@ -1591,12 +1591,20 @@ describe("WorkbenchPanel", () => {
     host.id = "react-workbench";
     document.body.append(host);
     const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const workbenchListDirectory = vi.fn(async () => ({
+      entries: [
+        { name: "src", path: "/work/app/src", isDirectory: true },
+        { name: "README.md", path: "/work/app/README.md", isDirectory: false }
+      ]
+    }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
         "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
         "desktop.workbench.terminalComposerHint": "Click to type a command.",
         "desktop.workbench.terminalComposerSend": "Send command",
         "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+        "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+        "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
         "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
         "desktop.workbench.terminalComposerHintLine": "Enter sends"
       } }),
@@ -1608,13 +1616,29 @@ describe("WorkbenchPanel", () => {
       onTerminalRespawned: () => () => undefined,
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn,
       terminalDestroy: async () => ({ ok: true }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalResize: async () => ({ ok: true }),
-      terminalInput: vi.fn(async () => ({ ok: true }))
+      terminalInput: vi.fn(async () => ({ ok: true })),
+      workbenchListDirectory
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -1624,9 +1648,18 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       expect(document.activeElement?.classList.contains("wb-terminal-composer-input")).toBe(true);
     });
-    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer.is-docked")).toBeTruthy();
-    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-pane .wb-terminal-composer-input");
+    if (!composerInput) throw new Error("Session pane composer input not mounted");
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(xtermMocks.instances[0].focusCalls).toBe(0);
+
+    fireEvent.change(composerInput!, { target: { value: "please inspect #s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
+    fireEvent.keyDown(composerInput!, { key: "Enter" });
+    expect(composerInput.value).toBe("please inspect #src");
   });
 
   it("shell terminals render no composer (session-gated)", async () => {
@@ -2111,8 +2144,8 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-pane-head")).toBeNull();
     expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
     expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
-    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer.is-docked")).toBeTruthy();
-    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-side-panel")).not.toBeNull();
     expect(document.querySelector(".sheet")).toBeNull();
     expect(terminalDestroy).not.toHaveBeenCalled();
@@ -3394,6 +3427,54 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it("notifies the user and opens session when YOLO mode is unsupported for provider", async () => {
+    notificationMocks.notifyDesktop.mockClear();
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({
+      mode: "xterm",
+      command: "pi",
+      cwd: "/work/app",
+      unsupportedYolo: true,
+      warning: "YOLO mode is not supported for provider: pi. Starting in standard mode."
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session · {0}", "desktop.workbench.yoloNotSupported": "YOLO mode is not supported for provider: {0}. Starting in standard mode."
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "pi", newSessionYolo: true } }),
+      listSessions: async () => [{ provider: "pi" as const, id: "session-1", title: "Pi session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "pi" as const, id: "session-1", title: "Pi session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ]),
+      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
+      workbenchNewSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({
+      text: "YOLO mode is not supported for provider: pi. Starting in standard mode.",
+      kind: "info"
+    }));
+    expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
+  });
+
   it("shows a pending new session until catalog sync supplies its session id", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -3740,6 +3821,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       const tracking = document.querySelector(".wb-git-tracking");
       expect(tracking?.textContent || "").not.toContain("main");
+      expect(tracking?.textContent || "").not.toMatch(/\{\d+\}/);
       expect(tracking?.textContent || "").toMatch(/↑\s*1/);
       expect(tracking?.textContent || "").toMatch(/↓\s*2/);
     });

@@ -64,6 +64,7 @@ export type {
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
+  WorkbenchTerminalEngine,
   WorkbenchTerminalThemeId,
   WorkbenchTerminalRenderer,
   GhosttyLaunchMode,
@@ -79,12 +80,14 @@ export {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
+  WORKBENCH_TERMINAL_ENGINES,
   DESKTOP_VISUAL_THEME_IDS,
   ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
   normalizeWorkbenchProjectContextMenu,
   normalizeWorkbenchTerminalTheme,
+  normalizeWorkbenchTerminalEngine,
   normalizeWorkbenchTerminalRenderer,
   normalizeDesktopVisualTheme,
   normalizeDesktopThemeEffects,
@@ -630,7 +633,7 @@ export {
   DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
-export { buildResumeCommand, buildNewSessionCommand } from "./terminal/commands";
+export { buildResumeCommand, buildNewSessionCommand, supportsNewSessionYoloMode } from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,

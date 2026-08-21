@@ -88,7 +88,14 @@ const messages = {
   "desktop.settings.appDataFootnote": "catalog.db lives under Panel home.",
   "desktop.settings.panelHome": "Panel home",
   "desktop.settings.panelHomeFootnote": "Reveal uses saved path.",
-  "desktop.common.revealInFinder": "Reveal"
+  "desktop.common.revealInFinder": "Reveal",
+  "desktop.settings.save": "Save",
+  "desktop.settings.discard": "Discard",
+  "desktop.settings.cancel": "Cancel",
+  "desktop.settings.saveAndContinue": "Save and continue",
+  "desktop.settings.discardAndContinue": "Discard and continue",
+  "desktop.settings.unsavedConfirm": "Unsaved confirm",
+  "desktop.settings.unsavedHint": "Unsaved changes"
 };
 
 function renderWindowSettings(initialPane = "general") {
@@ -177,23 +184,39 @@ describe("SettingsPanel (window)", () => {
     expect(host.textContent).toContain("For semantic search");
   });
 
-  it("passes section when saving", async () => {
+  it("requires explicit Save to persist changes", async () => {
     const { host, saveSettings } = renderWindowSettings("models");
     await waitFor(() => expect(host.querySelector(".settings-group")).not.toBeNull());
     const input = host.querySelector('input[type="text"]') as HTMLInputElement | null;
     expect(input).not.toBeNull();
     fireEvent.change(input!, { target: { value: "https://changed.test/v1" } });
-    await waitFor(
-      () => {
-        expect(saveSettings).toHaveBeenCalled();
-        const last = saveSettings.mock.calls.at(-1);
-        expect(last?.[1]).toMatchObject({ section: "models" });
-      },
-      { timeout: 2000 }
-    );
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement | null).not.toBeNull());
+    expect(saveSettings).not.toHaveBeenCalled();
+    const saveBtn = host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(false);
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(saveSettings).toHaveBeenCalled();
+      const last = saveSettings.mock.calls.at(-1);
+      expect(last?.[1]).toMatchObject({ section: "models" });
+    });
   });
 
-  it("renders and saves the Workbench CLI YOLO switch", async () => {
+  it("discards changes and disables Save when clean", async () => {
+    const { host, saveSettings } = renderWindowSettings("models");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-models"]')).not.toBeNull());
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
+    const saveBtn = host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "https://changed.test/v1" } });
+    await waitFor(() => expect((host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(host.querySelector('[data-testid="settings-discard-models"]')!);
+    expect(input.value).toBe("https://example.test/v1");
+    expect((host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("renders and saves the Workbench CLI YOLO switch via Save", async () => {
     const { host, saveSettings } = renderWindowSettings("workbench");
     await waitFor(() => expect(host.textContent).toContain("Launch CLI sessions in YOLO mode"));
 
@@ -205,11 +228,13 @@ describe("SettingsPanel (window)", () => {
     expect(toggle).not.toBeNull();
 
     fireEvent.click(toggle!);
+    expect(saveSettings).not.toHaveBeenCalled();
+    fireEvent.click(host.querySelector('[data-testid="settings-save-workbench"]')!);
     await waitFor(() => {
       const last = saveSettings.mock.calls.at(-1);
       expect(last?.[1]).toMatchObject({ section: "workbench" });
       expect((last?.[0] as { workbench?: { newSessionYolo?: boolean } }).workbench?.newSessionYolo).toBe(true);
-    }, { timeout: 2000 });
+    });
   });
 
   it("tests each model group with current form values without saving", async () => {

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadArtifact } from "@electron/get";
+import { packager } from "@electron/packager";
 import { ensureSpawnHelpersExecutable } from "./fix-node-pty.mjs";
 
 const require = createRequire(import.meta.url);
@@ -151,16 +152,24 @@ async function ensureElectronZipDir(arch) {
 
 function deployDesktop() {
   fs.rmSync(packagingRoot, { recursive: true, force: true });
-  execFileSync(
-    "pnpm",
-    ["--filter", "@agent-resume/desktop", "--prod", "deploy", "--legacy", packagingRoot],
-    {
-      cwd: repoRoot,
-      stdio: "inherit",
-      // Non-interactive deploy: allow purging staging node_modules without a TTY.
-      env: { ...process.env, CI: process.env.CI || "true" }
+  const workspaceStatePath = path.join(repoRoot, "node_modules", ".pnpm-workspace-state-v1.json");
+  const savedState = fs.existsSync(workspaceStatePath) ? fs.readFileSync(workspaceStatePath, "utf8") : null;
+  try {
+    execFileSync(
+      "pnpm",
+      ["--filter", "@agent-resume/desktop", "--prod", "deploy", "--legacy", packagingRoot],
+      {
+        cwd: repoRoot,
+        stdio: "inherit",
+        // Non-interactive deploy: allow purging staging node_modules without a TTY.
+        env: { ...process.env, CI: process.env.CI || "true" }
+      }
+    );
+  } finally {
+    if (savedState !== null) {
+      fs.writeFileSync(workspaceStatePath, savedState);
     }
-  );
+  }
 
   removeDesktopSelfReferences(packagingRoot);
   // electron-packager/asar follows package symlinks and drops pnpm's isolated
@@ -306,29 +315,24 @@ export async function packMacApp(arch) {
   fs.rmSync(path.dirname(appBundlePathFor(arch)), { recursive: true, force: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   fs.rmSync(path.join(releaseRoot, `Agent Resume-${pkg.version}-${arch}.dmg`), { force: true });
-  const packagerArgs = [
-    "exec",
-    "electron-packager",
-    packagingRoot,
-    "Agent Resume",
-    `--platform=darwin`,
-    `--arch=${arch}`,
-    `--app-bundle-id=${bundleId}`,
-    "--app-category-type=public.app-category.developer-tools",
-    `--icon=${iconPath}`,
-    `--out=${releaseRoot}`,
-    `--electron-zip-dir=${electronZipDir}`,
-    "--overwrite",
-    "--asar.unpackDir=node_modules/node-pty",
-    "--no-prune"
-  ];
-  await withRetry("electron-packager", PACKAGER_ATTEMPTS, () => {
-    execFileSync("pnpm", packagerArgs, {
-      cwd: root,
-      stdio: "inherit",
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }
-    });
-  });
+  await withRetry("electron-packager", PACKAGER_ATTEMPTS, () =>
+    packager({
+      dir: packagingRoot,
+      name: "Agent Resume",
+      platform: "darwin",
+      arch,
+      appBundleId: bundleId,
+      appCategoryType: "public.app-category.developer-tools",
+      icon: iconPath,
+      out: releaseRoot,
+      electronZipDir,
+      overwrite: true,
+      asar: {
+        unpackDir: "node_modules/node-pty"
+      },
+      prune: false
+    })
+  );
   const appBundle = findAppBundle(arch);
   if (!appBundle) {
     throw new Error(`Packaging finished but Agent Resume.app was not found for ${arch} under release/`);

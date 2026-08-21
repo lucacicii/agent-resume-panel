@@ -38,6 +38,18 @@ export function buildResumeCommand(session: AgentSession): string {
 
 export type NewSessionExecutionMode = "standard" | "yolo";
 
+export function supportsNewSessionYoloMode(provider: AgentProvider): boolean {
+  return (
+    provider === "codex" ||
+    provider === "claude" ||
+    provider === "agy" ||
+    provider === "grok" ||
+    provider === "opencode" ||
+    provider === "prime" ||
+    provider === "cursor"
+  );
+}
+
 export function buildNewSessionCommand(
   provider: AgentProvider,
   projectPath: string,

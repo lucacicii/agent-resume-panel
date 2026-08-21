@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
@@ -13,12 +13,24 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerHint": "Click to type a command. Enter sends, Shift+Enter adds a new line.",
   "desktop.workbench.terminalComposerSend": "Send command",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+  "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+  "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
+  "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
+  "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
+  "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}",
   "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
   "desktop.workbench.terminalComposerHintLine": "Enter sends · Shift+Enter newline",
   "desktop.workbench.terminalComposerMove": "Move input box"
 };
 
 const terminalInputMock = vi.fn(async () => ({ ok: true }));
+const workbenchListDirectoryMock = vi.fn(async () => ({
+  entries: [
+    { name: "src", path: "/work/app/src", isDirectory: true },
+    { name: ".git", path: "/work/app/.git", isDirectory: true },
+    { name: "README.md", path: "/work/app/README.md", isDirectory: false }
+  ]
+}));
 
 type RegisterMap = Map<string, () => void>;
 
@@ -27,6 +39,7 @@ async function renderComposer(options: {
   active?: boolean;
   group?: "session" | "terminal";
   cwd?: string;
+  projectPath?: string;
   variant?: "floating" | "docked";
 } = {}): Promise<{ map: RegisterMap; container: HTMLElement; registerSpy: ReturnType<typeof vi.fn> }> {
   const map: RegisterMap = new Map();
@@ -37,12 +50,18 @@ async function renderComposer(options: {
   window.agentResume = {
     getI18nBundle: vi.fn(async () => ({ locale: "en", messages: COMPOSER_MESSAGES })),
     onLocaleChanged: vi.fn(() => () => undefined),
-    terminalInput: terminalInputMock
+    terminalInput: terminalInputMock,
+    workbenchListDirectory: workbenchListDirectoryMock
   } as unknown as typeof window.agentResume;
   const { container } = render(
     <I18nProvider>
       <TerminalComposer
-        pane={{ key: "terminal:1", cwd: options.cwd ?? "/work/app", group: options.group ?? "session" }}
+        pane={{
+          key: "terminal:1",
+          cwd: options.cwd ?? "/work/app",
+          group: options.group ?? "session",
+          projectPath: options.projectPath
+        }}
         ptyId={options.ptyId !== undefined ? options.ptyId : 7}
         active={options.active !== undefined ? options.active : true}
         registerFocus={registerSpy}
@@ -80,6 +99,7 @@ function focusInput(): void {
 
 beforeEach(() => {
   terminalInputMock.mockClear();
+  workbenchListDirectoryMock.mockClear();
   localStorage.clear();
 });
 
@@ -110,6 +130,71 @@ describe("computeSuggestions", () => {
 });
 
 describe("TerminalComposer", () => {
+  it("loads project folders when # is typed and inserts the selected folder", async () => {
+    await renderComposer({ cwd: "/other", projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please inspect #s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(textbox().value).toBe("please inspect #src");
+    expect(terminalInputMock).not.toHaveBeenCalled();
+  });
+
+  it("includes hidden first-level directories for a bare # query", async () => {
+    await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("#.git")).toBeTruthy();
+  });
+
+  it("scrolls the active directory suggestion into view while navigating", async () => {
+    workbenchListDirectoryMock.mockResolvedValueOnce({
+      entries: Array.from({ length: 10 }, (_, index) => ({
+        name: `directory-${index}`,
+        path: `/work/app/directory-${index}`,
+        isDirectory: true
+      }))
+    });
+    const scrolled: HTMLElement[] = [];
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value(this: HTMLElement) {
+        scrolled.push(this);
+      }
+    });
+
+    try {
+      await renderComposer({ projectPath: "/work/app" });
+      focusInput();
+      fireEvent.change(textbox(), { target: { value: "#" } });
+      await screen.findByRole("listbox", { name: "Directory suggestions" });
+      for (let index = 0; index < 8; index += 1) {
+        fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+      }
+      await waitFor(() => {
+        expect(scrolled.some((element) => element.id.endsWith("-directory-8"))).toBe(true);
+      });
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+      else Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: undefined });
+    }
+  });
+
+  it("sends normally when no directory matches the # query", async () => {
+    await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#missing" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("No matching folders")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(textbox().value).toBe("");
+    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "#missing\r" });
+  });
+
   it("docks without the floating grip or collapsed strip", async () => {
     const { container } = await renderComposer({ variant: "docked" });
     expect(composerEl(container).classList.contains("is-docked")).toBe(true);
