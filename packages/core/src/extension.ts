@@ -160,3 +160,17 @@ export {
 /** Session range queries against shared catalog.db. */
 export { listSessionsInRange, listSessions, getSessionById } from "./catalog/query";
 export type { AgentSession, AgentProvider } from "./catalog/types";
+
+/** SQLite runner and catalog schema functions */
+export {
+  escapeSqlLiteral,
+  runSqlite,
+  runSqliteJson,
+  runSqliteReadOnlyJson,
+  runSqliteTransaction
+} from "./sqlite";
+export {
+  ensureExtensionCatalogSchema,
+  resetCatalogSchemaCache
+} from "./catalog/db";
+

@@ -73,6 +73,25 @@ describe("Terminal Adapters", () => {
 
       adapter.dispose();
     });
+
+    it("fit preserves bottom scroll position when at bottom", async () => {
+      const adapter = new XtermTerminalAdapter(defaultOptions);
+      const container = document.createElement("div");
+      adapter.open(container);
+
+      const lines = Array.from({ length: 50 }, (_, i) => `line ${i}\r\n`).join("");
+      await new Promise<void>((resolve) => adapter.write(lines, resolve));
+      adapter.scrollToBottom();
+
+      const before = adapter.getBufferInfo();
+      expect(before.viewportY).toBe(before.baseY);
+
+      adapter.fit();
+      const after = adapter.getBufferInfo();
+      expect(after.viewportY).toBe(after.baseY);
+
+      adapter.dispose();
+    });
   });
 
   describe("GhosttyWebTerminalAdapter", () => {

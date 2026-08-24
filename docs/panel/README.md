@@ -24,7 +24,7 @@ There is also a standalone **macOS Desktop app** for calendar digests, Agent Q&A
 | **Install** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [Download DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
 | **Docs** | [This folder](README.md) | [Desktop docs](../desktop/README.md) |
 
-Extension version: **2.11.1** · [Changelog](../../apps/extension/CHANGELOG.md) · Desktop: see [releases](https://github.com/lucacicii/agent-resume-panel/releases)
+Extension version: **2.11.2** · [Changelog](../../apps/extension/CHANGELOG.md) · Desktop: see [releases](https://github.com/lucacicii/agent-resume-panel/releases)
 
 > **No cloud · Local-first**  
 > Session index, notes, and ACP chats are stored on your machine under **`~/.agent-resume-panel`** (shared by extension and Desktop).  
@@ -97,7 +97,7 @@ Typical combo: **extension** for day-to-day resume inside the editor → **Deskt
 | **安装** | [Marketplace](https://marketplace.visualstudio.com/items?itemName=lucacicii.agent-resume-panel-v2) | [下载 DMG](https://github.com/lucacicii/agent-resume-panel/releases/latest) |
 | **文档** | [本目录](README.md) | [Desktop 文档](../desktop/README.md) |
 
-扩展版本：**2.11.1** · [更新日志](../../apps/extension/CHANGELOG.md) · 桌面端版本见 [Releases](https://github.com/lucacicii/agent-resume-panel/releases)
+扩展版本：**2.11.2** · [更新日志](../../apps/extension/CHANGELOG.md) · 桌面端版本见 [Releases](https://github.com/lucacicii/agent-resume-panel/releases)
 
 > **无云端 · 纯本机存储**  
 > 数据默认目录 **`~/.agent-resume-panel`**（扩展与 Desktop 共用）。可选 LLM Assist 仅在你配置第三方 API 时使用。

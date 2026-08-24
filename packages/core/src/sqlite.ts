@@ -19,7 +19,9 @@ function isBusyError(error: unknown): boolean {
   return (
     message.includes("database is locked") ||
     message.includes("SQLITE_BUSY") ||
-    message.includes("database is locked (5)")
+    message.includes("database is locked (5)") ||
+    message.includes("cannot start a transaction within a transaction") ||
+    (message.includes("table ") && message.includes(" is locked"))
   );
 }
 

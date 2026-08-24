@@ -41,13 +41,42 @@ async function ensureWalMode(dbPath: string): Promise<void> {
   }
 }
 
+const extensionCatalogInFlight = new Map<string, Promise<void>>();
+const verifiedExtensionCatalogPaths = new Set<string>();
+const desktopDbInFlight = new Map<string, Promise<void>>();
+const verifiedDesktopDbPaths = new Set<string>();
+
+export function resetCatalogSchemaCache(): void {
+  extensionCatalogInFlight.clear();
+  verifiedExtensionCatalogPaths.clear();
+  desktopDbInFlight.clear();
+  verifiedDesktopDbPaths.clear();
+}
+
 /** VS Code extension frozen catalog tables only. */
 export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void> {
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
-  await ensureWalMode(dbPath);
-  await runIdempotentStatements(dbPath, EXTENSION_SCHEMA_SQL);
-  await runIdempotentStatements(dbPath, EXTENSION_MIGRATION_SQL);
-  await ensureProjectsCatalogSchema(dbPath);
+  const target = path.resolve(dbPath);
+  if (verifiedExtensionCatalogPaths.has(target)) {
+    return;
+  }
+  const existing = extensionCatalogInFlight.get(target);
+  if (existing) {
+    return existing;
+  }
+
+  const task = (async () => {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await ensureWalMode(target);
+    await runIdempotentStatements(target, EXTENSION_SCHEMA_SQL);
+    await runIdempotentStatements(target, EXTENSION_MIGRATION_SQL);
+    await ensureProjectsCatalogSchema(target);
+    verifiedExtensionCatalogPaths.add(target);
+  })().finally(() => {
+    extensionCatalogInFlight.delete(target);
+  });
+
+  extensionCatalogInFlight.set(target, task);
+  return task;
 }
 
 /** Additive sync_state columns on the shared catalog (Desktop sync status). */
@@ -57,11 +86,28 @@ export async function ensureCatalogSyncStateDesktop(catalogDb: string): Promise<
 
 /** Desktop-private tables in panelHome/.desktop/desktop.db. */
 export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
-  await fs.mkdir(path.dirname(desktopDb), { recursive: true });
-  await ensureWalMode(desktopDb);
-  await runSqlite(desktopDb, REPORT_SCHEMA_SQL);
-  await runSqlite(desktopDb, DESKTOP_ONLY_SCHEMA_SQL);
-  await runIdempotentStatements(desktopDb, DESKTOP_AGENT_TRACE_MIGRATION_SQL);
+  const target = path.resolve(desktopDb);
+  if (verifiedDesktopDbPaths.has(target)) {
+    return;
+  }
+  const existing = desktopDbInFlight.get(target);
+  if (existing) {
+    return existing;
+  }
+
+  const task = (async () => {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await ensureWalMode(target);
+    await runSqlite(target, REPORT_SCHEMA_SQL);
+    await runSqlite(target, DESKTOP_ONLY_SCHEMA_SQL);
+    await runIdempotentStatements(target, DESKTOP_AGENT_TRACE_MIGRATION_SQL);
+    verifiedDesktopDbPaths.add(target);
+  })().finally(() => {
+    desktopDbInFlight.delete(target);
+  });
+
+  desktopDbInFlight.set(target, task);
+  return task;
 }
 
 export async function syncStateHasExtendedColumns(dbPath: string): Promise<boolean> {

@@ -267,6 +267,34 @@ beforeEach(() => {
   const headerSlot = document.createElement("div");
   headerSlot.id = "app-header-slot";
   document.body.append(headerSlot);
+  let currentApi: unknown;
+  Object.defineProperty(window, "agentResume", {
+    configurable: true,
+    get() {
+      return currentApi as typeof window.agentResume;
+    },
+    set(value: unknown) {
+      const api = value as {
+        querySessionsPage?: unknown;
+        listSessions?: () => Promise<Array<{
+          provider: string;
+          id: string;
+          title: string;
+          projectPath: string;
+          projectId?: string;
+          updatedAt: number;
+        }>>;
+      } | null;
+      if (api && typeof api.querySessionsPage !== "function" && typeof api.listSessions === "function") {
+        currentApi = {
+          ...api,
+          querySessionsPage: querySessionsPageFromList(api.listSessions)
+        };
+        return;
+      }
+      currentApi = value;
+    }
+  });
 });
 
 afterEach(() => {
@@ -281,6 +309,7 @@ afterEach(() => {
   localStorage.removeItem("workbench-sidebar-view");
   localStorage.removeItem("workbench-selected-project");
   localStorage.removeItem("workbench-quick-access-project");
+  Reflect.deleteProperty(window, "agentResume");
 });
 
 const ARROW_TEST_MESSAGES: Record<string, string> = {
@@ -420,9 +449,13 @@ function querySessionsPageFromList(
     updatedAt: number;
   }>>
 ) {
-  return async (args?: { keys?: Array<{ provider: string; id: string }>; projectPath?: string }) => {
+  return async (args?: { keys?: Array<{ provider: string; id: string }>; projectPath?: string; projectId?: string }) => {
     let sessions = await listSessions();
-    if (args?.projectPath) sessions = sessions.filter((session) => session.projectPath === args.projectPath);
+    if (args?.projectId) {
+      // Production filters by project_id. Tests often omit projectId on fixtures,
+      // so keep those rows and only drop an explicit mismatch.
+      sessions = sessions.filter((session) => session.projectId == null || session.projectId === args.projectId);
+    } else if (args?.projectPath) sessions = sessions.filter((session) => session.projectPath === args.projectPath);
     if (args?.keys) {
       const keys = new Set(args.keys.map((key) => `${key.provider}:${key.id}`));
       sessions = sessions.filter((session) => keys.has(`${session.provider}:${session.id}`));
@@ -1083,6 +1116,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions,
+      querySessionsPage: querySessionsPageFromList(listSessions),
       listProjects,
       listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
       moveSessionToProject,
@@ -1914,6 +1948,77 @@ describe("WorkbenchPanel", () => {
     await screen.findByTitle("/work/app");
     expect(document.querySelector('button[title="/work/empty"]')).toBeNull();
     expect(screen.queryByText("empty")).toBeNull();
+  });
+
+  it("lists sessions for a path-missing project by projectId", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const querySessionsPage = vi.fn(querySessionsPageFromList(async () => [
+      {
+        provider: "pi",
+        id: "session-old",
+        title: "Old loop work",
+        projectPath: "/Users/me/Documents/GitHub/thunder-agent-loop",
+        projectId: "proj-missing",
+        updatedAt: 1
+      }
+    ]));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.pathMissingHint": "Local folder not found on this machine",
+        "desktop.workbench.pathMissingLabel": "Not on this machine · {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "pi" } }),
+      querySessionsPage,
+      listProjects: async () => [
+        {
+          projectId: "proj-missing",
+          portableKey: "~/Documents/GitHub/thunder-agent-loop",
+          alias: "",
+          hidden: false,
+          pinned: true,
+          lastSeenAtMs: 1,
+          updatedAtMs: 1,
+          localPath: null,
+          pathMissing: true,
+          sessionCount: 1
+        }
+      ],
+      listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("Local folder not found on this machine"));
+    expect(await screen.findByRole("button", { name: /Old loop work/ })).toBeTruthy();
+    await waitFor(() => expect(querySessionsPage).toHaveBeenCalledWith(expect.objectContaining({ projectId: "proj-missing" })));
+    expect(querySessionsPage.mock.calls.some((call) => call[0]?.projectPath === "~/Documents/GitHub/thunder-agent-loop")).toBe(false);
   });
 
   it("matches develop session search focus and Escape behavior", async () => {

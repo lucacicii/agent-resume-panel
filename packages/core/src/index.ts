@@ -152,7 +152,8 @@ export {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
   ensureCatalogSyncStateDesktop,
-  syncStateHasExtendedColumns
+  syncStateHasExtendedColumns,
+  resetCatalogSchemaCache
 } from "./catalog/db";
 
 export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";

@@ -1652,6 +1652,34 @@ function reanchorTuiViewport(terminal: Terminal): void {
   }
 }
 
+/**
+ * Check whether the terminal viewport is anchored at or following the bottom of
+ * output. For normal shells, this is viewportY >= baseY. For TUI surfaces where
+ * trailing blank rows were pulled up by reanchorTuiViewport, this checks whether
+ * the viewport sits at or below the content anchor (baseY - gap).
+ */
+export function isTerminalAtBottom(terminal: Terminal): boolean {
+  try {
+    const buffer = terminal.buffer.active;
+    if (buffer.type !== "normal") return true;
+    if (buffer.viewportY >= buffer.baseY) return true;
+    const rows = terminal.rows;
+    let lastContent = -1;
+    for (let i = rows - 1; i >= 0; i -= 1) {
+      const line = buffer.getLine(buffer.baseY + i);
+      if (line && line.translateToString(true).trim()) {
+        lastContent = i;
+        break;
+      }
+    }
+    const gap = lastContent >= 0 && lastContent < rows - 1 ? rows - 1 - lastContent : 0;
+    const targetY = Math.max(0, buffer.baseY - gap);
+    return buffer.viewportY >= targetY;
+  } catch {
+    return true;
+  }
+}
+
 type TerminalRendererMode = "webgl" | "canvas";
 
 /**
@@ -2620,6 +2648,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const diffsRef = useRef<DiffPane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
+  const catalogProjectsRef = useRef<CatalogProject[]>(catalogProjects);
   const activeRef = useRef(active);
   const activePanesRef = useRef<Record<string, string>>(activePanes);
   const sessionsRef = useRef<AgentSession[]>(sessions);
@@ -2658,6 +2687,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { diffsRef.current = diffs; }, [diffs]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
+  useEffect(() => { catalogProjectsRef.current = catalogProjects; }, [catalogProjects]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
@@ -2909,15 +2939,30 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
     if (sidebarView === "gtd") request.gtdStatus = selectedGtdStatus;
     else if (sidebarView === "tags" && selectedTag) request.tag = selectedTag;
-    else if (selectedProject) request.projectPath = selectedProject;
+    else {
+      const selected = selectedProjectRef.current;
+      if (selected) {
+        const catalog = catalogProjectsRef.current.find((item) =>
+          item.localPath === selected
+          || item.projectId === selected
+          || item.portableKey === selected
+        );
+        // Count uses project_id. A missing local folder falls back to portableKey
+        // as the selection key, which is not an exact project_path match.
+        // Without a catalog row the sidebar is derived from the loaded session
+        // list, so do not filter the query down to the current selection.
+        if (catalog?.projectId) request.projectId = catalog.projectId;
+        else if (catalog && (selected.includes("/") || selected.includes("\\"))) request.projectPath = selected;
+      }
+    }
     if (sidebarView === "projects" && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID) {
       const keys = Object.values(workbenchFolderData).flatMap((data) => data.assignments
         .filter((assignment) => assignment.folderId === selectedFolderId)
         .map((assignment) => ({ provider: assignment.provider, id: assignment.agentSessionId })));
-      request.keys = keys;
+      if (keys.length) request.keys = keys;
     }
     return request;
-  }, [selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
+  }, [catalogProjects, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
 
   const loadProjectMetadata = useCallback(async () => {
     const listProjects = typeof desktopApi().listProjects === "function"
@@ -2949,25 +2994,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     const nextFolderData = await listFolderData(nextProjects || []);
     setAliases(nextAliases);
     setSettings(nextSettings);
+    catalogProjectsRef.current = nextProjects || [];
     setCatalogProjects(nextProjects || []);
     setWorkbenchFolderData(nextFolderData);
     setGtdStatuses(nextGtdStatuses || {});
-    setSelectedProject((current) => {
-      const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
-      if (current) {
-        const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
-        if (match) return match.localPath || match.portableKey || current;
-        if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) return current;
-        if (
-          terminalsRef.current.some((pane) => pane.projectPath === current)
-          || acpChatsRef.current.some((pane) => pane.projectPath === current)
-          || editorsRef.current.some((pane) => pane.projectPath === current)
-          || diffsRef.current.some((pane) => pane.projectPath === current)
-        ) return current;
+    const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
+    const current = selectedProjectRef.current;
+    let next = current;
+    if (current) {
+      const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
+      if (match) next = match.localPath || match.portableKey || current;
+      else if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) next = current;
+      else if (
+        terminalsRef.current.some((pane) => pane.projectPath === current)
+        || acpChatsRef.current.some((pane) => pane.projectPath === current)
+        || editorsRef.current.some((pane) => pane.projectPath === current)
+        || diffsRef.current.some((pane) => pane.projectPath === current)
+      ) next = current;
+      else {
+        const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
+        next = firstProject?.localPath || firstProject?.portableKey || current || null;
       }
+    } else {
       const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
-      return firstProject?.localPath || firstProject?.portableKey || current || null;
-    });
+      next = firstProject?.localPath || firstProject?.portableKey || current || null;
+    }
+    selectedProjectRef.current = next;
+    setSelectedProject(next);
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -3892,7 +3945,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [activePane, navigateToWorkbenchPane, selectedProject, workbenchPaneGroups]);
 
   const selectProject = (project: string | null, options?: { keepSessionKey?: boolean; keepSide?: boolean }) => {
-    const projectChanged = selectedProject !== project;
+    const projectChanged = selectedProjectRef.current !== project;
+    selectedProjectRef.current = project;
     setSelectedProject((current) => {
       if (current === project) return current;
       return project;
