@@ -15,6 +15,7 @@ export interface ProjectRow {
   alias: string;
   hidden: boolean;
   pinned: boolean;
+  keptVisible: boolean;
   lastSeenAtMs: number | null;
   updatedAtMs: number;
   /** Resolved absolute path on this machine when known / derivable. */
@@ -36,6 +37,7 @@ interface ProjectSqlRow {
   alias: string;
   hidden: number;
   pinned?: number | null;
+  kept_visible?: number | null;
   last_seen_at_ms: number | null;
   updated_at_ms: number;
   /** JSON array of portable keys absorbed into this project by merge. */
@@ -48,6 +50,7 @@ const PROJECTS_CREATE_SQL = `CREATE TABLE projects (
   alias TEXT NOT NULL DEFAULT '',
   hidden INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
+  kept_visible INTEGER NOT NULL DEFAULT 0,
   last_seen_at_ms INTEGER,
   updated_at_ms INTEGER NOT NULL,
   absorbed_keys TEXT
@@ -57,6 +60,7 @@ async function ensureProjectsAdditiveColumns(dbPath: string): Promise<void> {
   for (const stmt of [
     `ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE projects ADD COLUMN kept_visible INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE projects ADD COLUMN last_seen_at_ms INTEGER`,
     `ALTER TABLE projects ADD COLUMN alias TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE projects ADD COLUMN absorbed_keys TEXT`
@@ -662,7 +666,7 @@ export async function listProjects(
   const includeHidden = options?.includeHidden === true;
   const rows = await runSqliteJson<ProjectSqlRow>(
     dbPath,
-    `SELECT project_id, portable_key, alias, hidden, pinned, last_seen_at_ms, updated_at_ms
+    `SELECT project_id, portable_key, alias, hidden, pinned, kept_visible, last_seen_at_ms, updated_at_ms
      FROM projects
      ${includeHidden ? "" : "WHERE hidden = 0"}
      ORDER BY pinned DESC, COALESCE(last_seen_at_ms, updated_at_ms) DESC;`
@@ -724,6 +728,7 @@ export async function listProjects(
       alias: (row.alias || "").trim(),
       hidden: Number(row.hidden) === 1,
       pinned: Number(row.pinned) === 1,
+      keptVisible: Number(row.kept_visible) === 1,
       lastSeenAtMs: row.last_seen_at_ms == null ? null : Number(row.last_seen_at_ms),
       updatedAtMs: Number(row.updated_at_ms) || 0,
       localPath,
@@ -904,6 +909,68 @@ export async function hideProjectInCatalog(
   }
 
   return { projectId, hiddenSessions };
+}
+
+export async function unhideProjectInCatalog(
+  dbPath: string,
+  projectId: string
+): Promise<{ projectId: string; unhiddenSessions: number }> {
+  await ensureProjectsCatalogSchema(dbPath);
+  const project = await findProjectById(dbPath, projectId);
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+  const now = Date.now();
+  await runSqlite(
+    dbPath,
+    `UPDATE projects SET hidden = 0, last_seen_at_ms = ${now}, updated_at_ms = ${now}
+     WHERE project_id = '${escapeSqlLiteral(projectId)}';`
+  );
+
+  const byProject = await runSqliteJson<{ changes: number }>(
+    dbPath,
+    `UPDATE sessions SET hidden = 0
+     WHERE project_id = '${escapeSqlLiteral(projectId)}';
+     SELECT changes() AS changes;`
+  );
+  let unhiddenSessions = Number(byProject[0]?.changes) || 0;
+
+  const paths = await runSqliteJson<{ absolute_path: string }>(
+    dbPath,
+    `SELECT absolute_path FROM project_local_paths
+     WHERE project_id = '${escapeSqlLiteral(projectId)}';`
+  );
+  const pathList = paths.map((item) => item.absolute_path);
+  pathList.push(expandPortableKey(project.portable_key));
+  for (const item of pathList) {
+    if (!item?.trim()) continue;
+    const absolute = normalizeProjectPath(item);
+    const extra = await runSqliteJson<{ changes: number }>(
+      dbPath,
+      `UPDATE sessions SET hidden = 0, project_id = '${escapeSqlLiteral(projectId)}'
+       WHERE hidden = 1 AND (
+         project_path = '${escapeSqlLiteral(absolute)}'
+         OR project_path = '${escapeSqlLiteral(item)}'
+       );
+       SELECT changes() AS changes;`
+    );
+    unhiddenSessions += Number(extra[0]?.changes) || 0;
+  }
+
+  return { projectId, unhiddenSessions };
+}
+
+export async function setProjectKeptVisibleInCatalog(
+  dbPath: string,
+  projectId: string,
+  keptVisible: boolean
+): Promise<void> {
+  await ensureProjectsCatalogSchema(dbPath);
+  await runSqlite(
+    dbPath,
+    `UPDATE projects SET kept_visible = ${keptVisible ? 1 : 0}, updated_at_ms = ${Date.now()}
+     WHERE project_id = '${escapeSqlLiteral(projectId)}';`
+  );
 }
 
 export async function unhideAllProjectsInCatalog(dbPath: string): Promise<number> {
@@ -1187,7 +1254,7 @@ export async function tidyProjectsInCatalog(
   await ensureProjectsCatalogSchema(dbPath);
   const projects = await listProjects(dbPath, { includeHidden: true });
   const candidates: TidyProjectCandidate[] = projects
-    .filter((p) => !p.pinned && !p.hidden && p.sessionCount === 0 && p.pathMissing)
+    .filter((p) => !p.pinned && !p.keptVisible && !p.hidden && p.sessionCount === 0 && p.pathMissing)
     .map((p) => ({
       projectId: p.projectId,
       portableKey: p.portableKey,

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
 import { Sheet } from "../../components/Sheet";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { toolCallLabel } from "./toolLabels";
 
@@ -307,7 +307,9 @@ export function AcpChatView({
   const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [connectionStatus, setConnectionStatus] = useState("connecting");
   const [isRunning, setIsRunning] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
@@ -1110,12 +1112,6 @@ export function AcpChatView({
           </div>
         </div>
       </div>
-
-      {status.text ? (
-        <div className="wb-acp-notices">
-          <Status kind={status.kind}>{status.text}</Status>
-        </div>
-      ) : null}
 
       <div
         className="wb-acp-log chat-log"

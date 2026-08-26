@@ -4,6 +4,7 @@ import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbench/activeSessionDots";
 import { Tooltip } from "./Tooltip";
+import { BellNotificationButton } from "./BellNotificationButton";
 
 type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "flow" | "kanban";
 type FloatingNoteDot = { noteId: string; title: string };
@@ -207,10 +208,9 @@ export function AppChrome(): React.JSX.Element {
           </div>
         )}
       </nav>
-      {/* Header is intentionally empty for now — its contents are planned later.
-          Per-tab toolbars (e.g. Kanban) portal into #app-header-slot while active. */}
       <header ref={headerRef} className="top mac-top">
         <div id="app-header-slot" />
+        <BellNotificationButton />
       </header>
     </>
   );

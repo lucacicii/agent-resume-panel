@@ -3,7 +3,8 @@ import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { Sheet } from "../components/Sheet";
-import { Status, type StatusKind } from "../components/Status";
+import { StatusKind } from "../components/Status";
+import { notifyDesktop } from "../components/Notifications";
 import { syncTruncationTitle } from "../components/truncationTitle";
 import { VirtualList } from "../components/VirtualList";
 
@@ -58,7 +59,9 @@ export function SessionsSheet(): React.JSX.Element {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [assist, setAssist] = useState<"summary" | "rename" | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(0);
-  const [status, setStatus] = useState<StatusState>({ text: "" });
+  const setStatus = (s: StatusState) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
 
   const loadSessions = useCallback(async () => {
     const request = ++requestSeq.current;
@@ -296,14 +299,13 @@ export function SessionsSheet(): React.JSX.Element {
             <div className="muted session-preview-meta">
               {previewState.session.provider}{" · "}{previewState.session.id}{" · "}{previewState.session.projectPath}
             </div>
-            <Status kind={status.kind}>{status.text}</Status>
             {previewState.summary && (
               <div className="session-summary-box">
                 <div className="session-summary-label">Summary</div>
                 <div className="session-summary-body">{previewState.summary}</div>
               </div>
             )}
-            {previewState.preview.warning && <Status kind="error">{previewState.preview.warning}</Status>}
+            {previewState.preview.warning ? <p className="status error">{previewState.preview.warning}</p> : null}
             {!previewState.preview.messages.length ? (
               <p className="muted">{t("desktop.sessions.noMessages")}</p>
             ) : (
@@ -317,7 +319,6 @@ export function SessionsSheet(): React.JSX.Element {
             {previewState.preview.truncated && <p className="muted">{t("desktop.sessions.truncated")}</p>}
           </>
         )}
-        {!previewState && status.text && <Status kind={status.kind}>{status.text}</Status>}
       </div>
     </Sheet>
   );

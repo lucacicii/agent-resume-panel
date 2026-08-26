@@ -1323,12 +1323,29 @@ export interface DesktopApi {
       alias: string;
       hidden: boolean;
       pinned: boolean;
+      keptVisible: boolean;
       lastSeenAtMs: number | null;
       updatedAtMs: number;
       localPath: string | null;
       pathMissing: boolean;
       sessionCount: number;
     }>
+  >;
+  addProject(args: { title?: string }): Promise<
+    | { ok: true; project: {
+      projectId: string;
+      portableKey: string;
+      alias: string;
+      hidden: boolean;
+      pinned: boolean;
+      keptVisible: boolean;
+      lastSeenAtMs: number | null;
+      updatedAtMs: number;
+      localPath: string | null;
+      pathMissing: boolean;
+      sessionCount: number;
+    } }
+    | { ok: false; canceled: true }
   >;
   hideProject(args: { projectId?: string; projectPath?: string }): Promise<{
     projectId: string;
@@ -1769,6 +1786,7 @@ const api: DesktopApi = {
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
   setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   listProjects: (opts) => ipcRenderer.invoke("projects:list", opts),
+  addProject: (args) => ipcRenderer.invoke("projects:addProject", args),
   hideProject: (args) => ipcRenderer.invoke("projects:hide", args),
   setProjectLocalPath: (args) => ipcRenderer.invoke("projects:setLocalPath", args),
   pickProjectLocalPath: (args) => ipcRenderer.invoke("projects:pickLocalPath", args),

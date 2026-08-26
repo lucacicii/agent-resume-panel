@@ -1,12 +1,12 @@
 import type { JSX } from "react";
 import {
-  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, Bot, Check,
+  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, Bell, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
   Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
   FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
   FolderTree, GitBranch, Globe, GripVertical, History, LoaderCircle,
-  MessageSquarePlus, MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play,
+  MessageSquarePlus, MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play, Plus,
   Quote, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
   SquareKanban, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X,
   type LucideIcon,
@@ -17,7 +17,7 @@ import {
 const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
   "arrow-left": ArrowLeft, "arrow-right": ArrowRight,
-  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bot: Bot, check: Check,
+  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bell: Bell, bot: Bot, check: Check,
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
   download: Download, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
@@ -28,7 +28,7 @@ const ICONS = {
   "folder-tree": FolderTree, "git-branch": GitBranch, globe: Globe, "grip-vertical": GripVertical,
   history: History, loader: LoaderCircle,
   "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
-  "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play,
+  "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play, plus: Plus,
   quote: Quote, refresh: RefreshCw, save: Save, search: Search, send: Send, settings: Settings,
   "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban,
   terminal: TerminalSquare,

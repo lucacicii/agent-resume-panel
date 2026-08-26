@@ -1950,6 +1950,111 @@ describe("WorkbenchPanel", () => {
     expect(screen.queryByText("empty")).toBeNull();
   });
 
+  it("adds and selects a kept-visible project from the empty projects sidebar", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const project = {
+      projectId: "proj-opened",
+      portableKey: "~/work/opened",
+      alias: "opened",
+      hidden: false,
+      pinned: false,
+      keptVisible: true,
+      lastSeenAtMs: 1,
+      updatedAtMs: 1,
+      localPath: "/work/opened",
+      pathMissing: false,
+      sessionCount: 0
+    };
+    const addProject = vi.fn(async () => ({ ok: true as const, project }));
+    const listProjects = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([project]);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      listProjects,
+      addProject
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const addButton = await screen.findByRole("button", { name: "Add project" });
+    expect(screen.getByText("No projects")).toBeTruthy();
+    fireEvent.click(addButton);
+    await waitFor(() => expect(addProject).toHaveBeenCalledWith({ title: "Select project folder" }));
+    const opened = await screen.findByTitle("/work/opened");
+    expect(opened.classList.contains("active")).toBe(true);
+    expect(listProjects).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves the projects sidebar unchanged when adding is canceled", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const addProject = vi.fn(async () => ({ ok: false as const, canceled: true as const }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      listProjects: async () => [],
+      addProject
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
+    await waitFor(() => expect(addProject).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("No projects")).toBeTruthy();
+  });
+
+  it("shows an error when adding a project fails", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      listProjects: async () => [],
+      addProject: async () => { throw new Error("Selected folder is not accessible."); }
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
+    expect(await screen.findByText("Selected folder is not accessible.")).toBeTruthy();
+  });
+
   it("lists sessions for a path-missing project by projectId", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

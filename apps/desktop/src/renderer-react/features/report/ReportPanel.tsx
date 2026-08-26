@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
 import { useI18n } from "../../i18n";
 import { calendarCells, dayKeyFromDate, dayKeyFromMs, digestIndex, isoWeekLabelFromDate, paddedMonthRange, parseWeekRange, periodKeyFromEntry, rangeForPeriod, type ReportPeriodType, viewMonthKey } from "./model";
@@ -170,13 +170,17 @@ export function ReportPanel(): ReactPortal | null {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewAssist, setPreviewAssist] = useState<"summary" | "rename" | null>(null);
-  const [previewStatus, setPreviewStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const notifyPreviewStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [stale, setStale] = useState<Set<string>>(new Set());
   const [monthLoading, setMonthLoading] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [runningPeriods, setRunningPeriods] = useState<Set<string>>(new Set());
   const [progressByPeriod, setProgressByPeriod] = useState<Map<string, DigestProgressEvent>>(new Map());
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const notifyStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [reportLinks, setReportLinks] = useState<ReportLinkRow[]>([]);
   const [sessionListOpen, setSessionListOpen] = useState(false);
   const sessionRequestId = useRef(0);
@@ -217,9 +221,9 @@ export function ReportPanel(): ReactPortal | null {
       } else {
         setStale(new Set());
       }
-      setStatus({ text: "" });
+      notifyStatus({ text: "" });
     } catch (error) {
-      if (requestId === monthRequestId.current) setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      if (requestId === monthRequestId.current) notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
       if (requestId === monthRequestId.current) setMonthLoading(false);
     }
@@ -236,7 +240,7 @@ export function ReportPanel(): ReactPortal | null {
     } catch (error) {
       if (requestId === sessionRequestId.current) {
         setSessions([]);
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+        notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
       }
     } finally {
       if (requestId === sessionRequestId.current) setSessionsLoading(false);
@@ -244,7 +248,7 @@ export function ReportPanel(): ReactPortal | null {
   }, [focus]);
 
   useEffect(() => { void loadMonth(); }, [loadMonth]);
-  useEffect(() => { setPreview(null); setPreviewAssist(null); setPreviewStatus({ text: "" }); void loadSessions(); }, [loadSessions]);
+  useEffect(() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); void loadSessions(); }, [loadSessions]);
   useEffect(() => {
     const onTab = (event: Event) => setActive((event as CustomEvent<string>).detail === "report");
     window.addEventListener("agent-resume:tab-change", onTab);
@@ -294,8 +298,8 @@ export function ReportPanel(): ReactPortal | null {
     try {
       const result = await desktopApi().previewSession({ provider: session.provider, id: session.id });
       setPreview({ session: result.session, preview: result.preview, summary: result.session.sessionSummary || "" });
-      setPreviewStatus({ text: "" });
-    } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+      notifyPreviewStatus({ text: "" });
+    } catch (error) { notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
   const summarizePreview = async () => {
     if (!preview) return;
@@ -303,9 +307,9 @@ export function ReportPanel(): ReactPortal | null {
     try {
       const result = await desktopApi().summarizeSession({ provider: preview.session.provider, id: preview.session.id });
       setPreview((current) => current ? { ...current, session: result.session, summary: result.summary } : current);
-      setPreviewStatus({ text: t("desktop.sessions.summaryGenerated"), kind: "ok" });
+      notifyPreviewStatus({ text: t("desktop.sessions.summaryGenerated"), kind: "ok" });
       window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
-    } catch (error) { setPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+    } catch (error) { notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
     finally { setPreviewAssist(null); }
   };
   const renamePreview = async () => {
@@ -319,9 +323,9 @@ export function ReportPanel(): ReactPortal | null {
       setPreview((current) => current ? { ...current, session: { ...current.session, title: result.title }, preview: { ...current.preview, title: result.title } } : current);
       let text = t("desktop.sessions.renamed", result.title);
       if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
-      setPreviewStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
+      notifyPreviewStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
       window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
-    } catch (error) { setPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+    } catch (error) { notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
     finally { setPreviewAssist(null); }
   };
   const run = async (type: ReportPeriodType) => {
@@ -331,11 +335,11 @@ export function ReportPanel(): ReactPortal | null {
     const dailyRunning = isLevelRunning(runningPeriods, "daily");
     const weeklyMonthlyRunning = isLevelRunning(runningPeriods, "weekly") || isLevelRunning(runningPeriods, "monthly");
     if (type === "day" && weeklyMonthlyRunning) {
-      setStatus({ text: t("desktop.report.weeklyMonthlyBusyError"), kind: "error" });
+      notifyStatus({ text: t("desktop.report.weeklyMonthlyBusyError"), kind: "error" });
       return;
     }
     if (type !== "day" && (dailyRunning || weeklyMonthlyRunning)) {
-      setStatus({ text: t(type === "week" ? "desktop.report.taskBusyGenWeekly" : "desktop.report.taskBusyGenMonthly"), kind: "error" });
+      notifyStatus({ text: t(type === "week" ? "desktop.report.taskBusyGenWeekly" : "desktop.report.taskBusyGenMonthly"), kind: "error" });
       return;
     }
     let allowOverBudget = false;
@@ -356,20 +360,20 @@ export function ReportPanel(): ReactPortal | null {
         }
       }
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
       return;
     }
     setRunningPeriods((current) => new Set(current).add(periodKey));
     setProgressByPeriod((current) => new Map(current).set(periodKey, { phase: "start", level: levelFor(type), periodLabel: key, message: t("desktop.report.generatingLabel", digestLabel(type, t), key) }));
-    setStatus({ text: "" });
+    notifyStatus({ text: "" });
     try {
       const approval = allowOverBudget ? { allowOverBudget: true } : {};
       if (type === "day") await desktopApi().runDailyDigest({ date: key, ...approval });
       else if (type === "week") await desktopApi().runWeeklyDigest({ weekKey: key, ...approval });
       else await desktopApi().runMonthlyDigest({ monthKey: key, ...approval });
-      setStatus({ text: t("desktop.report.digestOk", digestLabel(type, t), key, t("desktop.report.created"), 0, 0, ""), kind: "ok" });
+      notifyStatus({ text: t("desktop.report.digestOk", digestLabel(type, t), key, t("desktop.report.created"), 0, 0, ""), kind: "ok" });
       await loadMonth();
-    } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+    } catch (error) { notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
     finally {
       setRunningPeriods((current) => { const next = new Set(current); next.delete(periodKey); return next; });
       setProgressByPeriod((current) => { const next = new Map(current); next.delete(periodKey); return next; });
@@ -383,7 +387,7 @@ export function ReportPanel(): ReactPortal | null {
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
   const focusedRunning = runningPeriods.has(focusedPeriodKey);
   const focusedProgress = progressByPeriod.get(focusedPeriodKey);
-  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} status={previewStatus} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
+  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
   const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
   const hasMonthDigest = index.has(`monthly:${monthKey}`);
   // The toolbar lives in the app header while the Report view is active.
@@ -412,9 +416,8 @@ export function ReportPanel(): ReactPortal | null {
           <CalendarLegend t={t} />
         </div></aside>
         <aside className={`report-session-pane${sessionListOpen ? "" : " collapsed"}`}><div className="cal-session-panel"><div className="cal-session-panel-head" role="button" tabIndex={0} aria-expanded={sessionListOpen} onClick={() => setSessionListOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSessionListOpen((open) => !open); } }}><strong>{t("desktop.report.sessionsTitle")} · {rangeLabel(focus.type, focus.key, t)}</strong><span className="cal-session-head-meta"><span className="muted">{sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessions.length)}</span><span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">▸</span></span></div><div className="cal-session-list" aria-busy={sessionsLoading}>{sessionsLoading ? <p className="muted cal-session-empty">{t("desktop.common.loading")}</p> : sessions.length ? sessions.map((session) => <button type="button" key={`${session.provider}:${session.id}`} className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`} aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined} onClick={() => void openPreview(session)}><div className="s-title">{session.title || session.id}</div><div className="s-meta"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}{" · "}{formatTime(session.updatedAt, locale)}</div></button>) : <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>}</div></div></aside></div>
-        <main className="report-detail-pane"><div className="report-detail-head"><strong>{preview ? preview.preview.title || preview.session.title || preview.session.id : t("desktop.report.digestDetailTitle", digestLabel(focus.type, t), focus.key)}</strong>{preview ? <button type="button" className="tool-btn ghost-btn report-detail-back" onClick={() => { setPreview(null); setPreviewAssist(null); setPreviewStatus({ text: "" }); }}>{t("desktop.report.backToReport")}</button> : null}</div>{detailProgress}<div className="cal-detail">{detail}</div></main>
+        <main className="report-detail-pane"><div className="report-detail-head"><strong>{preview ? preview.preview.title || preview.session.title || preview.session.id : t("desktop.report.digestDetailTitle", digestLabel(focus.type, t), focus.key)}</strong>{preview ? <button type="button" className="tool-btn ghost-btn report-detail-back" onClick={() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); }}>{t("desktop.report.backToReport")}</button> : null}</div>{detailProgress}<div className="cal-detail">{detail}</div></main>
       </div>
-      <Status kind={status.kind}>{status.text}</Status>
     </section>,
     host
   );
@@ -448,6 +451,6 @@ function DigestDetail({ entry, focus, hasSessions, stale, running, locale, t, li
   return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button><button type="button" className="tool-btn" onClick={onGtd}>{t("desktop.report.gtdBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" onClick={(event) => onDigestRefClick(event, entry, links)} dangerouslySetInnerHTML={{ __html: renderDigestMarkdown(entry.content, links) }} /></article></>;
 }
 
-function SessionDetail({ preview, locale, t, assist, status, onSummarize, onAutoRename }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; status: { text: string; kind?: StatusKind }; onSummarize: () => void; onAutoRename: () => void }) {
-  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div><Status kind={status.kind}>{status.text}</Status>{preview.summary ? <div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary}</div></div> : null}{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => <article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
+function SessionDetail({ preview, locale, t, assist, onSummarize, onAutoRename }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; onSummarize: () => void; onAutoRename: () => void }) {
+  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div>{preview.summary ? <div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary}</div></div> : null}{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => (<article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>)) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
 }

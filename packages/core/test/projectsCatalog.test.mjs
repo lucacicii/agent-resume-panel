@@ -7,6 +7,8 @@ import {
   ensureExtensionCatalogSchema,
   ensureProjectForPath,
   hideProjectInCatalog,
+  unhideProjectInCatalog,
+  setProjectKeptVisibleInCatalog,
   listProjects,
   loadProjectAliasesMap,
   reconcileProjectsFromSessions,
@@ -80,6 +82,39 @@ test("projects reconcile merges paths by portable key and hide cascades sessions
     assert.equal(Number(counts[0].c), 0);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("project visibility marker and unhide restore an empty or hidden project", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-project-visible-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-open-project-"));
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const projectId = await ensureProjectForPath(dbPath, projectPath);
+    assert.equal(await ensureProjectForPath(dbPath, projectPath), projectId);
+
+    await setProjectKeptVisibleInCatalog(dbPath, projectId, true);
+    const kept = (await listProjects(dbPath)).find((project) => project.projectId === projectId);
+    assert.equal(kept?.keptVisible, true);
+
+    await runSqlite(
+      dbPath,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, archived, hidden, project_id)
+       VALUES ('codex', 'restore-1', 'Restore', '${projectPath.replaceAll("'", "''")}', ${Date.now()}, 0, 0, '${projectId}');`
+    );
+    await hideProjectInCatalog(dbPath, projectId);
+    assert.ok(!(await listProjects(dbPath)).some((project) => project.projectId === projectId));
+
+    const restored = await unhideProjectInCatalog(dbPath, projectId);
+    assert.equal(restored.projectId, projectId);
+    assert.ok(restored.unhiddenSessions >= 1);
+    const visible = (await listProjects(dbPath)).find((project) => project.projectId === projectId);
+    assert.equal(visible?.keptVisible, true);
+    assert.equal(visible?.sessionCount, 1);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+    await fs.rm(projectPath, { recursive: true, force: true });
   }
 });
 

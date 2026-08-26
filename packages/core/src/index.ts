@@ -71,7 +71,8 @@ export type {
   AgentHomesSettings,
   AgentSessionSyncSettings,
   AgentSessionSyncFilters,
-  SessionSyncStalePolicy
+  SessionSyncStalePolicy,
+  NotificationsSettings
 } from "./settings/types";
 export {
   DEFAULT_SETTINGS,
@@ -217,6 +218,8 @@ export {
   setProjectLocalPath,
   setProjectPinnedInCatalog,
   hideProjectInCatalog,
+  unhideProjectInCatalog,
+  setProjectKeptVisibleInCatalog,
   unhideAllProjectsInCatalog,
   getProjectById,
   listProjectPathVariants,

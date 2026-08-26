@@ -6474,19 +6474,36 @@ code {
   background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 14%, transparent));
 }
 
+.wb-transcript-body .preview-msg {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
 .wb-transcript-plain {
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .wb-transcript-md.markdown-body,
 .wb-transcript-plain {
   font-size: var(--wb-transcript-font-size, 14px);
+  user-select: text;
+  cursor: text;
 }
 
 .wb-transcript-md.markdown-body {
   line-height: 1.45;
   white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.wb-transcript-md.markdown-body pre,
+.wb-transcript-md.markdown-body code {
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .wb-transcript-md.markdown-body > :first-child {
@@ -10970,6 +10987,229 @@ textarea.wb-floating-note-editor {
   to { opacity: 0; transform: translateX(calc(100% + 20px)); }
 }
 
+/* Bell button in header */
+.bell-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.bell-btn:hover {
+  color: var(--text);
+  background: var(--color-fill-tertiary);
+}
+
+.bell-btn.is-open {
+  color: var(--accent);
+  background: var(--color-fill-primary);
+}
+
+.bell-btn.is-shaking {
+  animation: bell-shake 0.5s ease-in-out;
+}
+
+.bell-btn.has-unread {
+  color: var(--accent);
+}
+
+.bell-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.bell-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--color-destructive, #ff3b30);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+@keyframes bell-shake {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-8deg); }
+  75% { transform: rotate(4deg); }
+  90% { transform: rotate(-2deg); }
+}
+
+/* Notification history popover */
+.notification-popover {
+  position: fixed;
+  z-index: 300;
+  width: 340px;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-separator, var(--border));
+  border-radius: 10px;
+  background: var(--color-elevated-bg, var(--panel));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24);
+  animation: notification-popover-enter 180ms ease-out both;
+}
+
+@keyframes notification-popover-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.notification-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-separator, var(--border));
+  flex-shrink: 0;
+}
+
+.notification-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.notification-clear-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.notification-clear-btn:hover {
+  color: var(--text);
+  background: var(--color-fill-tertiary);
+}
+
+.notification-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.notification-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 14px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.notification-item:hover {
+  background: var(--color-fill-tertiary);
+}
+
+.notification-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+
+.notification-dot.is-error { background: var(--color-destructive, var(--danger)); }
+.notification-dot.is-ok { background: var(--color-success, var(--ok)); }
+.notification-dot.is-info { background: var(--color-accent, var(--accent)); }
+
+.notification-text {
+  flex: 1 1 auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.notification-time {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.notification-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-separator, var(--border));
+  flex-shrink: 0;
+}
+
+.notification-page-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.notification-page-btn:hover:not(:disabled) {
+  background: var(--color-fill-tertiary);
+}
+
+.notification-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.notification-page-indicator {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 50px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-popover {
+    animation-duration: 1ms;
+  }
+  .bell-btn.is-shaking {
+    animation-duration: 1ms;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .desktop-notification,
   .desktop-notification.is-exiting {
@@ -11329,6 +11569,20 @@ textarea.wb-floating-note-editor {
 .notes-folder-section,
 .wb-folder-section {
   margin-top: 10px;
+}
+
+.wb-folder-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wb-folder-section-head .wb-folder-section-label {
+  flex: 1;
+}
+
+.wb-add-project-btn {
+  margin-right: 4px;
 }
 
 .notes-folder-section-label,

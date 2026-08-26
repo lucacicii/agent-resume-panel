@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
+import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -49,6 +50,9 @@ import {
   setProjectAliasInCatalog,
   setProjectLocalPath,
   setProjectPinnedInCatalog,
+  ensureProjectForPath,
+  unhideProjectInCatalog,
+  setProjectKeptVisibleInCatalog,
   resolveProjectCwd,
   resolveProjectCwdForPath,
   listProjectPathVariants,
@@ -3100,6 +3104,39 @@ function registerIpc(): void {
     const paths = await loadPanelDbPaths();
     return listProjects(paths.catalogDb, opts);
   });
+
+  ipcMain.handle(
+    "projects:addProject",
+    async (_event, args: { title?: string }) => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory", "createDirectory"],
+        title: args.title || "Select project folder"
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false as const, canceled: true as const };
+      }
+      const absolutePath = result.filePaths[0];
+      const stat = await fs.stat(absolutePath).catch(() => null);
+      if (!stat?.isDirectory()) {
+        throw new Error("Selected folder is not a valid directory.");
+      }
+      await fs.access(absolutePath, constants.R_OK).catch(() => {
+        throw new Error("Selected folder is not accessible.");
+      });
+      const paths = await loadPanelDbPaths();
+      const projectId = await ensureProjectForPath(paths.catalogDb, absolutePath, {
+        bindLocalPath: true,
+        touchSeen: true
+      });
+      await unhideProjectInCatalog(paths.catalogDb, projectId);
+      await setProjectKeptVisibleInCatalog(paths.catalogDb, projectId, true);
+      const project = (await listProjects(paths.catalogDb)).find((item) => item.projectId === projectId);
+      if (!project) {
+        throw new Error("Added project could not be loaded.");
+      }
+      return { ok: true as const, project };
+    }
+  );
 
   ipcMain.handle(
     "projects:hide",

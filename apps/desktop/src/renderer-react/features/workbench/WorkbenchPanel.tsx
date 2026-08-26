@@ -35,7 +35,6 @@ import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { renderMarkdown } from "../../components/Markdown";
 import { notifyDesktop } from "../../components/Notifications";
 import { SegmentedControl } from "../../components/SegmentedControl";
-import { Status, type StatusKind } from "../../components/Status";
 import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import type { TerminalEngineType } from "./terminal";
@@ -283,6 +282,7 @@ type CatalogProject = {
   alias: string;
   hidden: boolean;
   pinned?: boolean;
+  keptVisible?: boolean;
   lastSeenAtMs: number | null;
   updatedAtMs: number;
   localPath: string | null;
@@ -2609,7 +2609,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
 
   const [settings, setSettings] = useState<PanelSettings | null>(null);
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = useCallback((s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  }, []);
   const [contextMenu, setContextMenu] = useState<WorkbenchContextMenu | null>(null);
   const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
   const [gitLogContextMenu, setGitLogContextMenu] = useState<GitLogContextMenu | null>(null);
@@ -3002,7 +3004,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const current = selectedProjectRef.current;
     let next = current;
     if (current) {
-      const match = withSessions.find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
+      const match = (nextProjects || []).find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
       if (match) next = match.localPath || match.portableKey || current;
       else if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) next = current;
       else if (
@@ -3522,8 +3524,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         const projectPath = project.localPath || project.portableKey;
         const pendingCount = pendingCountByPath.get(projectPathKey(projectPath)) || 0;
         const folderData = workbenchFolderData[project.projectId] || { folders: [], assignments: [] };
-        // Hide catalog rows with no session data (catalog count and joined list both empty).
-        if ((project.sessionCount || 0) === 0 && group.length === 0 && pendingCount === 0) return [];
+        // Hide empty catalog rows unless the user explicitly opened the project.
+        if ((project.sessionCount || 0) === 0 && group.length === 0 && pendingCount === 0 && !project.keptVisible) return [];
         const path = projectPath;
         return [{
           id: project.projectId,
@@ -3969,6 +3971,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGitLogError("");
     gitLogRequestRef.current += 1;
   };
+
+  const addProject = useCallback(async () => {
+    try {
+      if (typeof desktopApi().addProject !== "function") return;
+      const result = await desktopApi().addProject({ title: t("desktop.workbench.addProjectTitle") });
+      if (!result.ok) return; // canceled — silent no-op
+      selectProject(result.project.localPath || result.project.portableKey);
+      await reloadWorkbench();
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [reloadWorkbench, selectProject, setStatus, t]);
 
   const selectProjectFolder = useCallback((project: WorkbenchProject, folderId: string | null) => {
     selectProject(project.path, { keepSessionKey: true });
@@ -7531,7 +7545,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-folders">
           {sidebarView === "projects" ? <>
             <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span></button>
-            {projects.length ? <div className="wb-folder-section"><div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>{projects.map((project) => {
+            <div className="wb-folder-section">
+              <div className="wb-folder-section-head">
+                <div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>
+                <button type="button" className="wb-icon-btn wb-add-project-btn" aria-label={t("desktop.workbench.addProject")} title={t("desktop.workbench.addProject")} onClick={() => void addProject()}><ThemeIcon name="plus" size={14} /></button>
+              </div>
+              {projects.length ? projects.map((project) => {
               const assignedCount = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId))).size;
               const unclassifiedCount = Math.max(0, project.sessionCount - assignedCount) + project.pendingCount;
               const projectExpanded = expandedProjectIds.has(project.id);
@@ -7549,7 +7568,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                 {renderProjectFolderRows(project, null)}
                 </> : null}
               </Fragment>;
-            })}</div> : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+              }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
+            </div>
           </> : sidebarView === "gtd" ? <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>
           : <div className="wb-folder-section wb-tags-folder-section">
             <div className="wb-folder-section-label">{t("desktop.workbench.tagsView")}</div>
@@ -8132,7 +8152,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
     <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
-    <Status kind={status.kind}>{status.text}</Status>
     {floatingNoteTarget ? <FloatingSessionNote target={floatingNoteTarget} onClose={() => setFloatingNoteTarget(null)} /> : null}
   </section>
     <QuickAccess

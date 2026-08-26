@@ -71,6 +71,37 @@ export function buildSessionTranscriptModel(
   return { messages: nextMessages, outline };
 }
 
+export type TranscriptPreviewSnapshot = {
+  title?: string;
+  messages: readonly TranscriptPreviewMessage[];
+  truncated?: boolean;
+  warning?: string;
+};
+
+export function sameTranscriptPreview(
+  current: TranscriptPreviewSnapshot | null | undefined,
+  next: TranscriptPreviewSnapshot | null | undefined
+): boolean {
+  if (current === next) return true;
+  if (!current || !next) return false;
+  if (
+    (current.title || "") !== (next.title || "")
+    || Boolean(current.truncated) !== Boolean(next.truncated)
+    || (current.warning || "") !== (next.warning || "")
+    || current.messages.length !== next.messages.length
+  ) {
+    return false;
+  }
+  return current.messages.every((message, index) => {
+    const other = next.messages[index];
+    return other !== undefined
+      && message.role === other.role
+      && message.text === other.text
+      && (message.thinking || "") === (other.thinking || "")
+      && (message.timestamp || "") === (other.timestamp || "");
+  });
+}
+
 export function filterSessionTranscript(
   model: SessionTranscriptModel,
   query: string

@@ -438,6 +438,14 @@ export interface AutoTaggingSettings {
   consensusFactor?: number;
 }
 
+/** Desktop-only: notification history and auto-clear preferences. */
+export interface NotificationsSettings {
+  /** Auto-clear notifications older than this many minutes. 0 = keep all. Default 60. */
+  autoClearMinutes?: number;
+  /** Max notifications to retain in history. Default 100. */
+  maxHistory?: number;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -467,6 +475,8 @@ export interface PanelSettings {
   ghosttyExecutable?: string;
   ghosttyLaunchMode?: GhosttyLaunchMode;
   ghosttyAutoPasteDelayMs?: number;
+  /** Desktop notification history and auto-clear preferences. */
+  notifications?: NotificationsSettings;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
@@ -557,5 +567,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   notes: {
     newStandaloneNoteShortcut: "CommandOrControl+D",
     recentStandaloneNoteShortcut: "CommandOrControl+Shift+D"
+  },
+  notifications: {
+    autoClearMinutes: 60,
+    maxHistory: 100
   }
 };

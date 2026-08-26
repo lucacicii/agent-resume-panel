@@ -46,12 +46,17 @@ export function normalizeProjectContextMenu(
 
 export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 
+export interface NotificationsDraft {
+  autoClearMinutes: number;
+}
+
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
   visualTheme: DesktopVisualThemeId;
   themeEffects: DesktopThemeEffects;
   alwaysAllowAgentNonDestructiveOperations: boolean;
+  notifications: NotificationsDraft;
 }
 
 export interface ModelsDraft {
@@ -203,13 +208,21 @@ export function normalizeOutputLanguage(value: string | undefined): UiLanguageVa
   return "auto";
 }
 
+export function notificationsDraftFromSettings(settings: PanelSettings): NotificationsDraft {
+  const minutes = settings.notifications?.autoClearMinutes;
+  return {
+    autoClearMinutes: typeof minutes === "number" ? minutes : 60
+  };
+}
+
 export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft {
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
     desktopTheme: settings.desktop?.theme || "system",
     visualTheme: settings.desktop?.visualTheme === "cyberpunk" || settings.desktop?.visualTheme === "dos" ? settings.desktop.visualTheme : "classic",
     themeEffects: settings.desktop?.themeEffects === "reduced" ? "reduced" : "full",
-    alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true
+    alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true,
+    notifications: notificationsDraftFromSettings(settings)
   };
 }
 
@@ -284,6 +297,12 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
   };
 }
 
+export function notificationsPatch(_settings: PanelSettings, draft: NotificationsDraft): PanelSettings["notifications"] {
+  return {
+    autoClearMinutes: clampDraftInt(draft.autoClearMinutes, 60, 0, 10080)
+  };
+}
+
 export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Partial<PanelSettings> {
   return {
     uiLanguage: draft.uiLanguage,
@@ -294,7 +313,8 @@ export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Part
       themeEffects: draft.themeEffects,
       alwaysAllowAgentWriteOperations: false,
       alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
-    }
+    },
+    notifications: notificationsPatch(settings, draft.notifications)
   };
 }
 

@@ -2,7 +2,8 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { Sheet } from "../../components/Sheet";
-import { Status, type StatusKind } from "../../components/Status";
+import { StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 
 type PreviewResult = Awaited<ReturnType<ReturnType<typeof desktopApi>["previewReportGtdSync"]>>;
@@ -47,7 +48,11 @@ export function GtdSheet(): React.JSX.Element | null {
   const [scope, setScope] = useState<Scope | null>(null);
   const [items, setItems] = useState<DraftProposal[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [status, setStatusState] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = (s: { text: string; kind?: StatusKind }) => {
+    setStatusState(s);
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [applying, setApplying] = useState<string | null>(null);
   const [allApplied, setAllApplied] = useState(false);
   const [editorIndex, setEditorIndex] = useState<number | null>(null);
@@ -196,7 +201,6 @@ export function GtdSheet(): React.JSX.Element | null {
     {!items.length ? <div className="muted gtd-empty"><p>{allApplied ? t("desktop.report.gtdAllApplied") : t("desktop.report.gtdNoProposals")}</p></div> : <div className="gtd-preview">
       {items.map((item, index) => <GtdItem key={`${item.provider}:${item.sessionId}`} item={item} applying={applying === `${item.provider}:${item.sessionId}`} t={t} onChange={(patch) => update(index, patch)} onApply={() => void apply(index)} onOpenMarkdown={() => { setEditorIndex(index); setEditorValue(item.todolistMarkdown); }} />)}
     </div>}
-    <Status kind={status.kind}>{status.text}</Status>
     {editorIndex !== null ? <div className="gtd-md-overlay" role="presentation">
       <button type="button" className="gtd-md-overlay-backdrop" aria-label={t("desktop.common.close")} onClick={() => { update(editorIndex, { todolistMarkdown: editorValue }); setEditorIndex(null); }} />
       <section className="gtd-md-overlay-panel" role="dialog" aria-modal="true" aria-label={t("desktop.report.gtdMdDialog")}>

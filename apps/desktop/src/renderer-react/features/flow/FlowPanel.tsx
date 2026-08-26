@@ -28,7 +28,7 @@ import type {
   FlowWorkflow
 } from "../../../shared/flowTypes";
 import { desktopApi } from "../../bridge";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import type { AgentSession } from "@agent-resume/core";
 
@@ -38,7 +38,6 @@ interface CanvasNodeData extends Record<string, unknown> {
 
 type CanvasNode = Node<CanvasNodeData, "flow">;
 type Project = Awaited<ReturnType<ReturnType<typeof desktopApi>["listProjects"]>>[number];
-type FlowPanelStatus = { text: string; kind?: StatusKind };
 
 const PROVIDERS = ["codex", "claude", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"];
 const NODE_STATUSES: FlowNodeStatus[] = ["idle", "ready", "running", "completed", "failed", "blocked", "skipped", "cancelled"];
@@ -108,7 +107,9 @@ export function FlowPanel(): ReactPortal | null {
   const [templates, setTemplates] = useState<FlowTemplate[]>([]);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [status, setStatus] = useState<FlowPanelStatus>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [busy, setBusy] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -630,7 +631,6 @@ export function FlowPanel(): ReactPortal | null {
           </div>}
         </aside>
       </div>
-      <div className={`flow-status${status.kind ? ` is-${status.kind}` : ""}`}><Status kind={status.kind}>{status.text}</Status></div>
     </section>,
     host
   );

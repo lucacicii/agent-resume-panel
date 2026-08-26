@@ -6,7 +6,7 @@ import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
 import { SegmentedControl } from "../../components/SegmentedControl";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
@@ -366,7 +366,9 @@ export function NotesPanel(): ReactPortal | null {
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const saveTimer = useRef<number | null>(null);
   const contentRef = useRef(content);
   const selectedRef = useRef<Note | null>(selected);
@@ -1641,7 +1643,6 @@ export function NotesPanel(): ReactPortal | null {
             {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
             </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
-          <Status kind={status.kind}>{status.text}</Status>
         </main>
       </div>
       {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - (contextMenu.kind === "note" ? 520 : 260))) }} onContextMenu={(event) => event.preventDefault()}>

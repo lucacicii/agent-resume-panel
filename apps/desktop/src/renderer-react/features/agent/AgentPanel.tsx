@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type ReactPortal } from "react";
 import type { AgentChatMessage, AgentCitation, AgentExecutionStep, AgentNoteAuditEvent, AgentStreamEvent, AgentThread, AgentToolCategory, AgentToolDescriptor, ProjectRow, ReportEntry } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
-import { Status, type StatusKind } from "../../components/Status";
+import { StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown } from "../../components/Markdown";
 import { Sheet } from "../../components/Sheet";
 import { useI18n } from "../../i18n";
@@ -267,7 +268,9 @@ export function AgentPanel(): ReactPortal | null {
   const [projectPath, setProjectPath] = useState("");
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [editingThread, setEditingThread] = useState(false);
   const [titleInput, setTitleInput] = useState("");
   const [auditOpen, setAuditOpen] = useState(false);
@@ -831,9 +834,8 @@ return createPortal(
         <main className="ask-main-pane">
           {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
           <div className="ask-chat-shell">
-            {indexProgress || status.text || auditOpen ? <div className="agent-chat-notices">
+            {indexProgress || auditOpen ? <div className="agent-chat-notices">
               {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}
-              <Status kind={status.kind}>{status.text}</Status>
               {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}
             </div> : null}
             <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onOpenCitation={openCitation} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
