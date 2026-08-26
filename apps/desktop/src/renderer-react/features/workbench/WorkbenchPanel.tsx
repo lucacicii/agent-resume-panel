@@ -677,19 +677,24 @@ function gitStatusClass(status: string): string {
   return letter === "A" ? "is-add" : letter === "D" ? "is-del" : "is-mod";
 }
 
+function gitChangeTreePath(change: Pick<GitChange, "path" | "repoPath">): string {
+  return change.repoPath || change.path;
+}
+
 function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
   const roots: GitTreeNode[] = [];
   const directories = new Map<string, GitTreeNode>();
 
   for (const change of changes) {
-    const parts = change.path.split("/").map((part) => part.trim()).filter(Boolean);
+    const treePath = gitChangeTreePath(change);
+    const parts = treePath.split("/").map((part) => part.trim()).filter(Boolean);
     let parentPath = "";
     let siblings = roots;
     for (const [index, name] of parts.entries()) {
       const isFile = index === parts.length - 1;
       const path = parentPath ? `${parentPath}/${name}` : name;
       if (isFile) {
-        siblings.push({ name, path: change.path, isDirectory: false, children: [], change });
+        siblings.push({ name, path: treePath, isDirectory: false, children: [], change });
         continue;
       }
       let directory = directories.get(path);
@@ -711,17 +716,42 @@ function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
   return roots;
 }
 
-function expandedGitDirectories(changes: GitChange[]): Set<string> {
-  const expanded = new Set<string>();
+function gitDirectoryExpandKey(repoRoot: string, directoryPath: string): string {
+  return repoRoot ? `${repoRoot}\0${directoryPath}` : directoryPath;
+}
+
+function gitDirectoryKeys(changes: GitChange[]): Set<string> {
+  const keys = new Set<string>();
   for (const change of changes) {
-    const parts = change.path.split("/").map((part) => part.trim()).filter(Boolean);
+    const parts = gitChangeTreePath(change).split("/").map((part) => part.trim()).filter(Boolean);
     let parentPath = "";
     for (const name of parts.slice(0, -1)) {
       parentPath = parentPath ? `${parentPath}/${name}` : name;
-      expanded.add(parentPath);
+      keys.add(gitDirectoryExpandKey(change.repoRoot, parentPath));
     }
   }
-  return expanded;
+  return keys;
+}
+
+function expandedGitDirectories(changes: GitChange[]): Set<string> {
+  return gitDirectoryKeys(changes);
+}
+
+function reconcileExpandedGitDirectories(current: Set<string>, changes: GitChange[]): Set<string> {
+  const available = gitDirectoryKeys(changes);
+  const next = new Set<string>();
+  for (const key of current) {
+    if (available.has(key)) next.add(key);
+  }
+  return next;
+}
+
+function gitGroupCheckboxState(repoRoot: string, stagedEntries: GitChange[], unstagedEntries: GitChange[]): boolean | "mixed" {
+  const stagedCount = stagedEntries.filter((change) => change.repoRoot === repoRoot).length;
+  const unstagedCount = unstagedEntries.filter((change) => change.repoRoot === repoRoot).length;
+  if (stagedCount && unstagedCount) return "mixed";
+  if (stagedCount) return true;
+  return false;
 }
 
 function gitChangeKey(change: Pick<GitChange, "repoRoot" | "repoPath">): string {
@@ -800,6 +830,45 @@ function uniqueGitChanges(changes: GitChange[]): GitChange[] {
   return [...unique.values()];
 }
 
+type GitStageTarget = { repoRoot: string; paths: string[] };
+
+function normalizeGitStageTargets(targets: GitStageTarget | GitStageTarget[]): GitStageTarget[] {
+  return (Array.isArray(targets) ? targets : [targets]).filter((target) => target.repoRoot && target.paths.length);
+}
+
+function groupGitChangesByRepo(changes: GitChange[]): GitStageTarget[] {
+  const groups = new Map<string, string[]>();
+  const seen = new Map<string, Set<string>>();
+  for (const change of changes) {
+    if (!change.repoRoot) continue;
+    const paths = groups.get(change.repoRoot) || [];
+    const used = seen.get(change.repoRoot) || new Set<string>();
+    if (!used.has(change.repoPath)) {
+      used.add(change.repoPath);
+      paths.push(change.repoPath);
+      groups.set(change.repoRoot, paths);
+      seen.set(change.repoRoot, used);
+    }
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([repoRoot, paths]) => ({ repoRoot, paths }));
+}
+
+function gitRepositoryLabel(git: GitStatusResult, repoRoot: string): string {
+  return git.nestedRepos?.find((repository) => repository.root === repoRoot)?.displayPath || basename(repoRoot);
+}
+
+function gitRepositoryCount(git: GitStatusResult): number {
+  const roots = new Set<string>();
+  if (git.root) roots.add(git.root);
+  git.nestedRepos?.forEach((repository) => roots.add(repository.root));
+  for (const change of [...git.staged, ...git.unstaged]) {
+    if (change.repoRoot) roots.add(change.repoRoot);
+  }
+  return roots.size;
+}
+
 function GitTreeCheckbox({
   state,
   ariaLabel,
@@ -853,7 +922,7 @@ function GitChangeTree({
   activeDiff?: ActiveGitDiff;
   discarding: Set<string>;
   onToggleDir: (path: string) => void;
-  onToggleStage: (paths: string[], targetStaged: boolean) => void;
+  onToggleStage: (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => void;
   onOpen: (change: GitChange) => void;
   onContextMenu: (event: React.MouseEvent, change: GitChange) => void;
   onDiscard: (change: GitChange) => void;
@@ -861,14 +930,15 @@ function GitChangeTree({
   discardLabel: string;
 }): React.JSX.Element {
   return <>{nodes.map((node) => {
-    const isExpanded = node.isDirectory && expanded.has(node.path);
     if (node.isDirectory) {
       const nodeChanges = collectNodeChanges(node);
       const keys = nodeChanges.map(gitChangeKey);
       const repoPaths = uniqueRepoPaths(nodeChanges);
       const directoryDiscarding = keys.some((key) => discarding.has(key));
       const repoRoot = nodeChanges[0]?.repoRoot || "";
-      return <div key={node.path}>
+      const expandKey = gitDirectoryExpandKey(repoRoot, node.path);
+      const isExpanded = expanded.has(expandKey);
+      return <div key={`${repoRoot}:${node.path}`}>
         <div
           className="wb-file-tree-row wb-git-tree-row"
           style={{ paddingLeft: `${8 + depth * 14}px` }}
@@ -878,8 +948,11 @@ function GitChangeTree({
             startWorkbenchPathDrag(event, gitChangeFilePath({ repoRoot, repoPath: node.path }));
           }}
         >
-          <GitTreeCheckbox state={staged} ariaLabel={node.path} onChange={(checked) => onToggleStage(repoPaths, checked)} />
-          <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(node.path)}>
+          <GitTreeCheckbox state={staged} ariaLabel={node.path} onChange={(checked) => {
+            if (!repoRoot || !repoPaths.length) return;
+            onToggleStage({ repoRoot, paths: repoPaths }, checked);
+          }} />
+          <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(expandKey)}>
             <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span>
             <ThemeIcon name="folder" size={14} className="wb-file-tree-icon" />
             <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
@@ -915,8 +988,11 @@ function GitChangeTree({
       }}
       onContextMenu={(event) => onContextMenu(event, node.change!)}
     >
-      <GitTreeCheckbox state={staged} ariaLabel={node.change.path} onChange={(checked) => onToggleStage([node.change!.repoPath], checked)} />
-      <button type="button" className="wb-git-tree-row-main" title={node.change.path} onClick={() => onOpen(node.change!)}>
+      <GitTreeCheckbox state={staged} ariaLabel={gitChangeTreePath(node.change)} onChange={(checked) => {
+        if (!node.change?.repoRoot) return;
+        onToggleStage({ repoRoot: node.change.repoRoot, paths: [node.change.repoPath] }, checked);
+      }} />
+      <button type="button" className="wb-git-tree-row-main" title={gitChangeTreePath(node.change)} onClick={() => onOpen(node.change!)}>
         <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
         <span className={`wb-git-file-status ${gitStatusClass(node.change.status)}`}>{gitStatusLetter(node.change.status)}</span>
         <span className="wb-file-tree-label">{node.name}</span>
@@ -950,6 +1026,8 @@ function GitChangesPanel({
   visible,
   git,
   gitRoot,
+  repositories,
+  branch,
   activeDiff,
   expanded,
   discarding,
@@ -958,6 +1036,8 @@ function GitChangesPanel({
   commitSuggestion,
   canCommit,
   syncing,
+  onSelectRepo,
+  onSelectBranch,
   onSync,
   onToggleDir,
   onToggleStage,
@@ -975,6 +1055,8 @@ function GitChangesPanel({
   visible: boolean;
   git: GitStatusResult | null;
   gitRoot: string;
+  repositories: Array<{ root: string; label: string }>;
+  branch: string;
   activeDiff?: ActiveGitDiff;
   expanded: Set<string>;
   discarding: Set<string>;
@@ -983,9 +1065,11 @@ function GitChangesPanel({
   commitSuggestion: CommitSuggestion | null;
   canCommit: boolean;
   syncing: boolean;
+  onSelectRepo: (root: string) => void;
+  onSelectBranch: (selection: { branch: string; remote?: string }) => void;
   onSync: () => void;
   onToggleDir: (path: string) => void;
-  onToggleStage: (paths: string[], targetStaged: boolean) => void;
+  onToggleStage: (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => void;
   onOpenDiff: (change: GitChange, staged: boolean) => void;
   onOpenFile: (change: GitChange) => void;
   onOpenExternal: (change: GitChange) => void;
@@ -1073,14 +1157,14 @@ function GitChangesPanel({
     return createPortal(<div className="react-git-panel"><p className="muted wb-git-empty">{labels.unavailable}</p></div>, host);
   }
 
-  const filterEntries = (entries: GitChange[]) => gitRoot ? entries.filter((change) => change.repoRoot === gitRoot) : entries;
   const sections = [
-    { title: labels.stagedTitle, staged: true, entries: filterEntries(git.staged) },
-    { title: labels.changesTitle, staged: false, entries: filterEntries(git.unstaged) }
+    { title: labels.stagedTitle, staged: true, entries: uniqueGitChanges(git.staged) },
+    { title: labels.changesTitle, staged: false, entries: uniqueGitChanges(git.unstaged) }
   ];
   const allEntries = uniqueGitChanges(sections.flatMap((section) => section.entries));
   const hasEntries = sections.some((section) => section.entries.length > 0);
   const hasStagedEntries = sections.some((section) => section.staged && section.entries.length > 0);
+  const showRepoGroups = gitRepositoryCount(git) > 1;
   const tracking = trackingForRoot(git, gitRoot);
   const trackingLabel = tracking?.upstream
     ? t("desktop.workbench.gitBranchTracking", tracking.ahead, tracking.behind)
@@ -1097,42 +1181,62 @@ function GitChangesPanel({
     <div className="wb-git-changes-scroll">
       {hasEntries ? sections.map((section) => {
         if (!section.entries.length) return null;
-        const sectionRepoPaths = uniqueRepoPaths(section.entries);
+        const repoGroups = groupGitChangesByRepo(section.entries).map((group) => ({
+          ...group,
+          entries: section.entries.filter((change) => change.repoRoot === group.repoRoot)
+        }));
         return <section className="wb-git-section" key={section.title}>
           <div className="wb-git-section-title">
-            <GitTreeCheckbox state={section.staged} ariaLabel={section.title} onChange={(checked) => onToggleStage(sectionRepoPaths, checked)} />
+            <GitTreeCheckbox state={section.staged} ariaLabel={section.title} onChange={(checked) => onToggleStage(repoGroups, checked)} />
             <span className="wb-git-section-title-text">{section.title}</span>
             <span className="wb-git-section-count">{section.entries.length}</span>
           </div>
-          <div className="wb-git-tree" role="tree">
-            <GitChangeTree
-              nodes={buildGitChangeTree(section.entries)}
-              depth={0}
-              staged={section.staged}
-              expanded={expanded}
-              activeDiff={activeDiff}
-              discarding={discarding}
-              onToggleDir={onToggleDir}
-              onToggleStage={onToggleStage}
-              onOpen={(change) => onOpenDiff(change, section.staged)}
-              onContextMenu={(event, change) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setContextMenu({ change, x: event.clientX, y: event.clientY });
-              }}
-              onDiscard={onDiscard}
-              onDiscardDirectory={(directoryPath, repoRoot) => {
-                const prefix = `${directoryPath}/`;
-                const changes = allEntries.filter((change) => change.repoRoot === repoRoot && change.path.startsWith(prefix));
-                if (changes.length) onDiscardDirectory(changes, directoryPath);
-              }}
-              discardLabel={labels.discard}
-            />
-          </div>
+          {repoGroups.map((group) => <div className="wb-git-repo-group" key={`${section.title}:${group.repoRoot}`}>
+            {showRepoGroups ? <div className="wb-git-repo-group-title">
+              <GitTreeCheckbox
+                state={gitGroupCheckboxState(group.repoRoot, git.staged, git.unstaged)}
+                ariaLabel={gitRepositoryLabel(git, group.repoRoot)}
+                onChange={(checked) => onToggleStage({ repoRoot: group.repoRoot, paths: group.paths }, checked)}
+              />
+              <span className="wb-git-repo-group-label" title={group.repoRoot}>{gitRepositoryLabel(git, group.repoRoot)}</span>
+              <span className="wb-git-section-count">{group.entries.length}</span>
+            </div> : null}
+            <div className="wb-git-tree" role="tree">
+              <GitChangeTree
+                nodes={buildGitChangeTree(group.entries)}
+                depth={0}
+                staged={section.staged}
+                expanded={expanded}
+                activeDiff={activeDiff}
+                discarding={discarding}
+                onToggleDir={onToggleDir}
+                onToggleStage={onToggleStage}
+                onOpen={(change) => onOpenDiff(change, section.staged)}
+                onContextMenu={(event, change) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setContextMenu({ change, x: event.clientX, y: event.clientY });
+                }}
+                onDiscard={onDiscard}
+                onDiscardDirectory={(directoryPath, repoRoot) => {
+                  const prefix = `${directoryPath}/`;
+                  const changes = allEntries.filter((change) => (
+                    change.repoRoot === repoRoot && gitChangeTreePath(change).startsWith(prefix)
+                  ));
+                  if (changes.length) onDiscardDirectory(changes, directoryPath);
+                }}
+                discardLabel={labels.discard}
+              />
+            </div>
+          </div>)}
         </section>;
       }) : <p className="muted wb-git-empty">{labels.noChanges}</p>}
     </div>
     <div className="wb-git-commit-composer">
+      <div className="wb-git-commit-target">
+        <GitRepositorySelector repositories={repositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={onSelectRepo} />
+        <GitBranchSelector repoRoot={gitRoot} value={branch} ariaLabel={t("desktop.workbench.switchBranch")} onChange={onSelectBranch} />
+      </div>
       {suggestionText ? <p className={`wb-git-commit-suggestion${commitSuggestion?.source === "llm" ? " is-ai" : ""}`}>{suggestionText}</p> : null}
       <div
         className={`pane-resizer is-horizontal wb-git-commit-resizer${commitInputResizing ? " is-dragging" : ""}`}
@@ -1308,42 +1412,37 @@ function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Element | 
 }
 
 function GitRepositorySelector({
-  visible,
   repositories,
   value,
   ariaLabel,
   onChange
 }: {
-  visible: boolean;
   repositories: Array<{ root: string; label: string }>;
   value: string;
   ariaLabel: string;
   onChange: (root: string) => void;
-}): ReactPortal | null {
-  const [host, setHost] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    setHost(visible && repositories.length > 1 ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
-  }, [repositories.length, visible]);
-  return host ? createPortal(<select className="react-git-repo-select wb-git-repo-select" value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)}>
+}): React.JSX.Element {
+  if (repositories.length <= 1) {
+    const only = repositories[0];
+    return <span className="wb-git-repo-select is-static" title={only?.root || value} aria-label={ariaLabel}>{only?.label || basename(value)}</span>;
+  }
+  return <select className="react-git-repo-select wb-git-repo-select" value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)}>
     {repositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}
-  </select>, host) : null;
+  </select>;
 }
 
 function GitBranchSelector({
-  visible,
   repoRoot,
   value,
   ariaLabel,
   onChange
 }: {
-  visible: boolean;
   repoRoot: string;
   value: string;
   ariaLabel: string;
   onChange: (selection: { branch: string; remote?: string }) => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
-  const [host, setHost] = useState<HTMLElement | null>(null);
   const [branches, setBranches] = useState<TerminalGitBranches | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -1352,14 +1451,9 @@ function GitBranchSelector({
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
-    if (!visible) setOpen(false);
-  }, [visible]);
-
-  useEffect(() => {
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
-    if (!visible || !repoRoot) {
+    if (!repoRoot) {
       setBranches(null);
       setLoading(false);
       return;
@@ -1379,7 +1473,7 @@ function GitBranchSelector({
       if (requestRef.current === requestId) setLoading(false);
     });
     return () => { requestRef.current += 1; };
-  }, [repoRoot, value, visible]);
+  }, [repoRoot, value]);
 
   useEffect(() => {
     if (!open) return;
@@ -1400,7 +1494,7 @@ function GitBranchSelector({
     };
   }, [open]);
 
-  if (!host || !visible || !repoRoot) return null;
+  if (!repoRoot) return null;
   const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
   const remoteBranches = branches?.mode === "direct" ? branches.remoteBranches || [] : [];
   const openMenu = () => {
@@ -1463,7 +1557,7 @@ function GitBranchSelector({
       </>}
     </div>
   </div>, document.body) : null;
-  return <>{createPortal(trigger, host)}{menu}</>;
+  return <>{trigger}{menu}</>;
 }
 
 function BranchGraphNavigation({
@@ -2592,6 +2686,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [git, setGit] = useState<GitStatusResult | null>(null);
   const [gitRoot, setGitRoot] = useState("");
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
+  const gitExpandInitializedRef = useRef(false);
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
   const [gitHistoryContext, setGitHistoryContext] = useState<GitHistoryContext | null>(null);
@@ -6261,7 +6356,14 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (current && roots.includes(current)) return current;
         return result.root || result.nestedRepos?.[0]?.root || roots[0] || "";
       });
-      setGitExpandedDirs(expandedGitDirectories([...result.staged, ...result.unstaged]));
+      const nextChanges = [...result.staged, ...result.unstaged];
+      setGitExpandedDirs((current) => {
+        if (!gitExpandInitializedRef.current) {
+          gitExpandInitializedRef.current = true;
+          return expandedGitDirectories(nextChanges);
+        }
+        return reconcileExpandedGitDirectories(current, nextChanges);
+      });
     } catch (error) {
       if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
       else if (side === "git") setStatus({ text: gitOperationError(error), kind: "error" });
@@ -6379,8 +6481,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     gitRootsRef.current = [];
     gitLastFetchAtRef.current = 0;
+    gitExpandInitializedRef.current = false;
     setGit(null);
     setGitRoot("");
+    setGitExpandedDirs(new Set());
   }, [selectedProject]);
 
   // Keep status fresh while Workbench is active (Git side panel need not be open).
@@ -6692,12 +6796,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
   };
 
-  const toggleGitStage = useCallback(async (paths: string[], targetStaged: boolean) => {
-    if (!gitRoot || !paths.length || gitStageBusyRef.current) return;
+  const toggleGitStage = useCallback(async (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => {
+    const groups = normalizeGitStageTargets(targets);
+    if (!groups.length || gitStageBusyRef.current) return;
     gitStageBusyRef.current = true;
     try {
-      if (targetStaged) await desktopApi().terminalGitStage({ repoRoot: gitRoot, paths });
-      else await desktopApi().terminalGitUnstage({ repoRoot: gitRoot, paths });
+      for (const group of groups) {
+        if (targetStaged) await desktopApi().terminalGitStage({ repoRoot: group.repoRoot, paths: group.paths });
+        else await desktopApi().terminalGitUnstage({ repoRoot: group.repoRoot, paths: group.paths });
+      }
       await refreshGit();
       currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
     } catch (error) {
@@ -6706,7 +6813,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } finally {
       gitStageBusyRef.current = false;
     }
-  }, [gitRoot, notifyGitFailure, refreshGit]);
+  }, [notifyGitFailure, refreshGit]);
 
   const stagedCommitPaths = useMemo(() => {
     if (!gitRoot || !git) return [] as string[];
@@ -7890,7 +7997,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                     : gitLog?.commits.length ? <div className="wb-git-log-graph-list">{gitLog.commits.map((commit, index) => renderGitLogRow(commit, index))}</div>
                       : <p className="muted wb-git-empty">{t("desktop.workbench.gitLogEmpty")}</p>}
             </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
-              {gitRoot ? <p className="muted wb-git-repo-root">{gitRoot}</p> : null}
               {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
               {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
             </> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
@@ -8088,6 +8194,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       visible={side === "git" && !gitHistoryContext}
       git={git}
       gitRoot={gitRoot}
+      repositories={gitRepositories}
+      branch={projectTracking?.branch || ""}
       activeDiff={currentDiff && currentDiff.source !== "commit" ? {
         repoRoot: currentDiff.repoRoot,
         repoPath: currentDiff.repoPath,
@@ -8100,9 +8208,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       commitSuggestion={commitSuggestion}
       canCommit={canCommit}
       syncing={gitSyncing}
+      onSelectRepo={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }}
+      onSelectBranch={(selection) => void checkoutGitPanelBranch(selection)}
       onSync={() => void syncGitBranch()}
       onToggleDir={toggleGitDirectory}
-      onToggleStage={(paths, targetStaged) => void toggleGitStage(paths, targetStaged)}
+      onToggleStage={(targets, targetStaged) => void toggleGitStage(targets, targetStaged)}
       onOpenDiff={(change, staged) => void openDiff(change, staged)}
       onOpenFile={(change) => void openFile(gitChangeFilePath(change))}
       onOpenExternal={(change) => {
@@ -8149,8 +8259,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     />
     <GitGraphPortals gitLog={gitLog} gitShow={gitShow} keepGraph={gitHistoryContext?.kind === "file"} />
     <GitActionIcons visible={side === "git" && !gitHistoryContext} />
-    <GitRepositorySelector visible={side === "git" && !gitHistoryContext} repositories={gitRepositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }} />
-    <GitBranchSelector visible={side === "git" && !gitHistoryContext} repoRoot={gitRoot} value={projectTracking?.branch || ""} ariaLabel={t("desktop.workbench.switchBranch")} onChange={(selection) => void checkoutGitPanelBranch(selection)} />
     <BranchGraphNavigation visible={side === "git" && Boolean(gitLog)} title={gitHistoryTitle} ariaLabel={gitHistoryBackLabel} onBack={closeGitHistory} />
     {floatingNoteTarget ? <FloatingSessionNote target={floatingNoteTarget} onClose={() => setFloatingNoteTarget(null)} /> : null}
   </section>
