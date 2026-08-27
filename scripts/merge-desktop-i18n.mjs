@@ -11,8 +11,6 @@ const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
-  "desktop.workbench.terminalScrollTop",
-  "desktop.workbench.terminalScrollBottom",
   "desktop.workbench.terminalScrollPosition",
   "desktop.workbench.sidePanelBack",
   "desktop.workbench.renameSession",

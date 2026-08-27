@@ -8,6 +8,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.15]
+
+#### Added
+
+- **Global Notification Center**: added a persistent notification history popover and header bell button across Workbench, Agent, Notes, Kanban, Report, and Settings panels, capturing system alerts and background activity
+- **Workbench batch session selection & multi-removal**: multi-select sessions using Finder-style Cmd/Ctrl+Click and Shift+Range selection; batch-remove sessions from panel with clean ACP controller disposal, selected count indicator, and Escape to clear selection
+- **Multi-repository Git grouping in Workbench**: group file changes by Git repository root when workspace contains nested or sibling repositories, with per-repository stage/unstage controls and persistent collapse states
+- **In-app browser upload tool (`browser_upload`)**: extended `agent-resume-browser` MCP with file upload automation via Chrome DevTools Protocol (`DOM.setFileInputFiles`)
+
+#### Improved
+
+- **Session transcript interaction & caret positioning**: clicking or right-clicking in Markdown transcripts accurately places caret at cursor position for seamless text selection and copying
+- **Workbench project search & missing path handling**: polished workspace search UX with friendly error feedback when working directories are missing or inaccessible, and stripped raw Electron IPC wrappers from status notifications
+- **Database & schema reliability**: unified SQLite database engine and improved concurrency resilience during schema initialization
+
+#### Removed
+
+- **Flow DAG experimental module**: removed legacy Flow DAG canvas and MCP tools (`flow_sync`, `flow_read`, etc.) to streamline Project Note tree associations and Kanban task boards
+
 ### [0.2.14]
 
 #### Added
@@ -374,6 +393,25 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.15]
+
+#### 新增
+
+- **全局通知中心与铃铛面板**：在顶栏新增通知中心铃铛按钮与历史通知浮窗，并在 Workbench、Agent、Notes、看板、Report 及设置等各面板统一聚合系统提醒与后台任务通知
+- **Workbench 会话批量选择与批量移除**：支持类似访达（Finder）的 Cmd/Ctrl 多选与 Shift 范围连选；支持从工具栏或右键菜单一键批量将多个会话从面板中移除（自动释放 ACP 会话控制器），并在工具栏实时展示选中数量，按 Escape 快速取消选择
+- **Workbench 多仓库 Git 分组显示**：在工作区包含多个 Git 子仓库时，变更列表按仓库根目录分组聚合展示，支持按仓库一键暂存/取消暂存所有变更并保持分组折叠状态
+- **内置浏览器文件上传 MCP 工具（`browser_upload`）**：在 `agent-resume-browser` MCP 中新增文件上传工具，通过 Chrome DevTools Protocol（`DOM.setFileInputFiles`）支持自动化向网页表单上传本地文件
+
+#### 改进
+
+- **会话转录文本交互与右键光标定位**：支持在 Markdown 转录面板中右键或点击时精准定位光标位置，便于快速选中文本与摘录内容
+- **项目搜索交互与缺失路径容错**：优化工作台文件与项目搜索交互体验，当工作目录不存在或已被删除时给出友好的提示信息，并清理搜索错误通知中的 Electron IPC 包装层
+- **数据库与 Schema 迁移稳定性**：统一 SQLite 数据库引擎底层依赖，提升并发初始化与迁移过程的稳定性
+
+#### 移除
+
+- **Flow DAG 实验模块**：移除早期 Flow DAG 画布及相关 MCP 流程调度工具（`flow_sync`、`flow_read` 等），聚焦优化项目笔记父子关联树与敏捷看板视图
 
 ### [0.2.14]
 
