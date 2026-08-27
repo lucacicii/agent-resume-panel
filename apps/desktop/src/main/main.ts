@@ -123,7 +123,6 @@ import {
   type TagStatus
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
-import { registerFlowIpc } from "./flow/flowIpc";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import {
   createExternalMcpLaunchConfig,
@@ -3326,7 +3325,6 @@ app.whenReady().then(async () => {
       browserSettingsCache = settings.desktop?.browser || null;
     })
     .catch(() => undefined);
-  registerFlowIpc();
   registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
   try {

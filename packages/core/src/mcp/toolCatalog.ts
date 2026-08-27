@@ -8,7 +8,6 @@
 
 export type AgentToolCategory =
   | "notes"
-  | "flow"
   | "reports"
   | "sessions"
   | "projects"
@@ -36,12 +35,6 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_move", description: "Move a note to a different owner scope", category: "notes" },
   { name: "note_rename", description: "Rename a note file", category: "notes" },
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
-
-  // flow
-  { name: "flow_sync", description: "Create or update a sourced Flow definition", category: "flow" },
-  { name: "flow_read", description: "Read a Flow and its latest run", category: "flow" },
-  { name: "flow_validate", description: "Validate a Flow DAG", category: "flow" },
-  { name: "flow_node_complete", description: "Complete the running Flow node attempt", category: "flow" },
 
   // reports
   { name: "report_search", description: "Semantic search over memory digests", category: "reports" },

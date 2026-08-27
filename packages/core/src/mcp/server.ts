@@ -54,16 +54,6 @@ import {
   sessionSetGtdSchema
 } from "./sessionTools";
 import {
-  flowNodeCompleteSchema,
-  flowReadSchema,
-  flowSyncSchema,
-  flowValidateSchema,
-  handleFlowNodeComplete,
-  handleFlowRead,
-  handleFlowSync,
-  handleFlowValidate
-} from "./flowTools";
-import {
   handleProjectList,
   handleProjectMerge,
   handleProjectReconcile,
@@ -125,7 +115,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Flow is the only workflow execution surface. Use flow_sync to create or update sourced workflows and flow_node_complete only for the exact run/node/attempt supplied by an active Flow prompt. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
     }
   );
 
@@ -255,42 +245,6 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       inputSchema: noteRenameSchema
     },
     async (args: { noteId: string; filename: string }) => runNoteTool(() => handleNoteRename(args, ctx))
-  );
-
-  server.registerTool(
-    "flow_sync",
-    {
-      description: "Idempotently create or update a sourced Flow definition. The root and every node Note must belong to the same Project Note subtree.",
-      inputSchema: flowSyncSchema
-    },
-    async (args: import("../flow/types").FlowSyncInput) => runNoteTool(() => handleFlowSync(args, ctx))
-  );
-
-  server.registerTool(
-    "flow_read",
-    {
-      description: "Read a Flow by flowId or stable sourceKind/sourceKey, optionally including its latest run.",
-      inputSchema: flowReadSchema
-    },
-    async (args: { flowId?: string; sourceKind?: string; sourceKey?: string; includeRun?: boolean }) => runNoteTool(() => handleFlowRead(args, ctx))
-  );
-
-  server.registerTool(
-    "flow_validate",
-    {
-      description: "Validate a Flow DAG and verify that every node Note belongs to the root Project Note subtree.",
-      inputSchema: flowValidateSchema
-    },
-    async (args: { flowId?: string; sourceKind?: string; sourceKey?: string }) => runNoteTool(() => handleFlowValidate(args, ctx))
-  );
-
-  server.registerTool(
-    "flow_node_complete",
-    {
-      description: "Complete the exact running Flow node attempt, write its result to the node/root Note status regions, and make the next dependency-ready node available.",
-      inputSchema: flowNodeCompleteSchema
-    },
-    async (args: import("../flow/types").FlowCompletionInput) => runNoteTool(() => handleFlowNodeComplete(args, ctx))
   );
 
   server.registerTool(

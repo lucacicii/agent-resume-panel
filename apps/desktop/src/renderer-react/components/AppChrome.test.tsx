@@ -18,7 +18,6 @@ function renderChrome(options?: {
         "desktop.tabs.agent": "Agent",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
-        "desktop.tabs.flow": "Flow",
         "desktop.tabs.kanban": "Kanban",
         "desktop.notes.floatingDots": "Floating notes",
         "desktop.workbench.sessionDots": "Active sessions",
@@ -71,13 +70,13 @@ describe("AppChrome", () => {
     );
   });
 
-  it("places Flow immediately after Notes in primary navigation", async () => {
+  it("places Kanban immediately after Notes in primary navigation", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Flow" });
+    await screen.findByRole("button", { name: "Kanban" });
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow", "Kanban"]);
+    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Kanban"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {

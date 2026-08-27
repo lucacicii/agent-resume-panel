@@ -14,7 +14,6 @@ import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
-import { FlowPanel } from "./features/flow/FlowPanel";
 import { KanbanPanel } from "./features/kanban/KanbanPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
@@ -192,7 +191,6 @@ function MainRendererRuntime(): React.JSX.Element {
         <WorkbenchPanel />
       </DiffWorkerPool>
       <NotesPanel />
-      <FlowPanel />
       <KanbanPanel />
       <SessionsSheet />
       <Notifications />

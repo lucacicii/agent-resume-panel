@@ -8,16 +8,16 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 Agent Resume Desktop provides one local **Agent Resume MCP** service. It uses stdio, starts only when an MCP client invokes it, and reads the same local data directory as Desktop: `~/.agent-resume-panel` by default. Registration configures a **headless Node** entry (`ELECTRON_RUN_AS_NODE` + the bundled core MCP CLI) so clients do not spawn a second Electron Dock icon.
 
-This is one service with **31 tools**, not 31 independent services:
+This is one service with **33 tools**, not 33 independent services:
 
 | Area | Tools | Access |
 |---|---:|---|
 | Notes and note GTD | 12 | Read and write |
-| Executable Notes | 4 | Deterministic read/write and validation |
 | Reports | 3 | Read-only |
 | Sessions | 7 | Read, GTD update, move, and resume-command generation |
 | Projects | 4 | Read, merge, tidy, and reconcile |
 | Link graph | 1 | Read-only code lineage (`link_graph_trace`) |
+| Tags | 6 | Read and write knowledge tags |
 
 The service does not listen on a network port and does not add an authentication layer. Any client registered on this Mac receives the same access as the local Desktop data store. Register only agents and configurations you trust.
 
@@ -48,7 +48,7 @@ Use **Update** after moving or reinstalling Agent Resume. Use **Remove** to remo
 
 | Tool | Purpose |
 |---|---|
-| `link_graph_trace` | **One call** traces a field/symbol across FE → API client → HTTP path → backend handler → DTO/VO. Independent of Notes/Session/Flow — only needs Agent Resume LLM settings. An internal LLM agent performs the full search; filesystem/rg tools only verify. Pass `workspaceRoot` + `symbol`, and preferably `filePath` + `line`. Desktop Workbench uses the same core engine in-process. |
+| `link_graph_trace` | **One call** traces a field/symbol across FE → API client → HTTP path → backend handler → DTO/VO. Independent of Notes/Session — only needs Agent Resume LLM settings. An internal LLM agent performs the full search; filesystem/rg tools only verify. Pass `workspaceRoot` + `symbol`, and preferably `filePath` + `line`. Desktop Workbench uses the same core engine in-process. |
 
 Example arguments:
 
@@ -79,17 +79,6 @@ Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, an
 | `note_move` | Move a note to a different owner scope |
 | `note_rename` | Rename a note file while preserving its asset directory and references |
 | `note_set_gtd` | Set or clear a note's catalog GTD status |
-
-#### Executable Notes (Flow)
-
-| Tool | Purpose |
-|---|---|
-| `flow_sync` | Idempotently create or update a sourced Flow definition |
-| `flow_read` | Read a Flow by flow id or source key, optionally with its latest run |
-| `flow_validate` | Validate a Flow DAG and verify every node Note belongs to the root Project Note subtree |
-| `flow_node_complete` | Complete the exact running Flow node attempt and advance the workflow |
-
-Flows are driven through these tools rather than hand-authored in Markdown. `flow_sync` idempotently creates or updates a sourced Flow, and `flow_node_complete` advances the exact running attempt.
 
 GTD status values are `inbox`, `next`, `waiting`, `someday`, `reference`, and `done`.
 
@@ -138,16 +127,16 @@ An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_
 
 Agent Resume Desktop 提供一个本机 **Agent Resume MCP** 服务。它使用 stdio，仅在 MCP 客户端调用时启动，并读取与 Desktop 相同的本机数据目录，默认是 `~/.agent-resume-panel`。注册时写入 **无界面 Node** 启动方式（`ELECTRON_RUN_AS_NODE` + 内置 core MCP CLI），避免每个客户端再拉起一个 Electron Dock 图标。
 
-这是一个服务，包含 **31 个工具**，不是 31 个相互独立的服务：
+这是一个服务，包含 **33 个工具**，不是 33 个相互独立的服务：
 
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
 | Notes 与笔记 GTD | 12 | 读写 |
-| Executable Notes | 4 | 确定性读写与校验 |
 | Reports | 3 | 只读 |
 | Sessions | 7 | 读取、更新 GTD、移动、生成恢复命令 |
 | Projects | 4 | 读取、合并、整理、协调 |
 | 链路图 | 1 | 只读代码血缘（`link_graph_trace`） |
+| Tags | 6 | 读写知识标签 |
 
 服务不会监听网络端口，也不会额外增加认证层。本机上注册的任意客户端都会获得访问 Desktop 本机数据的权限，因此只应注册你信任的 Agent 与配置。
 
@@ -178,7 +167,7 @@ Desktop 可自动检测并注册以下客户端：
 
 | 工具 | 用途 |
 |---|---|
-| `link_graph_trace` | **一次调用**完成字段/符号跨端链路：前端 → API 客户端 → HTTP 路径 → 后端 handler → DTO/VO。与 Notes/Session/Flow **解耦**，仅需 Agent Resume LLM 配置。内部由 LLM 逐步搜索，工具只做读盘/rg 验证。必填 `workspaceRoot` + `symbol`，建议同时传 `filePath`、`line`。Desktop Workbench 进程内调用同一 core 引擎。 |
+| `link_graph_trace` | **一次调用**完成字段/符号跨端链路：前端 → API 客户端 → HTTP 路径 → 后端 handler → DTO/VO。与 Notes/Session **解耦**，仅需 Agent Resume LLM 配置。内部由 LLM 逐步搜索，工具只做读盘/rg 验证。必填 `workspaceRoot` + `symbol`，建议同时传 `filePath`、`line`。Desktop Workbench 进程内调用同一 core 引擎。 |
 
 示例参数：
 
@@ -209,17 +198,6 @@ Desktop 可自动检测并注册以下客户端：
 | `note_move` | 将笔记移动到不同的所有者范围 |
 | `note_rename` | 重命名笔记文件，同时保留其资产目录和引用 |
 | `note_set_gtd` | 设置或清除笔记的 catalog GTD 状态 |
-
-#### Executable Notes（Flow）
-
-| 工具 | 用途 |
-|---|---|
-| `flow_sync` | 幂等地创建或更新有源的 Flow 定义 |
-| `flow_read` | 按 flow id 或 source key 读取 Flow，可选择包含最近一次 run |
-| `flow_validate` | 校验 Flow DAG，并确认每个节点笔记都属于根 Project Note 子树 |
-| `flow_node_complete` | 完成正在执行的 Flow 节点 attempt，并推进工作流 |
-
-Flow 通过这些工具驱动，不应由 Agent 手工拼接 Markdown。`flow_sync` 幂等地创建或更新有源 Flow，`flow_node_complete` 推进确切运行的 attempt。
 
 GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 

@@ -884,7 +884,7 @@ return createPortal(
   );
 }
 
-const TOOL_CATEGORY_ORDER: AgentToolCategory[] = ["notes", "flow", "reports", "sessions", "projects", "link_graph", "tags"];
+const TOOL_CATEGORY_ORDER: AgentToolCategory[] = ["notes", "reports", "sessions", "projects", "link_graph", "tags"];
 
 function ToolSettingsPopover({ prefs, tools, onPrefsChange, onClose, t }: {
   prefs: AskToolPrefs;
@@ -907,7 +907,6 @@ function ToolSettingsPopover({ prefs, tools, onPrefsChange, onClose, t }: {
   ];
   const categoryLabel: Record<AgentToolCategory, string> = {
     notes: t("desktop.agent.toolCategory.notes"),
-    flow: t("desktop.agent.toolCategory.flow"),
     reports: t("desktop.agent.toolCategory.reports"),
     sessions: t("desktop.agent.toolCategory.sessions"),
     projects: t("desktop.agent.toolCategory.projects"),

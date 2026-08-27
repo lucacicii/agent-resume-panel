@@ -94,12 +94,6 @@ import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./Scr
 import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
 import { WB_PATH_DND_MIME, hasWorkbenchPathDnd, shellQuotePath, startWorkbenchPathDrag } from "./workbenchDnd";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
-import {
-  emitWorkbenchSessionLaunched,
-  onWorkbenchLaunchSession,
-  waitForCatalogSession,
-  type LaunchSessionRequest
-} from "./sessionLaunchBridge";
 import { storedWidth } from "../../storage";
 import type { WorkbenchArrowDirection } from "../../../shared/workbenchShortcuts";
 import { startModalOpenReporter } from "./shortcutModalReporter";
@@ -190,7 +184,6 @@ type TerminalPane = {
   projectPath: string;
   cwd: string;
   command?: string;
-  noteId?: string;
   initialPrompt?: string;
   ptyId?: number;
   branch?: string | null;
@@ -206,11 +199,6 @@ type PendingWorkbenchSession = {
   title: string;
   createdAt: number;
   knownSessionKeys: string[];
-  /** When set, resolve Flow-run launch waiter after catalog binds. */
-  flowRequestId?: string;
-  flowId?: string;
-  flowNodeId?: string;
-  noteId?: string;
   /** When set, auto-assign the bound catalog session to this project folder. */
   folderProjectId?: string;
   folderId?: string;
@@ -3159,8 +3147,8 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     if (!active) return;
-    // The Workbench can become active directly (for example, from a Flow
-    // launch) without a tab-change event. Load aggregates once in that case.
+    // The Workbench can become active without a tab-change event. Load
+    // aggregates once in that case.
     if (!projectMetadataLoadedRef.current) {
       void reloadWorkbench();
       return;
@@ -3340,18 +3328,13 @@ export function WorkbenchPanel(): ReactPortal | null {
 
     for (const pending of [...pendingSessions].sort((a, b) => a.createdAt - b.createdAt)) {
       const known = new Set(pending.knownSessionKeys);
-      // Flow launches: match same project first; prefer provider, but allow
-      // any new CLI session in that project (catalog indexing can lag / rename paths).
       const candidates = sessions
         .filter((session) => {
           const key = sessionKey(session);
           if (session.provider === "chat") return false;
-          const noteMatch = Boolean(pending.noteId && session.title?.includes(pending.noteId));
-          if ((known.has(key) || claimed.has(key)) && !noteMatch) return false;
-          if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath) && !noteMatch) return false;
-          // Wider window for Flow-driven launches (CLI agents can take a while to register).
-          const windowMs = pending.flowRequestId ? 180_000 : 15_000;
-          if (session.updatedAt < pending.createdAt - windowMs && !noteMatch) return false;
+          if (known.has(key) || claimed.has(key)) return false;
+          if (projectPathKey(session.projectPath) !== projectPathKey(pending.projectPath)) return false;
+          if (session.updatedAt < pending.createdAt - 15_000) return false;
           return true;
         })
         .sort((a, b) => {
@@ -3391,29 +3374,6 @@ export function WorkbenchPanel(): ReactPortal | null {
             if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
           });
       }
-      if (!pending.flowRequestId) continue;
-      const binding = pending.flowId && pending.flowNodeId
-        ? desktopApi().flowBindSession({
-            flowId: pending.flowId,
-            nodeId: pending.flowNodeId,
-            provider: catalogProvider,
-            sessionId
-          })
-        : Promise.resolve();
-      void binding.then(() => {
-        emitWorkbenchSessionLaunched({
-          requestId: pending.flowRequestId!,
-          ok: true,
-          catalogProvider,
-          sessionId
-        });
-      }).catch((error) => {
-        emitWorkbenchSessionLaunched({
-          requestId: pending.flowRequestId!,
-          ok: false,
-          error: statusError(error)
-        });
-      });
     }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
     // The active pending terminal just bound to a catalog session: move the
@@ -4248,7 +4208,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     projectPath = selectedProject || cwd,
     openedSessionKey?: string,
     group: Exclude<WorkbenchPaneGroup, "code" | "browser"> = openedSessionKey ? "session" : "terminal",
-    launch?: { noteId?: string; initialPrompt?: string }
+    launch?: { initialPrompt?: string }
   ): string => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
     const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey, ...launch };
@@ -4263,7 +4223,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     provider: AgentProvider,
     projectPath: string,
     title: string,
-    flow?: { requestId: string; flowId?: string; nodeId?: string; noteId?: string },
     folder?: { projectId?: string; folderId?: string | null }
   ) => {
     const pending: PendingWorkbenchSession = {
@@ -4274,141 +4233,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       title,
       createdAt: Date.now(),
       knownSessionKeys: sessions.map(sessionKey),
-      flowRequestId: flow?.requestId,
-      flowId: flow?.flowId,
-      flowNodeId: flow?.nodeId,
-      noteId: flow?.noteId,
       folderProjectId: folder?.projectId,
       folderId: folder?.folderId || undefined
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
   }, [sessions]);
-
-  // Must sit after addTerminal / addPendingSession / selectProject (TDZ if deps are read earlier).
-  // Dedupe re-dispatched launch events (Notes sends a follow-up frame for remount races).
-  const handledLaunchRequestIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    return onWorkbenchLaunchSession((request: LaunchSessionRequest) => {
-      if (handledLaunchRequestIdsRef.current.has(request.requestId)) return;
-      handledLaunchRequestIdsRef.current.add(request.requestId);
-      // Keep set bounded.
-      if (handledLaunchRequestIdsRef.current.size > 40) {
-        const first = handledLaunchRequestIdsRef.current.values().next().value;
-        if (first) handledLaunchRequestIdsRef.current.delete(first);
-      }
-
-      void (async () => {
-        try {
-          const cwd = request.cwd?.trim();
-          if (!cwd) {
-            emitWorkbenchSessionLaunched({
-              requestId: request.requestId,
-              ok: false,
-              error: "Working directory is required."
-            });
-            return;
-          }
-          selectProject(cwd);
-          setActive(true);
-
-          // Flow runs only launch CLI sessions (ACP is ignored).
-          if (request.channel === "acp") {
-            emitWorkbenchSessionLaunched({
-              requestId: request.requestId,
-              ok: false,
-              error: "Flow nodes use CLI sessions only (ACP is disabled)."
-            });
-            return;
-          }
-
-          const knownKeys = new Set(sessions.map(sessionKey));
-          const startedAt = Date.now();
-
-          const result = await desktopApi().workbenchNewSession({
-            cwd,
-            provider: request.provider as AgentProvider,
-            executionMode: request.executionMode,
-            noteId: request.noteId,
-            initialPrompt: request.initialPrompt
-          });
-          if (result.unsupportedYolo || result.warning) {
-            notifyDesktop({
-              text: t("desktop.workbench.yoloNotSupported", request.provider),
-              kind: "info"
-            });
-          }
-          if (result.mode === "xterm" && result.command) {
-            const title = request.title || t("desktop.workbench.newSessionTitle", basename(cwd));
-            const terminalKey = addTerminal(
-              title,
-              result.cwd,
-              result.command,
-              cwd,
-              undefined,
-              "session",
-              { noteId: request.noteId, initialPrompt: request.initialPrompt }
-            );
-            addPendingSession(
-              terminalKey,
-              request.provider as AgentProvider,
-              cwd,
-              title,
-              { requestId: request.requestId, flowId: request.flowId, nodeId: request.flowNodeId, noteId: request.noteId }
-            );
-            // Do not only wait for pending-session assignment (can miss path/provider).
-            // Actively poll catalog and resolve Notes as soon as a session appears.
-            void loadSessions();
-            const found = await waitForCatalogSession({
-              cwd,
-              provider: request.provider,
-              noteId: request.noteId,
-              knownKeys,
-              notBeforeMs: startedAt - 30_000,
-              timeoutMs: 120_000
-            });
-            if (found) {
-              emitWorkbenchSessionLaunched({
-                requestId: request.requestId,
-                ok: true,
-                catalogProvider: found.catalogProvider,
-                sessionId: found.sessionId
-              });
-              // Attach catalog key onto the terminal pane when possible.
-              setTerminals((current) =>
-                current.map((pane) =>
-                  pane.key === terminalKey
-                    ? { ...pane, sessionKey: `${found.catalogProvider}:${found.sessionId}` }
-                    : pane
-                )
-              );
-              setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== terminalKey));
-              return;
-            }
-            emitWorkbenchSessionLaunched({
-              requestId: request.requestId,
-              ok: false,
-              error:
-                "Terminal opened, but catalog has no new session to bind yet. Wait for session sync, then click Start session."
-            });
-            return;
-          }
-
-          emitWorkbenchSessionLaunched({
-            requestId: request.requestId,
-            ok: false,
-            error: "Note execution requires an internal Workbench terminal."
-          });
-        } catch (error) {
-          emitWorkbenchSessionLaunched({
-            requestId: request.requestId,
-            ok: false,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      })();
-    });
-  }, [addPendingSession, addTerminal, loadSessions, selectProject, sessions, t]);
 
   const refreshTerminalGit = useCallback(async (key: string) => {
     const pane = terminalsRef.current.find((item) => item.key === key);
@@ -4850,7 +4680,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
           const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
-          addPendingSession(terminalKey, target.provider, cwd, title, undefined, focusedFolder || undefined);
+          addPendingSession(terminalKey, target.provider, cwd, title, focusedFolder || undefined);
         }
         await loadSessions();
       }

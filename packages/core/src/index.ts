@@ -108,9 +108,6 @@ export {
   setNoteGtdStatus,
   clearNoteGtdStatus
 } from "./notes/gtd";
-export * from "./flow/types";
-export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
-export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -722,7 +719,7 @@ export type { RenameHomes } from "./session/rename";
 export { updateNativeSessionCwd } from "./session/nativeCwd";
 export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
 
-// Link graph engine (domain — no Notes/Session/Flow deps; MCP + Desktop both call this)
+// Link graph engine (domain — no Notes/Session deps; MCP + Desktop both call this)
 export { runLinkGraphTrace } from "./linkgraph/agent";
 export {
   factsFromSteps,

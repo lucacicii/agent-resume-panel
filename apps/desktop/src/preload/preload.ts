@@ -30,7 +30,6 @@ import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTar
 import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
 import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
-import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
 import type {
   LinkGraphAnalyzeArgs,
   LinkGraphAnalyzeResult,
@@ -1377,26 +1376,6 @@ export interface DesktopApi {
     sourceProjectId: string;
     absolutePath: string;
   }): Promise<{ projectId: string; movedSessions: number; created: boolean }>;
-  flowList(args?: { projectId?: string }): Promise<FlowWorkflow[]>;
-  flowGet(args: { flowId: string }): Promise<FlowDefinition>;
-  flowCreate(args: { projectId: string; projectPath: string; name: string }): Promise<FlowDefinition>;
-  flowUpdateGraph(args: { flowId: string; name?: string; nodes: FlowGraphNodeInput[]; edges: FlowGraphEdgeInput[] }): Promise<FlowDefinition>;
-  flowDelete(args: { flowId: string }): Promise<{ ok: true }>;
-  flowTemplatesList(): Promise<FlowTemplate[]>;
-  flowTemplateSave(args: { flowId: string; name: string; description?: string }): Promise<FlowTemplate>;
-  flowTemplateDelete(args: { templateId: string }): Promise<{ ok: true }>;
-  flowTemplateInstantiate(args: { templateId: string; projectId: string; projectPath: string; name?: string }): Promise<FlowDefinition>;
-  flowRunStart(args: { flowId: string }): Promise<FlowAdvanceResult>;
-  flowRunGet(args: { runId: string }): Promise<FlowRun>;
-  flowRunLatest(args: { flowId: string }): Promise<FlowRun | null>;
-  flowRunMarkNodeRunning(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowBindSession(args: { flowId: string; nodeId: string; provider: string; sessionId: string }): Promise<FlowDefinition>;
-  flowRunCompleteNode(args: { runId: string; nodeId: string; status: FlowResultStatus; summary: string }): Promise<FlowAdvanceResult>;
-  flowRunSetNodeStatus(args: { flowId: string; runId?: string; nodeId: string; status: FlowNodeStatus }): Promise<FlowDefinition>;
-  flowRunRetryNode(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowRunSkipNode(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowRunCancel(args: { runId: string }): Promise<FlowAdvanceResult>;
-  onFlowChanged(callback: (detail: { flowId?: string; runId?: string }) => void): () => void;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
   getAppVersion(): Promise<string>;
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
@@ -1799,30 +1778,6 @@ const api: DesktopApi = {
   listProjectPathVariants: (args) => ipcRenderer.invoke("projects:listPathVariants", args),
   mergeProjects: (args) => ipcRenderer.invoke("projects:merge", args),
   splitProjectPath: (args) => ipcRenderer.invoke("projects:splitPath", args),
-  flowList: (args) => ipcRenderer.invoke("flow:list", args),
-  flowGet: (args) => ipcRenderer.invoke("flow:get", args),
-  flowCreate: (args) => ipcRenderer.invoke("flow:create", args),
-  flowUpdateGraph: (args) => ipcRenderer.invoke("flow:updateGraph", args),
-  flowDelete: (args) => ipcRenderer.invoke("flow:delete", args),
-  flowTemplatesList: () => ipcRenderer.invoke("flow:templatesList"),
-  flowTemplateSave: (args) => ipcRenderer.invoke("flow:templateSave", args),
-  flowTemplateDelete: (args) => ipcRenderer.invoke("flow:templateDelete", args),
-  flowTemplateInstantiate: (args) => ipcRenderer.invoke("flow:templateInstantiate", args),
-  flowRunStart: (args) => ipcRenderer.invoke("flow:runStart", args),
-  flowRunGet: (args) => ipcRenderer.invoke("flow:runGet", args),
-  flowRunLatest: (args) => ipcRenderer.invoke("flow:runLatest", args),
-  flowRunMarkNodeRunning: (args) => ipcRenderer.invoke("flow:runMarkNodeRunning", args),
-  flowBindSession: (args) => ipcRenderer.invoke("flow:bindSession", args),
-  flowRunCompleteNode: (args) => ipcRenderer.invoke("flow:runCompleteNode", args),
-  flowRunSetNodeStatus: (args) => ipcRenderer.invoke("flow:runSetNodeStatus", args),
-  flowRunRetryNode: (args) => ipcRenderer.invoke("flow:runRetryNode", args),
-  flowRunSkipNode: (args) => ipcRenderer.invoke("flow:runSkipNode", args),
-  flowRunCancel: (args) => ipcRenderer.invoke("flow:runCancel", args),
-  onFlowChanged: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, detail: { flowId?: string; runId?: string }) => callback(detail);
-    ipcRenderer.on("flow:changed", handler);
-    return () => ipcRenderer.removeListener("flow:changed", handler);
-  },
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
   getAppVersion: async () => {
     const result = (await ipcRenderer.invoke("app:getVersion")) as { version?: string };
