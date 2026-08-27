@@ -12390,8 +12390,30 @@ body.is-pane-resizing-row * {
   word-break: break-all;
 }
 
+.wb-list-item.is-selected:not(.active) {
+  background: var(--color-fill-secondary);
+}
+
 .wb-list-item.active {
   background: var(--color-fill-primary);
+}
+
+.wb-list-remove-btn {
+  appearance: none;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-destructive);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wb-list-remove-btn:hover {
+  background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
 }
 
 .notes-list-item-top,
@@ -15352,6 +15374,14 @@ body::before {
     linear-gradient(105deg, rgba(255,43,214,.14), rgba(0,240,255,.035) 68%),
     rgba(7,5,15,.9);
   box-shadow: inset -2px 0 0 rgba(0,240,255,.55), 0 0 14px rgba(255,43,214,.12);
+}
+
+[data-visual-theme="cyberpunk"] .wb-list-item.is-selected:not(.active) {
+  border-color: rgba(0, 240, 255, .42);
+  background:
+    linear-gradient(105deg, rgba(0, 240, 255, .12), rgba(255, 43, 214, .05) 68%),
+    rgba(7, 5, 15, .78);
+  box-shadow: inset 2px 0 0 rgba(0, 240, 255, .45);
 }
 
 [data-visual-theme="cyberpunk"] .notes-list-item.active,

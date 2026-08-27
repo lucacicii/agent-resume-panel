@@ -471,6 +471,14 @@ function sessionKey(session: AgentSession): string {
   return `${session.provider}:${session.id}`;
 }
 
+function catalogSessionKeysInRows(rows: readonly WorkbenchSessionRow[]): string[] {
+  const keys: string[] = [];
+  for (const row of rows) {
+    if (row.kind === "session") keys.push(sessionKey(row.session));
+  }
+  return keys;
+}
+
 function folderAssignmentKey(provider: string, agentSessionId: string): string {
   return `${provider}:${agentSessionId}`;
 }
@@ -2607,6 +2615,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionQuery, setSessionQuery] = useState("");
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
+  const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
+  const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageBoolean(FOLDERS_COLLAPSED_KEY));
   const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 560));
@@ -3476,6 +3486,21 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [contextMenu]);
 
   useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (contextMenu) return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (!selectedSessionKeys.size) return;
+      event.preventDefault();
+      setSelectedSessionKeys(new Set());
+      setSelectionAnchorKey("");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, contextMenu, selectedSessionKeys.size]);
+
+  useEffect(() => {
     if (!gitLogContextMenu) return;
     const dismiss = (event: MouseEvent) => {
       if (!(event.target instanceof Element) || !event.target.closest(".wb-git-log-context-menu")) setGitLogContextMenu(null);
@@ -3795,6 +3820,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activeSessionRowIndex = useMemo(() => visibleSessionRows.findIndex((row) =>
     row.kind === "pending" ? row.pending.key === activeSessionKey : sessionKey(row.session) === activeSessionKey
   ), [activeSessionKey, visibleSessionRows]);
+  useEffect(() => {
+    const visibleKeys = new Set(catalogSessionKeysInRows(visibleSessionRows));
+    setSelectedSessionKeys((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const key of current) {
+        if (visibleKeys.has(key)) next.add(key);
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+    setSelectionAnchorKey((current) => current && !visibleKeys.has(current) ? "" : current);
+  }, [visibleSessionRows]);
   const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
   const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
   const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
@@ -4058,6 +4096,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       else localStorage.removeItem(PROJECT_KEY);
     } catch { /* persistence is optional */ }
     if (!options?.keepSessionKey) setActiveSessionKey("");
+    if (projectChanged) {
+      setSelectedSessionKeys((current) => current.size ? new Set() : current);
+      setSelectionAnchorKey((current) => current ? "" : current);
+    }
     if (!options?.keepSide && projectChanged) setSide(null);
     setGit(null);
     setGitLog(null);
@@ -4081,9 +4123,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [reloadWorkbench, selectProject, setStatus, t]);
 
   const selectProjectFolder = useCallback((project: WorkbenchProject, folderId: string | null) => {
+    const folderChanged = selectedFolderId !== folderId;
     selectProject(project.path, { keepSessionKey: true });
     setSelectedFolderId(folderId);
-  }, [selectProject]);
+    if (folderChanged) {
+      setSelectedSessionKeys((current) => current.size ? new Set() : current);
+      setSelectionAnchorKey((current) => current ? "" : current);
+    }
+  }, [selectProject, selectedFolderId]);
 
   const focusPendingSession = useCallback((pending: PendingWorkbenchSession) => {
     selectProject(pending.projectPath, { keepSessionKey: true });
@@ -4092,6 +4139,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [setActivePane]);
 
   const selectSidebarView = (view: WorkbenchSidebarView) => {
+    if (view !== sidebarView) {
+      setSelectedSessionKeys((current) => current.size ? new Set() : current);
+      setSelectionAnchorKey((current) => current ? "" : current);
+    }
     setSidebarView(view);
     try { localStorage.setItem(SIDEBAR_VIEW_KEY, view); } catch { /* persistence is optional */ }
     if (view === "tags") {
@@ -4124,7 +4175,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [projectQuery, showObsoleteTags, tagCategoryFilter]);
 
   const selectTag = useCallback(async (tag: WorkbenchTagItem) => {
-    setSelectedTag(tag.normalizedTag || tag.tag);
+    const nextTag = tag.normalizedTag || tag.tag;
+    if (nextTag !== selectedTag) {
+      setSelectedSessionKeys((current) => current.size ? new Set() : current);
+      setSelectionAnchorKey((current) => current ? "" : current);
+    }
+    setSelectedTag(nextTag);
     try {
       const api = desktopApi();
       if (!api.listTagEntities) {
@@ -4149,7 +4205,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch {
       setTagEntityKeys(new Set());
     }
-  }, [showObsoleteTags]);
+  }, [selectedTag, showObsoleteTags]);
 
   useEffect(() => {
     if (sidebarView !== "tags") return;
@@ -5189,9 +5245,52 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const sessionMenu = (event: React.MouseEvent, session: AgentSession) => {
     event.preventDefault();
+    const key = sessionKey(session);
+    if (!selectedSessionKeys.has(key)) {
+      setSelectedSessionKeys(new Set([key]));
+      setSelectionAnchorKey(key);
+    }
     const menu: WorkbenchContextMenu = { kind: "session", session, x: event.clientX, y: event.clientY };
     setContextMenu(menu);
     refreshFloatingNoteAvailability(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)), menu);
+  };
+
+  const selectCatalogSessionRange = useCallback((anchorKey: string, targetKey: string) => {
+    const catalogKeys = catalogSessionKeysInRows(visibleSessionRows);
+    const anchorIndex = catalogKeys.indexOf(anchorKey);
+    const targetIndex = catalogKeys.indexOf(targetKey);
+    if (targetIndex < 0) {
+      setSelectedSessionKeys(new Set([targetKey]));
+      setSelectionAnchorKey(targetKey);
+      return;
+    }
+    const start = anchorIndex < 0 ? targetIndex : Math.min(anchorIndex, targetIndex);
+    const end = anchorIndex < 0 ? targetIndex : Math.max(anchorIndex, targetIndex);
+    setSelectedSessionKeys(new Set(catalogKeys.slice(start, end + 1)));
+    setSelectionAnchorKey(anchorIndex < 0 ? targetKey : anchorKey);
+  }, [visibleSessionRows]);
+
+  const handleCatalogSessionClick = (event: React.MouseEvent, session: AgentSession) => {
+    const key = sessionKey(session);
+    if (event.shiftKey) {
+      event.preventDefault();
+      selectCatalogSessionRange(selectionAnchorKey || key, key);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      setSelectedSessionKeys((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      setSelectionAnchorKey(key);
+      return;
+    }
+    setSelectedSessionKeys(new Set([key]));
+    setSelectionAnchorKey(key);
+    void openSession(session);
   };
 
   const sessionTabMenu = (
@@ -5667,16 +5766,40 @@ export function WorkbenchPanel(): ReactPortal | null {
       cancelSessionAutoRename(sessionKey(session));
       await performAutoRenameSession(session.provider, session.id);
     }
-    if (action === "remove" && window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id))) {
-      const removeKey = sessionKey(session);
-      cancelSessionAutoRename(removeKey);
-      deferredAutoRenameKeysRef.current.delete(removeKey);
-      try {
-        await desktopApi().hideSession({ provider: session.provider, id: session.id });
-        await reloadWorkbench();
-        window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
-      } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+    if (action === "remove") {
+      const selectedCatalog = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
+      const targets = selectedCatalog.length > 1 && selectedSessionKeys.has(sessionKey(session))
+        ? selectedCatalog
+        : [session];
+      const confirmed = targets.length > 1
+        ? window.confirm(t("desktop.workbench.removeMultipleConfirm", targets.length))
+        : window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id));
+      if (!confirmed) return;
+      await removeSelectedSessionsFromPanel(targets);
     }
+  };
+
+  const removeSelectedSessionsFromPanel = async (targets: AgentSession[]) => {
+    if (!targets.length) return;
+    for (const item of targets) {
+      const key = sessionKey(item);
+      cancelSessionAutoRename(key);
+      deferredAutoRenameKeysRef.current.delete(key);
+    }
+    try {
+      const api = desktopApi();
+      if (targets.length > 1 && typeof api.hideSessions === "function") {
+        await api.hideSessions({ sessions: targets.map((item) => ({ provider: item.provider, id: item.id })) });
+      } else {
+        for (const item of targets) {
+          await api.hideSession({ provider: item.provider, id: item.id });
+        }
+      }
+      setSelectedSessionKeys(new Set());
+      setSelectionAnchorKey("");
+      await reloadWorkbench();
+      window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+    } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
   const syncEditorFromDisk = useCallback(async (editor: EditorPane) => {
@@ -7678,7 +7801,19 @@ export function WorkbenchPanel(): ReactPortal | null {
               </Fragment>;
               }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
             </div>
-          </> : sidebarView === "gtd" ? <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => setSelectedGtdStatus(gtdStatus)}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => setSelectedGtdStatus("done")}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>
+          </> : sidebarView === "gtd" ? <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => {
+                if (gtdStatus !== selectedGtdStatus) {
+                  setSelectedSessionKeys((current) => current.size ? new Set() : current);
+                  setSelectionAnchorKey((current) => current ? "" : current);
+                }
+                setSelectedGtdStatus(gtdStatus);
+              }}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => {
+                  if (selectedGtdStatus !== "done") {
+                    setSelectedSessionKeys((current) => current.size ? new Set() : current);
+                    setSelectionAnchorKey((current) => current ? "" : current);
+                  }
+                  setSelectedGtdStatus("done");
+                }}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>
           : <div className="wb-folder-section wb-tags-folder-section">
             <div className="wb-folder-section-label">{t("desktop.workbench.tagsView")}</div>
             <label className="wb-tags-obsolete-toggle">
@@ -7713,7 +7848,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       <aside className="wb-list-pane">
         <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
           <button ref={sessionSearchButtonRef} type="button" className={`wb-icon-btn wb-session-search-btn${sessionQuery && !sessionSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={sessionSearchOpen} aria-controls="wb-session-search" onClick={openSessionSearch}><ThemeIcon name="search" size={15} /></button>
-          <input ref={sessionSearchInputRef} id="wb-session-search" type="search" className="wb-search wb-session-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={sessionQuery} hidden={!sessionSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => setSessionQuery(event.target.value)} onKeyDown={(event) => {
+          <input ref={sessionSearchInputRef} id="wb-session-search" type="search" className="wb-search wb-session-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={sessionQuery} hidden={!sessionSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
             event.stopPropagation();
@@ -7728,11 +7863,22 @@ export function WorkbenchPanel(): ReactPortal | null {
             aria-label={t("desktop.workbench.sessionFilter")}
             value={sessionFilter}
             options={["all", "active"] as const satisfies readonly SessionFilter[]}
-            onChange={setSessionFilter}
+            onChange={(filter) => {
+              if (filter !== sessionFilter) {
+                setSelectedSessionKeys((current) => current.size ? new Set() : current);
+                setSelectionAnchorKey((current) => current ? "" : current);
+              }
+              setSessionFilter(filter);
+            }}
             getLabel={(filter) => t(`desktop.common.${filter}`)}
           />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p><button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void reloadWorkbench()}><ThemeIcon name="refresh" size={15} /></button></div>
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
+          const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
+          if (!targets.length) return;
+          if (!window.confirm(t("desktop.workbench.removeMultipleConfirm", targets.length))) return;
+          void removeSelectedSessionsFromPanel(targets);
+        }}>{t("desktop.workbench.removeFromPanel")}</button> : null}<button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void reloadWorkbench()}><ThemeIcon name="refresh" size={15} /></button></div>
         {visibleSessionRows.length ? <VirtualList
           className="wb-list"
           items={visibleSessionRows}
@@ -7747,17 +7893,24 @@ export function WorkbenchPanel(): ReactPortal | null {
               return <button type="button" className={`wb-list-item has-wb-activity${activeSessionKey === pending.key ? " active" : ""}`} onClick={() => focusPendingSession(pending)}><span className="wb-list-item-top"><span className="wb-session-title-wrap"><span className="wb-session-activity-dot" aria-hidden="true" /><span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{pending.title}</span></span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(pending.createdAt)}</span><span className="s-provider-tag" data-provider={pending.provider}>{pending.provider}</span>{" · "}{aliases[pending.projectPath] || basename(pending.projectPath)}</span></button>;
             }
             const session = row.session;
-            const isOpen = openSessionKeys.has(sessionKey(session));
+            const key = sessionKey(session);
+            const isOpen = openSessionKeys.has(key);
+            const isSelected = selectedSessionKeys.has(key);
             const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
             const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
             return <button
               type="button"
-              draggable
-              className={`wb-list-item${activeSessionKey === sessionKey(session) ? " active" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}${draggedSessionKey === sessionKey(session) ? " is-drag-source" : ""}`}
+              draggable={selectedSessionKeys.size <= 1}
+              aria-selected={isSelected}
+              className={`wb-list-item${activeSessionKey === key ? " active" : ""}${isSelected ? " is-selected" : ""}${isOpen ? " has-wb-activity" : ""}${otherMachine ? " is-other-machine" : ""}${draggedSessionKey === key ? " is-drag-source" : ""}`}
               onDragStart={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                  event.preventDefault();
+                  return;
+                }
                 clearWorkbenchDrag();
                 draggedSessionRef.current = session;
-                setDraggedSessionKey(sessionKey(session));
+                setDraggedSessionKey(key);
                 event.dataTransfer.setData("text/plain", session.title || session.id);
                 event.dataTransfer.setData("application/x-agent-resume-workbench-session", JSON.stringify({
                   provider: session.provider,
@@ -7767,7 +7920,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
               onDragEnd={clearWorkbenchDrag}
               onContextMenu={(event) => sessionMenu(event, session)}
-              onClick={() => void openSession(session)}
+              onClick={(event) => handleCatalogSessionClick(event, session)}
               title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
             ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
@@ -8128,7 +8281,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
-      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : <>
+      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
+      </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
         <button type="button" role="menuitem" onClick={() => void runContextAction("preview")}>{t("desktop.workbench.preview")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>

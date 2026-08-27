@@ -2165,6 +2165,21 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
+    "sessions:hideMany",
+    async (_event, args: { sessions: Array<{ provider: AgentProvider; id: string }> }) => {
+      const sessions = Array.isArray(args?.sessions) ? args.sessions : [];
+      for (const session of sessions) {
+        const provider = session?.provider;
+        const id = String(session?.id || "").trim();
+        if (!provider || !id) continue;
+        if (provider === "chat") disposeAcpController(id);
+        await hideSessionAction({ provider, id });
+      }
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle(
     "sessions:moveToProject",
     async (_event, args: { provider: AgentProvider; id: string; targetProjectPath: string }) => {
       const provider = args.provider;

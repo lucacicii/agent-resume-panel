@@ -6734,4 +6734,327 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector('[data-pane-group="code"] .wb-terminal-tab.is-editor.active')?.textContent).toContain("README.md");
     expect(screen.queryByPlaceholderText("/work/app/README.md")).toBeNull();
   });
+
+  const SESSION_SELECT_MESSAGES: Record<string, string> = {
+    "desktop.notes.filterProjects": "Filter projects",
+    "desktop.notes.projectFilter": "Project filter",
+    "desktop.common.search": "Search",
+    "desktop.common.all": "All",
+    "desktop.common.active": "Active",
+    "desktop.common.pinned": "Pinned",
+    "desktop.common.refresh": "Refresh",
+    "desktop.workbench.allSessions": "All sessions",
+    "desktop.workbench.noSessionsInProject": "No sessions",
+    "desktop.workbench.noProjects": "No projects",
+    "desktop.workbench.sidePanelExplorer": "Explorer",
+    "desktop.workbench.sidePanelGit": "Git",
+    "desktop.workbench.newTerminal": "New terminal",
+    "desktop.workbench.newSession": "New session",
+    "desktop.workbench.selectSessionHint": "Select a session",
+    "desktop.workbench.selectProjectHint": "Select a project",
+    "desktop.workbench.externalTerminalHint": "Opened externally",
+    "desktop.workbench.terminalLabel": "Terminal {0}",
+    "desktop.workbench.preview": "Preview",
+    "desktop.workbench.mountNote": "Mount note",
+    "desktop.workbench.removeFromPanel": "Remove from panel",
+    "desktop.workbench.removeFromPanelCount": "Remove {0} from panel",
+    "desktop.workbench.removeConfirm": "Remove {0} from panel?",
+    "desktop.workbench.removeMultipleConfirm": "Remove {0} sessions from panel? Native agent storage is unchanged.",
+    "desktop.workbench.selectedCount": "{0} selected",
+    "desktop.workbench.setGtdStatus": "Set GTD status",
+    "desktop.workbench.gtdStatus.inbox": "Inbox",
+    "desktop.workbench.gtdStatus.next": "Next",
+    "desktop.workbench.gtdStatus.waiting": "Waiting",
+    "desktop.workbench.gtdStatus.someday": "Someday",
+    "desktop.workbench.gtdStatus.reference": "Reference",
+    "desktop.workbench.gtdStatus.done": "Done"
+  };
+
+  function listItem(title: string): HTMLButtonElement {
+    const row = [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+      .find((button) => button.textContent?.includes(title));
+    if (!row) throw new Error(`session row missing: ${title}`);
+    return row;
+  }
+
+  it("toggles catalog sessions with cmd-click without opening them", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchOpenSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "codex", id: "session-3", title: "Write docs", projectPath: "/work/app", updatedAt: 1 }
+      ],
+      workbenchOpenSession
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Write docs"), { metaKey: true });
+    expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Write docs").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Review tests").classList.contains("is-selected")).toBe(false);
+    expect(workbenchOpenSession).not.toHaveBeenCalled();
+    expect(screen.getByText("2 selected")).toBeTruthy();
+  });
+
+  it("selects a contiguous catalog range with shift-click", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchOpenSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "codex", id: "session-3", title: "Write docs", projectPath: "/work/app", updatedAt: 1 }
+      ],
+      workbenchOpenSession
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Write docs"), { shiftKey: true });
+    expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Review tests").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Write docs").classList.contains("is-selected")).toBe(true);
+    expect(workbenchOpenSession).not.toHaveBeenCalled();
+  });
+
+  it("removes every selected session from the panel after one confirm", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let sessions = [
+      { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+      { provider: "codex" as const, id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 },
+      { provider: "codex" as const, id: "session-3", title: "Write docs", projectPath: "/work/app", updatedAt: 1 }
+    ];
+    const hideSessions = vi.fn(async ({ sessions: targets }: { sessions: Array<{ id: string }> }) => {
+      const ids = new Set(targets.map((item) => item.id));
+      sessions = sessions.filter((item) => !ids.has(item.id));
+      return { ok: true };
+    });
+    const hideSession = vi.fn(async () => ({ ok: true }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onMutated = vi.fn();
+    window.addEventListener("agent-resume:sessions-mutated", onMutated);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => sessions,
+      hideSessions,
+      hideSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Review tests"), { metaKey: true });
+    fireEvent.contextMenu(listItem("Review tests"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove 2 from panel" }));
+    await waitFor(() => expect(hideSessions).toHaveBeenCalledWith({
+      sessions: [
+        { provider: "codex", id: "session-1" },
+        { provider: "codex", id: "session-2" }
+      ]
+    }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(hideSession).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.body.textContent).not.toContain("Fix renderer"));
+    expect(document.body.textContent).not.toContain("Review tests");
+    expect(document.body.textContent).toContain("Write docs");
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+    window.removeEventListener("agent-resume:sessions-mutated", onMutated);
+    confirm.mockRestore();
+  });
+
+  it("collapses a multi-selection when right-clicking an unselected row", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const hideSessions = vi.fn(async () => ({ ok: true }));
+    const hideSession = vi.fn(async () => ({ ok: true }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 },
+        { provider: "codex", id: "session-3", title: "Write docs", projectPath: "/work/app", updatedAt: 1 }
+      ],
+      hideSessions,
+      hideSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Review tests"), { metaKey: true });
+    fireEvent.contextMenu(listItem("Write docs"));
+    expect(listItem("Write docs").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(false);
+    expect(listItem("Review tests").classList.contains("is-selected")).toBe(false);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from panel" }));
+    await waitFor(() => expect(hideSession).toHaveBeenCalledWith({ provider: "codex", id: "session-3" }));
+    expect(hideSessions).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("does not hide sessions when the batch confirm is cancelled", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const hideSessions = vi.fn(async () => ({ ok: true }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      hideSessions,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Review tests"), { metaKey: true });
+    fireEvent.contextMenu(listItem("Fix renderer"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove 2 from panel" }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(hideSessions).not.toHaveBeenCalled();
+    expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(true);
+    confirm.mockRestore();
+  });
+
+  it("does not add a pending session to a catalog multi-selection", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchOpenSession = vi.fn();
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...SESSION_SELECT_MESSAGES,
+        "desktop.workbench.newSessionTitle": "New session {0}",
+        "desktop.workbench.closeTerminal": "Close terminal",
+        "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "existing", title: "Existing session", projectPath: "/work/app", updatedAt: 1 }
+      ],
+      workbenchNewSession: async () => ({ mode: "xterm", command: "codex", cwd: "/work/app" }),
+      workbenchOpenSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    const pending = await waitFor(() => listItem("New session app"));
+    fireEvent.click(listItem("Existing session"), { metaKey: true });
+    fireEvent.click(pending, { metaKey: true });
+    expect(listItem("Existing session").classList.contains("is-selected")).toBe(true);
+    expect(pending.classList.contains("is-selected")).toBe(false);
+    expect(workbenchOpenSession).not.toHaveBeenCalled();
+  });
+
+  it("collapses a multi-selection to one session on a plain click", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchOpenSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: SESSION_SELECT_MESSAGES }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "codex", id: "session-2", title: "Review tests", projectPath: "/work/app", updatedAt: 2 }
+      ],
+      workbenchOpenSession
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await waitFor(() => expect(listItem("Fix renderer")).toBeTruthy());
+    fireEvent.click(listItem("Fix renderer"), { metaKey: true });
+    fireEvent.click(listItem("Review tests"), { metaKey: true });
+    fireEvent.click(listItem("Fix renderer"));
+    await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
+    expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(true);
+    expect(listItem("Review tests").classList.contains("is-selected")).toBe(false);
+  });
 });
