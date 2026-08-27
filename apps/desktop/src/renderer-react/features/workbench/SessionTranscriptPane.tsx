@@ -12,6 +12,7 @@ import {
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
+import { applyTranscriptPointerSelection } from "./transcriptTextSelection";
 
 type TranscriptPreview = {
   title: string;
@@ -50,6 +51,7 @@ export function SessionTranscriptPane({
   const bodyRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<TranscriptPreview | null>(null);
   const requestRef = useRef(0);
+  const pointerSelectAnchorRef = useRef<Range | null>(null);
 
   const selectionInsideTranscript = (): boolean => {
     const selection = window.getSelection();
@@ -240,6 +242,37 @@ export function SessionTranscriptPane({
             className="wb-transcript-body"
             ref={bodyRef}
             style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
+            onPointerDown={(event) => {
+              if (event.pointerType === "mouse" && event.button !== 2) return;
+              if (event.pointerType === "mouse" && event.button === 2) event.preventDefault();
+              const root = bodyRef.current;
+              if (!root) return;
+              pointerSelectAnchorRef.current = applyTranscriptPointerSelection(
+                root,
+                event.clientX,
+                event.clientY,
+                null
+              );
+            }}
+            onPointerMove={(event) => {
+              if (!pointerSelectAnchorRef.current) return;
+              if (event.pointerType === "mouse" && event.buttons !== 2) return;
+              event.preventDefault();
+              const root = bodyRef.current;
+              if (!root) return;
+              applyTranscriptPointerSelection(
+                root,
+                event.clientX,
+                event.clientY,
+                pointerSelectAnchorRef.current
+              );
+            }}
+            onPointerUp={() => {
+              pointerSelectAnchorRef.current = null;
+            }}
+            onPointerCancel={() => {
+              pointerSelectAnchorRef.current = null;
+            }}
           >
             {visible.messages.length ? visible.messages.map((message) => {
               const stamp = formatTimestamp(message.timestamp);

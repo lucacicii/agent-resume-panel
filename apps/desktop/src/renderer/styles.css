@@ -6478,6 +6478,11 @@ code {
   white-space: normal;
   word-break: normal;
   overflow-wrap: break-word;
+  user-select: none;
+}
+
+.wb-transcript-body .preview-msg .role {
+  user-select: none;
 }
 
 .wb-transcript-plain {

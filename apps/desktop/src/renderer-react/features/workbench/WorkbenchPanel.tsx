@@ -658,7 +658,8 @@ function savePinnedProjects(projects: Set<string>): void {
 }
 
 function statusError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']+': Error:\s*/, "");
 }
 
 function gitOperationError(error: unknown): string {

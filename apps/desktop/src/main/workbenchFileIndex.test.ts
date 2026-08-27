@@ -90,6 +90,12 @@ describe("workbench file index", () => {
     }));
   });
 
+  it("rejects a missing project root without a raw ENOENT", async () => {
+    const missing = path.join(tempRoot(), "does-not-exist");
+    await expect(listWorkbenchFiles({ rootPath: missing })).rejects.toThrow(/工作目录不存在:/);
+    await expect(searchWorkbenchPaths({ rootPath: missing, query: "x" })).rejects.toThrow(/工作目录不存在:/);
+  });
+
   it("rejects an already-cancelled request", async () => {
     const root = tempRoot();
     const controller = new AbortController();

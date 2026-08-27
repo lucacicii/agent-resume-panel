@@ -344,6 +344,64 @@ export async function clickByBackendNodeId(wc: WebContents, backendNodeId: numbe
   }
 }
 
+export async function setFileInputFilesByBackendNodeId(
+  wc: WebContents,
+  backendNodeId: number,
+  files: string[]
+): Promise<void> {
+  const dbg = wc.debugger;
+  let attachedHere = false;
+  if (!dbg.isAttached()) {
+    dbg.attach("1.3");
+    attachedHere = true;
+  }
+  try {
+    await dbg.sendCommand("DOM.setFileInputFiles", { files, backendNodeId });
+  } finally {
+    if (attachedHere) {
+      try {
+        dbg.detach();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+export async function setFileInputFilesBySelector(
+  wc: WebContents,
+  selector: string,
+  files: string[]
+): Promise<void> {
+  const dbg = wc.debugger;
+  let attachedHere = false;
+  if (!dbg.isAttached()) {
+    dbg.attach("1.3");
+    attachedHere = true;
+  }
+  try {
+    const evaluated = (await dbg.sendCommand("Runtime.evaluate", {
+      expression: `document.querySelector(${JSON.stringify(selector)})`,
+      returnByValue: false
+    })) as { result?: { objectId?: string } };
+    const objectId = evaluated.result?.objectId;
+    if (!objectId) throw new Error(`Element not found for selector: ${selector}`);
+    const requested = (await dbg.sendCommand("DOM.requestNode", { objectId })) as {
+      nodeId?: number;
+    };
+    if (!requested.nodeId) throw new Error(`Element is not a DOM node: ${selector}`);
+    await dbg.sendCommand("DOM.setFileInputFiles", { files, nodeId: requested.nodeId });
+  } finally {
+    if (attachedHere) {
+      try {
+        dbg.detach();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
 export async function clickBySelector(wc: WebContents, selector: string): Promise<void> {
   const ok = await wc.executeJavaScript(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)});

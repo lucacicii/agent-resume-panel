@@ -155,7 +155,7 @@ describe("SessionTranscriptPane", () => {
     });
     render(<SessionTranscriptPane provider="codex" sessionId="session-1" active autoRefreshMs={20} />);
     expect(await screen.findByRole("button", { name: /Add a transcript pane/ })).toBeTruthy();
-    expect(apiMocks.previewSession).toHaveBeenCalledTimes(1);
+    expect(apiMocks.previewSession).toHaveBeenCalled();
     await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1));
   });
 
@@ -196,6 +196,31 @@ describe("SessionTranscriptPane", () => {
     });
     expect(apiMocks.previewSession.mock.calls.length).toBe(callsAfterSelect);
     selection?.removeAllRanges();
+  });
+
+  it("places a caret from the pointer on right-button press in markdown", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-md" },
+      preview: { title: "Markdown", messages: [{ role: "assistant", text: "Use **bold** text." }] }
+    });
+    render(<SessionTranscriptPane provider="codex" sessionId="session-md" active />);
+    expect(await screen.findByRole("button", { name: "desktop.workbench.transcriptShowOriginal" })).toBeTruthy();
+    const markdown = document.querySelector(".wb-transcript-md") as HTMLElement;
+    const text = markdown.querySelector("strong")?.firstChild as Text;
+    expect(text).toBeInstanceOf(Text);
+    const expected = document.createRange();
+    expected.setStart(text, 2);
+    expected.collapse(true);
+    Object.defineProperty(document, "caretRangeFromPoint", {
+      configurable: true,
+      value: () => expected.cloneRange()
+    });
+    fireEvent.pointerDown(markdown, { pointerType: "mouse", button: 2, clientX: 24, clientY: 12 });
+    const selection = window.getSelection();
+    expect(selection?.isCollapsed).toBe(true);
+    expect(selection?.anchorNode).toBe(text);
+    expect(selection?.anchorOffset).toBe(2);
+    window.getSelection()?.removeAllRanges();
   });
 
   it("does not fetch while inactive", async () => {

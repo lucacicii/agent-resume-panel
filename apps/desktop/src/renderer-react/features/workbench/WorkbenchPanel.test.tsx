@@ -4799,6 +4799,42 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByText("Search")).toBeTruthy();
   });
 
+  it("shows a clean search error when the project directory is missing", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchSearchText = vi.fn(async () => {
+      throw new Error("Error invoking remote method 'workbench:searchText': Error: 工作目录不存在: /Users/lucas/wb/56yc3.0/web-consignor");
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSearchText,
+      workbenchSearchTextCancel: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search" }), { target: { value: "findme" } });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenCalled());
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toBe("Search failed: 工作目录不存在: /Users/lucas/wb/56yc3.0/web-consignor");
+    expect(screen.queryByText(/ENOENT/)).toBeNull();
+    expect(screen.queryByText(/invoking remote method/)).toBeNull();
+  });
+
   it("opens all-branch file history from Explorer and returns to Explorer", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
