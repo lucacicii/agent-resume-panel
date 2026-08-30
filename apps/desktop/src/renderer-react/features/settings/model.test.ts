@@ -4,8 +4,8 @@ import {
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
   generalPatch,
-  modelsDraftFromSettings,
-  modelsPatch,
+  providersDraftFromSettings,
+  providersPatch,
   normalizeOutputLanguage,
   notesDraftFromSettings,
   notesPatch,
@@ -23,7 +23,28 @@ import {
 const settings: PanelSettings = {
   uiLanguage: "en",
   llm: { baseUrl: "https://tool.example/v1", model: "tool", apiKey: "tool-key" },
-  embedding: { model: "text-embedding-3-small" }
+  embedding: { model: "text-embedding-3-small" },
+  providers: [
+    {
+      id: "p1",
+      name: "Tool",
+      baseUrl: "https://tool.example/v1",
+      apiKey: "tool-key",
+      models: [
+        { id: "tool", kind: "text" },
+        { id: "text-embedding-3-small", kind: "embedding" }
+      ]
+    }
+  ],
+  modelSelections: {
+    tool: { providerId: "p1", modelId: "tool" },
+    chat: { providerId: "p1", modelId: "tool" },
+    embedding: { providerId: "p1", modelId: "text-embedding-3-small" }
+  },
+  llmOptions: {
+    tool: { outputLanguage: "auto", maxContextChars: 120_000, requestTimeoutMs: 300_000, disableThinking: false },
+    chat: { disableThinking: false }
+  }
 };
 
 describe("settings model", () => {
@@ -32,14 +53,45 @@ describe("settings model", () => {
     expect(normalizeOutputLanguage("unexpected")).toBe("auto");
   });
 
-  it("uses tool LLM values as chat fallbacks and preserves optional blanks on save", () => {
-    expect(modelsDraftFromSettings(settings).chatModel).toBe("tool");
+  it("reads provider selections and llm options into the providers draft", () => {
+    const draft = providersDraftFromSettings(settings);
+    expect(draft.providers).toHaveLength(1);
+    expect(draft.toolSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.chatSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.embeddingSelection).toEqual({ providerId: "p1", modelId: "text-embedding-3-small" });
+    expect(draft.toolOutputLanguage).toBe("auto");
+    expect(draft.toolMaxContextChars).toBe(120_000);
+    expect(draft.chatDisableThinking).toBe(false);
     expect(generalDraftFromSettings(settings).desktopTheme).toBe("system");
     expect(generalDraftFromSettings(settings).alwaysAllowAgentNonDestructiveOperations).toBe(false);
+  });
 
-    const patch = modelsPatch(settings, { ...modelsDraftFromSettings(settings), chatModel: "", embBaseUrl: " " });
-    expect(patch.chatLlm?.model).toBeUndefined();
-    expect(patch.embedding?.baseUrl).toBeUndefined();
+  it("persists the provider pool and drops empty/invalid selections on save", () => {
+    const patch = providersPatch(settings, {
+      ...providersDraftFromSettings(settings),
+      chatSelection: {},
+      toolMaxContextChars: 99_999
+    });
+    expect(patch.providers).toHaveLength(1);
+    expect(patch.providers?.[0].name).toBe("Tool");
+    expect(patch.modelSelections?.tool).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.chat).toBeUndefined();
+    expect(patch.llmOptions?.tool?.maxContextChars).toBe(99_999);
+  });
+
+  it("normalizes draft providers and keeps selections referencing existing models", () => {
+    const patch = providersPatch(settings, {
+      ...providersDraftFromSettings(settings),
+      providers: [
+        { id: "p1", name: "Tool", baseUrl: "https://tool.example/v1", apiKey: "tool-key", models: [{ id: "tool", kind: "text" }] },
+        { id: "empty", name: "", baseUrl: "https://bad.example/v1", models: [] },
+        { id: "p1", name: "Duplicate", baseUrl: "https://other.example/v1", models: [] }
+      ],
+      embeddingSelection: { providerId: "p1", modelId: "missing-model" }
+    });
+    expect(patch.providers).toHaveLength(1);
+    // Embedding model was removed, so the selection is dropped.
+    expect(patch.modelSelections?.embedding).toBeUndefined();
   });
 
   it("keeps non-delete Agent approval enabled by default and persists an explicit opt-in", () => {
@@ -56,12 +108,20 @@ describe("settings model", () => {
     }).alwaysAllowAgentNonDestructiveOperations).toBe(true);
   });
 
-  it("detects embedding identity changes for model or base URL", () => {
-    const draft = modelsDraftFromSettings(settings);
+  it("detects embedding identity changes for model or provider base URL", () => {
+    const draft = providersDraftFromSettings(settings);
     expect(embeddingSearchIdentityChanged(settings, draft)).toBe(false);
-    expect(embeddingSearchIdentityChanged(settings, { ...draft, embModel: "other-model" })).toBe(true);
-    expect(embeddingSearchIdentityChanged(settings, { ...draft, embBaseUrl: "https://other.example/v1" })).toBe(true);
-    expect(embeddingSearchIdentityChanged(settings, { ...draft, embApiKey: "new-key" })).toBe(false);
+    expect(embeddingSearchIdentityChanged(settings, { ...draft, embeddingSelection: { providerId: "p1", modelId: "other-embedding" } })).toBe(true);
+    expect(embeddingSearchIdentityChanged(settings, {
+      ...draft,
+      providers: [
+        { id: "p1", name: "Tool", baseUrl: "https://other.example/v1", apiKey: "tool-key", models: draft.providers[0].models },
+        ...draft.providers.slice(1)
+      ]
+    })).toBe(true);
+    expect(embeddingSearchIdentityChanged(settings, { ...draft, providers: [
+      { ...draft.providers[0], apiKey: "new-key" }
+    ] })).toBe(false);
   });
 
   it("clamps the session sync limit", () => {

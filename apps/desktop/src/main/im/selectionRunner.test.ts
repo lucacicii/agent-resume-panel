@@ -59,4 +59,37 @@ describe("runIndependentSelectionAction", () => {
     vi.mocked(chatLlmConfigFromSettings).mockReturnValueOnce(undefined);
     await expect(runIndependentSelectionAction(store, "translate", "text")).rejects.toThrow(/not configured|configured/i);
   });
+
+  it("uses action-specific provider and model when configured", async () => {
+    const store = await createStore();
+    const action = await store.createSelectionAction({
+      name: "Custom Explain",
+      kind: "independent",
+      prompt: "Explain: {selection}",
+      providerId: "custom-p1",
+      modelId: "custom-model"
+    });
+    const { loadSettings, chatCompletionDetailed } = await import("@agent-resume/core");
+    vi.mocked(loadSettings).mockResolvedValueOnce({
+      panelHome: "/tmp/im-runner-home",
+      providers: [
+        {
+          id: "custom-p1",
+          name: "Custom Provider",
+          baseUrl: "https://custom.example/v1",
+          apiKey: "custom-key",
+          models: [{ id: "custom-model", kind: "text" }]
+        }
+      ]
+    } as any);
+
+    const result = await runIndependentSelectionAction(store, action.actionId, "custom code");
+    expect(result.text).toBe("translated answer");
+    const call = vi.mocked(chatCompletionDetailed).mock.calls.at(-1);
+    expect(call?.[0]).toEqual(expect.objectContaining({
+      baseUrl: "https://custom.example/v1",
+      model: "custom-model",
+      apiKey: "custom-key"
+    }));
+  });
 });

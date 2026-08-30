@@ -5,7 +5,22 @@ import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 const base: PanelSettings = {
   uiLanguage: "en",
   llm: { baseUrl: "https://example.test/v1", model: "test", apiKey: "" },
-  embedding: { model: "text-embedding-3-small" }
+  embedding: { model: "text-embedding-3-small" },
+  providers: [
+    {
+      id: "p1",
+      name: "Example",
+      baseUrl: "https://example.test/v1",
+      models: [
+        { id: "test", kind: "text" },
+        { id: "text-embedding-3-small", kind: "embedding" }
+      ]
+    }
+  ],
+  modelSelections: {
+    tool: { providerId: "p1", modelId: "test" },
+    embedding: { providerId: "p1", modelId: "text-embedding-3-small" }
+  }
 };
 
 describe("settingsChangedToCustomEvents", () => {

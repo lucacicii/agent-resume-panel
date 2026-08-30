@@ -4,8 +4,13 @@ import {
   type CommitMessageStyle
 } from "../git/prompts";
 import type { UiLanguagePreference } from "../i18n/locales";
+import type { AiProvider, LlmUseOptions, ModelSelection, ModelUse } from "../providers/types";
 
-/** Tool LLM: summarize, rename, digests, and other batch helpers. Prefer a fast, low-cost model. */
+/**
+ * @deprecated Legacy tool-LLM config; see `PanelSettings.providers` +
+ * `modelSelections`. Kept for one-time migration and the VS Code extension
+ * `settings.json` LLM bridge (extension product reads that file directly).
+ */
 export interface LlmSettings {
   baseUrl: string;
   model: string;
@@ -24,7 +29,7 @@ export interface LlmSettings {
 }
 
 /**
- * Conversation / Meta-Agent chat model.
+ * @deprecated Legacy chat model; see `modelSelections.chat`.
  * Omitted fields fall back to the tool `llm` settings.
  */
 export interface ChatLlmSettings {
@@ -34,6 +39,7 @@ export interface ChatLlmSettings {
   disableThinking?: boolean;
 }
 
+/** @deprecated Legacy embedding model; see `modelSelections.embedding`. */
 export interface EmbeddingSettings {
   /** Defaults to llm.baseUrl when omitted. */
   baseUrl?: string;
@@ -451,11 +457,24 @@ export interface PanelSettings {
   panelHome?: string;
   /** Desktop UI language; auto follows the OS locale. */
   uiLanguage?: UiLanguagePreference;
-  /** Tool LLM (summarize / rename / digests). */
+  /**
+   * @deprecated Legacy single-model config. Migrated into `providers` +
+   * `modelSelections` on load; no longer written by the desktop app.
+   */
   llm: LlmSettings;
-  /** Conversation model for Agent / Meta-Agent; falls back to llm. */
+  /** @deprecated Legacy chat model; see `modelSelections.chat`. */
   chatLlm?: ChatLlmSettings;
+  /** @deprecated Legacy embedding model; see `modelSelections.embedding`. */
   embedding: EmbeddingSettings;
+  /** AI provider pool — single source of truth for model configuration. */
+  providers?: AiProvider[];
+  /** Per-use-case (tool/chat/embedding/image) selection into the provider pool. */
+  modelSelections?: Partial<Record<ModelUse, ModelSelection>>;
+  /** Per-use-case non-provider options (output language, thinking, budgets). */
+  llmOptions?: {
+    tool?: LlmUseOptions;
+    chat?: Pick<LlmUseOptions, "disableThinking">;
+  };
   report?: ReportSettings;
   /** Auto session_summary generation (Desktop main process). */
   sessionSummaryAuto?: SessionSummaryAutoSettings;

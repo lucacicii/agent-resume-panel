@@ -4,15 +4,40 @@ import {
   desktopDbPath,
   effectivePanelHome,
   loadSettings,
-  recordLlmUsage
+  normalizeBaseUrl,
+  recordLlmUsage,
+  type LlmRuntimeConfig,
+  type PanelSettings
 } from "@agent-resume/core";
 import type { ImStore } from "./store";
 import { fillSelectionPrompt } from "./store";
 
+function resolveActionLlm(
+  settings: PanelSettings,
+  providerId: string,
+  modelId: string
+): LlmRuntimeConfig | undefined {
+  const provider = (settings.providers ?? []).find((entry) => entry.id === providerId);
+  if (!provider) return undefined;
+  const model = (provider.models ?? []).find((entry) => entry.id === modelId);
+  if (!model) return undefined;
+  const apiKey = provider.apiKey?.trim();
+  const baseUrl = normalizeBaseUrl(provider.baseUrl || "");
+  if (!apiKey || !baseUrl || !model.id.trim()) return undefined;
+  const toolOptions = settings.llmOptions?.tool;
+  return {
+    baseUrl,
+    model: model.id.trim(),
+    apiKey,
+    maxContextChars: toolOptions?.maxContextChars,
+    requestTimeoutMs: toolOptions?.requestTimeoutMs,
+    disableThinking: settings.llmOptions?.chat?.disableThinking
+  };
+}
+
 /**
  * Runs an independent selection action (Translate / Explain / custom) against
- * the user's chat LLM and records usage. Kept in its own module so the IPC
- * handler stays thin and the LLM path is unit-testable with mocked core.
+ * the user's chat LLM (or action-specific model) and records usage.
  */
 export async function runIndependentSelectionAction(
   store: ImStore,
@@ -27,9 +52,10 @@ export async function runIndependentSelectionAction(
   const selection = store.clipSelectionText(rawText);
   if (!selection.trim()) throw new Error("Select some text first.");
   const settings = await loadSettings();
-  const llm = chatLlmConfigFromSettings(settings);
+  const llm = (action.providerId && action.modelId ? resolveActionLlm(settings, action.providerId, action.modelId) : undefined)
+    ?? chatLlmConfigFromSettings(settings);
   if (!llm) {
-    throw new Error("Conversation LLM is not configured. Set chat model in Settings → Models.");
+    throw new Error("Conversation LLM is not configured. Select an Ask/Chat model in Settings → Providers.");
   }
   const prompt = fillSelectionPrompt(action.prompt, selection);
   const usageDb = desktopDbPath(effectivePanelHome(settings));

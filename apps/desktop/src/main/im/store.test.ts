@@ -63,9 +63,20 @@ describe("ImStore", () => {
     const custom = await store.createSelectionAction({
       name: "Summarize",
       kind: "independent",
-      prompt: "Summarize:\n{selection}"
+      prompt: "Summarize:\n{selection}",
+      providerId: "p1",
+      modelId: "m1"
     });
+    expect(custom.providerId).toBe("p1");
+    expect(custom.modelId).toBe("m1");
     expect(fillSelectionPrompt(custom.prompt, "hello world")).toContain("hello world");
+    const updated = await store.updateSelectionAction({
+      actionId: custom.actionId,
+      providerId: "p2",
+      modelId: "m2"
+    });
+    expect(updated.providerId).toBe("p2");
+    expect(updated.modelId).toBe("m2");
     await store.deleteSelectionAction(custom.actionId);
     expect((await store.listSelectionActions()).map((item) => item.actionId)).toEqual(["quote", "translate", "explain"]);
   });

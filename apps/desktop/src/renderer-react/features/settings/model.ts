@@ -1,8 +1,18 @@
-import type { DesktopThemeEffects, DesktopVisualThemeId, PanelSettings, WorkbenchProjectContextMenuAction } from "@agent-resume/core";
+import type {
+  AiProvider,
+  DesktopThemeEffects,
+  DesktopVisualThemeId,
+  ModelSelection,
+  ModelUse,
+  PanelSettings,
+  ProviderModel,
+  WorkbenchProjectContextMenuAction
+} from "@agent-resume/core";
 import {
   resolveTerminalThemeId,
   type WorkbenchTerminalThemeId
 } from "../workbench/terminalThemes";
+import { isModelKind, normalizeBaseUrl, resolveSelectedModel } from "./providerPool";
 
 /** Keep in sync with packages/core WorkbenchProjectContextMenuAction. */
 export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
@@ -59,18 +69,20 @@ export interface GeneralDraft {
   notifications: NotificationsDraft;
 }
 
-export interface ModelsDraft {
-  llmBaseUrl: string;
-  llmModel: string;
-  llmApiKey: string;
-  llmLang: UiLanguageValue;
-  llmDisableThinking: boolean;
-  chatBaseUrl: string;
-  chatModel: string;
-  chatApiKey: string;
-  embBaseUrl: string;
-  embModel: string;
-  embApiKey: string;
+export interface ProvidersDraft {
+  /** Provider pool (single source of truth for model config). */
+  providers: AiProvider[];
+  toolSelection: ModelSelection;
+  chatSelection: ModelSelection;
+  embeddingSelection: ModelSelection;
+  imageSelection: ModelSelection;
+  /** Tool-use options (summaries / digests output language, budgets). */
+  toolOutputLanguage: UiLanguageValue;
+  toolMaxContextChars: number;
+  toolRequestTimeoutMs: number;
+  toolDisableThinking: boolean;
+  /** Chat-use option (disable reasoning thinking). */
+  chatDisableThinking: boolean;
 }
 
 export interface SessionsDraft {
@@ -226,23 +238,60 @@ export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft 
   };
 }
 
-export function modelsDraftFromSettings(settings: PanelSettings): ModelsDraft {
-  const toolBase = settings.llm?.baseUrl || "";
-  const toolModel = settings.llm?.model || "";
-  const toolKey = settings.llm?.apiKey || "";
+export function providersDraftFromSettings(settings: PanelSettings): ProvidersDraft {
+  const toolOptions = settings.llmOptions?.tool;
+  const chatOptions = settings.llmOptions?.chat;
   return {
-    llmBaseUrl: toolBase,
-    llmModel: toolModel,
-    llmApiKey: toolKey,
-    llmLang: normalizeOutputLanguage(settings.llm?.outputLanguage),
-    llmDisableThinking: Boolean(settings.llm?.disableThinking),
-    chatBaseUrl: settings.chatLlm?.baseUrl?.trim() || toolBase,
-    chatModel: settings.chatLlm?.model?.trim() || toolModel,
-    chatApiKey: settings.chatLlm?.apiKey?.trim() || toolKey,
-    embBaseUrl: settings.embedding?.baseUrl || "",
-    embModel: settings.embedding?.model || "text-embedding-3-small",
-    embApiKey: settings.embedding?.apiKey || ""
+    providers: settings.providers ?? [],
+    toolSelection: settings.modelSelections?.tool ?? {},
+    chatSelection: settings.modelSelections?.chat ?? {},
+    embeddingSelection: settings.modelSelections?.embedding ?? {},
+    imageSelection: settings.modelSelections?.image ?? {},
+    toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
+    toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
+    toolRequestTimeoutMs: typeof toolOptions?.requestTimeoutMs === "number" ? toolOptions.requestTimeoutMs : 300_000,
+    toolDisableThinking: Boolean(toolOptions?.disableThinking),
+    chatDisableThinking: Boolean(chatOptions?.disableThinking)
   };
+}
+
+function normalizeDraftProviders(raw: AiProvider[]): AiProvider[] {
+  const output: AiProvider[] = [];
+  for (const provider of raw ?? []) {
+    if (!provider || typeof provider !== "object") continue;
+    const id = provider.id.trim();
+    const name = provider.name.trim();
+    const baseUrl = provider.baseUrl.trim();
+    if (!id || !name || !baseUrl || output.some((entry) => entry.id === id)) continue;
+    const models: ProviderModel[] = [];
+    for (const model of provider.models ?? []) {
+      const modelId = model.id.trim();
+      if (!modelId || models.some((entry) => entry.id === modelId)) continue;
+      models.push({ id: modelId, kind: isModelKind(model.kind) ? model.kind : "text" });
+    }
+    output.push({ id, name, baseUrl, apiKey: provider.apiKey?.trim() || undefined, models });
+  }
+  return output;
+}
+
+function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUse, ModelSelection>> {
+  const providerIds = new Set(draft.providers.map((provider) => provider.id));
+  const output: Partial<Record<ModelUse, ModelSelection>> = {};
+  const entries: Array<[ModelUse, ModelSelection]> = [
+    ["tool", draft.toolSelection],
+    ["chat", draft.chatSelection],
+    ["embedding", draft.embeddingSelection],
+    ["image", draft.imageSelection]
+  ];
+  for (const [use, selection] of entries) {
+    const providerId = selection.providerId?.trim();
+    const modelId = selection.modelId?.trim();
+    if (!providerId || !modelId || !providerIds.has(providerId)) continue;
+    const provider = draft.providers.find((entry) => entry.id === providerId);
+    if (!provider || !(provider.models ?? []).some((model) => model.id === modelId)) continue;
+    output[use] = { providerId, modelId };
+  }
+  return output;
 }
 
 function clampDraftInt(value: unknown, fallback: number, min: number, max: number): number {
@@ -318,27 +367,20 @@ export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Part
   };
 }
 
-export function modelsPatch(settings: PanelSettings, draft: ModelsDraft): Partial<PanelSettings> {
+export function providersPatch(settings: PanelSettings, draft: ProvidersDraft): Partial<PanelSettings> {
+  const providers = normalizeDraftProviders(draft.providers);
+  const modelSelections = normalizeDraftSelections({ ...draft, providers });
   return {
-    llm: {
-      ...settings.llm,
-      baseUrl: draft.llmBaseUrl.trim(),
-      model: draft.llmModel.trim(),
-      apiKey: draft.llmApiKey,
-      outputLanguage: draft.llmLang,
-      disableThinking: draft.llmDisableThinking
-    },
-    chatLlm: {
-      ...settings.chatLlm,
-      baseUrl: draft.chatBaseUrl.trim() || undefined,
-      model: draft.chatModel.trim() || undefined,
-      apiKey: draft.chatApiKey || undefined
-    },
-    embedding: {
-      ...settings.embedding,
-      baseUrl: draft.embBaseUrl.trim() || undefined,
-      model: draft.embModel.trim() || "text-embedding-3-small",
-      apiKey: draft.embApiKey || undefined
+    providers,
+    modelSelections,
+    llmOptions: {
+      tool: {
+        outputLanguage: normalizeOutputLanguage(draft.toolOutputLanguage),
+        maxContextChars: clampDraftInt(draft.toolMaxContextChars, 120_000, 4_000, 1_000_000),
+        requestTimeoutMs: clampDraftInt(draft.toolRequestTimeoutMs, 300_000, 1_000, 3_600_000),
+        disableThinking: draft.toolDisableThinking
+      },
+      chat: { disableThinking: draft.chatDisableThinking }
     }
   };
 }
@@ -348,29 +390,28 @@ export function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
   baseUrl: string;
   model: string;
 } {
-  const emb = settings.embedding;
-  const llm = settings.llm;
+  const resolved = resolveSelectedModel(settings.providers ?? [], settings.modelSelections?.embedding);
   return {
-    baseUrl: (emb?.baseUrl || llm?.baseUrl || "").trim(),
-    model: (emb?.model || "").trim() || "text-embedding-3-small"
+    baseUrl: resolved ? normalizeBaseUrl(resolved.provider.baseUrl) : "",
+    model: resolved?.model.id ?? ""
   };
 }
 
 export function embeddingSearchIdentityFromDraft(
   settings: PanelSettings,
-  draft: ModelsDraft
+  draft: ProvidersDraft
 ): { baseUrl: string; model: string } {
+  const resolved = resolveSelectedModel(normalizeDraftProviders(draft.providers), draft.embeddingSelection);
   return {
-    // Empty emb base falls back to tool LLM base, same as runtime embeddingConfigFromSettings.
-    baseUrl: (draft.embBaseUrl.trim() || draft.llmBaseUrl.trim() || settings.llm?.baseUrl || "").trim(),
-    model: draft.embModel.trim() || "text-embedding-3-small"
+    baseUrl: resolved ? normalizeBaseUrl(resolved.provider.baseUrl) : "",
+    model: resolved?.model.id ?? ""
   };
 }
 
 /** True when changing models draft would switch the embedding space used for search/index. */
 export function embeddingSearchIdentityChanged(
   settings: PanelSettings,
-  draft: ModelsDraft
+  draft: ProvidersDraft
 ): boolean {
   const before = embeddingSearchIdentityFromSettings(settings);
   const after = embeddingSearchIdentityFromDraft(settings, draft);

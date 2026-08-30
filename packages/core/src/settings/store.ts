@@ -7,6 +7,7 @@ import {
   settingsPath
 } from "../panelHome";
 import { sanitizeAgentHomes } from "../transcript/homes";
+import { migrateLegacyModelSettings, normalizeProviderPool } from "../providers/migrate";
 import {
   ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   DEFAULT_DESKTOP_BROWSER_SETTINGS,
@@ -165,7 +166,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
         }
       : undefined;
 
-  return {
+  return normalizeProviderPool({
     panelHome: partial.panelHome?.trim() || base.panelHome,
     uiLanguage: partial.uiLanguage,
     llm: {
@@ -177,6 +178,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.embedding,
       ...(partial.embedding || {})
     },
+    providers: partial.providers,
+    modelSelections: partial.modelSelections,
+    llmOptions: partial.llmOptions,
     report: {
       ...base.report,
       ...(partial.report || {})
@@ -279,7 +283,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
     ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
-  };
+  });
 }
 
 function mergeAcpSettings(
@@ -349,7 +353,7 @@ async function migrateLegacySharedSettings(home: string): Promise<Partial<PanelS
     return null;
   }
 
-  const merged = mergeSettings(legacy);
+  const merged = migrateLegacyModelSettings(mergeSettings(legacy));
   await fs.mkdir(home, { recursive: true });
   const toWrite: PanelSettings = {
     ...merged,
@@ -368,7 +372,7 @@ export async function loadSettings(panelHomeHint?: string): Promise<PanelSetting
 
   try {
     const parsed = await readSettingsFile(file);
-    const merged = mergeSettings(parsed);
+    const merged = migrateLegacyModelSettings(mergeSettings(parsed));
     const effectiveHome = resolvePanelHome(merged.panelHome?.trim() || home);
     if (!panelHomeHint && effectiveHome !== home) {
       return loadSettings(effectiveHome);
@@ -377,25 +381,27 @@ export async function loadSettings(panelHomeHint?: string): Promise<PanelSetting
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
-      return mergeSettings(null);
+      return migrateLegacyModelSettings(mergeSettings(null));
     }
     throw error;
   }
 }
 
 export async function saveSettings(settings: PanelSettings, panelHomeHint?: string): Promise<string> {
-  const merged = mergeSettings(settings);
+  const merged = migrateLegacyModelSettings(mergeSettings(settings));
   const home = resolvePanelHome(
     panelHomeHint?.trim() || merged.panelHome?.trim() || DEFAULT_PANEL_HOME
   );
   await fs.mkdir(home, { recursive: true });
   const file = desktopSettingsPath(home);
-  const toWrite: PanelSettings = {
-    ...merged,
+  // Provider pool is the source of truth; legacy llm/chatLlm/embedding no longer persist.
+  const { llm: _llm, chatLlm: _chatLlm, embedding: _embedding, ...toWrite } = merged;
+  const payload = {
+    ...toWrite,
     panelHome: merged.panelHome || DEFAULT_PANEL_HOME,
     agentHomes: sanitizeAgentHomes(merged.agentHomes)
   };
-  await fs.writeFile(file, `${JSON.stringify(toWrite, null, 2)}\n`, "utf8");
+  await fs.writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return file;
 }
 

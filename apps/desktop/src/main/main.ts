@@ -134,7 +134,11 @@ import {
   resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
-import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
+import {
+  fetchProviderModelsFromDraft,
+  testProviderConnectionFromDraft,
+  type ProviderTestConnectionArgs
+} from "./providerSettings";
 import {
   disposeAcpController,
   disposeAllAcpControllers,
@@ -433,7 +437,7 @@ const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
   "general",
-  "models",
+  "providers",
   "sessions",
   "workbench",
   "notes",
@@ -1379,9 +1383,16 @@ function registerIpc(): void {
   });
 
   safeHandle(
-    "settings:testModel",
-    async (_event, args?: { kind?: unknown; draft?: ModelsTestDraft | null }) => {
-      return testModelConnectionFromDraft(args || {});
+    "providers:testConnection",
+    async (_event, args?: ProviderTestConnectionArgs | null) => {
+      return testProviderConnectionFromDraft(args || {});
+    }
+  );
+
+  safeHandle(
+    "providers:fetchModels",
+    async (_event, args?: { baseUrl?: unknown; apiKey?: unknown } | null) => {
+      return fetchProviderModelsFromDraft(args || {});
     }
   );
 

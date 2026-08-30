@@ -269,8 +269,34 @@ export { testChatLlmConnection, testEmbeddingConnection } from "./llm/testConnec
 export {
   llmConfigFromSettings,
   chatLlmConfigFromSettings,
-  embeddingConfigFromSettings
+  embeddingConfigFromSettings,
+  listProviderModels,
+  resolveSelectedModel,
+  toolOutputLanguagePreference,
+  type PoolModelRef
 } from "./llm/fromSettings";
+export {
+  fetchProviderModels,
+  buildModelsUrl
+} from "./providers/fetch";
+export { classifyModelKind } from "./providers/classify";
+export { migrateLegacyModelSettings, normalizeProviderPool } from "./providers/migrate";
+export {
+  isModelKind,
+  isModelUse,
+  MODEL_KINDS,
+  MODEL_USES,
+  normalizeProvider,
+  normalizeProviderModel,
+  normalizeSelection,
+  selectionIsEmpty,
+  type AiProvider,
+  type LlmUseOptions,
+  type ModelKind,
+  type ModelSelection,
+  type ModelUse,
+  type ProviderModel
+} from "./providers/types";
 export {
   recordLlmUsage,
   listLlmUsageEvents,

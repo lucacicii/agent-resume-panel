@@ -41,7 +41,7 @@ export async function runAgentChat(options: AgentChatOptions): Promise<AgentChat
   const llm = chatLlmConfigFromSettings(settings, options.systemLocale);
   if (!llm) {
     throw new Error(
-      "Conversation LLM is not configured. Set llm (or chatLlm) baseUrl, model, and apiKey in settings.json."
+      "Conversation LLM is not configured. Add a provider and select an Ask/Chat model in Settings → Providers."
     );
   }
 

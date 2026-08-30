@@ -28,7 +28,12 @@ import type {
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
 import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
-import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
+import type {
+  ProviderDraft,
+  ProviderFetchModelsResult,
+  ProviderTestConnectionResult,
+  ProviderTestKind
+} from "../main/providerSettings";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type {
   LinkGraphAnalyzeArgs,
@@ -90,11 +95,14 @@ export interface DesktopApi {
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
-  /** Probe Tool / Chat / Embedding using current Models form values (Save not required). */
-  testModelConnection(args: {
-    kind: ModelTestKind;
-    draft: ModelsTestDraft;
-  }): Promise<TestModelConnectionResult>;
+  /** Probe a provider's model (text/embedding) using current Providers form values (Save not required). */
+  providersTestConnection(args: {
+    kind: ProviderTestKind;
+    provider: ProviderDraft;
+    modelId: string;
+  }): Promise<ProviderTestConnectionResult>;
+  /** Fetch the model list of a provider using current Providers form values. */
+  providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
   onOpenSessions(callback: () => void): () => void;
@@ -626,12 +634,14 @@ export interface DesktopApi {
   imAddKnowledgeImage(args: { projectId: string }): Promise<{ ok: true; item: ImKnowledgeItem } | { ok: false; canceled: true }>;
   imRemoveKnowledge(args: { itemId: string }): Promise<{ ok: boolean }>;
   imListSelectionActions(): Promise<ImSelectionAction[]>;
-  imCreateSelectionAction(args: { name: string; kind: ImSelectionActionKind; prompt?: string }): Promise<ImSelectionAction>;
+  imCreateSelectionAction(args: { name: string; kind: ImSelectionActionKind; prompt?: string; providerId?: string; modelId?: string }): Promise<ImSelectionAction>;
   imUpdateSelectionAction(args: {
     actionId: string;
     name?: string;
     kind?: ImSelectionActionKind;
     prompt?: string;
+    providerId?: string | null;
+    modelId?: string | null;
     enabled?: boolean;
   }): Promise<ImSelectionAction>;
   imDeleteSelectionAction(args: { actionId: string }): Promise<{ ok: boolean }>;
@@ -1471,7 +1481,8 @@ const api: DesktopApi = {
   removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
   registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
-  testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
+  providersTestConnection: (args) => ipcRenderer.invoke("providers:testConnection", args),
+  providersFetchModels: (args) => ipcRenderer.invoke("providers:fetchModels", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),

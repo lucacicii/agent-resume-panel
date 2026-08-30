@@ -191,6 +191,8 @@ interface SelectionActionRow {
   name: string;
   kind: string;
   prompt: string;
+  provider_id?: string | null;
+  model_id?: string | null;
   sort_order: number;
   enabled: number;
   created_at_ms: number;
@@ -295,6 +297,8 @@ function mapSelectionAction(row: SelectionActionRow): ImSelectionAction {
     name: row.name,
     kind: isImSelectionActionKind(row.kind) ? row.kind : "independent",
     prompt: row.prompt,
+    providerId: row.provider_id?.trim() || undefined,
+    modelId: row.model_id?.trim() || undefined,
     sortOrder: row.sort_order,
     enabled: row.enabled === 1,
     createdAtMs: row.created_at_ms,
@@ -485,6 +489,8 @@ export class ImStore {
     name: string;
     kind: ImSelectionActionKind;
     prompt?: string;
+    providerId?: string;
+    modelId?: string;
   }): Promise<ImSelectionAction> {
     const name = input.name.trim();
     if (!name) throw new Error("Action name is required.");
@@ -497,15 +503,19 @@ export class ImStore {
     const existing = await this.listSelectionActions();
     const sortOrder = existing.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
     const actionId = randomUUID();
+    const providerId = input.providerId?.trim() || null;
+    const modelId = input.modelId?.trim() || null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_selection_actions (
-        action_id, name, kind, prompt, sort_order, enabled, created_at_ms, updated_at_ms
+        action_id, name, kind, prompt, provider_id, model_id, sort_order, enabled, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(actionId)},
         ${sqlString(name)},
         ${sqlString(input.kind)},
         ${sqlString(prompt)},
+        ${sqlNullOrString(providerId)},
+        ${sqlNullOrString(modelId)},
         ${sortOrder},
         1,
         ${now},
@@ -522,6 +532,8 @@ export class ImStore {
     name?: string;
     kind?: ImSelectionActionKind;
     prompt?: string;
+    providerId?: string | null;
+    modelId?: string | null;
     enabled?: boolean;
   }): Promise<ImSelectionAction> {
     const current = await this.getSelectionAction(input.actionId);
@@ -541,6 +553,8 @@ export class ImStore {
     if (kind === "independent" && current.actionId !== "quote" && !prompt.trim()) {
       throw new Error("Independent actions need a prompt. Use {selection} for the highlighted text.");
     }
+    const providerId = input.providerId !== undefined ? (input.providerId?.trim() || null) : (current.providerId || null);
+    const modelId = input.modelId !== undefined ? (input.modelId?.trim() || null) : (current.modelId || null);
     const enabled = input.enabled === undefined ? current.enabled : input.enabled;
     const now = nowMs();
     await runSqlite(
@@ -549,6 +563,8 @@ export class ImStore {
         name = ${sqlString(name)},
         kind = ${sqlString(kind)},
         prompt = ${sqlString(prompt)},
+        provider_id = ${sqlNullOrString(providerId)},
+        model_id = ${sqlNullOrString(modelId)},
         enabled = ${enabled ? 1 : 0},
         updated_at_ms = ${now}
        WHERE action_id = ${sqlString(current.actionId)};`

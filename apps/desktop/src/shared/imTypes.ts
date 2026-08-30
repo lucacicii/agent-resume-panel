@@ -212,6 +212,8 @@ export interface ImSelectionAction {
   name: string;
   kind: ImSelectionActionKind;
   prompt: string;
+  providerId?: string;
+  modelId?: string;
   sortOrder: number;
   enabled: boolean;
   createdAtMs: number;

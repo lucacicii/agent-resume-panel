@@ -1602,6 +1602,222 @@ html[data-window-mode="main"] body > main {
   word-break: break-word;
 }
 
+/* Settings → Providers: provider pool (list + detail) */
+.settings-provider-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.settings-provider-list {
+  border: 1px solid var(--color-separator-opaque);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.settings-provider-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+
+.settings-provider-list-header .settings-field-label {
+  margin: 0;
+}
+
+.settings-provider-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-provider-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-provider-item-main:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.settings-provider-item.active .settings-provider-item-main {
+  background: color-mix(in srgb, var(--accent, var(--color-accent)) 16%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent, var(--color-accent)) 42%, transparent);
+}
+
+.settings-provider-item-name {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-provider-item-meta {
+  font-size: var(--font-size-caption);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-provider-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.settings-provider-remove:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.settings-provider-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.settings-provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-provider-actions .settings-row-control {
+  min-width: 110px;
+  max-width: 160px;
+}
+
+.settings-provider-actions .status {
+  margin: 0;
+  max-width: 100%;
+  word-break: break-word;
+  flex-basis: 100%;
+}
+
+.settings-provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-provider-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+}
+
+.settings-provider-model-row:last-child {
+  border-bottom: none;
+}
+
+.settings-provider-model-kind {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--muted);
+  text-align: center;
+  min-width: 48px;
+}
+
+.settings-provider-model-kind-select {
+  min-width: 104px;
+  max-width: 140px;
+}
+
+.settings-provider-model-id {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: monospace;
+  font-size: var(--font-size-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-provider-add-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-separator);
+}
+
+.settings-provider-add-model-select {
+  flex: 1 1 200px;
+  min-width: 170px;
+}
+
+.settings-provider-add-model-id {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.settings-provider-add-model-kind {
+  flex: 0 0 auto;
+  min-width: 90px;
+  max-width: 130px;
+}
+
+.settings-row-hint {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-body);
+  min-width: 160px;
+  max-width: 260px;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .settings-provider-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .settings-callout {
   margin: 0;
   padding: 8px 10px;
@@ -17115,6 +17331,29 @@ html[data-window-mode="browser"] #react-chrome {
   font-size: 11px;
   color: var(--color-label-secondary);
   background: color-mix(in srgb, var(--color-fill-secondary) 60%, transparent);
+}
+.im-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+.im-message-action {
+  border: 0;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.im-message-action:hover:not(:disabled) {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+}
+.im-message-action:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .im-message .markdown-body > :first-child {
   margin-top: 0;

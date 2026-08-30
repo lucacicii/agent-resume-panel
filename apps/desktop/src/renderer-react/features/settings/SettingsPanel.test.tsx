@@ -3,14 +3,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { SettingsPanel } from "./SettingsPanel";
 
+interface MockProviderFetchModelsResult {
+  ok: boolean;
+  models?: Array<{ id: string; kind: string }>;
+  message?: string;
+}
+
 const messages = {
   "desktop.settings.title": "Settings",
   "desktop.settings.done": "Done",
   "desktop.settings.navLabel": "Settings sections",
   "desktop.settings.paneGeneral": "General",
   "desktop.settings.paneGeneralDesc": "General desc",
-  "desktop.settings.paneModels": "Models",
-  "desktop.settings.paneModelsDesc": "Models desc",
+  "desktop.settings.paneProviders": "Providers",
+  "desktop.settings.paneProvidersDesc": "Provider pool",
   "desktop.settings.paneSessions": "Sessions",
   "desktop.settings.paneSessionsDesc": "Sessions desc",
   "desktop.settings.paneWorkbench": "Workbench",
@@ -39,6 +45,8 @@ const messages = {
   "desktop.settings.imActionKindIndependent": "Independent",
   "desktop.settings.imActionPrompt": "Prompt",
   "desktop.settings.imActionPromptHint": "Use {selection}.",
+  "desktop.settings.imActionModel": "Model",
+  "desktop.settings.imActionModelDefault": "Default (Ask / Chat model)",
   "desktop.settings.imActionEnabled": "Show in menu",
   "desktop.settings.imActionSaved": "Action saved",
   "desktop.settings.imDeleteAction": "Delete action",
@@ -57,12 +65,48 @@ const messages = {
   "desktop.settings.paneLogsDesc": "Logs desc",
   "desktop.settings.paneAbout": "About",
   "desktop.settings.paneAboutDesc": "About desc",
-  "desktop.settings.toolLlm": "Tool LLM",
-  "desktop.settings.toolLlmFootnote": "For summaries and commits",
-  "desktop.settings.chatLlm": "Ask & Agent LLM",
-  "desktop.settings.chatModelFootnote": "For Ask and Agent chat",
-  "desktop.settings.embedding": "Embedding",
-  "desktop.settings.embeddingFootnote": "For semantic search",
+  "desktop.settings.toolModelUse": "Tool LLM",
+  "desktop.settings.toolModelUseDesc": "For summaries",
+  "desktop.settings.chatModelUse": "Ask / Chat",
+  "desktop.settings.chatModelUseDesc": "For Ask and Agent chat",
+  "desktop.settings.embeddingModelUse": "Embedding",
+  "desktop.settings.embeddingModelUseDesc": "For semantic search",
+  "desktop.settings.imageModelUse": "Image",
+  "desktop.settings.imageModelUseDesc": "Image generation",
+  "desktop.settings.useCaseModels": "Use-case models",
+  "desktop.settings.useCaseModelsFootnote": "Each feature picks a model by kind.",
+  "desktop.settings.providerList": "Providers",
+  "desktop.settings.providerListLabel": "Provider list",
+  "desktop.settings.providerListEmpty": "No providers yet.",
+  "desktop.settings.providerAdd": "Add",
+  "desktop.settings.providerRemove": "Remove provider",
+  "desktop.settings.providerRemoveConfirm": "Remove provider?",
+  "desktop.settings.providerNewName": "New provider",
+  "desktop.settings.providerDetail": "Provider",
+  "desktop.settings.providerDetailEmpty": "Select a provider.",
+  "desktop.settings.providerName": "Name",
+  "desktop.settings.providerFetchModels": "Fetch models",
+  "desktop.settings.providerFetchingModels": "Fetching models…",
+  "desktop.settings.providerFetchedModels": "Fetched {0} models",
+  "desktop.settings.providerFetchFailed": "Fetch failed.",
+  "desktop.settings.providerNoModels": "No models yet.",
+  "desktop.settings.providerModels": "Models",
+  "desktop.settings.providerModelsFootnote": "Kinds: text, image, embedding.",
+  "desktop.settings.modelKind": "Model kind",
+  "desktop.settings.modelKindText": "Text",
+  "desktop.settings.modelKindImage": "Image",
+  "desktop.settings.modelKindEmbedding": "Embedding",
+  "desktop.settings.modelAdd": "Add model",
+  "desktop.settings.modelAddId": "Model id",
+  "desktop.settings.selectFetchedModel": "Select fetched model ({0} available)…",
+  "desktop.settings.orCustomModelId": "Or enter custom model ID",
+  "desktop.settings.modelRemove": "Remove model",
+  "desktop.settings.modelPlaceholder": "—",
+  "desktop.settings.noTextModelsHint": "No text models.",
+  "desktop.settings.noEmbeddingModelsHint": "No embedding models.",
+  "desktop.settings.noImageModelsHint": "No image models.",
+  "desktop.settings.testConnectionKind": "Kind to test",
+  "desktop.settings.disableThinkingChatDesc": "Chat thinking desc",
   "desktop.settings.appearance": "Appearance",
   "desktop.settings.theme": "Theme",
   "desktop.settings.themeDesc": "Theme desc",
@@ -80,24 +124,22 @@ const messages = {
   "desktop.settings.fieldUiLanguageDescription": "UI language",
   "desktop.settings.fieldUiLanguageOptionAuto": "Auto",
   "desktop.settings.baseUrl": "Base URL",
-  "desktop.settings.model": "Model",
   "desktop.settings.apiKey": "API key",
   "desktop.settings.showApiKey": "Show API key",
   "desktop.settings.hideApiKey": "Hide API key",
-  "desktop.settings.baseUrlOptional": "Base URL (optional)",
-  "desktop.settings.apiKeyOptional": "API key (optional)",
   "desktop.settings.outputLanguage": "Output language",
   "desktop.settings.fieldOutputLanguageDescription": "Output lang desc",
   "desktop.settings.fieldOutputLanguageOptionAuto": "Auto",
   "desktop.settings.disableThinking": "Disable Thinking",
   "desktop.settings.disableThinkingDesc": "Send thinking:disabled for reasoning models.",
   "desktop.settings.testConnection": "Test Connection",
-  "desktop.settings.testConnectionHint": "Uses the values currently in the form above (Save is not required).",
   "desktop.settings.testConnectionTesting": "Testing…",
   "desktop.settings.saving": "Saving…",
   "desktop.settings.saved": "Saved {0}",
   "desktop.settings.schedulerOn": "scheduler on",
   "desktop.settings.schedulerOff": "scheduler off",
+  "desktop.settings.embeddingModelChangeConfirm": "Embedding change confirm",
+  "desktop.settings.embeddingModelChangeCancelled": "Cancelled",
   "desktop.settings.newSessionGroup": "New Session",
   "desktop.settings.defaultAgent": "Default agent",
   "desktop.settings.defaultAgentDesc": "CLI or ACP target",
@@ -139,9 +181,17 @@ function renderWindowSettings(initialPane = "general") {
     schedulerEnabled: false,
     options
   }));
-  const testModelConnection = vi.fn(async (args: { kind: string; draft: unknown }) => ({
+  const providersTestConnection = vi.fn(async (args: { kind: string; provider: unknown; modelId: string }) => ({
     ok: true,
-    message: `Connected mock (${args.kind})`
+    message: `Connected mock (${args.kind}:${args.modelId})`
+  }));
+  const providersFetchModels = vi.fn(async (args: { baseUrl: string; apiKey?: string }): Promise<MockProviderFetchModelsResult> => ({
+    ok: true,
+    models: [
+      { id: "test", kind: "text" },
+      { id: "text-embedding-3-small", kind: "embedding" },
+      { id: "dall-e-3", kind: "image" }
+    ]
   }));
   const navigateHandlers: Array<(payload: { pane: string }) => void> = [];
   vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -152,10 +202,32 @@ function renderWindowSettings(initialPane = "general") {
       uiLanguage: "en",
       llm: { baseUrl: "https://example.test/v1", model: "test", apiKey: "" },
       embedding: { model: "text-embedding-3-small" },
+      providers: [
+        {
+          id: "p1",
+          name: "Example",
+          baseUrl: "https://example.test/v1",
+          apiKey: "sk-test",
+          models: [
+            { id: "test", kind: "text" },
+            { id: "text-embedding-3-small", kind: "embedding" }
+          ]
+        }
+      ],
+      modelSelections: {
+        tool: { providerId: "p1", modelId: "test" },
+        chat: { providerId: "p1", modelId: "test" },
+        embedding: { providerId: "p1", modelId: "text-embedding-3-small" }
+      },
+      llmOptions: {
+        tool: { outputLanguage: "auto", maxContextChars: 120000, requestTimeoutMs: 300000, disableThinking: false },
+        chat: { disableThinking: false }
+      },
       desktop: { theme: "system" }
     }),
     saveSettings,
-    testModelConnection,
+    providersTestConnection,
+    providersFetchModels,
     closeSettingsWindow,
     onSettingsNavigate: (callback: (payload: { pane: string }) => void) => {
       navigateHandlers.push(callback);
@@ -165,7 +237,8 @@ function renderWindowSettings(initialPane = "general") {
     imCreateTemplate: vi.fn(async () => ({ templateId: "custom" })),
     imUpdateTemplate: vi.fn(async () => ({ templateId: "custom" })),
     imDeleteTemplate: vi.fn(async () => ({ ok: true })),
-    imListSelectionActions: vi.fn(async () => []),    imCreateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
+    imListSelectionActions: vi.fn(async () => []),
+    imCreateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
     imUpdateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
     imDeleteSelectionAction: vi.fn(async () => ({ ok: true }))
   } as unknown as typeof window.agentResume;
@@ -174,7 +247,7 @@ function renderWindowSettings(initialPane = "general") {
       <SettingsPanel variant="window" initialPane={initialPane} />
     </I18nProvider>
   );
-  return { host, closeSettingsWindow, saveSettings, testModelConnection, navigateHandlers };
+  return { host, closeSettingsWindow, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -206,50 +279,62 @@ describe("SettingsPanel (window)", () => {
     const { host, navigateHandlers } = renderWindowSettings("general");
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     await act(async () => {
-      navigateHandlers[0]?.({ pane: "models" });
+      navigateHandlers[0]?.({ pane: "providers" });
     });
     await waitFor(() => expect(host.querySelectorAll(".settings-group")).toHaveLength(3));
     expect(host.textContent).toContain("Tool LLM");
   });
 
-  it("separates models by the feature that uses them", async () => {
-    const { host } = renderWindowSettings("models");
-    await waitFor(() => expect(host.querySelectorAll(".settings-group")).toHaveLength(3));
+  it("renders the provider pool with kind badges and per-use-case model selectors", async () => {
+    const { host } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector(".settings-provider-list")).not.toBeNull());
+    expect(host.querySelectorAll(".settings-provider-item")).toHaveLength(1);
+    expect(host.textContent).toContain("Example");
     expect(host.textContent).toContain("Tool LLM");
-    expect(host.textContent).toContain("For summaries and commits");
-    expect(host.textContent).toContain("Ask & Agent LLM");
-    expect(host.textContent).toContain("For semantic search");
+    expect(host.textContent).toContain("Ask / Chat");
+    expect(host.textContent).toContain("Embedding");
+    expect(host.textContent).toContain("Image");
+    // Use-case selectors enumerate the provider pool filtered by kind.
+    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(3);
+    expect(host.querySelector('[data-testid="settings-model-select-text"]')).not.toBeNull();
+    // No image models in the pool → the image selector shows an empty hint instead.
+    expect(host.querySelector('[data-testid="settings-model-select-image"]')).toBeNull();
+    expect(host.textContent).toContain("No image models.");
+    expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
+    // Kind badges on fetched/manual model rows.
+    expect(host.querySelectorAll('[data-testid^="settings-provider-model-kind-"]')).toHaveLength(2);
   });
 
-  it("requires explicit Save to persist changes", async () => {
-    const { host, saveSettings } = renderWindowSettings("models");
-    await waitFor(() => expect(host.querySelector(".settings-group")).not.toBeNull());
-    const input = host.querySelector('input[type="text"]') as HTMLInputElement | null;
-    expect(input).not.toBeNull();
-    fireEvent.change(input!, { target: { value: "https://changed.test/v1" } });
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement | null).not.toBeNull());
+  it("requires explicit Save to persist provider changes", async () => {
+    const { host, saveSettings } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-provider-name"]')).not.toBeNull());
+    const input = host.querySelector('[data-testid="settings-provider-name"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Renamed" } });
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement | null).not.toBeNull());
     expect(saveSettings).not.toHaveBeenCalled();
-    const saveBtn = host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement;
+    const saveBtn = host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement;
     expect(saveBtn.disabled).toBe(false);
     fireEvent.click(saveBtn);
     await waitFor(() => {
       expect(saveSettings).toHaveBeenCalled();
       const last = saveSettings.mock.calls.at(-1);
-      expect(last?.[1]).toMatchObject({ section: "models" });
+      expect(last?.[1]).toMatchObject({ section: "providers" });
+      const saved = last?.[0] as { providers?: Array<{ name: string }> };
+      expect(saved.providers?.[0].name).toBe("Renamed");
     });
   });
 
-  it("discards changes and disables Save when clean", async () => {
-    const { host, saveSettings } = renderWindowSettings("models");
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-models"]')).not.toBeNull());
-    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
-    const saveBtn = host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement;
+  it("discards provider changes and disables Save when clean", async () => {
+    const { host, saveSettings } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-providers"]')).not.toBeNull());
+    const input = host.querySelector('[data-testid="settings-provider-name"]') as HTMLInputElement;
+    const saveBtn = host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement;
     expect(saveBtn.disabled).toBe(true);
-    fireEvent.change(input, { target: { value: "https://changed.test/v1" } });
-    await waitFor(() => expect((host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(host.querySelector('[data-testid="settings-discard-models"]')!);
-    expect(input.value).toBe("https://example.test/v1");
-    expect((host.querySelector('[data-testid="settings-save-models"]') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "Renamed" } });
+    await waitFor(() => expect((host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(host.querySelector('[data-testid="settings-discard-providers"]')!);
+    expect(input.value).toBe("Example");
+    expect((host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement).disabled).toBe(true);
     expect(saveSettings).not.toHaveBeenCalled();
   });
 
@@ -274,42 +359,82 @@ describe("SettingsPanel (window)", () => {
     });
   });
 
-  it("tests each model group with current form values without saving", async () => {
-    const { host, testModelConnection, saveSettings } = renderWindowSettings("models");
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-test-model-tool"]')).not.toBeNull());
-    expect(host.querySelectorAll('[data-testid^="settings-test-model-"]')).toHaveLength(3);
-
+  it("fetches provider models and tests the connection without saving", async () => {
+    const { host, providersTestConnection, providersFetchModels, saveSettings } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-fetch-provider-models"]')).not.toBeNull());
     saveSettings.mockClear();
-    fireEvent.click(host.querySelector('[data-testid="settings-test-model-tool"]')!);
-    await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "tool",
-        draft: expect.objectContaining({ llmBaseUrl: "https://example.test/v1", llmModel: "test" })
-      })
-    ));
-    await waitFor(() => expect(host.textContent).toContain("Connected mock (tool)"));
+
+    fireEvent.click(host.querySelector('[data-testid="settings-fetch-provider-models"]')!);
+    await waitFor(() => expect(providersFetchModels).toHaveBeenCalledWith({
+      baseUrl: "https://example.test/v1",
+      apiKey: "sk-test"
+    }));
+    await waitFor(() => expect(host.textContent).toContain("dall-e-3"));
     expect(saveSettings).not.toHaveBeenCalled();
 
-    fireEvent.click(host.querySelector('[data-testid="settings-test-model-chat"]')!);
-    await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith(expect.objectContaining({ kind: "chat" })));
+    // Selecting a fetched model from the dropdown auto-populates the ID and kind, then Add adds it
+    const addSelect = host.querySelector('[data-testid="settings-add-model-select"]') as HTMLSelectElement;
+    expect(addSelect).not.toBeNull();
+    fireEvent.change(addSelect, { target: { value: "dall-e-3" } });
+    fireEvent.click(host.querySelector('[data-testid="settings-add-model"]')!);
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-remove-model-dall-e-3"]')).not.toBeNull());
 
-    fireEvent.click(host.querySelector('[data-testid="settings-test-model-embedding"]')!);
-    await waitFor(() =>
-      expect(testModelConnection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          kind: "embedding",
-          draft: expect.objectContaining({ embModel: "text-embedding-3-small" })
-        })
-      )
-    );
+    // Test connection defaults to the text kind and uses the tool selection model.
+    fireEvent.click(host.querySelector('[data-testid="settings-test-provider"]')!);
+    await waitFor(() => expect(providersTestConnection).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "text",
+      provider: expect.objectContaining({ baseUrl: "https://example.test/v1", apiKey: "sk-test" }),
+      modelId: "test"
+    })));
+    await waitFor(() => expect(host.textContent).toContain("Connected mock (text:test)"));
+
+    // Switch the kind to embedding and test again with the embedding model.
+    const kindSelect = host.querySelector('[data-testid="settings-provider-test-kind"]') as HTMLSelectElement;
+    fireEvent.change(kindSelect, { target: { value: "embedding" } });
+    fireEvent.click(host.querySelector('[data-testid="settings-test-provider"]')!);
+    await waitFor(() => expect(providersTestConnection).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "embedding",
+      modelId: "text-embedding-3-small"
+    })));
   });
 
-  it("reveals and hides model API keys", async () => {
-    const { host } = renderWindowSettings("models");
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-api-key-llmApiKey"]')).not.toBeNull());
+  it("rejects fetch failures and shows the message", async () => {
+    const { host, providersFetchModels } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-fetch-provider-models"]')).not.toBeNull());
+    providersFetchModels.mockResolvedValueOnce({ ok: false, message: "Provider has no /models endpoint" });
+    fireEvent.click(host.querySelector('[data-testid="settings-fetch-provider-models"]')!);
+    await waitFor(() => expect(host.textContent).toContain("Provider has no /models endpoint"));
+  });
 
-    const input = host.querySelector('[data-testid="settings-api-key-llmApiKey"]') as HTMLInputElement;
-    const toggle = host.querySelector('[data-testid="settings-api-key-reveal-llmApiKey"]') as HTMLButtonElement;
+  it("adds and removes providers and models", async () => {
+    const { host } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-add-provider"]')).not.toBeNull());
+
+    fireEvent.click(host.querySelector('[data-testid="settings-add-provider"]')!);
+    await waitFor(() => expect(host.querySelectorAll(".settings-provider-item")).toHaveLength(2));
+
+    // Adding a model to the currently selected (new) provider.
+    const addModelId = host.querySelector('[data-testid="settings-add-model-id"]') as HTMLInputElement;
+    fireEvent.change(addModelId, { target: { value: "custom-model" } });
+    fireEvent.click(host.querySelector('[data-testid="settings-add-model"]')!);
+    await waitFor(() => expect(host.textContent).toContain("custom-model"));
+
+    // Remove the model again.
+    fireEvent.click(host.querySelector('[data-testid="settings-remove-model-custom-model"]')!);
+    await waitFor(() => expect(host.textContent).not.toContain("custom-model"));
+
+    // Remove the provider.
+    const removeButtons = host.querySelectorAll('[data-testid^="settings-remove-provider-"]');
+    fireEvent.click(removeButtons[0]!);
+    await waitFor(() => expect(host.querySelectorAll(".settings-provider-item")).toHaveLength(1));
+  });
+
+  it("reveals and hides the provider API key", async () => {
+    const { host } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-provider-api-key"]')).not.toBeNull());
+
+    const input = host.querySelector('[data-testid="settings-provider-api-key"]') as HTMLInputElement;
+    const toggle = host.querySelector('[data-testid="settings-provider-api-key-reveal"]') as HTMLButtonElement;
     expect(input.type).toBe("password");
     expect(toggle.getAttribute("aria-label")).toBe("Show API key");
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -326,11 +451,7 @@ describe("SettingsPanel (window)", () => {
     expect(input.type).toBe("password");
     expect(input.value).toBe("sk-secret-value");
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
-
-    expect(host.querySelectorAll('[data-testid^="settings-api-key-reveal-"]')).toHaveLength(3);
   });
-
-
 
   it("keeps the Data Paths pane free of the Notes provider select", async () => {
     const { host } = renderWindowSettings("storage");

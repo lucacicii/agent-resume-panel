@@ -13,6 +13,11 @@ export const IM_TOOLS_MIGRATION_SQL = `
 ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
 `;
 
+export const IM_SELECTION_ACTION_MODEL_MIGRATION_SQL = `
+ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
+ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -333,6 +338,8 @@ CREATE TABLE IF NOT EXISTS im_selection_actions (
   name TEXT NOT NULL,
   kind TEXT NOT NULL,
   prompt TEXT NOT NULL DEFAULT '',
+  provider_id TEXT,
+  model_id TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at_ms INTEGER NOT NULL,

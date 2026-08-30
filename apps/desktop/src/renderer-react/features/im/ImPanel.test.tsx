@@ -20,6 +20,7 @@ const messages = {
   "desktop.im.mentions": "Mentioned roles",
   "desktop.im.quote": "Quote",
   "desktop.im.translate": "Translate",
+  "desktop.im.restore": "Restore",
   "desktop.im.explain": "Explain",
   "desktop.im.actionRunning": "Working…",
   "desktop.im.removeQuote": "Remove quote",
@@ -362,6 +363,39 @@ describe("ImPanel", () => {
     expect(chips).toEqual(["@Product Manager", "@Developer"]);
   });
 
+  it("translates a message inline and restores the original via the tag", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "msg-translate",
+        projectId: "proj-1",
+        kind: "role.say",
+        authorMemberId: "mem-pm",
+        authorLabel: "Product Manager",
+        body: "Hello world",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const translateTag = await screen.findByRole("button", { name: "Translate" });
+    fireEvent.click(translateTag);
+    await waitFor(() => expect(api.imRunSelectionAction).toHaveBeenCalledWith({ actionId: "translate", text: "Hello world" }));
+    await waitFor(() => expect(screen.getByText("translated")).toBeTruthy());
+    expect(screen.queryByText("Hello world")).toBeNull();
+    const restoreTag = screen.getByRole("button", { name: "Restore" });
+    fireEvent.click(restoreTag);
+    await waitFor(() => expect(screen.getByText("Hello world")).toBeTruthy());
+    expect(screen.queryByText("translated")).toBeNull();
+  });
+
   it("opens the context menu on the whole message without a selection", async () => {
     const api = renderIm();
     const next = roomFor(project());
@@ -449,7 +483,8 @@ describe("ImPanel", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
-    const quote = await screen.findByRole("button", { name: "Quote" });
+    const quote = document.querySelector(".im-quote-btn") as HTMLElement;
+    expect(quote).toBeTruthy();
     fireEvent.click(quote);
     await waitFor(() => expect(screen.getByLabelText("Remove quote")).toBeTruthy());
   });

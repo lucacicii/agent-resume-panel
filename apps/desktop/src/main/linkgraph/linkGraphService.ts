@@ -127,7 +127,7 @@ export async function analyzeLinkGraph(
     outputPreference:
       raw.outputLanguage && raw.outputLanguage !== "auto"
         ? raw.outputLanguage
-        : settings.llm?.outputLanguage,
+        : settings.llmOptions?.tool?.outputLanguage,
     uiPreference: settings.uiLanguage,
     systemLocale: options?.systemLocale
   }).catalogLanguage;

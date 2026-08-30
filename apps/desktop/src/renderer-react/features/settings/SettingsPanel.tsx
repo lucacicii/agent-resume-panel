@@ -2,7 +2,8 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appearanceStateFromSettings } from "../../themes";
-import type { PanelSettings } from "@agent-resume/core";
+import type { AiProvider, ModelKind, ModelSelection, PanelSettings, ProviderModel } from "@agent-resume/core";
+import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
@@ -13,8 +14,8 @@ import {
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
   generalPatch,
-  modelsDraftFromSettings,
-  modelsPatch,
+  providersDraftFromSettings,
+  providersPatch,
   reportDraftFromSettings,
   reportPatch,
   notesDraftFromSettings,
@@ -26,7 +27,7 @@ import {
   workbenchDraftFromSettings,
   workbenchPatch,
   type GeneralDraft,
-  type ModelsDraft,
+  type ProvidersDraft,
   type NotesDraft,
   type ReportDraft,
   type SessionsDraft,
@@ -34,10 +35,7 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey";
-type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
-
-type Pane = "general" | "models" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
+type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
 
 function isEditablePane(value: Pane): value is EditablePane {
@@ -52,7 +50,7 @@ export type SettingsPanelProps = {
 
 const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "general", key: "desktop.settings.paneGeneral", desc: "desktop.settings.paneGeneralDesc" },
-  { id: "models", key: "desktop.settings.paneModels", desc: "desktop.settings.paneModelsDesc" },
+  { id: "providers", key: "desktop.settings.paneProviders", desc: "desktop.settings.paneProvidersDesc" },
   { id: "sessions", key: "desktop.settings.paneSessions", desc: "desktop.settings.paneSessionsDesc" },
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
   { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
@@ -81,7 +79,7 @@ export function SettingsPanel({
   const [pane, setPane] = useState<Pane>(() => asPane(initialPane));
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [general, setGeneral] = useState<GeneralDraft | null>(null);
-  const [models, setModels] = useState<ModelsDraft | null>(null);
+  const [providers, setProviders] = useState<ProvidersDraft | null>(null);
   const [sessions, setSessions] = useState<SessionsDraft | null>(null);
   const [workbench, setWorkbench] = useState<WorkbenchDraft | null>(null);
   const [report, setReport] = useState<ReportDraft | null>(null);
@@ -99,7 +97,7 @@ export function SettingsPanel({
     lastSavedSettings.current = next;
     setSettings(next);
     setGeneral(generalDraftFromSettings(next));
-    setModels(modelsDraftFromSettings(next));
+    setProviders(providersDraftFromSettings(next));
     setSessions(sessionsDraftFromSettings(next));
     setWorkbench(workbenchDraftFromSettings(next));
     setReport(reportDraftFromSettings(next));
@@ -113,14 +111,14 @@ export function SettingsPanel({
     if (!isEditablePane(value) || !lastSavedSettings.current) return false;
     const base = lastSavedSettings.current;
     if (value === "general") return JSON.stringify(general) !== JSON.stringify(generalDraftFromSettings(base));
-    if (value === "models") return JSON.stringify(models) !== JSON.stringify(modelsDraftFromSettings(base));
+    if (value === "providers") return JSON.stringify(providers) !== JSON.stringify(providersDraftFromSettings(base));
     if (value === "sessions") return JSON.stringify(sessions) !== JSON.stringify(sessionsDraftFromSettings(base));
     if (value === "workbench") return JSON.stringify(workbench) !== JSON.stringify(workbenchDraftFromSettings(base));
     if (value === "notes") return JSON.stringify(notes) !== JSON.stringify(notesDraftFromSettings(base));
     if (value === "report") return JSON.stringify(report) !== JSON.stringify(reportDraftFromSettings(base));
     if (value === "storage") return JSON.stringify(storage) !== JSON.stringify(storageDraftFromSettings(base));
     return false;
-  }, [general, models, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, report, storage]);
 
   paneRef.current = pane;
   const isDirtyForPaneRef = useRef(isDirtyForPane);
@@ -209,21 +207,21 @@ export function SettingsPanel({
     }
   }, [hydrate, isWindow, t]);
 
-  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ModelsDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
+  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
     if (section === "general") return general;
-    if (section === "models") return models;
+    if (section === "providers") return providers;
     if (section === "sessions") return sessions;
     if (section === "workbench") return workbench;
     if (section === "notes") return notes;
     if (section === "report") return report;
     return storage;
-  }, [general, models, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, report, storage]);
 
   const savedDraftFor = useCallback((section: EditablePane) => {
     const base = lastSavedSettings.current;
     if (!base) return null;
     if (section === "general") return generalDraftFromSettings(base);
-    if (section === "models") return modelsDraftFromSettings(base);
+    if (section === "providers") return providersDraftFromSettings(base);
     if (section === "sessions") return sessionsDraftFromSettings(base);
     if (section === "workbench") return workbenchDraftFromSettings(base);
     if (section === "notes") return notesDraftFromSettings(base);
@@ -239,7 +237,7 @@ export function SettingsPanel({
   }, [currentDraft, savedDraftFor]);
 
   const hasAnyDirty = useCallback((): boolean => {
-    const sections: EditablePane[] = ["general", "models", "sessions", "workbench", "notes", "report", "storage"];
+    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "report", "storage"];
     return sections.some((s) => isDirty(s));
   }, [isDirty]);
 
@@ -247,18 +245,18 @@ export function SettingsPanel({
     if (!settings) return;
     const draft = currentDraft(section);
     if (!draft) return;
-    if (section === "models") {
-      const modelsDraft = draft as ModelsDraft;
-      if (embeddingSearchIdentityChanged(settings, modelsDraft)) {
+    if (section === "providers") {
+      const providersDraft = draft as ProvidersDraft;
+      if (embeddingSearchIdentityChanged(settings, providersDraft)) {
         if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
-          setModels(modelsDraftFromSettings(settings));
+          setProviders(providersDraftFromSettings(settings));
           setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
           return;
         }
       }
     }
     const patch = section === "general" ? generalPatch(settings, draft as GeneralDraft)
-      : section === "models" ? modelsPatch(settings, draft as ModelsDraft)
+      : section === "providers" ? providersPatch(settings, draft as ProvidersDraft)
       : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
       : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
       : section === "notes" ? notesPatch(settings, draft as NotesDraft)
@@ -275,7 +273,7 @@ export function SettingsPanel({
       window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
         detail: appearanceStateFromSettings(base)
       }));
-    } else if (section === "models") setModels(modelsDraftFromSettings(base));
+    } else if (section === "providers") setProviders(providersDraftFromSettings(base));
     else if (section === "sessions") setSessions(sessionsDraftFromSettings(base));
     else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(base));
     else if (section === "notes") setNotes(notesDraftFromSettings(base));
@@ -313,14 +311,14 @@ export function SettingsPanel({
     doClose();
   }, [hasAnyDirty, doClose]);
 
-  if (!host || !open || !settings || !general || !models || !sessions || !workbench || !notes || !report || !storage) return null;
+  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !report || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const close = requestClose;
   const editable = isEditablePane(pane);
   const dirty = editable ? isDirty(pane) : false;
   const saving = editable ? savingSection === pane : false;
   const body = pane === "general" ? <GeneralPane draft={general} setDraft={(value) => setGeneral(value)} t={t} />
-    : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} t={t} />
+    : pane === "providers" ? <ProvidersPane draft={providers} setDraft={(value) => setProviders(value)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} t={t} />
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
     : pane === "im" ? <ImSettingsPane t={t} />
@@ -469,100 +467,498 @@ function GeneralPane({ draft, setDraft, t }: { draft: GeneralDraft; setDraft: (v
   </>;
 }
 
-type ModelTestKind = "tool" | "chat" | "embedding";
+type ModelTestKind = "text" | "embedding";
 
-function ModelsPane({ draft, setDraft, t }: { draft: ModelsDraft; setDraft: (value: ModelsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft: (value: ProvidersDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+  const [selectedProviderId, setSelectedProviderId] = useState(draft.providers[0]?.id ?? "");
+  const [testKind, setTestKind] = useState<ModelTestKind>("text");
   const [testing, setTesting] = useState<ModelTestKind | null>(null);
-  const [testStatus, setTestStatus] = useState<Partial<Record<ModelTestKind, { text: string; kind?: StatusKind }>>>({});
-  const [revealedApiKeys, setRevealedApiKeys] = useState<Partial<Record<ModelsApiKeyField, boolean>>>({});
-  const update = <K extends keyof ModelsDraft>(key: K, value: ModelsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
-  const toggleApiKeyReveal = (key: ModelsApiKeyField) => {
-    setRevealedApiKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  const [testStatus, setTestStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchedByProvider, setFetchedByProvider] = useState<Record<string, ProviderModel[]>>({});
+  const [revealedApiKey, setRevealedApiKey] = useState(false);
+  const [newModelId, setNewModelId] = useState("");
+  const [newModelKind, setNewModelKind] = useState<ModelKind>("text");
+
+  const update = <K extends keyof ProvidersDraft>(key: K, value: ProvidersDraft[K]) => setDraft({ ...draft, [key]: value });
+
+  const poolAsSettings = draft.providers;
+  const poolFor = (kind: ModelKind) => listProviderModels(poolAsSettings, kind);
+
+  const selectedProvider = draft.providers.find((entry) => entry.id === selectedProviderId) ?? draft.providers[0] ?? null;
+
+  const patchProvider = (providerId: string, patch: (provider: AiProvider) => AiProvider) => {
+    update("providers", draft.providers.map((entry) => entry.id === providerId ? patch({ ...entry, models: [...entry.models] }) : entry));
   };
-  const fields = (items: ReadonlyArray<readonly [ModelsFieldKey, string, "text" | "password"]>) =>
-    items.map(([key, label, type]) => {
-      if (type !== "password") {
-        return (
-          <label className="settings-field" key={key}>
-            <span className="settings-field-label">{t(label)}</span>
-            <input type="text" value={draft[key]} onChange={(event) => update(key, event.target.value)} />
-          </label>
-        );
-      }
-      const apiKey = key as ModelsApiKeyField;
-      const revealed = Boolean(revealedApiKeys[apiKey]);
-      const revealLabel = revealed ? t("desktop.settings.hideApiKey") : t("desktop.settings.showApiKey");
-      return (
-        <label className="settings-field" key={key}>
-          <span className="settings-field-label">{t(label)}</span>
-          <span className="settings-field-input-wrap">
-            <input
-              type={revealed ? "text" : "password"}
-              autoComplete="off"
-              spellCheck={false}
-              value={draft[key]}
-              onChange={(event) => update(key, event.target.value)}
-              data-testid={`settings-api-key-${apiKey}`}
-            />
-            <button
-              type="button"
-              className="settings-field-reveal notes-icon-btn"
-              data-testid={`settings-api-key-reveal-${apiKey}`}
-              aria-label={revealLabel}
-              aria-pressed={revealed}
-              title={revealLabel}
-              onClick={(event) => {
-                event.preventDefault();
-                toggleApiKeyReveal(apiKey);
-              }}
-            >
-              {revealed ? <ThemeIcon name="eye-off" size={15} aria-hidden="true" /> : <ThemeIcon name="eye" size={15} aria-hidden="true" />}
-            </button>
-          </span>
-        </label>
-      );
+
+  const addProvider = () => {
+    const id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `provider-${Date.now()}`;
+    const provider: AiProvider = { id, name: t("desktop.settings.providerNewName"), baseUrl: "https://api.openai.com/v1", models: [] };
+    update("providers", [...draft.providers, provider]);
+    setSelectedProviderId(id);
+  };
+
+  const removeProvider = (providerId: string) => {
+    if (!window.confirm(t("desktop.settings.providerRemoveConfirm"))) return;
+    const providers = draft.providers.filter((entry) => entry.id !== providerId);
+    const clearIfSelected = (selection: ModelSelection) => selection.providerId === providerId ? {} : selection;
+    setDraft({
+      ...draft,
+      providers,
+      toolSelection: clearIfSelected(draft.toolSelection),
+      chatSelection: clearIfSelected(draft.chatSelection),
+      embeddingSelection: clearIfSelected(draft.embeddingSelection),
+      imageSelection: clearIfSelected(draft.imageSelection)
     });
-  const runTest = async (kind: ModelTestKind) => {
+    if (selectedProviderId === providerId) {
+      setSelectedProviderId(providers[0]?.id ?? "");
+    }
+  };
+
+  const runTest = async () => {
+    if (!selectedProvider) return;
+    const kind = testKind;
     setTesting(kind);
-    setTestStatus((prev) => ({ ...prev, [kind]: { text: t("desktop.settings.testConnectionTesting") } }));
+    setTestStatus({ text: t("desktop.settings.testConnectionTesting") });
+    const candidates = poolFor(kind).filter((entry) => entry.providerId === selectedProvider.id);
+    const selection = kind === "embedding" ? draft.embeddingSelection : draft.toolSelection;
+    const modelId = candidates.find((entry) => entry.modelId === selection.modelId)?.modelId ?? candidates[0]?.modelId ?? "";
     try {
-      const result = await desktopApi().testModelConnection({ kind, draft });
-      setTestStatus((prev) => ({
-        ...prev,
-        [kind]: { text: result.message, kind: result.ok ? "ok" : "error" }
-      }));
+      const result = await desktopApi().providersTestConnection({
+        kind,
+        provider: { name: selectedProvider.name, baseUrl: selectedProvider.baseUrl, apiKey: selectedProvider.apiKey ?? "" },
+        modelId
+      });
+      setTestStatus({ text: result.message, kind: result.ok ? "ok" : "error" });
     } catch (error) {
-      setTestStatus((prev) => ({
-        ...prev,
-        [kind]: { text: error instanceof Error ? error.message : String(error), kind: "error" }
-      }));
+      setTestStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
       setTesting(null);
     }
   };
-  const testBlock = (kind: ModelTestKind) => {
-    const status = testStatus[kind];
-    const busy = testing === kind;
+
+  const fetchModels = async () => {
+    if (!selectedProvider) return;
+    setFetchingModels(true);
+    setTestStatus({ text: t("desktop.settings.providerFetchingModels") });
+    try {
+      const result = await desktopApi().providersFetchModels({
+        baseUrl: selectedProvider.baseUrl,
+        apiKey: selectedProvider.apiKey ?? ""
+      });
+      if (!result.ok || !result.models) {
+        setTestStatus({ text: result.message || t("desktop.settings.providerFetchFailed"), kind: "error" });
+        return;
+      }
+      const fetched = result.models;
+      setFetchedByProvider((prev) => ({ ...prev, [selectedProvider.id]: fetched }));
+      setTestStatus({ text: t("desktop.settings.providerFetchedModels", fetched.length), kind: "ok" });
+      const unadded = fetched.filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id));
+      if (unadded.length > 0) {
+        setNewModelId(unadded[0].id);
+        setNewModelKind(unadded[0].kind);
+      }
+    } catch (error) {
+      setTestStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const addModel = () => {
+    const id = newModelId.trim();
+    if (!id || !selectedProvider) return;
+    patchProvider(selectedProvider.id, (provider) => (
+      provider.models.some((model) => model.id === id)
+        ? provider
+        : { ...provider, models: [...provider.models, { id, kind: newModelKind }] }
+    ));
+    setNewModelId("");
+  };
+
+  const removeModel = (modelId: string) => {
+    if (!selectedProvider) return;
+    patchProvider(selectedProvider.id, (provider) => ({
+      ...provider,
+      models: provider.models.filter((model) => model.id !== modelId)
+    }));
+  };
+
+  const kindLabel = (kind: ModelKind) =>
+    kind === "image"
+      ? t("desktop.settings.modelKindImage")
+      : kind === "embedding"
+        ? t("desktop.settings.modelKindEmbedding")
+        : t("desktop.settings.modelKindText");
+
+  const providerMeta = (provider: AiProvider) => {
+    const text = provider.models.filter((model) => model.kind === "text").length;
+    const image = provider.models.filter((model) => model.kind === "image").length;
+    const embedding = provider.models.filter((model) => model.kind === "embedding").length;
+    const parts: string[] = [];
+    if (text) parts.push(`${text} · ${t("desktop.settings.modelKindText")}`);
+    if (image) parts.push(`${image} · ${t("desktop.settings.modelKindImage")}`);
+    if (embedding) parts.push(`${embedding} · ${t("desktop.settings.modelKindEmbedding")}`);
+    return parts.length ? parts.join("  ") : t("desktop.settings.providerNoModels");
+  };
+
+  const selectionRow = (
+    labelKey: string,
+    descKey: string,
+    kind: ModelKind,
+    selection: ModelSelection,
+    onChange: (value: ModelSelection) => void
+  ) => {
+    const options = listProviderModels(draft.providers, kind);
+    const value = selection.providerId && selection.modelId && options.some(
+      (entry) => entry.providerId === selection.providerId && entry.modelId === selection.modelId
+    )
+      ? `${selection.providerId}:${selection.modelId}`
+      : "";
+    const emptyHint =
+      kind === "embedding"
+        ? t("desktop.settings.noEmbeddingModelsHint")
+        : kind === "image"
+          ? t("desktop.settings.noImageModelsHint")
+          : t("desktop.settings.noTextModelsHint");
     return (
-      <div className="settings-test-connection">
-        <p className="settings-footnote">{t("desktop.settings.testConnectionHint")}</p>
-        <button
-          type="button"
-          className="ghost-btn"
-          data-testid={`settings-test-model-${kind}`}
-          disabled={testing !== null}
-          onClick={() => void runTest(kind)}
-        >
-          {busy ? t("desktop.settings.testConnectionTesting") : t("desktop.settings.testConnection")}
-        </button>
-        {status?.text ? <Status kind={status.kind}>{status.text}</Status> : null}
-      </div>
+      <label className="settings-row" key={labelKey}>
+        <span className="settings-row-label">
+          <span className="settings-row-title">{t(labelKey)}</span>
+          <span className="settings-row-desc">{t(descKey)}</span>
+        </span>
+        {options.length ? (
+          <select
+            className="settings-row-control"
+            data-testid={`settings-model-select-${kind}`}
+            value={value}
+            onChange={(event) => {
+              const [providerId, modelId] = event.target.value.split(":");
+              onChange({ providerId, modelId });
+            }}
+          >
+            <option value="">{t("desktop.settings.modelPlaceholder")}</option>
+            {options.map((option) => (
+              <option key={`${option.providerId}:${option.modelId}`} value={`${option.providerId}:${option.modelId}`}>
+                {option.providerName} / {option.modelId}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="settings-row-control settings-row-hint">{emptyHint}</span>
+        )}
+      </label>
     );
   };
+
+  const modelCount = selectedProvider?.models.length ?? 0;
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.toolLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.toolLlmFootnote")}</p>{fields([["llmBaseUrl", "desktop.settings.baseUrl", "text"], ["llmModel", "desktop.settings.model", "text"], ["llmApiKey", "desktop.settings.apiKey", "password"]])}<label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span><span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span></span><select className="settings-row-control" value={draft.llmLang} onChange={(event) => update("llmLang", event.target.value as ModelsDraft["llmLang"])}><option value="auto">{t("desktop.settings.fieldOutputLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.disableThinking")}</span><span className="settings-row-desc">{t("desktop.settings.disableThinkingDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft.llmDisableThinking} onChange={(event) => update("llmDisableThinking", event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>{testBlock("tool")}</div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.chatLlm")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.chatModelFootnote")}</p>{fields([["chatBaseUrl", "desktop.settings.baseUrl", "text"], ["chatModel", "desktop.settings.model", "text"], ["chatApiKey", "desktop.settings.apiKey", "password"]])}{testBlock("chat")}</div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embedding")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.embeddingFootnote")}</p>{fields([["embBaseUrl", "desktop.settings.baseUrlOptional", "text"], ["embModel", "desktop.settings.model", "text"], ["embApiKey", "desktop.settings.apiKeyOptional", "password"]])}{testBlock("embedding")}</div></section>
+    <div className="settings-provider-layout">
+      <aside className="settings-provider-list" aria-label={t("desktop.settings.providerListLabel")}>
+        <div className="settings-provider-list-header">
+          <span className="settings-field-label">{t("desktop.settings.providerList")}</span>
+          <button
+            type="button"
+            className="ghost-btn"
+            data-testid="settings-add-provider"
+            onClick={addProvider}
+          >
+            + {t("desktop.settings.providerAdd")}
+          </button>
+        </div>
+        {draft.providers.length === 0 ? (
+          <p className="settings-footnote">{t("desktop.settings.providerListEmpty")}</p>
+        ) : (
+          draft.providers.map((provider) => (
+            <div
+              key={provider.id}
+              className={`settings-provider-item${provider.id === selectedProvider?.id ? " active" : ""}`}
+            >
+              <button
+                type="button"
+                className="settings-provider-item-main"
+                aria-pressed={provider.id === selectedProvider?.id}
+                onClick={() => setSelectedProviderId(provider.id)}
+              >
+                <span className="settings-provider-item-name">{provider.name || provider.baseUrl}</span>
+                <span className="settings-provider-item-meta">{providerMeta(provider)}</span>
+              </button>
+              <button
+                type="button"
+                className="settings-provider-remove"
+                data-testid={`settings-remove-provider-${provider.id}`}
+                aria-label={t("desktop.settings.providerRemove")}
+                title={t("desktop.settings.providerRemove")}
+                onClick={() => removeProvider(provider.id)}
+              >
+                <ThemeIcon name="trash" size={14} aria-hidden="true" />
+              </button>
+            </div>
+          ))
+        )}
+      </aside>
+      <div className="settings-provider-detail">
+        {selectedProvider ? (
+          <>
+            <section className="settings-group">
+              <h3 className="settings-group-title">{selectedProvider.name || t("desktop.settings.providerDetail")}</h3>
+              <div className="settings-group-body">
+                <label className="settings-field">
+                  <span className="settings-field-label">{t("desktop.settings.providerName")}</span>
+                  <input
+                    type="text"
+                    data-testid="settings-provider-name"
+                    value={selectedProvider.name}
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, name }));
+                    }}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">{t("desktop.settings.baseUrl")}</span>
+                  <input
+                    type="text"
+                    data-testid="settings-provider-base-url"
+                    value={selectedProvider.baseUrl}
+                    onChange={(event) => {
+                      const baseUrl = event.target.value;
+                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, baseUrl }));
+                    }}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">{t("desktop.settings.apiKey")}</span>
+                  <span className="settings-field-input-wrap">
+                    <input
+                      type={revealedApiKey ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      data-testid="settings-provider-api-key"
+                      value={selectedProvider.apiKey ?? ""}
+                      onChange={(event) => {
+                        const apiKey = event.target.value;
+                        patchProvider(selectedProvider.id, (provider) => ({ ...provider, apiKey }));
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="settings-field-reveal notes-icon-btn"
+                      data-testid="settings-provider-api-key-reveal"
+                      aria-label={revealedApiKey ? t("desktop.settings.hideApiKey") : t("desktop.settings.showApiKey")}
+                      aria-pressed={revealedApiKey}
+                      title={revealedApiKey ? t("desktop.settings.hideApiKey") : t("desktop.settings.showApiKey")}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setRevealedApiKey((current) => !current);
+                      }}
+                    >
+                      {revealedApiKey ? <ThemeIcon name="eye-off" size={15} aria-hidden="true" /> : <ThemeIcon name="eye" size={15} aria-hidden="true" />}
+                    </button>
+                  </span>
+                </label>
+                <div className="settings-provider-actions">
+                  <select
+                    className="settings-row-control settings-provider-test-kind"
+                    data-testid="settings-provider-test-kind"
+                    value={testKind}
+                    onChange={(event) => setTestKind(event.target.value as ModelTestKind)}
+                    aria-label={t("desktop.settings.testConnectionKind")}
+                  >
+                    <option value="text">{t("desktop.settings.modelKindText")}</option>
+                    <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    data-testid="settings-fetch-provider-models"
+                    disabled={fetchingModels || testing !== null}
+                    onClick={() => void fetchModels()}
+                  >
+                    {fetchingModels ? t("desktop.settings.providerFetchingModels") : t("desktop.settings.providerFetchModels")}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    data-testid="settings-test-provider"
+                    disabled={fetchingModels || testing !== null || !modelCount}
+                    onClick={() => void runTest()}
+                  >
+                    {testing ? t("desktop.settings.testConnectionTesting") : t("desktop.settings.testConnection")}
+                  </button>
+                  {testStatus.text ? <Status kind={testStatus.kind}>{testStatus.text}</Status> : null}
+                </div>
+                <p className="settings-footnote">{t("desktop.settings.providerModelsFootnote")}</p>
+              </div>
+            </section>
+            <section className="settings-group">
+              <h3 className="settings-group-title">{t("desktop.settings.providerModels")}</h3>
+              <div className="settings-group-body">
+                {modelCount === 0 ? (
+                  <p className="settings-footnote">{t("desktop.settings.providerNoModels")}</p>
+                ) : (
+                  <div className="settings-provider-models-list">
+                    {selectedProvider.models.map((model) => (
+                      <div className="settings-provider-model-row" key={model.id}>
+                        <span className="settings-provider-model-kind">{kindLabel(model.kind)}</span>
+                        <span className="settings-provider-model-id" title={model.id}>{model.id}</span>
+                        <select
+                          className="settings-row-control settings-provider-model-kind-select"
+                          data-testid={`settings-provider-model-kind-${model.id}`}
+                          aria-label={t("desktop.settings.modelKind")}
+                          value={model.kind}
+                          onChange={(event) => {
+                            const kind = event.target.value as ModelKind;
+                            patchProvider(selectedProvider.id, (provider) => ({
+                              ...provider,
+                              models: provider.models.map((entry) => entry.id === model.id ? { ...entry, kind } : entry)
+                            }));
+                          }}
+                        >
+                          <option value="text">{t("desktop.settings.modelKindText")}</option>
+                          <option value="image">{t("desktop.settings.modelKindImage")}</option>
+                          <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="settings-provider-remove"
+                          data-testid={`settings-remove-model-${model.id}`}
+                          aria-label={t("desktop.settings.modelRemove")}
+                          title={t("desktop.settings.modelRemove")}
+                          onClick={() => removeModel(model.id)}
+                        >
+                          <ThemeIcon name="trash" size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="settings-provider-add-model">
+                  {selectedProvider && (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length > 0 ? (
+                    <select
+                      className="settings-row-control settings-provider-add-model-select"
+                      data-testid="settings-add-model-select"
+                      value={((fetchedByProvider[selectedProvider.id] ?? []).find((m) => m.id === newModelId)?.id) ?? ""}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        setNewModelId(val);
+                        const matched = (fetchedByProvider[selectedProvider.id] ?? []).find((m) => m.id === val);
+                        if (matched) setNewModelKind(matched.kind);
+                      }}
+                      aria-label={t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length)}
+                    >
+                      <option value="">{t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length)}</option>
+                      {(fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.id} ({kindLabel(model.kind)})
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <input
+                    type="text"
+                    className="settings-provider-add-model-id"
+                    data-testid="settings-add-model-id"
+                    placeholder={(fetchedByProvider[selectedProvider.id] ?? []).length > 0 ? t("desktop.settings.orCustomModelId") : t("desktop.settings.modelAddId")}
+                    value={newModelId}
+                    onChange={(event) => setNewModelId(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") addModel(); }}
+                  />
+                  <select
+                    className="settings-row-control settings-provider-add-model-kind"
+                    data-testid="settings-add-model-kind"
+                    aria-label={t("desktop.settings.modelKind")}
+                    value={newModelKind}
+                    onChange={(event) => setNewModelKind(event.target.value as ModelKind)}
+                  >
+                    <option value="text">{t("desktop.settings.modelKindText")}</option>
+                    <option value="image">{t("desktop.settings.modelKindImage")}</option>
+                    <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    data-testid="settings-add-model"
+                    disabled={!newModelId.trim()}
+                    onClick={addModel}
+                  >
+                    {t("desktop.settings.modelAdd")}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : (
+          <p className="settings-footnote">{t("desktop.settings.providerDetailEmpty")}</p>
+        )}
+      </div>
+    </div>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.useCaseModels")}</h3>
+      <div className="settings-group-body">
+        <p className="settings-footnote">{t("desktop.settings.useCaseModelsFootnote")}</p>
+        {selectionRow(
+          "desktop.settings.toolModelUse",
+          "desktop.settings.toolModelUseDesc",
+          "text",
+          draft.toolSelection,
+          (value) => update("toolSelection", value)
+        )}
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span>
+          </span>
+          <select className="settings-row-control" value={draft.toolOutputLanguage} onChange={(event) => update("toolOutputLanguage", event.target.value as typeof draft.toolOutputLanguage)}>
+            <option value="auto">{t("desktop.settings.fieldOutputLanguageOptionAuto")}</option>
+            <option value="en">English</option>
+            <option value="zh-cn">简体中文</option>
+            <option value="ja">日本語</option>
+          </select>
+        </label>
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.disableThinkingDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.toolDisableThinking} onChange={(event) => update("toolDisableThinking", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        {selectionRow(
+          "desktop.settings.chatModelUse",
+          "desktop.settings.chatModelUseDesc",
+          "text",
+          draft.chatSelection,
+          (value) => update("chatSelection", value)
+        )}
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.disableThinkingChatDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.chatDisableThinking} onChange={(event) => update("chatDisableThinking", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        {selectionRow(
+          "desktop.settings.embeddingModelUse",
+          "desktop.settings.embeddingModelUseDesc",
+          "embedding",
+          draft.embeddingSelection,
+          (value) => update("embeddingSelection", value)
+        )}
+        {selectionRow(
+          "desktop.settings.imageModelUse",
+          "desktop.settings.imageModelUseDesc",
+          "image",
+          draft.imageSelection,
+          (value) => update("imageSelection", value)
+        )}
+      </div>
+    </section>
   </>;
 }
 

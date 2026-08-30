@@ -314,6 +314,8 @@ export function registerImIpc(deps: {
     name?: unknown;
     kind?: unknown;
     prompt?: unknown;
+    providerId?: unknown;
+    modelId?: unknown;
   }) => {
     if (typeof args?.name !== "string" || typeof args?.kind !== "string" || !isImSelectionActionKind(args.kind)) {
       throw new Error("Action name and kind are required.");
@@ -322,7 +324,9 @@ export function registerImIpc(deps: {
     return im.createSelectionAction({
       name: args.name,
       kind: args.kind as ImSelectionActionKind,
-      prompt: typeof args.prompt === "string" ? args.prompt : ""
+      prompt: typeof args.prompt === "string" ? args.prompt : "",
+      providerId: typeof args.providerId === "string" ? args.providerId.trim() || undefined : undefined,
+      modelId: typeof args.modelId === "string" ? args.modelId.trim() || undefined : undefined
     });
   });
 
@@ -331,6 +335,8 @@ export function registerImIpc(deps: {
     name?: unknown;
     kind?: unknown;
     prompt?: unknown;
+    providerId?: unknown;
+    modelId?: unknown;
     enabled?: unknown;
   }) => {
     if (typeof args?.actionId !== "string") throw new Error("Action id is required.");
@@ -340,6 +346,8 @@ export function registerImIpc(deps: {
       name: typeof args.name === "string" ? args.name : undefined,
       kind: typeof args.kind === "string" && isImSelectionActionKind(args.kind) ? args.kind : undefined,
       prompt: typeof args.prompt === "string" ? args.prompt : undefined,
+      providerId: typeof args.providerId === "string" ? args.providerId.trim() || null : args.providerId === null ? null : undefined,
+      modelId: typeof args.modelId === "string" ? args.modelId.trim() || null : args.modelId === null ? null : undefined,
       enabled: typeof args.enabled === "boolean" ? args.enabled : undefined
     });
   });

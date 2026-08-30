@@ -81,6 +81,8 @@ export function ImPanel(): ReactPortal | null {
     text: string;
     loading: boolean;
   } | null>(null);
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
@@ -280,6 +282,39 @@ export function ImPanel(): ReactPortal | null {
     if (action.actionId === "explain") return t("desktop.im.explain");
     return action.name;
   }, [t]);
+
+  const translateMessage = useCallback(async (message: ImMessage) => {
+    if (translations[message.messageId]) {
+      setTranslations((current) => {
+        const next = { ...current };
+        delete next[message.messageId];
+        return next;
+      });
+      return;
+    }
+    setTranslatingIds((current) => {
+      const next = new Set(current);
+      next.add(message.messageId);
+      return next;
+    });
+    try {
+      const result = await desktopApi().imRunSelectionAction({ actionId: "translate", text: message.body });
+      setTranslations((current) => ({ ...current, [message.messageId]: result.text }));
+    } catch (error) {
+      setError(error);
+    } finally {
+      setTranslatingIds((current) => {
+        const next = new Set(current);
+        next.delete(message.messageId);
+        return next;
+      });
+    }
+  }, [setError, translations]);
+
+  useEffect(() => {
+    setTranslations({});
+    setTranslatingIds(new Set());
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!selectionMenu && !selectionResult) return;
@@ -663,6 +698,9 @@ export function ImPanel(): ReactPortal | null {
               <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")}>
                 {visibleMessages.length ? visibleMessages.map((message) => {
                   const speaker = members.find((member) => member.memberId === message.authorMemberId);
+                  const displayBody = translations[message.messageId] ?? message.body;
+                  const isTranslating = translatingIds.has(message.messageId);
+                  const translated = Boolean(translations[message.messageId]);
                   return (
                     <article key={message.messageId} className={`im-message is-${message.kind.replace(".", "-")}`} onContextMenu={(event) => openSelectionMenu(event, message)}>
                       {message.kind !== "system" && (
@@ -700,8 +738,27 @@ export function ImPanel(): ReactPortal | null {
                       )}
                       <div
                         className="markdown-body"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(message.body) }}
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
                       />
+                      {(message.kind === "human" || message.kind === "role.say") && (
+                        <div className="im-message-actions">
+                          <button type="button" className="im-message-action" onClick={() => quoteMessage(message)}>
+                            {t("desktop.im.quote")}
+                          </button>
+                          <button
+                            type="button"
+                            className="im-message-action"
+                            disabled={isTranslating}
+                            onClick={() => void translateMessage(message)}
+                          >
+                            {translated
+                              ? t("desktop.im.restore")
+                              : isTranslating
+                                ? t("desktop.im.actionRunning")
+                                : t("desktop.im.translate")}
+                          </button>
+                        </div>
+                      )}
                     </article>
                   );
                 }) : (

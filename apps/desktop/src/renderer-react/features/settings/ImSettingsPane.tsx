@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { listProviderModels } from "./providerPool";
 import {
   isBuiltinSelectionActionId,
   isBuiltinTemplateId,
@@ -31,26 +33,31 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [agent, setAgent] = useState<ImAgent>("claude");
   const [tools, setTools] = useState<ImRoleTools>(emptyDraft().tools);
   const [status, setStatus] = useState("");
+  const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [actions, setActions] = useState<ImSelectionAction[]>([]);
   const [selectedActionId, setSelectedActionId] = useState("");
   const [creatingAction, setCreatingAction] = useState(false);
   const [actionName, setActionName] = useState("");
   const [actionKind, setActionKind] = useState<ImSelectionActionKind>("independent");
   const [actionPrompt, setActionPrompt] = useState("");
+  const [actionProviderId, setActionProviderId] = useState<string>("");
+  const [actionModelId, setActionModelId] = useState<string>("");
   const [actionEnabled, setActionEnabled] = useState(true);
   const selectedAction = actions.find((item) => item.actionId === selectedActionId) ?? null;
 
   const selected = templates.find((item) => item.templateId === selectedId) ?? null;
 
   const load = useCallback(async () => {
-    const [list, nextActions] = await Promise.all([
+    const [list, nextActions, currentSettings] = await Promise.all([
       desktopApi().imListTemplates(),
-      desktopApi().imListSelectionActions()
+      desktopApi().imListSelectionActions(),
+      desktopApi().getSettings()
     ]);
     setTemplates(list);
     setSelectedId((current) => current && list.some((item) => item.templateId === current) ? current : list[0]?.templateId || "");
     setActions(nextActions);
     setSelectedActionId((current) => current && nextActions.some((item) => item.actionId === current) ? current : nextActions[0]?.actionId || "");
+    setSettings(currentSettings);
   }, []);
 
   useEffect(() => {
@@ -78,6 +85,8 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
       setActionName("");
       setActionKind("independent");
       setActionPrompt("Explain the following text.\n\n{selection}");
+      setActionProviderId("");
+      setActionModelId("");
       setActionEnabled(true);
       return;
     }
@@ -85,6 +94,8 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     setActionName(selectedAction.name);
     setActionKind(selectedAction.kind);
     setActionPrompt(selectedAction.prompt);
+    setActionProviderId(selectedAction.providerId ?? "");
+    setActionModelId(selectedAction.modelId ?? "");
     setActionEnabled(selectedAction.enabled);
   }, [creatingAction, selectedAction]);
 
@@ -125,7 +136,13 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const saveAction = useCallback(async () => {
     try {
       if (creatingAction) {
-        const created = await desktopApi().imCreateSelectionAction({ name: actionName, kind: actionKind, prompt: actionPrompt });
+        const created = await desktopApi().imCreateSelectionAction({
+          name: actionName,
+          kind: actionKind,
+          prompt: actionPrompt,
+          providerId: actionProviderId || undefined,
+          modelId: actionModelId || undefined
+        });
         setCreatingAction(false);
         await load();
         setSelectedActionId(created.actionId);
@@ -135,6 +152,8 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
           name: actionName,
           kind: isBuiltinSelectionActionId(selectedAction.actionId) ? undefined : actionKind,
           prompt: actionPrompt,
+          providerId: actionProviderId || undefined,
+          modelId: actionModelId || undefined,
           enabled: actionEnabled
         });
         await load();
@@ -143,7 +162,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
-  }, [actionEnabled, actionKind, actionName, actionPrompt, creatingAction, load, selectedAction, t]);
+  }, [actionEnabled, actionKind, actionModelId, actionName, actionPrompt, actionProviderId, creatingAction, load, selectedAction, t]);
 
   const removeAction = useCallback(async () => {
     if (!selectedAction || isBuiltinSelectionActionId(selectedAction.actionId)) return;
@@ -262,6 +281,34 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
                 <option value="independent">{t("desktop.settings.imActionKindIndependent")}</option>
               </select>
             </label>
+            {actionKind === "independent" ? (
+              <label className="settings-field">
+                <span className="settings-field-label">{t("desktop.settings.imActionModel")}</span>
+                <select
+                  className="settings-row-control"
+                  data-testid="settings-im-action-model-select"
+                  value={actionProviderId && actionModelId ? `${actionProviderId}:${actionModelId}` : ""}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    if (!val) {
+                      setActionProviderId("");
+                      setActionModelId("");
+                    } else {
+                      const [pId, mId] = val.split(":");
+                      setActionProviderId(pId || "");
+                      setActionModelId(mId || "");
+                    }
+                  }}
+                >
+                  <option value="">{t("desktop.settings.imActionModelDefault")}</option>
+                  {listProviderModels(settings?.providers ?? [], "text").map((item) => (
+                    <option key={`${item.providerId}:${item.modelId}`} value={`${item.providerId}:${item.modelId}`}>
+                      {item.providerName} / {item.modelId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.imActionPrompt")}</span>
               <textarea rows={6} value={actionPrompt} onChange={(event) => setActionPrompt(event.target.value)} />
